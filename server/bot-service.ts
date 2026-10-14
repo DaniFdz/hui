@@ -43,9 +43,8 @@ import {
   BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
-import { SessionBusyError, type LiveSessions } from "./live-sessions.ts";
+import { SessionBusyError, type HuiQuestion, type LiveSessions } from "./live-sessions.ts";
 import type { PromptAttachment, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
-import type { SecretQuestion } from "./secret-requests.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { resolveWorkingDirectory } from "./working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
@@ -1397,9 +1396,11 @@ function memoryStatus(status: BotMemoryStatus): BotMemoryStatus {
   };
 }
 
-function botQuestion(question: RuntimeQuestion | SecretQuestion): BotQuestion {
+function botQuestion(question: RuntimeQuestion | HuiQuestion): BotQuestion {
   // HUI's own `secret_request` prompt: what the secret is for, never a value.
   if (question.method === "secret") return { id: question.id, method: "secret", title: question.title, message: question.message };
+  // An `ask_user_question` card, answered in HUI: each question on its own line.
+  if (question.method === "questionnaire") return { id: question.id, method: "questionnaire", title: question.title, options: question.questions.map(({ header, question: text }) => `${header}: ${text}`) };
   return {
     id: question.id,
     method: question.method,

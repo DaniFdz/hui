@@ -3,12 +3,18 @@
  * task lists, rich embeds, Mermaid and chart fences) and its safety rules: raw HTML is escaped, links are
  * limited to safe schemes and remote images are never loaded. Output is memoised per source because Lit
  * re-renders the whole transcript on every update.
+ *
+ * The agent's own replies render through a second instance (`renderAgentMarkdown`) that also wraps file references
+ * — inline code spans and link targets shaped like paths (`file-references.ts`) — in `<hui-file-ref>`, which
+ * becomes a link to the Files view once the gateway confirms the path (`components/file-link.ts`). Fenced code,
+ * prose and other Markdown (hovercards, the Files view's preview, user messages) are never wrapped.
  */
-import MarkdownIt, { type MarkdownIt as MarkdownItParser, type StateBlock, type StateInline, type Token } from "markdown-it";
+import MarkdownIt, { type MarkdownIt as MarkdownItParser, type StateBlock, type StateCore, type StateInline, type Token } from "markdown-it";
 import markdownItCjkFriendly from "markdown-it-cjk-friendly";
 import markdownItTaskLists from "markdown-it-task-lists";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { parseSlackLink } from "./slack-link.ts";
+import { parseFileLinkTarget, parseFileReference, type FileReference } from "./file-references.ts";
 
 const DISALLOWED_LINK_SCHEME_RE = /^(?!(?:https?|mailto):)[a-z][a-z0-9+.-]*:/i;
 const INLINE_DATA_IMAGE_RE = /^data:image\/[a-z0-9.+-]+;base64,/i;
@@ -387,13 +393,57 @@ function installRichEmbeds(parser: MarkdownItParser): void {
   parser.renderer.rules.paragraph_close = (tokens, index) => tokens[index]?.hidden || tokens[index]?.meta?.richEmbed === true ? "" : "</p>\n";
 }
 
-export function createMarkdownParser(): MarkdownItParser {
+function fileReferenceTag(state: StateCore, reference: FileReference | undefined): Token {
+  const token = new state.Token("html_inline", "", 0);
+  token.meta = { fileRef: true };
+  token.content = reference
+    ? `<hui-file-ref data-path="${escapeHtml(reference.path)}"${reference.line ? ` data-line="${reference.line}"` : ""}${reference.column ? ` data-column="${reference.column}"` : ""}>`
+    : "</hui-file-ref>";
+  return token;
+}
+
+/** Wraps path-shaped inline code spans and link targets in `<hui-file-ref>`. A link's label is wrapped whole and its
+ * own code spans are left alone; web and mail links stay links. */
+function installFileReferences(parser: MarkdownItParser): void {
+  parser.core.ruler.after("hui_safe_links", "hui_file_references", (state) => {
+    for (const block of state.tokens) {
+      if (block.type !== "inline" || !block.children) continue;
+      const children = block.children;
+      const links: boolean[] = [];
+      for (let index = 0; index < children.length; index += 1) {
+        const token = children[index];
+        if (!token) continue;
+        if (token.type === "link_open") {
+          const href = String(token.attrGet("href") ?? "");
+          const reference = /^(?:https?|mailto):/iu.test(href) ? undefined : parseFileLinkTarget(href);
+          links.push(Boolean(reference));
+          if (reference) children[index] = fileReferenceTag(state, reference);
+        } else if (token.type === "link_close") {
+          if (links.pop()) children[index] = fileReferenceTag(state, undefined);
+        } else if (token.type === "code_inline" && !links.length) {
+          const reference = parseFileReference(token.content);
+          if (!reference) continue;
+          children.splice(index, 1, fileReferenceTag(state, reference), token, fileReferenceTag(state, undefined));
+          index += 2;
+        }
+      }
+    }
+  });
+}
+
+export type MarkdownParserOptions = {
+  /** Wrap file references for the Files view (the agent's replies only). */
+  fileReferences?: boolean;
+};
+
+export function createMarkdownParser(options: MarkdownParserOptions = {}): MarkdownItParser {
   const parser = new MarkdownIt({ html: true, breaks: true, linkify: true });
   parser.use(markdownItCjkFriendly);
   parser.enable("strikethrough");
   installDetails(parser);
   installMath(parser);
   installLinkRules(parser);
+  if (options.fileReferences) installFileReferences(parser);
   installRichEmbeds(parser);
   installAlerts(parser);
   parser.use(markdownItTaskLists, { enabled: false, label: false });
@@ -411,7 +461,7 @@ export function createMarkdownParser(): MarkdownItParser {
   };
   parser.renderer.rules.html_inline = (tokens, index) => {
     const token = tokens[index];
-    if (token?.meta?.taskListPlugin === true || token?.meta?.richEmbed === true) return token.content;
+    if (token?.meta?.taskListPlugin === true || token?.meta?.richEmbed === true || token?.meta?.fileRef === true) return token.content;
     return /^<br\s*\/?>$/iu.test(token?.content.trim() ?? "") ? "<br>" : escapeHtml(token?.content ?? "");
   };
   parser.renderer.rules.table_open = () => '<div class="markdown-table"><div class="markdown-table__viewport" tabindex="0" role="region" aria-label="Table"><table>';
@@ -481,4 +531,13 @@ export const markdownToHtml = createMarkdownCache();
 
 export function renderMarkdown(source: string) {
   return unsafeHTML(markdownToHtml(source));
+}
+
+const agentMarkdownParser = createMarkdownParser({ fileReferences: true });
+
+/** The agent's replies: `markdownToHtml` plus file references (see the module header). */
+export const agentMarkdownToHtml = createMarkdownCache((source) => agentMarkdownParser.render(source));
+
+export function renderAgentMarkdown(source: string) {
+  return unsafeHTML(agentMarkdownToHtml(source));
 }

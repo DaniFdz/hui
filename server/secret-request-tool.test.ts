@@ -15,7 +15,7 @@ test("a secret request is only answered over the connection of the machine its s
   ], groups: [] }));
   const { stopBackend } = await import("./hui.ts");
   const { invokeAgentTool } = await import("./agent-tools-bridge.ts");
-  t.after(async () => { stopBackend(); await rm(dir, { recursive: true, force: true }); });
+  t.after(async () => { await stopBackend(); await rm(dir, { recursive: true, force: true }); });
   // Already stopped, so an accepted request ends at once, cancelled.
   const ask = (callerSessionId: string, fromWorker?: string) => invokeAgentTool({
     callerSessionId, action: "secret_request", params: { label: "Token", reason: "Log in" }, signal: AbortSignal.abort(), ...(fromWorker ? { fromWorker } : {}),

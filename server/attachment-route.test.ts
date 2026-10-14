@@ -21,7 +21,7 @@ test("attachment image route is guarded, typed and never resolves unknown sessio
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => { stopBackend(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); await rm(dir, { recursive: true, force: true }); });
+  t.after(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((r) => server.close(() => r())); await rm(dir, { recursive: true, force: true }); });
   const get = (path: string, guard = true, method = "GET") => fetch(origin + path, { method, headers: guard ? { "x-hui": "1" } : {} });
 
   assert.equal((await get("/__hui/sessions/alpha/attachments/0/0", false)).status, 403);

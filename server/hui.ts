@@ -32,8 +32,7 @@ import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type BotRouteRequest } from "./bot-routes.ts";
 import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
-import { isHookPath } from "./bot-triggers-webhook.ts";
-import { SLACK_ROUTE } from "./slack-routes.ts";
+import { isHookPath } from "./bot-triggers-listener.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
@@ -156,6 +155,7 @@ import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionSt
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
 import { REQUEST_ID, RecentRequests } from "./recent-requests.ts";
+import { Questionnaires } from "./questionnaires.ts";
 import {
   BacklogInputError,
   BacklogJiraFeed,
@@ -175,6 +175,7 @@ import { createSessionListHub } from "./session-list.ts";
 import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import { createFileRoutes, FILES_ROUTE, parseIfMatch } from "./file-routes.ts";
+import { createDiffRoutes, DIFF_ROUTE } from "./diff-routes.ts";
 import {
   createSessionGroup,
   deleteSessionGroup,
@@ -269,6 +270,7 @@ const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
+const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
 function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
@@ -278,6 +280,7 @@ function forWorkerSessions(workerId: string, act: (record: SessionRecord) => voi
 }
 workers.onConnected((workerId) => forWorkerSessions(workerId, (record) => liveSessions.ensure(record, true)));
 workers.onStopped((workerId) => forWorkerSessions(workerId, (record) => liveSessions.stopReconnecting(record.id)));
+durableHost().storeFailed = async () => reattachAfterStoreFailure(await readRegistry());
 /** Bots (HUI-18): their registry, and the service that runs each one's forever chat as an ordinary Durable session
  * whose memory is OptChat's (docs/optchat.md). */
 const botMemory = optChatBotMemory(durableHost());
@@ -426,7 +429,8 @@ liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 liveSessions.setWatcherProvider((id) => watchers.list(id));
 const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const secretFiles = new SecretFiles();
-liveSessions.setSecretRequestProvider((id) => secretRequests.questions(id));
+const questionnaires = new Questionnaires({ onChange: (id) => liveSessions.notifySnapshot(id) });
+liveSessions.setHuiQuestionProvider((id) => [...secretRequests.questions(id), ...questionnaires.questions(id)]);
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
@@ -437,7 +441,7 @@ registerAgentToolHandler(async (invocation) => {
   // A bot's gated tools judge its run by every input it took, as the host running the chat saw them (`runOrigins`).
   if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params, invocation.runOrigins);
   if (invocation.action === ROUTINES_TOOL) return botRoutines.handle(invocation.callerSessionId, invocation.params, invocation.runOrigins);
-  if (invocation.action === "triggers") return triggers.service.tool(invocation.callerSessionId, invocation.params, invocation.runOrigins);
+  if (invocation.action === "triggers") return triggers.service.tool(invocation.callerSessionId, invocation.params);
   if (invocation.action === "suggest_task" || invocation.action === "dismiss_task") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
     if (!caller) throw new TaskSuggestionInputError("Conversation no longer exists.");
@@ -454,6 +458,10 @@ registerAgentToolHandler(async (invocation) => {
     if (caller.worker !== invocation.fromWorker) throw new Error("A secret request must come from the machine its session runs on.");
     const answer = await secretRequests.request(caller.id, invocation.params, invocation.signal);
     return invocation.fromWorker ? answer : secretFiles.deliver(answer);
+  }
+  if (invocation.action === "ask_user_question") {
+    if (!(await readRegistry()).some(({ id }) => id === invocation.callerSessionId)) throw new Error("Conversation no longer exists.");
+    return questionnaires.request(invocation.callerSessionId, invocation.params, invocation.signal);
   }
   if (invocation.action === "watcher") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
@@ -632,7 +640,8 @@ async function ensureConfigDir(): Promise<void> {
 
 async function writeSettings(raw: unknown): Promise<Settings> {
   const settings = normalizeSettings(raw);
-  const botsWereOn = botsEnabled(await readSettings());
+  const before = await readSettings();
+  const botsWereOn = botsEnabled(before);
   await ensureConfigDir();
   await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
@@ -641,13 +650,7 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
   if (botsWereOn && !botsEnabled(settings)) quietBots();
-  // Triggers' pollers stop while bots are off and resume from their cursors once they are on again.
-  if (botsWereOn !== botsEnabled(settings)) {
-    void triggers.service.setActive(botsEnabled(settings)).catch((error: unknown) => recordDiagnosticEvent({
-      area: "session", level: "warning", action: "triggers_toggle_failed", summary: "Triggers could not follow bots being turned on or off",
-      detail: error instanceof Error ? error.message : String(error),
-    }));
-  }
+  if (before.codemode.enabled !== settings.codemode.enabled) await durableHost().applyTools();
   return settings;
 }
 
@@ -1114,6 +1117,8 @@ type SessionView = {
   };
   /** A prompt was active when its owning runtime disappeared. */
   interrupted?: true;
+  /** A watcher of this session, or a subagent below it, still runs. */
+  background?: true;
   model?: string;
   thinking?: string;
   pinned?: true;
@@ -1244,13 +1249,11 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
 const githubCli = new GitHubCli({ command: GH_COMMAND });
-/** Bots' triggers (HUI-18): GitHub pollers through the same `gh`, the sessions bots start, webhook calls, and the Slack
- * messages that ping the operator, through the Slack connection of Settings → Integrations (`slack.ts`). */
+/** Bots' triggers (HUI-18): what listeners the operator runs report, with the pull requests it links to read through the
+ * same `gh`. */
 const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),
   listBots: () => botRegistry.list(),
-  readSessions: readRegistry,
-  sessions: liveSessions,
   active: botsOn,
   ghCommand: GH_COMMAND,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
@@ -1460,6 +1463,22 @@ export async function setAgentStage(
   return result;
 }
 
+/** Flags sessions whose own turn may be idle while work they started goes on:
+ * a running watcher, or a running subagent anywhere below them. */
+export function markBackgroundWork(views: SessionView[], watching: (id: string) => boolean): void {
+  const byId = new Map(views.map((view) => [view.id, view]));
+  for (const view of views) {
+    if (watching(view.id)) view.background = true;
+    if (view.status !== "running" && !watching(view.id)) continue;
+    // `seen` stops a corrupt parent cycle from looping forever.
+    const seen = new Set([view.id]);
+    for (let parent = byId.get(view.parentId ?? ""); parent && !seen.has(parent.id); parent = byId.get(parent.parentId ?? "")) {
+      seen.add(parent.id);
+      parent.background = true;
+    }
+  }
+}
+
 /** The stored record has no idea whether a runtime is booting, so the live
  * status is layered on at read time. */
 async function listSessionViews(): Promise<{ label: string; sessions: SessionView[] }[]> {
@@ -1488,7 +1507,9 @@ async function listSessionViews(): Promise<{ label: string; sessions: SessionVie
       return entry ? pendingView(entry) : toView(record, liveSessions.status(record.id), runtimeViews.get(record.id));
     }),
   }));
-  persistInferredStages(registry.sessions, views.flatMap((group) => group.sessions));
+  const all = views.flatMap((group) => group.sessions);
+  markBackgroundWork(all, (id) => watchers.list(id).some((watcher) => watcher.state === "running"));
+  persistInferredStages(registry.sessions, all);
   return views;
 }
 
@@ -2649,7 +2670,7 @@ async function handleRequest(
     return;
   }
 
-  // A webhook trigger's caller is another program: its token is the credential, not x-hui (`bot-triggers-webhook.ts`).
+  // A trigger's listener is another program: its token is the credential, not x-hui (`bot-triggers-listener.ts`).
   if (isHookPath(path)) {
     const result = await triggers.hook(request, path);
     sendJson(response, result.status, result.body);
@@ -2720,6 +2741,18 @@ async function handleRequest(
       if (result.etag) response.setHeader("etag", `"${result.etag}"`);
       sendJson(response, result.status, result.body);
     }
+    return;
+  }
+
+  // The Diff view: Git comparisons of the conversation's working directory, read-only (`diff-routes.ts`).
+  if (DIFF_ROUTE.test(path)) {
+    const result = await diffRoutes.handle({
+      method: request.method ?? "GET",
+      path,
+      query: new URL(request.url ?? "/", "http://localhost").searchParams,
+    });
+    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+    else sendJson(response, result.status, result.body);
     return;
   }
 
@@ -3311,14 +3344,6 @@ async function handleRequest(
     } catch (error) {
       sendJson(response, error instanceof GitHubCliError ? error.status : 500, { error: error instanceof Error ? error.message : "Could not sign in to GitHub." });
     }
-    return;
-  }
-
-  if (path === SLACK_ROUTE) {
-    const verify = new URL(request.url ?? "/", "http://localhost").searchParams.get("verify") === "1";
-    const result = await triggers.slackRoutes.handle({ method: request.method ?? "GET", path, verify, body: (maxBytes) => readBody(request, maxBytes) });
-    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
-    else sendJson(response, result.status, result.body);
     return;
   }
 
@@ -4209,7 +4234,7 @@ async function handleRequest(
       }
       try {
         // A secret goes to the gateway's own request, never to the runtime.
-        if (secretRequests.answer(id, questionId, body)) {
+        if (secretRequests.answer(id, questionId, body) || questionnaires.answer(id, questionId, body)) {
           sendJson(response, 200, { ok: true });
           return;
         }
@@ -4310,7 +4335,7 @@ export async function startBackend(): Promise<void> {
   }));
   initializeWatchers();
   initializeSubagents();
-  // Triggers: what waited for a cooldown across the restart, the session watch and, while bots are on, the pollers.
+  // Triggers: what waited for a cooldown across the restart goes out once its cooldown ends.
   void triggers.start().catch((error: unknown) => recordDiagnosticEvent({
     area: "session", level: "warning", action: "triggers_start_failed", summary: "Bots' triggers did not start",
     detail: error instanceof Error ? error.message : String(error),
@@ -4343,6 +4368,19 @@ export async function reopenDurableSessions(
   await Promise.all(owners.map((record) => sessions.ensure(record) ? sessions.booted(record.id) : undefined));
 }
 
+/** A failed Durable store is about to open again (`DurableHost.storeFailed`): the sessions on this machine it ended
+ * reattach, once a boot underway settles (one that got the failed store ends then too). Their boots open the store;
+ * the host opens it anyway, which resumes the runs of sessions nobody has open, as at startup. */
+export async function reattachAfterStoreFailure(
+  records: readonly SessionRecord[],
+  sessions: Pick<typeof liveSessions, "ensure" | "booted" | "isLive"> = liveSessions,
+): Promise<void> {
+  await Promise.all(records.filter((record) => !record.worker && sessions.isLive(record.id)).map(async (record) => {
+    await sessions.booted(record.id);
+    sessions.ensure(record, true);
+  }));
+}
+
 /** Startup recovery is eager: interrupted work resumes even when no browser
  * has reopened that conversation yet. */
 export function recoverInterruptedSessions(
@@ -4356,27 +4394,34 @@ export function recoverInterruptedSessions(
   return started;
 }
 
+/** Settles once the Durable store is released, so a backend started next in
+ * this process (a development server restart) can open it. */
 export async function stopBackend(): Promise<void> {
-  macPower?.dispose();
-  managedBrowser.dispose();
-  // Signals openvscode-server and returns: a gateway stop never waits for it.
-  vscode.dispose();
-  terminals.dispose();
-  githubCli.dispose();
-  // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
-  await triggers.stop();
-  automation.dispose();
-  subagents.dispose();
-  watchers.dispose();
-  secretRequests.dispose();
-  secretFiles.dispose();
-  stopAgentToolBridge();
-  // Closed first: remote sessions then keep running on their hosts instead of
-  // receiving a kill from the disposal below.
-  workers.disconnectAll();
-  liveSessions.disposeAll();
-  // Closing records no outcome: running Durable work resumes on the next start.
-  void durableHost().close();
+  try {
+    macPower?.dispose();
+    managedBrowser.dispose();
+    // Signals openvscode-server and returns: a gateway stop never waits for it.
+    vscode.dispose();
+    terminals.dispose();
+    githubCli.dispose();
+    // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
+    await triggers.stop();
+    automation.dispose();
+    subagents.dispose();
+    watchers.dispose();
+    secretRequests.dispose();
+    questionnaires.dispose();
+    secretFiles.dispose();
+    stopAgentToolBridge();
+    // Closed first: remote sessions then keep running on their hosts instead of
+    // receiving a kill from the disposal below.
+    workers.disconnectAll();
+    liveSessions.disposeAll();
+  } finally {
+    // Closing records no outcome: running Durable work resumes on the next start.
+    // A failed step above must not leave the store locked.
+    await durableHost().close();
+  }
 }
 
 /** Upgrade handlers for browser panes and session views; the gateway and Vite
@@ -4412,11 +4457,16 @@ export function huiConfig(): Plugin {
     },
     load(id) { return id === GESPENST_NODE_STUB ? "export {};" : undefined; },
     configureServer(server) {
-      void startBackend();
       if (server.httpServer) {
+        // Vite restarts by creating this server, closing the previous one (its
+        // `closeBundle` stops that backend and releases the Durable store) and
+        // only then listening. Starting here keeps the two backends apart.
+        server.httpServer.once("listening", () => { void startBackend(); });
         const detach = attachTerminalTransport(server.httpServer);
         const detachStreams = attachLiveStreams(server.httpServer);
         server.httpServer.once("close", () => { detach(); detachStreams(); });
+      } else {
+        void startBackend();
       }
       server.middlewares.use(middleware);
     },
@@ -4427,8 +4477,14 @@ export function huiConfig(): Plugin {
       server.httpServer.once("close", () => { detach(); detachStreams(); });
       server.middlewares.use(middleware);
     },
-    closeBundle() {
-      return stopBackend();
+    // Called once per Vite environment; the calls share one store close. Vite
+    // discards a failed hook, so the failure is reported instead.
+    async closeBundle() {
+      await stopBackend().catch((error: unknown) => recordDiagnosticEvent({
+        area: "gateway", level: "error", action: "stop_failed",
+        summary: "The development backend did not stop cleanly",
+        detail: error instanceof Error ? error.message : String(error),
+      }));
     },
   };
 }

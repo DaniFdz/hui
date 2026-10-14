@@ -7,14 +7,16 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
+import { readObservability } from "./observability.ts";
 import { waitFor } from "./test-support/wait-for.ts";
 import { VscodeService } from "./vscode.ts";
 import { defaultVscodeProbe } from "./vscode-providers.ts";
 import {
-  attachVscodeTransport, downstreamHeaders, isVscodeProxyPath, patchWorkbenchHtml, proxyVscodeHttp, scopeVscodeCookie, serveVscodeEnter,
-  upstreamHeaders, vscodeCookieSessionIds, vscodeThemeDefaults,
+  attachVscodeTransport, downstreamHeaders, isVscodeProxyPath, isWorkbenchPath, patchWorkbenchHtml, proxyVscodeHttp, scopeVscodeCookie,
+  serveVscodeEnter, upstreamHeaders, vscodeCookieSessionIds, vscodeThemeDefaults,
 } from "./vscode-proxy.ts";
 import { DEFAULT_VSCODE_SETTINGS } from "../src/lib/settings.ts";
+import { normalizeVscodeTheme, vscodeContrast } from "../shared/vscode.ts";
 
 const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", import.meta.url));
 const DARK = { background: "#101114", panel: "#17181c", elevated: "#202127", text: "#e6e6e6", border: "#2a2b31", accent: "#ff5c5c" };
@@ -63,8 +65,9 @@ test("VS Code's token cookie never reaches the browser; its other cookies keep t
 function workbench(settings: Record<string, unknown>): string {
   return `<html><head><meta id="vscode-workbench-web-configuration" data-settings="${JSON.stringify(settings).replaceAll("&", "&amp;").replaceAll('"', "&quot;")}"></head></html>`;
 }
-function configOf(html: string): Record<string, any> {
-  const raw = /data-settings="([^"]*)"/u.exec(html)?.[1] ?? "";
+function configOf(html: string | undefined): Record<string, any> {
+  assert.ok(html !== undefined, "the page was patched");
+  const raw = /id="vscode-workbench-web-configuration" data-settings="([^"]*)"/u.exec(html)?.[1] ?? "";
   return JSON.parse(raw.replaceAll("&quot;", '"').replaceAll("&amp;", "&")) as Record<string, any>;
 }
 
@@ -89,7 +92,66 @@ test("the workbench page gains the token, quiet defaults and HUI's theme without
   const plain = configOf(patchWorkbenchHtml(workbench({ remoteAuthority: "g" }), { token: "T" }));
   assert.equal(plain["connectionToken"], "T");
   assert.equal(plain["configurationDefaults"]["workbench.colorTheme"], undefined, "no theme, VS Code's own default");
-  assert.equal(patchWorkbenchHtml("<html>no config</html>", { token: "T" }), "<html>no config</html>");
+  assert.equal(patchWorkbenchHtml("<html>no config</html>", { token: "T" }), undefined, "nothing to put the token in");
+  assert.equal(patchWorkbenchHtml('<meta id="vscode-workbench-web-configuration" data-settings="{not json">', { token: "T" }), undefined);
+  assert.equal(patchWorkbenchHtml('<meta id="vscode-workbench-web-configuration" data-settings="[1]">', { token: "T" }), undefined);
+  assert.equal(patchWorkbenchHtml('<meta id="vscode-workbench-web-configuration">', { token: "T" }), undefined);
+});
+
+test("a theme whose text cannot be read on its surfaces is refused, so VS Code keeps its own", () => {
+  assert.deepEqual(normalizeVscodeTheme(LIGHT), LIGHT);
+  assert.deepEqual(normalizeVscodeTheme(DARK), DARK);
+  // What a client that could not read HUI's light-dark() tokens sent: black for every color.
+  assert.equal(normalizeVscodeTheme({ background: "#000000", panel: "#000000", elevated: "#000000", text: "#000000", border: "#000000" }), undefined);
+  assert.equal(normalizeVscodeTheme({ ...LIGHT, panel: "#3f3b34" }), undefined, "text on a panel");
+  assert.equal(normalizeVscodeTheme({ ...LIGHT, border: "url(x)" })?.border, undefined, "anything but #rrggbb is dropped");
+  assert.equal(Math.round(vscodeContrast("#000000", "#ffffff")), 21);
+  assert.equal(vscodeContrast("#123456", "#123456"), 1);
+});
+
+const FIXTURES = ["1.137", "1.141"] as const;
+
+test("VS Code 1.137's and 1.141's real serve-web pages get the token, and nothing else in them changes", async () => {
+  for (const version of FIXTURES) {
+    const page = await readFile(fileURLToPath(new URL(`./test-support/vscode-workbench-${version}.html`, import.meta.url)), "utf8");
+    const patched = patchWorkbenchHtml(page, { token: "TOKEN", theme: LIGHT });
+    const config = configOf(patched);
+    assert.equal(config["connectionToken"], "TOKEN", version);
+    assert.equal(config["remoteAuthority"], "gateway.test:7777", version);
+    assert.equal(config["serverBasePath"], "/__hui/vscode", version);
+    assert.match(config["callbackRoute"], /^\/__hui\/vscode\/stable-[0-9a-f]{40}\/callback$/u, version);
+    assert.equal(config["configurationDefaults"]["workbench.colorTheme"], "Default Light Modern", version);
+    const outside = (html: string) => html.replace(/<meta id="vscode-workbench-web-configuration"[^>]*>/u, "");
+    assert.equal(outside(patched ?? ""), outside(page), `${version}: only the configuration changes`);
+    assert.match(patched ?? "", /<meta id="vscode-workbench-web-base-url" data-settings="\/__hui\/vscode\/stable-[0-9a-f]{40}\/static">/u);
+  }
+});
+
+test("the configuration is found however a release writes its tag", () => {
+  const json = JSON.stringify({ remoteAuthority: "g:1", note: "a > b & 'c'" });
+  const variants = {
+    reordered: `<meta data-settings="${json.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}" id="vscode-workbench-web-configuration">`,
+    selfClosing: `<meta id="vscode-workbench-web-configuration" data-settings="${json.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}" />`,
+    singleQuoted: `<meta id='vscode-workbench-web-configuration' data-settings='${json.replaceAll("&", "&amp;").replaceAll("'", "&#39;")}'>`,
+    numericEntities: `<meta id="vscode-workbench-web-configuration" data-settings="${json.replaceAll("&", "&#38;").replaceAll('"', "&#34;").replaceAll("'", "&#x27;")}">`,
+    unquotedId: `<META ID=vscode-workbench-web-configuration DATA-SETTINGS="${json.replaceAll("&", "&amp;").replaceAll('"', "&quot;")}">`,
+  };
+  for (const [name, variant] of Object.entries(variants)) {
+    const patched = patchWorkbenchHtml(`<html><head><meta id="other" data-settings="x">${variant}</head></html>`, { token: "T" });
+    assert.ok(patched, name);
+    const tag = [...patched.matchAll(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/giu)].map((match) => match[0]).find((meta) => /vscode-workbench-web-configuration/iu.test(meta)) ?? "";
+    const raw = /data-settings="([^"]*)"/iu.exec(tag)?.[1] ?? "";
+    const config = JSON.parse(raw.replaceAll("&quot;", '"').replaceAll("&#39;", "'").replaceAll("&amp;", "&")) as Record<string, unknown>;
+    assert.equal(config["connectionToken"], "T", name);
+    assert.equal(config["note"], "a > b & 'c'", `${name}: the rest round-trips`);
+    assert.match(patched, /<meta id="other" data-settings="x">/u, `${name}: other tags stay`);
+  }
+});
+
+test("the workbench is the base path itself; other documents under it are not", () => {
+  assert.equal(isWorkbenchPath("/__hui/vscode/"), true);
+  assert.equal(isWorkbenchPath("/__hui/vscode"), true);
+  assert.equal(isWorkbenchPath("/__hui/vscode/stable-c/static/out/vs/workbench/contrib/webview/browser/pre/index.html"), false);
 });
 
 test("serve-web's page gets the token too, and its web-extension URLs follow a TLS page's scheme", () => {
@@ -107,7 +169,7 @@ test("serve-web's page gets the token too, and its web-extension URLs follow a T
 
 type Harness = { origin: string; vscode: VscodeService; server: Server; dir: string };
 
-async function harness(t: TestContext, kind: "server" | "code" = "server"): Promise<Harness> {
+async function harness(t: TestContext, kind: "server" | "code" = "server", fakeEnv: Record<string, string> = {}): Promise<Harness> {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-proxy-"));
   const executable = join(dir, kind === "code" ? "code" : "openvscode-server");
   await writeFile(executable, `#!/bin/sh\n${kind === "code" ? "FAKE_VSCODE_KIND=code " : ""}"${process.execPath}" "${FAKE}" "$@"\n`);
@@ -118,7 +180,7 @@ async function harness(t: TestContext, kind: "server" | "code" = "server"): Prom
     settings: async () => ({ ...DEFAULT_VSCODE_SETTINGS, ...(kind === "code" ? { licenseAcceptedAt: "2026-10-09T08:00:00.000Z" } : { executable }) }),
     // Only this test's executables exist, so the machine's own VS Code never answers.
     probe: { ...base, env: { PATH: dir }, home: dir, isExecutable: async (path) => path.startsWith(`${dir}/`) && base.isExecutable(path) },
-    env: () => ({ ...process.env, ...(kind === "code" ? { FAKE_VSCODE_KIND: "code" } : {}) }),
+    env: () => ({ ...process.env, ...(kind === "code" ? { FAKE_VSCODE_KIND: "code" } : {}), ...fakeEnv }),
   });
   const server = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://h").pathname;
@@ -281,4 +343,41 @@ test("code serve-web behind the proxy: same cookie gate, the token in its page, 
     "vscode-cli-secret-half=half; SameSite=Strict; HttpOnly; Max-Age=2592000; Path=/__hui/vscode",
   ], "the upgrade's cookies are scoped like any other, and the token cookie stays on the gateway");
   upgrade.socket.close();
+});
+
+test("a workbench page HUI cannot prepare is refused with a notice and logged, never served without its token", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "code", { FAKE_VSCODE_PAGE: "bare" });
+  const { cookie, location } = await enter(h);
+  const page = await fetch(h.origin + location, { headers: { cookie, accept: "text/html" } });
+  assert.equal(page.status, 502);
+  const html = await page.text();
+  assert.match(html, /<meta name="hui-vscode-error" content="incompatible"/u, "the view replaces it with its own error");
+  assert.match(html, /Visual Studio Code 1\.137\.0 served a workbench page HUI could not prepare \(it has no workbench configuration\)/u);
+  assert.doesNotMatch(html, /fake serve-web workbench/u);
+  const logged = (await readObservability([])).logs.find((entry) => entry.action === "vscode-workbench");
+  assert.ok(logged, "the gateway log says why");
+  assert.equal(logged.level, "error");
+  assert.match(logged.detail ?? "", /page starts: fake serve-web workbench for \/work\/my repo/u);
+  assert.doesNotMatch(logged.detail ?? "", new RegExp(await readFile(h.vscode.tokenFile, "utf8")));
+  // Any other document under the base path (a webview's) is VS Code's business and passes as it is.
+  const webview = await fetch(`${h.origin}/__hui/vscode/webview/index.html`, { headers: { cookie, accept: "text/html" } });
+  assert.equal(webview.status, 200);
+  assert.match(await webview.text(), /webview host/u);
+});
+
+test("a compressed workbench page is decoded and patched", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t, "server", { FAKE_VSCODE_PAGE: "gzip" });
+  const { cookie, location } = await enter(h);
+  const page = await fetch(h.origin + location, { headers: { cookie, accept: "text/html" } });
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get("content-encoding"), null);
+  assert.equal(configOf(await page.text())["connectionToken"], await readFile(h.vscode.tokenFile, "utf8"));
+});
+
+test("a refused WebSocket is logged with its cause", { timeout: 60_000 }, async (t) => {
+  const h = await harness(t);
+  await enter(h);
+  const ws = h.origin.replace("http:", "ws:") + "/__hui/vscode/?reconnectionToken=abc";
+  assert.deepEqual(await openSocket(ws, { origin: "http://evil.example" }), { status: 403 });
+  await waitFor("the refusal in the log", async () => (await readObservability([])).logs.some((entry) => entry.action === "vscode-socket" && /origin is not this gateway's/u.test(entry.summary) && /evil\.example/u.test(entry.detail ?? "")));
 });

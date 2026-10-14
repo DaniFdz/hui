@@ -967,8 +967,9 @@ requests:
     and an isolated gateway driven in a browser
     ([`e2e/bot-schedules.browser.md`](../e2e/bot-schedules.browser.md), screens
     in the pull request).
-11. **Triggers** (implemented 2026-10-07; the owner's request, SPEC.md, "Triggers
-   wake bots on GitHub, session and webhook events"): per-bot triggers beside its
+11. **Triggers** (implemented 2026-10-07, its sources replaced by listeners'
+   on 2026-10-13, item 13; the owner's request, SPEC.md, "Triggers wake bots on
+   GitHub, session and webhook events"): per-bot triggers beside its
    routines in `bot-triggers.json` (owner-only, atomic, like `bots.json`), the
    GitHub pollers' cursors in `bot-trigger-cursors.json`. Three sources: GitHub
    (one poller per repo through the gateway's `gh api --include`, conditional on
@@ -999,9 +1000,10 @@ requests:
    reaches the gateway), `server/runtimes/durable-bot-access.test.ts`,
    `src/lib/bot-triggers.test.ts`, `src/views/bot-triggers.test.ts`,
    `cli/bot-triggers.test.ts` and an isolated gateway driven in a browser
-   ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
-   the pull request).
-12. **Slack triggers** (implemented 2026-10-08; the owner's request, SPEC.md,
+   (`e2e/bot-triggers.browser.md` before item 13 rewrote it, screens in the pull
+   request).
+12. **Slack triggers** (implemented 2026-10-08, removed 2026-10-13, item 13; the
+   owner's request, SPEC.md,
    "Slack triggers wake bots on review pings"): a Slack connection per gateway
    (Settings → Integrations → Slack and `hui slack connect|status|disconnect`: the
    User OAuth Token of an app the operator creates from HUI's manifest, user
@@ -1028,8 +1030,30 @@ requests:
    request reaching a bot whose gated tools refuse the turn, bots off and on, the
    CLI, the token in no route, diagnostic, log or model request), `cli/slack.test.ts`,
    `src/lib/slack.test.ts` and an isolated gateway driven in a browser
-   ([`e2e/slack-triggers.browser.md`](../e2e/slack-triggers.browser.md), screens
-   in the pull request).
+   (`e2e/slack-triggers.browser.md`, removed with it; screens in the pull
+   request).
+13. **Listeners, the only triggers** (implemented 2026-10-13; the owner's
+   requests, SPEC.md, "Listeners report what HUI doesn't read itself" and
+   "Listeners are the only triggers"): a trigger's listener, a program the
+   operator runs, reports `{ events }` to the trigger's URL (`POST
+   /__hui/hooks/<token>`, tailnet and loopback only, its token shown once and
+   stored as a SHA-256); HUI wakes the bot once per event id (the last 500 kept
+   in `bot-triggers.json` with the delivery they decide), never for an event
+   older than the trigger, through a filter on a field, linked pull requests,
+   and events marked as bots' or outsiders'; an empty report is a check-in, and
+   the trigger shows the listener's last report, its problem or its silence. The
+   GitHub, session, webhook and Slack sources went, with HUI's Slack connection,
+   `hui slack` and the `triggers` tool's `add` and `update`; `hui doctor --fix`
+   deletes what they left (`cli/doctor-triggers.ts`). Proof:
+   `server/bot-triggers-listener.test.ts`, `server/bot-triggers.test.ts`,
+   `server/bot-trigger-routes.test.ts` (a real gateway: reports, the URL's
+   checks, the linked pull request read through a fake gh, the gated tools on a
+   trigger's turn, bots off), `server/bot-workers.test.ts` (the same on a
+   worker), `cli/doctor-triggers.test.ts`, `cli/bot-triggers.test.ts`,
+   `src/lib/bot-triggers.test.ts`, `src/views/bot-triggers.test.ts` and an
+   isolated gateway driven in a browser
+   ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
+   the pull request).
 
 ### HUI-19 — Agent widgets
 

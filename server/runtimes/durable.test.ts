@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -422,6 +423,20 @@ test("Durable compaction keeps the whole history and marks where it summarized",
   assert.doesNotMatch(context, /COMPACT_ONE|COMPACT_TWO/u, "summarized turns leave the model context");
 });
 
+test("a summary on a model that thinks from its output cap gets the model's whole cap", { timeout: 60_000 }, async (t) => {
+  // Durable would cap the summary at 0.8 × 1,000 tokens; adaptive thinking spends from that cap too.
+  const f = await fixture(t, { contextWindow: 200_000, settings: { compaction: { keepRecentTokens: 40, reserveTokens: 1_000 } } });
+  const models = JSON.parse(await readFile(join(f.agentDir, "models.json"), "utf8"));
+  for (const model of models.providers["hui-e2e"].models) model.compat = { forceAdaptiveThinking: true };
+  await writeFile(join(f.agentDir, "models.json"), JSON.stringify(models));
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-summary-cap" }, f.host());
+  await turns(session, ["COMPACT_ONE first turn", "COMPACT_TWO second turn", LONG_TURN]);
+  const end = (await compacted(session)).find((event) => event.type === "compaction_end");
+  assert(end?.type === "compaction_end" && end.outcome === "done", JSON.stringify(end));
+  const summary = (await providerRequests(f.log)).find(summarizing) as { max_tokens?: number; output_config?: unknown };
+  assert.deepEqual([summary.max_tokens, summary.output_config], [4096, { effort: "high" }]);
+});
+
 test("the context meter is Durable's own estimate, system prompt included", { timeout: 60_000 }, async (t) => {
   // A failed answer is no measurement, so right after it Durable estimates the whole context: the summary, the kept
   // turn, the system baseline it rewrote after the summary and the new prompt.
@@ -704,6 +719,28 @@ test("one store has one owner", { timeout: 30_000 }, async (t) => {
   await assert.rejects(() => f.host().open(), /already open in this process/u);
 });
 
+test("overlapping closes settle once the store is released, and a reopen waits for them", { timeout: 30_000 }, async (t) => {
+  // Vite closes the plugins of each environment, so the gateway's stop runs twice at once.
+  const f = await fixture(t);
+  const host = f.host();
+  const lock = join(f.store, "harness.lock");
+  const first = await host.open();
+  const settled: string[] = [];
+  const closes = [host.close(), host.close()].map((close, index) =>
+    close.then(() => { settled.push(`close ${index}: ${existsSync(lock) ? "locked" : "released"}`); }));
+  const reopened = host.open().then((harness) => {
+    settled.push(`open: ${existsSync(lock) ? "locked" : "released"}`);
+    return harness;
+  });
+  await Promise.all(closes);
+  const second = await reopened;
+  assert.deepEqual(settled, ["close 0: released", "close 1: released", "open: locked"], "the second close waits for the first one's release");
+  assert.notEqual(second, first, "the reopened store is a new harness");
+  const session = await startDurable({ cwd: f.cwd }, host);
+  assert.equal(session.transcript().length, 0);
+  session.dispose();
+});
+
 test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for provider headers", async (t) => {
   const inherited = process.env["PI_CLIENT_SESSION_ID"];
   delete process.env["PI_CLIENT_SESSION_ID"];
@@ -791,9 +828,13 @@ export default function (pi) {
     if (event.text.startsWith("FIXTURE_ASK_FIRST")) await ctx.ui.confirm("Go ahead?", "The fixture asks before sending.");
     return event.text.startsWith("FIXTURE_ALIAS") ? { action: "transform", text: event.text.replace("FIXTURE_ALIAS", "E2E_EXTENSION_TOOL") } : { action: "continue" };
   });
-  pi.on("before_agent_start", (event) => {
-    // Context an extension adds while idle, without a turn of its own.
-    pi.sendMessage({ customType: "fixture-note", content: "FIXTURE_NOTE_MARKER", display: false });
+  pi.on("before_agent_start", (event, ctx) => {
+    record({ event: "before_agent_start", messageType: event.messageType, idle: ctx.isIdle(), ...(event.messageType === "custom" ? { customType: event.message.customType } : {}) });
+    // Context an extension adds while the run starts, without a turn of its own: since PI 1.2.0 a message that may
+    // trigger a turn would go into the starting run instead.
+    pi.sendMessage({ customType: "fixture-note", content: "FIXTURE_NOTE_MARKER", display: false }, { triggerTurn: false });
+    // One that may trigger a turn goes into the run once it started: a steer, not a second run.
+    if (event.messageType === "custom") pi.sendMessage({ customType: "fixture-steer", content: "FIXTURE_STEER_MARKER", display: false });
     return {
       message: { customType: "fixture-context", content: "FIXTURE_CONTEXT_MARKER", display: false },
       systemPrompt: "FIXTURE_PROTOCOL\\n" + event.systemPrompt,
@@ -982,7 +1023,16 @@ test("extension commands run in the gateway, ask through HUI questions and keep 
   const users = (entries: TranscriptEntry[]) => entries.filter((entry) => entry.kind === "message" && entry.role === "user").length;
   const before = users(session.transcript());
   await settledAfter(session, "/fixture-trigger");
-  assert.match(JSON.stringify((await providerRequests(f.log)).at(-2)?.messages), /from a custom message/u);
+  const triggered = (await providerRequests(f.log)).at(-2);
+  assert.match(JSON.stringify(triggered?.messages), /from a custom message/u);
+  // As in PI 1.2.0, the run it starts goes through before_agent_start too, which sees the run as busy already.
+  assert.match(JSON.stringify(triggered?.system), /FIXTURE_PROTOCOL/u, "its before_agent_start prompt is the run's");
+  assert.doesNotMatch(JSON.stringify(triggered?.messages), /FIXTURE_STEER_MARKER/u, "a message sent while it started is not ahead of it");
+  assert.match(JSON.stringify((await providerRequests(f.log)).at(-1)?.messages), /FIXTURE_STEER_MARKER/u, "but steers the run");
+  assert.deepEqual((await logged(f.events, "before_agent_start")).map(({ messageType, customType, idle }) => ({ messageType, customType, idle })), [
+    { messageType: "user", customType: undefined, idle: false },
+    { messageType: "custom", customType: "fixture-result", idle: false },
+  ]);
   assert.equal(users(session.transcript()), before, "no user message shows for it");
   assert.equal(session.transcript().filter((entry) => entry.kind === "tool").length, 2, "but its turn does");
 
@@ -1191,4 +1241,124 @@ test("clearing the session cancels a pending ctx.compact() once; a later compact
   await loggedAtLeast("complete");
   assert.deepEqual(outcomes(await entries()).map((entry) => `${String(entry["event"])}:${String(entry["tag"])}:${String(entry["message"] ?? "")}`),
     ["error:A:Compaction cancelled", "complete:B:"]);
+});
+
+test("a codemode script's calls show on its own tool row, live and once it ends; Settings → Tools → Codemode takes it from open sessions", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const huiSettings = normalizeSettings(undefined);
+  const host = f.host({ huiSettings });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-codemode" }, host);
+  assert.ok((await session.inspect()).tools.some((tool) => tool.name === "codemode"), "on by default");
+  const events: RuntimeEvent[] = [];
+  session.subscribe((event) => { events.push(event); });
+  const code = [
+    'const [found, missing] = await Promise.allSettled([tools.read({ path: "fixture.txt" }), tools.read({ path: "missing.txt" })]);',
+    "text(`${found.status} ${missing.status}`);",
+  ].join("\n");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt(`E2E_CALL:${Buffer.from(JSON.stringify({ name: "codemode", input: { code } })).toString("base64url")}`);
+  await settled;
+
+  const starts = events.filter((event) => event.type === "tool_start");
+  assert.deepEqual(starts.map((event) => event.name), ["codemode"], "the script's reads are no tool rows of their own");
+  const { id } = starts[0]!;
+  const live = events.flatMap((event) => event.type === "tool_update" && event.id === id ? [(event.details as { calls: { status: string }[] }).calls] : []);
+  assert.ok(live.some((calls) => calls.some((call) => call.status === "running")), `its row shows the calls while they run: ${JSON.stringify(live)}`);
+  const end = events.find((event) => event.type === "tool_end");
+  assert(end?.type === "tool_end" && end.id === id && !end.failed, JSON.stringify(end));
+  assert.match(end.output ?? "", /^Script completed\nWall time [\d.]+ seconds\nOutput:\nfulfilled rejected/u);
+  const calls = (end.details as { calls: { name: string; status: string; error?: string }[] }).calls;
+  assert.deepEqual(calls.map(({ name, status }) => `${name}:${status}`), ["read:ok", "read:error"]);
+  assert.match(calls[1]!.error ?? "", /missing\.txt/u, "a failed call says why");
+  assert.deepEqual(session.transcript().filter((entry) => entry.kind === "tool").map((entry) => entry.kind === "tool" && entry.name), ["codemode"]);
+
+  huiSettings.codemode = { enabled: false };
+  await host.applyTools();
+  assert.ok(!(await session.inspect()).tools.some((tool) => tool.name === "codemode"), "off: the open session goes without it");
+  await settledAfter(session, "hello after codemode");
+  const request = (await providerRequests(f.log)).at(-1) as { system?: unknown; tools?: { name?: string }[] };
+  assert.ok(!request.tools?.some((tool) => tool.name === "codemode"), "the next request offers no codemode");
+  assert.doesNotMatch(JSON.stringify(request.system), /<codemode>/u, "nor its prompt section");
+  huiSettings.codemode = { enabled: true };
+  await host.applyTools();
+  assert.ok((await session.inspect()).tools.some((tool) => tool.name === "codemode"), "on again: back from the next request");
+});
+
+test("an extension tool's ctx.executeTool() runs nested calls, and tool_result redaction reaches what scripts get", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, { extensions: { "nested.js": `export default function (pi) {
+    pi.registerTool({
+      name: "nested_reader", label: "Nested reader", description: "Reads a file and runs a command through ctx.executeTool().",
+      parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+      async execute(_id, params, _signal, _onUpdate, ctx) {
+        const read = await ctx.executeTool("read", { path: params.path });
+        const shell = await ctx.executeTool("bash", { command: "echo REDACT_ME" });
+        const missing = await ctx.executeTool("no_such_tool", {});
+        const summary = {
+          listed: ctx.tools.some((tool) => tool.name === "read"), id: read.toolCall.id,
+          read: read.result.content.map((item) => item.text).join(""), shell: shell.result.content.map((item) => item.text).join(""),
+          errors: [read.isError, shell.isError, missing.isError],
+        };
+        return { content: [{ type: "text", text: JSON.stringify(summary) }], details: {} };
+      },
+    });
+    pi.on("tool_result", (event) => {
+      const text = event.content.map((item) => item.text ?? "").join("");
+      if (event.toolName === "bash" && text.includes("REDACT_ME")) return { content: [{ type: "text", text: text.replaceAll("REDACT_ME", "[redacted]") }] };
+    });
+  }` } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-nested" }, f.host());
+  const call = (name: string, input: Record<string, unknown>) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
+  const ended: Extract<RuntimeEvent, { type: "tool_end" }>[] = [];
+  session.subscribe((event) => { if (event.type === "tool_end") ended.push(event); });
+
+  await settledAfter(session, call("nested_reader", { path: "fixture.txt" }));
+  const summary = JSON.parse(ended.at(-1)!.output ?? "{}") as Record<string, unknown>;
+  assert.equal(summary["listed"], true, "ctx.tools lists what nested calls can reach");
+  assert.match(String(summary["id"]), /\/1$/u, "a nested call's ID extends its caller's");
+  assert.match(String(summary["read"]), /Durable fixture content/u);
+  assert.match(String(summary["shell"]), /\[redacted\]/u, "the calling tool gets what the handler left");
+  assert.doesNotMatch(String(summary["shell"]), /REDACT_ME/u, "and never what it took out");
+  assert.deepEqual(summary["errors"], [false, true, true], "a schema tool whose content a handler replaced fails its nested call; an unknown tool is an error result");
+
+  const code = 'try { text((await tools.bash({ command: "echo REDACT_ME" })).output); } catch (error) { text(String(error)); }';
+  await settledAfter(session, call("codemode", { code }));
+  const script = ended.at(-1)!;
+  assert.equal(script.name, "codemode");
+  assert.doesNotMatch(script.output ?? "", /REDACT_ME/u, "a script never gets what the handler took out");
+  assert.match(script.output ?? "", /\[redacted\]/u, "it gets the replaced text, as the error of its call");
+});
+
+test("a storage error ends the store's sessions; the host releases it and a session that attaches again carries on", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-store-failure" }, host);
+  await settledAfter(session, "hello before");
+  const exited = new Promise<unknown>((resolve) => session.onExit!(resolve));
+  // The cause outlasts the first attempt to open the store again, which fails as well, and is gone before the second.
+  let blocker!: import("node:sqlite").DatabaseSync;
+  let attempts = 0;
+  const released = new Promise<void>((resolve) => {
+    host.storeFailed = async () => {
+      assert.equal(host.isOpen, false, "the failed store is released first");
+      if (++attempts < 2) return;
+      blocker.exec("ROLLBACK");
+      blocker.close();
+      resolve();
+    };
+  });
+  // Another connection holds the write lock: the harness's next commit waits out SQLite's busy timeout and fails.
+  const { DatabaseSync } = await import("node:sqlite");
+  blocker = new DatabaseSync(join(f.store, "harness.sqlite"));
+  blocker.exec("BEGIN EXCLUSIVE");
+  await session.prompt("hello while the store is locked").catch(() => undefined);
+  const unreachable = await exited;
+  assert(unreachable instanceof Error && (unreachable as { reconnecting?: boolean }).reconnecting === true, String(unreachable));
+  await released;
+  assert.equal(attempts, 2, "a store that does not open is tried again");
+
+  const again = await startDurable({ cwd: f.cwd, sessionFile: session.sessionFile, huiSessionId: "durable-store-failure" }, host);
+  await settledAfter(again, "hello after");
+  assert.ok(answered("Fixture response.")(again.transcript()));
+  assert.deepEqual(again.transcript().flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []).filter((text) => text !== "hello while the store is locked"),
+    ["hello before", "hello after"], "the conversation is the one it was");
 });

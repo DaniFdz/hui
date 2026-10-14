@@ -86,8 +86,6 @@ export type BotRosterProps = {
   showArchived: boolean;
   activeBotId: string;
   menuFor: string;
-  notice: string;
-  noticeFailed: boolean;
   /** Pending Hide/Unhide, archive, restore or delete, so the row cannot be acted on twice. */
   pendingId: string;
   now: number;
@@ -223,18 +221,15 @@ function renderRosterToggles(props: BotRosterProps, drawer: RosterDrawer) {
 }
 
 export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
-  const notice = props.notice
-    ? html`<p class="sidebar-list__note sidebar-session-move-note ${props.noticeFailed ? "is-error" : ""}" role=${props.noticeFailed ? "alert" : "status"} aria-live="polite">${props.notice}</p>`
-    : nothing;
   const known = props.bots.filter((bot) => !bot.archived);
   if (!known.length) {
     if (props.error) {
-      return html`${notice}<div class="sidebar-empty bot-roster__state"><p class="sidebar-list__note is-error" role="alert">${props.error}</p>
+      return html`<div class="sidebar-empty bot-roster__state"><p class="sidebar-list__note is-error" role="alert">${props.error}</p>
         <button type="button" class="btn btn--sm" @click=${props.onRetry}>Retry</button></div>`;
     }
     if (props.loading) return html`<p class="sidebar-list__note" role="status">Loading bots…</p>`;
     const archived = archivedBotCount(props.bots);
-    return html`${notice}<div class="sidebar-empty bot-roster__empty">
+    return html`<div class="sidebar-empty bot-roster__empty">
       <p class="bot-roster__empty-title">${archived ? "No active bots" : "No bots yet"}</p>
       <p class="sidebar-list__note">${archived
         ? `${archived === 1 ? "One archived bot keeps its chat and memory" : `${archived} archived bots keep their chats and memory`}; Show archived lists ${archived === 1 ? "it" : "them"} to restore or delete.`
@@ -248,8 +243,7 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
     ${renderRosterToggles(props, drawer)}`;
   }
   const rows = rosterBots(props.bots, { query: props.query, showHidden: props.showHidden });
-  return html`${notice}
-    ${props.error ? html`<p class="sidebar-list__note is-error" role="alert">${props.error} <button type="button" class="btn btn--sm" @click=${props.onRetry}>Retry</button></p>` : nothing}
+  return html`${props.error ? html`<p class="sidebar-list__note is-error" role="alert">${props.error} <button type="button" class="btn btn--sm" @click=${props.onRetry}>Retry</button></p>` : nothing}
     <div class="session-group__rows sidebar-recent-sessions__list bot-roster__rows">
       ${rows.length
         ? rows.map((bot) => botRow(bot, props, drawer))

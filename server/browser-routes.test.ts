@@ -33,7 +33,7 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
   assert.ok(address && typeof address !== "string" && pagesAddress && typeof pagesAddress !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
   t.after(async () => {
-    stopBackend();
+    await stopBackend();
     server.closeAllConnections();
     pages.close();
     await new Promise<void>((resolve) => server.close(() => resolve()));

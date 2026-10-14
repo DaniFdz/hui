@@ -273,22 +273,26 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   the active-pane presentation and do not expose an unusable drag handle.
 - The **Work pane** (after AgentsInTheCloud's) sits to the right of the chat
   panes and shows the Work views of the focused conversation: its terminals and
-  its browser view, its Files views (see *Files*) and its VS Code view (see
-  *VS Code*), each a kind registered through one contract
+  its browser view, its Files views (see *Files*), its VS Code view (see
+  *VS Code*) and its Diff views (see *Diff*), each a kind registered through one contract
   (`src/lib/work-pane.ts`). Each conversation has its own pane; moving
   focus to another chat pane or conversation switches the contents. One view is
   visible at a time, chosen from a tab strip (icon, title, close; drag or
   Alt+Shift+Arrow to reorder, Arrow/Home/End to move, Delete to close). The **+**
   menu launches views (Ctrl+Alt+Shift+T / ⌥⇧⌘T new terminal, Ctrl+Alt+Shift+B /
   ⌥⇧⌘B browser, Ctrl+Alt+Shift+F / ⌥⇧⌘F a new Files view, Ctrl+Alt+Shift+C /
-  ⌥⇧⌘C VS Code)
+  ⌥⇧⌘C VS Code, Ctrl+Alt+Shift+D / ⌥⇧⌘D a new Diff view)
   and reopens running terminals whose tab was closed; with nothing open the pane
   lists the same launchers with their shortcuts. A launcher that cannot act says
   why in visible text (the browser tool turned off, a conversation on a remote
   worker has no local terminal) and, when a setting changes that, links to its
   Settings section, which opens scrolled to it with a little room (`--space-6`)
   above its heading. The VS Code launcher is always available; its view explains
-  what it needs on first open (see *VS Code*). **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
+  what it needs on first open (see *VS Code*). Closing the last view (its tab's close button or Delete, or a view
+  that removes itself, such as a terminal ended from its menu) hides the pane just as **Hide Work pane** does: the
+  chat returns to full width, a maximized pane is restored, narrow screens return to the chat and focus left in the
+  pane moves to the composer; showing the pane again lists the launchers. Only that removal hides it: a pane loaded,
+  restored or switched to without views stays as it was. **Hide Work pane** (Ctrl+Alt+Shift+P / ⌥⇧⌘P) collapses it to a rail
   with one button per open view; its left edge resizes with the pointer or the
   arrow keys (Shift for larger steps, Home/End for the limits), keeping at least
   420px for each chat column side by side: the pane yields width down to its own
@@ -299,14 +303,22 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   weights above it (closing a column rebalances the survivors rather than leaving
   one at 320px), the divider stops where a column would drop below it, and when
   420px each does not fit the columns share the room equally, down to the usual
-  320px. Escape inside the pane returns focus to the chat and never
+  320px. **Maximize Work pane** (header button beside **+**, Ctrl+Alt+Shift+M / ⌥⇧⌘M) lets the pane take the
+  whole content area beside the sidebar, for a full-size terminal, browser, Files editor or VS Code: the chat
+  columns are hidden but stay mounted (streams, scroll and drafts survive; no view is re-created and no terminal
+  replays) and the views refit to the new size. While maximized, the narrow layout's panel selector shows above the
+  pane, listing the chat panes, the open Work views and the launchers: choosing a chat pane restores the chat beside
+  the pane, choosing a view switches to it. **Restore Work pane** (the same button and shortcut) or hiding the pane
+  also restores. Escape is not bound to restoring: it keeps going to the terminal or VS Code that has focus, and
+  elsewhere in the pane moves focus to the panel selector (it never stops the hidden chat's turn). Maximized is per
+  conversation and desktop only; narrow screens, already one panel at a time, ignore it. Escape inside the pane returns focus to the chat and never
   stops the agent's turn. Below 1100px the pane is a full-screen destination: the
   panel selector lists the chat panes, the open Work views and the launchers, and
   **Back to chat** or Ctrl+Alt+Shift+P returns. Hidden views stay mounted, so terminals
   and pages keep their state across tab switches, collapsing and focus changes,
   for the three most recently focused conversations that have views; a view of
   an older one reconnects (a terminal replays its snapshot) when shown again.
-  Open/closed state, width, views and the active view are browser-local
+  Open/closed and maximized state, width, views and the active view are browser-local
   (`localStorage` `hui.work-pane.v1`, keyed by session id); unknown kinds and
   malformed records are dropped on load, and a removed conversation's record
   goes with it. Layouts saved before the Work pane load without loss: their
@@ -314,8 +326,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   chat panes, splits and tabs stay as they were.
 - **Work pane shortcuts** are one scheme: Mod+Alt+Shift plus the initial of what
   they open (⌥⇧⌘ on macOS, Ctrl+Alt+Shift elsewhere): **T** new terminal, **B**
-  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style)
-  and **P** to show or hide the pane. They are listened for on the document in
+  browser, **F** Files, **C** VS Code ("Code": ⌥⇧⌘V is Paste and Match Style), **D** Diff,
+  **P** to show or hide the pane and **M** to maximize or restore it. They are listened for on the document in
   the capture phase, so they work from the composer, inside a terminal and inside
   the Files editor (CodeMirror's own Alt chords, ⌥⌘G go to line and ⌥⌘\ indent,
   never include Shift). The VS Code view is a cross-origin frame: while focus is
@@ -423,6 +435,16 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   Commands retain their full input in the expanded terminal while the row uses
   the original bounded, shell-aware preview. Tool output copying uses the
   context menu; HUI does not fabricate a workspace-file or side-panel action.
+- A `codemode` call is one card: its row names the tools the script called
+  (`read ×3, bash`), with a **failed** badge for a failed script or **N failed**
+  for calls that failed in a script that completed, and the wall time once it
+  ends. Expanded, it shows the script with JavaScript colours, one row per call
+  in call order (status, tool, one-line arguments, duration, error under it)
+  and the output the model got, without PI's "Script completed / Wall time"
+  header, script errors in error colour and a **Full output** file reference
+  when PI cut the output. The calls fill in live while the script runs and
+  never appear as tool rows of their own. Settings → Tools → Codemode turns the
+  tool off for every session from its next request; it is on by default.
 - The desktop transcript has OpenClaw's left conversation-position rail: one
   marker per visible user/assistant message, a bounded text preview, current and
   visible-position feedback, and click/keyboard jumps. Collapsed activity is not
@@ -467,7 +489,11 @@ HUI holds, with events HUI streams to the browser.
 ## Installed gateway
 
 HUI ships a local npm archive with compiled CLI/server/SDK worker, built web
-assets, themes and a pinned dependency shrinkwrap. Production uses Node directly;
+assets, themes and its lockfile as `build/package-lock.json`, which remote workers
+install from. npm installs the archive from `package.json` alone, ignoring that
+lockfile, so `package.json` pins every PI package at its locked version; other
+dependencies resolve within their ranges.
+Production uses Node directly;
 Vite and the desktop launcher remain source-development tools. `hui gateway`
 provides start/stop/restart/status/logs and foreground run; `hui ui` opens or
 prints the existing gateway URL without starting another process. The default
@@ -572,7 +598,7 @@ A HUI selection overrides only the matching provider; an empty HUI model list
 selects nothing. Remaining PI models follow the operator's `models.json`
 provider/model selection using the `model-name` extension's rules. HUI owns three routes over that catalog: **primary** starts
 normal sessions, **fallback** retries a primary failure only when no useful output
-or tool activity has occurred, and **utility** runs cheap, fast, tool-free calls
+or tool activity has occurred, then returns the session to its own model, and **utility** runs cheap, fast, tool-free calls
 for concise (3–6 word, at most 60 character) new-session names in the prompt's language, generated worktree branch names and `/btw`. These settings never rewrite PI files.
 Missing or malformed PI selection files preserve the normal available catalog; see
 `docs/api.md` for empty-list and default-model semantics.
@@ -757,10 +783,91 @@ non-empty folder only with that confirmation, and never the root. On narrow
 screens the navigator is a drawer and the editor takes the full width with a
 16 px font, so iOS does not zoom.
 
+**File references in the chat.** When the agent names a file in its reply —
+an inline code span or a Markdown link whose text or target is a path such as
+`src/lib/x.ts`, `./a/b.md`, an absolute path or `~/…`, optionally with
+`:line`, `:line:column`, `:line-line` or `#L42` — and that path exists
+inside the conversation's Files root, it becomes a link; so does the path
+header of a read, edit or write tool card. Prose, fenced code, URLs, user
+messages and code that is not a single path (`npm test`, `foo()`, `1.2.3`,
+`--flag`, globs) never do, and a path that does not exist, or lies outside
+the root, stays plain text. The chat asks the gateway once per render for all
+of a conversation's new candidates (`POST …/files/resolve`, the Files routes'
+own path rules) and caches the answers in the page; confirming a link changes
+only its colour and cursor, so the transcript does not reflow. Missing answers
+are asked again after the agent's turn ends. Clicking a link (or Enter on it;
+it is a link named *Open src/x.ts at line 42 in Files*) opens that
+conversation's Files view in the Work pane — its active Files tab, else its
+first, else a new one — expanding a hidden or collapsed pane and, on narrow
+screens, switching the panel selector to that view.
+A file opens with its folders expanded in the navigator; with a line, the
+editor scrolls to it, places the cursor and highlights it (a Markdown file
+switches to Source for that). A folder opens expanded in the navigator.
+Conversations on a remote worker, and a bot's chat, which has no Work pane,
+show no links.
+
 CodeMirror's packages (`@codemirror/*`, `@lezer/highlight`) were authorized
 with this feature. The view's selection, open folders and display mode, and
 unsaved drafts, are browser-local storage; the HUI registry and PI transcripts
 are unchanged.
+
+## Diff
+
+A **Diff view** is a Work view that shows what changed in the conversation's Git
+checkout: what the agent just did, and what the branch adds for review. **Diff**
+in the Work pane's **+** menu (Ctrl+Alt+Shift+D / ⌥⇧⌘D) opens a new one; like
+Files views, a conversation may hold several, each remembering (browser-local,
+forgotten when its tab closes) its comparison, picked branch, the *Include
+uncommitted* choice, layout and selected file.
+
+The header chooses the comparison:
+
+- **Uncommitted changes**: the working tree and index against HEAD, untracked
+  files included (against nothing before the first commit). A view opens on it
+  when there are any; otherwise on the previous branch, the default branch, the
+  last commit, in that order of availability.
+- **Last commit**: HEAD against its first parent.
+- **Against the previous branch**: the merge base of HEAD and the branch this one
+  is stacked on, for stacked pull requests. HUI looks for it without network
+  calls: gh's `gh-merge-base` or git-town's parent for the branch, then its
+  upstream when that is another branch than its own remote copy, else the nearest
+  local or remote branch whose tip is an ancestor of HEAD (fewest commits
+  between), never the branch itself or a remote copy of it. The picked branch and
+  how it was found are shown, and a searchable list (ancestors first, with how far
+  behind HEAD each is) picks another. Hidden on a detached HEAD or when no branch
+  qualifies.
+- **Against the default branch**: the merge base of HEAD and `origin/HEAD`'s
+  target (else `origin/main`, `origin/master`, `main`, `master`): three dots,
+  so commits that reached main later are not shown as removals.
+
+The last two include uncommitted changes while **Include uncommitted** is ticked
+(the default). A line under the header names both sides (`merge base with
+feature-a 7817169 → feature-b + working tree`) and, when the conversation runs in
+a subfolder, that only its changes are shown.
+
+On the left a filterable list of changed files shows each one's status (A, M, D,
+R with its old path, C, T, U), its added and removed line counts and the totals;
+on the right the selected file's diff, unified, or **Side by side** when the view
+is at least 900px wide (narrower, the toggle is disabled and says *Side by side
+needs a wider pane*). Lines are coloured with the file's CodeMirror language from
+the Files editor, hunk by hunk. A rename reads *old → new*; binary files say so;
+a patch over 1,500 lines opens collapsed with **Show diff**; a missing final
+newline and, in files that mix them, CRLF endings are marked. Clicking the file's
+name (or its open button) opens it in the conversation's Files view at its first
+changed line, through the same path as a file named in the chat; a deleted file
+says there is nothing to open. The view refreshes when the conversation's agent
+turn ends (or, if hidden then, when it is shown again), when it becomes visible,
+and on **Refresh**. Below 640px of width, and on narrow screens, the list and the
+diff take turns, with **Back to changed files**.
+
+Not a Git repository, a missing directory, and conversations on a remote worker
+(their files live on that machine) show why instead. The gateway runs Git
+read-only (see docs/api.md, *Diff view API*): argument arrays without a shell,
+no external diff or textconv programs, no fsmonitor, `GIT_OPTIONAL_LOCKS=0` so it
+never takes the index lock while the agent works, a timeout, and caps per file and
+per response that it states. Untracked files enter through a temporary copy of
+the index; the repository is never written and no hook runs. A branch a request
+names must be one the gateway offered.
 
 ## VS Code
 
@@ -847,12 +954,23 @@ secret-storage cookies on `/`).
 VS Code's WebSocket handshake carries the token inside its own protocol (the
 workbench reads it from its configuration or from the token cookie the browser
 never gets), so the proxied workbench page of either provider includes it,
-served only behind the cookie.
+served only behind the cookie. The configuration tag is found by its id
+whatever its attribute order, quoting or encoding (a compressed page is decoded
+first). A workbench page it cannot be put in is never served as it is, since
+that workbench would sit unconnected without a word: the view shows *VS Code
+could not open* with the reason and **Retry**, and the gateway log records it.
+A refused VS Code WebSocket (wrong origin, no cookie, VS Code's own refusal) is
+logged with its cause, at most once a minute per cause.
 
 The workbench takes HUI's colors (dark or light Modern plus HUI's background,
 panels, text, borders and accent) as configuration defaults read when a frame
 loads, so a theme change applies on the view's **Reload**; the operator's own
-VS Code settings still win. Workspace trust prompts, the start page and AI chat
+VS Code settings still win. Each token is resolved by the page itself before it
+is converted, since custom themes (Catppuccin, Dracula, HUI and every tweakcn
+import) write them as `light-dark(…)` pairs; a token that cannot be read is left
+out, and the gateway refuses a theme whose text does not reach a 3:1 contrast
+on its background and panels, so VS Code then keeps its own theme rather than an
+unreadable one. Workspace trust prompts, the start page and AI chat
 are off by default, as in AgentsInTheCloud: HUI's agents already work in that
 folder with full access. **Open in a new tab** opens the same folder through its
 own ticket.
@@ -918,7 +1036,10 @@ from separate HUI state.
 
 Failed chat actions, including rejected continuation requests, show a dismissible
 error toast instead of an inline page note. Session-launch validation remains
-inline in its form.
+inline in its form. Outcomes of sidebar, Kanban, Sessions and bot actions (copying
+an ID or link, moving or reordering, Jira create/link, bulk delete, bot changes)
+use the same dismissible toast: successes clear after 6 seconds, while failures
+and in-progress messages stay until replaced or dismissed.
 
 Busy composer actions are explicit: **Steer** enters PI's steering queue before
 the next model call; **Follow up** runs only after the current agent run settles.
@@ -999,8 +1120,16 @@ expansion and extension execution, including queue and settle behavior.
 
 Arrow keys navigate across groups, Enter/Tab complete without sending, and Escape
 dismisses. Catalog and path loading/error/retry states are independent. New
-Session offers **Start session & browse commands**, preserving the draft without
-a model call, alongside available path results. HUI does not advertise PI's
+Session lists the enabled skills PI reports for a local launch before any
+runtime exists, and offers **Start session & browse commands** for project
+skills, prompts and extension commands, preserving the draft without a model
+call, alongside available path results.
+
+Settings → Skills, Plugins and Tools (and the standalone Skills and Plugins
+pages) carry a search field that narrows the list by name and description;
+Cmd/Ctrl+F focuses it, since the desktop app has no find bar. A PI-owned skill
+also links to its `SKILL.md` through `vscode://file`, which the desktop app
+hands to the OS; HUI's bundled read-only skills have no edit link. HUI does not advertise PI's
 terminal-only commands or plugins without callable actions.
 
 Typing `@`, `./`, `../`, `~/`, or an absolute path after whitespace opens the
@@ -1195,6 +1324,47 @@ worker's connection drops, the card closes too and the call fails, as other
 HUI tools do there. Pending requests live in gateway memory and do not survive
 a restart.
 
+## Structured questions
+
+An agent that cannot go on without decisions from the operator asks for them
+with HUI's `ask_user_question` tool: one to four questions in a single call,
+each with a short header, the question and two to four options with a label
+and a description. A question may allow several answers (`multiSelect`), and
+the options of a single-select question may carry a Markdown preview (a
+mockup, a snippet, a config) to compare. HUI's tool takes the place of any PI
+extension tool of the same name, such as `@juicesharp/rpiv-ask-user-question`,
+whose plain select and input dialogs it replaces.
+
+The open conversation shows the questions in one card in the question dock
+above the composer, and the session reads *Waiting*. With several questions a
+row of header chips leads the card, ticked once answered; one question shows at
+a time with its progress (*2/4*). Options are radio rows, or checkbox rows for
+a multi-select question, each with its label, description and number; every
+question ends with a *Type something…* row for the operator's own answer, which
+replaces a single-select choice or adds to a multi-select one. When options
+carry previews, the focused option's preview shows beside them, or under them
+on a narrow screen. Picks are kept while moving between questions.
+
+The keyboard drives the whole card: number keys choose a row, arrows move
+between rows (↑/↓) and questions (←/→), Space toggles a checkbox, Enter moves
+to the next question (choosing the focused single-select option first) and on
+the last one submits, Ctrl/⌘+Enter always moves on, and Escape cancels the
+card (the first Escape in typed text only leaves the field). The pointer does
+the same with the chips, rows, *Back*, *Next*, *Submit* and *Cancel*; the
+actions stay in reach when the card scrolls. *Submit* needs at least one
+answer; a question left blank is left out.
+
+The agent learns each answer as `"question"="answer"` (several joined by
+commas, a chosen option's preview after it), or that the operator declined:
+*Cancel*, Escape, Stop and a gateway stop all decline. Once answered, the
+transcript keeps a short summary of the answers by header in place of the card.
+A call the card could not show (more than four questions, a reserved label such
+as *Other*, duplicate labels, a header over 16 characters, a preview on a
+multi-select question) fails back to the agent with the reason, and no card
+opens. Questions from parallel calls show one after another. A reload shows a
+pending card again from its first question. Pending questionnaires live in
+gateway memory and do not survive a restart.
+
 ## Kanban
 
 **Kanban** sits directly below Automations in the sidebar (`/kanban`). It has
@@ -1304,6 +1474,9 @@ unavailable rather than guessed.
 Paths are shown with `~` for the home directory and truncate from the start, so
 the distinguishing tail stays visible; a copy button copies the full path.
 Worktrees HUI did not create (by hand or another tool) are labelled External.
+Branch names and session titles wrap, so the whole table, including each row's
+remove button, fits beside the settings navigation from a 1280 px window; a
+narrower one (or a phone) scrolls the table sideways.
 
 Any listed worktree can be removed from its row. The button opens an "are you
 sure?" modal with the full path that lists every risk: local changes that will be
@@ -1320,6 +1493,19 @@ no longer linked). The list is re-read each time the page opens. The local branc
 pull request's head is exactly the branch's current commit; otherwise it is
 kept. Removals are serialized and each path is re-validated against a fresh
 inventory.
+
+Git deletes a large worktree file by file, which can take minutes, so a removal
+never holds the page: the confirmation closes at once, the row shows *Removing…*
+(or *Queued* while another removal runs) instead of its button, and a status
+line names the worktree being removed, its size, how many wait and the total
+percentage done: finished worktrees count in full, the one Git is deleting by
+how much of its measured size is left, queued ones not yet. Other rows,
+*Clean up merged* and the rest of HUI stay usable, and further removals queue.
+The rows' last known facts are kept rather than re-read while Git deletes them,
+and the page polls until each row is gone; a reload still shows removals the
+gateway is running. Deleting sessions with their worktrees from Sessions closes
+its dialog once the sessions are deleted and reports the worktrees when they
+are removed.
 
 ## Git workspace sessions
 
@@ -1508,15 +1694,15 @@ everything the Bots tab can, through the same routes.
   bot asks for it back with `request_access`, which only the operator answers.
   Tools are the boundary, not a sandbox.
 - **Triggers** wake a bot when something happens elsewhere, beside its routines
-  (decisions below): pull requests on GitHub, read through the gateway's `gh`
-  with one conditional poller per repo; the sessions it started finishing,
-  failing or asking; a webhook URL with a secret token, on the tailnet; or a
-  Slack message that pings the operator, read as them through a read-only user
-  token, its delivery carrying the pull requests it links to.
-  Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
+  (decisions below). HUI reads no other service for them itself: a listener, a
+  program the operator runs, watches what it watches and reports to the
+  trigger's URL, a secret on the tailnet; each event wakes the bot once, its
+  delivery carrying the pull requests it links to, read through the gateway's
+  `gh`. Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
   a cooldown coalesces events into one delivery and an hourly cap holds the
-  rest. The Routines tab lists them, `hui bot trigger` manages them, and the
-  bot can manage its own with a `triggers` tool.
+  rest. The Routines tab lists them and `hui bot trigger` manages them; only
+  the operator adds or changes one, and the bot's `triggers` tool lists and
+  removes its own.
 - **Bots talk to bots** with a `message_bot` tool only bots' chats have,
   beside a byte-stable list of the other bots in their system prompt. A message
   arrives as `[from @handle] …`; chains stop after three hops and each bot sends
@@ -1574,11 +1760,11 @@ everything the Bots tab can, through the same routes.
   next run, who made one when the bot did and a temporary one's limits (*made by
   @ada*, *until 18:00*, *3 runs left*), an enable switch, Run now and Delete, adds routines every N
   minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
-  the latest runs; under them, Triggers lists the bot's triggers (source, what
-  they watch, last fired, cooldown, events waiting, an enable switch, Test,
-  Delete and, for a webhook, New URL), shows a new webhook URL once with Copy,
-  adds triggers for each source and shows their latest runs, read again every
-  few seconds while it shows. Memory shows messages, the view against its 128 KB budget
+  the latest runs; under them, Triggers lists the bot's triggers (what they let
+  through, last fired, the listener's last report or its silence, cooldown,
+  events waiting, an enable switch, Test, New URL and Delete), shows a new
+  trigger's URL once with Copy, adds triggers and shows their latest runs, read
+  again every few seconds while it shows. Memory shows messages, the view against its 128 KB budget
   (a full view merges back to 64 KB in one batch), its lines, pending summaries, what the summarizer spent since the gateway
   started (calls, tokens, a cost once one is reported), *Summarizing memory…*
   and failures, and lists the view's `id+n|text` lines (a click opens a line
@@ -1627,6 +1813,71 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Listeners are the only triggers (2026-10-09)
+
+Asked whether the listener was now the only way to add a trigger, the owner
+answered: "It should be the only one". This supersedes the GitHub, session and
+webhook sources of [Triggers wake bots on GitHub, session and webhook
+events](#triggers-wake-bots-on-github-session-and-webhook-events-2026-10-07) and
+all of [Slack triggers wake bots on review
+pings](#slack-triggers-wake-bots-on-review-pings-2026-10-08); the rest of the
+first stands, and so does the listeners' decision below. A listener can watch
+any of those services instead. The contract is
+[docs/api.md#triggers](docs/api.md#triggers).
+
+- **What went.** HUI's GitHub pollers, its watch of the sessions a bot started,
+  webhook calls, the Slack poller and HUI's Slack connection (Settings →
+  Integrations → Slack, `/__hui/slack`, `hui slack`), the add form's choice of
+  source and its Review requests preset, and the `triggers` tool's `add` and
+  `update`.
+- **What stays.** Listener triggers and their URL on the tailnet, their filters,
+  each event once, the listener's health on its trigger, cooldowns, the hourly
+  cap, catch-ups, the linked pull requests read into a delivery, Test, New URL,
+  `hui bot trigger`, and the tool's `list` and `remove`.
+- **Only the operator adds or changes a trigger.** Every trigger's URL is a
+  secret, and what its listener reports can be the operator's own messages: the
+  reasons webhook, Slack and listener triggers were already the operator's.
+- **Stored data.** `bot-triggers.json` keeps loading: a trigger of a kind that
+  went is a record HUI can't read, kept aside and never run. `hui doctor`
+  reports those triggers and the files their kinds left
+  (`bot-trigger-cursors.json`, `bot-trigger-slack.json`, and `slack.json` with its
+  token); `hui doctor --fix` deletes them, the triggers' runs included. Asked
+  whether to keep a copy, the owner chose deleting with none.
+
+### Listeners report what HUI doesn't read itself (2026-10-08)
+
+The owner can't create a Slack app in his organization, so Slack triggers' own
+connection is closed to him, while the Slack MCP his job gives him (Claude's
+Slack app) reads the same pings. Wiring that MCP into HUI was built and set
+aside before it shipped: "this mcp is only related to my job, so what we want to
+implement is accepting a kind of 'listener' that would allow us to configure
+this mcp". Of the shapes offered he chose a push endpoint, a source any program
+can feed rather than one for Slack, and HUI's side first. The contract is
+[docs/api.md#triggers](docs/api.md#triggers).
+
+- **A source anyone's program feeds.** A listener trigger has a URL with a secret
+  token, made, shown once and replaced like a webhook's and answered by the same
+  route on the tailnet. The program (a listener) watches what it watches, as
+  often as it likes, and after every check posts `{ events }`: each with its own
+  id, one line, details, a time, links and fields. Nothing about any one service
+  is in HUI; the work Slack listener lives with the owner's job setup.
+- **HUI keeps each event once; the listener keeps its place.** HUI remembers the
+  ids a trigger was told in the same write as the delivery they decide, so a
+  report sent again (the listener never heard the answer, or restarted) wakes
+  nobody, and an event older than the trigger never does. The listener tracks
+  what it has read: HUI refusing a report (bots off) records nothing, and the
+  listener sends those events again later.
+- **Slack's safeguards, when the event says so.** A trigger narrows events by a
+  field (`fields.channel`), by a linked pull request, which the delivery carries
+  as a Slack trigger's does, and leaves out events the listener marks as a bot's
+  or from outside the operator's organization unless it allows them.
+- **Silence shows.** An empty report is a check-in: no delivery, no turn. The
+  trigger shows the latest report, the problem a listener reported, and that it
+  has said nothing for five minutes or since the gateway started, so a listener
+  that stopped never looks like one that watches.
+- **Not yet.** The work listener itself, and one listener feeding several
+  triggers (it reports to each URL instead).
 
 ### Bot faces get more shapes and ears, and bots can restyle themselves (2026-10-08)
 
@@ -2163,7 +2414,7 @@ models "beneath the interface".
 
 ### New sessions run on Pi Durable
 
-New sessions use the `durable` runtime (`@earendil-works/pi-durable` 1.0.1).
+New sessions use the `durable` runtime (`@earendil-works/pi-durable` 1.2.0).
 One harness per gateway owns their conversations, runs, inbox and crash
 recovery in a single SQLite store, `~/.config/hui/durable/harness.sqlite`
 (`HUI_DURABLE_DIR` overrides it), locked to one gateway at a time. Every
@@ -2264,6 +2515,14 @@ copy of an unchanged file. The registry is backed up before its first change.
 Sessions with an interrupted run stay on PI so the gateway can recover them,
 and entries on abandoned branches stay only in the PI file.
 
+The second check deletes what the trigger kinds that went left behind
+([Listeners are the only triggers](#listeners-are-the-only-triggers-2026-10-09)):
+their records in `bot-triggers.json`, kept aside by the gateway and never run,
+with their runs, through the same serialized store the gateway writes, and the
+files `bot-trigger-cursors.json`, `bot-trigger-slack.json` and `slack.json`.
+Listener triggers and records HUI can't read for another reason stay. Nothing
+is copied first.
+
 ### HUI owns an isolated PI SDK backend, not a PI fork
 
 Sessions on the `pi` runtime (sessions created before Durable that
@@ -2271,7 +2530,7 @@ Sessions on the `pi` runtime (sessions created before Durable that
 `HUI_SESSION_RUNTIME=pi`)
 keep this design. Each active one runs a
 Node child with the pinned
-`@earendil-works/pi-coding-agent` SDK (1.0.1). HUI owns the versioned default
+`@earendil-works/pi-coding-agent` SDK (1.2.0). HUI owns the versioned default
 prompt, HUI tool definitions and runtime inspection; PI still owns its agent
 loop, configuration, credentials, resources and JSONL transcript writer. For
 these sessions the gateway neither embeds the agent loop nor runs their

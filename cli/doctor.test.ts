@@ -164,6 +164,9 @@ test("a state with every session on Durable is healthy", async () => {
   await rm(store, { recursive: true, force: true });
   await writeRegistry([record("durable-session", "Already on Durable", { tool: "durable" })]);
   const report = await runDoctor({ fix: true, gatewayStatus: async () => ({ status: "running" }) });
-  assert.deepEqual(report, { ok: true, checks: [{ id: "pi-sessions", title: "PI sessions", status: "ok", summary: "every session runs on Pi Durable", items: [], notes: [] }] });
-  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable");
+  assert.deepEqual(report, { ok: true, checks: [
+    { id: "pi-sessions", title: "PI sessions", status: "ok", summary: "every session runs on Pi Durable", items: [], notes: [] },
+    { id: "triggers", title: "Triggers", status: "ok", summary: "nothing left of GitHub, Sessions, Webhook or Slack triggers", items: [], notes: [] },
+  ] });
+  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers");
 });

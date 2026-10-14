@@ -600,173 +600,99 @@ sessions' schedules work as always.
 
 ### Triggers
 
-Triggers wake a bot when something happens, the way routines wake it on a
-schedule: a pull request changes on GitHub, a session the bot started finishes,
-fails or asks something, another program calls the trigger's webhook URL, or
-someone pings you in Slack ([Slack](#slack), below).
-They sit in the bot's **Routines** tab, under its routines: each shows what it
-watches, when it last fired, its cooldown and an on/off switch, with **Test**
-(a sample event, now) and **Delete**; **Add trigger** below them. From a
-terminal:
+Triggers wake a bot when something happens elsewhere, the way routines wake it
+on a schedule. HUI doesn't watch other services itself: a program you run, a
+**listener**, watches what you care about (a Slack you reach through its MCP
+server, a Jira board, a repo, a queue) and, after every check, tells the
+trigger what it found. Each event the trigger lets through wakes the bot once.
+
+Triggers sit in the bot's **Routines** tab, under its routines: each shows what
+it lets through, when it last fired, when its listener last reported, its
+cooldown and an on/off switch, with **Test** (a sample event, now), **New URL**
+and **Delete**; **Add trigger** below them. From a terminal:
 
 ```sh
-hui bot trigger add ada --name CI --github DaniFdz/hui --on checks_failed,review_changes_requested --prompt "Find out what broke"
-hui bot trigger add ada --name Deps --github DaniFdz/hui --on pr_opened --author "dependabot[bot]" --label dependencies
-hui bot trigger add ada --name Helpers --session --on finished,failed,waiting
-hui bot trigger add ada --name Deploys --webhook --match status=failed --prompt "Tell me why the deploy failed"
-hui bot trigger add ada --name Reviews --slack --on mention,dm --pr-links --prompt "Review the pull request"
+hui bot trigger add ada --name Reviews --match fields.channel=G01ABC --pr-links --cooldown 0 --prompt "Review these PR requests"
+hui bot trigger add ada --name Tickets --match summary~ACME --prompt "Triage the new ticket"
 hui bot trigger list ada
-hui bot trigger test ada CI
-hui bot trigger remove ada Deploys
+hui bot trigger test ada Reviews
+hui bot trigger remove ada Tickets
+```
+
+Adding a trigger shows its URL once: copy it into your listener's settings then
+(**New URL** replaces it). The listener POSTs to it from this machine or your
+tailnet after every check:
+
+```sh
+curl -sS -X POST "$URL" -H 'content-type: application/json' -d '{
+  "events": [{
+    "id": "G01ABC:1791481674.389319",
+    "summary": "@rodrigo in #reviews: acme/web#42",
+    "details": "From Rodrigo, in #reviews\n  > could you take a look?",
+    "links": ["https://github.com/acme/web/pull/42"],
+    "fields": { "channel": "G01ABC" }
+  }]
+}'
 ```
 
 An event reaches the bot as `[trigger: <name> · <summary>] <prompt>` with the
-event's details, as a routine's message does (a follow-up while it works). Events
-within a trigger's cooldown (5 minutes unless you choose another, `--cooldown`)
-arrive together, as one message listing them, and a bot takes at most 12
-trigger messages an hour; more wait for the next free slot rather than being
-dropped. Each delivery shows under **Latest trigger runs**.
+event's details, as a routine's message does (a follow-up while it works).
+Events within a trigger's cooldown (5 minutes unless you choose another,
+`--cooldown`) arrive together, as one message listing them, and a bot takes at
+most 12 trigger messages an hour; more wait for the next free slot rather than
+being dropped. Each delivery shows under **Latest trigger runs**.
 
-- **GitHub** reads the repos through the gateway's GitHub CLI login (Settings →
-  Integrations → GitHub), every minute, with conditional requests, so a repo
-  where nothing happens costs nothing of your rate limit. It wakes on pull
-  requests opened, pushed to, merged or closed, checks that failed or passed,
-  reviews (approved, changes requested, commented), comments, and comments that
-  mention you; narrow them by author, label, base branch, pull request number or
-  drafts. Your own comments and reviews never wake a bot: a bot that comments
-  through `gh` posts as you. A new trigger starts from what the repo looks like
-  then; it doesn't replay the past.
-- **Sessions** wake a bot when a session it started itself (with
-  `sessions_spawn`) finishes, fails or waits for an answer.
-- **Webhook** makes a URL with a secret token, shown once (copy it then; **New
-  URL** replaces it). Programs on this machine or your tailnet POST JSON or text
-  to it, up to 64 KiB; `--match field=value` (or `field~value` for contains)
-  keeps only matching calls. The gateway stays on your tailnet: exposing the URL
-  to the internet with Tailscale Funnel is up to you, and then the token is all
-  that guards it.
+- **Each event once.** `id` is the event's own (a Slack message's channel and
+  timestamp, an issue key): HUI remembers the last 500 ids it was told, so a
+  report sent again, even after a restart, wakes nobody, and an event from
+  before the trigger never does. Send `{ "events": [] }` after a check that
+  found nothing: it starts no turn, and the trigger shows when the listener last
+  reported.
+- **When it stops.** A listener that hasn't reported for five minutes, or since
+  the gateway started, shows as *No report from the listener…* on its trigger;
+  one that hit a problem says so with `"error": "…"` in its report.
+- **What wakes the bot.** Every event, unless the trigger narrows it: a field
+  (`--match fields.channel=G01ABC`, or `summary~review` for contains), only
+  events that link a GitHub pull request (`--pr-links`), and events the listener
+  marks `"bot": true` or `"external": true` only with `--allow-bots` or
+  `--allow-external`.
+- **Linked pull requests.** Each GitHub pull request an event links to is read
+  through the gateway's GitHub CLI login (Settings → Integrations → GitHub) as
+  the message goes out: title, author, state, base and head, the description,
+  the changed files with their additions and deletions, and the diff, each cut
+  at a bound that says so (or what `gh` couldn't read).
+- **Its own place.** The listener keeps track of what it already read. While
+  bots are off, the trigger is off or its bot archived, HUI answers 409 and keeps
+  nothing, so the listener sends those events again later; `"catchUp": true`
+  delivers a backlog as one message.
+- **On your tailnet.** The URL answers only this machine and your tailnet;
+  exposing it to the internet with Tailscale Funnel is up to you, and then its
+  token is all that guards it.
 
-A bot can manage its own triggers with its `triggers` tool (Tools tab, under
-Bots): ask it to watch a repo and it adds one. It can't add or change triggers
-in a turn another bot or a trigger started, or that took a message from one
-while it ran, and it can't create webhook triggers, whose token would pass
-through the model.
-
-While bots are off nothing fires: GitHub and Slack aren't read, webhook URLs
-answer 409, and a session event is recorded as skipped. When you turn them on
-again, what happened on GitHub, or who pinged you in Slack, meanwhile arrives as
-one summary per trigger, not one message per event.
-
-#### Slack
-
-A Slack trigger wakes a bot when someone pings you in Slack: a message in a
-channel or group DM that @-mentions you, or a direct message to you, usually
-"could you review this?" with a pull request link. Your teammates change
-nothing: HUI reads, as you, the messages that ping you, about once a minute,
-through a Slack app you create in your own workspace. It is read-only: HUI never
-posts, reacts or edits in Slack.
-
-**Create the app** (once):
-
-1. Open [Slack apps](https://api.slack.com/apps), choose **Create New App →
-   From a manifest**, pick your workspace and paste this manifest (Settings →
-   Integrations → Slack has a **Copy manifest** button):
-
-   ```json
-   {
-     "_metadata": {
-       "major_version": 2,
-       "minor_version": 1
-     },
-     "display_information": {
-       "name": "HUI pings",
-       "description": "Lets your own HUI gateway read the Slack messages that mention you or are sent to you. Read-only.",
-       "background_color": "#1f2328"
-     },
-     "settings": {
-       "org_deploy_enabled": false,
-       "socket_mode_enabled": false,
-       "token_rotation_enabled": false
-     },
-     "oauth_config": {
-       "scopes": {
-         "user": [
-           "search:read",
-           "users:read",
-           "channels:history",
-           "groups:history",
-           "im:history",
-           "mpim:history"
-         ]
-       }
-     }
-   }
-   ```
-
-   It asks only for user token scopes, all read-only, and has no bot user:
-
-   - `search:read`: find the messages that mention you and the direct messages
-     sent to you (`search.messages`);
-   - `users:read`: name who asked, and tell bots, apps and people outside your
-     workspace apart (`users.info`);
-   - `channels:history`, `groups:history`, `im:history`, `mpim:history`: read the
-     message a thread reply answers, in public channels, private channels, DMs
-     and group DMs (`conversations.replies`).
-
-   Keep token rotation off: a rotating token expires within a day, HUI doesn't
-   refresh it, and Slack can't turn rotation off again once it is on.
-2. **Install to Workspace** (on the app's Basic Information or OAuth & Permissions
-   page) and allow it. Many company workspaces need a workspace admin to approve
-   apps first; Slack then offers to send them a request
-   ([Slack's guide](https://slack.com/help/articles/222386767-Manage-app-approval-for-your-workspace)).
-3. Copy the **User OAuth Token** (`xoxp-…`) from **OAuth & Permissions** and
-   connect it: Settings → Integrations → Slack, paste it and **Connect**, or
-
-   ```sh
-   hui slack connect      # asks for the token without echoing it; or: pbpaste | hui slack connect
-   hui slack status       # who, which workspace, whether Slack still accepts the token
-   hui slack disconnect   # removes it from this machine
-   ```
-
-HUI checks the token with Slack (`auth.test`), shows who it is and which
-workspace, and keeps it in `~/.config/hui/slack.json`, readable by you only; it
-never reaches the browser, a log or a diagnostic, and goes nowhere but Slack. If
-the token is revoked or expires, or the app is removed, the status says **Token
-revoked or expired: connect again**.
-
-**Review requests, by a bot without a shell.** Give the review to a bot that can't
-run commands, so a Slack message can't make it act on your machine or on GitHub
-as you:
+**Review requests, by a bot without a shell.** Give reviews to a bot that can't
+run commands, so what someone writes can't make it act on your machine or on
+GitHub as you:
 
 ```sh
 hui bot add --name Reviewer --deny-tools bash,terminal,watcher,write,edit,browser,sessions_spawn,sessions_send,subagents
-hui bot trigger add reviewer --name Reviews --slack --on mention,dm --pr-links \
+hui bot trigger add reviewer --name Reviews --pr-links \
   --prompt "Someone asked me to review this pull request. Review it from the details below: what it changes, what could break, and the comments you'd leave. Don't run commands or change anything; tell me here."
 ```
 
-or, in the bot's Routines tab: **Add trigger → Slack → Review requests**, which
-fills in mentions and DMs, PR links only, a name and that prompt. Each delivery
-says who asked (their display name) and where, quotes the message (and, for a
-thread reply, the message it answers), links to it, and carries every linked pull
-request as the gateway's `gh` reads it: title, author, state, base and head, the
-description, the changed files with their additions and deletions, and the diff,
-each cut at a bound that says so (or what `gh` couldn't read). The bot reviews
-from that alone and answers in its chat; nothing is posted to Slack or GitHub.
+Then point a listener that reports the messages asking you for a review at its
+URL. The bot reviews from the delivery alone and answers in its chat; nothing is
+posted anywhere.
 
-- **Filters.** `--on mention,dm`; `--pr-links` keeps only messages linking a
-  GitHub pull request (a thread reply without one counts its thread's);
-  `--from maria,bob` (a handle, display name or member id) and `--in
-  team-reviews` (a channel name or id; DMs aren't channels) narrow it. Bots and
-  apps, and people outside your workspace (Slack Connect), wake it only with
-  `--allow-bots` and `--allow-external`; your own messages never do.
-- **Once each, from now.** A new trigger starts from the moment you add it; an
-  edit or a deletion never fires; each message fires at most once.
-- **Bots off, or the laptop asleep.** While bots are off, nothing is read. When
-  they come back on, or the gateway's machine wakes up, what came meanwhile (the
-  last 24 hours at most) arrives as one catch-up per trigger.
-- **Only you add or change Slack triggers**: they read your messages, so a bot's
-  `triggers` tool can list and remove them but not add or change one.
-- **Not yet**: a mention of a user group (`@team`) doesn't count. Slack's search
-  honours your search preferences, so a channel you left out of search isn't read.
+**Only you add or change triggers.** A bot's `triggers` tool (Tools tab, under
+Bots) lists its triggers and removes one, but can't add or change any: a
+trigger's URL holds a secret that would pass through the model, and what a
+listener reports can be your own messages.
+
+**From older versions.** HUI used to read GitHub, its own sessions, webhook calls
+and Slack for triggers itself. Those triggers no longer run: `hui doctor` lists
+them, and `hui doctor --fix` deletes them with what they left
+([Triggers](#triggers-1), under `hui doctor`). A listener can watch any of those
+for you instead.
 
 ### Bots talking to bots
 
@@ -937,6 +863,31 @@ helper and the summary use the bot's utility model like any other request. The
 ChatGPT credential stays in the gateway. HUI stores no audio: what stays is each
 call's card (its summary and transcript) in the bot's chat.
 
+## The Work pane
+
+The Work pane to the right of a conversation holds its terminals, browser view,
+Files views, VS Code and Diff views. Its shortcuts are Ctrl+Alt+Shift (⌥⇧⌘ on a Mac) plus a
+letter, and work from the composer and inside a terminal (not while VS Code has
+focus: click the tab strip first):
+
+- **T** new terminal, **B** browser, **F** Files, **C** VS Code, **D** Diff.
+- **P** shows or hides the pane.
+- **M** maximizes the pane over the chat, or restores the chat beside it. The
+  **Maximize** button beside **+** does the same. While maximized, the selector
+  above the pane switches between the views and back to the chat (choosing a
+  chat restores it); the chat keeps running underneath. Each conversation
+  remembers its own choice in this browser.
+
+A **Diff** view shows what changed in the conversation's Git checkout. Choose
+what to compare at the top: **Uncommitted changes** (what the agent just changed,
+new files included; it opens on this when there are any), **Last commit**,
+**Against the previous branch** (the branch this one is stacked on; HUI finds it
+and you can pick another) or **Against the default branch** (everything the
+branch adds on top of main). The last two include uncommitted changes unless you
+untick **Include uncommitted**. Pick a file on the left to see its diff, unified
+or **Side by side** when the pane is wide enough; click its name to open it in
+Files. The view refreshes by itself when the agent's turn ends.
+
 ## Interactive widgets in the chat
 
 Agents and bots can show a small interactive HTML or SVG widget right in the
@@ -962,6 +913,29 @@ navigate the HUI page, open pop-ups or fetch anything from the network. It may
 load scripts, styles and fonts from a few public CDNs (cdnjs, jsDelivr, esm.sh,
 unpkg, Google and Bunny fonts), which then see your IP address.
 [docs/api.md](api.md#agent-widgets) has the full contract.
+
+## Codemode: one script, many tool calls
+
+Sessions can use PI's **codemode** tool: instead of calling tools one at a time,
+the agent writes a short JavaScript script that calls them, often several at
+once, and gets back only what the script prints. It saves round trips and keeps
+large tool output out of the conversation.
+
+- Each script is one card in the chat. Its row lists the tools the script
+  called, a **failed** badge if the script failed (or **2 failed** if some of
+  its calls failed but the script finished) and how long it took.
+- Open the card to see the script, every call it made with its status and
+  duration, and the output the agent got. A call that failed shows why under
+  its row. When the output was too long for the agent, **Full output** opens the
+  whole text in the Files view.
+- While the script runs, its calls appear as they start and finish.
+- Right-click (or the context-menu key on) the script or the output to copy it.
+
+Codemode is on by default. **Settings → Tools → Codemode** turns it off for
+every session from its next request (a session on a remote worker once it
+reopens); a script already running finishes. A bot's **Tools** tab can turn it
+off for that bot alone. **Stop** ends a script that runs too long. Sessions still on the
+older PI worker (before `hui doctor --fix` moved them) never get it.
 
 ## Giving an agent a secret
 
@@ -1021,3 +995,16 @@ SDK worker, and `--fix` moves each one into a new Durable conversation:
   missing stays as it is.
 - Running `--fix` again is safe: a session copied before from an unchanged file
   reuses that copy.
+
+### Triggers
+
+HUI's triggers are all listeners' now ([Triggers](#triggers)). `hui doctor`
+lists the triggers of the kinds HUI no longer has (GitHub, Sessions, Webhook and
+Slack), which no longer run, and the files those kinds left: the GitHub and
+Slack poll positions and HUI's own Slack connection, `slack.json`, whose token
+nothing reads any more. `--fix` deletes them, the triggers' runs included, and
+keeps no copy; listener triggers and everything else stay. Deleting
+`slack.json` doesn't revoke its token: remove HUI's app from your Slack
+workspace if nothing else uses it. If `bot-triggers.json` itself can't be read,
+`hui doctor` says so and leaves it as it is (fix or move it), and still deletes
+the other files.

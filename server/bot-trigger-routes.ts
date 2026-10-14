@@ -3,14 +3,14 @@
  * trigger's id or name (URL-encoded).
  *
  *   GET    /__hui/bots/:id/triggers                  BotTriggersList: the bot's triggers, their latest runs, the cap
- *   POST   /__hui/bots/:id/triggers                  201 BotTriggerCreated (a webhook trigger's token, this once)
+ *   POST   /__hui/bots/:id/triggers                  201 BotTriggerCreated (its URL's token, this once)
  *   PATCH  /__hui/bots/:id/triggers/:trigger         { trigger }
  *   DELETE /__hui/bots/:id/triggers/:trigger         { ok: true }
  *   POST   /__hui/bots/:id/triggers/:trigger/test    { run }: a sample event, delivered now
- *   POST   /__hui/bots/:id/triggers/:trigger/token   BotTriggerCreated: a webhook trigger's new token, this once
+ *   POST   /__hui/bots/:id/triggers/:trigger/token   BotTriggerCreated: a new token for its URL, this once
  *
  * They live under `/__hui/bots`, so the `x-hui` guard and the 409 while bots are off apply as to every bot route.
- * The webhook route itself, `POST /__hui/hooks/<token>`, is `bot-triggers-gateway.ts`'s.
+ * The route its listener reports to, `POST /__hui/hooks/<token>`, is `bot-triggers-gateway.ts`'s.
  */
 import { BOT_TRIGGER_LIMITS } from "../shared/bot-triggers.ts";
 import type { BotTriggerService } from "./bot-triggers.ts";

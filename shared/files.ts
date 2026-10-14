@@ -43,6 +43,18 @@ export type FileRead = {
   content?: string;
 };
 
+/** Where a path the agent wrote points inside the working directory: its clean relative path and what it is. */
+export type FileLocation = { path: string; kind: "file" | "directory" };
+
+/** `POST …/files/resolve` `{ paths }`: one answer per asked path, in order; `null` when it does not exist inside the
+ * working directory (or names something else than a file or folder). */
+export type FilesResolve = { entries: (FileLocation | null)[] };
+
+/** Paths one resolve request may ask about. */
+export const MAX_RESOLVE_PATHS = 100;
+/** Longest path a resolve request may ask about. */
+export const MAX_RESOLVE_PATH_LENGTH = 1024;
+
 /** `PUT …/files/file` success. */
 export type FileSaved = { path: string; etag: string; size: number; mtime: string };
 

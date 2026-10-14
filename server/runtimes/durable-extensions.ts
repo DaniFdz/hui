@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import type { JsonValue } from "@earendil-works/chord";
+import type { Context, JsonValue } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { ImageContent, Message, TextContent } from "@earendil-works/pi-ai";
 import {
@@ -24,8 +24,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import {
   CompactionEntry, CompactionTask, defineEntry, defineExtension, defineTool, GenerationTask, hook, ResetEntry, SystemEntry, ToolTask,
-  type AgentEvent, type CompactionReason, type Conversation, type EntryId, type EntryRecord, type Extension, type ToolExecutionResult,
-  type ToolRegistration,
+  type AgentEvent, type CompactionReason, type Conversation, type EntryId, type EntryRecord, type Extension, type NestedToolExecutionResult,
+  type ToolExecutionApi, type ToolExecutionResult, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { safeSourceLabel } from "../source-label.ts";
 import { createPolicySettingsManager } from "./resource-policy.ts";
@@ -54,6 +54,10 @@ export type Contribution = { readonly snippet: string; readonly guidelines: read
 /** What `before_agent_start` made of the system prompt for one run. */
 export type RunPrompt = { readonly forced?: string; readonly options?: NormalizedBuildSystemPromptOptions };
 export type CustomMessage = { customType: string; content: string | (TextContent | ImageContent)[]; display: boolean; details?: unknown };
+/** What starts a run, as PI's `before_agent_start` tells: a prompt, or an extension's `sendMessage(..., { triggerTurn })`. */
+export type StartTrigger =
+  | { messageType: "user"; prompt: string; images: readonly ImageContent[] }
+  | { messageType: "custom"; message: CustomMessage };
 type Question = { question: RuntimeQuestion; settle(response: RuntimeQuestionResponse | undefined): void };
 type QuestionDraft = RuntimeQuestion extends infer Each ? Each extends RuntimeQuestion ? Omit<Each, "id"> : never : never;
 
@@ -62,6 +66,10 @@ export interface ExtensionSession {
   readonly cwd: string;
   /** A run is going. Its end handlers see it over, as in PI's `agent_settled`. */
   readonly running: boolean;
+  /** A run is starting: its `before_agent_start` handlers run, or its input is about to be submitted. */
+  readonly starting: boolean;
+  /** Once a run that is starting has started, or did not start after all. */
+  whenStarted(): Promise<void>;
   /** The conversation the session follows now; a rewind replaces it. */
   conversation(): Conversation;
   /** Entries since the latest reset, oldest first. */
@@ -130,6 +138,31 @@ function jsonSafe(value: unknown): JsonValue | undefined {
 }
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
+/** PI's `parentToolCallId`, on events and hooks of a call another tool (a codemode script) made. */
+const nestedIn = ({ parentToolCallId }: { parentToolCallId?: string }) => parentToolCallId ? { parentToolCallId } : {};
+const parentOf = (call: { parent?: { callId: string } }) => nestedIn({ parentToolCallId: call.parent?.callId });
+/** A nested call's result as PI's `ctx.executeTool()` returns it. Durable keeps no model output for nested calls: a
+ * tool without a schema gives its bounded output, one with a schema its value, which PI also has as `structuredContent`. */
+function nestedOutcome(id: string, name: string, args: unknown, tool: ToolRegistration | undefined, nested: NestedToolExecutionResult) {
+  const value = nested.structuredOutput;
+  const errors = nested.diagnostics.filter((diagnostic) => diagnostic.severity === "error").map((diagnostic) => diagnostic.message).join("\n");
+  const content: (TextContent | ImageContent)[] = tool?.structuredOutputSchema !== undefined
+    ? value === undefined ? [] : [{ type: "text", text: JSON.stringify(value) }]
+    : typeof value === "string" ? (value ? [{ type: "text", text: value }] : [])
+      : Array.isArray(value) ? value as unknown as (TextContent | ImageContent)[]
+        : (value as { type?: unknown } | undefined)?.type === "image" ? [value as unknown as ImageContent] : [];
+  return {
+    toolCall: { type: "toolCall" as const, id, name, arguments: (args ?? {}) as Record<string, unknown> },
+    result: {
+      content: content.length || !nested.isError || !errors ? content : [{ type: "text" as const, text: errors }],
+      details: nested.details ?? {},
+      ...(tool?.structuredOutputSchema !== undefined && value !== undefined ? { structuredContent: value } : {}),
+      ...(nested.usage ? { usage: nested.usage } : {}),
+    },
+    isError: nested.isError,
+    ...(nested.durationMs === undefined ? {} : { durationMs: nested.durationMs }),
+  };
+}
 const textOf = (content: unknown): string => typeof content === "string" ? content : Array.isArray(content)
   ? content.flatMap((part) => (part as { type?: unknown }).type === "text" ? [String((part as { text?: unknown }).text ?? "")] : []).join("")
   : "";
@@ -159,6 +192,10 @@ export class DurableExtensions {
   #extension: Extension;
   /** Tool names `setActiveTools()` chose; undefined: PI's default selection. */
   #active: Set<string> | undefined;
+  /** Extension tool calls running now, by call ID: what their `ctx.executeTool()` calls run under. */
+  #calls = new Map<string, { api: ToolExecutionApi; context: Context; made: number }>();
+  /** The tools nested calls resolve among, as the latest extension tool call's agent had them: `ctx.tools`. */
+  #callable: readonly ToolRegistration[] = [];
   #questions = new Map<string, Question>();
   #asked = new Set<() => void>();
   /** Lifecycle events run one after another, never holding up the session's own processing. */
@@ -278,8 +315,11 @@ export class DurableExtensions {
     }, {
       getModel: () => this.#model(),
       getScopedModels: () => [],
-      isIdle: () => !session.running,
+      // As in PI 1.2.0, a run that is starting counts as busy.
+      isIdle: () => !session.running && !session.starting,
       isProjectTrusted: () => this.#settings.isProjectTrusted(),
+      executeTool: (callerId, name, args) => this.#executeNested(callerId, name, args) as never,
+      getCallableTools: () => this.#callableTools() as never,
       getSignal: () => this.#eventSignal ?? this.#run?.controller.signal,
       abort: () => { this.#abortRequested = true; void session.abort().catch((error: unknown) => this.#report("abort", error)); },
       hasPendingMessages: () => session.pendingCount() > 0,
@@ -443,6 +483,8 @@ export class DurableExtensions {
       ...(definition.prepareArguments ? { prepareArguments: definition.prepareArguments as never } : {}),
       execute: async (args, api, callContext) => {
         const signal = callContext.abortSignal;
+        this.#callable = await api.agent(callContext).then((agent) => agent.callable, () => this.#callable);
+        this.#calls.set(api.callId, { api, context: callContext, made: 0 });
         let shown = "";
         const onUpdate = (partial: { content?: unknown; details?: unknown } | undefined) => {
           const text = textOf(partial?.content);
@@ -454,7 +496,7 @@ export class DurableExtensions {
           const result = await definition.execute(api.callId, args as never, signal, onUpdate as never, this.#runner.createToolContext(api.callId, signal));
           const details = jsonSafe(result.details);
           return {
-            content: result.content ?? [],
+            output: result.content ?? [],
             ...(details === undefined ? {} : { details }),
             ...(result.isError ? { isError: true } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
@@ -463,10 +505,37 @@ export class DurableExtensions {
         } catch (error) {
           if (signal?.aborted) throw error;
           // A thrown error is the model's error result, as in PI.
-          return { content: [{ type: "text", text: errorText(error) }], isError: true };
+          return { output: [{ type: "text", text: errorText(error) }], isError: true };
+        } finally {
+          this.#calls.delete(api.callId);
         }
       },
     });
+  }
+
+  /** PI's `ctx.executeTool()`: a nested call of the extension tool call `callerId`, through Durable's own, which
+   * validates it and runs the `tool_call`/`tool_result` hooks. Like PI, it never rejects for a tool failure. */
+  async #executeNested(callerId: string, name: string, args: unknown) {
+    const call = this.#calls.get(callerId);
+    const id = `${callerId}/${call ? ++call.made : 0}`;
+    const failed = (text: string) => ({ toolCall: { type: "toolCall" as const, id, name, arguments: {} }, result: { content: [{ type: "text" as const, text }], details: {} }, isError: true });
+    if (!call) return failed("Nested tool calls are only available while the calling tool runs");
+    if (typeof args !== "object" || args === null || Array.isArray(args)) return failed(`Arguments for ${name} must be an object`);
+    try {
+      const nested = await call.api.executeTool(name, args as never, call.context);
+      return nestedOutcome(id, name, args, this.#callable.find((tool) => tool.name === name), nested);
+    } catch (error) {
+      return failed(errorText(error));
+    }
+  }
+
+  /** `ctx.tools`: what `ctx.executeTool()` can call. Each runs as a nested call of the extension tool calling it. */
+  #callableTools() {
+    return this.#callable.map((tool) => ({
+      name: tool.name, label: tool.name, description: tool.description, parameters: tool.parameters,
+      ...(tool.structuredOutputSchema ? { outputSchema: tool.structuredOutputSchema } : {}),
+      execute: () => Promise.reject(new Error(`Call ${tool.name} with ctx.executeTool().`)),
+    }));
   }
 
   /** Every tool the session knows, as PI's `getAllTools()` reports them. */
@@ -546,7 +615,7 @@ export class DurableExtensions {
           if (!this.#runner.hasHandlers("tool_call")) return undefined;
           const input = structuredClone(call.arguments);
           // Handlers edit `input` in place; a throw blocks the call, as in PI.
-          const result = await this.#runner.emitToolCall({ type: "tool_call", toolName: call.name, toolCallId: call.id, input } as never);
+          const result = await this.#runner.emitToolCall({ type: "tool_call", toolName: call.name, toolCallId: call.id, input, ...parentOf(call) } as never);
           if (result?.block) return { block: result.reason || "Blocked by an extension" };
           return isDeepStrictEqual(input, call.arguments) ? undefined : { arguments: input as never };
         },
@@ -554,15 +623,24 @@ export class DurableExtensions {
           if (!this.#runner.hasHandlers("tool_result")) return undefined;
           const replaced = await this.#runner.emitToolResult({
             type: "tool_result", toolName: call.name, toolCallId: call.id, input: call.arguments,
-            content: result.content ?? [], details: result.details, isError: result.isError === true, usage: result.usage,
+            content: result.output ?? [], details: result.details, isError: result.isError === true, usage: result.usage, ...parentOf(call),
+            ...(result.structuredOutput === undefined ? {} : { structuredContent: result.structuredOutput }),
           } as never);
           if (!replaced) return undefined;
           const details = jsonSafe(replaced.details);
+          // As in PI, replaced content drops the structured value a handler did not replace with it: a script never gets
+          // what a handler took out of the content. PI's script then gets the replaced text; Durable requires a schema
+          // tool's value unless the call failed, so a nested call fails with that text instead.
+          const { structuredOutput: _replaced, ...rest } = result;
+          const structured = jsonSafe(replaced.structuredContent);
+          const dropped = call.parent !== undefined && result.structuredOutput !== undefined && structured === undefined;
           return {
-            ...result,
-            ...(replaced.content ? { content: replaced.content } : {}),
+            ...rest,
+            ...(structured === undefined ? {} : { structuredOutput: structured }),
+            ...(replaced.content ? { output: replaced.content } : {}),
             ...(details === undefined ? {} : { details }),
             ...(replaced.isError === undefined ? {} : { isError: replaced.isError }),
+            ...(dropped ? { isError: true } : {}),
             ...(replaced.usage ? { usage: replaced.usage } : {}),
           } satisfies ToolExecutionResult;
         },
@@ -658,7 +736,7 @@ export class DurableExtensions {
     return id;
   }
 
-  /** Projected at once, as PI appends it; stored as a write, so mid-run Durable places it at the next boundary. */
+  /** Projected at once, as PI appends it; stored as a data-only write, which Durable appends at once, mid-run too. */
   #appendEntry(customType: string, data: unknown): void {
     const json = jsonSafe(data);
     this.#project().appendCustomEntry(customType, json);
@@ -685,6 +763,11 @@ export class DurableExtensions {
   async #sendMessage(message: CustomMessage, options: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" } | undefined): Promise<void> {
     const custom: CustomMessage = { ...message, content: message.content ?? [], display: message.display === true };
     if (options?.deliverAs === "nextTurn") { this.#nextTurn.push(custom); return; }
+    // As in PI 1.2.0, a run that is starting (its `before_agent_start` handlers run, say) counts as busy: a message for
+    // no turn of its own is context ahead of its input, any other goes into the run once it has started.
+    if (this.#session.starting && options?.triggerTurn === false) { await this.writeMessages([custom]); return; }
+    // Checked again after each wait: another message may have started a run meanwhile.
+    while (this.#session.starting) await this.#session.whenStarted();
     const streaming = this.#session.running;
     // As in PI: mid-run it steers (or follows up) unless told not to trigger a turn; idle, it starts a run only when
     // asked to. Otherwise it is context, written as a hidden entry (mid-run at the next boundary).
@@ -759,10 +842,12 @@ export class DurableExtensions {
   }
 
   /**
-   * PI's `before_agent_start` for a prompt that starts a run: the custom messages to send with it, and the system
-   * prompt the run uses. `aborted` when a handler called `ctx.abort()`, or Stop came, since the prompt's `input`.
+   * PI's `before_agent_start` for input that starts a run, a prompt or an extension's custom message: the custom
+   * messages to send with it, and the system prompt the run uses. `aborted` when a handler called `ctx.abort()`, or
+   * Stop came, since the prompt's `input` (a custom message has none: since now).
    */
-  async beforeAgentStart(prompt: string, images: readonly ImageContent[]): Promise<{ messages: CustomMessage[]; aborted: boolean }> {
+  async beforeAgentStart(trigger: StartTrigger): Promise<{ messages: CustomMessage[]; aborted: boolean }> {
+    if (trigger.messageType === "custom") this.#abortRequested = false;
     const queued = this.#nextTurn.splice(0);
     this.#pendingPrompt = undefined;
     const active = this.#activeNames();
@@ -770,7 +855,10 @@ export class DurableExtensions {
     this.#promptOptions = base;
     let added: CustomMessage[] = [];
     if (this.#runner.hasHandlers("before_agent_start") && !this.#abortRequested) {
-      const result = await this.#runner.emitBeforeAgentStart(prompt, images.length ? [...images] : undefined, structuredClone(base));
+      const event = trigger.messageType === "user"
+        ? { messageType: "user" as const, prompt: trigger.prompt, ...(trigger.images.length ? { images: [...trigger.images] } : {}) }
+        : { messageType: "custom" as const, message: { role: "custom" as const, ...trigger.message, timestamp: Date.now() } };
+      const result = await this.#runner.emitBeforeAgentStart(event as never, structuredClone(base));
       const options = result.systemPromptOptions;
       // An edited tool selection becomes the active tools; otherwise the live selection stays authoritative.
       if (!isDeepStrictEqual(options.selectedTools, active)) { this.#active = new Set(options.selectedTools); this.#applyTools(); }
@@ -889,12 +977,13 @@ export class DurableExtensions {
           else this.#messageEvents(event.entry);
           break;
         case "tool_execution_start":
-          this.#emit({ type: "tool_execution_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+          this.#emit({ type: "tool_execution_start", toolCallId: event.toolCallId, toolName: event.toolName, args: event.args, ...nestedIn(event) });
           break;
         case "tool_execution_end": {
-          // Durable reports the result's message right after, as `message_end`.
-          const result = event.entry?.model?.[0] as { content?: unknown; details?: unknown; isError?: boolean } | undefined;
-          this.#emit({ type: "tool_execution_end", toolCallId: event.toolCallId, toolName: event.toolName, result: { content: result?.content ?? [], details: result?.details }, isError: result?.isError === true });
+          // Durable reports a model-issued call's result message right after, as `message_end`; a nested call (a
+          // codemode script's) ends with its `result`, whose output stayed with the script.
+          const result = (event.entry?.model?.[0] ?? event.result) as { content?: unknown; details?: unknown; isError?: boolean } | undefined;
+          this.#emit({ type: "tool_execution_end", toolCallId: event.toolCallId, toolName: event.toolName, result: { content: result?.content ?? [], details: result?.details }, isError: result?.isError === true, ...nestedIn(event) });
           break;
         }
         case "run_settled":

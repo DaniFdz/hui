@@ -1,6 +1,6 @@
 /**
- * The Work pane's contract and state: the registry of Work view kinds (terminal, browser, files, VS Code…), the
- * browser-local per-conversation record (open, width, views, active view) and the pure transitions on it, plus the
+ * The Work pane's contract and state: the registry of Work view kinds (terminal, browser, files, VS Code, diff…), the
+ * browser-local per-conversation record (open, maximized, width, views, active view) and the pure transitions on it, plus the
  * one-time move of terminal and browser panes out of the chat multiplexer's saved layout. Rendering belongs to
  * `components/work-pane.ts`; each kind renders its own view; the conversations themselves stay PI/HUI-owned.
  */
@@ -14,7 +14,8 @@ export type WorkViewRef =
   | { kind: "terminal"; terminalId: string }
   | { kind: "browser" }
   | { kind: "files"; id: string }
-  | { kind: "vscode" };
+  | { kind: "vscode" }
+  | { kind: "diff"; id: string };
 
 export type WorkViewContext = {
   /** The conversation owning the Work pane. */
@@ -92,6 +93,7 @@ export function launchableWorkViewKinds(pane: Pick<SessionWorkPane, "views">): W
 export function defaultWorkViewKey(ref: WorkViewRef): string {
   if (ref.kind === "terminal") return `terminal:${ref.terminalId}`;
   if (ref.kind === "files") return `files:${ref.id}`;
+  if (ref.kind === "diff") return `diff:${ref.id}`;
   return ref.kind;
 }
 
@@ -112,10 +114,15 @@ export const WORK_PANE_CHAT_MIN_WIDTH = 420;
 export const WORK_PANE_RETAINED_SESSIONS = 3;
 /** Shows or hides the Work pane (on narrow screens: opens it as the destination, or returns to the chat). */
 export const WORK_PANE_TOGGLE_SHORTCUT = WORK_SHORTCUTS.togglePane;
+/** Maximizes the expanded Work pane over the chat columns, or restores them (desktop only). */
+export const WORK_PANE_MAXIMIZE_SHORTCUT = WORK_SHORTCUTS.maximizePane;
 
 export type SessionWorkPane = {
   /** Expanded on desktop. On narrow screens the pane is a destination instead (see the app's narrow state). */
   open: boolean;
+  /** Desktop only: the expanded pane fills the content area and the chat columns are hidden (still mounted). Only
+   * written when set; a record without it is not maximized. Narrow screens ignore it. */
+  maximized?: boolean;
   /** CSS pixels; clamped again against the viewport when rendered. */
   width: number;
   /** Tab order. Keys (`workViewKey`) are unique. */
@@ -151,7 +158,8 @@ export function openWorkView(store: WorkPaneStore, sessionId: string, ref: WorkV
   }));
 }
 
-/** Removes a tab. The previous tab (or else the next) becomes active; the pane stays open on its empty state. */
+/** Removes a tab. The previous tab (or else the next) becomes active. Closing the last one hides the pane as **Hide
+ * Work pane** does (collapsed, no longer maximized); toggling it open again shows the empty launchers. */
 export function closeWorkView(store: WorkPaneStore, sessionId: string, key: string): WorkPaneStore {
   return update(store, sessionId, (pane) => {
     const index = pane.views.findIndex((view) => workViewKey(view) === key);
@@ -161,8 +169,18 @@ export function closeWorkView(store: WorkPaneStore, sessionId: string, key: stri
     const active = pane.active === key ? neighbour && workViewKey(neighbour) : pane.active;
     const next: SessionWorkPane = { ...pane, views };
     if (active) next.active = active; else delete next.active;
+    if (!views.length) {
+      next.open = false;
+      delete next.maximized;
+    }
     return next;
   });
+}
+
+/** Whether closing `key` removes the conversation's last Work view, so the pane hides. */
+export function closingLastWorkView(store: WorkPaneStore, sessionId: string, key: string): boolean {
+  const { views } = sessionWorkPane(store, sessionId);
+  return views.length === 1 && workViewKey(views[0]!) === key;
 }
 
 export function activateWorkView(store: WorkPaneStore, sessionId: string, key: string, expand = true): WorkPaneStore {
@@ -195,8 +213,29 @@ export function adjacentWorkView(pane: SessionWorkPane, step: 1 | -1): string | 
   return workViewKey(pane.views[next]!);
 }
 
+/** Expands or collapses the pane. Collapsing also restores a maximized pane, so the chat comes back beside its rail. */
 export function setWorkPaneOpen(store: WorkPaneStore, sessionId: string, open: boolean): WorkPaneStore {
-  return update(store, sessionId, (pane) => pane.open === open ? pane : { ...pane, open });
+  return update(store, sessionId, (pane) => {
+    if (pane.open === open && (open || !pane.maximized)) return pane;
+    const next: SessionWorkPane = { ...pane, open };
+    if (!open) delete next.maximized;
+    return next;
+  });
+}
+
+/** Maximizes the pane over the chat columns (expanding it) or restores the chat beside it (the pane stays open). */
+export function setWorkPaneMaximized(store: WorkPaneStore, sessionId: string, maximized: boolean): WorkPaneStore {
+  return update(store, sessionId, (pane) => {
+    if (Boolean(pane.maximized) === maximized && (!maximized || pane.open)) return pane;
+    const next: SessionWorkPane = { ...pane, open: pane.open || maximized };
+    if (maximized) next.maximized = true; else delete next.maximized;
+    return next;
+  });
+}
+
+/** Whether the conversation's pane is shown maximized: open, maximized and on a wide (non-narrow) screen. */
+export function workPaneMaximized(pane: Pick<SessionWorkPane, "open" | "maximized">, narrow: boolean): boolean {
+  return !narrow && pane.open && pane.maximized === true;
 }
 
 /** The room the chat keeps beside the pane: `WORK_PANE_CHAT_MIN_WIDTH` per side-by-side chat column, plus the
@@ -253,7 +292,9 @@ export function parseWorkViewRef(value: unknown, isKnown: (kind: string) => bool
   const raw = value as Record<string, unknown>;
   if (typeof raw.kind !== "string" || !isKnown(raw.kind)) return undefined;
   if (raw.kind === "terminal") return typeof raw.terminalId === "string" && TERMINAL_ID.test(raw.terminalId) ? { kind: "terminal", terminalId: raw.terminalId } : undefined;
-  if (raw.kind === "files") return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: "files", id: raw.id } : undefined;
+  if (raw.kind === "files" || raw.kind === "diff") {
+    return typeof raw.id === "string" && raw.id.trim() && raw.id.length <= 128 && !CONTROL.test(raw.id) ? { kind: raw.kind, id: raw.id } : undefined;
+  }
   if (raw.kind === "browser" || raw.kind === "vscode") return { kind: raw.kind };
   return undefined;
 }
@@ -280,6 +321,8 @@ export function parseWorkPaneStore(value: unknown, isKnown?: (kind: string) => b
       width: clampWorkPaneWidth(typeof entry.width === "number" ? entry.width : Number.NaN),
       views,
     };
+    // Additive field: records written before it load as not maximized; a collapsed pane is never maximized.
+    if (entry.maximized === true && pane.open) pane.maximized = true;
     const active = typeof entry.active === "string" && keys.has(entry.active) ? entry.active : views[0] && workViewKey(views[0]);
     if (active) pane.active = active;
     store[sessionId] = pane;

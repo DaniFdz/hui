@@ -2,6 +2,10 @@
  * What one Files view remembers in this browser: its selected file, open folders, whether its navigator is open and
  * how a Markdown file is displayed. Keyed by the view's id, so two Files views keep independent selections, and the
  * Work pane's tab title can read the selected file's name.
+ *
+ * It also carries a **reveal request** to a view (a file reference clicked in the chat): the file or folder to show
+ * and, optionally, a line. A request survives until the view takes it, so it works whether the view is mounted,
+ * hidden behind another tab or not created yet.
  */
 export type MarkdownDisplayMode = "source" | "rendered";
 
@@ -71,7 +75,42 @@ export function writeFilesViewState(viewId: string, patch: Partial<FilesViewStat
 /** Forgets a closed view's state. */
 export function clearFilesViewState(viewId: string, store: ViewStorage | undefined = storage()): void {
   memory.delete(viewId);
+  reveals.delete(viewId);
   try { store?.removeItem(PREFIX + viewId); } catch { /* nothing stored */ }
+}
+
+/** What a reveal request asks a Files view to show. */
+export type FilesViewReveal = { path: string; kind: "file" | "directory"; line?: number; column?: number };
+
+const reveals = new Map<string, FilesViewReveal>();
+const revealListeners = new Map<string, Set<() => void>>();
+
+/**
+ * Asks view `viewId` to show `target`. A file becomes the view's selection right away (so its tab caption follows);
+ * the view itself opens it, expands the folders above it and scrolls to the line when it takes the request.
+ */
+export function requestFilesViewReveal(viewId: string, target: FilesViewReveal, store: ViewStorage | undefined = storage()): void {
+  reveals.set(viewId, target);
+  if (target.kind === "file") writeFilesViewState(viewId, { selected: target.path }, store);
+  for (const listener of revealListeners.get(viewId) ?? []) listener();
+}
+
+/** The view's pending reveal request, which it now handles; `undefined` when there is none. */
+export function takeFilesViewReveal(viewId: string): FilesViewReveal | undefined {
+  const target = reveals.get(viewId);
+  reveals.delete(viewId);
+  return target;
+}
+
+/** Calls `listener` when a reveal request for `viewId` arrives; returns the unsubscribe. */
+export function onFilesViewReveal(viewId: string, listener: () => void): () => void {
+  let listeners = revealListeners.get(viewId);
+  if (!listeners) revealListeners.set(viewId, listeners = new Set());
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size) revealListeners.delete(viewId);
+  };
 }
 
 /** The Work pane tab caption: the selected file's name, or "Files". */

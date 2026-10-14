@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { filesWorkViewKind, newFilesViewId } from "./files.ts";
+import { filesViewToReveal, filesWorkViewKind, newFilesViewId } from "./files.ts";
 import { readFilesViewState, writeFilesViewState } from "../files-view-state.ts";
 import { defaultWorkViewKey } from "../work-pane.ts";
 
@@ -36,4 +36,14 @@ test("closing the tab forgets the view's remembered selection", () => {
 test("its launcher icon carries an explicit size", () => {
   const markup = filesWorkViewKind.icon.strings.join("");
   assert.match(markup, /width="16" height="16"/u);
+});
+
+test("a file reference opens in the active Files view, else the first one, else a new one", () => {
+  const first = { kind: "files" as const, id: "files-first" };
+  const second = { kind: "files" as const, id: "files-second" };
+  const terminal = { kind: "terminal" as const, terminalId: "t1" };
+  assert.equal(filesViewToReveal({ views: [] }), undefined);
+  assert.equal(filesViewToReveal({ views: [terminal], active: "terminal:t1" }), undefined);
+  assert.equal(filesViewToReveal({ views: [terminal, first, second], active: "terminal:t1" }), first);
+  assert.equal(filesViewToReveal({ views: [first, second], active: "files:files-second" }), second);
 });

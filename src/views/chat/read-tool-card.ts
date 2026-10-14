@@ -1,5 +1,6 @@
 /** Read-tool presentation port from OpenClaw 2026.9.5 chat-tool-cards.ts and
- * chat-tool-content.ts, ec9c1a13. No workspace/approval actions are fabricated. */
+ * chat-tool-content.ts, ec9c1a13. No workspace/approval actions are fabricated. The path a read, edit or write tool
+ * names is a file reference (`components/file-link.ts`) that opens it in the Files view once it is confirmed. */
 import { html, nothing } from "lit";
 import { icons } from "../../lib/icons.ts";
 import { openMessageContextMenu } from "../../lib/message-context-menu.ts";
@@ -7,11 +8,31 @@ import type { TranscriptItem } from "../../lib/sessions-store.ts";
 
 type Tool = Extract<TranscriptItem, { kind: "tool" }>;
 
+const READ_TOOLS = ["read", "read_file", "readfile", "notebookread", "notebook_read"];
+/** Tools whose path argument names the one file they change. */
+const FILE_TOOLS = [...READ_TOOLS, "edit", "edit_file", "multiedit", "multi_edit", "write", "write_file", "create_file", "notebookedit", "notebook_edit"];
+const PATH_KEYS = ["path", "file_path", "filePath", "file", "filepath", "filename", "notebook_path"];
+
+function toolArgs(item: Tool): Record<string, unknown> | null {
+  return item.args && typeof item.args === "object" && !Array.isArray(item.args) ? item.args as Record<string, unknown> : null;
+}
+
+/** The file a read, edit or write tool call names, as the agent passed it. */
+export function toolFilePath(item: Tool): string | undefined {
+  if (!FILE_TOOLS.includes(item.name.trim().toLowerCase())) return undefined;
+  const args = toolArgs(item);
+  return PATH_KEYS.map((key) => args?.[key]).find((value): value is string => typeof value === "string" && !!value.trim());
+}
+
+/** A tool's path as a file reference; `label` is what to show (by default the path itself). */
+export function renderToolFileReference(path: string, label: string = path) {
+  return html`<hui-file-ref data-path=${path.trim()}>${label}</hui-file-ref>`;
+}
+
 export function readToolPresentation(item: Tool) {
-  if (!["read", "read_file", "readfile", "notebookread", "notebook_read"].includes(item.name.trim().toLowerCase())) return null;
-  const args = item.args && typeof item.args === "object" && !Array.isArray(item.args) ? item.args as Record<string, unknown> : null;
-  const pathKeys = ["path", "file_path", "filePath", "file", "filepath", "filename", "notebook_path"];
-  const path = pathKeys.map((key) => args?.[key]).find((value): value is string => typeof value === "string" && !!value.trim());
+  if (!READ_TOOLS.includes(item.name.trim().toLowerCase())) return null;
+  const args = toolArgs(item);
+  const path = toolFilePath(item);
   if (!path) return null;
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
   const target = normalized.slice(normalized.lastIndexOf("/") + 1) || path;
@@ -19,7 +40,7 @@ export function readToolPresentation(item: Tool) {
   // These are the exact row-summarized fields in upstream tool content.
   const summarizedKeys = new Set(["path", "file_path", "filePath", "notebook_path"]);
   const extras = Object.entries(args ?? {}).filter(([key]) => !summarizedKeys.has(key));
-  return { target, detail: `from ${shortPath}`, extras };
+  return { target, path, shortPath, detail: `from ${shortPath}`, extras };
 }
 
 export function displayToolValue(value: unknown): string {
@@ -58,7 +79,7 @@ export function renderReadToolCard(item: Tool, options: {
     </div>
     ${options.expanded ? html`<div class="chat-tool-msg-body"><div class="chat-tool-card ${failed ? "chat-tool-card--error" : ""}"
       tabindex="0" @contextmenu=${copy} @keydown=${copy}>
-      <div class="chat-tool-card__header"><div class="chat-tool-card__detail">${view.detail}</div><div class="chat-tool-card__actions"></div></div>
+      <div class="chat-tool-card__header"><div class="chat-tool-card__detail">from ${renderToolFileReference(view.path, view.shortPath)}</div><div class="chat-tool-card__actions"></div></div>
       ${view.extras.length > 12 ? html`<div class="chat-tool-card__block"><div class="chat-tool-card__block-header"><span class="chat-tool-card__block-icon">${icons.zap}</span><span class="chat-tool-card__block-label">Tool input</span></div><pre class="chat-tool-card__block-content"><code>${JSON.stringify(item.args, null, 2)}</code></pre></div>`
         : view.extras.length > 0 ? html`<div class="chat-tool-kv">${view.extras.map(([key, value]) => html`<div class="chat-tool-kv__row"><span class="chat-tool-kv__key">${key}:</span><span class="chat-tool-kv__value">${displayToolValue(value)}</span></div>`)}</div>` : nothing}
       ${output ? html`<div class="chat-tool-card__block">

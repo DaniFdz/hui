@@ -6,7 +6,8 @@
  *
  * It owns presentation and per-view state (`files-view-state.ts`); the File draft (`file-draft.ts`) owns unsaved text
  * and saves, shared with other views of the same file; the gateway owns the disk. The editor itself loads on demand
- * (`file-editor.ts`). It refreshes when the conversation's agent turn ends and when it becomes visible again.
+ * (`file-editor.ts`). It refreshes when the conversation's agent turn ends and when it becomes visible again. A reveal
+ * request (a file reference clicked in the chat, `files-view-state.ts`) opens a file at a line or a folder in the tree.
  *
  * Behaviour follows AgentsInTheCloud's Files view (packages/files, MIT, see THIRD_PARTY_NOTICES.md); the markup is HUI's.
  * No decorators: the Work pane's view registry, which imports this lazily, also loads in Node tests.
@@ -34,7 +35,7 @@ import {
   searchFiles,
   uploadFile,
 } from "../lib/files-store.ts";
-import { readFilesViewState, writeFilesViewState, type MarkdownDisplayMode } from "../lib/files-view-state.ts";
+import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesViewState, type FilesViewReveal, type MarkdownDisplayMode } from "../lib/files-view-state.ts";
 import { onTurnEnd } from "../lib/session-turn-end.ts";
 import type { FileEditorHandle } from "../lib/file-editor.ts";
 
@@ -167,6 +168,11 @@ export class HuiFilesView extends HuiElement {
   /** What the editor was last told, so a draft notification reconfigures it only on a real change. */
   private editorReadOnly = false;
   private stopTurnEnd: (() => void) | undefined;
+  private stopReveal: (() => void) | undefined;
+  /** `reset` has not finished loading the view yet; it takes any reveal request itself when it does. */
+  private resetting = false;
+  /** The line to show once the file being opened has its editor. */
+  private pendingLine: { line: number; column?: number | undefined } | undefined;
   private wasVisible = false;
 
   constructor() {
@@ -200,12 +206,15 @@ export class HuiFilesView extends HuiElement {
     super.connectedCallback();
     guardUnload();
     if (this.sessionId) this.subscribeTurnEnd();
+    if (this.viewId) this.subscribeReveal();
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.stopTurnEnd?.();
     this.stopTurnEnd = undefined;
+    this.stopReveal?.();
+    this.stopReveal = undefined;
     this.closeFile();
     clearTimeout(this.filterTimer);
     this.searchAbort?.abort();
@@ -228,12 +237,23 @@ export class HuiFilesView extends HuiElement {
     this.stopTurnEnd = onTurnEnd(this.sessionId, () => void this.refresh());
   }
 
+  private subscribeReveal() {
+    this.stopReveal?.();
+    this.stopReveal = onFilesViewReveal(this.viewId, () => {
+      if (this.resetting || !this.info) return;
+      const target = takeFilesViewReveal(this.viewId);
+      if (target && this.info.available) void this.reveal(target);
+    });
+  }
+
   /* ── loading ── */
 
   private async reset() {
     const generation = ++this.generation;
+    this.resetting = true;
     this.closeFile();
     this.subscribeTurnEnd();
+    this.subscribeReveal();
     const state = readFilesViewState(this.viewId);
     this.expanded = new Set(state.expanded);
     this.navigatorOpen = state.navigatorOpen;
@@ -252,9 +272,63 @@ export class HuiFilesView extends HuiElement {
     }
     if (generation !== this.generation) return;
     this.info = info;
-    if (!info.available) return;
+    if (!info.available) {
+      this.resetting = false;
+      takeFilesViewReveal(this.viewId);
+      return;
+    }
     await Promise.all(["", ...this.expanded].map((path) => this.loadDirectory(path, generation)));
-    if (state.selected && generation === this.generation) void this.open(state.selected, { keepDrawer: true });
+    if (generation !== this.generation) return;
+    this.resetting = false;
+    const target = takeFilesViewReveal(this.viewId);
+    if (target) void this.reveal(target);
+    else if (state.selected) void this.open(state.selected, { keepDrawer: true });
+  }
+
+  /** Shows what a reveal request names: a file (at its line, when given) or a folder, opened in the tree. */
+  private async reveal(target: FilesViewReveal) {
+    if (this.filter) {
+      this.searchAbort?.abort();
+      this.filter = "";
+      this.search = undefined;
+      this.searchError = "";
+    }
+    if (target.kind === "directory") {
+      if (this.narrow) this.drawerOpen = true;
+      else if (!this.navigatorOpen) {
+        this.navigatorOpen = true;
+        this.persist();
+      }
+      const folders: string[] = [];
+      for (let folder = target.path; folder; folder = parentOf(folder)) folders.unshift(folder);
+      const missing = folders.filter((folder) => !this.expanded.has(folder));
+      if (missing.length) {
+        this.expanded = new Set([...this.expanded, ...missing]);
+        this.persist();
+      }
+      await Promise.all(folders.filter((folder) => !this.dirs.get(folder)?.entries).map((folder) => this.loadDirectory(folder)));
+      this.scrollRowIntoView(target.path);
+      return;
+    }
+    const line = target.line ? { line: target.line, column: target.column } : undefined;
+    if (line && isMarkdownPath(target.path) && this.markdownMode === "rendered") this.setMarkdownMode("source");
+    if (this.selected === target.path && this.file && !this.fileError && !this.fileLoading) {
+      // Already open (and maybe edited): keep it, just show the line.
+      if (this.narrow) this.drawerOpen = false;
+      this.revealInTree(target.path);
+      if (line && this.editor) this.editor.revealLine(line.line, line.column);
+      else this.pendingLine = line;
+    } else {
+      await this.open(target.path, line ? { line } : {});
+    }
+    this.scrollRowIntoView(target.path);
+  }
+
+  private scrollRowIntoView(path: string) {
+    void this.updateComplete.then(() => {
+      const row = [...this.querySelectorAll<HTMLElement>("button.hui-files-row__main")].find((candidate) => candidate.dataset["path"] === path);
+      row?.scrollIntoView({ block: "nearest" });
+    });
   }
 
   private setDirectory(path: string, state: DirectoryState) {
@@ -360,8 +434,9 @@ export class HuiFilesView extends HuiElement {
     this.fileError = "";
   }
 
-  async open(path: string, options: { keepDrawer?: boolean } = {}) {
+  async open(path: string, options: { keepDrawer?: boolean; line?: { line: number; column?: number | undefined } } = {}) {
     if (this.selected !== path || this.file || this.fileError) this.closeFile();
+    this.pendingLine = options.line;
     const sequence = ++this.openSequence;
     this.selected = path;
     this.persist();
@@ -438,6 +513,9 @@ export class HuiFilesView extends HuiElement {
     this.editorReady = true;
     this.renderDraft();
     if (draft.dirty && !draft.conflict) this.scheduleSave();
+    const line = this.pendingLine;
+    this.pendingLine = undefined;
+    if (line) void this.updateComplete.then(() => { if (this.editor === editor) editor.revealLine(line.line, line.column); });
   }
 
   private async openPreview(path: string, sequence: number) {

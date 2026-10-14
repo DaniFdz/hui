@@ -18,6 +18,7 @@ import type { ObservabilitySnapshot } from "../lib/observability.ts";
 import { icons } from "../lib/icons.ts";
 import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { renderPicker, renderSettingsPicker } from "./settings-picker.ts";
+import { renderListFilter } from "./list-filter.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import "./settings-tools.ts";
 import "./settings-browser.ts";
@@ -25,7 +26,6 @@ import "./settings-vscode.ts";
 import "./settings-jira.ts";
 import "./settings-calls.ts";
 import "./settings-github.ts";
-import "./settings-slack.ts";
 import "./settings-providers.ts";
 import "./settings-workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
@@ -120,6 +120,7 @@ export type SettingsProps = AutomationProps & {
   onChangeBrowser: (next: Settings["browser"]) => Promise<unknown> | void;
   /** Resolves once the settings write lands, so the VS Code section can re-read status. */
   onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
+  onChangeCodemode: (next: Settings["codemode"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
@@ -610,6 +611,7 @@ function renderSkillsPage(props: SettingsProps) {
       renderPiUrlForm(props, "Skill URL", "https://github.com/owner/skill", "Install skill", props.onInstallSkill),
     )}
     ${renderPiOperation(props, "skill-install")}
+    ${pi.skills.length ? renderListFilter("Search skills") : nothing}
     ${renderSection(
       "Installed skills",
       pi.skills.length === 1 ? "1 skill available" : `${pi.skills.length} skills available`,
@@ -624,7 +626,7 @@ function renderSkillsPage(props: SettingsProps) {
               (skill) => {
                 const enabled = skillIsEnabled(skill, props.settings.disabledSkills);
                 return html`
-                <article class="settings-row plugins-item">
+                <article class="settings-row plugins-item" data-filter=${`${skill.name} ${skill.description} ${skill.tags?.join(" ") ?? ""}`}>
                   <div class="settings-row__text" title=${skill.path}>
                     <span class="settings-row__title">${skill.name} ${skill.tags?.map((tag) => html`<span class="capability-badge">${tag}</span>`)}</span>
                     <span class="settings-row__desc">${skill.description || "No description provided."}</span>
@@ -632,6 +634,7 @@ function renderSkillsPage(props: SettingsProps) {
                   </div>
                   <div class="settings-row__control pi-package-actions">
                     <button type="button" class="btn btn--icon pi-resource-read-button" aria-label=${`Read ${skill.name}`} title=${`Read ${skill.name}`} @click=${() => props.onReadSkill(skill)}>${icons.eye}</button>
+                    ${skill.origin === "hui" ? nothing : html`<a class="btn btn--icon pi-resource-read-button" href=${`vscode://file${skill.path.split("/").map(encodeURIComponent).join("/")}`} aria-label=${`Edit ${skill.name} in VS Code`} title=${`Edit ${skill.name} in VS Code`}>${icons.edit}</a>`}
                     ${renderSettingsToggle(
                       `Enable ${skill.name} in HUI`,
                       enabled,
@@ -648,13 +651,12 @@ function renderSkillsPage(props: SettingsProps) {
   `;
 }
 
-/** One section per external service: Jira, GitHub, then Slack. */
+/** One section per external service: Jira, then GitHub. */
 function renderIntegrationsPage() {
   return html`
     <p class="settings-page__intro">Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.</p>
     <hui-jira-settings></hui-jira-settings>
     <hui-github-settings></hui-github-settings>
-    <hui-slack-settings></hui-slack-settings>
   `;
 }
 
@@ -662,7 +664,21 @@ function renderToolsPage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">HUI owns the tools, the managed browser, the VS Code server and the default prompt. Inspect the shipped catalog without opening a session, or inspect an already-running session.</p>
     <hui-browser-settings .settings=${props.settings.browser} .onChange=${props.onChangeBrowser}></hui-browser-settings>
+    <section class="settings-section" data-settings-section="codemode">
+      <div class="settings-section__header"><div class="settings-section__copy">
+        <h2 class="settings-section__heading">Codemode</h2>
+        <p class="settings-section__desc">Agents can write one JavaScript script that calls their other tools, several at once, and get back only what the script prints. The chat shows each script as one card with the calls it made.</p>
+      </div></div>
+      <div class="settings-group"><div class="settings-row">
+        <div class="settings-row__text">
+          <span class="settings-row__title">Codemode tool</span>
+          <span class="settings-row__desc">Offer codemode to every session, from its next request. A script that is already running finishes. Sessions still on the older PI worker don't get it.</span>
+        </div>
+        <div class="settings-row__control">${renderSettingsToggle("Codemode tool", props.settings.codemode.enabled, (enabled) => props.onChangeCodemode({ enabled }))}</div>
+      </div></div>
+    </section>
     <hui-vscode-settings .settings=${props.settings.vscode} .onChange=${props.onChangeVscode}></hui-vscode-settings>
+    ${renderListFilter("Search tools")}
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
 }
 
@@ -872,13 +888,14 @@ function renderPluginsPage(props: SettingsProps) {
     )}
     ${renderPiOperation(props, "package-install")}
     ${renderPiOperation(props, "package-remove")}
+    ${resources.length ? renderListFilter("Search plugins") : nothing}
     ${renderSection(
       "Installed",
       resources.length ? `${resources.length} configured source${resources.length === 1 ? "" : "s"}` : "No packages or extensions configured.",
       resources.length
         ? html`<div>${resources.map((resource) => {
           const enabled = !props.settings.disabledPlugins.some((entry) => entry.id === resource.id);
-          return html`<article class="settings-row plugins-item"><div class="settings-row__text"><span class="settings-row__title">${resource.label}</span><span class="settings-row__desc">${resource.kind === "package" ? "Managed by PI" : "Direct extension"} · applies on next runtime start</span></div><div class="settings-row__control pi-package-actions">
+          return html`<article class="settings-row plugins-item" data-filter=${resource.label}><div class="settings-row__text"><span class="settings-row__title">${resource.label}</span><span class="settings-row__desc">${resource.kind === "package" ? "Managed by PI" : "Direct extension"} · applies on next runtime start</span></div><div class="settings-row__control pi-package-actions">
             <button type="button" class="btn btn--icon pi-resource-read-button" aria-label=${`Read ${resource.label}`} title=${`Read ${resource.label}`} @click=${() => props.onReadPlugin(resource)}>${icons.eye}</button>
             ${renderSettingsToggle(`Enable ${resource.label} in HUI`, enabled, (checked) => props.onSetPluginEnabled(resource, checked))}
             ${resource.kind === "package" ? props.piRemoveCandidate === resource.label

@@ -66,7 +66,7 @@ test("the gateway serves the sandbox page without x-hui and keeps every other ro
   const address = server.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
-  t.after(async () => { stopBackend(); server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); await rm(dir, { recursive: true, force: true }); });
+  t.after(async () => { await stopBackend(); server.closeAllConnections(); await new Promise<void>((done) => server.close(() => done())); await rm(dir, { recursive: true, force: true }); });
 
   const page = await fetch(origin + WIDGET_SANDBOX_PATH);
   assert.equal(page.status, 200);

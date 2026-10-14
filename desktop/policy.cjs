@@ -8,7 +8,8 @@ function isInternal(url, origin) {
 }
 
 function isExternal(url) {
-  try { return ['https:', 'http:', 'mailto:'].includes(new URL(url).protocol); }
+  // vscode: only opens a file; its other handlers (clone, extension URIs) stay blocked.
+  try { return ['https:', 'http:', 'mailto:'].includes(new URL(url).protocol) || url.startsWith('vscode://file/'); }
   catch { return false; }
 }
 

@@ -11,13 +11,16 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, chmod, lstat, mkdir, open, readdir, readFile, realpath, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import {
   MAX_EDITABLE_FILE_BYTES,
   MAX_RAW_FILE_BYTES,
+  MAX_RESOLVE_PATH_LENGTH,
   fileExtension,
   previewMimeType,
   type FileEntry,
+  type FileLocation,
   type FileRead,
   type FileSaved,
   type FilesListing,
@@ -152,9 +155,12 @@ function notFound(error: unknown, message: string): never {
 export class FilesRoot {
   /** The root's real path. */
   readonly root: string;
+  /** The working directory as the registry records it (absolute, not followed through links). */
+  private readonly recorded: string;
 
-  private constructor(root: string) {
+  private constructor(root: string, recorded: string) {
     this.root = root;
+    this.recorded = recorded;
   }
 
   static async open(cwd: string): Promise<FilesRoot> {
@@ -166,7 +172,7 @@ export class FilesRoot {
     }
     const info = await stat(root);
     if (!info.isDirectory()) throw new FilesError("The conversation's working directory is not a folder.", 404, "not_found");
-    return new FilesRoot(root);
+    return new FilesRoot(root, resolve(cwd));
   }
 
   private inside(path: string): boolean {
@@ -229,6 +235,39 @@ export class FilesRoot {
       return { name, path, kind: "file", size };
     }
     return { name, path, kind: "other", size: 0 };
+  }
+
+  /**
+   * Where a path the agent wrote in the chat points, when that is an existing file or folder inside the root: a
+   * relative path (`./` and inner `..` resolved lexically, never above the root), an absolute one under the root as
+   * either its real or its recorded location, or one under `~/` that lands there. Anything else is `undefined`
+   * without touching the disk outside the root; inside it, `existing` applies the same realpath rule every route does.
+   */
+  async locate(input: string): Promise<FileLocation | undefined> {
+    let value = input.trim().replace(/\/+$/u, "") || input.trim();
+    if (!value || value.length > MAX_RESOLVE_PATH_LENGTH || value.includes("\0")) return undefined;
+    if (value === "~" || value.startsWith("~/")) value = join(homedir(), value.slice(1));
+    let rel: string;
+    if (isAbsolute(value)) {
+      const base = [this.root, this.recorded].find((candidate) => value === candidate || value.startsWith(candidate.endsWith(sep) ? candidate : `${candidate}${sep}`));
+      if (!base) return undefined;
+      rel = relative(base, value).split(sep).join("/");
+    } else {
+      rel = value;
+    }
+    rel = posix.normalize(rel || ".");
+    if (rel === ".." || rel.startsWith("../") || rel.startsWith("/")) return undefined;
+    if (rel === ".") rel = "";
+    try {
+      const { real, rel: clean } = await this.existing(rel);
+      const info = await stat(real);
+      if (info.isDirectory()) return { path: clean, kind: "directory" };
+      if (info.isFile()) return { path: clean, kind: "file" };
+      return undefined;
+    } catch (error) {
+      if (error instanceof FilesError || errorCode(error) === "ENOENT") return undefined;
+      throw error;
+    }
   }
 
   async list(path: string): Promise<FilesListing> {

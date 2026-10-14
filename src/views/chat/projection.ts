@@ -14,7 +14,7 @@ export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compacti
 
 /** Tool calls that present something to the user get a row of their own, so
  * they stay visible after the turn's other activity folds into a disclosure. */
-const PRESENTATION_TOOLS = new Set(["present_media", "show_widget"]);
+const PRESENTATION_TOOLS = new Set(["present_media", "show_widget", "ask_user_question"]);
 
 export type ChatProjectionRow =
   | { kind: "messages"; id: string; role: ChatMessage["role"]; messages: readonly ChatMessage[] }

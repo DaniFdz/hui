@@ -18,6 +18,8 @@ import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harnes
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
+import { createCodemodeExtension } from "@earendil-works/pi-durable/codemode";
+import { CodemodeSandbox } from "@earendil-works/pi-codemode";
 import { SettingsManager, type ModelRuntime, type ResourceLoader } from "@earendil-works/pi-coding-agent";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { CONFIG_DIR } from "../paths.ts";
@@ -34,6 +36,9 @@ import { botRoutinesTool } from "./durable-bot-routines.ts";
 import { botSkillsDir } from "../bot-skills.ts";
 import { invokeAgentTool } from "../agent-tools-bridge.ts";
 
+/** The tools of `extension` the model may call: not the ones only other tools call, such as codemode's `models.*`. */
+export const modelCallable = (extension: Extension): ToolRegistration[] =>
+  (extension.tools ?? []).filter((tool) => tool.callers?.includes("model") ?? true);
 /** Durable APIs take a cancellation context; HUI's own calls are not scoped. */
 export const durableContext = BACKGROUND_CONTEXT;
 /** Longest interrupted runs wait for their sessions to load their PI extensions again before they resume anyway. */
@@ -111,7 +116,7 @@ type RequestCallbacks = {
   onPayload?: (payload: unknown, model: unknown) => unknown;
   onResponse?: (response: ProviderResponse, model: unknown) => void | Promise<void>;
 };
-type RequestOptions = ({ readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>> } & RequestCallbacks) | undefined;
+type RequestOptions = ({ readonly signal?: AbortSignal; readonly env?: Readonly<Record<string, string>>; readonly maxTokens?: number; readonly reasoning?: string } & RequestCallbacks) | undefined;
 
 /** Model reads go to the runtime current at each use, so provider changes
  * made in Settings reach running conversations at their next request. Every
@@ -131,7 +136,13 @@ class CurrentModels {
         const call = value as (...args: unknown[]) => unknown;
         if (!REQUEST_CALLS.has(key)) return call.bind(target);
         return (...args: unknown[]) => {
-          const options = args[2] as RequestOptions;
+          const given = args[2] as RequestOptions;
+          const { maxTokens: _cap, ...uncapped } = given ?? {};
+          // Durable caps only its summary request, at 0.8 × reserveTokens, and adaptive and effort-based models spend
+          // their thinking from that cap: at high levels the summary stops on `length` and the compaction fails
+          // (earendil-works/pi#9075). A request that reasons gets the model's output cap, which pi-ai still fits into
+          // the free context window, as an ordinary turn does.
+          const options = given?.reasoning ? uncapped : given;
           // Only Durable's own requests are attributed, and they bring no callbacks of their own.
           args[2] = { ...callbacks(options), ...options, env: { ...requestEnv(options), ...options?.env } };
           return call.apply(target, args);
@@ -201,6 +212,13 @@ export class DurableHost implements ExtensionHost {
   /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests; a worker host
    * leaves it unset. */
   botAccessRecorded: ((botId: string, access: BotAccess) => Promise<void>) | undefined;
+  /** The store failed, was released and is about to open again: the gateway reattaches the sessions it ended. */
+  storeFailed: (() => Promise<void>) | undefined;
+  #openedAt = 0;
+  /** Set while a failed store waits to open again; any close ends that wait. */
+  #reopening: symbol | undefined;
+  /** Store failures in a row, each within a minute of the store opening again. */
+  #failures = 0;
   /** Live sessions that answer for their conversation: a bot's own tools ask the operator through them. */
   #chats = new Set<BotChat & { conversation(): Conversation }>();
   /** Access requests waiting for a conversation's chat to open again (`whenChat`), and the chats that can take them. */
@@ -208,6 +226,9 @@ export class DurableHost implements ExtensionHost {
   #readyChats = new WeakSet<BotChat>();
   #models = new CurrentModels((options) => this.#requestEnv(options), (options) => this.#requestCallbacks(options));
   #registry: Registry = createRegistry();
+  /** PI's `codemode` tool and its prompt section, selected by default; Settings → Tools → Codemode off removes it.
+   * Each script runs in a worker thread of its own, which closing the store stops by aborting the call. */
+  readonly codemode = createCodemodeExtension({ sandbox: new CodemodeSandbox({ memoryLimitBytes: 256 * 1024 * 1024 }) });
   /** Each live session's PI extensions, by HUI session. */
   #extensions = new Map<string, DurableExtensions>();
   /** Each attributed request's identity, by its task invocation's abort signal. */
@@ -229,7 +250,10 @@ export class DurableHost implements ExtensionHost {
   #envs = new Map<string, NodeExecutionEnv>();
   /** Durable conversation → HUI session, the only caller identity HUI tools accept. */
   #callers = new Map<ConversationId, string>();
+  /** The current open, settled or not; a close takes it. */
   #opening: Promise<Harness> | undefined;
+  /** The latest close, until it has released the store. */
+  #closing: Promise<void> | undefined;
   #harness: Harness | undefined;
   #release: (() => void) | undefined;
   #resume: boolean;
@@ -352,11 +376,19 @@ export class DurableHost implements ExtensionHost {
     }
   }
   untrackChat(chat: BotChat & { conversation(): Conversation }): void { this.#chats.delete(chat); }
+  /** Every open session offers its tools again, from its next request: a Settings change decides them (Codemode). */
+  async applyTools(): Promise<void> {
+    await Promise.all([...this.#chats].map((chat) => chat.applyTools().catch((error: unknown) => recordDiagnosticEvent({
+      area: "runtime", level: "warning", action: "durable_apply_tools_failed", summary: "A Durable session kept its previous tools",
+      detail: error instanceof Error ? error.message : String(error),
+    }))));
+  }
 
   /** The tools every bot's chat has before extensions that the operator can turn off: what a chat that isn't running
    * here is checked against. Never the ones that act on another machine (`gatewayOnlyTools`). */
-  builtinBotOffer(): OfferedTool[] {
-    return builtinOffer(this.codingTools, this.huiTools.filter((tool) => !this.gatewayOnlyTools.includes(tool.name)), this.botTools);
+  async builtinBotOffer(): Promise<OfferedTool[]> {
+    const codemode = (await this.settings()).codemode.enabled ? modelCallable(this.codemode) : [];
+    return builtinOffer(this.codingTools, this.huiTools.filter((tool) => !this.gatewayOnlyTools.includes(tool.name)), this.botTools, codemode);
   }
 
   /** The live session following the conversation now; a rewind moves a session to its fork. */
@@ -432,12 +464,18 @@ export class DurableHost implements ExtensionHost {
     return caller === undefined ? undefined : this.#extensions.get(caller);
   }
 
-  /** Opens the store once and resumes every interrupted run in it. */
+  /** Opens the store once and resumes every interrupted run in it. A close
+   * still running finishes first, so the store is released before it reopens. */
   open(): Promise<Harness> {
-    this.#opening ??= this.#open().catch((error: unknown) => {
-      this.#opening = undefined;
-      throw error;
-    });
+    if (!this.#opening) {
+      const closing = this.#closing;
+      const opening: Promise<Harness> = (closing ? closing.catch(() => undefined).then(() => this.#open()) : this.#open())
+        .catch((error: unknown) => {
+          if (this.#opening === opening) this.#opening = undefined;
+          throw error;
+        });
+      this.#opening = opening;
+    }
     return this.#opening;
   }
 
@@ -450,7 +488,8 @@ export class DurableHost implements ExtensionHost {
       // OptChat's hooks come before every session's PI extensions: its compaction decline is the first decision, and its
       // request is what their context handlers see. OptChat's tools and bots' tools are installed but not in the default
       // selection: only an OptChat conversation, or a bot's chat, adds them.
-      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, this.#bots.section];
+      // Codemode is in the default selection, last, so a conversation stores nothing while Settings keep it on.
+      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, this.#bots.section, this.codemode];
       for (const extension of [...base, this.optchat.toolsExtension, this.#bots.tools]) this.#registry.install(extension);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
@@ -465,6 +504,10 @@ export class DurableHost implements ExtensionHost {
       }, durableContext);
       this.optchat.attach(harness, { follow: this.#resume });
       this.#harness = harness;
+      this.#openedAt = Date.now();
+      // Since Durable 1.2.0 a storage error closes the whole harness: its sessions end (`DurableSession.onExit`), and once
+      // the store is released the next `open()` reopens it and resumes their runs.
+      void harness.closed.then((end) => { if (end.reason === "failed") void this.#failed(harness, end.error); });
       // Unfinished generations and tool calls continue even before any browser
       // reopens their session. Without it, nothing is scheduled: the store is
       // only read and written in commits.
@@ -474,6 +517,41 @@ export class DurableHost implements ExtensionHost {
       this.#release?.();
       this.#release = undefined;
       throw error;
+    }
+  }
+
+  /** The store failed: it is released, then opened again (`#reopen`). */
+  async #failed(harness: Harness, error: unknown): Promise<void> {
+    if (this.#harness !== harness) return;
+    this.#failures = Date.now() - this.#openedAt < 60_000 ? this.#failures + 1 : 1;
+    recordDiagnosticEvent({
+      area: "runtime", level: "error", action: "durable_store_failed", summary: "The Durable store failed; it was released to open again",
+      detail: error instanceof Error ? error.message : String(error),
+    });
+    await this.close().catch(() => undefined);
+    const reopening = this.#reopening = Symbol("reopen");
+    await this.#reopen(reopening);
+  }
+
+  /** Opens the released store again after a pause that doubles with each failure in a row (up to a minute), so a store
+   * that keeps failing is not reopened in a tight loop. `storeFailed` comes first, so the sessions it ended reattach and
+   * the runs it resumes find their extensions. A store that does not open is tried again, after a longer pause. */
+  async #reopen(reopening: symbol): Promise<void> {
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(60_000, 1_000 * 2 ** (this.#failures - 1))).unref());
+      // A close since (the gateway stopping) ends it.
+      if (this.#reopening !== reopening) return;
+      try {
+        await this.storeFailed?.();
+        await this.open();
+        return;
+      } catch (error) {
+        this.#failures += 1;
+        recordDiagnosticEvent({
+          area: "runtime", level: "warning", action: "durable_reopen_failed", summary: "The Durable store did not open again; HUI tries again",
+          detail: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
@@ -579,11 +657,23 @@ export class DurableHost implements ExtensionHost {
     return harness.commit(async (tx) => JSON.parse(JSON.stringify(await tx.doc(UsageDoc, conversationId))) as { models?: Record<string, Record<string, unknown>> }, durableContext);
   }
 
-  /** Closing records no outcome: running work resumes when the store reopens. */
-  async close(): Promise<void> {
+  /** Closing records no outcome: running work resumes when the store reopens.
+   * It settles once the store is released. An open in progress finishes
+   * first, and a close called meanwhile shares the one already running. */
+  close(): Promise<void> {
+    this.#reopening = undefined;
     const opening = this.#opening;
     this.#opening = undefined;
-    const harness = this.#harness ?? await opening?.catch(() => undefined);
+    if (!opening) return this.#closing ?? Promise.resolve();
+    const closing: Promise<void> = this.#close(opening).finally(() => {
+      if (this.#closing === closing) this.#closing = undefined;
+    });
+    this.#closing = closing;
+    return closing;
+  }
+
+  async #close(opening: Promise<Harness>): Promise<void> {
+    const harness = await opening.catch(() => undefined);
     this.#harness = undefined;
     try {
       await harness?.close(durableContext);

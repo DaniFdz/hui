@@ -6,7 +6,7 @@ import { cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "nod
 import { createServer, get } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { test } from "node:test";
 import { watch } from "node:fs";
@@ -64,7 +64,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   for (const path of ["desktop/main.cjs", "desktop/launch.mjs", "desktop/install.mjs", "desktop/icon.mjs", "desktop/policy.cjs"]) {
     assert(packed.files.some((file: { path: string }) => file.path === path), `Desktop package contains ${path}`);
   }
-  for (const path of ["LICENSE", "README.md", "THIRD_PARTY_NOTICES.md", "npm-shrinkwrap.json"]) {
+  for (const path of ["LICENSE", "README.md", "THIRD_PARTY_NOTICES.md", "build/package-lock.json"]) {
     assert(packed.files.some((file: { path: string }) => file.path === path), `Package contains ${path}`);
   }
   for (const path of ["SKILL.md", "references/LICENSE", "references/UPSTREAM.md", "references/agent-compatibility.md", "references/evidence-delivery.md", "references/feature-map-example/README.md", "references/feature-map-example/search.md", "references/feature-map-example/create-note.md"]) {
@@ -73,8 +73,14 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   assert(packed.files.some((file: { path: string }) => file.path === "build/skills/git-selective-staging/SKILL.md"), "Package contains git-selective-staging");
   assert(packed.files.some((file: { path: string }) => file.path === "build/skills/visualize/SKILL.md"), "Package contains visualize");
   assert(!packed.files.some((file: { path: string }) => /\.test\.|^(src|media|e2e|node_modules)\//u.test(file.path)), "Package excludes source/tests/personal data");
+  // npm reads a root npm-shrinkwrap.json instead of package-lock.json, so a stale one breaks npm ci.
+  await assert.rejects(stat(join(repo, "npm-shrinkwrap.json")), { code: "ENOENT" }, "The build leaves no npm-shrinkwrap.json in the checkout");
   await npm(["install", "--global", "--prefix", prefix, "--ignore-scripts", "--no-audit", "--no-fund", join(temporary, packed.filename)]);
   await assert.rejects(stat(join(installed, "node_modules/vite")), { code: "ENOENT" });
+  // Remote workers install the lockfile the package was built with.
+  const { workerRelease } = await import(pathToFileURL(join(installed, "build/server/worker/release.js")).href);
+  const shipped = (await workerRelease()).files.find((file: { path: string }) => file.path === "package-lock.json");
+  assert(shipped?.data.equals(await readFile(join(repo, "package-lock.json"))), "The installed worker release ships the built lockfile");
   assert.equal(await command("--version"), baseline);
   assert.match(await command("--help"), /gateway start/u);
   assert.match(await command("--help"), /hui desktop/u);
@@ -130,7 +136,10 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     return response.json();
   };
   const waitIdle = (id: string, label = "session") => waitStatus(id, "idle", label);
+  // A failure names what the stream showed and why it ended, with the gateway's
+  // log: the TAP report carries only the message, and the log is deleted after.
   const waitStatus = async (id: string, wanted: "idle" | "running", label: string) => {
+    const seen: string[] = [];
     try {
       const response = await fetch(new URL(`/__hui/sessions/${id}/events`, status.url), { headers: { "x-hui": "1" }, signal: AbortSignal.timeout(20_000) });
       const reader = response.body!.getReader(); const decoder = new TextDecoder(); let buffer = "";
@@ -140,14 +149,20 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
           buffer += decoder.decode(result.value, { stream: true });
           while (buffer.includes("\n\n")) {
             const end = buffer.indexOf("\n\n"); const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+            const event = frame.split("\n").find((line) => line.startsWith("event: "))?.slice(7);
             const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
-            if (data && JSON.parse(data).status === wanted) return;
-            if (data && JSON.parse(data).status === "error") throw new Error("SDK session boot failed");
+            const parsed = data ? JSON.parse(data) as { status?: unknown; type?: unknown; message?: unknown } : undefined;
+            if (parsed?.status !== undefined) seen.push(`${event}:${String(parsed.status)}`);
+            else if (event === "event" && parsed?.type === "error") seen.push(`error:${String(parsed.message)}`);
+            if (parsed?.status === wanted) return;
+            if (parsed?.status === "error") throw new Error("SDK session boot failed");
           }
         }
       } finally { await reader.cancel(); }
     } catch (error) {
-      throw new Error(`${label} did not reach ${wanted}.`, { cause: error });
+      const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+      const log = await command("gateway", "logs", "--lines", "40").catch((logError: unknown) => `gateway logs unavailable: ${String(logError)}`);
+      throw new Error(`${label} did not reach ${wanted} (${reason}; stream: ${seen.join(", ") || "nothing"}).\nGateway log:\n${log}`, { cause: error });
     }
   };
   assert.match(await (await fetch(new URL("/settings/tools", status.url))).text(), /hui-app/u);
@@ -239,9 +254,6 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     for (const asset of ["bin", "build", "dist", "desktop"]) await cp(join(installed, asset), join(directory, asset), { recursive: true });
     const pkg = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
     await writeFile(join(directory, "package.json"), JSON.stringify({ ...pkg, version }));
-    const lock = JSON.parse(await readFile(join(installed, "npm-shrinkwrap.json"), "utf8"));
-    lock.version = version; lock.packages[""].version = version;
-    await writeFile(join(directory, "npm-shrinkwrap.json"), JSON.stringify(lock));
     await writeFile(join(directory, "build/release.json"), JSON.stringify({ format: 1, version }));
     if (failActivation) {
       const entry = join(directory, "build/cli/gateway-run.js");
@@ -307,6 +319,10 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   const checked = JSON.parse(await command("update", "--check", "--json"));
   assert.equal(checked.canInstall, true); assert.equal(checked.latest.version, nextVersion);
   assert.equal(await command("--version"), baseline, "check never installs");
+  // The replay interrupted by the forced restart above resumes when this gateway
+  // starts. Count the provider's holds first, so the release below waits for this
+  // gateway's own resend rather than for any hold the provider has seen.
+  const heldBeforeReopen = (await (await fetch(`${providerUrl}/control/wait-held?count=0`)).json() as { held: number }).held;
   status = JSON.parse(await command("gateway", "start", "--port", "0", "--json"));
   assert.equal((await api("update/check", {})).check.canInstall, true);
   assert.equal((await fetch(new URL("/__hui/update", status.url))).status, 403);
@@ -319,7 +335,8 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
     assert.equal((await post(`sessions/${session.id}/${verb}`, { text: "/update --force" })).status, 400);
   }
   await api(`sessions/${session.id}/open`, {});
-  await fetch(`${providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(20_000) });
+  assert.equal((await fetch(`${providerUrl}/control/wait-held?count=${heldBeforeReopen + 1}`, { signal: AbortSignal.timeout(20_000) })).status, 200);
+  await waitStatus(session.id, "running", "remote update reopen resend");
   await fetch(`${providerUrl}/control/release-replay`, { method: "POST" });
   await waitIdle(session.id, "remote update reopen");
   await api(`sessions/${session.id}/prompt`, { text: "E2E_REPLAY" });

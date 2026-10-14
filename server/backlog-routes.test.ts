@@ -57,7 +57,7 @@ test("backlog routes merge Jira and local items, regroup, link and save suggesti
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
   t.after(async () => {
-    stopBackend();
+    await stopBackend();
     server.closeAllConnections();
     jira.closeAllConnections();
     await new Promise<void>((r) => server.close(() => r()));

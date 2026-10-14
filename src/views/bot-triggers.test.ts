@@ -29,23 +29,22 @@ test("each trigger shows its source, what it watches, when it last fired, its co
   assert.match(card, /sent together at \$\{whenLabel\(trigger\.pending\.until, props\.now\)\}/u, "what waits for the cooldown");
   assert.match(card, /aria-label=\$\{`Test \$\{trigger\.name\}`\}/u);
   assert.match(card, /aria-label=\$\{`Delete \$\{trigger\.name\}`\}/u);
-  assert.match(card, /New URL/u, "a webhook trigger's URL can be replaced");
+  assert.match(card, /New URL/u, "a trigger's URL can be replaced");
+  assert.match(card, /URL …\/hooks\/\$\{trigger\.tokenHint \?\? ""\}…/u, "and told apart by its first characters");
   assert.doesNotMatch(card, /tokenHash/u);
 });
 
-test("a webhook URL shows once with Copy, and the add form offers each source's fields", () => {
+test("a trigger's URL shows once with Copy and what to send it, and the add form offers a listener's filter", () => {
   const source = read("./bot-triggers.ts");
   const revealed = between(source, "function renderRevealed(", "function renderRun(");
   assert.match(revealed, /Copy it now: HUI keeps only a fingerprint of it and can't show it again\./u);
+  assert.match(revealed, /Give it to your listener: after every check it POSTs/u);
   assert.match(revealed, /props\.onCopy/u);
   const form = between(source, "function renderForm(", "/** The Triggers section");
-  for (const source of ["github", "session", "webhook"]) assert.match(form, new RegExp(`bot-trigger-form__when--${source}`, "u"));
-  assert.match(form, /name="githubEvents"/u);
-  assert.match(form, /name="sessionEvents"/u);
-  assert.match(form, /name="matchField"/u);
-  assert.match(form, /Your own comments and reviews never wake/u);
+  for (const name of ["matchField", "matchOp", "matchValue", "prLinks", "external", "bots"]) assert.match(form, new RegExp(`name="${name}"`, "u"));
+  assert.match(form, /Each event wakes \$\{name\} once, events from before the trigger never do, and an empty report only says the listener is alive\./u);
+  assert.doesNotMatch(form, /name="source"/u, "one kind: nothing to choose");
   const styles = read("../styles/bot-triggers.css");
-  assert.match(styles, /\.bot-trigger-form:has\(input\[name="source"\]\[value="webhook"\]:checked\) \.bot-trigger-form__when--webhook \{ display: flex; \}/u);
   assert.doesNotMatch(styles, /#[0-9a-f]{3,8}\b/iu, "theme tokens only, dark and light alike");
   assert.deepEqual(COOLDOWN_CHOICES, [0, 60, 300, 900, 3_600]);
 });
@@ -60,25 +59,9 @@ test("times read as people say them", () => {
   assert.match(whenLabel("2026-10-07T12:05:00Z", now), /\d{1,2}:\d{2}/u);
 });
 
-test("the form offers Slack with the Review requests preset, and a Slack card says when Slack was read", () => {
-  const source = read("./bot-triggers.ts");
-  const form = between(source, "function renderForm(", "/** The Triggers section");
-  assert.match(form, /bot-trigger-form__when--slack/u);
-  assert.match(form, /name="slackEvents"/u);
-  assert.match(form, /name="slackPrLinks"/u);
-  assert.match(form, /name="slackFrom"/u);
-  assert.match(form, /name="slackIn"/u);
-  assert.match(form, /name="slackExternal"/u);
-  assert.match(form, /name="slackBots"/u);
-  assert.match(form, /@click=\$\{applyReviewPreset\}>\$\{icons\.messageSquare\}<span>Review requests<\/span>/u);
-  assert.match(form, /nothing is ever posted/u);
-  assert.match(form, /BOT_TRIGGER_SOURCES\.map/u, "every source, Slack included");
-  const preset = between(source, "function applyReviewPreset(", "function renderForm(");
-  assert.match(preset, /input\[name="source"\]\[value="slack"\]/u);
-  assert.match(preset, /REVIEW_REQUESTS_PRESET\.prLinks/u);
-  assert.match(preset, /!name\.value\.trim\(\)/u, "a name already typed stays");
-  const card = between(source, "function renderTrigger(", "function renderRevealed(");
-  assert.match(card, /trigger\.source === "github" \|\| trigger\.source === "slack"/u);
-  assert.match(card, /Waiting for the first read of/u);
-  assert.match(read("../styles/bot-triggers.css"), /\.bot-trigger-form:has\(input\[name="source"\]\[value="slack"\]:checked\) \.bot-trigger-form__when--slack \{ display: flex; \}/u);
+test("a card says when its listener last reported, or the problem it or its silence reported", () => {
+  const card = between(read("./bot-triggers.ts"), "function renderTrigger(", "function renderRevealed(");
+  assert.match(card, /\$\{renderWatch\(trigger, props\.now\)\}/u);
+  assert.match(card, /Listener reported /u);
+  assert.match(card, /bot-trigger__meta--error/u);
 });

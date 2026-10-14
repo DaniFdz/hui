@@ -809,18 +809,6 @@
   background: var(--accent);
 }
 
-.app-shell .sidebar-session-move-note {
-  margin: 0 0 4px;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--primary) 8%, transparent);
-}
-
-.app-shell .sidebar-session-move-note.is-error {
-  background: color-mix(in srgb, var(--danger) 9%, transparent);
-  color: var(--danger);
-}
-
 .app-shell .sidebar-recent-session--child {
   margin-left: calc(var(--session-tree-depth, 1) * 12px);
   width: calc(100% - calc(var(--session-tree-depth, 1) * 12px));
