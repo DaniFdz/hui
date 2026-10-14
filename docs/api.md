@@ -667,7 +667,10 @@ Returns `{ worktrees, diagnostics, pending }` (`WorktreeInventory` in
 `shared/worktrees.ts`). Repositories come from registered session directories
 and HUI's worktree root; each repository's main checkout is not listed. `dirty`, `bytes` and `pullRequests` are absent until a
 background `git status`, `du` or `gh pr list --head <branch>` answers; a failed
-lookup is listed in `unavailable`. `pending` is true while any lookup runs.
+lookup is listed in `unavailable`. A row whose removal was requested carries
+`removal: "queued" | "removing"` and keeps its last known facts without
+re-reading them; while `removing`, `remainingBytes` is the disk usage still
+left of `bytes`, re-measured with `du` every few seconds. `pending` is true while any lookup or removal runs.
 
 ### `POST /__hui/worktrees/remove`
 
@@ -681,8 +684,10 @@ HUI-created worktree with no risk, a merged pull request and no active session (
 linked session archived), all
 re-read at removal time, and never forces. The local branch is deleted only when
 a merged pull request's head equals the branch's commit. Returns
-`{ results: [{ path, removed, branchDeleted, error? }], inventory }`; refused
-items are reported per path with HTTP 200. Malformed bodies return 400.
+`{ results: [{ path, removed, branchDeleted, error? }], inventory }` once every
+path is done, which can take minutes for a large checkout; poll `GET` meanwhile.
+The browser sends one removal request at a time. Refused items are reported per
+path with HTTP 200. Malformed bodies return 400.
 
 ### `GET /__hui/git-checkout?cwd=<directory>`
 

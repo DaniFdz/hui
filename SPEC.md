@@ -531,7 +531,11 @@ do not change the HUI registry or PI transcript/config formats. Source-linked,
 Nix-store and Homebrew installations must use their owning update workflow.
 `hui update` resolves the latest stable release in the public GitHub repository
 using GitHub's public API, downloads its bounded archive and SHA-256
-sidecar, and reuses that transaction. `--check` is read-only. Releases must have a
+sidecar, and reuses that transaction. API reads carry the operator's token when
+one is available (`GITHUB_TOKEN`, then `GH_TOKEN`, then `gh auth token`), so a
+shared network's anonymous 60-an-hour limit does not block updates; the token is
+sent only to `api.github.com`, never along a download's storage redirect, and
+without one the reads stay anonymous. `--check` is read-only. Releases must have a
 matching stable tag, package version and checksum; no automatic downgrade occurs.
 Tag-triggered CI validates and publishes the archive and checksum. A missing or
 inaccessible release is reported explicitly, never treated as up-to-date.
@@ -1474,6 +1478,9 @@ unavailable rather than guessed.
 Paths are shown with `~` for the home directory and truncate from the start, so
 the distinguishing tail stays visible; a copy button copies the full path.
 Worktrees HUI did not create (by hand or another tool) are labelled External.
+Branch names and session titles wrap, so the whole table, including each row's
+remove button, fits beside the settings navigation from a 1280 px window; a
+narrower one (or a phone) scrolls the table sideways.
 
 Any listed worktree can be removed from its row. The button opens an "are you
 sure?" modal with the full path that lists every risk: local changes that will be
@@ -1490,6 +1497,19 @@ no longer linked). The list is re-read each time the page opens. The local branc
 pull request's head is exactly the branch's current commit; otherwise it is
 kept. Removals are serialized and each path is re-validated against a fresh
 inventory.
+
+Git deletes a large worktree file by file, which can take minutes, so a removal
+never holds the page: the confirmation closes at once, the row shows *Removing…*
+(or *Queued* while another removal runs) instead of its button, and a status
+line names the worktree being removed, its size, how many wait and the total
+percentage done: finished worktrees count in full, the one Git is deleting by
+how much of its measured size is left, queued ones not yet. Other rows,
+*Clean up merged* and the rest of HUI stay usable, and further removals queue.
+The rows' last known facts are kept rather than re-read while Git deletes them,
+and the page polls until each row is gone; a reload still shows removals the
+gateway is running. Deleting sessions with their worktrees from Sessions closes
+its dialog once the sessions are deleted and reports the worktrees when they
+are removed.
 
 ## Git workspace sessions
 
