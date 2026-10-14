@@ -38,16 +38,20 @@ PI transcripts into its own storage.
 
 ## See it in action
 
-https://github.com/user-attachments/assets/fc17c7c9-1317-4612-8ae6-f23902488751
+https://github.com/user-attachments/assets/83fc8946-318d-4acc-93d1-ab38ea6463f5
 
 <table>
 <tr>
-<td width="50%"><img src="https://github.com/user-attachments/assets/1d8379da-763f-45a1-8dc5-d8f91e31c97b" alt="Kanban board with sessions across stages"><br><b>Kanban.</b> Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree. <a href="https://github.com/user-attachments/assets/e6421793-4ea4-4381-89fa-47b6e3f218f7">Watch</a></td>
-<td width="50%"><img src="https://github.com/user-attachments/assets/32b5ffb1-4c6d-4370-814a-85432e78f559" alt="Agent-driven browser with GitHub and Slack cards"><br><b>Rich results.</b> Interactive widgets, a browser the agent drives with a live preview, and GitHub and Slack links that unfurl. <a href="https://github.com/user-attachments/assets/e80d725b-4e34-403b-99ce-5723d265a298">Watch</a></td>
+<td width="50%"><img src="https://github.com/user-attachments/assets/2ebba247-45cd-4063-b375-e9b773dcead4" alt="Kanban board with sessions across stages"><br><b>Kanban.</b> Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree. <a href="https://github.com/user-attachments/assets/2beff6f3-60e1-4743-95a4-6fc64651ea26">Watch</a></td>
+<td width="50%"><img src="https://github.com/user-attachments/assets/662d0f4a-afe0-4094-9ce8-2de5e9daf92f" alt="Agent-driven browser with GitHub and Slack cards"><br><b>Rich results.</b> Interactive widgets, a browser the agent drives with a live preview, and GitHub and Slack links that unfurl. <a href="https://github.com/user-attachments/assets/a7922055-0524-468e-8a35-6fbeb1ccec6e">Watch</a></td>
 </tr>
 <tr>
-<td><img src="https://github.com/user-attachments/assets/34304263-f535-4471-8aed-1ba96f3a7b90" alt="Subagents and a watcher that merged on green"><br><b>Subagents and watchers.</b> Parallel reviewers in their own sessions, and a watcher that waits for CI and merges. <a href="https://github.com/user-attachments/assets/988b6426-27f9-48d4-a369-26dde6e9c10f">Watch</a></td>
-<td><img src="https://github.com/user-attachments/assets/fb9171ff-f989-4f41-a88e-223ea23860b7" alt="A bot's chat, routine and memory"><br><b>Bots</b> (Settings → Labs). Long-lived agents with a face, one chat, a memory and routines they schedule themselves. <a href="https://github.com/user-attachments/assets/e9a31301-2a13-4ff3-83bc-51a5a95d7d36">Watch</a></td>
+<td><img src="https://github.com/user-attachments/assets/3d11ee53-71af-4f91-a777-8451c4dafb59" alt="The Work pane's Diff view of the agent's change"><br><b>Work pane.</b> A terminal you share with the agent, and the Diff, Files and VS Code views of what it changed, beside the chat. <a href="https://github.com/user-attachments/assets/c2c9c985-8c01-4ace-871c-af201775cdc8">Watch</a></td>
+<td><img src="https://github.com/user-attachments/assets/87126d9b-1325-4700-b0ce-4aced9678ccd" alt="Subagents and a watcher that merged on green"><br><b>Subagents and watchers.</b> Parallel reviewers in their own sessions, and a watcher that waits for CI and merges. <a href="https://github.com/user-attachments/assets/921413b6-43a0-4764-b0cc-4cf39a8142ff">Watch</a></td>
+</tr>
+<tr>
+<td><img src="https://github.com/user-attachments/assets/35456d2d-3df5-4d18-9033-995ac11e479b" alt="A bot's chat, routine and memory"><br><b>Bots</b> (Settings → Labs). Long-lived agents with a face, one chat, a memory and routines they schedule themselves. <a href="https://github.com/user-attachments/assets/63e78773-529f-48d0-a04e-fa78982c71e3">Watch</a></td>
+<td align="center"><img src="https://github.com/user-attachments/assets/a97d578b-3123-4d43-9604-517971426415" alt="HUI on a phone" width="190"><br><b>On your phone.</b> Open the gateway over Tailscale and check in on your agents, or the board, from anywhere. <a href="https://github.com/user-attachments/assets/3a40378b-549d-4781-b674-be06cfc50a7e">Watch</a></td>
 </tr>
 </table>
 
