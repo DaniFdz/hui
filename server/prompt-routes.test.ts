@@ -124,3 +124,19 @@ test("a resent request id is answered with the first send's outcome and never ru
   assert.equal(refused.status, 400);
   assert.equal(prompts(id, "RESEND_FOUR"), 0);
 });
+
+test("writing to an archived conversation restores it", { timeout: 60_000 }, async () => {
+  const { readRegistry } = await import("./sessions.ts");
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Archived" });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const id = (created.body["session"] as { id: string }).id;
+  assert.equal((await call(`/__hui/sessions/${id}`, "PATCH", { archived: true })).status, 200);
+  assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(id);
+  await waitFor("the session's runtime", () => liveSessions.hasRuntime(id), { state: () => liveSessions.status(id) });
+
+  const sent = await call(`/__hui/sessions/${id}/prompt`, "POST", { text: "BACK_AGAIN" });
+  assert.deepEqual(sent, { status: 200, body: { ok: true } });
+  assert.equal((await readRegistry()).find((record) => record.id === id)?.archived, undefined);
+  await answered(id, "BACK_AGAIN");
+});
