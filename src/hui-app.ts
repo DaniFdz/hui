@@ -708,6 +708,12 @@ export class HuiApp extends HuiElement {
   /** Monotonic ownership token for open responses from the selected session. */
   private openRequestToken = 0;
   private autoFollow = true;
+  /** Rows grow after they render (link previews, images, diagrams): a followed thread stays at its end. */
+  private readonly followResize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(([entry]) => {
+    const thread = entry?.target.parentElement;
+    if (this.autoFollow && this.paneVisible && thread) thread.scrollTop = thread.scrollHeight;
+  });
+  private followed: Element | undefined;
   private copyTimer: number | undefined;
   private subagentExpiryTimer: number | undefined;
   /** First prompt composed on New Session, released only after PI reports idle. */
@@ -874,6 +880,8 @@ export class HuiApp extends HuiElement {
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.stopAutomationPolling();
+    this.followResize?.disconnect();
+    this.followed = undefined;
     if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
     clearTimeout(this.actionToastTimer);
     if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
@@ -3663,6 +3671,13 @@ export class HuiApp extends HuiElement {
       if (!this.autoFollow || !this.paneVisible) return;
       const scroller = this.renderRoot.querySelector?.(".chat-thread");
       if (scroller instanceof HTMLElement) {
+        const inner = scroller.querySelector(":scope > .chat-thread-inner");
+        // Only the app that renders this thread follows it (the shell's selector also finds its panes').
+        if (inner && inner !== this.followed && scroller.closest("hui-app") === this) {
+          this.followResize?.disconnect();
+          this.followResize?.observe(inner);
+          this.followed = inner;
+        }
         scroller.scrollTop = scroller.scrollHeight;
         this.autoFollow = true;
         this.showScrollToBottom = false;
