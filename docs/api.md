@@ -2702,8 +2702,8 @@ GET returns `{ "level": string | null }`. POST accepts `{ "level": "off" |
 persists the session preference. The composer offers only the model's
 `thinkingLevels`. Switching to a model without the level fits it to that model
 (the next level up it has, else its highest; `event: thinking_level` says which).
-A Durable session switched back restores the level chosen since it opened, and
-the registry keeps the chosen level.
+The registry keeps the chosen level, and a Durable session switched back to a
+model that has it uses it again.
 
 ### `POST /__hui/sessions/:id/fast`
 

@@ -276,11 +276,12 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #run: RunFollow | undefined;
   readonly resumesInterruptedRuns = true;
 
-  constructor(host: DurableHost, harness: Harness, conversation: Conversation, cwd: string) {
+  constructor(host: DurableHost, harness: Harness, conversation: Conversation, cwd: string, chosenThinking?: string) {
     this.#host = host;
     this.#harness = harness;
     this.#conversation = conversation;
     this.#cwd = cwd;
+    this.#chosenThinking = chosenThinking;
   }
 
   get sessionId(): string { return String(this.#conversation.id); }
@@ -1433,7 +1434,8 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
   }
   host.bindCaller(conversation.id, options.huiSessionId);
   await host.prompt.loader(options.cwd);
-  const session = new DurableSession(host, harness, conversation, options.cwd);
+  // The session's chosen level (its record's), which the model may have lowered.
+  const session = new DurableSession(host, harness, conversation, options.cwd, options.thinking);
   try {
     // PI extensions are a HUI session's own; without one (a probe), only the conversation's tools apply.
     if (options.huiSessionId) await session.loadExtensions(options.huiSessionId);

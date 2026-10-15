@@ -219,13 +219,20 @@ test("fast mode asks a Claude Opus model for speed: fast, while the session has 
 test("a switch to a model without the chosen thinking level lowers it for that model only", { timeout: 45_000 }, async (t) => {
   const max = { low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" };
   const f = await fixture(t, { models: ["fixture", "claude-opus-5-5"], thinkingLevelMaps: { "claude-opus-5-5": max } });
-  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fit", model: "hui-e2e/claude-opus-5-5" }, f.host());
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fit", model: "hui-e2e/claude-opus-5-5" }, host);
   assert.deepEqual(session.currentModel()?.thinkingLevels, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
   await session.setThinking("max");
   await session.setModel("hui-e2e", "fixture");
   assert.equal(session.currentThinking(), "high");
   await session.setModel("hui-e2e", "claude-opus-5-5");
   assert.equal(session.currentThinking(), "max");
+
+  // A level chosen at creation that the first model lacks comes back the same way.
+  const created = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fit-new", model: "hui-e2e/fixture", thinking: "max" }, host);
+  assert.equal(created.currentThinking(), "high");
+  await created.setModel("hui-e2e", "claude-opus-5-5");
+  assert.equal(created.currentThinking(), "max");
 });
 
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {
