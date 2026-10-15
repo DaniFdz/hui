@@ -37,6 +37,7 @@ import { composerEnterMode } from "../lib/composer-state.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
+import { isThinkingLevel, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../../shared/thinking.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
@@ -230,6 +231,8 @@ export type HomeProps = {
   };
   queue: QueueSnapshot;
   thinking: string;
+  /** Fast mode; absent while the runtime cannot change speed. */
+  fast?: boolean;
   question: RuntimeQuestion | undefined;
   connection: SessionConnection;
   copiedId: string;
@@ -259,7 +262,7 @@ export type HomeProps = {
   onDismissNote: () => void;
   /** A muted line about the event stream: reconnecting, or why it stopped. */
   connectionNote: string;
-  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
+  onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
   onSelectSession: (session: SessionView) => void;
   /** Pane identity keeps controls unique when the same session is split twice. */
   controlScope?: string;
@@ -305,6 +308,7 @@ export type HomeProps = {
   onDismissRunError: () => void;
   onSelectModel: (provider: string, modelId: string) => void;
   onSelectThinking: (level: string) => void;
+  onSelectFast: (fast: boolean) => void;
   onAbort: () => void;
   onContinue: () => void;
   /** Rewind to before a user message, restoring its text and attachments to the composer. */
@@ -341,8 +345,10 @@ export type HomeProps = {
   launchModels: readonly RuntimeModel[];
   launchModel: RuntimeModel | undefined;
   launchThinking: string;
+  launchFast: boolean;
   onSelectLaunchModel: (provider: string, modelId: string) => void;
   onSelectLaunchThinking: (level: string) => void;
+  onSelectLaunchFast: (fast: boolean) => void;
   directorySuggestions: readonly string[];
   onDirectoryInput: (value: string) => void;
   branchPrefix: string;
@@ -439,6 +445,7 @@ function onSubmit(props: HomeProps) {
       ...(value("group") ? { group: value("group") } : {}),
       ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
       ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
+      ...(props.launchFast && props.launchModel?.fast ? { fast: true } : {}),
       ...(props.launchWorker ? { worker: props.launchWorker } : props.workspaceWorktree ? {
         worktree: true,
         ...(props.workspaceBranch ? { branchName: props.workspaceBranch } : {}),
@@ -741,8 +748,10 @@ function renderLaunchForm(props: HomeProps) {
                   })}
                   ${renderThinkingPicker({
                     level: props.launchThinking,
+                    levels: props.launchModel?.thinkingLevels,
                     disabled: props.launching,
                     onSelect: props.onSelectLaunchThinking,
+                    ...(props.launchModel?.fast ? { fast: { on: props.launchFast, onSelect: props.onSelectLaunchFast } } : {}),
                   })}
                 </div>
                 <div class="agent-chat__composer-actions">
@@ -1637,8 +1646,10 @@ function renderComposer(props: HomeProps) {
           })}
           ${renderThinkingPicker({
             level: props.thinking,
+            levels: props.currentModel?.thinkingLevels,
             disabled: props.streaming || props.opening,
             onSelect: props.onSelectThinking,
+            ...(props.fast !== undefined && props.currentModel?.fast ? { fast: { on: props.fast, onSelect: props.onSelectFast } } : {}),
           })}</div>
             </div>
             <div class="agent-chat__composer-actions">
@@ -1733,19 +1744,15 @@ function modelValue(model: RuntimeModel): string {
   return model.provider ? `${model.provider}/${model.id}` : model.id;
 }
 
-const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
-const THINKING_LABELS: Record<(typeof THINKING_LEVELS)[number], string> = {
-  off: "Off",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Maximum",
-};
+function thinkingRank(level: string): number {
+  return THINKING_LEVELS.indexOf(level as ThinkingLevel);
+}
 
-function thinkingIndex(level: string): number {
-  const index = THINKING_LEVELS.indexOf(level as (typeof THINKING_LEVELS)[number]);
-  return index < 0 ? THINKING_LEVELS.indexOf("medium") : index;
+/** The level the model is sent, as PI clamps it: the next one up it has, else its highest. */
+function shownThinking(level: string, levels: readonly ThinkingLevel[]): ThinkingLevel {
+  return levels.includes(level as ThinkingLevel)
+    ? level as ThinkingLevel
+    : levels.find((candidate) => thinkingRank(candidate) >= thinkingRank(level)) ?? levels.at(-1) ?? "medium";
 }
 
 /** Composer pickers share one popover lane, so a trigger closes its sibling first. */
@@ -1882,18 +1889,28 @@ function renderModelPicker(options: ModelPickerOptions) {
 
 type ThinkingPickerOptions = {
   level: string;
+  /** The model's levels; all of HUI's while it reports none. */
+  levels: readonly string[] | undefined;
   disabled: boolean;
   onSelect: (level: string) => void;
+  /** Present when the model has a fast mode the session can use. */
+  fast?: { on: boolean; onSelect: (fast: boolean) => void };
 };
 
 function renderThinkingPicker(options: ThinkingPickerOptions) {
-  const index = thinkingIndex(options.level);
-  const level = THINKING_LEVELS[index] ?? "medium";
-  const fill = THINKING_LEVELS.length > 1 ? (index / (THINKING_LEVELS.length - 1)) * 100 : 0;
-  const angle = -120 + (level === "off" ? 0 : index / (THINKING_LEVELS.length - 1)) * 240;
+  const known = (options.levels ?? []).filter(isThinkingLevel);
+  const levels: readonly ThinkingLevel[] = known.length ? known : THINKING_LEVELS;
+  const level = shownThinking(options.level, levels);
+  const index = levels.indexOf(level);
+  const last = Math.max(1, levels.length - 1);
+  const fill = (index / last) * 100;
+  const angle = -120 + (level === "off" ? 0 : index / last) * 240;
+  const fast = options.fast;
+  const disabled = options.disabled || (levels.length < 2 && !fast);
+  const label = `Thinking: ${level}${fast?.on ? ", fast" : ""}`;
   return html`<details class="chat-controls__inline-select chat-controls__effort-picker" @keydown=${closeComposerPicker} @toggle=${positionComposerPicker}>
-    <summary class="chat-controls__inline-select-trigger chat-controls__effort-trigger ${options.disabled ? "chat-controls__inline-select-trigger--disabled" : ""}" aria-label=${`Thinking: ${options.level || "medium"}`} aria-disabled=${String(options.disabled)} @click=${(event: MouseEvent) => {
-      if (options.disabled) event.preventDefault();
+    <summary class="chat-controls__inline-select-trigger chat-controls__effort-trigger ${disabled ? "chat-controls__inline-select-trigger--disabled" : ""}" aria-label=${label} aria-disabled=${String(disabled)} @click=${(event: MouseEvent) => {
+      if (disabled) event.preventDefault();
       else prepareComposerPicker(event);
     }}>
       <span class="chat-controls__effort-gauge ${level === "off" ? "chat-controls__effort-gauge--off" : ""}" aria-hidden="true">
@@ -1903,24 +1920,25 @@ function renderThinkingPicker(options: ThinkingPickerOptions) {
           <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"></circle>
         </svg>
       </span>
+      ${fast?.on ? html`<span class="chat-controls__effort-zap" aria-hidden="true">${icons.zap}</span>` : nothing}
       <span class="chat-controls__inline-select-label">${THINKING_LABELS[level]}</span>
       <span class="chat-controls__inline-select-chevron" aria-hidden="true">${chevronUpIcon}</span>
     </summary>
     <div class="chat-controls__inline-select-menu chat-controls__effort-menu" popover="manual">
-      <div class="chat-controls__reasoning-panel">
+      ${levels.length > 1 ? html`<div class="chat-controls__reasoning-panel">
         <div class="chat-controls__reasoning-head">
           <span class="chat-controls__effort-heading">Effort</span>
           <span class="chat-controls__effort-value" aria-hidden="true" .textContent=${THINKING_LABELS[level]}></span>
         </div>
         <div class="chat-controls__reasoning-slider">
           <div class="chat-controls__reasoning-dots" aria-hidden="true">
-            ${THINKING_LEVELS.map(() => html`<span class="chat-controls__reasoning-dot"></span>`)}
+            ${levels.map(() => html`<span class="chat-controls__reasoning-dot"></span>`)}
           </div>
           <input
             class="chat-controls__reasoning-range"
             type="range"
             min="0"
-            max=${String(THINKING_LEVELS.length - 1)}
+            max=${String(levels.length - 1)}
             step="1"
             .value=${String(index)}
             style=${`--reasoning-fill: ${fill}%`}
@@ -1930,20 +1948,27 @@ function renderThinkingPicker(options: ThinkingPickerOptions) {
             @input=${(event: Event) => {
               const input = event.currentTarget as HTMLInputElement;
               const at = Number(input.value);
-              const next = THINKING_LEVELS[at] ?? "medium";
-              input.style.setProperty("--reasoning-fill", `${(at / (THINKING_LEVELS.length - 1)) * 100}%`);
+              const next = levels[at] ?? level;
+              input.style.setProperty("--reasoning-fill", `${(at / last) * 100}%`);
               input.setAttribute("aria-valuetext", THINKING_LABELS[next]);
               const value = input.closest(".chat-controls__reasoning-panel")?.querySelector(".chat-controls__effort-value");
               if (value) value.textContent = THINKING_LABELS[next];
             }}
             @change=${(event: Event) => {
-              const next = THINKING_LEVELS[Number((event.currentTarget as HTMLInputElement).value)] ?? "medium";
-              options.onSelect(next);
+              options.onSelect(levels[Number((event.currentTarget as HTMLInputElement).value)] ?? level);
             }}
           />
         </div>
         <div class="chat-controls__effort-scale" aria-hidden="true"><span>Faster</span><span>Smarter</span></div>
-      </div>
+      </div>` : nothing}
+      ${fast ? html`<div class="chat-controls__speed-panel">
+        <span class="chat-controls__effort-heading">Speed</span>
+        <div class="chat-controls__speed-options" role="radiogroup" aria-label="Speed">
+          ${([[false, "Standard"], [true, "Fast"]] as const).map(([value, text]) => html`<button type="button" role="radio"
+            class="chat-controls__speed-option" aria-checked=${String(fast.on === value)} ?disabled=${options.disabled}
+            @click=${() => { if (fast.on !== value) fast.onSelect(value); }}>${text}</button>`)}
+        </div>
+      </div>` : nothing}
     </div>
   </details>`;
 }

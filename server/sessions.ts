@@ -38,6 +38,8 @@ export type SessionRecord = {
   model?: string;
   /** Reasoning budget, same reasoning as `model`. */
   thinking?: string;
+  /** Fast mode on, for the models that have one (`RuntimeModel.fast`). */
+  fast?: boolean;
   /** Durable crash-recovery marker. Set before HUI hands a new prompt to the
    * runtime and cleared only when that run settles or the operator stops it. */
   runStartedAt?: string;
@@ -222,6 +224,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(worker ? { worker } : {}),
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
+    ...(raw["fast"] === true ? { fast: true } : {}),
     ...(runStartedAt ? { runStartedAt } : {}),
     ...(runPrompt ? { runPrompt } : {}),
     ...(runRecoveryAttempts !== undefined ? { runRecoveryAttempts } : {}),

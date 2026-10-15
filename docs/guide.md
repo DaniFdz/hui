@@ -191,6 +191,14 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only, so that section shows while [bots](#bots) are on.
 
+The composer's **Effort** slider offers the reasoning levels the session's model
+has, up to **Maximum** (PI's `max` level) where the model supports it. For
+Claude Opus 5 and 4.8 and for OpenAI GPT and o-series models it also shows
+**Speed**: **Fast** asks the provider for its fast mode (Anthropic's fast
+output, OpenAI's priority tier), which costs more. The choice is kept per session and applies to its next model
+request; a proxy that does not support it serves the request at standard speed
+or refuses it.
+
 ## Bots
 
 > **Bots are a preview.** They are still being built, so they are off until you

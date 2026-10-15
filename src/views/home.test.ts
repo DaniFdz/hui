@@ -278,11 +278,8 @@ test("model and thinking reuse one exclusive composer picker pattern", () => {
   assert.match(source, /class="chat-controls__reasoning-range"/);
   assert.match(source, /class="chat-controls__reasoning-dots"/);
   assert.match(source, /@input=\$\{/);
-  assert.match(source, /xhigh: "Maximum"/);
-  assert.match(source, /options\.onSelect\(next\)/);
   assert.match(styles, /\.chat-controls__effort-menu\s*\{[^}]*width: min\(330px,/s);
   assert.match(styles, /\.chat-controls__reasoning-range::-webkit-slider-thumb\s*\{[^}]*width: 28px;[^}]*height: 20px;/s);
-  assert.doesNotMatch(source, /Fast mode/);
   assert.doesNotMatch(styles, /\.chat-controls__effort-picker\s*\{\s*display:\s*none;\s*\}/);
   assert.match(styles, /--chat-composer-chip-height:/);
   assert.match(source, /@toggle=\$\{positionComposerPicker\}/);
@@ -493,6 +490,23 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
   const inert = new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
   return markup(renderHome(inert as unknown as import("./home.ts").HomeProps)).replace(/\s+/gu, " ");
 }
+
+test("Effort offers the model's own levels up to Maximum, and Speed only where fast mode applies", async () => {
+  const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max"], fast: true };
+  const html = await renderWorkerSession("idle", { currentModel: opus, thinking: "max", fast: true });
+  assert.equal(html.split('class="chat-controls__reasoning-dot"').length - 1, 5);
+  assert.match(html, /max=4 step="1" \.value=4/u);
+  assert.match(html, /aria-label=Thinking: max, fast/u);
+  assert.match(html, /<span class="chat-controls__inline-select-label">Maximum<\/span>/u);
+  assert.match(html, /aria-checked=false[^>]*>Standard<\/button>.*aria-checked=true[^>]*>Fast<\/button>/u);
+
+  // A level the model lacks shows what PI sends instead; no Speed while the runtime cannot change it.
+  const older = { ...opus, thinkingLevels: ["off", "minimal", "low", "medium", "high"] };
+  const clamped = await renderWorkerSession("idle", { currentModel: older, thinking: "max" });
+  assert.match(clamped, /<span class="chat-controls__inline-select-label">High<\/span>/u);
+  assert.doesNotMatch(clamped, /chat-controls__speed-panel/u);
+  assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: { ...opus, fast: undefined }, thinking: "high", fast: false }), /chat-controls__speed-panel/u);
+});
 
 const sendButton = (html: string) => html.match(/<button type="submit" class="chat-send-btn chat-send-btn--send" \?disabled=(\w+)/u)?.[1];
 

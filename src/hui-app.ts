@@ -44,6 +44,7 @@ import {
   compactSession,
   sendPrompt,
   setSessionThinking,
+  setSessionFast,
   steerSession,
   setSessionModel,
   subscribeSession,
@@ -417,6 +418,8 @@ export class HuiApp extends HuiElement {
   @state() private queueEditingId = "";
   @state() private queueEditingText = "";
   @state() private thinking = "medium";
+  /** Fast mode; undefined while the runtime cannot change speed. */
+  @state() private fast: boolean | undefined;
   @state() private question: RuntimeQuestion | undefined;
   @state() private connection: SessionConnection = "live";
   @state() private copiedId = "";
@@ -449,6 +452,7 @@ export class HuiApp extends HuiElement {
   @state() private launchWorker: string | undefined;
   @state() private launchModel = "";
   @state() private launchThinking = "";
+  @state() private launchFast = false;
   @state() private directorySuggestions: readonly string[] = [];
   /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings tab shows only
    * its own machine's, so a bot on a worker is never offered this machine's folders. */
@@ -2422,6 +2426,9 @@ export class HuiApp extends HuiElement {
       onThinking: (level) => {
         if (current()) this.thinking = level;
       },
+      onFast: (fast) => {
+        if (current()) this.fast = fast;
+      },
       onConnection: (state, detail) => {
         if (!current()) {
           return;
@@ -2475,6 +2482,7 @@ export class HuiApp extends HuiElement {
     this.usage = snapshot.usage;
     this.compaction = snapshot.compaction;
     if (snapshot.thinking) this.thinking = snapshot.thinking;
+    this.fast = snapshot.fast;
     this.setStatus(snapshot.status);
   }
 
@@ -3481,6 +3489,21 @@ export class HuiApp extends HuiElement {
       });
   };
 
+  private selectFast = (fast: boolean) => {
+    const session = this.selected;
+    if (!session || this.streaming) return;
+    void setSessionFast(session.id, fast)
+      .then((authoritative) => {
+        if (isSelectedSession(session.id, this.selected?.id)) this.fast = authoritative;
+      })
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.selected?.id)) return;
+        // The gateway broadcasts the speed the session kept.
+        this.note = error instanceof Error ? error.message : "Could not change the speed.";
+        this.noteLevel = "error";
+      });
+  };
+
   private answerQuestion = (answer: QuestionResponse) => {
     const session = this.selected;
     const question = this.question;
@@ -3828,7 +3851,7 @@ export class HuiApp extends HuiElement {
     });
   };
 
-  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
+  private launch = (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => {
     if (input.prompt && this.handleUpdateCommand(input.prompt)) return;
     if (this.launching) return;
     this.launching = true;
@@ -5743,6 +5766,7 @@ export class HuiApp extends HuiElement {
       chatPreferences: this.settings.chat,
       queue: this.queue,
       thinking: this.thinking,
+      ...(this.fast === undefined ? {} : { fast: this.fast }),
       question: this.question,
       connection: this.connection,
       copiedId: this.copiedId,
@@ -5870,6 +5894,7 @@ export class HuiApp extends HuiElement {
       onQueueSteer: (itemId) => this.queueMutation({ operation: "steer", itemId }),
       onSelectModel: this.selectModel,
       onSelectThinking: this.selectThinking,
+      onSelectFast: this.selectFast,
       onAbort: this.abort,
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
@@ -5900,6 +5925,8 @@ export class HuiApp extends HuiElement {
       launchThinking: this.launchThinking || "medium",
       onSelectLaunchModel: (provider, modelId) => { this.launchModel = `${provider}/${modelId}`; },
       onSelectLaunchThinking: (level) => { this.launchThinking = level; },
+      launchFast: this.launchFast,
+      onSelectLaunchFast: (fast) => { this.launchFast = fast; },
       launchWorkers: this.launchWorkers,
       ...(this.launchWorker ? { launchWorker: this.launchWorker } : {}),
       onSelectLaunchWorker: (id) => {

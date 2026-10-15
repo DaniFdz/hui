@@ -27,6 +27,7 @@ import { botSkills, describeTool, planBotTools, skillBlock, type BotChat, type O
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
+import { modelControls } from "./model-controls.ts";
 import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
@@ -262,6 +263,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #extensions: DurableExtensions | undefined;
   #extensionFailure: string | undefined;
   #huiSessionId: string | undefined;
+  /** The level last chosen: a switch to a model without it lowers it for that model only. */
+  #chosenThinking: string | undefined;
   /** What the session asks the operator itself: a bot's access requests. */
   #questions = new QuestionBox((question) => this.#emit({ type: "question", question }));
   /** The tools the operator can turn off in a bot's chat, as the latest `applyTools` found them; empty for every other
@@ -1153,6 +1156,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       provider: ref.provider, id: ref.modelId, name: model?.name ?? ref.modelId,
       ...(model?.contextWindow ? { contextWindow: model.contextWindow } : {}),
       ...(model?.maxTokens ? { maxTokens: model.maxTokens } : {}),
+      ...(model ? modelControls(model) : {}),
     };
   }
 
@@ -1174,6 +1178,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       provider: model.provider, id: model.id, name: model.name,
       ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
       ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
+      ...modelControls(model),
     }));
     return filterConfiguredModels(catalog, this.#host.agentDir);
   }
@@ -1190,7 +1195,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   async setModel(provider: string, id: string): Promise<void> {
     const model = this.#host.models.getModel(provider, id);
     if (!model) throw new Error(`Unknown model: ${provider}/${id}`);
-    const thinking = clampThinkingLevel(model, (this.#agent.thinkingLevel ?? "off") as ModelThinkingLevel);
+    const thinking = clampThinkingLevel(model, (this.#chosenThinking ?? this.#agent.thinkingLevel ?? "off") as ModelThinkingLevel);
     const previous = this.currentModel();
     await this.#conversation.configure({ model: { provider, modelId: id }, thinkingLevel: thinking }, context);
     this.#agent = { ...this.#agent, model: { provider, modelId: id }, thinkingLevel: thinking };
@@ -1205,7 +1210,18 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const previous = this.#agent.thinkingLevel;
     await this.#conversation.configure({ thinkingLevel: level as ModelThinkingLevel }, context);
     this.#agent = { ...this.#agent, thinkingLevel: level as ModelThinkingLevel };
+    this.#chosenThinking = level;
     this.#extensions?.thinkingSelected(previous, level);
+  }
+
+  currentFast(): boolean {
+    return this.#huiSessionId !== undefined && this.#host.isFast(this.#huiSessionId);
+  }
+
+  /** Kept per HUI session by the host, which adds it to that session's requests. */
+  async setFast(on: boolean): Promise<void> {
+    if (this.#huiSessionId === undefined) throw new Error("Fast mode needs a HUI session.");
+    this.#host.setFast(this.#huiSessionId, on);
   }
 
   pendingQueue(): RuntimeQueue {

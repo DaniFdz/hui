@@ -12,7 +12,6 @@ import type {
 } from "./sessions-store.ts";
 
 export const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
-export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 
 export function composerEnterMode(input: {
   streaming: boolean;

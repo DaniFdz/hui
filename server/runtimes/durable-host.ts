@@ -26,6 +26,7 @@ import { CONFIG_DIR } from "../paths.ts";
 import { resolvePiAgentDir } from "../pi-paths.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import { createSessionModelRuntime } from "./hui-models.ts";
+import { withFastMode } from "./model-controls.ts";
 import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
@@ -231,6 +232,8 @@ export class DurableHost implements ExtensionHost {
   readonly codemode = createCodemodeExtension({ sandbox: new CodemodeSandbox({ memoryLimitBytes: 256 * 1024 * 1024 }) });
   /** Each live session's PI extensions, by HUI session. */
   #extensions = new Map<string, DurableExtensions>();
+  /** HUI sessions whose requests ask for fast mode (`withFastMode`). */
+  #fast = new Set<string>();
   /** Each attributed request's identity, by its task invocation's abort signal. */
   #requestIdentities = new WeakMap<AbortSignal, string>();
   /** Each attributed request's HUI session, for its PI extensions' provider callbacks. */
@@ -459,6 +462,13 @@ export class DurableHost implements ExtensionHost {
     if (this.#extensions.get(huiSessionId) === extensions) this.#extensions.delete(huiSessionId);
   }
 
+  isFast(huiSessionId: string): boolean { return this.#fast.has(huiSessionId); }
+
+  setFast(huiSessionId: string, on: boolean): void {
+    if (on) this.#fast.add(huiSessionId);
+    else this.#fast.delete(huiSessionId);
+  }
+
   #extensionsOf(conversationId: ConversationId): DurableExtensions | undefined {
     const caller = this.#callers.get(conversationId);
     return caller === undefined ? undefined : this.#extensions.get(caller);
@@ -601,18 +611,21 @@ export class DurableHost implements ExtensionHost {
     return undefined;
   }
 
-  /** `before_provider_request` and `after_provider_response` of the request's session; an OptChat turn's cache marks go
-   * on the payload those handlers leave. */
+  /** `before_provider_request` and `after_provider_response` of the request's session; fast mode, when the session
+   * asks for it, and an OptChat turn's cache marks go on the payload those handlers leave. */
   #requestCallbacks(options: RequestOptions): RequestCallbacks {
     const caller = options?.signal ? this.#requestSessions.get(options.signal) : undefined;
     const callbacks = (caller === undefined ? undefined : this.#extensions.get(caller)?.requestCallbacks()) ?? {};
+    const fast = caller !== undefined && this.#fast.has(caller);
     const marks = options?.signal ? this.optchat.payloadHook(options.signal) : undefined;
-    if (!marks) return callbacks;
+    if (!marks && !fast) return callbacks;
     return {
       ...callbacks,
       onPayload: async (payload, model) => {
         const replaced = await callbacks.onPayload?.(payload);
-        return marks(replaced === undefined ? payload : replaced, model) ?? replaced;
+        let next = replaced === undefined ? payload : replaced;
+        if (fast) next = withFastMode(next, model as { api: string; id: string });
+        return marks?.(next, model) ?? next;
       },
     };
   }

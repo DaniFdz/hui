@@ -83,6 +83,8 @@ export type SessionSnapshot = {
   model?: RuntimeModel;
   usage?: RuntimeUsage;
   thinking?: string;
+  /** Fast mode; absent when the runtime cannot change speed. */
+  fast?: boolean;
   queue: RuntimeQueue;
   /** The runtime's questions, then HUI's own pending ones. */
   questions: readonly (RuntimeQuestion | HuiQuestion)[];
@@ -104,6 +106,7 @@ export type SessionStreamMessage =
   | { kind: "status"; status: SessionStatus }
   | { kind: "model"; model: RuntimeModel }
   | { kind: "thinking"; level: string }
+  | { kind: "fast"; fast: boolean }
   | { kind: "closed" };
 
 /** Lightweight gateway-wide lifecycle update. Detailed transcript/runtime
@@ -164,6 +167,7 @@ type Live = {
    * do not lose deltas that preceded their new SSE connection. */
   transcript: TranscriptEntry[];
   thinking?: string;
+  fast?: boolean;
   queue: RuntimeQueue;
   /** Follow-ups not yet handed to the runtime. Keeping them here is what makes
    * OpenClaw-style edit, remove, and reorder operations truthful. */
@@ -458,6 +462,7 @@ export class LiveSessions {
       ...(model ? { model } : {}),
       ...(usage ? { usage } : {}),
       ...(live.thinking ? { thinking: live.thinking } : {}),
+      ...(live.fast === undefined ? {} : { fast: live.fast }),
       queue: this.#queueSnapshot(live),
       questions: [...live.questions.values(), ...this.#huiQuestions(id)],
       subagents: [...this.#subagentSnapshot(id)],
@@ -716,6 +721,12 @@ export class LiveSessions {
     }
     if (current) {
       this.#broadcast(live, { kind: "model", model: current });
+    }
+    // The runtime fits the thinking level to the new model; the record keeps the operator's choice.
+    const thinking = live.runtime.currentThinking?.();
+    if (thinking && thinking !== live.thinking) {
+      live.thinking = thinking;
+      this.#broadcast(live, { kind: "thinking", level: thinking });
     }
     return current;
   }
@@ -1050,6 +1061,23 @@ export class LiveSessions {
     this.#broadcast(live, { kind: "thinking", level: live.thinking });
   }
 
+  async setFast(id: string, on: boolean): Promise<boolean> {
+    const live = this.#ready(id);
+    if (!live.runtime?.setFast) throw new Error(`${live.record.tool} cannot change speed in this build.`);
+    const previous = live.runtime.currentFast?.() === true;
+    await live.runtime.setFast(on);
+    try {
+      await this.#save(live, { fast: on || undefined });
+    } catch (persistenceError) {
+      await live.runtime.setFast(previous).catch(() => undefined);
+      throw new SessionRegistryError("HUI could not save the speed, so the session keeps its previous one.", { cause: persistenceError });
+    } finally {
+      live.fast = live.runtime.currentFast?.() ?? live.fast;
+      this.#broadcast(live, { kind: "fast", fast: live.fast === true });
+    }
+    return live.fast === true;
+  }
+
   async respondQuestion(id: string, questionId: string, response: RuntimeQuestionResponse): Promise<void> {
     const live = this.#ready(id);
     const question = live.questions.get(questionId);
@@ -1233,6 +1261,7 @@ export class LiveSessions {
         ...(live.record.worker ? { worker: live.record.worker } : {}),
         huiSessionId: live.record.id,
       });
+      if (live.record.fast) await runtime.setFast?.(true);
       // Deletion or gateway shutdown can happen while a runtime takes several
       // seconds to boot. Never attach or persist a process nobody owns.
       if (live.closed || this.#live.get(live.record.id) !== live) {
@@ -1242,6 +1271,8 @@ export class LiveSessions {
       live.runtime = runtime;
       live.transcript = [...runtime.transcript()];
       live.thinking = runtime.currentThinking?.();
+      // Only a runtime that can change speed reports one.
+      live.fast = runtime.setFast ? runtime.currentFast?.() === true : undefined;
       live.queue = runtime.pendingQueue?.() ?? { steering: [], followUp: [] };
       live.questions = new Map((runtime.pendingQuestions?.() ?? []).map((question) => [question.id, question]));
       live.unsubscribe = runtime.subscribe((event) => this.#onEvent(live, runtime!, event));

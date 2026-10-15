@@ -52,7 +52,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
     // Only what the remote runtime offers is exposed, so the gateway never
     // shows a control that would fail.
     const self = this as unknown as Record<string, unknown>;
-    for (const name of ["steer", "followUp", "abort", "setModel", "setThinking", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload"]) {
+    for (const name of ["steer", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload"]) {
       if (!started.methods.includes(name)) self[name] = undefined;
     }
     this.#attached();
@@ -142,6 +142,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
   currentModel() { return this.#state.model; }
   currentUsage() { return this.#state.usage; }
   currentThinking() { return this.#state.thinking; }
+  currentFast() { return this.#state.fast === true; }
   pendingQueue() { return this.#state.queue ?? { steering: [], followUp: [] }; }
   pendingQuestions() { return this.#state.questions ?? []; }
   listModels(): Promise<readonly RuntimeModel[]> { return this.#call("listModels"); }
@@ -149,6 +150,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
   inspect(): Promise<RuntimeInspection> { return this.#call("inspect"); }
   async setModel(provider: string, id: string): Promise<void> { await this.#call("setModel", provider, id); }
   async setThinking(level: string): Promise<void> { await this.#call("setThinking", level); }
+  async setFast(on: boolean): Promise<void> { await this.#call("setFast", on); }
   async respondQuestion(id: string, response: unknown): Promise<void> { await this.#call("respondQuestion", id, response); }
   async cancelQuestion(id: string): Promise<void> { await this.#call("cancelQuestion", id); }
   async abort(): Promise<void> { await this.#call("abort"); }

@@ -18,6 +18,7 @@ import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-s
 import { resolvePiAgentDir } from "../pi-paths.ts";
 import { PROVIDERS_DIR, readProviderSelections } from "./hui-models.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
+import { modelControls } from "./model-controls.ts";
 import { piBackend } from "./pi-backend.ts";
 import { piCommand } from "./pi-command.ts";
 import { SdkInspector } from "./sdk-inspector.ts";
@@ -172,6 +173,8 @@ export function toRuntimeModel(raw: unknown): RuntimeModel | undefined {
     name: typeof name === "string" && name ? name : id,
     ...(typeof value["contextWindow"] === "number" && Number.isFinite(value["contextWindow"]) && value["contextWindow"] > 0 ? { contextWindow: value["contextWindow"] } : {}),
     ...(typeof value["maxTokens"] === "number" && Number.isFinite(value["maxTokens"]) && value["maxTokens"] > 0 ? { maxTokens: value["maxTokens"] } : {}),
+    // PI's full model record carries its API; a bare reference leaves the levels unknown.
+    ...(typeof value["api"] === "string" ? modelControls({ ...value, api: value["api"], id }) : {}),
   };
 }
 

@@ -114,7 +114,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       model: Type.Optional(Type.String({ minLength: 3, maxLength: 200 })),
       thinking: Type.Optional(Type.Union([
         Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"),
-        Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"),
+        Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"), Type.Literal("max"),
       ])),
       runTimeoutSeconds: Type.Optional(Type.Number({ minimum: 0, maximum: 3_600 })),
     }),

@@ -19,6 +19,7 @@ import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../sha
 import { languageOptions } from "../lib/voice.ts";
 import { renderPicker } from "./settings-picker.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
+import { THINKING_LABELS } from "../../shared/thinking.ts";
 
 export type { BotSettingKey, BotSettingValue } from "../lib/bots.ts";
 
@@ -55,7 +56,6 @@ export type BotSettingsProps = {
   directory: { suggestions: readonly string[]; onInput: (value: string) => void };
 };
 
-const THINKING_LABELS: Record<(typeof BOT_THINKING_LEVELS)[number], string> = { off: "Off", minimal: "Minimal", low: "Low", medium: "Medium", high: "High", xhigh: "Extra high" };
 /** "Gateway default" sends "": the bot goes back to the model and thinking level a new chat gets. */
 const THINKING_CHOICES = [{ value: "", label: "Gateway default" }, ...BOT_THINKING_LEVELS.map((level) => ({ value: level, label: THINKING_LABELS[level] }))];
 

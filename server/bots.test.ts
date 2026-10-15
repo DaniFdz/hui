@@ -82,7 +82,7 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
     [{ name: "Ada", soul: 7 }, /SOUL\.md must be text/u],
     [{ name: "Ada", instructions: "Be brief." }, /no instructions any more: a bot's persona is its SOUL\.md/u],
     [{ name: "Ada", model: "gpt" }, /provider\/id/u],
-    [{ name: "Ada", thinking: "max" }, /Thinking level must be one of/u],
+    [{ name: "Ada", thinking: "ultra" }, /Thinking level must be one of/u],
     [{ name: "Ada", memoryModel: "bad model" }, /provider\/id/u],
     [{ name: "Ada", cwd: "" }, /Working directory must be 1-/u],
     [{ name: "Ada", avatar: { emoji: "🦊🐻" } }, /one character/u],
@@ -187,7 +187,7 @@ test("stored records keep what validates: a bad optional field is dropped, a bad
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { shape: "heart", color: "#2fc49a" } }), { ...bot("a", "ada"), avatar: { color: "#2fc49a", shape: "heart" } });
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { shape: "star", ears: "bunny" } }), { ...bot("a", "ada"), avatar: { shape: "star", ears: "bunny" } });
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { emoji: "🦊", shape: "dragon", ears: "wings" } }), { ...bot("a", "ada"), avatar: { emoji: "🦊" } }, "an unknown shape or ears are dropped, not the bot");
-  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { emoji: "🦊", color: "teal" }, thinking: "max", title: "", hidden: "yes" }), {
+  assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), avatar: { emoji: "🦊", color: "teal" }, thinking: "ultra", title: "", hidden: "yes" }), {
     ...bot("a", "ada"), avatar: { emoji: "🦊" },
   });
   assert.deepEqual(parseBotRecord({ ...bot("a", "ada"), instructions: "Old persona." }), bot("a", "ada"), "a record's persona is SOUL.md now, never instructions");

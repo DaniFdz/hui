@@ -33,7 +33,7 @@ type DurableHost = import("./durable-host.ts").DurableHost;
 
 const settings = normalizeSettings(undefined);
 
-async function fixture(t: TestContext, options: { contextWindow?: number; settings?: Record<string, unknown>; extensions?: Record<string, string> } = {}) {
+async function fixture(t: TestContext, options: { contextWindow?: number; settings?: Record<string, unknown>; extensions?: Record<string, string>; models?: readonly string[]; thinkingLevelMaps?: Record<string, object> } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-durable-test-"));
   const agentDir = join(dir, "agent");
   const cwd = join(dir, "workspace");
@@ -62,9 +62,10 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
   assert(baseUrl, String(ready));
   await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
     // Requires the provider identity HUI gives every PI request (docs/api.md).
-    baseUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "fixture-key", models: ["fixture", "group/second"].map((id) => ({
+    baseUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "fixture-key", models: (options.models ?? ["fixture", "group/second"]).map((id) => ({
       id, name: id, reasoning: true, input: ["text", "image"], contextWindow: options.contextWindow ?? 32000, maxTokens: 4096,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      ...(options.thinkingLevelMaps?.[id] ? { thinkingLevelMap: options.thinkingLevelMaps[id] } : {}),
     })),
   } } }));
   await writeFile(join(agentDir, "settings.json"), JSON.stringify({
@@ -134,7 +135,7 @@ function userEntryId(session: DurableSession, prefix: string): string {
   return entry.entryId;
 }
 
-type ProviderRequest = { system?: unknown; messages?: unknown };
+type ProviderRequest = { system?: unknown; messages?: unknown; speed?: unknown };
 async function providerRequests(log: string): Promise<ProviderRequest[]> {
   return completeLines(await readFile(log, "utf8")).map((line) => JSON.parse(line) as ProviderRequest);
 }
@@ -192,6 +193,39 @@ test("the live view streams an answer Durable sends whole, exactly once", { time
   // The fixture's short reply reaches Durable's stream as one partial; the live view shows it from these events.
   assert.equal(streamed.join(""), "Fixture response.");
   await transcriptWhere(session, answered("Fixture response."));
+});
+
+test("fast mode asks a Claude Opus model for speed: fast, while the session has it on", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { models: ["fixture", "claude-opus-5-5"] });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fast", model: "hui-e2e/claude-opus-5-5" }, f.host());
+  assert.equal(session.currentModel()?.fast, true);
+  assert.deepEqual(session.currentModel()?.thinkingLevels, ["off", "minimal", "low", "medium", "high"]);
+  assert.equal(session.currentFast(), false);
+  const speeds = async () => (await providerRequests(f.log)).map((request) => request.speed ?? "standard");
+
+  await session.setFast(true);
+  assert.equal(session.currentFast(), true);
+  await turns(session, ["hello fast"]);
+  assert.deepEqual(await speeds(), ["fast"]);
+  // A model without fast mode is asked for nothing, though the session keeps it on.
+  await session.setModel("hui-e2e", "fixture");
+  await turns(session, ["hello fixture"]);
+  await session.setModel("hui-e2e", "claude-opus-5-5");
+  await session.setFast(false);
+  await turns(session, ["hello standard"]);
+  assert.deepEqual(await speeds(), ["fast", "standard", "standard"]);
+});
+
+test("a switch to a model without the chosen thinking level lowers it for that model only", { timeout: 45_000 }, async (t) => {
+  const max = { low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" };
+  const f = await fixture(t, { models: ["fixture", "claude-opus-5-5"], thinkingLevelMaps: { "claude-opus-5-5": max } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fit", model: "hui-e2e/claude-opus-5-5" }, f.host());
+  assert.deepEqual(session.currentModel()?.thinkingLevels, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+  await session.setThinking("max");
+  await session.setModel("hui-e2e", "fixture");
+  assert.equal(session.currentThinking(), "high");
+  await session.setModel("hui-e2e", "claude-opus-5-5");
+  assert.equal(session.currentThinking(), "max");
 });
 
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {

@@ -195,7 +195,15 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
   | { kind: "error"; id?: string; message: string });
 
 /** A model the runtime offers. Mirrors the server's `RuntimeModel`. */
-export type RuntimeModel = { provider: string; id: string; name: string };
+export type RuntimeModel = {
+  provider: string;
+  id: string;
+  name: string;
+  /** Reasoning levels PI sends it, cheapest first; absent: unknown. */
+  thinkingLevels?: readonly string[];
+  /** Its provider has a fast mode. */
+  fast?: true;
+};
 /** Runtime-owned slash commands; mirrors the server's RuntimeCommand. */
 export type RuntimeCommand = {
   name: string;
@@ -285,6 +293,8 @@ export type SessionSnapshot = {
   model?: RuntimeModel;
   usage?: RuntimeUsage;
   thinking?: string;
+  /** Fast mode; absent when the runtime cannot change speed. */
+  fast?: boolean;
   queue: QueueSnapshot;
   questions: RuntimeQuestion[];
   subagents: SubagentTaskView[];
@@ -425,6 +435,7 @@ export async function createSession(input: {
   group?: string;
   model?: string;
   thinking?: string;
+  fast?: boolean;
   worktree?: boolean;
   branchName?: string;
   baseRef?: string;
@@ -614,6 +625,15 @@ export async function setSessionThinking(id: string, level: string): Promise<str
   return body.level ?? level;
 }
 
+export async function setSessionFast(id: string, fast: boolean): Promise<boolean> {
+  const body = await fetchJson<{ fast?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/fast`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ fast }),
+  });
+  return body.fast ?? fast;
+}
+
 export async function answerQuestion(
   id: string,
   questionId: string,
@@ -715,6 +735,7 @@ export type SessionStreamHandlers = {
   /** The model changed, either at boot or because the user switched it. */
   onModel: (model: RuntimeModel) => void;
   onThinking: (level: string) => void;
+  onFast?: (fast: boolean) => void;
   /**
    * Called on every connect and reconnect. `live` means the stream delivered,
    * `reconnecting` means a retry is scheduled, `stopped` means no more retries
@@ -971,6 +992,9 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
       break;
     case "thinking_level":
       handlers.onThinking((payload as { level: string }).level);
+      break;
+    case "fast":
+      handlers.onFast?.((payload as { fast: boolean }).fast);
       break;
     case "closed":
       return true;
