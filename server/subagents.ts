@@ -15,6 +15,7 @@ import {
   type SubagentStatus,
 } from "./sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
+import { piThinking } from "./runtimes/model-controls.ts";
 import { isThinkingLevel } from "../shared/thinking.ts";
 import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "../src/lib/subagent-completion.ts";
 
@@ -281,7 +282,8 @@ export class SubagentService {
         ...(caller.worker ? { worker: caller.worker } : {}),
         tool: caller.tool,
         model: model ?? caller.model,
-        thinking: thinking ?? caller.thinking,
+        // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
+        thinking: thinking ?? (caller.thinking && piThinking(caller.thinking)),
         parentId: caller.id,
         subagent: {
           taskId,

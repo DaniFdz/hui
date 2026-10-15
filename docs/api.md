@@ -2701,7 +2701,10 @@ PI's refreshed history replaces the projection at settlement.
 GET returns `{ "level": string | null }`. POST accepts `{ "level": "off" |
 "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" }`, applies it live and
 persists the session preference. The composer offers only the model's
-`thinkingLevels`.
+`thinkingLevels`. Switching to a model without the level fits it to that model
+(the next level up it has, else its highest; `event: thinking_level` says which).
+The registry keeps the chosen level, and a Durable session switched back to a
+model that has it uses it again.
 
 `ultra` is HUI's, after OpenClaw: the model is sent its highest level (PI's
 `max`, clamped), and while the session stays on it each request's system prompt
@@ -2709,14 +2712,12 @@ carries a `hui_ultra` section telling the agent to plan the work, carry it
 through and verify it before replying, and, when `sessions_spawn` is offered,
 to hand independent investigation, implementation and verification to
 subagents in parallel (bounded objectives, results synthesized; simple or
-tightly coupled work stays local). The session's usual subagent limits apply.
+tightly coupled work stays local). The session's usual subagent limits apply,
+and a child it spawns without a level of its own gets `max`, not `ultra`.
 GET and `event: thinking_level` report `ultra`; PI extensions see the level the
 model is sent. Only Durable sessions offer it: a PI SDK session given `ultra`
-is sent its highest level without the section and reports that level. Bots'
-own thinking settings keep PI's levels. Switching to a model without the level fits it to that model
-(the next level up it has, else its highest; `event: thinking_level` says which).
-The registry keeps the chosen level, and a Durable session switched back to a
-model that has it uses it again.
+is sent its highest level without the section and reports that level. A bot's
+chat keeps its bot's PI levels: it offers no `ultra` and refuses it (400).
 
 ### `POST /__hui/sessions/:id/fast`
 

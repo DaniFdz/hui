@@ -270,6 +270,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** The tools the operator can turn off in a bot's chat, as the latest `applyTools` found them; empty for every other
    * conversation. */
   #botOffer: readonly OfferedTool[] = [];
+  /** A bot's chat keeps its bot's PI levels: no Ultra (`applyTools` learns it). */
+  #botChat = false;
   /** The message that started the latest run this view started; who started the turn (`runInput`). */
   #runInput: string | undefined;
   /** Every input of the run going now (`runOrigins`); unset until this view follows the conversation. */
@@ -330,6 +332,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     const { browser, codemode } = await this.#host.settings();
     const browserEnabled = browser.enabled !== false;
     const bot = await this.#host.botStateFor(this.#conversation.id);
+    this.#botChat = bot !== undefined;
     const inactive = new Map([
       ...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])),
       ...(bot ? this.#host.toolsNamed(this.#host.gatewayOnlyTools) : []),
@@ -1157,7 +1160,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       provider: ref.provider, id: ref.modelId, name: model?.name ?? ref.modelId,
       ...(model?.contextWindow ? { contextWindow: model.contextWindow } : {}),
       ...(model?.maxTokens ? { maxTokens: model.maxTokens } : {}),
-      ...(model ? durableControls(model) : {}),
+      ...(model ? this.#controls(model) : {}),
     };
   }
 
@@ -1179,7 +1182,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       provider: model.provider, id: model.id, name: model.name,
       ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
       ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
-      ...durableControls(model),
+      ...this.#controls(model),
     }));
     return filterConfiguredModels(catalog, this.#host.agentDir);
   }
@@ -1214,6 +1217,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   }
 
   async setThinking(level: string): Promise<void> {
+    if (level === "ultra" && this.#botChat) throw new Error("A bot's chat has no Ultra; choose Maximum.");
     const previous = this.#agent.thinkingLevel;
     const ref = this.#agent.model;
     const model = ref ? this.#host.models.getModel(ref.provider, ref.modelId) : undefined;
@@ -1223,6 +1227,12 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     this.#chosenThinking = level;
     if (this.#huiSessionId) this.#host.setUltra(this.#huiSessionId, level === "ultra");
     this.#extensions?.thinkingSelected(previous, sent);
+  }
+
+  /** A model's controls here: PI's levels, then HUI's `ultra`, which only Durable's prompt carries (not a bot's chat). */
+  #controls(model: Parameters<typeof modelControls>[0]): ReturnType<typeof modelControls> {
+    const controls = modelControls(model);
+    return this.#botChat ? controls : { ...controls, thinkingLevels: [...controls.thinkingLevels, "ultra"] };
   }
 
   currentFast(): boolean {
@@ -1458,12 +1468,6 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
     throw error;
   }
   return session;
-}
-
-/** A model's controls in a Durable session: PI's levels, then HUI's `ultra`, which only Durable's prompt carries. */
-function durableControls(model: Parameters<typeof modelControls>[0]): ReturnType<typeof modelControls> {
-  const controls = modelControls(model);
-  return { ...controls, thinkingLevels: [...controls.thinkingLevels, "ultra"] };
 }
 
 export const durableRuntime = {

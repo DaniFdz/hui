@@ -1043,7 +1043,7 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 
 /* Effort's glow on the model's highest level and on Ultra, from OpenClaw's
    current composer; the pinned track's own fill gives way to the gradient. */
-.chat-controls__reasoning-slider:has([data-effort-boost="max"], [data-effort-boost="ultra"]) {
+.chat-controls__reasoning-slider:has([data-effort-boost="max"]:not(:disabled), [data-effort-boost="ultra"]:not(:disabled)) {
   --reasoning-boost-highlight: color-mix(in srgb, var(--accent) 60%, white);
   border-radius: var(--radius-full);
   background-image: linear-gradient(
@@ -1062,12 +1062,12 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   --reasoning-boost-highlight: color-mix(in srgb, var(--accent-2, var(--accent)) 70%, white);
 }
 
-.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"])::-webkit-slider-runnable-track {
+.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"]):not(:disabled)::-webkit-slider-runnable-track {
   background: transparent;
 }
 
-.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"])::-moz-range-track,
-.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"])::-moz-range-progress {
+.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"]):not(:disabled)::-moz-range-track,
+.chat-controls__reasoning-range:is([data-effort-boost="max"], [data-effort-boost="ultra"]):not(:disabled)::-moz-range-progress {
   background: transparent;
 }
 
