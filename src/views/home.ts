@@ -1919,6 +1919,7 @@ function renderThinkingPicker(options: ThinkingPickerOptions) {
           <path class="chat-controls__effort-gauge-needle" d="M12 12V6" style=${`transform: rotate(${angle}deg)`}></path>
           <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"></circle>
         </svg>
+        ${fast?.on ? html`<span class="chat-controls__effort-fast-badge">${icons.zap}</span>` : nothing}
       </span>
       ${fast?.on ? html`<span class="chat-controls__effort-zap" aria-hidden="true">${icons.zap}</span>` : nothing}
       <span class="chat-controls__inline-select-label">${THINKING_LABELS[level]}</span>
