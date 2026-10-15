@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { modelControls, withFastMode } from "./model-controls.ts";
+import type { Api, Model } from "@earendil-works/pi-ai";
+import { fitThinking, modelControls, piThinking, withFastMode } from "./model-controls.ts";
 
 const claude = (id: string) => ({ api: "anthropic-messages", id, reasoning: true });
 const openai = (id: string) => ({ api: "openai-responses", id, reasoning: true });
@@ -29,4 +30,11 @@ test("fast mode adds Anthropic's speed and beta, or OpenAI's priority tier, and 
   assert.deepEqual(withFastMode({ model: "m", service_tier: "flex" }, openai("gpt-6-luna")), { model: "m", service_tier: "flex" });
   const untouched = { model: "m" };
   assert.equal(withFastMode(untouched, claude("claude-sonnet-5")), untouched);
+});
+
+test("HUI's ultra is sent as the model's highest level", () => {
+  assert.equal(piThinking("ultra"), "max");
+  assert.equal(piThinking("high"), "high");
+  const upToHigh = { ...claude("claude-opus-4-6"), thinkingLevelMap: { off: null } } as unknown as Model<Api>;
+  assert.equal(fitThinking(upToHigh, "ultra"), "high");
 });

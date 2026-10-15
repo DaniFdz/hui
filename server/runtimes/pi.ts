@@ -18,7 +18,7 @@ import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-s
 import { resolvePiAgentDir } from "../pi-paths.ts";
 import { PROVIDERS_DIR, readProviderSelections } from "./hui-models.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
-import { modelControls } from "./model-controls.ts";
+import { modelControls, piThinking } from "./model-controls.ts";
 import { piBackend } from "./pi-backend.ts";
 import { piCommand } from "./pi-command.ts";
 import { SdkInspector } from "./sdk-inspector.ts";
@@ -1150,13 +1150,15 @@ export class PiSession implements RuntimeSession {
     return this.#thinking;
   }
 
+  /** HUI's `ultra` is Durable's; PI gets its highest level for it. */
   async setThinking(level: string): Promise<void> {
+    const sent = piThinking(level);
     const response = await this.#send(
-      { type: "set_thinking_level", level },
+      { type: "set_thinking_level", level: sent },
       START_TIMEOUT_MS,
     );
     if (!response.success) throw new Error(response.error ?? "PI refused that thinking level.");
-    this.#thinking = level;
+    this.#thinking = sent;
   }
 
   pendingQueue(): RuntimeQueue {
@@ -1336,6 +1338,8 @@ async function startPi(options: {
    * to this machine, and the remote's own login for when no gateway answers. */
   hostLaunch?: HostLaunch;
 }): Promise<PiSession> {
+  // HUI's `ultra` is Durable's; PI gets its highest level for it.
+  if (options.thinking) options = { ...options, thinking: piThinking(options.thinking) };
   const args = ["--mode", "rpc"];
   const hostLaunch = options.hostLaunch;
   const huiSettings = options.safeProbe ? undefined : await readHuiSettings();

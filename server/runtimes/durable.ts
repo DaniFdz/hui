@@ -8,7 +8,7 @@
  * events through it.
  */
 import { createHash } from "node:crypto";
-import { clampThinkingLevel, type ImageContent, type Message, type ModelThinkingLevel, type TextContent } from "@earendil-works/pi-ai";
+import type { ImageContent, Message, ModelThinkingLevel, TextContent } from "@earendil-works/pi-ai";
 import {
   CompactionEntry, InboxDoc, ResetEntry, SystemEntry, UserEntry, watchEvents,
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
@@ -27,7 +27,7 @@ import { botSkills, describeTool, planBotTools, skillBlock, type BotChat, type O
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
-import { modelControls } from "./model-controls.ts";
+import { fitThinking, modelControls, piThinking } from "./model-controls.ts";
 import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
@@ -1157,7 +1157,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       provider: ref.provider, id: ref.modelId, name: model?.name ?? ref.modelId,
       ...(model?.contextWindow ? { contextWindow: model.contextWindow } : {}),
       ...(model?.maxTokens ? { maxTokens: model.maxTokens } : {}),
-      ...(model ? modelControls(model) : {}),
+      ...(model ? durableControls(model) : {}),
     };
   }
 
@@ -1179,7 +1179,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       provider: model.provider, id: model.id, name: model.name,
       ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
       ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
-      ...modelControls(model),
+      ...durableControls(model),
     }));
     return filterConfiguredModels(catalog, this.#host.agentDir);
   }
@@ -1196,23 +1196,33 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   async setModel(provider: string, id: string): Promise<void> {
     const model = this.#host.models.getModel(provider, id);
     if (!model) throw new Error(`Unknown model: ${provider}/${id}`);
-    const thinking = clampThinkingLevel(model, (this.#chosenThinking ?? this.#agent.thinkingLevel ?? "off") as ModelThinkingLevel);
+    const thinking = fitThinking(model, this.#chosenThinking ?? this.#agent.thinkingLevel ?? "off");
     const previous = this.currentModel();
     await this.#conversation.configure({ model: { provider, modelId: id }, thinkingLevel: thinking }, context);
     this.#agent = { ...this.#agent, model: { provider, modelId: id }, thinkingLevel: thinking };
     this.#extensions?.modelSelected(previous);
   }
 
+  /** HUI's level: `ultra` while it is chosen, otherwise the one the model is sent. */
   currentThinking(): string | undefined {
+    return this.#chosenThinking === "ultra" ? "ultra" : this.#agent.thinkingLevel;
+  }
+
+  /** The level the model is sent, which PI extensions see. */
+  modelThinking(): string | undefined {
     return this.#agent.thinkingLevel;
   }
 
   async setThinking(level: string): Promise<void> {
     const previous = this.#agent.thinkingLevel;
-    await this.#conversation.configure({ thinkingLevel: level as ModelThinkingLevel }, context);
-    this.#agent = { ...this.#agent, thinkingLevel: level as ModelThinkingLevel };
+    const ref = this.#agent.model;
+    const model = ref ? this.#host.models.getModel(ref.provider, ref.modelId) : undefined;
+    const sent = model ? fitThinking(model, level) : piThinking(level) as ModelThinkingLevel;
+    await this.#conversation.configure({ thinkingLevel: sent }, context);
+    this.#agent = { ...this.#agent, thinkingLevel: sent };
     this.#chosenThinking = level;
-    this.#extensions?.thinkingSelected(previous, level);
+    if (this.#huiSessionId) this.#host.setUltra(this.#huiSessionId, level === "ultra");
+    this.#extensions?.thinkingSelected(previous, sent);
   }
 
   currentFast(): boolean {
@@ -1425,7 +1435,7 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
     const model = await initialModel(host, options.cwd, options.model);
     const known = model ? host.models.getModel(model.provider, model.modelId) : undefined;
     const requestedThinking = options.thinking ?? defaultThinking(host, options.cwd);
-    const thinking = requestedThinking && known ? clampThinkingLevel(known, requestedThinking as ModelThinkingLevel) : undefined;
+    const thinking = requestedThinking && known ? fitThinking(known, requestedThinking) : undefined;
     conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: {
       cwd: options.cwd,
       ...(model ? { model } : {}),
@@ -1433,6 +1443,7 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
     } }, context);
   }
   host.bindCaller(conversation.id, options.huiSessionId);
+  if (options.huiSessionId) host.setUltra(options.huiSessionId, options.thinking === "ultra");
   await host.prompt.loader(options.cwd);
   // The session's chosen level (its record's), which the model may have lowered.
   const session = new DurableSession(host, harness, conversation, options.cwd, options.thinking);
@@ -1447,6 +1458,12 @@ export async function startDurable(options: StartOptions, host: DurableHost = du
     throw error;
   }
   return session;
+}
+
+/** A model's controls in a Durable session: PI's levels, then HUI's `ultra`, which only Durable's prompt carries. */
+function durableControls(model: Parameters<typeof modelControls>[0]): ReturnType<typeof modelControls> {
+  const controls = modelControls(model);
+  return { ...controls, thinkingLevels: [...controls.thinkingLevels, "ultra"] };
 }
 
 export const durableRuntime = {

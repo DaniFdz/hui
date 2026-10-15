@@ -2,9 +2,10 @@
  * What the composer may offer for one model: the reasoning levels PI sends it
  * and whether its provider has a fast mode, plus the request change that turns
  * fast mode on. Claude Opus 5 and 4.8 take Anthropic's `speed: "fast"` with its
- * beta; OpenAI GPT and o-series models take the priority service tier.
+ * beta; OpenAI GPT and o-series models take the priority service tier. Also
+ * maps HUI's `ultra` to the level PI sends, the model's highest.
  */
-import { getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
+import { clampThinkingLevel, getSupportedThinkingLevels, type Api, type Model, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 
 type ControlledModel = { api: string; id: string; reasoning?: boolean; thinkingLevelMap?: object };
 
@@ -28,6 +29,16 @@ export function modelControls(model: ControlledModel): { thinkingLevels: string[
     thinkingLevels: getSupportedThinkingLevels(model as unknown as Model<Api>),
     ...(fastMode(model) ? { fast: true as const } : {}),
   };
+}
+
+/** The level PI is given for a HUI level: `ultra` asks for `max`, which PI clamps to the model's highest. */
+export function piThinking(level: string): string {
+  return level === "ultra" ? "max" : level;
+}
+
+/** The level a model is sent for a HUI level, as PI clamps it. */
+export function fitThinking(model: Model<Api>, level: string): ModelThinkingLevel {
+  return clampThinkingLevel(model, piThinking(level) as ModelThinkingLevel);
 }
 
 /** The provider payload asking for fast mode; unchanged for a model without one. */

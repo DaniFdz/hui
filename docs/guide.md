@@ -192,12 +192,17 @@ talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only, so that section shows while [bots](#bots) are on.
 
 The composer's **Effort** slider offers the reasoning levels the session's model
-has, up to **Maximum** (PI's `max` level) where the model supports it. For
-Claude Opus 5 and 4.8 and for OpenAI GPT and o-series models it also shows
-**Speed**: **Fast** asks the provider for its fast mode (Anthropic's fast
-output, OpenAI's priority tier), which costs more. The choice is kept per session and applies to its next model
-request; a proxy that does not support it serves the request at standard speed
-or refuses it.
+has, up to **Maximum** (PI's `max` level) where the model supports it, then
+**Ultra**, as in OpenClaw: the model's highest level plus an instruction to plan
+the work, hand independent parts to subagents running in parallel, and check
+the result before replying. Ultra spends more and starts subagents on its own;
+switch back to Maximum to stop that.
+
+For Claude Opus 5 and 4.8 and for OpenAI GPT and o-series models the Effort
+popup also shows **Speed**: **Fast** asks the provider for its fast mode
+(Anthropic's fast output, OpenAI's priority tier), which costs more. Both
+choices are kept per session and apply to its next model request; a proxy that
+does not support fast mode serves the request at standard speed or refuses it.
 
 ## Bots
 

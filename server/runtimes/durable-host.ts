@@ -234,6 +234,8 @@ export class DurableHost implements ExtensionHost {
   #extensions = new Map<string, DurableExtensions>();
   /** HUI sessions whose requests ask for fast mode (`withFastMode`). */
   #fast = new Set<string>();
+  /** HUI sessions on Ultra, whose prompt asks the agent to plan, delegate and verify. */
+  #ultra = new Set<string>();
   /** Each attributed request's identity, by its task invocation's abort signal. */
   #requestIdentities = new WeakMap<AbortSignal, string>();
   /** Each attributed request's HUI session, for its PI extensions' provider callbacks. */
@@ -316,6 +318,7 @@ export class DurableHost implements ExtensionHost {
     // A bot's chat lists only the skills the operator left on, its own among them.
     this.prompt.disabledSkillsFor = async (conversationId) => (await this.botStateFor(conversationId))?.disabledSkills;
     this.prompt.skillDirsFor = (conversationId) => this.skillDirsFor(conversationId);
+    this.prompt.ultraFor = (conversationId) => this.#ultra.has(this.#callers.get(conversationId) ?? "");
   }
 
   /** HUI's agent-tool handler, called as the HUI session bound to the conversation. A bot's chat may not call a HUI tool
@@ -467,6 +470,11 @@ export class DurableHost implements ExtensionHost {
   setFast(huiSessionId: string, on: boolean): void {
     if (on) this.#fast.add(huiSessionId);
     else this.#fast.delete(huiSessionId);
+  }
+
+  setUltra(huiSessionId: string, on: boolean): void {
+    if (on) this.#ultra.add(huiSessionId);
+    else this.#ultra.delete(huiSessionId);
   }
 
   #extensionsOf(conversationId: ConversationId): DurableExtensions | undefined {

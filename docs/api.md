@@ -787,7 +787,8 @@ type RuntimeQueue = { steering: readonly string[]; followUp: readonly string[] }
 type RuntimeModel = {
   provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number;
   // The reasoning levels PI sends this model, cheapest first (PI's
-  // getSupportedThinkingLevels); absent when the runtime cannot tell.
+  // getSupportedThinkingLevels), then `ultra` from a Durable session; absent
+  // when the runtime cannot tell.
   thinkingLevels?: readonly string[];
   // Its provider has a fast mode: Claude Opus 5 and 4.8 on the Anthropic Messages
   // API, OpenAI GPT and o-series models on the Responses APIs.
@@ -2466,8 +2467,8 @@ Session. `model` uses canonical `provider/id` form: the first slash separates th
 provider from the complete model ID, which may contain further slashes (for
 example, `vercel-ai-gateway/anthropic/claude-opus-5.5`). Neither part may be empty
 or contain whitespace. `thinking` accepts `off`,
-`minimal`, `low`, `medium`, `high`, `xhigh` or `max`; PI clamps it to the levels
-the model has. `fast` is a boolean (default false; see
+`minimal`, `low`, `medium`, `high`, `xhigh`, `max` or `ultra`; PI clamps it to the levels
+the model has (see `POST /__hui/sessions/:id/thinking` for `ultra`). `fast` is a boolean (default false; see
 `POST /__hui/sessions/:id/fast`). Without `model`, the session
 uses `settings.models.primary` when one is set, otherwise PI's default. All are persisted before the
 runtime starts; `model` and `thinking` are passed to PI on its first launch as well as later reopen,
@@ -2698,9 +2699,21 @@ PI's refreshed history replaces the projection at settlement.
 ### `GET|POST /__hui/sessions/:id/thinking`
 
 GET returns `{ "level": string | null }`. POST accepts `{ "level": "off" |
-"minimal" | "low" | "medium" | "high" | "xhigh" | "max" }`, applies it live and
+"minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" }`, applies it live and
 persists the session preference. The composer offers only the model's
-`thinkingLevels`. Switching to a model without the level fits it to that model
+`thinkingLevels`.
+
+`ultra` is HUI's, after OpenClaw: the model is sent its highest level (PI's
+`max`, clamped), and while the session stays on it each request's system prompt
+carries a `hui_ultra` section telling the agent to plan the work, carry it
+through and verify it before replying, and, when `sessions_spawn` is offered,
+to hand independent investigation, implementation and verification to
+subagents in parallel (bounded objectives, results synthesized; simple or
+tightly coupled work stays local). The session's usual subagent limits apply.
+GET and `event: thinking_level` report `ultra`; PI extensions see the level the
+model is sent. Only Durable sessions offer it: a PI SDK session given `ultra`
+is sent its highest level without the section and reports that level. Bots'
+own thinking settings keep PI's levels. Switching to a model without the level fits it to that model
 (the next level up it has, else its highest; `event: thinking_level` says which).
 The registry keeps the chosen level, and a Durable session switched back to a
 model that has it uses it again.

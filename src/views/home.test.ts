@@ -508,6 +508,17 @@ test("Effort offers the model's own levels up to Maximum, and Speed only where f
   assert.doesNotMatch(await renderWorkerSession("idle", { currentModel: { ...opus, fast: undefined }, thinking: "high", fast: false }), /chat-controls__speed-panel/u);
 });
 
+test("Ultra is the stop above Maximum where the runtime offers it, and both glow", async () => {
+  const opus = { provider: "gw", id: "anthropic/claude-opus-5-5", name: "Opus", thinkingLevels: ["low", "medium", "high", "xhigh", "max", "ultra"] };
+  const ultra = await renderWorkerSession("idle", { currentModel: opus, thinking: "ultra" });
+  assert.match(ultra, /max=5 step="1" \.value=5 [^>]*data-effort-boost=ultra/u);
+  assert.match(ultra, /<span class="chat-controls__inline-select-label">Ultra<\/span>/u);
+  assert.match(await renderWorkerSession("idle", { currentModel: opus, thinking: "max" }), /data-effort-boost=max/u);
+  // A runtime without Ultra sends the model's highest level for it.
+  const pi = await renderWorkerSession("idle", { currentModel: { ...opus, thinkingLevels: opus.thinkingLevels.slice(0, -1) }, thinking: "ultra" });
+  assert.match(pi, /<span class="chat-controls__inline-select-label">Maximum<\/span>/u);
+});
+
 const sendButton = (html: string) => html.match(/<button type="submit" class="chat-send-btn chat-send-btn--send" \?disabled=(\w+)/u)?.[1];
 
 test("a worker session HUI is reconnecting to reads calm: a status, one notice, the draft kept and no failure", async () => {

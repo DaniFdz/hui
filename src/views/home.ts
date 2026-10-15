@@ -37,7 +37,7 @@ import { composerEnterMode } from "../lib/composer-state.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
-import { isThinkingLevel, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../../shared/thinking.ts";
+import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../../shared/thinking.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session-multiplexer.ts";
@@ -748,7 +748,8 @@ function renderLaunchForm(props: HomeProps) {
                   })}
                   ${renderThinkingPicker({
                     level: props.launchThinking,
-                    levels: props.launchModel?.thinkingLevels,
+                    // New sessions run on Durable, which adds Ultra to the model's own levels.
+                    levels: props.launchModel?.thinkingLevels && [...props.launchModel.thinkingLevels, "ultra"],
                     disabled: props.launching,
                     onSelect: props.onSelectLaunchThinking,
                     ...(props.launchModel?.fast ? { fast: { on: props.launchFast, onSelect: props.onSelectLaunchFast } } : {}),
@@ -1899,7 +1900,10 @@ type ThinkingPickerOptions = {
 
 function renderThinkingPicker(options: ThinkingPickerOptions) {
   const known = (options.levels ?? []).filter(isThinkingLevel);
-  const levels: readonly ThinkingLevel[] = known.length ? known : THINKING_LEVELS;
+  const levels: readonly ThinkingLevel[] = known.length ? known : PI_THINKING_LEVELS;
+  // OpenClaw's glow: on Ultra and on the model's own highest level.
+  const top = levels.findLastIndex((candidate) => candidate !== "ultra");
+  const boost = (at: number) => levels[at] === "ultra" ? "ultra" : at === top && levels[at] !== "off" ? "max" : "";
   const level = shownThinking(options.level, levels);
   const index = levels.indexOf(level);
   const last = Math.max(1, levels.length - 1);
@@ -1943,6 +1947,7 @@ function renderThinkingPicker(options: ThinkingPickerOptions) {
             step="1"
             .value=${String(index)}
             style=${`--reasoning-fill: ${fill}%`}
+            data-effort-boost=${boost(index)}
             aria-label="Thinking effort"
             aria-valuetext=${THINKING_LABELS[level]}
             ?disabled=${options.disabled}
@@ -1952,6 +1957,7 @@ function renderThinkingPicker(options: ThinkingPickerOptions) {
               const next = levels[at] ?? level;
               input.style.setProperty("--reasoning-fill", `${(at / last) * 100}%`);
               input.setAttribute("aria-valuetext", THINKING_LABELS[next]);
+              input.dataset["effortBoost"] = boost(at);
               const value = input.closest(".chat-controls__reasoning-panel")?.querySelector(".chat-controls__effort-value");
               if (value) value.textContent = THINKING_LABELS[next];
             }}

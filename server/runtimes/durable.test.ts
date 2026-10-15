@@ -199,7 +199,7 @@ test("fast mode asks a Claude Opus model for speed: fast, while the session has 
   const f = await fixture(t, { models: ["fixture", "claude-opus-5-5"] });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fast", model: "hui-e2e/claude-opus-5-5" }, f.host());
   assert.equal(session.currentModel()?.fast, true);
-  assert.deepEqual(session.currentModel()?.thinkingLevels, ["off", "minimal", "low", "medium", "high"]);
+  assert.deepEqual(session.currentModel()?.thinkingLevels, ["off", "minimal", "low", "medium", "high", "ultra"]);
   assert.equal(session.currentFast(), false);
   const speeds = async () => (await providerRequests(f.log)).map((request) => request.speed ?? "standard");
 
@@ -221,7 +221,7 @@ test("a switch to a model without the chosen thinking level lowers it for that m
   const f = await fixture(t, { models: ["fixture", "claude-opus-5-5"], thinkingLevelMaps: { "claude-opus-5-5": max } });
   const host = f.host();
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-fit", model: "hui-e2e/claude-opus-5-5" }, host);
-  assert.deepEqual(session.currentModel()?.thinkingLevels, ["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(session.currentModel()?.thinkingLevels, ["off", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]);
   await session.setThinking("max");
   await session.setModel("hui-e2e", "fixture");
   assert.equal(session.currentThinking(), "high");
@@ -233,6 +233,24 @@ test("a switch to a model without the chosen thinking level lowers it for that m
   assert.equal(created.currentThinking(), "high");
   await created.setModel("hui-e2e", "claude-opus-5-5");
   assert.equal(created.currentThinking(), "max");
+});
+
+test("Ultra sends the model its highest level and asks the agent to plan, delegate and verify, until it is turned off", { timeout: 45_000 }, async (t) => {
+  const max = { low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" };
+  const f = await fixture(t, { models: ["claude-opus-5-5"], thinkingLevelMaps: { "claude-opus-5-5": max } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-ultra", model: "hui-e2e/claude-opus-5-5" }, f.host());
+  assert.equal(session.currentModel()?.thinkingLevels?.at(-1), "ultra");
+  const ultraPrompt = async () => JSON.stringify((await providerRequests(f.log)).filter((request) => !summarizing(request)).at(-1)?.system);
+
+  await session.setThinking("ultra");
+  assert.deepEqual([session.currentThinking(), session.modelThinking()], ["ultra", "max"]);
+  await turns(session, ["hello ultra"]);
+  assert.match(await ultraPrompt(), /Proactive Sub-Agent Orchestration[^"]*Ultra active for this session[^"]*sessions_spawn/u);
+
+  await session.setThinking("high");
+  assert.deepEqual([session.currentThinking(), session.modelThinking()], ["high", "high"]);
+  await turns(session, ["hello high"]);
+  assert.doesNotMatch(await ultraPrompt(), /Ultra active/u);
 });
 
 test("Durable runs a real tool turn and reopens the conversation from its store", { timeout: 45_000 }, async (t) => {
