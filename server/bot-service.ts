@@ -561,7 +561,7 @@ export class BotService {
    * What the operator can turn off in the bot's chat and what is off (`GET /__hui/bots/:id/catalog`), from its
    * `hui.bot` document; a roster copy that differs is repaired. Opening the chat lists its extensions' tools; an
    * archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). Its pending
-   * access request comes along, so the Tools tab can answer it too. A bot on a worker: from its document and offer
+   * access request comes along, so the Tools & skills page can answer it too. A bot on a worker: from its document and offer
    * there, skills by their mirrored paths; while HUI is not connected to the worker, a 503 that names it.
    */
   async catalog(target: string): Promise<BotCatalog> {

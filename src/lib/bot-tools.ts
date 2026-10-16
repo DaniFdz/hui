@@ -1,13 +1,13 @@
 /**
- * A bot's Tools tab (HUI-18): what the operator can turn off in the bot's chat,
+ * A bot's Tools & skills page (HUI-18): what the operator can turn off in the bot's chat,
  * what is off, and an access request waiting for them. Everything is on until
  * the operator turns it off; each change is a `PATCH /__hui/bots/:id` with the
- * whole list, and applies from the chat's next request. The tab reads
+ * whole list, and applies from the chat's next request. The page reads
  * `GET /__hui/bots/:id/catalog` when it opens and again when the bots stream
  * shows the bot changed (a grant in its chat, a request that waits).
  *
- * `BotToolsController` keeps the tab's state outside `hui-app.ts`, so the tab
- * is self-contained: the app makes one, refreshes it when the tab shows, lets
+ * `BotToolsController` keeps the page's state outside `hui-app.ts`, so the page
+ * is self-contained: the app makes one, refreshes it when the page shows, lets
  * it follow the stream, and passes `props(bot)` to the view.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
@@ -110,6 +110,15 @@ export function botToolsSummary(catalog: Pick<BotCatalog, "tools" | "skills">): 
   return `${parts.join(" and ")} ${offTools + offSkills === 1 ? "is" : "are"} off.`;
 }
 
+/** The overview's Tools & skills row, from what the bot's record says is off: "Everything on", "2 tools off",
+ * "1 tool and 3 skills off". */
+export function botToolsOffLabel(bot: Pick<BotView, "disabledTools" | "disabledSkills">): string {
+  const tools = bot.disabledTools?.length ?? 0;
+  const skills = bot.disabledSkills?.length ?? 0;
+  if (!tools && !skills) return "Everything on";
+  return `${[...(tools ? [count(tools, "tool")] : []), ...(skills ? [count(skills, "skill")] : [])].join(" and ")} off`;
+}
+
 /** Skills whose name, description or source contain every word of `query`. */
 export function matchingSkills(skills: readonly BotCatalogSkill[], query: string): BotCatalogSkill[] {
   const words = query.toLowerCase().split(/\s+/u).filter(Boolean);
@@ -176,7 +185,7 @@ const API: BotToolsApi = {
 
 const errorText = (error: unknown, fallback: string) => (error instanceof Error ? error.message : fallback);
 
-/** The Tools tab's state and actions, for one bot at a time. */
+/** The Tools & skills page's state and actions, for one bot at a time. */
 export class BotToolsController implements ReactiveController {
   state: BotToolsState = { botId: "", loading: false, error: "", saving: false, saveError: "", answering: false, query: "" };
   readonly #host: ReactiveControllerHost;

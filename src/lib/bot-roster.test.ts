@@ -8,6 +8,7 @@ import {
   botActivityAt,
   botMatches,
   botPreview,
+  clampBotPanelWidth,
   compactRelativeTime,
   hiddenBotCount,
   normalizeBotPanel,
@@ -16,7 +17,6 @@ import {
   isBotSettingsShortcut,
   rosterBots,
   tabAfterKey,
-  BOT_PANEL_TABS,
   SIDEBAR_TABS,
 } from "./bot-roster.ts";
 import type { BotView } from "./bots.ts";
@@ -122,23 +122,24 @@ test("tab strips move with arrows, Home and End and ignore other keys", () => {
   assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "Home"), "sessions");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "End"), "bots");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "Enter"), undefined);
-  assert.deepEqual(BOT_PANEL_TABS, ["routines", "memory", "soul", "tools", "settings"], "the bot panel: Routines | Memory | Soul | Tools | Settings, Settings last");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "memory", "ArrowRight"), "soul");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "soul", "ArrowRight"), "tools");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "tools", "ArrowRight"), "settings");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowRight"), "routines", "arrows wrap");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "routines", "End"), "settings");
-  assert.equal(tabAfterKey(BOT_PANEL_TABS, "settings", "ArrowLeft"), "tools");
   assert.equal(normalizeSidebarTab("bots"), "bots");
   for (const value of [null, "Bots", "agents", 1]) assert.equal(normalizeSidebarTab(value), "sessions");
 });
 
-test("the side panel remembers open/closed and its tab, defaulting open on Routines", () => {
-  assert.deepEqual(normalizeBotPanel(null), { open: true, tab: "routines" });
-  assert.deepEqual(normalizeBotPanel({ open: false, tab: "memory" }), { open: false, tab: "memory" });
-  assert.deepEqual(normalizeBotPanel({ open: true, tab: "soul" }), { open: true, tab: "soul" }, "the Soul tab is remembered too");
-  assert.deepEqual(normalizeBotPanel({ open: false, tab: "settings" }), { open: false, tab: "settings" }, "Edit and the shortcut leave the panel on Settings");
-  assert.deepEqual(normalizeBotPanel({ open: "no", tab: "secrets" }), { open: true, tab: "routines" });
+test("the side panel remembers open/closed and its width, defaulting open at 344 px", () => {
+  assert.deepEqual(normalizeBotPanel(null), { open: true, width: 344 });
+  assert.deepEqual(normalizeBotPanel({ open: false, width: 512.4 }), { open: false, width: 512 });
+  assert.deepEqual(normalizeBotPanel({ open: false, tab: "memory" }), { open: false, width: 344 }, "a record from the tabbed panel keeps its open state");
+  assert.deepEqual(normalizeBotPanel({ open: "no", width: "wide" }), { open: true, width: 344 });
+  assert.deepEqual(normalizeBotPanel({ width: 120 }), { open: true, width: 320 }, "never under its minimum");
+});
+
+test("dragging the panel's edge keeps the chat its 420 px and the panel its 320 px", () => {
+  assert.equal(clampBotPanelWidth(600, 1200), 600);
+  assert.equal(clampBotPanelWidth(900, 1200), 780, "the chat keeps its room");
+  assert.equal(clampBotPanelWidth(Number.POSITIVE_INFINITY, 1200), 780, "End: as wide as the chat allows");
+  assert.equal(clampBotPanelWidth(200, 1200), 320);
+  assert.equal(clampBotPanelWidth(500, 600), 320, "a view too narrow for both still shows the panel at its minimum");
 });
 
 test("Ctrl+Shift+, (⇧⌘, on Apple) toggles a bot's Settings, by the comma key's position", () => {

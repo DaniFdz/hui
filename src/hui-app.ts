@@ -82,28 +82,21 @@ import {
   archiveBot,
   deleteBot,
   botChangePatch,
-  botMemoryPageUrl,
   botSettingChange,
   isNewBotsFrame,
   createBot,
-  botSoulKey,
-  loadBotMemory,
-  loadBotSoul,
   loadBots,
   restoreBot,
-  saveBotSoul,
   subscribeBots,
   updateBot,
   upsertBot,
   withoutBotSessions,
-  zoomBotMemory,
   type BotView,
 } from "./lib/bots.ts";
-import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelTab, type SidebarTab } from "./lib/bot-roster.ts";
+import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "./lib/bot-roster.ts";
 import { BotToolsController } from "./lib/bot-tools.ts";
 import { BotTriggersController } from "./lib/bot-triggers.ts";
-import { memoryStatusChanged, parseMemoryView, parseMemoryZoom, type MemoryLine } from "./lib/bot-memory.ts";
-import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder, type BotMemoryState, type BotSoulState, type MemoryZoomState } from "./views/bots.ts";
+import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder } from "./views/bots.ts";
 import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
 import { BotImportController } from "./lib/bot-import-controller.ts";
 import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "./views/bot-settings.ts";
@@ -219,7 +212,7 @@ import type { ForkTarget } from "./components/fork-dialog.ts";
 import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
 import { loadJiraConnection } from "./lib/jira.ts";
 import { VoiceController } from "./lib/voice-controller.ts";
-import { renderCallBar, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
+import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { liveCallPlatform, loadCallsStatus } from "./lib/live-call-platform.ts";
 import { callsReady, type CallsStatus } from "../shared/calls.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
@@ -301,7 +294,7 @@ const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unkno
 type PaneCall = { botId: string; inCall: boolean };
 const paneCallProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
-/** A bot's Settings tab: a row's saves or refusals without that row's. */
+/** A bot's Settings page: a row's saves or refusals without that row's. */
 function withoutSetting<Value>(record: Partial<Record<BotSettingKey, Value>>, key: BotSettingKey): Partial<Record<BotSettingKey, Value>> {
   const next = { ...record };
   delete next[key];
@@ -455,7 +448,7 @@ export class HuiApp extends HuiElement {
   @state() private launchThinking = "";
   @state() private launchFast = false;
   @state() private directorySuggestions: readonly string[] = [];
-  /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings tab shows only
+  /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings page shows only
    * its own machine's, so a bot on a worker is never offered this machine's folders. */
   private directorySuggestionsFrom = "";
   private directorySuggestionRequest = 0;
@@ -575,11 +568,17 @@ export class HuiApp extends HuiElement {
   /** The bot whose chat the bot route shows. */
   @state() private activeBotId = "";
   @state() private botPanel: BotPanelState = readBotPanel();
+  /** The page the panel shows: the bot's overview, or one its rows opened. Each bot opens on its overview. */
+  @state() private botPanelView: BotPanelView = "overview";
+  /** The overview row that opened the page showing (its `data-panel-link`): going back puts the focus on it again. */
+  private botPanelOpenedFrom = "";
+  /** Wide screens: the panel fills the bot's view, its chat hidden underneath. Never remembered. */
+  @state() private botPanelExpanded = false;
   /** Narrow layouts open the panel as a sheet only on request; never remembered. */
   @state() private botSheetOpen = false;
   /** + is creating a bot; another press waits for it. */
   @state() private botCreating = false;
-  /** The Settings tab's saves, per bot: each change is one PATCH, sent in order, and a newer change to the same row
+  /** The Settings page's saves, per bot: each change is one PATCH, sent in order, and a newer change to the same row
    * replaces a value still waiting. Kept per bot, so leaving a bot never drops a change on its way. */
   @state() private botSettingsSaves: ReadonlyMap<string, BotSettingsSaves> = new Map();
   private botSettingsQueue: Promise<void> = Promise.resolve();
@@ -606,24 +605,10 @@ export class HuiApp extends HuiElement {
     },
   });
   private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
-  @state() private botMemory: BotMemoryState & { botId: string } = { botId: "", loading: false, error: "" };
-  @state() private botMemoryZoom: ReadonlyMap<string, MemoryZoomState> = new Map();
-  private botMemoryRequest = 0;
-  private botMemoryInFlight = false;
-  /** A change arrived while a read was on its way: read once more after it. */
-  private botMemoryAgain = false;
-  /** The Soul tab: the active bot's SOUL.md as last read, and its editor (undefined while only shown). */
-  @state() private botSoul: BotSoulState & { botId: string } = { botId: "", loading: false, error: "" };
-  @state() private botSoulDraft: string | undefined;
-  @state() private botSoulSaving = false;
-  @state() private botSoulSaveError = "";
-  private botSoulRequest = 0;
-  /** `botSoulKey` of the bot when SOUL.md was last read: another key, once its turn is over, means read it again. */
-  private botSoulSeen = "";
-  /** The Tools tab: what the operator can turn off in the bot's chat, kept in its own controller. */
+  /** The panel's Tools page: what the operator can turn off in the bot's chat, kept in its own controller. */
   private botTools = new BotToolsController(this);
-  /** The Routines tab's Triggers section, read while it shows. */
-  private botTriggers = new BotTriggersController(this, { visible: () => this.botPanelVisible() && this.botPanel.tab === "routines" });
+  /** The bot's triggers, read while its overview or Triggers page shows. */
+  private botTriggers = new BotTriggersController(this, { visible: () => this.botTriggersVisible() });
   private botRosterTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
@@ -792,6 +777,12 @@ export class HuiApp extends HuiElement {
       if (this.mobileNavLayout && this.botSheetOpen) {
         event.preventDefault();
         this.closeBotPanel();
+        return;
+      }
+      // An expanded panel hides the chat: Escape brings the chat back and never stops a turn the operator cannot see.
+      if (this.botPanelShownExpanded()) {
+        event.preventDefault();
+        this.expandBotPanel(false);
         return;
       }
       this.botPaneApp()?.handleGlobalEscape(event);
@@ -1020,13 +1011,8 @@ export class HuiApp extends HuiElement {
         ? { ...candidate, status, unread: presented ? false : unread === undefined ? candidate.unread : unread }
         : candidate);
       // A turn started or settled: its latest message moved. The bot stream
-      // pushes that itself; without it (an older gateway) read the list again,
-      // and the open Memory and Soul tabs read again.
-      if (bot.status !== status && !this.botsStreamLive) {
-        void this.refreshBots();
-        if (bot.id === this.activeBotId && this.botMemoryTabVisible()) void this.refreshBotMemory();
-        if (bot.id === this.activeBotId && this.botSoulTabVisible() && status !== "running" && status !== "waiting") void this.refreshBotSoul();
-      }
+      // pushes that itself; without it (an older gateway) read the list again.
+      if (bot.status !== status && !this.botsStreamLive) void this.refreshBots();
     }
     if (!this.embeddedPane && this.selected?.id === id) {
       this.reopenIfRestarted(id, status);
@@ -1343,10 +1329,11 @@ export class HuiApp extends HuiElement {
       this.resetSessionEphemeral();
       this.pendingSessionId = "";
       this.activePage = undefined;
-      if (this.activeBotId !== target.id) {
+      if (this.view !== "bot" || this.activeBotId !== target.id) {
         this.botSheetOpen = false;
-        this.resetBotMemory(target.id);
-        this.resetBotSoul(target.id);
+        this.botPanelView = "overview";
+        this.botPanelOpenedFrom = "";
+        this.botPanelExpanded = false;
         this.botTools.reset(target.id);
         this.botTriggers.reset(target.id);
       }
@@ -4088,8 +4075,6 @@ export class HuiApp extends HuiElement {
           this.bots = this.withLiveBotState(applyBotsUpdate(this.bots, update));
           this.botsLoaded = true;
           this.botsError = "";
-          this.followBotMemory();
-          this.followBotSoul();
           this.followBotTools();
           this.followBotTriggers();
         },
@@ -4262,7 +4247,7 @@ export class HuiApp extends HuiElement {
    * + (and the empty roster's New bot), as in Grok Bot: no form. The bot is created at once, on this machine or, from
    * +'s menu while a remote worker exists, on the worker chosen, where it stays. It has no name, so the gateway calls it
    * "New Bot", and everything else starts on the defaults with the face its id picks; its chat opens, where its first
-   * turn has already started asking what to call it, and its Settings tab changes the rest. A refusal (a worker HUI is
+   * turn has already started asking what to call it, and its Settings page changes the rest. A refusal (a worker HUI is
    * not connected to, say) shows in the roster's notice.
    */
   private createNewBot = (worker?: string) => {
@@ -4290,32 +4275,33 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  /** The roster's Edit: the bot's chat with its Settings tab, docked beside it on wide screens, as the sheet on
-   * narrow ones. */
+  /** The roster's Edit: the bot's chat with its panel on the Settings page, docked beside it on wide screens, as the
+   * sheet on narrow ones. */
   private openEditBot = (bot: BotView) => {
     this.botMenuFor = "";
     this.showBotSettings(bot.id);
   };
 
-  /** Opens a bot's Settings tab, on its chat (navigating there first) with the focus on the tab. */
+  /** Opens a bot's Settings page, on its chat (navigating there first). */
   private showBotSettings(botId: string) {
     if (this.view !== "bot" || this.activeBotId !== botId || this.settingsOpen) this.navigate({ kind: "bot", id: botId });
     // Without the Bots tab the bot route goes home instead.
     if (this.view !== "bot" || this.activeBotId !== botId) return;
-    this.botPanel = { open: this.mobileNavLayout ? this.botPanel.open : true, tab: "settings" };
-    writeBotPanel(this.botPanel);
     if (this.mobileNavLayout) this.botSheetOpen = true;
+    else if (!this.botPanel.open) {
+      this.botPanel = { ...this.botPanel, open: true };
+      writeBotPanel(this.botPanel);
+    }
     this.automationFormError = "";
     this.automationActionError = "";
-    this.syncBotPanelData();
-    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.bot-panel [role="tab"][aria-selected="true"]')?.focus());
+    this.selectBotPanelView("settings");
   }
 
-  /** Ctrl+Shift+, (⇧⌘,) on a bot's chat, as in Grok Bot: its Settings tab when that is not showing, closed when it is. */
+  /** Ctrl+Shift+, (⇧⌘,) on a bot's chat, as in Grok Bot: its Settings page when that is not showing, closed when it is. */
   private toggleBotSettings() {
     const bot = this.activeBot();
     if (!bot || bot.archived || !this.listedSession(bot.sessionId)) return;
-    if (this.botPanelVisible() && this.botPanel.tab === "settings") this.closeBotPanel();
+    if (this.botPanelVisible() && this.botPanelView === "settings") this.closeBotPanel();
     else this.showBotSettings(bot.id);
   }
 
@@ -4340,7 +4326,7 @@ export class HuiApp extends HuiElement {
     this.botSettingsSaves = new Map(this.botSettingsSaves).set(botId, update(this.botSettingsSavesOf(botId)));
   }
 
-  /** A Settings tab change: shown at once as saving, then sent as its own PATCH after the ones before it. */
+  /** A Settings page change: shown at once as saving, then sent as its own PATCH after the ones before it. */
   private changeBotSetting(botId: string, key: BotSettingKey, value: BotSettingValue) {
     if (this.botSettingsSavesOf(botId).pending[key] === value) return;
     this.updateBotSettingsSaves(botId, (saves) => ({ pending: { ...saves.pending, [key]: value }, errors: withoutSetting(saves.errors, key) }));
@@ -4537,61 +4523,78 @@ export class HuiApp extends HuiElement {
   };
 
   private botPanelVisible(): boolean {
-    return this.view === "bot" && !this.settingsOpen && (this.mobileNavLayout ? this.botSheetOpen : this.botPanel.open);
+    // An archived bot's page is a placeholder without the panel.
+    return this.view === "bot" && !this.settingsOpen && !this.activeBot()?.archived && (this.mobileNavLayout ? this.botSheetOpen : this.botPanel.open);
   }
 
-  private botMemoryTabVisible(): boolean {
-    return this.botPanelVisible() && this.botPanel.tab === "memory";
+  /** The panel fills the bot's view: open, expanded and docked (a sheet never expands). */
+  private botPanelShownExpanded(): boolean {
+    return this.botPanelExpanded && !this.mobileNavLayout && this.botPanelVisible();
   }
 
-  private botSoulTabVisible(): boolean {
-    return this.botPanelVisible() && this.botPanel.tab === "soul";
+  private botPanelShows(...views: BotPanelView[]): boolean {
+    return this.botPanelVisible() && views.includes(this.botPanelView);
   }
 
-  private botToolsTabVisible(): boolean {
-    return this.botPanelVisible() && this.botPanel.tab === "tools";
+  /** The overview lists the bot's triggers and its Triggers page manages them. */
+  private botTriggersVisible(): boolean {
+    return this.botPanelShows("overview", "triggers");
   }
 
-  /** The open Tools tab follows the bots stream: a request that waits, or lists a grant changed, reads it again. */
+  /** The open Tools page follows the bots stream: a request that waits, or lists a grant changed, reads it again. */
   private followBotTools() {
-    const bot = this.botToolsTabVisible() ? this.activeBot() : undefined;
+    const bot = this.botPanelShows("tools") ? this.activeBot() : undefined;
     if (bot) this.botTools.follow(bot);
   }
 
-  /** The Routines tab's Triggers section starts reading once the bot is known (a `/bots/<id>` load), and reads again
-   * when the bot's chat changes state: a trigger may just have woken it. */
+  /** The bot's triggers start reading once the bot is known (a `/bots/<id>` load), and read again when the bot's chat
+   * changes state: a trigger may just have woken it. */
   private followBotTriggers() {
-    const bot = this.botPanelVisible() && this.botPanel.tab === "routines" ? this.activeBot() : undefined;
+    const bot = this.botTriggersVisible() ? this.activeBot() : undefined;
     if (bot) this.botTriggers.follow(bot);
   }
 
-  /** The panel's visible tab decides what is read: Routines polls Automation
-   * like its page; Memory reads once, then follows the bots stream. */
+  /** The panel's page decides what is read: the overview and Routines poll Automation like its page, the overview and
+   * Triggers read the triggers, Tools its catalog, and the overview and Settings PI's model catalog. */
   private syncBotPanelData() {
     if (this.embeddedPane) return;
-    const visible = this.botPanelVisible();
-    if (visible && this.botPanel.tab === "routines") {
+    if (this.botPanelShows("overview", "routines")) {
       this.loadAutomationData();
       this.startAutomationPolling();
     } else if (this.view === "bot") {
       this.stopAutomationPolling();
     }
-    this.botTriggers.sync(visible && this.botPanel.tab === "routines" ? this.activeBot() : undefined);
-    if (this.botMemoryTabVisible()) void this.refreshBotMemory();
-    if (this.botSoulTabVisible()) void this.refreshBotSoul();
-    const toolsBot = this.botToolsTabVisible() ? this.activeBot() : undefined;
+    this.botTriggers.sync(this.botTriggersVisible() ? this.activeBot() : undefined);
+    const toolsBot = this.botPanelShows("tools") ? this.activeBot() : undefined;
     if (toolsBot) void this.botTools.refresh(toolsBot);
-    // The Settings tab's model pickers read PI's catalog, as New Session does.
-    if (visible && this.botPanel.tab === "settings") this.loadLaunchPreferences();
+    // The overview names the bot's model and Settings picks it from PI's catalog, as New Session does.
+    if (this.botPanelShows("overview", "settings")) this.loadLaunchPreferences();
   }
 
-  /** The open Memory tab stays live without a timer: the bots stream carries
-   * each bot's memory status, and a status other than the one on screen means
-   * the memory moved (a message joined, a summary was built, a turn waits). */
-  private followBotMemory() {
-    if (!this.botMemoryTabVisible()) return;
-    const bot = this.activeBot();
-    if (bot && this.botMemory.botId === bot.id && memoryStatusChanged(this.botMemory.status, bot.memory)) void this.refreshBotMemory();
+  /** Puts the focus in the panel. A page opened from a row starts where the row pointed: a section's + on its add
+   * form, a routine, trigger or run (`routine-<id>`, `[data-routine]`) or a Settings section (`settings-model`, its
+   * heading's id) on that, else on the way back. The overview, gone back to, puts it on the row that opened the page
+   * (`returnTo`); otherwise it lands on the panel's body. */
+  private focusBotPanel(returnTo = "") {
+    void this.updateComplete.then(() => {
+      const panel = this.renderRoot.querySelector<HTMLElement>(".bot-panel");
+      if (!panel) return;
+      const back = panel.querySelector<HTMLElement>(".bot-panel__back");
+      const row = returnTo ? panel.querySelector<HTMLElement>(`[data-panel-link="${CSS.escape(returnTo)}"]`) : null;
+      if (back && returnTo) {
+        const form = returnTo.endsWith("-add") ? panel.querySelector<HTMLElement>('details[open] [name="name"]') : null;
+        const dash = returnTo.indexOf("-");
+        const item = dash > 0 ? panel.querySelector<HTMLElement>(`[data-${returnTo.slice(0, dash)}="${CSS.escape(returnTo.slice(dash + 1))}"]`) : null;
+        const target = form ?? item ?? panel.querySelector<HTMLElement>(`#${CSS.escape(`${panel.id}-${returnTo}`)}`);
+        if (target) {
+          if (target !== form) target.tabIndex = -1;
+          target.focus({ preventScroll: true });
+          target.scrollIntoView({ block: "start" });
+          return;
+        }
+      }
+      (back ?? row ?? panel.querySelector<HTMLElement>(".bot-panel__body"))?.focus();
+    });
   }
 
   private toggleBotPanel = () => {
@@ -4600,13 +4603,12 @@ export class HuiApp extends HuiElement {
     } else {
       this.botPanel = { ...this.botPanel, open: !this.botPanel.open };
       writeBotPanel(this.botPanel);
+      if (!this.botPanel.open) this.botPanelExpanded = false;
     }
     this.automationFormError = "";
     this.automationActionError = "";
     this.syncBotPanelData();
-    if (this.botPanelVisible()) {
-      void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>('.bot-panel [role="tab"][aria-selected="true"]')?.focus());
-    }
+    if (this.botPanelVisible()) this.focusBotPanel();
   };
 
   private closeBotPanel = () => {
@@ -4615,147 +4617,32 @@ export class HuiApp extends HuiElement {
       this.botPanel = { ...this.botPanel, open: false };
       writeBotPanel(this.botPanel);
     }
+    this.botPanelExpanded = false;
     this.syncBotPanelData();
     void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
       this.renderRoot.querySelector<HTMLElement>(".bot-panel-toggle")?.focus();
     });
   };
 
-  private selectBotPanelTab = (tab: BotPanelTab) => {
-    this.botPanel = { ...this.botPanel, tab };
-    writeBotPanel(this.botPanel);
+  /** Opens one of the panel's pages from a row of its overview (`from`, the row's `data-panel-link`), or goes back. */
+  private selectBotPanelView = (view: BotPanelView, from = "") => {
+    const returnTo = view === "overview" ? this.botPanelOpenedFrom : from;
+    this.botPanelOpenedFrom = view === "overview" ? "" : from;
+    this.botPanelView = view;
     this.syncBotPanelData();
+    this.focusBotPanel(returnTo);
   };
 
-  /** The open Soul tab follows SOUL.md without a timer: a new `botSoulKey` on the bots stream, once the bot's turn is
-   * over, means the bot or HUI may have written it. */
-  private followBotSoul() {
-    if (!this.botSoulTabVisible()) return;
-    const bot = this.activeBot();
-    if (!bot || this.botSoul.botId !== bot.id || bot.status === "running" || bot.status === "waiting") return;
-    if (botSoulKey(bot) !== this.botSoulSeen) void this.refreshBotSoul();
-  }
-
-  private resetBotSoul(botId: string) {
-    this.botSoulRequest += 1;
-    this.botSoul = { botId, loading: false, error: "" };
-    this.botSoulDraft = undefined;
-    this.botSoulSaving = false;
-    this.botSoulSaveError = "";
-    this.botSoulSeen = "";
-  }
-
-  /** Reads SOUL.md; an open editor keeps its text, and a failed read keeps what was shown. */
-  private refreshBotSoul = async () => {
-    const bot = this.activeBot();
-    if (!bot) return;
-    if (this.botSoul.botId !== bot.id) this.resetBotSoul(bot.id);
-    const request = ++this.botSoulRequest;
-    this.botSoulSeen = botSoulKey(bot);
-    this.botSoul = { ...this.botSoul, loading: true };
-    try {
-      const soul = await loadBotSoul(bot.id);
-      if (request !== this.botSoulRequest) return;
-      this.botSoul = { botId: bot.id, loading: false, error: "", soul };
-    } catch (error) {
-      if (request !== this.botSoulRequest) return;
-      this.botSoul = { ...this.botSoul, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's soul." };
-    }
+  private resizeBotPanel = (width: number) => {
+    this.botPanel = { ...this.botPanel, width };
+    writeBotPanel(this.botPanel);
   };
 
-  /** Opens the editor on SOUL.md, or empty for Write it yourself. */
-  private editBotSoul = () => {
-    this.botSoulSaveError = "";
-    this.botSoulDraft = this.botSoul.soul ?? "";
-    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLTextAreaElement>(".bot-soul__textarea")?.focus());
-  };
-
-  private cancelBotSoulEdit = () => {
-    this.botSoulDraft = undefined;
-    this.botSoulSaveError = "";
-    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-soul__edit, .bot-soul__write")?.focus());
-  };
-
-  /** Nothing changes until the gateway stored it; a refusal stays in the editor with its text. */
-  private saveBotSoulDraft = () => {
-    const bot = this.activeBot();
-    const draft = this.botSoulDraft;
-    if (!bot || draft === undefined || this.botSoulSaving) return;
-    this.botSoulSaving = true;
-    this.botSoulSaveError = "";
-    void saveBotSoul(bot.id, draft)
-      .then((soul) => {
-        if (this.botSoul.botId !== bot.id) return;
-        // A read already on its way must not put back what this save replaced.
-        this.botSoulRequest += 1;
-        this.botSoul = { botId: bot.id, loading: false, error: "", soul };
-        this.botSoulDraft = undefined;
-        void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-soul__edit, .bot-soul__write")?.focus());
-      })
-      .catch((error: unknown) => {
-        this.botSoulSaveError = error instanceof Error ? error.message : "Could not save the soul.";
-      })
-      .finally(() => {
-        this.botSoulSaving = false;
-      });
-  };
-
-  private resetBotMemory(botId: string) {
-    this.botMemoryRequest += 1;
-    this.botMemoryInFlight = false;
-    this.botMemoryAgain = false;
-    this.botMemory = { botId, loading: false, error: "" };
-    this.botMemoryZoom = new Map();
-  }
-
-  /** A manual refresh shows itself; a live one only replaces what changed. */
-  private refreshBotMemory = async (manual = false) => {
-    const bot = this.activeBot();
-    if (!bot) return;
-    if (this.botMemory.botId !== bot.id) this.resetBotMemory(bot.id);
-    if (this.botMemoryInFlight) {
-      this.botMemoryAgain = true;
-      return;
-    }
-    this.botMemoryInFlight = true;
-    const request = ++this.botMemoryRequest;
-    if (manual || !this.botMemory.status) this.botMemory = { ...this.botMemory, loading: true };
-    try {
-      const memory = await loadBotMemory(bot.id);
-      if (request !== this.botMemoryRequest) return;
-      this.botMemory = { botId: bot.id, loading: false, error: "", status: memory.status, lines: parseMemoryView(memory.view) };
-    } catch (error) {
-      if (request !== this.botMemoryRequest) return;
-      this.botMemory = { ...this.botMemory, loading: false, error: error instanceof Error ? error.message : "Could not read the bot's memory." };
-    } finally {
-      if (request === this.botMemoryRequest) {
-        this.botMemoryInFlight = false;
-        if (this.botMemoryAgain) {
-          this.botMemoryAgain = false;
-          if (this.botMemoryTabVisible()) void this.refreshBotMemory();
-        }
-      }
-    }
-  };
-
-  /** Opens a line into its two halves (or a message whole); again folds it. */
-  private zoomBotMemoryLine = (line: MemoryLine) => {
-    const bot = this.activeBot();
-    if (!bot) return;
-    const next = new Map(this.botMemoryZoom);
-    if (next.delete(line.address)) {
-      this.botMemoryZoom = next;
-      return;
-    }
-    next.set(line.address, { loading: true, error: "", lines: [] });
-    this.botMemoryZoom = next;
-    const settle = (state: MemoryZoomState) => {
-      if (this.botMemory.botId !== bot.id || !this.botMemoryZoom.has(line.address)) return;
-      this.botMemoryZoom = new Map(this.botMemoryZoom).set(line.address, state);
-    };
-    void zoomBotMemory(bot.id, line)
-      .then((text) => settle({ loading: false, error: "", lines: parseMemoryZoom(text, line) }))
-      .catch((error: unknown) => settle({ loading: false, error: error instanceof Error ? error.message : "Could not open that line.", lines: [] }));
+  /** Expanded, the panel fills the bot's view and its chat stays mounted underneath, hidden, so a reply streaming in,
+   * a draft and the scroll position are all there when it comes back. */
+  private expandBotPanel = (expanded: boolean) => {
+    this.botPanelExpanded = expanded;
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-panel__expand")?.focus());
   };
 
   private renderBotWorkspace() {
@@ -4798,7 +4685,8 @@ export class HuiApp extends HuiElement {
     const utilityDefault = this.utilityModelName();
     // A call under way stays reachable even if the ChatGPT login went meanwhile.
     const paneCall: PaneCall | undefined = call || this.callsAvailable() ? { botId: bot.id, inCall: Boolean(call) } : undefined;
-    return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""}" data-bot-id=${bot.id}>
+    const expanded = !call && this.botPanelShownExpanded();
+    return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""} ${expanded ? "bot-workspace--expanded" : ""}" data-bot-id=${bot.id}>
       <div class="bot-workspace__chat">
         ${call?.minimized ? renderCallBar({ ...this.callViewProps(bot, call), floating: false }) : nothing}
         ${keyed(bot.id, html`<hui-app
@@ -4834,11 +4722,18 @@ export class HuiApp extends HuiElement {
       ${panelOpen ? renderBotPanel({
         bot,
         id: panelId,
-        tab: this.botPanel.tab,
+        view: this.botPanelView,
+        ...(this.botPanelOpenedFrom ? { openedFrom: this.botPanelOpenedFrom } : {}),
         sheet,
+        expandable: !sheet && !call,
+        expanded,
+        width: this.botPanel.width,
         timezone: localTimezone(),
-        onTab: this.selectBotPanelTab,
+        ...(paneCall ? { call: renderCallButton({ botName: bot.name, inCall: paneCall.inCall, onCall: this.paneCallAction(bot) }) } : {}),
+        onView: this.selectBotPanelView,
         onClose: this.closeBotPanel,
+        onExpand: this.expandBotPanel,
+        onResize: this.resizeBotPanel,
         routines: {
           automation: this.automation,
           error: this.automationError,
@@ -4851,24 +4746,6 @@ export class HuiApp extends HuiElement {
           onRun: this.runAutomationTaskNow,
           onDelete: this.deleteAutomationTask,
           onRetry: this.loadAutomationData,
-        },
-        memory: {
-          state: this.botMemory.botId === bot.id ? this.botMemory : { loading: true, error: "" },
-          zoom: this.botMemoryZoom,
-          onZoom: this.zoomBotMemoryLine,
-          onRefresh: () => void this.refreshBotMemory(true),
-          pageUrl: botMemoryPageUrl(bot.id),
-        },
-        soul: {
-          state: this.botSoul.botId === bot.id ? this.botSoul : { loading: true, error: "" },
-          draft: this.botSoul.botId === bot.id ? this.botSoulDraft : undefined,
-          saving: this.botSoulSaving,
-          saveError: this.botSoulSaveError,
-          onEdit: this.editBotSoul,
-          onDraft: (text) => { this.botSoulDraft = text; },
-          onSave: this.saveBotSoulDraft,
-          onCancel: this.cancelBotSoulEdit,
-          onRetry: () => void this.refreshBotSoul(),
         },
         tools: this.botTools.props(bot),
         triggers: this.botTriggers.props(bot),
@@ -4920,6 +4797,8 @@ export class HuiApp extends HuiElement {
       this.notify(`Hang up the call with ${this.voice.call?.bot.name ?? "the other bot"} first.`, true);
       return;
     }
+    // The call shows over the chat, which an expanded panel hides.
+    this.botPanelExpanded = false;
     if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
     void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call__control--hangup, .bot-call__close")?.focus());
   };

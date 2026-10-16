@@ -3,7 +3,7 @@ import { test } from "vitest";
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotCatalog, BotCatalogTool, BotView } from "../../shared/bots.ts";
 import {
-  BotToolsController, botToolsKey, botToolsSummary, groupBotTools, matchingSkills, parseBotCatalog, skillsAfter, toolsAfter, type BotToolsApi,
+  BotToolsController, botToolsKey, botToolsOffLabel, botToolsSummary, groupBotTools, matchingSkills, parseBotCatalog, skillsAfter, toolsAfter, type BotToolsApi,
 } from "./bot-tools.ts";
 import { parseBot } from "./bots.ts";
 
@@ -39,6 +39,10 @@ test("the summary says everything is on, or how much is off", () => {
   assert.equal(botToolsSummary({ tools: [tool("read", "files")], skills: [] }), "Everything is on: 1 tool and 0 skills.");
   assert.equal(botToolsSummary({ tools: [tool("read", "files", { enabled: false })], skills: [] }), "1 of 1 tool is off.");
   assert.equal(botToolsSummary({ tools: [], skills: CATALOG.skills }), "1 of 2 skills is off.");
+  // The overview has only the bot's record, which lists what is off.
+  assert.equal(botToolsOffLabel({}), "Everything on");
+  assert.equal(botToolsOffLabel({ disabledTools: ["bash", "write"] }), "2 tools off");
+  assert.equal(botToolsOffLabel({ disabledTools: ["bash"], disabledSkills: [{ name: "a", path: "/a" }, { name: "b", path: "/b" }, { name: "c", path: "/c" }] }), "1 tool and 3 skills off");
 });
 
 test("skills are searched by every word in their name, description or source; switches change whole lists", () => {

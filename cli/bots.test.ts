@@ -463,7 +463,7 @@ test("tools and skills print what a bot has, on or off, and --deny / --allow sen
     "  off  alpha  Writes release notes.  [/skills]",
     "  on   beta   Triage.  [HUI defaults]",
     "",
-    "Waiting for you: Allow access to bash (powerful)? Answer it in hui bot chat bob or the Tools tab.",
+    "Waiting for you: Allow access to bash (powerful)? Answer it in hui bot chat bob or on its Tools & skills page.",
     "",
   ].join("\n"));
   await botCommand(gateway.base, "skills", ["bob"], { allow: "alpha" }, terminal().io);

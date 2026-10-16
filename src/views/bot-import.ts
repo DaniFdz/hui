@@ -147,7 +147,7 @@ function renderPreviewStep(props: BotImportDialogProps, preview: BotImportPrevie
     ${preview.skills.length ? section("Skills", String(preview.skills.length), html`<ul class="bot-import__list">${preview.skills.map((skill) => html`<li>
         <div><strong>${skill.name}</strong>${skill.original && skill.original !== skill.name ? html` <span class="bot-import__muted">(from ${skill.original})</span>` : nothing} — ${skill.description}</div>
         <details><summary>Instructions</summary>${textBlock(skill.content)}</details>
-      </li>`)}</ul><p class="bot-import__hint">Its own, in its home folder: only this bot loads them. They are on, like every skill of a bot; turn any off in its Tools tab.</p>`, { name: "skills" }) : nothing}
+      </li>`)}</ul><p class="bot-import__hint">Its own, in its home folder: only this bot loads them. They are on, like every skill of a bot; turn any off on its Tools & skills page.</p>`, { name: "skills" }) : nothing}
     ${preview.routines.length ? section("Routines", `${preview.routines.length} · disabled`, html`<ul class="bot-import__list">${preview.routines.map((routine) => html`<li>
         <div><strong>${routine.name}</strong> · ${describeRoutineSchedule(routine.schedule)}${routine.guessed ? html` <span class="bot-import__warn">· assumed${routine.scheduleText ? ` from “${routine.scheduleText}”` : ""}, check it</span>` : routine.scheduleText ? html` <span class="bot-import__muted">· “${routine.scheduleText}”</span>` : nothing}</div>
         ${textBlock(routine.prompt)}

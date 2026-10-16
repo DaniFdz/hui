@@ -3,7 +3,7 @@
  * wakes it when a listener the operator runs reports something, and removes one. Only the operator adds or changes
  * them. HUI's agent-tool handler does the work (`BotTriggerService.tool`), as the calling chat's session.
  *
- * It is an ordinary tool of the Tools tab, under Bots: on by default, not powerful, and the operator can turn it off.
+ * It is an ordinary tool of the Tools & skills page, under Bots: on by default, not powerful, and the operator can turn it off.
  * It imports nothing from `durable-bots.ts`, which builds the extension with it.
  */
 import { defineTool, type ConversationId, type DocumentReader, type ToolRegistration } from "@earendil-works/pi-durable";
@@ -18,7 +18,7 @@ export const TRIGGERS_TOOL_CONTRIBUTION = {
   guidelines: [] as readonly string[],
 };
 
-/** How the Tools tab names it. */
+/** How the Tools & skills page names it. */
 export const TRIGGERS_TOOL_INFO = { label: "Triggers", description: "List and remove its own triggers: what its listeners report wakes it" };
 
 export function triggersTool(options: {
@@ -31,7 +31,7 @@ export function triggersTool(options: {
     description: [
       "Your triggers wake you when a listener the operator runs reports something: each event arrives in this chat as \"[trigger: <name> · <summary>] <prompt>\" with its details.",
       "action list shows them; remove names the trigger (its name or id) in trigger.",
-      "Only the operator adds or changes triggers, in the Routines tab of your panel or with hui bot trigger add.",
+      "Only the operator adds or changes triggers, on the Triggers page of your panel or with hui bot trigger add.",
     ].join(" "),
     parameters: Type.Object({
       action: Type.Union(["list", "remove"].map((action) => Type.Literal(action))),
