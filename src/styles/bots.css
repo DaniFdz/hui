@@ -111,9 +111,10 @@
 /* A face brings its own size (src/styles/bot-face.css) and needs no tile. */
 .bot-avatar.bot-avatar--face { width: auto; height: auto; border-radius: 0; background: none; }
 .bot-avatar__glyph { line-height: 1; }
-/* A bot in the composer's @ menu: its small face or tile, scaled into the menu's 22px icon box. */
-.mention-menu .slash-menu-icon--bot { overflow: visible; }
-.mention-menu .slash-menu-icon--bot > .bot-avatar { transform: scale(.7); }
+/* A bot in the composer's @ menu: its small face or tile, scaled into the 22px column the menu gives icons (outside
+ * .slash-menu-icon, whose icon rules would shrink the face's own SVG). */
+.mention-menu .mention-menu__face { display: grid; place-items: center; width: 22px; height: 22px; }
+.mention-menu .mention-menu__face > .bot-avatar { transform: scale(.7); }
 .bot-avatar__badge {
   position: absolute;
   right: -2px;

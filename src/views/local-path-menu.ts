@@ -24,7 +24,7 @@ export const localPathOptionId = (index: number, menuId = LOCAL_PATH_MENU_ID) =>
 function renderOption(suggestion: LocalPathSuggestion) {
   if (suggestion.kind === "bot") {
     const { bot } = suggestion;
-    return html`<span class="slash-menu-icon slash-menu-icon--bot" aria-hidden="true">${renderBotAvatar(bot, "sm")}</span>
+    return html`<span class="mention-menu__face" aria-hidden="true">${renderBotAvatar(bot, "sm")}</span>
       <span class="slash-menu-copy"><span class="slash-menu-name">@${suggestion.path}</span><span class="slash-menu-desc">${bot.title ? `${bot.name} · ${bot.title}` : bot.name}</span></span>`;
   }
   return html`<span class="slash-menu-icon" aria-hidden="true">${suggestion.kind === "directory" ? icons.folder : icons.fileText}</span>
