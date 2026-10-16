@@ -1872,10 +1872,10 @@ its import half stands. The contract is
   asked or confirmed, the question for the new owner, and lists what the bot
   needs to work (a signed-in CLI, a listener for a trigger). HUI applies the
   quotes itself, on the cleaned text, the longer one where two overlap among
-  the changes not kept, and drops quotes it can't find or shorter than four
-  characters and any replacement or question that repeats a removed or asked
-  passage: the reviewer never rewrites the bot, and text it reads can't make it
-  do more. Without a utility model, or for a part where it fails, only the
+  the changes not kept, drops quotes it can't find or shorter than four
+  characters, and puts plain wording in place of a replacement or question that
+  repeats a removed or asked passage: the reviewer never rewrites the bot, and
+  text it reads can't make it do more. Without a utility model, or for a part where it fails, only the
   cleanup runs, and the review says which parts the model didn't read.
 - **Scripts are kept whole or left out.** Markdown (SOUL.md, a skill's Markdown
   and text files, prompts) changes in place; a script or other file beside a
