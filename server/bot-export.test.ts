@@ -56,9 +56,8 @@ const PASSAGES = [
   { quote: "Approve only when CI is green", group: "confirm", reason: "An approval rule.", question: "Approve only on green CI?" },
 ];
 
-function harness(options: { model?: string | undefined; answer?: (prompt: string) => string } = {}) {
-  const state = { soul: SOUL as string | null, prompts: [] as { system: string; prompt: string }[] };
-  const deps: BotExportDeps = {
+function harnessDeps(state: { soul: string | null; prompts: { system: string; prompt: string }[] } = { soul: SOUL, prompts: [] }, options: { model?: string | undefined; answer?: (prompt: string) => string } = {}): BotExportDeps {
+  return {
     bots: {
       get: async () => BOT,
       list: async () => [BOT, { ...BOT, id: "b2", handle: "retro", name: "Retro" }],
@@ -81,9 +80,13 @@ function harness(options: { model?: string | undefined; answer?: (prompt: string
       const changes = PASSAGES.filter((change) => request.prompt.includes(change.quote));
       return JSON.stringify({ changes, needs: request.prompt.includes("gh pr") ? ["The GitHub CLI signed in"] : [] });
     },
-    identity: async () => ({ operator: "Dani Fernandez", home: "/Users/dani.fernandez", username: "dani.fernandez", hostname: "COMP-K7WX9J", workers: [] }),
+    identity: async () => ({ operator: "Dani Fernandez", homes: ["/Users/dani.fernandez"], username: "dani.fernandez", hostnames: ["COMP-K7WX9J"], workers: [] }),
   };
-  return { service: new BotExportService(deps), state };
+}
+
+function harness(options: { model?: string | undefined; answer?: (prompt: string) => string } = {}) {
+  const state = { soul: SOUL as string | null, prompts: [] as { system: string; prompt: string }[] };
+  return { service: new BotExportService(harnessDeps(state, options)), state };
 }
 
 const unzip = (data: Buffer) => new Map(readZip(data, { files: 100, totalBytes: 1024 * 1024 }).map((entry) => [entry.path, entry.data.toString("utf8")]));
@@ -106,7 +109,7 @@ test("a review cleans before the model reads, and the reviewer's changes, script
     "1 turned-off tool of your extensions: a new owner's bot has its own.",
     "1 turned-off skill of your folders: a new owner's bot has its own.",
   ]);
-  assert.deepEqual(review.meta.routines, [{ schedule: { kind: "cron", expression: "0 9 * * 1-5" }, timeoutSeconds: 900 }], "a cron without its time zone");
+  assert.deepEqual(review.meta.routines, [{ schedule: { kind: "cron", expression: "0 9 * * 1-5" } }], "a cron without its time zone");
   assert.equal(review.meta.model, "claude-sonnet-4-5", "the provider stays behind");
   assert.ok(review.parts.every((part) => part.read));
   assert.equal(review.model, "hui-e2e/fixture");
@@ -125,7 +128,7 @@ test("the download holds exactly what the review and the picks make: no handle, 
   assert.equal(JSON.stringify(manifest).includes("abcd"), false, "no trigger token hint");
   assert.deepEqual(manifest.disabledTools, ["bash"]);
   assert.deepEqual(manifest.disabledSkills, ["review"]);
-  assert.deepEqual(manifest.routines, [{ name: "Morning sweep", prompt: "Review what waits for {{user}}.", schedule: { kind: "cron", expression: "0 9 * * 1-5" }, timeoutSeconds: 900 }]);
+  assert.deepEqual(manifest.routines, [{ name: "Morning sweep", prompt: "Review what waits for {{user}}.", schedule: { kind: "cron", expression: "0 9 * * 1-5" } }]);
   assert.deepEqual(manifest.triggers, [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review the pull request.", cooldownSeconds: 60 }], "a filter value the cleanup touched is left out");
   assert.deepEqual(manifest.open, [
     { kind: "ask", where: "SOUL.md", question: "Which repositories should I watch?" },
@@ -190,12 +193,78 @@ test("the reviewer's answer is untrusted: garbage and invented quotes are droppe
       { quote: "review assistant", group: "remove", replacement: "Pat Doe's helper" },
     ] }),
   }).service.review("ada");
-  assert.deepEqual(sly.changes.map((change) => [change.quote, change.replacement]), [["review assistant", ""], ["Pat Doe", ""]], "the profile is read first");
+  assert.deepEqual(sly.changes.map((change) => change.quote), ["review assistant", "Pat Doe"], "the profile is read first");
+  assert.equal(buildExport(sly, {}).files.some((file) => file.text.includes("Pat Doe")), false, "a replacement that repeats a removed passage gives way");
   const asked = await harness({ answer: () => JSON.stringify({ changes: [{ quote: "acme/widgets", group: "ask", label: "acme/widgets or yours", question: "Still acme/widgets?" }] }) }).service.review("ada");
-  assert.deepEqual([asked.changes[0]!.label, asked.changes[0]!.question], ["your own value", "What should stand for [ask: your own value]?"]);
+  const build = buildExport(asked, {});
+  assert.match(build.files.find((file) => file.path === "SOUL.md")!.text, /\[ask: your own value\]/u, "a label that repeats the asked passage gives way");
+  assert.equal(build.open[0]!.question, "Still [ask: your own value]?", "its question too");
 });
 
 test("applyChanges replaces every occurrence in one pass, the longer where two overlap", () => {
   assert.equal(applyChanges("Pat Doe met Pat. Doe left.", [{ quote: "Pat", replacement: "[x]" }, { quote: "Pat Doe", replacement: "a teammate" }]), "a teammate met [x]. Doe left.");
   assert.equal(applyChanges("name: Pat", [{ quote: "Pat", replacement: "[ask: your name]" }, { quote: "name", replacement: "N" }]), "N: [ask: your name]", "a replacement is never matched again");
+  assert.equal(applyChanges("met Carol Bob Jones today", [{ quote: "Carol Bob", replacement: "X" }, { quote: "Bob Jones", replacement: "Y" }]), "met X today", "two quotes that overlap leave nothing of either");
+});
+
+test("a passage the reviewer flags in a script changes the text where it also stands, and wording that repeats a removed one never travels", async () => {
+  const answer = (prompt: string) => {
+    if (prompt.includes("(a script:")) return JSON.stringify({ changes: prompt.includes("gh pr review") ? [{ quote: "--approve", group: "remove", reason: "x" }] : [] });
+    if (!prompt.startsWith("Part: SOUL.md")) return JSON.stringify({ changes: [] });
+    return JSON.stringify({
+      changes: [
+        { quote: "Pat Doe", group: "remove", reason: "A teammate's name.", replacement: "Pat Doe's stand-in" },
+        { quote: "review pull requests in acme/widgets with Pat Doe", group: "confirm", reason: "Scope.", question: "Keep reviewing with Pat Doe?" },
+      ],
+      needs: ["Access to Pat Doe's calendar", "pat doe's laptop"],
+    });
+  };
+  const { service, state } = harness({ answer });
+  state.soul = `${SOUL}\nAlways pass --approve when the rules allow.`;
+  const review = await service.review("ada");
+  assert.deepEqual(review.changes.find((change) => change.quote === "--approve")?.part, "SOUL.md", "found in a script, shown where the text holds it");
+  const files = unzip((await service.export("ada", { review: review.id, picks: {} })).data);
+  const manifest = JSON.parse(files.get("bot.json")!) as BotExportManifest;
+  assert.doesNotMatch(files.get("SOUL.md")!, /--approve/u, "removed wherever it appears");
+  assert.equal(JSON.stringify(manifest).toLowerCase().includes("pat doe"), false, JSON.stringify(manifest.open));
+  assert.doesNotMatch(files.get("SOUL.md")!, /Pat Doe/u, "a replacement that repeats the passage gives way");
+  assert.deepEqual(manifest.needs, ["Access to [removed]'s calendar", "[removed]'s laptop"]);
+});
+
+test("a name the picks remove whole travels as a plain one; a newer review replaces one still running", async () => {
+  const blank = await harness({ answer: (prompt) => JSON.stringify({ changes: prompt.startsWith("Part: Profile") ? [{ quote: "Ada", group: "remove", reason: "x" }] : [] }) }).service.review("ada");
+  const profile = blank.parts.find((part) => part.id === "profile")!;
+  const named = { ...blank, parts: blank.parts.map((part) => part === profile ? { ...part, fields: [{ key: "name", text: "Ada Lovelace" }] } : part), changes: [{ id: "c1", part: "profile", quote: "Ada Lovelace", group: "remove" as const, reason: "x", replacement: "", label: "x", question: "" }] };
+  assert.equal(buildExport(named, {}).name, "Bot", "never the name as it was");
+  assert.equal(buildExport(named, {}).fileName, "bot.hui-bot.zip");
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let calls = 0;
+  // The first review waits on its first request; the second runs through; then the first ends.
+  const racing = new BotExportService({
+    ...harnessDeps(), completion: async () => {
+      calls += 1;
+      if (calls === 1) await held;
+      return JSON.stringify({ changes: [] });
+    },
+  });
+  const first = racing.review("ada");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const second = await racing.review("ada");
+  release();
+  const late = await first;
+  await assert.rejects(racing.export("ada", { review: late.id, picks: {} }), BotConflictError, "the review that ended last isn't the latest started");
+  assert.ok((await racing.export("ada", { review: second.id, picks: {} })).data.length > 0);
+});
+
+test("a skill or file whose name gives the operator away stays behind", async () => {
+  const deps = harnessDeps();
+  const service = new BotExportService({
+    ...deps,
+    skills: () => ({ files: true, write: async () => {}, read: async () => [...SKILLS, { name: "dani-reviews", text: "---\nname: dani-reviews\ndescription: x\n---\n\nx\n" }, { name: "plain", text: "---\nname: plain\ndescription: y\n---\n\ny\n", files: [{ path: "notes-for-dani.md", text: "n" }] }] }),
+  });
+  const review = await service.review("ada");
+  assert.ok(review.leftOut.includes("Skill dani-reviews: its name holds your name; rename it to share it."));
+  assert.ok(review.leftOut.includes("Skill plain: notes-for-dani.md, whose path holds your name; rename it to share it."));
+  assert.deepEqual(review.meta.skills, ["review", "plain"]);
 });

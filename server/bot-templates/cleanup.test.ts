@@ -1,9 +1,10 @@
 /** The automatic cleanup of a bot's export: what it changes before any model reads it, and what it leaves alone. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { cleanText } from "./cleanup.ts";
+import { caseClash, skillFilePath } from "./common.ts";
+import { cleanText, personalIn } from "./cleanup.ts";
 
-const IDENTITY = { operator: "Dani Fernandez", home: "/Users/dani.fernandez", username: "dani.fernandez", hostname: "COMP-K7WX9J.local", workers: ["devbox", "dev"] };
+const IDENTITY = { operator: "Dani Fernandez", homes: ["/Users/dani.fernandez"], username: "dani.fernandez", hostnames: ["COMP-K7WX9J.local"], workers: ["devbox", "dev"] };
 const clean = (text: string) => cleanText(text, IDENTITY);
 
 test("the operator's name, home folders, e-mail addresses, machine and worker names in paths, tailnet names, IPs, Slack IDs, keys and trigger links go", () => {
@@ -34,4 +35,17 @@ test("ordinary text stays: common words of a name, git's address, loopback, vers
   const started = Date.now();
   cleanText(`${"a+b/".repeat(60_000)} ${"ab.".repeat(80_000)} ${"x".repeat(200_000)}@`, IDENTITY);
   assert.ok(Date.now() - started < 5_000, "long text without spaces stays fast");
+});
+
+test("code that reads a secret, words with a digit and a worker's home are not a person's; identifiers that name them are", () => {
+  const code = "token = process.env.GITHUB_TOKEN\napi_key = os.environ.get('K')\nsecret: $SECRET_VALUE_HERE\nmodel GPT4TURBO";
+  assert.deepEqual(clean(code), { text: code, hits: [] }, "a script reading its token from the environment keeps traveling");
+  const worker = cleanText("cd /srv/bits/app && ssh devbox.lan", { ...IDENTITY, homes: ["/Users/dani.fernandez", "/srv/bits"], hostnames: ["COMP-K7WX9J.local", "devbox.lan"] });
+  assert.equal(worker.text, "cd ~/app && ssh devbox.lan", "a worker's home goes; its host name only inside a path");
+  assert.equal(personalIn("dani-reviews", IDENTITY), "your name");
+  assert.equal(personalIn("scripts/approve.sh", IDENTITY), undefined);
+  assert.equal(personalIn("notes-COMP-K7WX9J.md", IDENTITY), "this machine's name");
+  assert.equal(skillFilePath("skill.md"), undefined, "a second SKILL.md in another case would overwrite the instructions");
+  assert.equal(skillFilePath("docs/Skill.MD"), "docs/Skill.MD", "only beside it");
+  assert.equal(caseClash(["a.sh", "b.sh", "A.sh"]), "A.sh");
 });

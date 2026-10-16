@@ -104,7 +104,8 @@ export function skillFiles(value: unknown, skill: string, dropped: string[]): Bo
     if (!isRecord(item) || typeof item["path"] !== "string" || typeof item["text"] !== "string") continue;
     const path = skillFilePath(item["path"]);
     const bytes = Buffer.byteLength(item["text"]);
-    const problem = !path ? "hidden, or outside the skill's folder"
+    const problem = !path ? "hidden, outside the skill's folder, or a second SKILL.md"
+      : files.some((file) => file.path.toLowerCase() === path.toLowerCase()) ? "another file has its path, in another case"
       : files.length >= BOT_TEMPLATE_LIMITS.skillFiles ? `more than ${BOT_TEMPLATE_LIMITS.skillFiles} files`
       : bytes > BOT_TEMPLATE_LIMITS.skillFileBytes ? `larger than ${BOT_TEMPLATE_LIMITS.skillFileBytes / 1024} KB`
       : total + bytes > BOT_TEMPLATE_LIMITS.skillFilesBytes ? `past the skill's ${BOT_TEMPLATE_LIMITS.skillFilesBytes / 1024 / 1024} MB`

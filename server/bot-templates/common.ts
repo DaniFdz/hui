@@ -134,11 +134,22 @@ export function skillFileText(skill: Pick<BotTemplateSkill, "name" | "descriptio
   return `---\nname: ${JSON.stringify(skill.name)}\ndescription: ${JSON.stringify(oneLine(skill.description, 1_024))}\n---\n\n${skill.content.trim()}\n`;
 }
 
-/** A file's path inside its skill's folder, or undefined: relative, inside it, no hidden part, and not SKILL.md itself. */
+/** A file's path inside its skill's folder, or undefined: relative, inside it, no hidden part, and not SKILL.md itself in
+ * any case (a case-insensitive disk would write it over the skill's instructions). */
 export function skillFilePath(raw: string): string | undefined {
   const path = safeRelativePath(raw);
-  if (!path || path === "SKILL.md" || path.split("/").some((part) => part.startsWith("."))) return undefined;
+  if (!path || path.toLowerCase() === "skill.md" || path.split("/").some((part) => part.startsWith("."))) return undefined;
   return path;
+}
+
+/** The first path that differs from an earlier one only by case: one would overwrite the other on a case-insensitive disk. */
+export function caseClash(paths: readonly string[]): string | undefined {
+  const seen = new Set<string>();
+  for (const path of paths) {
+    if (seen.has(path.toLowerCase())) return path;
+    seen.add(path.toLowerCase());
+  }
+  return undefined;
 }
 
 /** Files under one folder, by their path below it. */

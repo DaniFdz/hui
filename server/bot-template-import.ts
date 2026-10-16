@@ -72,6 +72,8 @@ type Plan = {
   triggers: BotTemplateTrigger[];
   /** A HUI export's turned-off skills, by name: set once its own skills exist. */
   disabledSkills: string[];
+  /** Its open points' first turn can run there: never on an older worker, whose host would read it as the operator's. */
+  pointsTurn: boolean;
 };
 
 const listed = (items: readonly string[]) => items.length <= 1 ? items[0] ?? "" : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
@@ -194,7 +196,7 @@ export class BotTemplateService {
     }
     // Its first turn: going through a HUI template's open points, or sending its template's opener.
     let opener = false;
-    const kickoff = plan.preview.open.length ? botTemplateKickoffText(bot.name) : plan.preview.opener ? botOpenerKickoffText(bot.name, plan.preview.opener) : undefined;
+    const kickoff = plan.pointsTurn ? botTemplateKickoffText(bot.name) : plan.preview.opener ? botOpenerKickoffText(bot.name, plan.preview.opener) : undefined;
     if (kickoff) {
       try {
         await this.#deps.bots.send(bot.id, { text: kickoff });
@@ -377,7 +379,10 @@ export class BotTemplateService {
     if (routines.length) notes.push(`${routines.length === 1 ? "Its routine starts" : `Its ${routines.length} routines start`} disabled: check ${routines.length === 1 ? "it" : "them"} in its Routines tab, then turn ${routines.length === 1 ? "it" : "them"} on.`);
     const triggers = template.triggers ?? [];
     if (triggers.length) notes.push(`${triggers.length === 1 ? "Its trigger starts" : `Its ${triggers.length} triggers start`} disabled: a listener you run wakes ${triggers.length === 1 ? "it" : "them"}, through a URL from New URL in its Routines tab.`);
-    if (open.length) notes.push(`It goes through ${plural(open.length, "open point")} with you in its first chat, then rewrites its SOUL.md.`);
+    // An older worker's host reads an import's first turn as the operator's (it lets the bot rewrite its soul there): on
+    // one the bot waits for the operator's first message instead. A worker that keeps skills' files knows the turn.
+    const pointsTurn = open.length > 0 && (!worker || keepsFiles);
+    if (open.length) notes.push(pointsTurn ? `It goes through ${plural(open.length, "open point")} with you in its first chat, then rewrites its SOUL.md.` : `It goes through ${plural(open.length, "open point")} once you write to it: ${worker?.name ?? "its worker"} runs an older HUI worker, so it doesn't speak first.`);
 
     const integrations = template.integrations.map((integration) => {
       const tool = matchIntegration(integration, offer.tools);
@@ -390,6 +395,7 @@ export class BotTemplateService {
       routines,
       triggers,
       disabledSkills,
+      pointsTurn,
       preview: {
         bot: {
           name, handle,

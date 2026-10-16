@@ -382,10 +382,16 @@ const botTemplateRoutes = createBotTemplateRoutes({
     utilityModel: async () => (await readSettings()).models.utility || undefined,
     // A plain completion, as a call's helper makes: the reviewer has no tools, whatever the text it reads asks for.
     completion: (model, request) => callCompletion(model, request),
-    identity: async () => {
+    identity: async (worker) => {
       const operator = soulOperatorName((await readSettings()).profileName);
-      const remote = (await workers.list().catch(() => [])).map((worker) => worker.name);
-      return { ...(operator ? { operator } : {}), home: homedir(), username: userInfo().username, hostname: hostname(), workers: remote };
+      const remote = await workers.list().catch(() => []);
+      // A bot on a worker: that machine's home and host name are its owner's too.
+      const there = remote.find((each) => each.id === worker)?.host;
+      return {
+        ...(operator ? { operator } : {}), username: userInfo().username,
+        homes: [homedir(), ...there ? [there.home] : []], hostnames: [hostname(), ...there ? [there.hostname] : []],
+        workers: remote.map((each) => each.name),
+      };
     },
   }),
 });

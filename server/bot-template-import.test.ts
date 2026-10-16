@@ -194,6 +194,7 @@ test("a worker that keeps SKILL.md only gets no files, listed as left out; a tri
   assert.equal(older.written[0]!.skills[0]!.files, undefined);
   const planned = await older.service.create({ template: HUI_TEMPLATE, worker: "devbox" });
   assert.deepEqual(planned.skills, ["review"]);
+  assert.equal(older.sent.length, 0, "an older worker's host would read the first turn as the operator's: the bot waits to be written to");
   const failing = harness({ failTrigger: true });
   await assert.rejects(failing.service.create({ template: HUI_TEMPLATE }), /the trigger store is broken/u);
   assert.deepEqual(failing.calls, ["create", "skills", "trigger", "delete new"]);

@@ -21,9 +21,9 @@ import type { AutomationTask } from "../src/lib/automation-types.ts";
 import type { BotOffer, BotService } from "./bot-service.ts";
 import type { BotOwnSkill, BotSkillFiles } from "./bot-skills.ts";
 import { BotConflictError, BotInputError } from "./bots.ts";
-import { cleanText, type CleanupIdentity } from "./bot-templates/cleanup.ts";
+import { cleanText, personalIn, type CleanupIdentity } from "./bot-templates/cleanup.ts";
 import { isRecord, oneLine } from "./bot-templates/common.ts";
-import { defaultQuestion, parseReviewAnswer, reviewChunks, reviewPrompt, reviewSystemPrompt, type ReviewAnswer, type ReviewedChange } from "./bot-templates/review.ts";
+import { parseReviewAnswer, reviewChunks, reviewPrompt, reviewSystemPrompt, type ReviewAnswer, type ReviewedChange } from "./bot-templates/review.ts";
 import { writeZip } from "./bot-templates/zip.ts";
 import type { CallCompletion } from "./call-helper.ts";
 
@@ -39,8 +39,8 @@ export type BotExportDeps = {
   utilityModel(): Promise<string | undefined>;
   /** One plain completion, no tools: the reviewer. */
   completion: CallCompletion;
-  /** Who the operator is, for the cleanup. */
-  identity(): Promise<CleanupIdentity>;
+  /** Who the operator is, for the cleanup: this machine's identity and, for a bot on a worker, the worker's too. */
+  identity(worker?: string): Promise<CleanupIdentity>;
   now?: () => number;
 };
 
@@ -74,6 +74,8 @@ export class BotExportService {
   readonly #now: () => number;
   /** Each bot's latest review, until the gateway restarts. */
   readonly #reviews = new Map<string, { review: BotExportReview; hash: string }>();
+  /** Each bot's reviews started: only the latest one started is kept, whichever ends last. */
+  readonly #started = new Map<string, number>();
 
   constructor(deps: BotExportDeps) {
     this.#deps = deps;
@@ -83,29 +85,29 @@ export class BotExportService {
   /** `POST /__hui/bots/:id/export/review`. */
   async review(target: string): Promise<BotExportReview> {
     const bot = await this.#deps.bots.get(target);
+    const ticket = (this.#started.get(bot.id) ?? 0) + 1;
+    this.#started.set(bot.id, ticket);
     const input = await this.#read(bot);
     if (!input.soul.trim()) throw new BotConflictError(`${bot.name} has no soul yet: finish its first conversation, then export it.`);
-    const identity = await this.#deps.identity();
+    const identity = await this.#deps.identity(bot.worker?.id);
     const { parts, cleanup, copies, meta, leftOut } = this.#parts(input, identity);
     const others = (await this.#deps.bots.list({ archived: "all" })).filter((each) => each.id !== bot.id).map((each) => each.handle);
     const { model, warning, found, needs } = await this.#reviewParts(parts, copies, identity, others);
 
-    // One change per passage, the strictest group first. What the reviewer wrote must not carry a removed or asked
-    // passage out again: such a replacement, label or question gives way to a plain one (the change itself stays).
+    // One change per passage, the strictest group first. A passage found in a script changes the text where it also
+    // appears (shown as the first such part); the script itself is a file change. What the reviewer wrote is checked
+    // against the picks when the zip is made (`buildExport`).
     const byQuote = new Map<string, ReviewedChange & { part: string }>();
     for (const change of found) {
       const seen = byQuote.get(change.quote);
       if (!seen || RANK[change.group] < RANK[seen.group]) byQuote.set(change.quote, change);
     }
-    const hidden = [...byQuote.values()].filter((change) => change.group !== "confirm").map((change) => change.quote.toLowerCase());
-    const leaks = (text: string) => hidden.some((quote) => text.toLowerCase().includes(quote));
-    const kept = [...byQuote.values()].map((change) => {
-      const label = leaks(change.label) ? "your own value" : change.label;
-      const question = change.group === "remove" || !leaks(change.question) ? change.question : defaultQuestion(change.group, change.quote, label);
-      return { ...change, replacement: leaks(change.replacement) ? "" : change.replacement, label, question };
-    });
-    const kind = new Map(parts.map((part) => [part.id, part.kind]));
-    const changes: BotExportChange[] = kept.filter((change) => kind.get(change.part) === "text").map((change, index) => ({ id: `c${index + 1}`, ...change }));
+    const kept = [...byQuote.values()];
+    const text = parts.filter((part) => part.kind === "text");
+    const changes: BotExportChange[] = kept.flatMap((change) => {
+      const home = text.find((part) => part.id === change.part) ?? text.find((part) => part.fields.some((field) => field.text.includes(change.quote)));
+      return home ? [{ ...change, part: home.id }] : [];
+    }).map((change, index) => ({ id: `c${index + 1}`, ...change }));
     const files = this.#scripts(parts, cleanup, copies, kept);
     const review: BotExportReview = {
       id: randomUUID(), botId: bot.id, name: bot.name,
@@ -114,7 +116,8 @@ export class BotExportService {
       needs: [...new Map(needs.map((need) => [need.toLowerCase(), need])).values()].slice(0, 30).map((text, index) => ({ id: `n${index + 1}`, text })),
       leftOut, meta,
     };
-    this.#reviews.set(bot.id, { review, hash: input.hash });
+    // A review started after this one replaces it, even when this one ends last.
+    if (this.#started.get(bot.id) === ticket) this.#reviews.set(bot.id, { review, hash: input.hash });
     return review;
   }
 
@@ -165,7 +168,7 @@ export class BotExportService {
     const exported = {
       name: bot.name, title: bot.title, description: bot.description, avatar: bot.avatar, model: bot.model, thinking: bot.thinking,
       memoryModel: bot.memoryModel, memoryThinking: bot.memoryThinking, voice: bot.voice, soul, skills,
-      routines: routines.map(({ name, description, prompt, schedule, timeoutSeconds }) => ({ name, description, prompt, schedule, timeoutSeconds })),
+      routines: routines.map(({ name, description, prompt, schedule }) => ({ name, description, prompt, schedule })),
       triggers: triggers.map(({ name, filter, prompt, cooldownSeconds }) => ({ name, filter, prompt, cooldownSeconds })),
       disabledTools, disabledSkills,
     };
@@ -202,9 +205,20 @@ export class BotExportService {
 
     text("profile", "Profile", [["name", bot.name], ["title", bot.title], ["description", bot.description]]);
     text("SOUL.md", "SOUL.md", [["text", input.soul]]);
-    for (const skill of input.skills) {
+    // A skill's name and a file's path travel as they are (they can't be rewritten): one that gives the operator away stays.
+    const skills = input.skills.filter((skill) => {
+      const kind = personalIn(skill.name, identity);
+      if (kind) leftOut.push(`Skill ${skill.name}: its name holds ${kind}; rename it to share it.`);
+      return !kind;
+    });
+    for (const skill of skills) {
       text(`skills/${skill.name}/SKILL.md`, `Skill ${skill.name}: SKILL.md`, [["text", skill.text]]);
       for (const file of skill.files ?? []) {
+        const kind = personalIn(file.path, identity);
+        if (kind) {
+          leftOut.push(`Skill ${skill.name}: ${file.path}, whose path holds ${kind}; rename it to share it.`);
+          continue;
+        }
         const id = `skills/${skill.name}/${file.path}`;
         const label = `Skill ${skill.name}: ${file.path}`;
         if (BOT_SKILL_TEXT_FILE.test(file.path)) text(id, label, [["text", file.text]]);
@@ -223,7 +237,7 @@ export class BotExportService {
       }
       const schedule: BotExportSchedule = task.schedule.kind === "every" ? { kind: "every", everyMs: task.schedule.everyMs } : { kind: "cron", expression: task.schedule.expression };
       const id = `routines/${routines.length}`;
-      routines.push({ schedule, ...(task.timeoutSeconds ? { timeoutSeconds: task.timeoutSeconds } : {}) });
+      routines.push({ schedule });
       text(id, `Routine “${plain(task.name)}”`, [["name", task.name], ["description", task.description], ["prompt", task.prompt]]);
     }
     const triggers: BotExportMeta["triggers"] = input.triggers.map((trigger, index) => {
@@ -243,7 +257,7 @@ export class BotExportService {
       ...(bot.memoryThinking ? { memoryThinking: bot.memoryThinking } : {}),
       ...(bot.voice && Object.keys(bot.voice).length ? { voice: { ...bot.voice } } : {}),
       routines, triggers,
-      disabledTools: input.disabledTools, disabledSkills: input.disabledSkills, skills: input.skills.map((skill) => skill.name),
+      disabledTools: input.disabledTools, disabledSkills: input.disabledSkills.filter((name) => skills.some((skill) => skill.name === name)), skills: skills.map((skill) => skill.name),
     };
     return { parts, cleanup, copies, meta, leftOut };
   }

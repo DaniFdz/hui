@@ -49,7 +49,7 @@ export type BotExportManifest = {
     memoryThinking?: string;
     voice?: BotVoice;
   };
-  routines: { name: string; description?: string; prompt: string; schedule: BotExportSchedule; timeoutSeconds?: number }[];
+  routines: { name: string; description?: string; prompt: string; schedule: BotExportSchedule }[];
   triggers: BotTemplateTrigger[];
   /** Built-in tools it turned off. */
   disabledTools: string[];
@@ -117,7 +117,7 @@ export type BotExportMeta = {
   memoryModel?: string;
   memoryThinking?: string;
   voice?: BotVoice;
-  routines: { schedule: BotExportSchedule; timeoutSeconds?: number }[];
+  routines: { schedule: BotExportSchedule }[];
   /** Each trigger's filter; a `match` value is its part's `match` field. */
   triggers: { filter: BotTriggerFilter; cooldownSeconds: number }[];
   disabledTools: string[];
@@ -154,16 +154,17 @@ export type BotExportBuild = { name: string; fileName: string; files: { path: st
 /** The mark an asked passage becomes. */
 export const askMark = (label: string): string => `[ask: ${label}]`;
 
-/** What a change asks the new owner in the group picked: the reviewer's question in its own group, else one that fits
- * (an asked passage is never quoted: it is the owner's; a confirmed one travels anyway). */
-export function changeQuestion(change: Pick<BotExportChange, "group" | "question" | "label" | "quote">, picked: "ask" | "confirm"): string {
-  if (picked === change.group) return change.question;
-  return picked === "ask" ? `What should stand for ${askMark(change.label)}?` : `Keep this as it is: “${oneLine(change.quote, 80)}”?`;
+/** What a change asks the new owner in the group picked: the reviewer's question in its own group, else one that fits,
+ * from its label and its excerpt as they travel (an asked passage is never quoted: it is the owner's). */
+export function changeQuestion(change: Pick<BotExportChange, "group" | "question">, picked: "ask" | "confirm", words: { label: string; excerpt: string }): string {
+  if (picked === change.group && change.question) return change.question;
+  return picked === "ask" ? `What should stand for ${askMark(words.label)}?` : `Keep this as it is: “${words.excerpt}”?`;
 }
 
 /**
- * `text` with each quote replaced, every time it appears. Where two overlap the longer wins and the other is left out
- * there; it is one pass over the text as it was, so a replacement is never matched again.
+ * `text` with each quote replaced, every time it appears, in one pass over the text as it was, so a replacement is never
+ * matched again. Quotes that overlap become one span, all of it replaced by the longer one's replacement: no part of
+ * either is left behind.
  */
 export function applyChanges(text: string, changes: readonly { quote: string; replacement: string }[]): string {
   const ranges: { start: number; end: number; replacement: string }[] = [];
@@ -171,16 +172,21 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
     if (!quote) continue;
     for (let at = text.indexOf(quote); at !== -1; at = text.indexOf(quote, at + quote.length)) ranges.push({ start: at, end: at + quote.length, replacement });
   }
-  // ponytail: quadratic overlap check; fine for a review's tens of passages.
-  const taken: typeof ranges = [];
-  for (const range of ranges.sort((a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start)) {
-    if (!taken.some((other) => range.start < other.end && other.start < range.end)) taken.push(range);
+  const spans: { start: number; end: number; replacement: string; longest: number }[] = [];
+  for (const range of ranges.sort((a, b) => a.start - b.start || b.end - a.end)) {
+    const last = spans.at(-1);
+    if (!last || range.start >= last.end) {
+      spans.push({ ...range, longest: range.end - range.start });
+      continue;
+    }
+    if (range.end - range.start > last.longest) Object.assign(last, { replacement: range.replacement, longest: range.end - range.start });
+    last.end = Math.max(last.end, range.end);
   }
   let result = "";
   let at = 0;
-  for (const range of taken.sort((a, b) => a.start - b.start)) {
-    result += text.slice(at, range.start) + range.replacement;
-    at = range.end;
+  for (const span of spans) {
+    result += text.slice(at, span.start) + span.replacement;
+    at = span.end;
   }
   return result + text.slice(at);
 }
@@ -190,6 +196,8 @@ export function botExportFileName(name: string): string {
   return `${handleFromName(name.replace(/\{\{\s*user\s*\}\}(?:['’]s)?/giu, ""))}.hui-bot.zip`;
 }
 
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
 const oneLine = (text: string, max: number) => {
   const line = text.replace(/\s+/gu, " ").trim();
   return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
@@ -198,12 +206,23 @@ const oneLine = (text: string, max: number) => {
 /** A review and the operator's picks as the files of the zip, in the order a person opening it reads them. */
 export function buildExport(review: BotExportReview, picks: Readonly<Record<string, BotExportGroup>> = {}): BotExportBuild {
   const group = (id: string, fallback: BotExportGroup): BotExportGroup => picks[id] ?? fallback;
+  // What the reviewer wrote travels too (replacements, labels, questions, needs): none of it may repeat a passage the
+  // picks remove or ask, in any case. A label or replacement that would gives way to a plain one; other text is scrubbed.
+  const hidden = review.changes.filter((change) => ["remove", "ask"].includes(group(change.id, change.group))).map((change) => change.quote);
+  const hiddenPattern = hidden.length ? new RegExp([...hidden].sort((a, b) => b.length - a.length).map(escape).join("|"), "giu") : undefined;
+  const leaks = (text: string) => hiddenPattern !== undefined && text.search(hiddenPattern) !== -1;
+  const scrub = (text: string) => hiddenPattern ? text.replace(hiddenPattern, "[removed]") : text;
+  const label = (change: BotExportChange) => leaks(change.label) ? "your own value" : change.label;
   const replacements = review.changes.flatMap((change) => {
     const picked = group(change.id, change.group);
-    return picked === "remove" ? [{ quote: change.quote, replacement: change.replacement }]
-      : picked === "ask" ? [{ quote: change.quote, replacement: askMark(change.label) }]
+    return picked === "remove" ? [{ quote: change.quote, replacement: leaks(change.replacement) ? "" : change.replacement }]
+      : picked === "ask" ? [{ quote: change.quote, replacement: askMark(label(change)) }]
       : [];
   });
+  /** Text the reviewer wrote, as it travels: the picks' replacements (a passage taken out shows as `[removed]`), then a scrub
+   * of what they missed (another case). */
+  const marks = replacements.map((pair) => ({ quote: pair.quote, replacement: pair.replacement || "[removed]" }));
+  const tidy = (text: string) => scrub(applyChanges(text, marks));
   const parts = new Map(review.parts.map((part) => [part.id, part]));
   const fields = (id: string): Record<string, string> => {
     const part = parts.get(id);
@@ -216,22 +235,22 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
   const open: BotOpenPoint[] = [];
   for (const change of review.changes) {
     const picked = group(change.id, change.group);
-    if (picked === "ask") open.push({ kind: "ask", where: where(change.part), question: changeQuestion(change, "ask"), ...onlyOperator(change.part) });
-    if (picked === "confirm") open.push({ kind: "confirm", where: where(change.part), question: changeQuestion(change, "confirm"), excerpt: oneLine(change.quote, 160), ...onlyOperator(change.part) });
+    if (picked !== "ask" && picked !== "confirm") continue;
+    const excerpt = tidy(oneLine(change.quote, 160));
+    const question = tidy(changeQuestion(change, picked, { label: label(change), excerpt: oneLine(excerpt, 80) }));
+    open.push({ kind: picked, where: tidy(where(change.part)), question, ...(picked === "confirm" ? { excerpt } : {}), ...onlyOperator(change.part) });
   }
   for (const file of review.files) {
-    if (group(file.id, file.group) === "confirm") open.push({ kind: "confirm", where: where(file.part), question: file.question });
+    if (group(file.id, file.group) === "confirm") open.push({ kind: "confirm", where: tidy(where(file.part)), question: tidy(file.question) });
   }
 
   const { meta } = review;
   const profile = fields("profile");
-  const name = profile["name"] || review.name;
+  // Never the name as it was: a name the picks removed whole becomes a plain one.
+  const name = profile["name"]?.trim() || "Bot";
   const routines = meta.routines.map((routine, index) => {
     const text = fields(`routines/${index}`);
-    return {
-      name: text["name"] || `Routine ${index + 1}`, ...(text["description"] ? { description: text["description"] } : {}), prompt: text["prompt"] ?? "",
-      schedule: routine.schedule, ...(routine.timeoutSeconds ? { timeoutSeconds: routine.timeoutSeconds } : {}),
-    };
+    return { name: text["name"] || `Routine ${index + 1}`, ...(text["description"] ? { description: text["description"] } : {}), prompt: text["prompt"] ?? "", schedule: routine.schedule };
   });
   const triggers = meta.triggers.map((trigger, index) => {
     const id = `triggers/${index}`;
@@ -241,7 +260,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     // A value the cleanup or a removed or asked passage touched would never match: its owner sets a new one.
     const touched = match !== undefined && (text["match"] !== original || review.cleanup.some((hit) => hit.part === id && hit.field === "match"));
     if (touched) {
-      open.push({ kind: "ask", where: where(id), question: `Which ${match.field || "event"} should wake it? Its filter matched a value of the previous owner's: set yours in the Routines tab.`, operator: true });
+      open.push({ kind: "ask", where: tidy(where(id)), question: `Which ${match.field || "event"} should wake it? Its filter matched a value of the previous owner's: set yours in the Routines tab.`, operator: true });
     }
     return {
       name: text["name"] || `Trigger ${index + 1}`,
@@ -270,7 +289,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     disabledSkills: meta.disabledSkills,
     skills: meta.skills,
     open,
-    needs: review.needs.filter((need) => group(need.id, "keep") !== "remove").map((need) => need.text),
+    needs: review.needs.filter((need) => group(need.id, "keep") !== "remove").map((need) => tidy(need.text)),
   };
 
   const ending = (text: string) => text.endsWith("\n") ? text : `${text}\n`;

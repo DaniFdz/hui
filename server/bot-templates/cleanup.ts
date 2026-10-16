@@ -9,10 +9,12 @@
 export type CleanupIdentity = {
   /** Settings' profile name, when it is set. */
   operator?: string;
-  /** This machine's home folder, user name and host name. */
-  home: string;
+  /** The home folders of this machine and, for a bot on a worker, of the worker. */
+  homes: readonly string[];
+  /** This machine's user name. */
   username: string;
-  hostname: string;
+  /** This machine's host name and, for a bot on a worker, the worker's. */
+  hostnames: readonly string[];
   /** The names of the remote workers. */
   workers: readonly string[];
 };
@@ -55,7 +57,8 @@ function rules(identity: CleanupIdentity): Rule[] {
     { kind: "a key or token", pattern: /\b(bearer\s+)([A-Za-z0-9_\-.=+/]{16,})/giu, replace: (_match, at) => `${at.groups[0]}${REMOVED}`, sample: (_match, at) => masked(at.groups[1]!) },
     {
       kind: "a key or token",
-      pattern: /\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|token|secret|password|passwd)["']?\s*[:=]\s*["']?)([^\s"'`,;)]{12,})/giu,
+      // A value with a digit, not code that reads one (`process.env.X`, `os.environ.get(…)`, `$TOKEN`).
+      pattern: /\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|token|secret|password|passwd)["']?\s*[:=]\s*["']?)(?!process\.|os\.|env\.|getenv|\$)(?=[^\s"'`,;()]*\d)([^\s"'`,;()]{12,})/giu,
       replace: (_match, at) => `${at.groups[0]}${REMOVED}`,
       sample: (_match, at) => masked(at.groups[1]!),
     },
@@ -69,15 +72,11 @@ function rules(identity: CleanupIdentity): Rule[] {
       pattern: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/gu,
       replace: (match) => match.startsWith("127.") || match === "0.0.0.0" ? match : REMOVED,
     },
-    { kind: "a Slack ID", pattern: /\b[UCWGD](?=[A-Z0-9]*\d)[A-Z0-9]{8,11}\b/gu, replace: () => REMOVED },
+    { kind: "a Slack ID", pattern: /\b[UCWGD](?=(?:[A-Z]*\d){2})[A-Z0-9]{8,11}\b/gu, replace: () => REMOVED },
   ];
-  const home = identity.home && identity.home !== "/" ? `${escape(identity.home)}(?![^/\\s"'\`])|` : "";
-  list.push({ kind: "a home folder", pattern: new RegExp(`${home}/(?:Users|home)/[^/\\s"'\`]+`, "gu"), replace: () => "~" });
-  const names = [
-    ...[identity.username].map((name) => ["this machine's user name", name] as const),
-    ...[identity.hostname, identity.hostname.split(".")[0] ?? ""].map((name) => ["this machine's name", name] as const),
-    ...identity.workers.map((name) => ["a worker's name", name] as const),
-  ].filter(([, name]) => name.length >= 3 && !GENERIC_NAMES.has(name.toLowerCase()));
+  const homes = identity.homes.filter((home) => home && home !== "/").map((home) => `${escape(home)}(?![^/\\s"'\`])|`).join("");
+  list.push({ kind: "a home folder", pattern: new RegExp(`${homes}/(?:Users|home)/[^/\\s"'\`]+`, "gu"), replace: () => "~" });
+  const names = machineNames(identity);
   for (const [kind, name] of names) {
     // Only inside a path, an address or a link: a token holding a / or an @.
     list.push({
@@ -94,6 +93,30 @@ function rules(identity: CleanupIdentity): Rule[] {
     }
   }
   return list;
+}
+
+/** This machine's user name, host names and workers' names, as distinctive as a cleanup needs them. */
+function machineNames(identity: CleanupIdentity): (readonly [kind: string, name: string])[] {
+  return [
+    ...[identity.username].map((name) => ["this machine's user name", name] as const),
+    ...identity.hostnames.flatMap((host) => [host, host.split(".")[0] ?? ""]).map((name) => ["this machine's name", name] as const),
+    ...identity.workers.map((name) => ["a worker's name", name] as const),
+  ].filter(([, name]) => name.length >= 3 && !GENERIC_NAMES.has(name.toLowerCase()));
+}
+
+/**
+ * What a skill's name or a file's path gives away, if anything: what the cleanup would change in it, or a word of the
+ * operator's name or of the machine's names in it, any case (`dani-reviews`). An identifier can't be rewritten, so what
+ * holds one stays behind.
+ */
+export function personalIn(identifier: string, identity: CleanupIdentity): string | undefined {
+  const hit = cleanText(identifier, identity).hits[0];
+  if (hit) return hit.kind;
+  const words = new Set(identifier.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
+  const own = (identity.operator ?? "").toLowerCase().split(/\s+/u).filter((word) => word.length >= 3 && !COMMON_WORDS.has(word));
+  if (own.some((word) => words.has(word))) return "your name";
+  const joined = identifier.toLowerCase();
+  return machineNames(identity).find(([, name]) => joined.includes(name.toLowerCase()))?.[0];
 }
 
 /** `text` with the cleanup done, and what it did, by kind. */

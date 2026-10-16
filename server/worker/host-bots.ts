@@ -26,7 +26,7 @@ import { durableBotConversations } from "../bot-conversations.ts";
 import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
 import { BOT_TEMPLATE_LIMITS } from "../../shared/bot-templates.ts";
 import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bot-skills.ts";
-import { skillFilePath } from "../bot-templates/common.ts";
+import { caseClash, skillFilePath } from "../bot-templates/common.ts";
 import { localBotSouls } from "../bot-souls.ts";
 import { accessField, normalizeSoul } from "../bots.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
@@ -125,6 +125,7 @@ function skillFiles(value: unknown): BotOwnSkill[] {
       if (Buffer.byteLength(file["text"]) > BOT_TEMPLATE_LIMITS.skillFileBytes || total > BOT_TEMPLATE_LIMITS.skillFilesBytes) throw new Error(`The files of skill ${skill["name"]} are too large.`);
       return { path: file["path"], text: file["text"] };
     });
+    if (caseClash(checked.map((file) => file.path))) throw new Error(`Two files of skill ${skill["name"]} differ only by case.`);
     return { name: skill["name"], text: skill["text"], ...(checked.length ? { files: checked } : {}) };
   });
 }

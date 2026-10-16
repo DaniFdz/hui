@@ -241,8 +241,9 @@ function picker(label: string, groups: readonly [BotExportGroup, string][], valu
 /** What a passage becomes in its group. */
 function outcome(change: BotExportReview["changes"][number], group: BotExportGroup) {
   if (group === "remove") return change.replacement ? html`Becomes <q>${change.replacement}</q>` : "Taken out";
-  if (group === "ask") return html`Becomes <code>${askMark(change.label)}</code> · asks: ${changeQuestion(change, "ask")}`;
-  if (group === "confirm") return html`Asks: ${changeQuestion(change, "confirm")}`;
+  const words = { label: change.label, excerpt: change.quote.replace(/\s+/gu, " ").trim().slice(0, 80) };
+  if (group === "ask") return html`Becomes <code>${askMark(change.label)}</code> · asks: ${changeQuestion(change, "ask", words)}`;
+  if (group === "confirm") return html`Asks: ${changeQuestion(change, "confirm", words)}`;
   return "Travels as written";
 }
 

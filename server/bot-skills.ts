@@ -15,7 +15,7 @@ import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/
 import { join } from "node:path";
 import { BOT_TEMPLATE_LIMITS, type BotTemplateSkillFile } from "../shared/bot-templates.ts";
 import { BOTS_DIR } from "./bots.ts";
-import { skillFilePath } from "./bot-templates/common.ts";
+import { caseClash, skillFilePath } from "./bot-templates/common.ts";
 
 /** The folder of a bot's own skills, inside its home. */
 export const BOT_SKILLS_DIR = "skills";
@@ -135,6 +135,8 @@ export function localBotSkills(botsDir: string = BOTS_DIR): BotSkillFiles {
       for (const skill of skills) {
         if (!BOT_SKILL_NAME.test(skill.name)) throw new Error(`Not a skill name: ${JSON.stringify(skill.name)}.`);
         for (const file of skill.files ?? []) if (skillFilePath(file.path) !== file.path) throw new Error(`Not a file of a skill's folder: ${JSON.stringify(file.path)}.`);
+        const clash = caseClash((skill.files ?? []).map((file) => file.path));
+        if (clash) throw new Error(`Two files of skill ${skill.name} differ only by case: ${JSON.stringify(clash)}.`);
       }
       if (!skills.length) return;
       if (!await realFolder(home(botId))) await mkdir(home(botId), { recursive: true, mode: 0o700 });
