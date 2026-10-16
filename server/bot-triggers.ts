@@ -318,10 +318,10 @@ export class BotTriggerService {
     const ref = typeof params["trigger"] === "string" ? params["trigger"].trim() : "";
     if (action === "list") {
       const { triggers } = await this.list(bot.id);
-      if (!triggers.length) return { text: "You have no triggers. Only the operator adds them, in the Routines tab of your panel or with hui bot trigger add." };
+      if (!triggers.length) return { text: "You have no triggers. Only the operator adds them, on the Triggers page of your panel or with hui bot trigger add." };
       return { text: [`You have ${triggers.length} trigger${triggers.length === 1 ? "" : "s"}:`, ...triggers.map(describe)].join("\n") };
     }
-    if (action !== "remove") throw new TriggerInputError("Only the operator adds or changes triggers, in the Routines tab of your panel or with hui bot trigger add: a trigger's URL holds a secret that shouldn't pass through the model, and what its listener reports can be the operator's messages. action must be list or remove.");
+    if (action !== "remove") throw new TriggerInputError("Only the operator adds or changes triggers, on the Triggers page of your panel or with hui bot trigger add: a trigger's URL holds a secret that shouldn't pass through the model, and what its listener reports can be the operator's messages. action must be list or remove.");
     if (bot.archived) throw new TriggerConflictError("An archived bot cannot change its triggers.");
     if (!ref) throw new TriggerInputError("Name the trigger to remove: its name or id.");
     const removed = await this.remove(bot.id, ref);
@@ -343,7 +343,7 @@ export class BotTriggerService {
     if (!await this.#deps.active()) return { status: 409, body: { error: BOTS_OFF_MESSAGE } };
     const bot = trigger && (await this.#deps.bots.list()).find((candidate) => candidate.id === trigger.botId);
     if (!trigger || !bot) return { status: 404, body: { error: "No trigger has this URL." } };
-    if (!trigger.enabled) return { status: 409, body: { error: "This trigger is off: turn it on in the bot's Routines tab." } };
+    if (!trigger.enabled) return { status: 409, body: { error: "This trigger is off: turn it on in the bot's panel." } };
     if (bot.archived) return { status: 409, body: { error: `@${bot.handle} is archived: restore it to wake it.` } };
     let body: unknown;
     try {

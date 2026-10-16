@@ -479,7 +479,7 @@ registerAgentToolHandler(async (invocation) => {
   }
   return invocation.action === "present_media"
     ? presentMediaForSession(invocation.callerSessionId, invocation.params)
-    : subagents.handle(invocation.callerSessionId, invocation.action, invocation.params);
+    : subagents.handle(invocation.callerSessionId, invocation.action, invocation.params, invocation.signal);
 });
 
 function initializeSubagents(): void {
@@ -4165,7 +4165,13 @@ async function handleRequest(
     }
     if (action[2] === "abort" && request.method === "POST") {
       try {
+        // Stop also stops the helpers this conversation collects (Swarm), even when the turn itself refuses to stop.
+        const helpers = subagents.cancelCollected(id).catch((error: unknown) => recordDiagnosticEvent({
+          area: "session", level: "warning", action: "subagent_cancel_failed", sessionId: id,
+          summary: error instanceof Error ? error.message : "Could not stop this conversation's collected subagents.",
+        }));
         await liveSessions.abort(id);
+        await helpers;
         sendJson(response, 200, { ok: true });
       } catch (error) {
         sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
