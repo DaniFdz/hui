@@ -261,6 +261,8 @@ function outcome(result: BotExportBuild["outcomes"][string] | undefined, group: 
 /** The form for a passage the reviewer missed. Inside the dialog's form, whose submit is Download: Add is a plain button,
  * and Enter in its line adds. */
 function renderAddition(props: BotExportDialogProps) {
+  // Its section starts closed and is then left as the operator leaves it (`{ name: "export-add" }`, no `open`): bound to
+  // the form's state, it closed while they typed.
   const { draft } = props;
   const add = () => { if (!props.pending && draft.quote.trim()) props.onAdd(); };
   return html`<p class="bot-import__hint">Copy a passage no change touches from the files below, and pick what happens to it.</p>
@@ -274,7 +276,7 @@ function renderAddition(props: BotExportDialogProps) {
       ${draft.group === "confirm" ? nothing : html`<label class="bot-export__field"><span>${draft.group === "remove" ? "Becomes" : "What the new owner gives"}</span>
         <input class="settings-input" maxlength="120" placeholder=${draft.group === "remove" ? "Nothing: it is taken out" : "the repositories to watch"} .value=${live(draft.becomes)} ?disabled=${props.pending}
           @input=${(event: Event) => props.onDraft({ becomes: (event.currentTarget as HTMLInputElement).value })}
-          @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); add(); } }} /></label>`}
+          @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); add(); } }} /></label>`}
       ${draft.error ? html`<p class="group-action-dialog__error bot-import__error bot-export__add-error" role="alert">${draft.error}</p>` : nothing}
       <div class="bot-export__add-actions"><button type="button" class="btn btn--sm bot-export__add-button" ?disabled=${props.pending || !draft.quote.trim()} @click=${add}>Add</button></div>
     </div>`;
@@ -282,13 +284,9 @@ function renderAddition(props: BotExportDialogProps) {
 
 function renderReview(props: BotExportDialogProps, held: BotExportReview) {
   const { bot, picks } = props;
-  // The operator's additions are changes like the reviewer's (`a1`, `a2`…), made as the gateway will make them.
-  let review = held;
-  try {
-    review = withAdditions(held, props.added);
-  } catch {
-    // Each was checked when added, against this same review.
-  }
+  // The operator's additions are changes like the reviewer's (`a1`, `a2`…), made as the gateway will make them; each was
+  // checked when added, against this same review.
+  const review = withAdditions(held, props.added);
   const pick = (id: string, fallback: BotExportGroup) => picks[id] ?? fallback;
   const build = buildExport(review, picks);
   const label = (id: string) => review.parts.find((part) => part.id === id)?.label ?? id;
@@ -320,7 +318,6 @@ function renderReview(props: BotExportDialogProps, held: BotExportReview) {
           <div class="bot-import__hint">${change.reason}${change.id.startsWith("a") ? html` <button type="button" class="btn btn--ghost btn--sm bot-export__undo" ?disabled=${props.pending} @click=${() => props.onUndo(Number(change.id.slice(1)) - 1)}>Undo</button>` : nothing}</div>
         </li>`)}</ul>`, { name: `export-${group}`, open: true }) : nothing;
     })}
-    ${/* Closed at first and then left as the operator leaves it: bound to state, it closed while they typed. */ ""}
     ${section("Missed something?", props.added.length ? String(props.added.length) : undefined, renderAddition(props), { name: "export-add" })}
     ${review.files.length ? section("Scripts", String(review.files.length), html`<p class="bot-import__hint">A script is never rewritten: it travels as it is, travels for the new owner to check, or stays behind.</p><ul class="bot-import__list">${review.files.map((file) => html`<li class="bot-export__change" data-change=${file.id}>
         <div class="bot-export__row"><strong>${label(file.part)}</strong>${picker(`What happens to ${label(file.part)}`, FILE_GROUPS, pick(file.id, file.group), props, file.id)}</div>

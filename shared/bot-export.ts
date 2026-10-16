@@ -206,6 +206,17 @@ export function additionChange(review: BotExportReview, addition: BotExportAddit
   };
 }
 
+/** The picks once addition `index` is undone: later additions move up a place (`a3` is `a2`), their picks with them. */
+export function picksWithoutAddition(picks: Readonly<Record<string, BotExportGroup>>, index: number): Record<string, BotExportGroup> {
+  const result: Record<string, BotExportGroup> = {};
+  for (const [id, group] of Object.entries(picks)) {
+    const at = /^a\d+$/u.test(id) ? Number(id.slice(1)) - 1 : -1;
+    if (at === -1 || at < index) result[id] = group;
+    else if (at > index) result[`a${at}`] = group;
+  }
+  return result;
+}
+
 /** The review with the operator's additions as changes `a1`, `a2`…; one that can't be a change throws why. */
 export function withAdditions(review: BotExportReview, additions: readonly BotExportAddition[]): BotExportReview {
   let result = review;
@@ -249,8 +260,10 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
     let { start, end } = span;
     const limit = spans[index + 1]?.start ?? text.length;
     if (!span.replacement) {
+      // Only brackets or quotes that stand alone: a call's (`f(x)`), an index's or a link's text stays bracketed.
       const close = ENCLOSURES[text[start - 1] ?? ""];
-      if (close && text[end] === close && start - 1 >= at && end + 1 <= limit) {
+      const alone = (start - 1 === 0 || /[\s([{"“'`]/u.test(text[start - 2] ?? "")) && (end + 1 === text.length || /[\s.,;:!?)\]}"”'`]/u.test(text[end + 1] ?? ""));
+      if (close && text[end] === close && alone && start - 1 >= at && end + 1 <= limit) {
         start -= 1;
         end += 1;
       }
@@ -273,10 +286,17 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
           if (spaceBefore && !listItem) dropSpaceBefore();
         }
       } else if (spaceBefore && !listItem && /^[.,;:!?)]/u.test(text[end] ?? "")) {
-        // A clause ending its sentence takes the "and" or "or" that joined it: "A and B." without B is "A.".
-        const joined = /(?:,\s*|\s)(?:and|or) $/u.exec(text.slice(Math.max(at, start - 6), start));
-        if (joined && start - joined[0].length >= at) start -= joined[0].length;
-        else dropSpaceBefore();
+        // A clause ending its sentence takes the "and" or "or" that joined it: "A and B." without B is "A.". Looked for in
+        // what is written, where a removal just before may have taken a space.
+        const joined = /(?:,\s*|\s)(?:and|or) $/u.exec((result + text.slice(at, start)).slice(-8));
+        if (joined) {
+          const cut = joined[0].length;
+          if (cut <= start - at) start -= cut;
+          else {
+            result = result.slice(0, result.length - (cut - (start - at)));
+            start = at;
+          }
+        } else dropSpaceBefore();
       }
       else if (spaceBefore && text[end] === " " && end + 1 <= limit) end += 1;
       const newline = text.indexOf("\n", end);

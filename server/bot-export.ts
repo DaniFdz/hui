@@ -114,10 +114,11 @@ export class BotExportService {
       if (!seen || RANK[change.group] < RANK[seen.group]) byQuote.set(change.quote, change);
     }
     const quoted = [...byQuote.values()];
-    // Two reads quote one rule or name more or less widely: a wider quote in the same part, at least as strict, stands
-    // for the narrower one (a stricter narrow one stays: it changes inside the wider).
-    const kept = quoted.filter((change) => !quoted.some((other) => other !== change && other.part === change.part && other.quote.length > change.quote.length
-      && other.quote.includes(change.quote) && RANK[other.group] <= RANK[change.group]));
+    // Two reads quote one rule more or less widely: a narrower confirm gives way to a wider change in the same part, its
+    // open point said by that one. A removed or asked passage always stays: it changes wherever it appears in the bot,
+    // in other parts and scripts too, which a wider quote doesn't.
+    const kept = quoted.filter((change) => change.group !== "confirm" || !quoted.some((other) => other !== change && other.part === change.part
+      && other.quote.length > change.quote.length && other.quote.includes(change.quote)));
     const text = parts.filter((part) => part.kind === "text");
     const holds = (part: BotExportPart, quote: string) => part.fields.some((field) => field.text.includes(quote));
     // The bot's whole name is the template's: a change to it starts kept, for the operator to see and decide.
@@ -153,8 +154,9 @@ export class BotExportService {
     const bot = await this.#deps.bots.get(target);
     const held = this.#reviews.get(bot.id);
     if (!held || held.review.id !== body["review"]) throw new BotConflictError("This review is gone (HUI restarted, or a newer review replaced it): review the bot again.");
+    if ((await this.#read(bot)).hash !== held.hash) throw new BotConflictError(`${bot.name} changed since its review: review it again before you download it.`);
     // The operator's additions join the reviewer's changes, made as the dialog makes them; what they wrote travels, so
-    // the cleanup must find nothing in it.
+    // the cleanup must find nothing in it as it travels.
     const additions = this.#additions(body["added"]);
     let review: BotExportReview;
     try {
@@ -163,12 +165,12 @@ export class BotExportService {
       throw new BotInputError(error instanceof Error ? error.message : "An addition can't be a change.");
     }
     const identity = await this.#deps.identity(bot.worker?.id);
-    for (const [index, addition] of additions.entries()) {
-      const hit = addition.becomes ? cleanText(addition.becomes, identity).hits[0] : undefined;
+    for (const [index] of additions.entries()) {
+      const change = review.changes.find((each) => each.id === `a${index + 1}`)!;
+      const hit = [change.replacement, change.label].map((text) => cleanText(text, identity).hits[0]).find(Boolean);
       if (hit) throw new BotInputError(`What addition a${index + 1} becomes holds ${hit.kind}: write it without.`);
     }
     const picks = this.#picks(review, body["picks"]);
-    if ((await this.#read(bot)).hash !== held.hash) throw new BotConflictError(`${bot.name} changed since its review: review it again before you download it.`);
     const build = buildExport(review, picks);
     return { name: build.fileName, data: writeZip(build.files.map((file) => ({ path: file.path, data: Buffer.from(file.text, "utf8") })), ZIP_DATE) };
   }

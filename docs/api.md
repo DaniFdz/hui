@@ -2390,8 +2390,9 @@ Its answer is checked (`parseReviewAnswer`): a quote must stand, exactly, in tha
 part (at least four characters), the group be `remove`, `ask` or `confirm`, every
 text bounded and cleaned like the bot's; anything else is dropped, and a part
 whose answer can't be read twice is listed as not read. One change is kept per
-passage (the strictest group wins), and of two quoting one passage more or less
-widely in a part, the wider, at least as strict, stands for the narrower; a removed or asked passage changes wherever it
+passage (the strictest group wins), and a narrower confirm gives way to a wider
+change in the same part that holds it (a removed or asked passage always stays: it
+changes wherever it appears, in other parts and scripts too); a removed or asked passage changes wherever it
 appears, a confirmed one only where it was found. More than six needs, as the pieces
 listed them, are merged by one more request with the least reasoning
 (`NEEDS_MERGE_PROMPT`, at most ten lines), kept as they were if it fails. A change is shown at the part it
@@ -2418,10 +2419,12 @@ schedules, filters, lists).
 **The zip** (`buildExport`, shared by the gateway and the dialog): the picked
 `remove` changes become their `replacement` and `ask` ones `[ask: <label>]`, in one
 pass over each text (quotes that overlap become one span, replaced whole; a passage
-taken out with nothing in its place leaves no gap: a whole sentence takes its full
-stop, a clause the space before it and an "and" or "or" joining it to the end of its
-sentence, and a list item left with its marker alone goes, line and all). What the
-reviewer wrote travels only checked against the picks: a replacement or label that
+taken out with nothing in its place leaves no gap: brackets or quotes it fills go
+with it when they stand alone (a call's, an index's or a link's stay), a whole
+sentence takes its full stop, a clause the space before it and an "and" or "or"
+joining it to the end of its sentence, and a list item left with its marker alone
+goes, line and all). What the reviewer (or the operator, adding) wrote travels only
+checked against the picks: a replacement or label that
 repeats a removed or asked passage gives way (to nothing, or *your own value*,
 numbered when there are several), and questions, excerpts (tidied, then shortened),
 where and needs get the picks' replacements (a passage taken out shows as

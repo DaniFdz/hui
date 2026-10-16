@@ -41,7 +41,7 @@ test("the export dialog shows the gateway's review and the files Download saves,
   const addition = between(read("./bot-import.ts"), "function renderAddition(", "function renderReview(");
   assert.match(addition, /<button type="button" class="btn btn--sm bot-export__add-button"/u, "Add is a plain button: the dialog's form submits Download");
   assert.match(read("./bot-import.ts"), /section\("Missed something\?", [^\n]*\{ name: "export-add" \}\)/u, "its section's open state isn't bound to the form's, which closed it mid-edit");
-  assert.match(addition, /if \(event\.key === "Enter"\) \{ event\.preventDefault\(\); add\(\); \}/u, "and Enter in its line adds, never downloads");
+  assert.match(addition, /if \(event\.key === "Enter" && !event\.isComposing\) \{ event\.preventDefault\(\); add\(\); \}/u, "and Enter in its line adds, never downloads, nor mid-word in an input method");
   assert.match(read("./bot-import.ts"), /review = withAdditions\(held, props\.added\);/u, "additions are changes in the preview as in the zip");
   assert.match(read("./bot-import.ts"), /<select class="settings-input" \.value=\$\{live\(value\)\}/u, "a row's select reused for another change shows that change's group");
   const source = read("./bot-import.ts");

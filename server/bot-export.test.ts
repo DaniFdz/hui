@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { applyChanges, buildExport, changeGroups, withAdditions, type BotExportAddition, type BotExportManifest } from "../shared/bot-export.ts";
+import { applyChanges, buildExport, changeGroups, picksWithoutAddition, withAdditions, type BotExportAddition, type BotExportManifest } from "../shared/bot-export.ts";
 import type { BotView } from "../shared/bots.ts";
 import type { BotTrigger } from "../shared/bot-triggers.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
@@ -218,6 +218,16 @@ test("every piece is read twice and both reads count; a wider quote stands for a
   assert.equal(review.parts.find((part) => part.id === "triggers/0")!.read, true, "its other read answered");
 });
 
+test("a removed name stays a change of its own beside a wider quote holding it: it changes everywhere, other files too", async () => {
+  const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => JSON.stringify({ changes: request.prompt.startsWith("Part: SOUL.md")
+    ? [{ quote: "Pat Doe", group: "remove", reason: "A name.", replacement: "a teammate" }, { quote: "I review pull requests in acme/widgets with Pat Doe.", group: "remove", reason: "Their work.", replacement: "I review pull requests." }]
+    : [] }) });
+  const review = await service.review("ada");
+  assert.deepEqual(review.changes.map((change) => change.quote), ["Pat Doe", "I review pull requests in acme/widgets with Pat Doe."]);
+  const files = unzip((await service.export("ada", { review: review.id, picks: {} })).data);
+  assert.equal(files.get("skills/review/notes.md"), "Ask a teammate about flaky tests.\n", "the skill's file loses the name too");
+});
+
 test("a part whose first read fails is read again with the least reasoning; one that fails twice is unread, and the review says so", async () => {
   const asked: { part: string; least: boolean }[] = [];
   const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => {
@@ -292,11 +302,19 @@ test("a passage the operator adds becomes a change like the reviewer's, made as 
   await refused({ quote: "when unsure", group: "remove", becomes: "Mail dani@example.com" }, /^What addition a1 becomes holds an e-mail address: write it without\.$/u);
   await refused({ quote: "when unsure", group: "keep" }, /takes \{ quote, group: remove \| ask \| confirm, becomes\? \}/u);
   await assert.rejects(service.export("ada", { review: review.id, added, picks: { a2: "keep" } }), /This review has no change a2\./u);
+  // What the operator writes may not repeat a passage the picks take out: it gives way, as the reviewer's wording does.
+  const repeated = await soul({ added: [{ quote: "when unsure", group: "remove", becomes: "Ask Pat Doe" }] });
+  assert.match(repeated, /Mail \[removed\]\.\n/u);
+  assert.doesNotMatch(repeated, /Pat Doe/u);
+  assert.deepEqual(picksWithoutAddition({ c1: "keep", a1: "ask", a2: "keep", a3: "remove" }, 1), { c1: "keep", a1: "ask", a2: "remove" }, "Undo moves later additions and their picks up a place");
 });
 
 test("a download is refused when the review is gone, the bot changed since, or a pick names nothing of the review", async () => {
   const { service, state } = harness();
   const review = await service.review("ada");
+  state.soul = `${SOUL}\nAnd one more line.`;
+  await assert.rejects(service.export("ada", { review: review.id, added: [{ quote: "not in it", group: "remove" }] }), BotConflictError, "a changed bot says so before anything else");
+  state.soul = SOUL;
   await assert.rejects(service.export("ada", { review: "other", picks: {} }), BotConflictError);
   await assert.rejects(service.export("ada", { review: review.id, picks: { c99: "keep" } }), (error: unknown) => error instanceof BotInputError && /has no change c99/u.test(error.message));
   await assert.rejects(service.export("ada", { review: review.id, picks: { n1: "ask" } }), (error: unknown) => error instanceof BotInputError && /n1 takes keep, remove/u.test(error.message));
@@ -365,9 +383,13 @@ test("applyChanges replaces every occurrence in one pass, the longer where two o
   assert.equal(applyChanges("x\n- ab, cd\n", [{ quote: "ab", replacement: "" }, { quote: "cd", replacement: "" }]), "x\n", "with a comma between them");
   assert.equal(out("Use X (see foo) daily, with `cmd` set.", "see foo"), "Use X daily, with `cmd` set.", "brackets it fills go with it");
   assert.equal(out("Run `cmd` daily.", "cmd"), "Run daily.", "and backticks");
+  assert.equal(out("Call getUser(pat) or arr[pat] once.", "pat"), "Call getUser() or arr[] once.", "a call's or an index's brackets stay");
+  assert.equal(out("- [Pat](http://x)", "Pat"), "- [](http://x)", "and a link's: no address left without its brackets");
   assert.equal(out("I read the docs and check the bots well.", "check the bots well"), "I read the docs.", "a clause ending its sentence takes its \"and\"");
   assert.equal(out("Ask me, or wait for it.", "wait for it"), "Ask me.", "or its \", or\"");
   assert.equal(out("I read and write.", "read"), "I and write.", "an \"and\" stays when the clause doesn't end the sentence");
+  assert.equal(applyChanges("Tell X and Y.", [{ quote: "X", replacement: "" }, { quote: "Y", replacement: "" }]), "Tell.", "seen past a removal just before");
+  assert.equal(applyChanges("A and B C.", [{ quote: "B", replacement: "" }, { quote: "C", replacement: "" }]), "A.");
 });
 
 test("a passage the reviewer flags in a script changes the text where it also stands, and wording that repeats a removed one never travels", async () => {

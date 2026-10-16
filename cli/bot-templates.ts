@@ -174,7 +174,8 @@ export function exportAdditions(values: readonly string[]): BotExportAddition[] 
   return values.map((value) => {
     const match = /^(remove|ask|confirm):([\s\S]+?)(?:\s+=>\s+([\s\S]*))?$/u.exec(value);
     if (!match?.[2]?.trim()) throw new Error("--add takes <remove|ask|confirm>:<passage>, then \" => \" and what a removed one becomes or what the new owner gives for an asked one, as remove:ddtool auth token => the token command.");
-    return { group: match[1] as BotExportAddition["group"], quote: match[2].trim(), ...(match[3]?.trim() && match[1] !== "confirm" ? { becomes: match[3].trim() } : {}) };
+    if (match[1] === "confirm" && match[3] !== undefined) throw new Error("--add confirm:<passage> takes no \" => \": a confirmed passage travels as written.");
+    return { group: match[1] as BotExportAddition["group"], quote: match[2].trim(), ...(match[3]?.trim() ? { becomes: match[3].trim() } : {}) };
   });
 }
 

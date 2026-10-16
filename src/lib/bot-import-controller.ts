@@ -8,7 +8,7 @@ import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotView } from "./bots.ts";
 import { BotExportError, downloadBotExport, importBot, importSource, pickedFile, pickedFolder, previewBotImport, reviewBotExport, type BotExportGroup, type BotExportReview, type BotImportPreview, type BotImportTab, type PickedSource } from "./bot-templates.ts";
 import { ensureModal } from "./modal-dialog.ts";
-import { additionChange, buildExport, withAdditions, type BotExportAddition } from "../../shared/bot-export.ts";
+import { additionChange, buildExport, picksWithoutAddition, withAdditions, type BotExportAddition } from "../../shared/bot-export.ts";
 import type { BotExportDialogProps, BotExportDraft, BotImportDialogProps } from "../views/bot-import.ts";
 
 /** The "Missed something?" form, empty. */
@@ -216,14 +216,7 @@ export class BotImportController implements ReactiveController {
       onUndo: (index) => {
         const current = this.#export;
         if (!current || current.pending) return;
-        // Later additions move up a place, and their picks with them.
-        const picks: Record<string, BotExportGroup> = {};
-        for (const [id, group] of Object.entries(current.picks)) {
-          const at = /^a(\d+)$/u.test(id) ? Number(id.slice(1)) - 1 : -1;
-          if (at === -1 || at < index) picks[id] = group;
-          else if (at > index) picks[`a${at}`] = group;
-        }
-        this.#setExport({ added: current.added.filter((_, at) => at !== index), picks });
+        this.#setExport({ added: current.added.filter((_, at) => at !== index), picks: picksWithoutAddition(current.picks, index) });
       },
       onReview: () => void this.#review(),
       onDownload: () => void this.#download(),

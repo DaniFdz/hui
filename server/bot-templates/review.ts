@@ -42,7 +42,7 @@ export function reviewSystemPrompt(owner: { name?: string; username: string; bot
     `The owner${owner.name ? ` is ${owner.name}` : ""}, user name ${owner.username} on their machine${owner.bots.length ? `; their other bots are ${owner.bots.map((handle) => `@${handle}`).join(", ")}` : ""}. Any trace of them is theirs, not the new owner's.`,
     "",
     "Quote exactly, character for character, from the part shown: at least a few words, one passage per change, within one field. Don't quote what you don't change.",
-    'Also list in "needs" what the bot needs to work that a new owner must set up (a CLI signed in, an account, an extension, a listener for a trigger), one short line each, without the owner\'s details.',
+    'Also list in "needs" what the bot needs to work that a new owner must set up (a CLI signed in, an account, an extension, a listener for a trigger), one short line each, without the owner\'s details and naming no internal tool, host or service: say what it does ("a CLI that mints short-lived service tokens").',
     "Answer with one JSON object and nothing else, for example:",
     '{"changes":[{"quote":"…","group":"remove","reason":"…","replacement":"…"},{"quote":"…","group":"ask","reason":"…","label":"…","question":"…"},{"quote":"…","group":"confirm","reason":"…","question":"…"}],"needs":["…"]}',
     'With nothing to change: {"changes":[],"needs":[]}.',
@@ -135,6 +135,7 @@ function jsonObject(answer: string): Record<string, unknown> | undefined {
 export const NEEDS_MERGE_PROMPT = [
   "You merge what a HUI bot needs to work, as several readers listed it piece by piece, into one list.",
   "One short line per need; merge lines that mean the same need; add nothing; at most 10 lines.",
+  "Name no internal tool, host or service: say what it does instead.",
   'Answer with one JSON object and nothing else: {"needs":["…"]}.',
 ].join("\n");
 

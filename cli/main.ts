@@ -144,8 +144,8 @@ and asks before saving <name>.hui-bot.zip (--yes saves it as reviewed). Its
 memory never leaves. --review <id> --set c1=keep saves a printed review with
 other picks; a script is kept, confirmed or removed whole. --add adds a passage
 the reviewer missed, copied from its text: remove:<passage> => <what it becomes>,
-ask:<passage> => <what the new owner gives>, or confirm:<passage>. It never
-replaces a file without --yes.
+ask:<passage> => <what the new owner gives>, or confirm:<passage> (a passage
+can't hold " => "). It never replaces a file without --yes.
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Delete removes a bot for good, active or archived: its turn stops, its
 chat leaves HUI, and its routines, memory and folder (SOUL.md and every file in
