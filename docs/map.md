@@ -49,7 +49,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 |---|---|
 | HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
 | Session registry and lifecycle | `sessions.ts` (HUI registry), `live-sessions.ts` (running sessions), `session-list.ts`, `session-transport.ts` |
-| Runtimes | `runtimes/types.ts` (contract), `runtimes/durable*.ts` (Pi Durable: host, adapter, prompt, tools, PI extensions, questions), `runtimes/pi*.ts` (PI SDK worker and CLI fallback), `runtimes/pi-import.ts` (moves PI sessions to Durable for `hui doctor --fix`) |
+| Runtimes | `runtimes/types.ts` (contract), `runtimes/durable*.ts` (Pi Durable: host, adapter, prompt, tools, PI extensions, questions), `runtimes/pi*.ts` (PI SDK worker and CLI fallback), `runtimes/pi-import.ts` (moves PI sessions to Durable for `hui doctor --fix`), `runtimes/model-controls.ts` (a model's reasoning levels, fast mode and the level HUI's Ultra is sent) |
 | HUI agent tools | `runtimes/hui-tools.ts` (definitions), `agent-tools-bridge.ts` (loopback bridge for PI workers), `subagents.ts`, `watchers.ts`, `task-suggestions.ts`, `secret-requests.ts` |
 | PI configuration | `pi-config.ts` (read-only view), `pi-mutations.ts`, `pi-paths.ts`, `providers.ts`, `provider-accounts.ts`, `model-routing.ts` |
 | Git and GitHub | `worktrees.ts`, `worktree-inventory.ts`, `github*.ts`, `pull-requests.ts` |

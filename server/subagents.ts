@@ -15,6 +15,8 @@ import {
   type SubagentStatus,
 } from "./sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
+import { piThinking } from "./runtimes/model-controls.ts";
+import { isThinkingLevel } from "../shared/thinking.ts";
 import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "../src/lib/subagent-completion.ts";
 
 const MAX_ACTIVE_SUBAGENTS = 8;
@@ -26,7 +28,6 @@ const OVERSIZED_HISTORY_ENTRY: TranscriptEntry = {
   message: "A transcript entry was omitted because it exceeds the session history limit.",
 };
 const ACTIVE_STATUSES = new Set<SubagentStatus>(["starting", "running"]);
-const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 
 type SessionAccess = Pick<
   LiveSessions,
@@ -252,7 +253,7 @@ export class SubagentService {
     if (model && !/^[^/\s]+\/\S+$/.test(model)) {
       throw new AgentToolInputError("model must use provider/id format.");
     }
-    if (thinking && !THINKING_LEVELS.has(thinking)) {
+    if (thinking && !isThinkingLevel(thinking)) {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
     if (model) await this.#assertModelAvailable(callerId, model);
@@ -281,7 +282,8 @@ export class SubagentService {
         ...(caller.worker ? { worker: caller.worker } : {}),
         tool: caller.tool,
         model: model ?? caller.model,
-        thinking: thinking ?? caller.thinking,
+        // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
+        thinking: thinking ?? (caller.thinking && piThinking(caller.thinking)),
         parentId: caller.id,
         subagent: {
           taskId,

@@ -17,11 +17,13 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { piRuntime } from "./runtimes/pi.ts";
+import type { RuntimeModel } from "./runtimes/types.ts";
 import { resolvePiAgentDir } from "./pi-paths.ts";
 import { shippedTools } from "./runtimes/tool-catalog.ts";
 import { safeSourceLabel } from "./source-label.ts";
 import { configuredResourceId, type ConfiguredResourceKind } from "./runtimes/resource-policy.ts";
 import { bundledSkillRoot, bundledSkills } from "./bundled-skills.ts";
+import { isThinkingLevel } from "../shared/thinking.ts";
 export { safeSourceLabel } from "./source-label.ts";
 
 export { resolvePiAgentDir } from "./pi-paths.ts";
@@ -32,7 +34,6 @@ const SETTINGS_FILE = "settings.json";
 const SKILLS_DIR = "skills";
 const AUTH_FILE = "auth.json";
 
-const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
 
 export type PiTool = {
   name: string;
@@ -65,7 +66,7 @@ export type PiModel = {
   /** Provider names that have credentials. Names only: never a key or token. */
   authenticated: readonly string[];
   /** PI's available catalog filtered by models.json. No auth or transport fields. */
-  catalog: readonly { provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number }[];
+  catalog: readonly CatalogEntry[];
 };
 
 export type PiSettingsSummary = {
@@ -95,7 +96,7 @@ export type PiSnapshot = {
   diagnostics: readonly string[];
 };
 
-type CatalogEntry = { provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number };
+type CatalogEntry = Pick<RuntimeModel, "provider" | "id" | "name" | "contextWindow" | "maxTokens" | "thinkingLevels" | "fast">;
 type CatalogProbeSession = {
   listModels(): Promise<readonly CatalogEntry[]>;
   dispose(): void;
@@ -122,8 +123,9 @@ export function createModelCatalogReader(
         try {
           session = await probe();
           const models = await session.listModels();
-          result = { catalog: models.map(({ provider, id, name, contextWindow, maxTokens }) => ({
+          result = { catalog: models.map(({ provider, id, name, contextWindow, maxTokens, thinkingLevels, fast }) => ({
             provider, id, name, ...(contextWindow === undefined ? {} : { contextWindow }), ...(maxTokens === undefined ? {} : { maxTokens }),
+            ...(thinkingLevels ? { thinkingLevels } : {}), ...(fast ? { fast } : {}),
           })) };
         } catch (error) {
           result = { catalog: [], error: error instanceof Error ? error.message : "unknown error" };
@@ -296,7 +298,7 @@ function readModel(settings: Record<string, unknown>): PiModel {
     defaultProvider: typeof settings["defaultProvider"] === "string" ? settings["defaultProvider"] : "",
     defaultModel: typeof settings["defaultModel"] === "string" ? settings["defaultModel"] : "",
     thinking:
-      typeof thinking === "string" && (THINKING_LEVELS as readonly string[]).includes(thinking)
+      typeof thinking === "string" && isThinkingLevel(thinking)
         ? thinking
         : null,
     enabled: stringArray(settings["enabledModels"]),

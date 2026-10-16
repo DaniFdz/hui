@@ -784,7 +784,16 @@ type TranscriptEntry =
   | { kind: "error"; message: string };
 
 type RuntimeQueue = { steering: readonly string[]; followUp: readonly string[] };
-type RuntimeModel = { provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number };
+type RuntimeModel = {
+  provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number;
+  // The reasoning levels PI sends this model, cheapest first (PI's
+  // getSupportedThinkingLevels), then `ultra` from a Durable session; absent
+  // when the runtime cannot tell.
+  thinkingLevels?: readonly string[];
+  // Its provider has a fast mode: Claude Opus 5 and 4.8 on the Anthropic Messages
+  // API, OpenAI GPT and o-series models on the Responses APIs.
+  fast?: true;
+};
 type RuntimeCommand = {
   name: string; // Exact invocation name, without the leading slash.
   description: string;
@@ -805,6 +814,9 @@ type SessionSnapshot = {
   status: SessionStatus;
   model?: RuntimeModel;
   thinking?: string;
+  // Fast mode on or off; absent when the runtime cannot change speed (only
+  // Durable sessions can).
+  fast?: boolean;
   queue: RuntimeQueue;
   questions: readonly RuntimeQuestion[];
   subagents: readonly SubagentTaskView[];
@@ -913,7 +925,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `title`, `group`, `pinned`, `archived`, `unread`, `icon` | HUI | Writable organizer metadata; changing it never renames or rewrites a PI file. Sidebar drag/drop and **Move to group** both update `group` through the session PATCH route. |
 | `cwd`, `tool`, `createdAt`, `source` | HUI | Fixed when registered |
 | `updatedAt` | HUI | Advanced when PI accepts a prompt; drives recency ordering |
-| `model`, `thinking` | HUI | Session preference passed back to the runtime on reopen |
+| `model`, `thinking`, `fast` | HUI | Session preference passed back to the runtime on reopen; `fast` is optional and only `true` is stored, so no registry version bump |
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
@@ -2450,14 +2462,17 @@ empty answer, the branch uses the first meaningful words of the operator
 `title` or the first prompt line. This step is reported as the `naming`
 worktree phase before any Git progress. An operator `title` is never replaced.
 
-`model` and `thinking` are optional initial session preferences selected in New
+`model`, `thinking` and `fast` are optional initial session preferences selected in New
 Session. `model` uses canonical `provider/id` form: the first slash separates the
 provider from the complete model ID, which may contain further slashes (for
 example, `vercel-ai-gateway/anthropic/claude-opus-5.5`). Neither part may be empty
 or contain whitespace. `thinking` accepts `off`,
-`minimal`, `low`, `medium`, `high`, or `xhigh`. Without `model`, the session
-uses `settings.models.primary` when one is set, otherwise PI's default. Both are persisted before the
-runtime starts and are passed to PI on its first launch as well as later reopen.
+`minimal`, `low`, `medium`, `high`, `xhigh`, `max` or `ultra`; PI clamps it to the levels
+the model has (see `POST /__hui/sessions/:id/thinking` for `ultra`). `fast` is a boolean (default false; see
+`POST /__hui/sessions/:id/fast`). Without `model`, the session
+uses `settings.models.primary` when one is set, otherwise PI's default. All are persisted before the
+runtime starts; `model` and `thinking` are passed to PI on its first launch as well as later reopen,
+and HUI turns `fast` on as soon as the runtime has started.
 
 `worktree` is optional and defaults to false. `baseRef` optionally selects any
 local branch, known remote branch or commit resolvable by Git. When `worktree`
@@ -2684,8 +2699,42 @@ PI's refreshed history replaces the projection at settlement.
 ### `GET|POST /__hui/sessions/:id/thinking`
 
 GET returns `{ "level": string | null }`. POST accepts `{ "level": "off" |
-"minimal" | "low" | "medium" | "high" | "xhigh" }`, applies it live and
-persists the session preference.
+"minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" }`, applies it live and
+persists the session preference. The composer offers only the model's
+`thinkingLevels`. Switching to a model without the level fits it to that model
+(the next level up it has, else its highest; `event: thinking_level` says which).
+The registry keeps the chosen level, and a Durable session switched back to a
+model that has it uses it again.
+
+`ultra` is HUI's, after OpenClaw: the model is sent its highest level (PI's
+`max`, clamped), and while the session stays on it each request's system prompt
+carries a `hui_ultra` section telling the agent to plan the work, carry it
+through and verify it before replying, and, when `sessions_spawn` is offered,
+to hand independent investigation, implementation and verification to
+subagents in parallel (bounded objectives, results synthesized; simple or
+tightly coupled work stays local). The session's usual subagent limits apply,
+and a child it spawns without a level of its own gets `max`, not `ultra`.
+GET and `event: thinking_level` report `ultra`; PI extensions see the level the
+model is sent. Only Durable sessions offer it: a PI SDK session given `ultra`
+is sent its highest level without the section and reports that level. A bot's
+chat keeps its bot's PI levels: it offers no `ultra` and refuses it (400).
+
+### `POST /__hui/sessions/:id/fast`
+
+Accepts `{ "fast": boolean }`, applies it live, persists it with the session
+(`fast: true` in the registry) and answers `{ "fast": boolean }`; every viewer
+gets `event: fast` with `{ "fast": boolean }`. While it is on, each of the
+session's model requests to a model with `fast` asks for its provider's fast
+mode: Anthropic's `speed: "fast"` with the `fast-mode-2026-02-01` beta, or
+OpenAI's `service_tier: "priority"` (a tier the request already names is kept).
+Requests to other models are unchanged, and a run Durable resumes by itself
+while the store opens sends its first request before HUI turns fast mode back
+on. A provider or proxy that does not offer
+the mode may refuse the request or serve it at standard speed; PI prices
+OpenAI's priority tier, but HUI's cost estimate does not include Anthropic's
+fast-mode premium. 400 when the runtime cannot change speed (PI SDK sessions)
+or the session is not running; 500 when the registry write fails, after the
+session went back to its previous speed.
 
 ### `POST /__hui/sessions/:id/question`
 
@@ -2775,6 +2824,9 @@ data: { "provider": "openai", "id": "gpt-5.6", "name": "GPT-5.6" }
 
 event: thinking_level
 data: { "level": "high" }
+
+event: fast
+data: { "fast": true }
 ```
 
 While a turn is live, HUI keeps a replay projection of user messages, thinking,
@@ -2826,7 +2878,7 @@ browsers allow only six HTTP/1.1 connections per origin and a few split panes
 would otherwise stall every other request. Like terminal and browser streams,
 the upgrade also requires a same-origin `Origin` and an allowed `Host`, and it
 is refused with 403 otherwise. Each text message is
-`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "closed", "data": … }`
+`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "closed", "data": … }`
 with the SSE payloads above, beginning with the snapshot. The server negotiates
 `permessage-deflate` (messages of at least 1 KiB, no context takeover in either
 direction), so the snapshot's transcript crosses a slow link compressed; a

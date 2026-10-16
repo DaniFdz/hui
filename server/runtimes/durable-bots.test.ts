@@ -163,6 +163,8 @@ test("a bot's conversation is created in one commit with bot document and memory
 
   const session = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "ada-chat" }, f.host);
   assert.deepEqual((await harness.snapshot(AgentDoc, id, durableContext))?.extensions, { add: ["hui-bots-tools"] }, "only a bot's chat selects message_bot");
+  assert.equal(session.currentModel()?.thinkingLevels?.includes("ultra"), false, "a bot's chat keeps its bot's levels");
+  await assert.rejects(() => session.setThinking("ultra"), /no Ultra/u);
   const inspection = await session.inspect();
   assert.equal(inspection.tools.find((tool) => tool.name === MESSAGE_BOT_TOOL)?.source, "HUI");
   assert.equal(inspection.tools.find((tool) => tool.name === WRITE_SOUL_TOOL)?.source, "HUI", "write_soul beside it");

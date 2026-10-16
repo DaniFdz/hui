@@ -6,6 +6,7 @@
  * which imports `node:fs`. The HTTP payload is the contract between them.
  */
 import { fetchJson } from "./settings-store.ts";
+import type { RuntimeModel } from "./sessions-store.ts";
 
 export type PiTool = {
   name: string;
@@ -48,7 +49,7 @@ export type PiModel = {
   thinking: string | null;
   enabled: readonly string[];
   authenticated: readonly string[];
-  catalog: readonly { provider: string; id: string; name: string; contextWindow?: number; maxTokens?: number }[];
+  catalog: readonly (RuntimeModel & { contextWindow?: number; maxTokens?: number })[];
 };
 
 export type PiSettingsSummary = {

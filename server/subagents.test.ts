@@ -668,6 +668,14 @@ test("new descendants inherit the archived state of their parent", async (t) => 
   assert.equal(state.records().find((r) => r.id === "child-1")?.archived, true);
 });
 
+test("a child of an Ultra session works at the model's highest level without Ultra's delegation", async (t) => {
+  const parent = record("parent", { thinking: "ultra" });
+  const state = harness([parent]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  await state.service.handle(parent.id, "sessions_spawn", { task: "Return a result" });
+  assert.equal(state.records().find((r) => r.id === "child-1")?.thinking, "max");
+});
+
 test("a child registered just before parent deletion cannot clear its deletion guard", async (t) => {
   const state = harness([record("parent")]);
   const service = new SubagentService(state.manager, async () => state.records(), async (mutate) => {

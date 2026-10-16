@@ -1369,6 +1369,26 @@ test("switching model persists it and tells every open stream", async () => {
   assert.equal(stored?.model, "openai/gpt");
 });
 
+test("switching to a model without the session's thinking level reports the level the runtime fitted", async () => {
+  class Fitting extends FakeSession {
+    override async setModel(provider: string, id: string): Promise<void> {
+      await super.setModel(provider, id);
+      this.thinking = "high";
+    }
+  }
+  const runtime = new Fitting();
+  runtime.thinking = "max";
+  const manager = new LiveSessions({ id: "pi", start: async () => runtime });
+  const seen: SessionStreamMessage[] = [];
+  manager.ensure(recordFor("switch-fit"));
+  manager.subscribe("switch-fit", (message) => seen.push(message));
+  await waitForBoot(manager, "switch-fit");
+
+  await manager.setModel("switch-fit", "openai", "gpt");
+  assert.equal(manager.snapshot("switch-fit").thinking, "high");
+  assert.deepEqual(seen.filter((message) => message.kind === "thinking").at(-1), { kind: "thinking", level: "high" });
+});
+
 test("a thinking change rolls PI back when persistence fails", async () => {
   const runtime = new FakeSession();
   runtime.sessionFile = undefined;
@@ -1983,6 +2003,36 @@ test("a failed history refresh settles idle without replacing the streamed proje
 
   assert.deepEqual(manager.snapshot("stale-history").transcript, projected);
   assert.equal(manager.snapshot("stale-history").status, "idle");
+});
+
+test("fast mode is saved with the session and turned back on when it boots again", async () => {
+  class FastSession extends FakeSession {
+    fast = false;
+    currentFast(): boolean { return this.fast; }
+    async setFast(on: boolean): Promise<void> { this.fast = on; }
+  }
+  const started: FastSession[] = [];
+  const runtime: AgentRuntime = { id: "pi", start: async () => { const session = new FastSession(); started.push(session); return session; } };
+  const manager = new LiveSessions(runtime);
+  manager.ensure(recordFor("fast"));
+  await waitForBoot(manager, "fast");
+  const messages: SessionStreamMessage[] = [];
+  manager.subscribe("fast", (message) => messages.push(message));
+  assert.equal(manager.snapshot("fast").fast, false);
+
+  assert.equal(await manager.setFast("fast", true), true);
+  assert.equal((await stored("fast"))?.fast, true);
+  assert.ok(messages.some((message) => message.kind === "fast" && message.fast));
+  manager.disposeAll();
+
+  const restarted = new LiveSessions(runtime);
+  restarted.ensure((await stored("fast"))!);
+  await waitForBoot(restarted, "fast");
+  assert.equal(started[1]?.fast, true);
+  assert.equal(restarted.snapshot("fast").fast, true);
+  await restarted.setFast("fast", false);
+  assert.equal((await stored("fast"))?.fast, undefined);
+  restarted.disposeAll();
 });
 
 test("queue, thinking and questions share the reconnect snapshot and delegate commands", async () => {

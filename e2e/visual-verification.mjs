@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--quota-fixture | --jira-fixture | --github-fixture | --activity-fixture | --demo]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--fast-fixture] [--quota-fixture | --jira-fixture | --github-fixture | --activity-fixture | --demo]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -286,7 +286,14 @@ export async function launch(expectedBranch) {
     // below every launcher session on Durable would compact by itself after a few turns.
     await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
       baseUrl: receipt.providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
-      models: [{ id: "fixture", name: demo ? "Demo model" : "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+      models: [
+        { id: "fixture", name: demo ? "Demo model" : "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+        // --fast-fixture: a Claude Opus 5.5 id, so the composer offers Maximum effort and Speed (fast mode).
+        ...process.argv.includes("--fast-fixture") ? [{
+          id: "claude-opus-5-5", name: "Opus fixture", reasoning: true, input: ["text"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          thinkingLevelMap: { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" },
+        }] : [],
+      ],
     } } }));
     // A small kept window lets /compact and /fixture-compact summarize a few short turns.
     await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", compaction: { keepRecentTokens: 400 } }));
@@ -384,7 +391,7 @@ async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || args.includes("--help")) return process.stdout.write(help);
   // Trailing launch options; `launch` reads them from argv.
-  if (command === "launch") while (["--pi-sessions", "--quota-fixture", "--jira-fixture", "--github-fixture", "--activity-fixture", "--demo"].includes(args.at(-1))) args.pop();
+  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--jira-fixture", "--github-fixture", "--activity-fixture", "--demo"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1]);

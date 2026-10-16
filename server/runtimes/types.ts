@@ -117,6 +117,10 @@ export type RuntimeModel = {
   name: string;
   contextWindow?: number;
   maxTokens?: number;
+  /** Reasoning levels PI sends this model, cheapest first; absent: unknown. */
+  thinkingLevels?: readonly string[];
+  /** Its provider has a fast mode HUI can ask for (`setFast`). */
+  fast?: true;
 };
 
 /** A runtime-owned command invoked through an ordinary `/name` prompt. */
@@ -207,6 +211,9 @@ export type RuntimeSession = {
   setModel?(provider: string, id: string): Promise<void>;
   currentThinking?(): string | undefined;
   setThinking?(level: string): Promise<void>;
+  /** Fast mode: the session's requests to a model with one (`RuntimeModel.fast`) ask for it. */
+  currentFast?(): boolean;
+  setFast?(on: boolean): Promise<void>;
   pendingQueue?(): RuntimeQueue;
   pendingQuestions?(): readonly RuntimeQuestion[];
   respondQuestion?(id: string, response: RuntimeQuestionResponse): Promise<void>;

@@ -76,7 +76,8 @@ export interface ExtensionSession {
   rows(): readonly EntryRecord[];
   pendingCount(): number;
   currentModel(): { provider: string; id: string } | undefined;
-  currentThinking(): string | undefined;
+  /** The level the model is sent (HUI's `ultra` is its highest). */
+  modelThinking(): string | undefined;
   currentUsage(): RuntimeUsage | undefined;
   setModel(provider: string, id: string): Promise<void>;
   setThinking(level: string): Promise<void>;
@@ -310,7 +311,7 @@ export class DurableExtensions {
         await session.setModel(model.provider, model.id);
         return true;
       },
-      getThinkingLevel: () => (session.currentThinking() ?? "off") as never,
+      getThinkingLevel: () => (session.modelThinking() ?? "off") as never,
       setThinkingLevel: (level) => { void session.setThinking(level).catch((error: unknown) => this.#report("set_thinking_level", error)); },
     }, {
       getModel: () => this.#model(),

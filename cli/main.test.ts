@@ -140,7 +140,7 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
     [["bot", "remove", "ada", "--yes"], /--yes is not valid for bot remove/u],
     [["bot", "soul", "ada", "--title", "x"], /--title is not valid for bot soul/u],
     [["bot", "show", "ada", "--file", "x"], /--file is not valid for bot show/u],
-    [["bot", "add", "--name", "Ada", "--thinking", "max"], /--thinking must be one of/u],
+    [["bot", "add", "--name", "Ada", "--thinking", "ultra"], /--thinking must be one of/u],
     [["bot", "add", "--name", "Ada", "--model", "gpt-5"], /--model must be provider\/model/u],
     [["bot", "memory", "ada", "--zoom", "12"], /id\+n/u],
     [["bot", "memory", "ada", "--zoom", "1+1", "--html", "x"], /either --zoom or --html/u],

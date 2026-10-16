@@ -47,6 +47,7 @@ import { BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotReply, type BotsUpd
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
+import { isThinkingLevel } from "../shared/thinking.ts";
 import {
   effectiveSessionStage,
   isSessionStage,
@@ -230,13 +231,12 @@ const NEW_SESSION_TOOLS = new Set(["durable", "pi"]);
 export function defaultSessionTool(): string {
   return process.env["HUI_SESSION_RUNTIME"] === "pi" ? "pi" : "durable";
 }
-const NEW_SESSION_THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
 const SESSION_TITLE_MAX = 200;
 const SESSION_GROUP_MAX = 200;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|question|abort|clear|reload|compact|rewind|fork)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 const GITHUB_ROUTE = `${PREFIX}github`;
@@ -1753,9 +1753,13 @@ export async function createSession(
     optional: true,
     allowEmpty: false,
   });
-  if (thinking && !NEW_SESSION_THINKING_LEVELS.has(thinking)) {
+  if (thinking && !isThinkingLevel(thinking)) {
     throw new Error(`Unsupported thinking level: ${thinking}`);
   }
+  if (body["fast"] !== undefined && typeof body["fast"] !== "boolean") {
+    throw new Error("Fast mode must be true or false.");
+  }
+  const fast = body["fast"] === true;
   // A worker runs the same runtime a local session would.
   const runtimeTool = tool || defaultSessionTool();
   const settings = await readSettings();
@@ -1773,6 +1777,7 @@ export async function createSession(
     tool: runtimeTool,
     ...(model ? { model } : {}),
     ...(thinking ? { thinking } : {}),
+    ...(fast ? { fast } : {}),
     ...(seed.stage ? { stage: seed.stage, stageSource: "operator" as const } : {}),
     ...(seed.bot ? { bot: seed.bot.id, piSessionFile: seed.bot.piSessionFile } : {}),
     ...(seed.piSessionFile ? { piSessionFile: seed.piSessionFile } : {}),
@@ -1920,6 +1925,7 @@ export async function forkSession(
     tool: source.tool,
     ...(source.model ? { model: source.model } : {}),
     ...(source.thinking ? { thinking: source.thinking } : {}),
+    ...(source.fast ? { fast: true } : {}),
   }, sessions, registryUpdater, undefined, { piSessionFile });
 }
 
@@ -2420,6 +2426,9 @@ function watchSessionEvents(
         break;
       case "thinking":
         send("thinking_level", { level: message.level });
+        break;
+      case "fast":
+        send("fast", { fast: message.fast });
         break;
       case "closed":
         send("closed", {});
@@ -4215,7 +4224,7 @@ async function handleRequest(
     if (action[2] === "thinking" && request.method === "POST") {
       const body = (await readBody(request)) as Record<string, unknown>;
       const level = typeof body["level"] === "string" ? body["level"].trim() : "";
-      if (!new Set(["off", "minimal", "low", "medium", "high", "xhigh"]).has(level)) {
+      if (!isThinkingLevel(level)) {
         sendJson(response, 400, { error: "Unknown thinking level." });
         return;
       }
@@ -4230,6 +4239,21 @@ async function handleRequest(
             error: error instanceof Error ? error.message : "pi refused that thinking level.",
           },
         );
+      }
+      return;
+    }
+    if (action[2] === "fast" && request.method === "POST") {
+      const body = (await readBody(request)) as Record<string, unknown>;
+      if (typeof body["fast"] !== "boolean") {
+        sendJson(response, 400, { error: "Fast mode must be true or false." });
+        return;
+      }
+      try {
+        sendJson(response, 200, { fast: await liveSessions.setFast(id, body["fast"]) });
+      } catch (error) {
+        sendJson(response, sessionMutationErrorStatus(error), {
+          error: error instanceof Error ? error.message : "Could not change the speed.",
+        });
       }
       return;
     }

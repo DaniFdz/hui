@@ -82,7 +82,7 @@ export type RemoteLaunch = Record<string, unknown> & {
 };
 
 /** The runtime methods a gateway may call; anything else is refused. */
-const CALLS = new Set(["prompt", "steer", "followUp", "abort", "setModel", "setThinking", "respondQuestion", "cancelQuestion",
+const CALLS = new Set(["prompt", "steer", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion",
   "clear", "reload", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage"]);
 /** PI calls that start a run, recorded before they reach the runtime. */
 const RUN_CALLS = new Set(["prompt", "continueRun"]);
@@ -101,6 +101,7 @@ export type RemoteState = {
   model?: RuntimeModel;
   usage?: RuntimeUsage;
   thinking?: string;
+  fast?: true;
   queue?: RuntimeQueue;
   questions?: readonly RuntimeQuestion[];
 };
@@ -437,6 +438,7 @@ export class WorkerHost {
       ...(model ? { model } : {}),
       ...(usage ? { usage } : {}),
       ...(thinking ? { thinking } : {}),
+      ...(runtime.currentFast?.() ? { fast: true as const } : {}),
       ...(runtime.pendingQueue ? { queue: runtime.pendingQueue() } : {}),
       ...(runtime.pendingQuestions ? { questions: runtime.pendingQuestions() } : {}),
     };

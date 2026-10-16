@@ -34,7 +34,7 @@ export const BOT_LIMITS = {
   preview: 200,
 } as const;
 
-export const BOT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export { PI_THINKING_LEVELS as BOT_THINKING_LEVELS } from "./thinking.ts";
 
 /** Lowercase ASCII letters, digits and inner dashes, 1–32 characters. */
 export const BOT_HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/u;

@@ -7,7 +7,8 @@
  * tools' snippets and may change the prompt of a run, as in PI. Skills load per
  * directory, and a bot's chat adds its own (`skills/` in its home folder,
  * `bot-skills.ts`); it lists only the ones the operator left on
- * (`durable-bot-access.ts`), so two chats in one directory can differ.
+ * (`durable-bot-access.ts`), so two chats in one directory can differ. A
+ * session on Ultra adds OpenClaw's plan, delegate and verify section.
  */
 import { DefaultResourceLoader, type BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
@@ -49,7 +50,7 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
   "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
-  "hui_presentation", "hui_tools", "hui_tool_guidelines",
+  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_ultra",
 ] as const;
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
@@ -70,6 +71,20 @@ export function huiToolSections(selectedTools: readonly string[], contributions:
   };
 }
 
+/** OpenClaw's Ultra guidance (`ultra-orchestration.ts`): delegation only where the request offers `sessions_spawn`. */
+export function ultraSection(delegates: boolean): string {
+  return [
+    delegates ? "## Proactive Sub-Agent Orchestration" : "## Ultra Execution",
+    "Ultra active for this session. Plan the work, carry it through, and verify the result before replying.",
+    ...delegates ? [
+      "Use `sessions_spawn` when independent work improves speed or quality.",
+      "- Parallelize independent investigation, implementation and verification.",
+      "- Keep simple or tightly coupled work local.",
+      "- Give each subagent a bounded objective; synthesize the results before replying.",
+    ] : [],
+  ].join("\n");
+}
+
 export class DurablePrompt {
   readonly #agentDir: string;
   readonly #readSettings: () => Promise<PromptSettings>;
@@ -85,6 +100,8 @@ export class DurablePrompt {
   disabledSkillsFor: (conversationId: ConversationId) => Promise<readonly BotSkillRef[] | undefined> = async () => undefined;
   /** A bot's own skill folders, which only its chat loads; none for every other conversation. The Durable host answers. */
   skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
+  /** Whether the conversation's session is on Ultra. The Durable host answers. */
+  ultraFor: (conversationId: ConversationId) => boolean = () => false;
   readonly extension;
 
   constructor(agentDir: string, readSettings: () => Promise<PromptSettings>) {
@@ -161,7 +178,7 @@ export class DurablePrompt {
   /** PI's builder input for a request offering these tools. A bot's chat (`disabledSkills` given) lists only the skills
    * the operator left on: in PI's own section while it has read or bash, otherwise in one of HUI's that loads them with
    * `load_skill`, which such a chat is offered. */
-  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, disabledSkills?: readonly BotSkillRef[], skillDirs: readonly string[] = []): Promise<BuildSystemPromptOptions> {
+  async options(cwd: string, selectedTools: readonly string[], extra: Record<string, Contribution> = {}, disabledSkills?: readonly BotSkillRef[], skillDirs: readonly string[] = [], ultra = false): Promise<BuildSystemPromptOptions> {
     const loader = await this.loader(cwd, skillDirs);
     const skills = disabledSkills ? botSkills(loader.getSkills().skills, disabledSkills) : loader.getSkills().skills;
     const own = disabledSkills && selectedTools.includes(LOAD_SKILL_TOOL) ? botSkillsPrompt(skills) : undefined;
@@ -180,7 +197,10 @@ export class DurablePrompt {
       ...(custom ? { customPrompt: custom } : {}),
       selectedTools: [...selectedTools], toolSnippets, toolGuidelines,
       ...(append ? { appendSystemPrompt: append } : {}),
-      sections: { ...huiToolSections(selectedTools, contributions), ...(own ? { skills: own } : {}) },
+      sections: {
+        ...huiToolSections(selectedTools, contributions), ...(own ? { skills: own } : {}),
+        ...(ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
+      },
       cwd,
       contextFiles: loader.getAgentsFiles().agentsFiles,
       skills: own ? [] : skills,
@@ -194,7 +214,8 @@ export class DurablePrompt {
     if (run?.forced !== undefined) return { preamble: run.forced };
     const disabled = conversationId === undefined ? undefined : await this.disabledSkillsFor(conversationId);
     const skillDirs = conversationId === undefined ? [] : await this.skillDirsFor(conversationId);
-    const base = await this.options(cwd, selectedTools, extras?.contributions, disabled, skillDirs);
+    const ultra = conversationId !== undefined && this.ultraFor(conversationId);
+    const base = await this.options(cwd, selectedTools, extras?.contributions, disabled, skillDirs, ultra);
     const sections = buildSystemPromptSections(run?.options ? {
       ...run.options,
       // The run keeps the sections its extensions edited; the tool loadout stays the request's own, and so do a bot's
