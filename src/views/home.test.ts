@@ -559,3 +559,33 @@ test("a conversation still downloading shows progress, and one that failed to lo
   assert.match(failed, /<div class="agent-chat__empty" role="alert"> <strong>Could not load this conversation<\/strong> <span>HUI did not answer within 20 s\. Check the connection and try again\.<\/span> <button type="button" class="btn btn--sm retry-session" @click=>Try again<\/button>/u);
   assert.doesNotMatch(failed, /Start a conversation|Send a message below/u, "a failed load never reads as an empty session");
 });
+
+test("the Parallel tasks card counts the latest batch of subagents and folds a batch that all succeeded", async () => {
+  const startedAt = new Date(Date.now() - 60_000).toISOString();
+  const endedAt = new Date(Date.now() - 10_000).toISOString();
+  const task = (taskId: string, status: string, extra: Record<string, unknown> = {}) =>
+    ({ taskId, sessionId: `s-${taskId}`, parentSessionId: "s", title: `Check ${taskId}`, task: "t", status, startedAt, updatedAt: endedAt, ...extra });
+  const card = (html: string) => html.slice(html.indexOf('<aside class="chat-swarm"'), html.indexOf("</aside>"));
+
+  const active = card(await renderWorkerSession("idle", { subagents: [
+    task("a", "running"), task("b", "starting"), task("c", "queued"), task("d", "failed", { endedAt, error: "Provider refused" }),
+  ] }));
+  assert.match(active, /<strong title=Parallel tasks>Parallel tasks<\/strong><span>1 of 4<\/span>/u);
+  assert.match(active, /<span class="chat-swarm__counts">2 running · 1 queued · 1 failed or stopped<\/span>/u);
+  assert.equal(active.match(/chat-swarm__marker chat-swarm__marker--/gu)?.length, 4);
+  assert.match(active, /Waiting for a free slot…/u);
+  assert.match(active, /Provider refused/u);
+  assert.doesNotMatch(active, /Child runs finished/u);
+
+  const finished = card(await renderWorkerSession("idle", { streaming: true, subagents: [
+    task("a", "completed", { endedAt }), task("b", "cancelled", { endedAt }),
+  ] }));
+  assert.match(finished, /1 completed · 1 failed or stopped/u);
+  assert.match(finished, /Child runs finished\. The parent is processing their results\./u);
+
+  const succeeded = card(await renderWorkerSession("idle", { subagents: [task("a", "completed", { endedAt }), task("b", "completed", { endedAt })] }));
+  assert.match(succeeded, /chat-swarm__group--completed/u);
+  assert.match(succeeded, /<span class="chat-swarm__counts">2 completed<\/span>/u);
+  assert.doesNotMatch(succeeded, /chat-swarm__marker /u);
+  assert.match(succeeded, /Child runs finished\. Check the conversation for the final response\./u);
+});

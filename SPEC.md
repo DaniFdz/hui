@@ -1218,15 +1218,40 @@ data, trailing action instructions). Completions are batched until all active
 siblings finish and render as a system card, never as a "You" bubble. Delivery
 steers an active parent, prompts an idle one, or queues a follow-up if steering
 cannot be accepted. This does not abort the parent's current run. At most eight
-descendants may be active in one tree.
+ordinary descendants may be active in one tree.
+
+**Swarm.** Modeled on OpenClaw's Swarm, a spawn with `collect: true` creates a
+collected child: its result is for the parent to collect with `agents_wait`,
+typically from one `codemode` script that spawns many helpers and awaits them
+together, instead of arriving as a completion event. `agents_wait` takes the
+caller's own children's task IDs and returns once all of them have finished, or
+at its timeout (600 s by default, at most an hour) with those finished so far and
+the pending ones; Stop cancels the wait. In one tree at most 32 collected children
+start or run at once; more wait in a queue held in memory (saved as `starting`) and
+start in spawn order as slots free; at most 50 may be queued or running, and the
+next is refused. Collected children have their own limits and do not count toward
+the eight. A collected child, or anything below one, cannot spawn collected
+children. Nothing is lost: a result no wait returned is delivered as an ordinary
+completion event once the parent is no longer busy, and a returned result is never
+delivered again. The operator's Stop on the parent also cancels its queued and
+running collected children, and those cancellations are not reported back. A
+restart interrupts queued ones like any active task.
 
 Visibility is the current session tree, not the whole registry: parent, child
 and sibling sessions can exchange bounded messages and history, while unrelated
 sessions remain inaccessible. PI reaches this contract through a random-token,
 loopback-only bridge inherited by its process; no browser route exposes these
-operations. The UI copies OpenClaw's recent background-task rows, opens the real
-child transcript on activation, and nests child sessions below their parent in
-the sidebar. Each parent with visible children has a separate keyboard-accessible
+operations. Between the transcript and the composer, the UI shows OpenClaw's
+**Parallel tasks** card for the latest batch of a conversation's children (a child
+spawned while an earlier one is still active joins its batch; a batch of one is
+titled with that child): "complete of total", one dot per child (running, queued,
+failed or stopped, done), the running/queued/failed-or-stopped counts, and once all
+have finished, a note that the parent is processing their results or that its
+final response is in the conversation. **Child details** lists each child with its
+status, latest summary or error and run time; activating one opens the real child
+transcript. A batch that all succeeded folds into a single "N completed" row. The
+card stays for an hour after the batch finished (OpenClaw's retention). Child
+sessions nest below their parent in the sidebar. Each parent with visible children has a separate keyboard-accessible
 disclosure button that folds its entire subtree without changing the open session.
 Folding is kept in memory for the current page; search and status filters reveal
 matches without clearing the fold choices. PI remains the sole transcript writer. HUI persists only lineage,

@@ -136,7 +136,7 @@ class CoordinatedSession implements RuntimeSession {
 
 function harness(
   initial: SessionRecord[],
-  options: { manualSessionId?: string; ids?: string[] } = {},
+  options: { manualSessionId?: string; manual?: (id: string) => boolean; ids?: string[] } = {},
 ) {
   let records = [...initial];
   const sessions = new Map<string, CoordinatedSession>();
@@ -149,7 +149,7 @@ function harness(
       const id = startOptions.huiSessionId ?? `unknown-${starts.length}`;
       const history = histories.get(id) ?? [];
       histories.set(id, history);
-      const session = new CoordinatedSession(id, id !== options.manualSessionId, history);
+      const session = new CoordinatedSession(id, id !== options.manualSessionId && !options.manual?.(id), history);
       sessions.set(id, session);
       return session;
     },
@@ -195,15 +195,17 @@ function waitForTask(
   manager: LiveSessions,
   parentId: string,
   status: string,
+  taskId?: string,
 ): Promise<void> {
-  if (manager.snapshot(parentId).subagents.some((task) => task.status === status)) {
+  const matches = (task: { taskId: string; status: string }) => task.status === status && (!taskId || task.taskId === taskId);
+  if (manager.snapshot(parentId).subagents.some(matches)) {
     return Promise.resolve();
   }
   return new Promise((resolve) => {
     const watched = manager.watch(parentId, (message: SessionStreamMessage) => {
       if (
         message.kind === "snapshot" &&
-        message.snapshot.subagents.some((task) => task.status === status)
+        message.snapshot.subagents.some(matches)
       ) {
         watched.unsubscribe();
         resolve();
@@ -786,4 +788,142 @@ test("a remote subagent fails when HUI is disconnected from its machine", async 
   assert.match(state.child().subagent?.error ?? "", /disconnected/u);
   state.service.dispose();
   state.manager.disposeAll();
+});
+
+/** A parent mid-turn (as while its codemode script waits) with `count` collected children that run until finished. */
+async function swarm(count: number, extraIds: string[] = []) {
+  const parent = record("parent");
+  const ids = [...Array.from({ length: count }, (_, index) => [`task-${index}`, `child-${index}`]).flat(), ...extraIds];
+  const state = harness([parent], { manual: () => true, ids });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  await state.manager.prompt(parent.id, "Fan out");
+  const receipts: Array<{ taskId: string; queued?: true }> = [];
+  for (let index = 0; index < count; index += 1) {
+    receipts.push(await state.service.handle(parent.id, "sessions_spawn", { task: `Part ${index}`, collect: true }) as { taskId: string; queued?: true });
+  }
+  return { ...state, parent, receipts, parentRuntime: state.sessions.get(parent.id)! };
+}
+
+const deliveredToParent = (runtime: CoordinatedSession) =>
+  [...runtime.prompts, ...runtime.steered].some((text) => text.startsWith("[HUI subagent completion event]"));
+
+test("collected subagents past 32 queue, and agents_wait returns every result instead of the parent's conversation", async (t) => {
+  const state = await swarm(33);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  assert.deepEqual(state.receipts.map((receipt) => receipt.queued ?? false), [...Array(32).fill(false), true]);
+  assert.equal(state.starts.length, 33, "the parent and the 32 that may run");
+  assert.equal(state.manager.snapshot("parent").subagents.find((task) => task.taskId === "task-32")?.status, "queued");
+  await assert.rejects(() => state.service.handle("parent", "agents_wait", { ids: ["task-0", "elsewhere"] }), /Not a subagent of this session: elsewhere/);
+
+  const waited = state.service.handle("parent", "agents_wait", { ids: state.receipts.map((receipt) => receipt.taskId) }) as Promise<{
+    completed: Array<{ taskId: string; status: string; result?: string }>;
+    pending: string[];
+  }>;
+  await waitForStatus(state.manager, "child-0", "running");
+  state.sessions.get("child-0")!.finish("Answer 0");
+  await waitForTask(state.manager, "parent", "completed"); // the freed slot is taken before this snapshot reaches us
+  await waitForStatus(state.manager, "child-32", "running");
+  assert.equal(state.starts.length, 34, "the queued child takes the freed slot");
+  for (let index = 1; index < 33; index += 1) {
+    await waitForStatus(state.manager, `child-${index}`, "running");
+    state.sessions.get(`child-${index}`)!.finish(`Answer ${index}`);
+  }
+  const result = await waited;
+  assert.equal(result.completed.length, 33);
+  assert.deepEqual(result.pending, []);
+  assert.equal(result.completed[32]?.result, "Answer 32");
+  await state.service.flushCompletions();
+  assert.equal(deliveredToParent(state.parentRuntime), false);
+  assert.ok(state.records().filter((item) => item.subagent).every((item) => item.subagent!.completionDelivery === "delivered"));
+});
+
+test("a collected result nobody waited for reaches the parent once its turn ends", async (t) => {
+  const state = await swarm(1);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  await waitForStatus(state.manager, "child-0", "running");
+  state.sessions.get("child-0")!.finish("Forgotten answer");
+  await waitForTask(state.manager, "parent", "completed");
+  await state.service.flushCompletions();
+  assert.equal(deliveredToParent(state.parentRuntime), false, "a busy parent may still collect it");
+
+  const announcement = state.parentRuntime.waitForPrompt((prompt) => prompt.startsWith("[HUI subagent completion event]"));
+  state.parentRuntime.finish("Parent done");
+  await waitForStatus(state.manager, "parent", "idle");
+  await state.service.flushCompletions();
+  assert.match(await announcement, /Forgotten answer/);
+});
+
+test("stopping the parent cancels its collected subagents without reporting back, and a wait can be aborted", async (t) => {
+  const state = await swarm(33);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  const call = new AbortController();
+  const waited = state.service.handle("parent", "agents_wait", { ids: ["task-0"] }, call.signal);
+  call.abort();
+  await assert.rejects(waited, /The wait was cancelled/);
+
+  await waitForStatus(state.manager, "child-0", "running");
+  await state.service.cancelCollected("parent");
+  assert.equal(state.starts.length, 33, "the queued child never starts");
+  assert.ok(state.records().filter((item) => item.subagent).every((item) =>
+    item.subagent!.status === "cancelled" && item.subagent!.completionDelivery === "delivered"));
+  assert.equal(state.sessions.get("child-0")?.aborts, 1);
+  await state.service.flushCompletions();
+  assert.equal(deliveredToParent(state.parentRuntime), false);
+});
+
+test("agents_wait returns what finished by its timeout, and a collected subagent cannot start collected subagents", async (t) => {
+  const state = await swarm(2);
+  t.onTestFinished(() => { vi.useRealTimers(); state.service.dispose(); state.manager.disposeAll(); });
+  await assert.rejects(
+    () => state.service.handle("child-0", "sessions_spawn", { task: "Nested", collect: true }),
+    /cannot spawn collected subagents/,
+  );
+  await waitForStatus(state.manager, "child-0", "running");
+  state.sessions.get("child-0")!.finish("First");
+  await waitForTask(state.manager, "parent", "completed");
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const waited = state.service.handle("parent", "agents_wait", { ids: ["task-0", "task-1"], timeoutSeconds: 5 });
+  await vi.advanceTimersByTimeAsync(5_000);
+  assert.deepEqual(await waited, {
+    completed: [{ taskId: "task-0", sessionKey: "child-0", label: "Part 0", status: "completed", result: "First" }],
+    pending: ["task-1"],
+  });
+});
+
+test("a running swarm does not hold back an ordinary result, and Stop reports nothing back, finished results included", async (t) => {
+  const state = await swarm(2, ["task-ordinary", "child-ordinary"]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  await waitForStatus(state.manager, "child-0", "running");
+  state.sessions.get("child-0")!.finish("Finished before Stop");
+  await waitForTask(state.manager, "parent", "completed");
+
+  await state.service.handle("parent", "sessions_spawn", { task: "Ordinary work" });
+  await waitForStatus(state.manager, "child-ordinary", "running");
+  state.sessions.get("child-ordinary")!.finish("Ordinary answer");
+  await waitForTask(state.manager, "parent", "completed", "task-ordinary");
+  await state.service.flushCompletions();
+  assert.equal(state.parentRuntime.steered.length, 1);
+  assert.match(state.parentRuntime.steered[0]!, /Ordinary answer/);
+  assert.doesNotMatch(state.parentRuntime.steered[0]!, /Finished before Stop/);
+
+  await state.service.cancelCollected("parent");
+  state.parentRuntime.finish("Stopped");
+  await waitForStatus(state.manager, "parent", "idle");
+  await state.service.flushCompletions();
+  // This double's steering never reaches its transcript, so the ordinary result is offered again; nothing else is.
+  assert.ok(state.parentRuntime.prompts.every((prompt) => !/task-[01]/.test(prompt)));
+});
+
+test("a restart interrupts queued subagents, and calls wait for that recovery", async (t) => {
+  const state = await swarm(33);
+  state.service.dispose();
+  const restarted = new SubagentService(state.manager, async () => state.records(), state.update, () => new Date(timestamp), () => "unused");
+  t.onTestFinished(() => { restarted.dispose(); state.manager.disposeAll(); });
+  void restarted.initialize();
+  const waited = await restarted.handle("parent", "agents_wait", { ids: ["task-32"] }) as { completed: Array<{ status: string; error?: string }> };
+  assert.deepEqual(waited.completed.map(({ status, error }) => ({ status, error })), [
+    { status: "interrupted", error: "The HUI gateway restarted before this subagent finished." },
+  ]);
 });

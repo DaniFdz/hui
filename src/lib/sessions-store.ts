@@ -135,7 +135,8 @@ export type SubagentTaskView = {
   parentSessionId: string;
   title: string;
   task: string;
-  status: SubagentStatus;
+  /** `queued`: a collected child waiting for a free slot. */
+  status: SubagentStatus | "queued";
   startedAt: string;
   updatedAt: string;
   endedAt?: string;
