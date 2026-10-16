@@ -265,8 +265,8 @@ created", where that first turn began).
 A bot's chat opens beside its panel, after OpenAI's Dots. It starts on the
 bot's overview: its face, name, role and what it is doing, with **Call** and
 **Edit**; its routines and triggers, each with a switch, and **+** to add one;
-**Activity**, the latest runs of both; and **Setup**, one row each for its model,
-tools and skills, call voice and workspace. Each row opens a page, and the
+**Activity**, the latest runs of both; and **Setup**, one row each for who may
+tag it, its model, tools and skills, call voice and workspace. Each row opens a page, and the
 arrow at the top goes back: **Routines** adds schedules (every few minutes,
 hours or days, daily, weekly or once, in your browser's time zone), runs one now
 and shows how the last runs went; **Triggers** wakes the bot when a listener of

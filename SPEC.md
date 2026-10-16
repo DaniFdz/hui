@@ -1814,9 +1814,10 @@ everything the Bots tab can, through the same routes.
   what it is doing, with Call (while it can be called) and Edit; its routines
   and triggers, a line each with an enable switch and a + that opens their page
   on its add form; *Activity*, the latest runs of both, newest first; and
-  *Setup*, a row each for Model (its model and thinking), Tools & skills (what
-  is off), Calls (voice and language) and Workspace (its own folder, or the end
-  of the one chosen). Wide, the overview takes two columns. Each row opens a
+  *Setup*, a row each for Tagging (who may tag it), Model (its model and
+  thinking), Tools & skills (what is off), Calls (voice and language) and
+  Workspace (its own folder, or the end of the one chosen). Wide, the overview
+  takes two columns. Each row opens a
   page with a way back that returns the focus to it: **Routines**, the bot's
   Automation tasks with schedule,
   next run, who made one when the bot did and a temporary one's limits (*made by
