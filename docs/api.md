@@ -2278,7 +2278,8 @@ What creating does with a template, the same plan for the preview and the create
   the chat by HUI would never reach OptChat's log. It costs one turn of its model.
 - **Skills** are written to the bot's home folder, `<bots dir>/<id>/skills/<name>/SKILL.md`
   (front matter with `name` and `description`, then the instructions), with a HUI
-  template's files beside it (other formats' supporting files are not imported),
+  template's files beside it (other formats' supporting files are not imported;
+  never a second `SKILL.md` in another case, nor two paths that differ only by case),
   each written atomically, owner-only (mode 0600: a script arrives without
   permission to run), never through a link, on the machine its chat runs on (on
   a worker, through its host's `bot.skills.*` requests, whose skills carry
@@ -2318,7 +2319,10 @@ What creating does with a template, the same plan for the preview and the create
   at most half of it (any beyond are left out). Its first turn is a kickoff
   (`botTemplateKickoffText`: the marker, the name, `from: template`) that asks the
   bot to greet the operator and start on the points, without tools; like the
-  opener's, that turn is not the operator's. Its triggers are made disabled through
+  opener's, that turn is not the operator's. On a worker whose `hello` lacks
+  `bot-skill-files` (an older one, whose host would read that turn as the
+  operator's) no such turn runs: the bot goes through the points once the operator
+  writes. Its triggers are made disabled through
   the triggers' route (`source: "listener"`), so each gets its URL from **New URL**.
 - **Model.** The template's model is kept only when this gateway resolves it:
   the exact `provider/id`, a bare id, or Claude Code's `sonnet`/`opus`/`haiku` (the
@@ -2335,23 +2339,27 @@ description and look; its model and utility model by bare id (`provider/` left
 out), thinking level and voice; SOUL.md; each of its own skills' folders (SKILL.md
 and the text files beside it, depth 4, at most 50 files, 256 KB each and 2 MB a
 skill; hidden files and folders, `node_modules`, `__pycache__`, logs, links and
-binaries stay behind, each listed with why); its routines (a one-time `at` routine
-stays behind; a cron loses its time zone); its triggers (name, filter, prompt and
-cooldown; never the token, its hint or who made it); and the built-in tools and
-its own skills it turned off, by name (an extension's tools and its directory's
-skills stay behind, counted). Never its memory, chat, handle, home or working
-directory.
+binaries stay behind, each listed with why, and so does a skill whose name, or a
+file whose path, holds a word of the operator's name or the machine's, which can't
+be rewritten: `personalIn`); its routines (a one-time `at` routine stays behind; a
+cron loses its time zone; their timeouts stay behind); its triggers (name, filter,
+prompt and cooldown; never the token, its hint or who made it); and the built-in
+tools and its own skills it turned off, by name (an extension's tools and its
+directory's skills stay behind, counted). Never its memory, chat, handle, home or
+working directory.
 
 **The cleanup** (`cleanText`) runs first, on every part: Settings' profile name
 (whole, any case, and each word of three letters or more as written in the
 profile, unless it is a common word such as Will or Mark) becomes `{{user}}`;
 home folder paths (this machine's, and any `/Users/<x>` or `/home/<x>`) become
 `~`; and e-mail addresses (not `git@`), trigger links (`/__hui/hooks/<token>`),
-`*.ts.net` names, IPv4 addresses other than loopback and `0.0.0.0`, Slack IDs,
-private keys and text shaped like a key or token (`ghp_`, `github_pat_`, `xox?-`,
-`sk-`, `AKIA`, JWTs, a value after `token:`, `password=`, `Bearer`…) become
-`[removed]`, as do this machine's user and host names and its workers' names when
-they stand inside a path, an address or a link. In a script nothing is rewritten:
+`*.ts.net` names, IPv4 addresses other than loopback and `0.0.0.0`, Slack IDs (two
+digits at least), private keys and text shaped like a key or token (`ghp_`,
+`github_pat_`, `xox?-`, `sk-`, `AKIA`, JWTs, a value with a digit after `token:`,
+`password=` or `Bearer`, never code that reads one such as `process.env.TOKEN`)
+become `[removed]`, as do this machine's user and host names and its workers' names
+when they stand inside a path, an address or a link. For a bot on a worker, that
+worker's home and host name count as this machine's. In a script nothing is rewritten:
 what the cleanup finds there decides whether the script travels (below).
 
 **The reviewer** is Settings' utility model, called as one plain completion per
@@ -2364,10 +2372,11 @@ Its answer is checked (`parseReviewAnswer`): a quote must stand, exactly, in tha
 part (at least four characters), the group be `remove`, `ask` or `confirm`, every
 text bounded and cleaned like the bot's; anything else is dropped, and a part
 whose answer can't be read twice is listed as not read. One change is kept per
-passage (the strictest group wins); wording that repeats a removed or asked
-passage gives way to a plain one; a removed or asked passage changes wherever it
-appears, a confirmed one only where it was found. Without a utility model, only
-the cleanup runs.
+passage (the strictest group wins); a removed or asked passage changes wherever it
+appears (one found in a script is shown at the first text that holds it), a
+confirmed one only where it was found. Without a utility model, only the cleanup
+runs. A review started while another of the same bot runs replaces it, whichever
+ends last.
 
 `BotExportReview`: `id`, `botId`, `name`, `model` (absent: none read it),
 `warning` (no utility model, or parts it didn't read), `parts` (`{ id, label,
@@ -2383,16 +2392,20 @@ schedules, filters, lists).
 
 **The zip** (`buildExport`, shared by the gateway and the dialog): the picked
 `remove` changes become their `replacement` and `ask` ones `[ask: <label>]`, in one
-pass over each text (the longer quote where two overlap). Each `ask` or `confirm`
-pick is an open point (`BotOpenPoint`: `{ kind, where, question, excerpt?
-(confirm), operator? (a trigger's) }`; moved out of the reviewer's group, it asks
-what fits the new one, never quoting an asked passage), and so is each script
-picked `confirm`. A trigger whose filter value the cleanup or a change touched
+pass over each text (quotes that overlap become one span, replaced whole). What the
+reviewer wrote travels only checked against the picks: a replacement or label that
+repeats a removed or asked passage gives way (to nothing, or *your own value*), and
+questions, excerpts, where and needs get the picks' replacements (a passage taken
+out shows as `[removed]`), then `[removed]` for the passage in any other case. Each
+`ask` or `confirm` pick is an open point (`BotOpenPoint`: `{ kind, where, question,
+excerpt? (confirm), operator? (a trigger's) }`; moved out of the reviewer's group,
+it asks what fits the new one, never quoting an asked passage), and so is each
+script picked `confirm`. A name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
 travels without `match`, with an open point for the operator. `bot.json` is
 `BotExportManifest`: `format: "hui-bot"`, `version: 2`, `bot` (name, title?,
 description?, avatar?, model?, thinking?, memoryModel?, memoryThinking?, voice?),
 `routines` (`{ name, description?, prompt, schedule: { kind: "every", everyMs } |
-{ kind: "cron", expression }, timeoutSeconds? }`), `triggers`, `disabledTools`,
+{ kind: "cron", expression } }`), `triggers`, `disabledTools`,
 `disabledSkills` (names), `skills` (names), `open` and `needs`; then `SOUL.md` and
 `skills/<name>/…`, scripts picked `remove` left out. No export date: every entry is
 dated 1980-01-01 (a local date would tell the time zone), and the file is named

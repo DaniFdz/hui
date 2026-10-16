@@ -1898,7 +1898,8 @@ its import half stands. The contract is
   picks, and `--yes` saves without asking.
 - **What travels.** Name, title, description and look; model and utility model
   by bare id, thinking level and voice; SOUL.md; each of its own skills'
-  folders, as above; routines, their times read in the importer's time zone (a
+  folders, as above (one whose name, or a file whose path, gives the operator
+  away stays behind); routines, their times read in the importer's time zone (a
   routine that runs once stays behind); triggers (name, filter, prompt and
   cooldown, never their link; a filter value the cleanup or the reviewer
   touches is left out and becomes an open point); the built-in tools and its
@@ -1914,7 +1915,8 @@ its import half stands. The contract is
   only the operator can, in the Routines tab), with room kept for them before
   the soul's 20,000 characters cut the persona.
   The bot speaks first: a kickoff asks it to greet the operator and go through
-  them, a question or two at a time, then rewrite its soul without that section.
+  them, a question or two at a time, then rewrite its soul without that section
+  (on an older worker it waits for the operator's first message instead).
   An imported bot's first turn, this one or a template's first message, is not
   the operator's: its gated tools refuse, as in a routine's turn, so it can't
   rewrite its soul or profile before the operator has said a word. That only
