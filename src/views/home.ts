@@ -33,7 +33,8 @@ import type {
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
-import { composerEnterMode } from "../lib/composer-state.ts";
+import { composerEnterMode, composerPlaceholder } from "../lib/composer-state.ts";
+import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
@@ -133,7 +134,9 @@ function renderProviderIcon(provider: string, trigger = false) {
   );
 }
 
+/** Render reads it for the composer's placeholder, so it answers false where there is no window (Node render tests). */
 function hasCoarsePointer(): boolean {
+  if (typeof window === "undefined") return false;
   return window.matchMedia?.("(pointer: coarse)").matches === true || navigator.maxTouchPoints > 0;
 }
 
@@ -1637,7 +1640,14 @@ function renderComposer(props: HomeProps) {
                 }
               }}
               @paste=${onComposerPaste(props)}
-              placeholder=${props.session?.status === "disconnected" ? "Draft while disconnected…" : disconnected ? "Draft while HUI reconnects…" : props.streaming ? "Add to this run…" : "Send a message…"}
+              placeholder=${composerPlaceholder({
+                status: props.session?.status,
+                reconnecting: disconnected,
+                streaming: props.streaming,
+                coarsePointer: hasCoarsePointer(),
+                sendShortcut: props.chatPreferences.sendShortcut,
+                applePlatform: APPLE_PLATFORM,
+              })}
               ?disabled=${booting || props.sending}
               aria-label="Message"
               role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
