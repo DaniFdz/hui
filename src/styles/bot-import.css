@@ -45,9 +45,13 @@
 .bot-import__field { display: grid; gap: 6px; min-width: 0; }
 .bot-import__field--inline { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; }
 .bot-import__label { color: var(--text-strong); font-size: var(--control-ui-text-sm); font-weight: 600; }
-/* A settings input is sized for a Settings row (16px): in these dialogs it reads at their text's size. Touch screens
-   keep their 16px floor (base.css), so focusing one never zooms the page. */
+/* A settings input is sized for a Settings row (16px): in these dialogs it reads at their text's size, on touch screens
+   too. base.css floors text controls at 16px there so iOS doesn't zoom into a focused one, but the viewport's
+   maximum-scale=1 already prevents that zoom (as for a bot's Settings fields, bots.css). */
 .bot-import-dialog .settings-input { font-size: var(--control-ui-text-sm); }
+@media (pointer: coarse) {
+  .bot-import-dialog .settings-input { font-size: var(--control-ui-text-sm) !important; }
+}
 .bot-import__paste { min-height: 180px; resize: vertical; font-family: var(--font-mono); font-size: var(--control-ui-text-sm); line-height: 1.45; }
 .bot-import__hint { display: block; margin: 0; color: var(--muted); font-size: var(--control-ui-text-sm); line-height: 1.45; }
 .bot-import__error { margin: 0; }
