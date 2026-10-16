@@ -203,6 +203,7 @@ test("a bot exports as a reviewed template: the cleanup and the utility model so
     assert.equal("handle" in manifest.bot, false);
     assert.deepEqual(manifest.triggers, [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review it with a teammate.", cooldownSeconds: 300 }]);
     assert.deepEqual(manifest.open.map((point) => [point.kind, point.where]), [["ask", "SOUL.md"], ["confirm", "SOUL.md"], ["confirm", "Skill weather: scripts/check.sh"]]);
+    assert.equal(manifest.open[2]!.question, "It came from someone else's setup: check it before it runs. Which repositories should I watch for pull requests?");
 
     assert.equal((await call(`/__hui/bots/${nova.id}/soul`, "PUT", { soul: `${soul}One more private line.\n` })).status, 200);
     const stale = await call<{ error: string }>(`/__hui/bots/${nova.id}/export`, "POST", { review: review.body.id, picks: {} });

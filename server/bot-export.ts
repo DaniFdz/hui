@@ -310,7 +310,9 @@ export class BotExportService {
       if (!hits.length && !found.length) continue;
       const reasons = [...hits.map((hit) => `HUI found ${hit.kind} in it (${hit.sample}).`), ...found.map((change) => `${change.reason} “${oneLine(change.quote, 80)}”`)];
       const group = hits.length || found.some((change) => change.group === "remove") ? "remove" : "confirm";
-      const question = found.find((change) => change.group !== "remove")?.question || `Check ${part.label} before it runs: it came from someone else's setup.`;
+      // Its open point is where the script is; what the reviewer asked about it follows.
+      const asked = found.find((change) => change.group !== "remove")?.question;
+      const question = `It came from someone else's setup: check it before it runs.${asked ? ` ${asked}` : ""}`;
       files.push({ id: `f${files.length + 1}`, part: part.id, group, reasons, question });
     }
     return files;
