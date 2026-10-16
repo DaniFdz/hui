@@ -760,6 +760,12 @@
 .bot-settings .new-session-page__directory-menu { position: relative; top: auto; margin-top: 6px; width: 100%; min-width: 0; max-width: 100%; }
 .bot-settings .new-session-page__directory-picker > input { font-size: var(--control-ui-text-sm); }
 .bot-settings .new-session-page__directory-picker > input:disabled { opacity: .6; cursor: not-allowed; }
+/* base.css keeps every text control at 16px or more on touch screens so iOS doesn't zoom into a focused one; the
+ * viewport's maximum-scale=1 already prevents that zoom (as for .pi-install-form's field, app.css), so these compact
+ * fields keep their type on phones too instead of towering over their rows. */
+@media (pointer: coarse) {
+  .bot-settings :is(.settings-row__control > .settings-input, .new-session-page__directory-picker > input) { font-size: var(--control-ui-text-sm) !important; }
+}
 /* Runs on, beside the Workspace heading: the machine a bot stays on, read-only (its worker, or Local), named as the
  * roster's + menu names it. A bot on a worker says why under the section, in the panel's hint type. */
 .bot-settings__note .bot-machine { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 500; vertical-align: bottom; }
