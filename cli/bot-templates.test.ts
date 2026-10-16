@@ -7,7 +7,7 @@ import { test, type TestContext } from "vitest";
 import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
 import type { BotExportReview } from "../shared/bot-export.ts";
 import type { BotImportPreview } from "../shared/bot-templates.ts";
-import { exportCommand, formatExportReview, formatImportPreview, importCommand, importSource } from "./bot-templates.ts";
+import { exportAdditions, exportCommand, formatExportReview, formatImportPreview, importCommand, importSource } from "./bot-templates.ts";
 import type { BotIO } from "./bots.ts";
 import { parseCli } from "./main.ts";
 
@@ -170,6 +170,15 @@ test("hui bot export prints the review and saves the template once confirmed, ow
   assert.equal(await exportCommand(gateway.base, BOT, { json: true }, json.io), 0);
   assert.deepEqual(JSON.parse(json.out), REVIEW, "--json without --yes prints the review and saves nothing");
   await assert.rejects(exportCommand(gateway.base, BOT, { set: ["c1=keep"] }, terminal({ cwd: dir }).io), /--set needs --review <id>/u);
+  // A passage the reviewer missed: checked against a fresh review before anything is saved, sent with the download.
+  gateway.calls.length = 0;
+  const added = terminal({ cwd: dir });
+  assert.equal(await exportCommand(gateway.base, BOT, { add: ["remove:I  watch => I look at"], yes: true, out: "added.zip" }, added.io), 0);
+  assert.deepEqual(gateway.calls.at(-1)!.body, { review: "r1", picks: {}, added: [{ group: "remove", quote: "I  watch", becomes: "I look at" }] });
+  assert.match(added.out, /\n  a1 remove  SOUL\.md: “I watch”, becomes “I look at”\. Added by you\.\n/u, "the printed review shows it, as the review holds it");
+  await assert.rejects(exportCommand(gateway.base, BOT, { add: ["remove:not in the bot"], yes: true }, terminal({ cwd: dir }).io), /Addition a1: It isn't in the bot's text as the review read it/u);
+  assert.deepEqual(exportAdditions(["ask:acme/widgets => the repositories", "confirm:Never merge => ignored"]), [{ group: "ask", quote: "acme/widgets", becomes: "the repositories" }, { group: "confirm", quote: "Never merge" }]);
+  assert.throws(() => exportAdditions(["keep:Nova"]), /--add takes <remove\|ask\|confirm>:<passage>/u);
   await assert.rejects(exportCommand(gateway.base, BOT, { review: "r1", set: ["c1=maybe"] }, terminal({ cwd: dir }).io), /--set takes <change>=<keep\|remove\|ask\|confirm>/u);
   const gone = await fakeGateway(t, { "POST /__hui/bots/b1/export": () => ({ status: 409, body: { error: "Nova changed since its review: review it again before you download it." } }) });
   await assert.rejects(exportCommand(gone.base, BOT, { review: "r1", yes: true }, terminal({ cwd: dir }).io), /changed since its review/u);

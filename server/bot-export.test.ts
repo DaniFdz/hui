@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { applyChanges, buildExport, changeGroups, type BotExportManifest } from "../shared/bot-export.ts";
+import { applyChanges, buildExport, changeGroups, withAdditions, type BotExportAddition, type BotExportManifest } from "../shared/bot-export.ts";
 import type { BotView } from "../shared/bots.ts";
 import type { BotTrigger } from "../shared/bot-triggers.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
@@ -135,7 +135,7 @@ test("the reviewer reads a few parts at once, and what it found keeps the parts'
   } });
   const review = await service.review("ada");
   assert.ok(requests.every((request) => !request.least), "a first read reasons");
-  assert.ok(most > 1 && most <= 4, `${most} parts at once`);
+  assert.ok(most > 1 && most <= 8, `${most} requests at once`);
   assert.deepEqual(review.changes.map((change) => [change.id, change.quote]), [["c1", "Pat Doe"], ["c2", "acme/widgets"], ["c3", "Approve only when CI is green"]]);
 });
 
@@ -198,6 +198,26 @@ test("two passages asked as the same blank are asked once", async () => {
   assert.match(build.files.find((file) => file.path === "SOUL.md")!.text, /\[ask: the repositories to watch\].*\[ask: The repositories to watch\]/su, "both blanks stay");
 });
 
+test("every piece is read twice and both reads count; a wider quote stands for a narrower one; one read is enough to read a piece", async () => {
+  const reads = new Map<string, number>();
+  const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => {
+    const part = request.prompt.split("\n")[0]!;
+    const read = (reads.get(part) ?? 0) + 1;
+    reads.set(part, read);
+    // The trigger's first three requests fail: whatever their order, one read fails both its tries, the other answers.
+    if (part.startsWith("Part: Trigger") && read < 4) throw new Error("down");
+    if (part !== "Part: SOUL.md") return JSON.stringify({ changes: [] });
+    // Each read finds something the other passed over, and they quote the approval rule more or less widely.
+    return JSON.stringify({ changes: read === 1
+      ? [{ quote: "Pat Doe", group: "remove", reason: "A name.", replacement: "a teammate" }, { quote: "Approve only when CI is green", group: "confirm", reason: "A rule.", question: "Approve on green?" }]
+      : [{ quote: "acme/widgets", group: "ask", reason: "A repository.", label: "the repositories", question: "Which?" }, { quote: "Approve only when CI is green. Mail [removed] when unsure.", group: "confirm", reason: "A rule.", question: "Approve on green, and mail?" }] });
+  } });
+  const review = await service.review("ada");
+  assert.equal(reads.get("Part: SOUL.md"), 2);
+  assert.deepEqual(review.changes.map((change) => [change.quote, change.group]), [["Pat Doe", "remove"], ["acme/widgets", "ask"], ["Approve only when CI is green. Mail [removed] when unsure.", "confirm"]]);
+  assert.equal(review.parts.find((part) => part.id === "triggers/0")!.read, true, "its other read answered");
+});
+
 test("a part whose first read fails is read again with the least reasoning; one that fails twice is unread, and the review says so", async () => {
   const asked: { part: string; least: boolean }[] = [];
   const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => {
@@ -207,7 +227,7 @@ test("a part whose first read fails is read again with the least reasoning; one 
     return JSON.stringify({ changes: PASSAGES.filter((change) => request.prompt.includes(change.quote)) });
   } });
   const review = await service.review("ada");
-  assert.deepEqual(asked.filter((each) => each.part === "Part: SOUL.md").map((each) => each.least), [false, true]);
+  assert.deepEqual(asked.filter((each) => each.part === "Part: SOUL.md").map((each) => each.least).sort(), [false, false, true, true], "each of its two reads retries, with the least reasoning");
   assert.equal(review.parts.find((part) => part.id === "SOUL.md")!.read, true);
   assert.equal(review.parts.find((part) => part.id === "triggers/0")!.unread, "The utility model failed: Request was aborted.");
   assert.match(review.warning ?? "", /didn't read 1 of \d+ parts/u);
@@ -253,6 +273,25 @@ test("the operator's picks move changes: a script kept as it is travels, a kept 
   assert.match(files.get("SOUL.md")!, /with \[ask: a teammate's name\]\./u);
   assert.deepEqual(manifest.needs, []);
   assert.deepEqual(buildExport(review, picks).files.map((file) => file.path), [...files.keys()], "the dialog's files are the zip's");
+});
+
+test("a passage the operator adds becomes a change like the reviewer's, made as the dialog makes it, and is refused when it can't be one", async () => {
+  const { service } = harness();
+  const review = await service.review("ada");
+  const soul = async (body: Record<string, unknown>) => unzip((await service.export("ada", { review: review.id, ...body })).data).get("SOUL.md")!;
+  // Spacing as copied is forgiven; the change quotes the text as the review holds it.
+  const added = [{ quote: "Mail [removed]   when unsure", group: "remove", becomes: "Ask the team" }];
+  assert.deepEqual(withAdditions(review, added as BotExportAddition[]).changes.at(-1), { id: "a1", part: "SOUL.md", quote: "Mail [removed] when unsure", group: "remove", reason: "Added by you.", replacement: "Ask the team", label: "Ask the team", question: "" });
+  assert.match(await soul({ added }), /green\. Ask the team\.\n/u);
+  assert.match(await soul({ added, picks: { a1: "ask" } }), /green\. \[ask: Ask the team\]\.\n/u, "picked like any change");
+  const refused = async (addition: Record<string, unknown>, why: RegExp) => assert.rejects(service.export("ada", { review: review.id, added: [addition] }), (error: unknown) => error instanceof BotInputError && why.test(error.message));
+  await refused({ quote: "not in this bot", group: "remove" }, /^Addition a1: It isn't in the bot's text as the review read it: copy it from text no change touches\.$/u);
+  await refused({ quote: "Pat", group: "remove" }, /four characters or more/u);
+  await refused({ quote: "Pat Doe", group: "confirm" }, /It is a change already/u);
+  await refused({ quote: "PR review assistant", group: "ask" }, /Only the bot's name or title holds it/u);
+  await refused({ quote: "when unsure", group: "remove", becomes: "Mail dani@example.com" }, /^What addition a1 becomes holds an e-mail address: write it without\.$/u);
+  await refused({ quote: "when unsure", group: "keep" }, /takes \{ quote, group: remove \| ask \| confirm, becomes\? \}/u);
+  await assert.rejects(service.export("ada", { review: review.id, added, picks: { a2: "keep" } }), /This review has no change a2\./u);
 });
 
 test("a download is refused when the review is gone, the bot changed since, or a pick names nothing of the review", async () => {
@@ -321,6 +360,14 @@ test("applyChanges replaces every occurrence in one pass, the longer where two o
   assert.equal(out("Rules:\n- Do X.\n- Do Y.\n", "Do X"), "Rules:\n- Do Y.\n", "a list item left with its marker alone goes");
   assert.equal(out("Rules:\n1. Do X.\n2. Do Y.", "Do Y."), "Rules:\n1. Do X.", "the last line takes the line break before it");
   assert.equal(out("Rules:\r\n- Do X.\r\n- Do Y.", "Do Y."), "Rules:\r\n- Do X.", "a Windows line break too");
+  assert.equal(out("Rules:\n- Do X.\n- Do Y.\n", "Do Y"), "Rules:\n- Do X.\n", "a last item with its own line break keeps the one before");
+  assert.equal(applyChanges("x\n- ab cd\n- ef\n", [{ quote: "ab", replacement: "" }, { quote: "cd", replacement: "" }]), "x\n- ef\n", "an item two removals empty goes too");
+  assert.equal(applyChanges("x\n- ab, cd\n", [{ quote: "ab", replacement: "" }, { quote: "cd", replacement: "" }]), "x\n", "with a comma between them");
+  assert.equal(out("Use X (see foo) daily, with `cmd` set.", "see foo"), "Use X daily, with `cmd` set.", "brackets it fills go with it");
+  assert.equal(out("Run `cmd` daily.", "cmd"), "Run daily.", "and backticks");
+  assert.equal(out("I read the docs and check the bots well.", "check the bots well"), "I read the docs.", "a clause ending its sentence takes its \"and\"");
+  assert.equal(out("Ask me, or wait for it.", "wait for it"), "Ask me.", "or its \", or\"");
+  assert.equal(out("I read and write.", "read"), "I and write.", "an \"and\" stays when the clause doesn't end the sentence");
 });
 
 test("a passage the reviewer flags in a script changes the text where it also stands, and wording that repeats a removed one never travels", async () => {

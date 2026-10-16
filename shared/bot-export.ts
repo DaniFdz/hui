@@ -68,6 +68,10 @@ export type BotExportManifest = {
 export const BOT_EXPORT_GROUPS = ["keep", "remove", "ask", "confirm"] as const;
 export type BotExportGroup = (typeof BOT_EXPORT_GROUPS)[number];
 
+/** A passage the operator adds when the reviewer missed it: what happens to it and what it becomes (removed) or what the
+ * new owner gives (asked). */
+export type BotExportAddition = { quote: string; group: Exclude<BotExportGroup, "keep">; becomes?: string };
+
 /** What a change in this part can become. The profile (the bot's name and title) is set before its first chat, so it
  * can't hold a blank or a point to agree. */
 export function changeGroups(part: string): readonly BotExportGroup[] {
@@ -172,10 +176,56 @@ export function changeQuestion(change: Pick<BotExportChange, "group" | "question
 }
 
 /**
+ * An operator's addition as one more change of the review, or why it can't be one: its passage must stand, four
+ * characters or more, in a part's text as the review holds it (spacing as copied is forgiven), in a part that takes its
+ * group, and not be a change already. The dialog and the gateway make it alike, so what the dialog shows is the zip.
+ */
+export function additionChange(review: BotExportReview, addition: BotExportAddition, id: string): BotExportChange | string {
+  const typed = addition.quote.trim();
+  if (typed.replace(/\s+/gu, "").length < 4) return "Copy a passage of four characters or more.";
+  const pattern = new RegExp(escape(typed).replace(/\s+/gu, "\\s+"), "u");
+  let quote: string | undefined;
+  let home: BotExportPart | undefined;
+  for (const part of review.parts.filter((each) => each.kind === "text")) {
+    const found = part.fields.map((field) => field.text.match(pattern)?.[0]).find(Boolean);
+    if (!found) continue;
+    quote ??= found;
+    if (changeGroups(part.id).includes(addition.group)) {
+      home = part;
+      quote = found;
+      break;
+    }
+  }
+  if (!quote) return "It isn't in the bot's text as the review read it: copy it from text no change touches.";
+  if (!home) return "Only the bot's name or title holds it, and those can only be removed.";
+  if (review.changes.some((change) => change.quote === quote)) return "It is a change already: pick its group above.";
+  const becomes = oneLine(addition.becomes ?? "", 120);
+  return {
+    id, part: home.id, quote, group: addition.group, reason: "Added by you.",
+    replacement: addition.group === "remove" ? becomes : "", label: becomes || "your own value", question: "",
+  };
+}
+
+/** The review with the operator's additions as changes `a1`, `a2`…; one that can't be a change throws why. */
+export function withAdditions(review: BotExportReview, additions: readonly BotExportAddition[]): BotExportReview {
+  let result = review;
+  for (const [index, addition] of additions.entries()) {
+    const change = additionChange(result, addition, `a${index + 1}`);
+    if (typeof change === "string") throw new Error(`Addition a${index + 1}: ${change}`);
+    result = { ...result, changes: [...result.changes, change] };
+  }
+  return result;
+}
+
+/** Brackets and quotes a passage taken out may fill whole. */
+const ENCLOSURES: Readonly<Record<string, string>> = { "(": ")", "[": "]", "`": "`", '"': '"', "“": "”" };
+
+/**
  * `text` with each quote replaced, every time it appears, in one pass over the text as it was, so a replacement is never
  * matched again. Quotes that overlap become one span, all of it replaced by the longer one's replacement: no part of
- * either is left behind. A passage taken out with nothing in its place leaves no gap: a whole sentence takes its full
- * stop with it, a clause the space before it, and a list item left with its marker alone goes, line and all.
+ * either is left behind. A passage taken out with nothing in its place leaves no gap: brackets or quotes it fills go
+ * with it, a whole sentence takes its stop, a clause the space before it (and an "and" or "or" joining it to the end of
+ * its sentence), and a list item left with its marker alone goes, line and all.
  */
 export function applyChanges(text: string, changes: readonly { quote: string; replacement: string }[]): string {
   const ranges: { start: number; end: number; replacement: string }[] = [];
@@ -199,29 +249,48 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
     let { start, end } = span;
     const limit = spans[index + 1]?.start ?? text.length;
     if (!span.replacement) {
+      const close = ENCLOSURES[text[start - 1] ?? ""];
+      if (close && text[end] === close && start - 1 >= at && end + 1 <= limit) {
+        start -= 1;
+        end += 1;
+      }
       // The space before: still in the text, or already written when the span before ended on it.
       const spaceBefore = start > at ? text[start - 1] === " " : result.endsWith(" ");
       const dropSpaceBefore = () => {
         if (start > at) start -= 1;
         else result = result.slice(0, -1);
       };
+      // The line so far as it will be written, the span before may have cut part of it.
       const lineStart = text.lastIndexOf("\n", start - 1) + 1;
-      const listItem = lineStart >= at && /^[ \t]*(?:[-*+]|\d+[.)]) $/u.test(text.slice(lineStart, start));
+      const sameLine = lineStart < at;
+      const written = sameLine ? result.slice(result.lastIndexOf("\n") + 1) + text.slice(at, start) : text.slice(lineStart, start);
+      const listItem = /^[ \t]*(?:[-*+]|\d+[.)]) $/u.test(written);
       const opensSentence = start === 0 || text[start - 1] === "\n" || listItem || /^[.!?:] $/u.test(text.slice(start - 2, start));
-      if (opensSentence && end < limit && /^[.;!?](?:\s|$)/u.test(text.slice(end, end + 2))) {
+      if (opensSentence && end < limit && /^[.;!?,:](?:\s|$)/u.test(text.slice(end, end + 2))) {
         if (text[end + 1] === " " && end + 2 <= limit) end += 2;
         else {
           end += 1;
           if (spaceBefore && !listItem) dropSpaceBefore();
         }
-      } else if (spaceBefore && /^[.,;:!?)]/u.test(text[end] ?? "")) dropSpaceBefore();
+      } else if (spaceBefore && !listItem && /^[.,;:!?)]/u.test(text[end] ?? "")) {
+        // A clause ending its sentence takes the "and" or "or" that joined it: "A and B." without B is "A.".
+        const joined = /(?:,\s*|\s)(?:and|or) $/u.exec(text.slice(Math.max(at, start - 6), start));
+        if (joined && start - joined[0].length >= at) start -= joined[0].length;
+        else dropSpaceBefore();
+      }
       else if (spaceBefore && text[end] === " " && end + 1 <= limit) end += 1;
-      const lineEnd = text.indexOf("\n", end) === -1 ? text.length : text.indexOf("\n", end);
+      const newline = text.indexOf("\n", end);
+      const lineEnd = newline === -1 ? text.length : newline;
       if (listItem && !text.slice(end, lineEnd).trim()) {
-        const after = lineEnd < text.length ? lineEnd + 1 : lineEnd;
+        const last = newline === -1;
+        const after = last ? lineEnd : lineEnd + 1;
         if (after <= limit) {
           // The last line takes the line break before it (and a Windows one's carriage return).
-          start = after === text.length && lineStart > at ? lineStart - (lineStart - 2 >= at && text[lineStart - 2] === "\r" ? 2 : 1) : lineStart;
+          if (sameLine) {
+            const cut = result.lastIndexOf("\n") + 1;
+            result = result.slice(0, last && cut > 0 ? cut - (result[cut - 2] === "\r" ? 2 : 1) : cut);
+            start = at;
+          } else start = last && lineStart > at ? lineStart - (lineStart - 2 >= at && text[lineStart - 2] === "\r" ? 2 : 1) : lineStart;
           end = after;
         }
       }

@@ -45,7 +45,7 @@ export const HELP = `Usage:
               [--deny-tools <a,b>] [--deny-skills <a,b>] [--json]
   hui bot edit <bot> [same flags as add but --soul-file, --worker and --deny-*] [--json]
   hui bot import <file|folder|url|-> [--worker <name|id>] [--agent <name>] [--yes] [--json]
-  hui bot export <bot> [--out <file>] [--review <id> --set <change>=<group>...] [--yes] [--json]
+  hui bot export <bot> [--out <file>] [--review <id> --set <change>=<group>...] [--add <group>:<passage>[ => <becomes>]...] [--yes] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
   hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
@@ -142,8 +142,10 @@ Settings' utility model sorts the rest into removed, asked (the new owner gives
 theirs), confirmed (they agree to it first) and kept, and it prints that review
 and asks before saving <name>.hui-bot.zip (--yes saves it as reviewed). Its
 memory never leaves. --review <id> --set c1=keep saves a printed review with
-other picks; a script is kept, confirmed or removed whole. It never replaces a
-file without --yes.
+other picks; a script is kept, confirmed or removed whole. --add adds a passage
+the reviewer missed, copied from its text: remove:<passage> => <what it becomes>,
+ask:<passage> => <what the new owner gives>, or confirm:<passage>. It never
+replaces a file without --yes.
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Delete removes a bot for good, active or archived: its turn stops, its
 chat leaves HUI, and its routines, memory and folder (SOUL.md and every file in
@@ -200,7 +202,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     bot: { type: "string" }, session: { type: "string" }, description: { type: "string" }, until: { type: "string" }, runs: { type: "string" }, disabled: { type: "boolean" },
     match: { type: "string" }, cooldown: { type: "string" },
     "pr-links": { type: "boolean" }, "allow-bots": { type: "boolean" }, "allow-external": { type: "boolean" },
-    agent: { type: "string" }, out: { type: "string" }, review: { type: "string" }, set: { type: "string", multiple: true }, memory: { type: "boolean" },
+    agent: { type: "string" }, out: { type: "string" }, review: { type: "string" }, set: { type: "string", multiple: true }, add: { type: "string", multiple: true }, memory: { type: "boolean" },
   } as const;
   const { values, positionals } = parseArgs({ args, allowPositionals: true, strict: true, options });
   if (values.help || !args.length) return { command: "help", values };
@@ -231,7 +233,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
     "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
     "bot soul": ["file", "json"], "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
-    "bot import": ["worker", "agent", "yes", "json"], "bot export": ["out", "review", "set", "yes", "json"],
+    "bot import": ["worker", "agent", "yes", "json"], "bot export": ["out", "review", "set", "add", "yes", "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],

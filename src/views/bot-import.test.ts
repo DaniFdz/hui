@@ -38,6 +38,11 @@ test("the preview shows every imported text as plain text, says it is untrusted,
 });
 
 test("the export dialog shows the gateway's review and the files Download saves, and sends back only the picks", () => {
+  const addition = between(read("./bot-import.ts"), "function renderAddition(", "function renderReview(");
+  assert.match(addition, /<button type="button" class="btn btn--sm bot-export__add-button"/u, "Add is a plain button: the dialog's form submits Download");
+  assert.match(read("./bot-import.ts"), /section\("Missed something\?", [^\n]*\{ name: "export-add" \}\)/u, "its section's open state isn't bound to the form's, which closed it mid-edit");
+  assert.match(addition, /if \(event\.key === "Enter"\) \{ event\.preventDefault\(\); add\(\); \}/u, "and Enter in its line adds, never downloads");
+  assert.match(read("./bot-import.ts"), /review = withAdditions\(held, props\.added\);/u, "additions are changes in the preview as in the zip");
   assert.match(read("./bot-import.ts"), /<select class="settings-input" \.value=\$\{live\(value\)\}/u, "a row's select reused for another change shows that change's group");
   const source = read("./bot-import.ts");
   const review = between(source, "function renderReview(", "export function renderBotExportDialog(");
@@ -45,7 +50,7 @@ test("the export dialog shows the gateway's review and the files Download saves,
   assert.match(review, /section\("Files as they will be saved"/u);
   assert.match(review, /textBlock\(change\.quote\)/u, "every passage as plain text");
   const controller = read("../lib/bot-import-controller.ts");
-  assert.match(controller, /downloadBotExport\(state\.bot\.id, \{ review: state\.review\.id, picks: state\.picks \}/u, "Download sends the review's id and the picks, never text");
+  assert.match(controller, /downloadBotExport\(state\.bot\.id, \{ review: state\.review\.id, picks: state\.picks, added: state\.added \}/u, "Download sends the review's id, the picks and the passages added, which the gateway checks against its review");
   assert.match(controller, /stale: error instanceof BotExportError && error\.status === 409/u, "a refused download offers Review again");
   assert.match(between(source, "export function renderBotExportDialog(", "\n}\n"), /props\.pending \? "Reviewing…" : "Review again"/u);
 });

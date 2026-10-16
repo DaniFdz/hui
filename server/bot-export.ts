@@ -11,7 +11,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import {
-  buildExport, changeGroups, type BotExportChange, type BotExportCleanup, type BotExportFileChange, type BotExportGroup,
+  buildExport, changeGroups, withAdditions, type BotExportAddition, type BotExportChange, type BotExportCleanup, type BotExportFileChange, type BotExportGroup,
   type BotExportMeta, type BotExportPart, type BotExportReview, type BotExportSchedule,
 } from "../shared/bot-export.ts";
 import { BOT_SKILL_TEXT_FILE } from "../shared/bot-templates.ts";
@@ -44,11 +44,13 @@ export type BotExportDeps = {
   now?: () => number;
 };
 
-/** One request to the reviewer, the whole review, and how many parts it reads at once. A utility model behind a gateway
+/** One request to the reviewer, the whole review, and how many requests run at once. A utility model behind a gateway
  * can take over a minute on a long SOUL.md. */
 const CALL_MS = 150_000;
 const REVIEW_MS = 6 * 60_000;
-const READ_AT_ONCE = 4;
+const READ_AT_ONCE = 8;
+/** Passages an operator adds to one download, at most. */
+const MAX_ADDITIONS = 50;
 /** Longer than this, what the bot needs is merged (`NEEDS_MERGE_PROMPT`). */
 const MERGE_NEEDS_OVER = 6;
 /** Inside a zip every file is dated 1980-01-01, the earliest a ZIP date can be: a local date would tell the time zone. */
@@ -111,7 +113,11 @@ export class BotExportService {
       const seen = byQuote.get(change.quote);
       if (!seen || RANK[change.group] < RANK[seen.group]) byQuote.set(change.quote, change);
     }
-    const kept = [...byQuote.values()];
+    const quoted = [...byQuote.values()];
+    // Two reads quote one rule or name more or less widely: a wider quote in the same part, at least as strict, stands
+    // for the narrower one (a stricter narrow one stays: it changes inside the wider).
+    const kept = quoted.filter((change) => !quoted.some((other) => other !== change && other.part === change.part && other.quote.length > change.quote.length
+      && other.quote.includes(change.quote) && RANK[other.group] <= RANK[change.group]));
     const text = parts.filter((part) => part.kind === "text");
     const holds = (part: BotExportPart, quote: string) => part.fields.some((field) => field.text.includes(quote));
     // The bot's whole name is the template's: a change to it starts kept, for the operator to see and decide.
@@ -140,17 +146,45 @@ export class BotExportService {
 
   /** `POST /__hui/bots/:id/export`: `{ review, picks }`, the zip of what the review and the picks make. */
   async export(target: string, body: unknown): Promise<{ name: string; data: Buffer }> {
-    if (!isRecord(body)) throw new BotInputError("An export needs { review, picks }.");
-    const unknown = Object.keys(body).filter((key) => key !== "review" && key !== "picks");
+    if (!isRecord(body)) throw new BotInputError("An export needs { review, picks, added }.");
+    const unknown = Object.keys(body).filter((key) => key !== "review" && key !== "picks" && key !== "added");
     if (unknown.length) throw new BotInputError(`Unknown field${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}.`);
     if (typeof body["review"] !== "string" || !body["review"]) throw new BotInputError("review must name the review the picks are for.");
     const bot = await this.#deps.bots.get(target);
     const held = this.#reviews.get(bot.id);
     if (!held || held.review.id !== body["review"]) throw new BotConflictError("This review is gone (HUI restarted, or a newer review replaced it): review the bot again.");
-    const picks = this.#picks(held.review, body["picks"]);
+    // The operator's additions join the reviewer's changes, made as the dialog makes them; what they wrote travels, so
+    // the cleanup must find nothing in it.
+    const additions = this.#additions(body["added"]);
+    let review: BotExportReview;
+    try {
+      review = withAdditions(held.review, additions);
+    } catch (error) {
+      throw new BotInputError(error instanceof Error ? error.message : "An addition can't be a change.");
+    }
+    const identity = await this.#deps.identity(bot.worker?.id);
+    for (const [index, addition] of additions.entries()) {
+      const hit = addition.becomes ? cleanText(addition.becomes, identity).hits[0] : undefined;
+      if (hit) throw new BotInputError(`What addition a${index + 1} becomes holds ${hit.kind}: write it without.`);
+    }
+    const picks = this.#picks(review, body["picks"]);
     if ((await this.#read(bot)).hash !== held.hash) throw new BotConflictError(`${bot.name} changed since its review: review it again before you download it.`);
-    const build = buildExport(held.review, picks);
+    const build = buildExport(review, picks);
     return { name: build.fileName, data: writeZip(build.files.map((file) => ({ path: file.path, data: Buffer.from(file.text, "utf8") })), ZIP_DATE) };
+  }
+
+  /** The passages the operator added, as sent: at most 50, each a quote, a group and what it becomes. */
+  #additions(value: unknown): BotExportAddition[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.length > MAX_ADDITIONS) throw new BotInputError(`added lists at most ${MAX_ADDITIONS} passages.`);
+    return value.map((item, index) => {
+      const group = isRecord(item) ? item["group"] : undefined;
+      if (!isRecord(item) || typeof item["quote"] !== "string" || item["quote"].length > 2_000 || (group !== "remove" && group !== "ask" && group !== "confirm")
+        || (item["becomes"] !== undefined && (typeof item["becomes"] !== "string" || item["becomes"].length > 300))) {
+        throw new BotInputError(`Addition a${index + 1} takes { quote, group: remove | ask | confirm, becomes? }.`);
+      }
+      return { quote: item["quote"], group, ...(typeof item["becomes"] === "string" ? { becomes: item["becomes"] } : {}) };
+    });
   }
 
   /** Each pick names a change, script or need of the review, with a group it takes. */
@@ -279,8 +313,8 @@ export class BotExportService {
     return { parts, cleanup, copies, meta, leftOut };
   }
 
-  /** The utility model reads the parts in pieces, a few at once, one quicker retry each, within the review's time; a part it
-   * can't read whole is unread. What it found comes back in the parts' order, however the requests end. */
+  /** The utility model reads the parts in pieces, each twice, several at once, one quicker retry each, within the review's
+   * time; a part it can't read whole is unread. What it found comes back in the parts' order, however the requests end. */
   async #reviewParts(parts: BotExportPart[], copies: Map<string, { key: string; text: string }[]>, identity: CleanupIdentity, others: readonly string[]): Promise<{
     model?: string; warning?: string; found: (ReviewedChange & { part: string })[]; needs: string[];
   }> {
@@ -292,29 +326,30 @@ export class BotExportService {
     const known = [...new Set([identity.operator, ...identity.names ?? []].filter((name): name is string => Boolean(name)))];
     const system = reviewSystemPrompt({ ...(known.length ? { name: known.join(", also ") } : {}), username: identity.username, bots: others });
     const deadline = this.#now() + REVIEW_MS;
-    // Every piece of every part is one request; a part is unread when one of its pieces is.
+    // Every piece of every part is read twice, independently, and both reads count: what one read passes over the other
+    // usually finds. A piece is read when one of its reads is, a part when all its pieces are.
     const pieces = parts.flatMap((part, index) => reviewChunks({ label: part.label, script: part.kind === "script", fields: copies.get(part.id) ?? [] }).map((chunk) => ({ index, chunk })));
-    const results: { changes: (ReviewedChange & { part: string })[]; needs: string[] }[] = pieces.map(() => ({ changes: [], needs: [] }));
-    const unread = new Map<number, string>();
-    const read = async (at: number) => {
-      const { index, chunk } = pieces[at]!;
+    const reads = pieces.flatMap((piece, at) => [{ ...piece, at }, { ...piece, at }]);
+    const results: { changes: (ReviewedChange & { part: string })[]; needs: string[] }[] = reads.map(() => ({ changes: [], needs: [] }));
+    const failed = new Map<number, string[]>();
+    const read = async (r: number) => {
+      const { index, chunk, at } = reads[r]!;
       const part = parts[index]!;
-      if (this.#now() >= deadline) {
-        if (!unread.has(index)) unread.set(index, "The review ran out of time before this part.");
-        return;
-      }
-      const answer = await this.#ask(model, system, reviewPrompt(chunk), (copies.get(part.id) ?? []).map((field) => field.text), identity, deadline);
+      const answer = this.#now() >= deadline ? "The review ran out of time before this part."
+        : await this.#ask(model, system, reviewPrompt(chunk), (copies.get(part.id) ?? []).map((field) => field.text), identity, deadline);
       if (typeof answer === "string") {
-        if (!unread.has(index)) unread.set(index, answer);
+        failed.set(at, [...failed.get(at) ?? [], answer]);
         return;
       }
-      results[at]!.changes.push(...answer.changes.map((change) => ({ ...change, part: part.id })));
-      results[at]!.needs.push(...answer.needs);
+      results[r]!.changes.push(...answer.changes.map((change) => ({ ...change, part: part.id })));
+      results[r]!.needs.push(...answer.needs);
     };
     let next = 0;
-    await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, pieces.length) }, async () => {
-      for (let at = next++; at < pieces.length; at = next++) await read(at);
+    await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, reads.length) }, async () => {
+      for (let r = next++; r < reads.length; r = next++) await read(r);
     }));
+    const unread = new Map<number, string>();
+    for (const [at, why] of failed) if (why.length === 2 && !unread.has(pieces[at]!.index)) unread.set(pieces[at]!.index, why.at(-1)!);
     for (const [index, part] of parts.entries()) {
       part.read = !unread.has(index);
       if (unread.has(index)) part.unread = unread.get(index)!;

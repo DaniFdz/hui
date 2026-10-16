@@ -848,7 +848,9 @@ what it finds:
 
 The dialog shows every change with its reason; move any to another group, leave
 out a line of what the bot needs, and open *Files as they will be saved* to read
-exactly what the zip holds before **Download**. A script beside a skill is never
+exactly what the zip holds before **Download**. If the reviewer missed something,
+copy the passage from those files into *Missed something?*, pick what happens to it
+and what it becomes, and **Add** it; **Undo** takes it back. A script beside a skill is never
 edited: it travels as it is, travels for the new owner to check, or stays behind.
 Its memory never leaves, nor its handle, paths or triggers' URLs; its triggers and
 the files beside its skills do. Without a utility model only the cleanup runs, and
@@ -868,6 +870,7 @@ hui bot import agents.yaml --agent researcher
 pbpaste | hui bot import -
 hui bot export ada                               # prints the review, then asks
 hui bot export ada --review <id> --set c1=keep   # saves that review with a change moved
+hui bot export ada --add 'remove:ddtool auth token => the token command'  # and a passage it missed
 ```
 
 ### Archiving and deleting

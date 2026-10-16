@@ -1924,9 +1924,14 @@ its import half stands. The contract is
   holds the first turn back; the preview, which shows everything, is what
   protects the new owner. Routines and triggers start disabled, as every
   import's; a trigger gets its link from **New URL**.
+- **What the reviewer missed, the operator adds.** *Missed something?* takes a
+  passage copied from the text no change touches, with the same groups (what a
+  removed one becomes, what the new owner gives for an asked one); the gateway
+  checks it against the held review, as the dialog does, and refuses wording of
+  the operator's that the cleanup would change. `hui bot export --add` does the
+  same. The reviewer reads every part twice and both reads count.
 - **Not yet.** Editing a passage or undoing the cleanup in the review (the zip's
-  files stay plain text), adding a change the reviewer missed (fix the bot and
-  export again), and the files beside other platforms' skills.
+  files stay plain text), and the files beside other platforms' skills.
 
 ### Listeners are the only triggers (2026-10-09)
 

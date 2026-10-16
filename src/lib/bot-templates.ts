@@ -4,7 +4,7 @@
  * link or text to the gateway, shows the preview it answers, and sends that preview's template back to create the bot.
  * An export asks the gateway for its review, shows it, and sends back only the operator's picks for the zip.
  */
-import type { BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
+import type { BotExportAddition, BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportResult, type BotImportSource, type BotTemplate } from "../../shared/bot-templates.ts";
 import { parseBot } from "./bots.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
@@ -127,7 +127,7 @@ export class BotExportError extends Error {
 }
 
 /** `POST /__hui/bots/:id/export` with the review's id and the operator's picks, saved as a download. Resolves with the file's name. */
-export async function downloadBotExport(id: string, request: { review: string; picks: Record<string, BotExportGroup> }, options: { fallbackName: string }): Promise<string> {
+export async function downloadBotExport(id: string, request: { review: string; picks: Record<string, BotExportGroup>; added?: readonly BotExportAddition[] }, options: { fallbackName: string }): Promise<string> {
   const response = await trackedFetch(`/__hui/bots/${encodeURIComponent(id)}/export`, {
     method: "POST", headers: { ...CLIENT_HEADERS, ...JSON_HEADERS }, body: JSON.stringify(request), cache: "no-store", signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
   });

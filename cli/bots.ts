@@ -55,10 +55,12 @@ export type BotFlags = {
   "deny-skills"?: string;
   /** `import`: which agent of a file that holds several. */
   agent?: string;
-  /** `export`: where to save the zip, a review printed before, and the picks for its changes (`c1=keep`). */
+  /** `export`: where to save the zip, a review printed before, the picks for its changes (`c1=keep`) and passages the
+   * reviewer missed (`remove:<passage> => <what it becomes>`). */
   out?: string;
   review?: string;
   set?: string[];
+  add?: string[];
 };
 
 /** The terminal, injectable so `chat` and `send` run against scripted input in tests. */

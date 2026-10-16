@@ -141,3 +141,11 @@
   .bot-export__row { flex-direction: column; align-items: stretch; }
   .bot-export__pick select { width: 100%; min-width: 0; }
 }
+
+/* "Missed something?": a passage the reviewer didn't flag. */
+.bot-export__add { display: grid; gap: 8px; }
+.bot-export__field { display: grid; gap: 4px; }
+.bot-export__field > span { color: var(--muted); font-size: var(--control-ui-text-sm); }
+.bot-export__field textarea { resize: vertical; }
+.bot-export__add-actions { display: flex; justify-content: flex-end; }
+.bot-export__undo { margin-left: 4px; }

@@ -8,8 +8,11 @@ import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotView } from "./bots.ts";
 import { BotExportError, downloadBotExport, importBot, importSource, pickedFile, pickedFolder, previewBotImport, reviewBotExport, type BotExportGroup, type BotExportReview, type BotImportPreview, type BotImportTab, type PickedSource } from "./bot-templates.ts";
 import { ensureModal } from "./modal-dialog.ts";
-import { buildExport } from "../../shared/bot-export.ts";
-import type { BotExportDialogProps, BotImportDialogProps } from "../views/bot-import.ts";
+import { additionChange, buildExport, withAdditions, type BotExportAddition } from "../../shared/bot-export.ts";
+import type { BotExportDialogProps, BotExportDraft, BotImportDialogProps } from "../views/bot-import.ts";
+
+/** The "Missed something?" form, empty. */
+const EMPTY_DRAFT: BotExportDraft = { quote: "", group: "remove", becomes: "", error: "" };
 import type { BotPlace } from "../views/bots.ts";
 
 type ImportState = {
@@ -30,6 +33,9 @@ type ExportState = {
   review?: BotExportReview | undefined;
   /** The operator's group for each change, script or need they moved. */
   picks: Record<string, BotExportGroup>;
+  /** Passages the operator added, and the form for the next one. */
+  added: BotExportAddition[];
+  draft: BotExportDraft;
   /** Reviewing, or downloading. */
   pending: boolean;
   error: string;
@@ -150,7 +156,7 @@ export class BotImportController implements ReactiveController {
   }
 
   openExport = (bot: BotView): void => {
-    this.#export = { bot, picks: {}, pending: true, error: "", stale: false };
+    this.#export = { bot, picks: {}, added: [], draft: EMPTY_DRAFT, pending: true, error: "", stale: false };
     void this.#review();
   };
 
@@ -163,7 +169,7 @@ export class BotImportController implements ReactiveController {
   /** Asks for a review; a dialog closed or reviewing again by the time it answers ignores it. */
   async #review(): Promise<void> {
     if (!this.#export) return;
-    const asked: ExportState = { ...this.#export, review: undefined, picks: {}, pending: true, error: "", stale: false };
+    const asked: ExportState = { ...this.#export, review: undefined, picks: {}, added: [], draft: EMPTY_DRAFT, pending: true, error: "", stale: false };
     this.#export = asked;
     this.#host.requestUpdate();
     try {
@@ -179,7 +185,7 @@ export class BotImportController implements ReactiveController {
     if (!state?.review || state.pending) return;
     this.#setExport({ pending: true, error: "" });
     try {
-      await downloadBotExport(state.bot.id, { review: state.review.id, picks: state.picks }, { fallbackName: buildExport(state.review, state.picks).fileName });
+      await downloadBotExport(state.bot.id, { review: state.review.id, picks: state.picks, added: state.added }, { fallbackName: buildExport(withAdditions(state.review, state.added), state.picks).fileName });
       this.#export = undefined;
       this.#host.requestUpdate();
     } catch (error) {
@@ -194,6 +200,30 @@ export class BotImportController implements ReactiveController {
       ...state,
       onPick: (id, group) => {
         if (this.#export && !this.#export.pending) this.#setExport({ picks: { ...this.#export.picks, [id]: group } });
+      },
+      onDraft: (change) => {
+        if (this.#export) this.#setExport({ draft: { ...this.#export.draft, ...change, error: "" } });
+      },
+      onAdd: () => {
+        const current = this.#export;
+        if (!current?.review || current.pending) return;
+        const { quote, group, becomes } = current.draft;
+        const addition: BotExportAddition = { quote, group, ...(becomes.trim() && group !== "confirm" ? { becomes } : {}) };
+        const change = additionChange(withAdditions(current.review, current.added), addition, `a${current.added.length + 1}`);
+        if (typeof change === "string") this.#setExport({ draft: { ...current.draft, error: change } });
+        else this.#setExport({ added: [...current.added, addition], draft: EMPTY_DRAFT });
+      },
+      onUndo: (index) => {
+        const current = this.#export;
+        if (!current || current.pending) return;
+        // Later additions move up a place, and their picks with them.
+        const picks: Record<string, BotExportGroup> = {};
+        for (const [id, group] of Object.entries(current.picks)) {
+          const at = /^a(\d+)$/u.test(id) ? Number(id.slice(1)) - 1 : -1;
+          if (at === -1 || at < index) picks[id] = group;
+          else if (at > index) picks[`a${at}`] = group;
+        }
+        this.#setExport({ added: current.added.filter((_, at) => at !== index), picks });
       },
       onReview: () => void this.#review(),
       onDownload: () => void this.#download(),

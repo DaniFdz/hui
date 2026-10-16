@@ -3,12 +3,12 @@
  * like every `hui bot` command. Import sends the source (a file, a folder, a Grok Bot link or stdin) to the gateway's
  * preview, prints all of it (imported text is untrusted), asks before creating (`--yes` skips that) and creates exactly
  * what the preview showed. Export has the gateway review the bot for personal information, prints the review, asks
- * before saving the template (`--yes` skips that), and `--review <id> --set <change>=<group>` saves a review printed
- * before with other picks.
+ * before saving the template (`--yes` skips that), `--review <id> --set <change>=<group>` saves a review printed
+ * before with other picks, and `--add <group>:<passage>` adds a passage the reviewer missed.
  */
 import { lstat, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
-import { BOT_EXPORT_GROUPS, buildExport, type BotExportGroup, type BotExportReview } from "../shared/bot-export.ts";
+import { BOT_EXPORT_GROUPS, buildExport, withAdditions, type BotExportAddition, type BotExportGroup, type BotExportReview } from "../shared/bot-export.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportResult, type BotImportSource } from "../shared/bot-templates.ts";
 import { botTriggerFilterSummary, cooldownLabel } from "../shared/bot-triggers.ts";
 import type { BotView } from "../shared/bots.ts";
@@ -168,6 +168,16 @@ export function exportPicks(values: readonly string[]): Record<string, BotExport
   return picks;
 }
 
+/** `--add remove:<passage> => <what it becomes>` (or `ask:<passage> => <what the new owner gives>`, `confirm:<passage>`):
+ * passages the reviewer missed. */
+export function exportAdditions(values: readonly string[]): BotExportAddition[] {
+  return values.map((value) => {
+    const match = /^(remove|ask|confirm):([\s\S]+?)(?:\s+=>\s+([\s\S]*))?$/u.exec(value);
+    if (!match?.[2]?.trim()) throw new Error("--add takes <remove|ask|confirm>:<passage>, then \" => \" and what a removed one becomes or what the new owner gives for an asked one, as remove:ddtool auth token => the token command.");
+    return { group: match[1] as BotExportAddition["group"], quote: match[2].trim(), ...(match[3]?.trim() && match[1] !== "confirm" ? { becomes: match[3].trim() } : {}) };
+  });
+}
+
 /** The review as text: each change with its id and what it becomes, scripts, needs, the cleanup and what stays behind. */
 export function formatExportReview(bot: BotView, review: BotExportReview, picks: Readonly<Record<string, BotExportGroup>> = {}): string {
   const label = (id: string) => review.parts.find((part) => part.id === id)?.label ?? id;
@@ -202,11 +212,13 @@ export function formatExportReview(bot: BotView, review: BotExportReview, picks:
  * with the `--set` picks. Never replaces a file without `--yes`. Exits 0 once saved (or with the review as `--json`), 1 when declined. */
 export async function exportCommand(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
   const picks = exportPicks(flags.set ?? []);
+  const added = exportAdditions(flags.add ?? []);
   if (flags.set?.length && !flags.review) throw new Error("--set needs --review <id>: a change's id belongs to the review that printed it.");
   let reviewId = flags.review;
   let name = `${bot.handle}.hui-bot.zip`;
   if (!reviewId) {
-    const review = await request<BotExportReview>(base, `/__hui/bots/${encodeURIComponent(bot.id)}/export/review`, { method: "POST", timeoutMs: REVIEW_TIMEOUT_MS });
+    // A passage added that the review doesn't hold is refused before anything is asked; the gateway checks them again.
+    const review = withAdditions(await request<BotExportReview>(base, `/__hui/bots/${encodeURIComponent(bot.id)}/export/review`, { method: "POST", timeoutMs: REVIEW_TIMEOUT_MS }), added);
     if (flags.json && !flags.yes) {
       io.out(`${JSON.stringify(review)}\n`);
       return 0;
@@ -223,7 +235,7 @@ export async function exportCommand(base: string, bot: BotView, flags: BotFlags,
     reviewId = review.id;
   }
   const response = await fetch(new URL(`/__hui/bots/${encodeURIComponent(bot.id)}/export`, base), {
-    method: "POST", headers: { "x-hui": "1", "content-type": "application/json" }, body: JSON.stringify({ review: reviewId, picks }),
+    method: "POST", headers: { "x-hui": "1", "content-type": "application/json" }, body: JSON.stringify({ review: reviewId, picks, ...(added.length ? { added } : {}) }),
     signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS), redirect: "error",
   });
   if (!response.ok) {
