@@ -11,14 +11,15 @@ cleanup). No operator HUI state was read or changed; the real run read Datadog o
 
 1. Real graphs: `node e2e/visual-verification.mjs launch --branch <branch>` with a
    `pup` signed in to an org that has a dashboard (here `dani-org`). In Settings →
-   Integrations → Datadog add that org (site `app.datadoghq.com`), then start a
+   Integrations → Datadog press **Add org** and add that org (the dialog preselects
+   `app.datadoghq.com`), then start a
    session in the receipt's workspace whose message has a share link, a link to one
    of the org's widgets (`…/dashboard/<id>/<slug>?from_ts=…&to_ts=…&tile_focus=<widget>`)
    and the same dashboard without `tile_focus`. A second message links a
    `dd.datad0g.com` dashboard, an unknown dashboard and an unknown share
    (`…/s/<org>/zzz-zzz-zzz`).
 2. Sign-in flows: `node e2e/visual-verification.mjs launch --branch <branch> --datadog-fixture`.
-   Add `e2e-prod` (signed in), then `e2e-staging` (no session: sign-in starts) and
+   Through **Add org**, add `e2e-prod` (signed in), then `e2e-staging` (no session: sign-in starts) and
    approve with `touch <run>/pup/approve`; add `e2e-stale` and **Cancel** its sign-in.
    Start a session whose message links `…/dashboard/stl-123-xyz/legacy?tile_focus=7`
    and `…/dashboard/abc-123-xyz/checkout?tile_focus=42&tpl_var_env[0]=staging`,

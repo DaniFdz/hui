@@ -401,14 +401,12 @@ hui-session-multiplexer {
 .jira-settings__notice { margin: 0 0 12px; color: var(--ok); font-size: 13px; }
 .jira-settings__error { margin-bottom: 12px; }
 
-/* Settings → Datadog. */
-.settings-row.datadog-settings__form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px 12px; }
-.datadog-settings__form .input { width: 100%; }
-.datadog-settings__hint { grid-column: 1 / -1; margin: 0; }
+/* Settings → Datadog and its Add org dialog. */
 .datadog-settings__status[data-status="connected"] { color: var(--ok); }
 .datadog-settings__status[data-status="signed_out"] { color: var(--warn); }
 .datadog-settings__failure { color: var(--danger); overflow-wrap: anywhere; }
-@media (max-width: 600px) { .settings-row.datadog-settings__form { grid-template-columns: minmax(0, 1fr); } }
+.datadog-add-dialog .exec-approval-card { display: grid; gap: var(--space-3); }
+.datadog-add-dialog .settings-input { width: 100%; }
 
 /* Settings → GitHub (device code styling follows OpenClaw's GitHub identity view). */
 .github-settings__code { display: inline-flex; align-items: center; gap: 8px; }

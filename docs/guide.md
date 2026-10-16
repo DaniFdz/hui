@@ -1000,11 +1000,13 @@ as a card under the message, like Slack does: up to three per message.
 
 Dashboard links need the org they belong to. HUI reads them through the Datadog
 CLI, [pup](https://github.com/DataDog/pup), installed on the machine that runs
-HUI. Add your orgs in **Settings → Integrations → Datadog**: the org name is
-pup's session name (what you pass to `pup auth login --org <name>`; leave it
-empty for pup's default session) and the site is the host in your links
-(`app.datadoghq.com` unless you use another one). A link tries the orgs of its
-site in the order you added them, until one has the dashboard.
+HUI. In **Settings → Integrations → Datadog**, **Add org** opens a dialog with
+the site already set to `app.datadoghq.com`; pick another Datadog site from the
+list (or *Other host…*) if your links use one. The org name is pup's session
+name, what you pass to `pup auth login --org <name>`: the field suggests the
+logins pup already has for that site, and left empty it means pup's default
+session. A link tries the orgs of its site in the order you added them, until
+one has the dashboard.
 
 When an org has no pup session yet, or its session has ended, HUI offers **Sign
 in**: pup opens Datadog's sign-in page in the browser of the machine running HUI

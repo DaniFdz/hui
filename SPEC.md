@@ -183,9 +183,10 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - Settings → Integrations → Datadog lists the orgs Datadog link previews read
   through, each a `pup` session name (empty: pup's default session) and the
   host its links use (default `app.datadoghq.com`), with *Connected* or *Sign
-  in needed*. The add form suggests pup's own session names and fills in the
-  site of the one picked. Adding an org pup has no session for starts *Sign
-  in*: `pup auth login` runs on the HUI machine and opens the browser there,
+  in needed*. **Add org** opens a dialog with the Datadog site preselected
+  (`app.datadoghq.com`; the other public sites in the list, *Other host…* for
+  any Datadog host) and the org name, which suggests pup's logins for that site.
+  Adding an org pup has no session for starts *Sign in*: `pup auth login` runs on the HUI machine and opens the browser there,
   the section waits with *Open sign-in page* and *Cancel*, then turns the org
   Connected. *Remove* forgets the org in HUI; pup keeps its session. Without
   `pup` on the gateway's PATH the section shows "Datadog CLI not found" with an

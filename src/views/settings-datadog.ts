@@ -1,8 +1,8 @@
 /**
  * The Datadog section of Settings → Integrations: the orgs HUI reads Datadog links through (a pup session name and
- * the Datadog host its links use), their status, and pup's sign-in. Everything goes through the gateway's `pup`;
- * this view never sees a token. While a sign-in runs, the section polls for its result and, once it succeeds, tells
- * the chat's Datadog cards to load again.
+ * the Datadog host its links use), their status, the *Add org* dialog (the default Datadog site preselected) and
+ * pup's sign-in. Everything goes through the gateway's `pup`; this view never sees a token. While a sign-in runs,
+ * the section polls for its result and, once it succeeds, tells the chat's Datadog cards to load again.
  */
 import { LitElement, html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
@@ -19,8 +19,11 @@ import {
   startDatadogLogin,
 } from "../lib/datadog.ts";
 import { icons } from "../lib/icons.ts";
+import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
 
 const POLL_MS = 1_500;
+/** The site picker's choice for a host it does not list (a vanity host, say). */
+const OTHER_SITE = "other";
 const STATUS_LABELS: Record<DatadogOrgStatus["status"], string> = { connected: "Connected", signed_out: "Sign in needed", unknown: "Status unknown" };
 const sameOrg = (a: DatadogOrg, b: DatadogOrg) => a.name === b.name && a.site === b.site;
 
@@ -30,8 +33,11 @@ export class HuiDatadogSettings extends LitElement {
   #busy = false;
   #error = "";
   #notice = "";
+  /** The *Add org* dialog: open, its fields, and the host typed for *Other host…*. */
+  #adding = false;
   #name = "";
-  #site = DEFAULT_DATADOG_SITE;
+  #site: string = DEFAULT_DATADOG_SITE;
+  #otherSite = "";
   #request = 0;
   #poll?: ReturnType<typeof setTimeout>;
   /** A sign-in finished from a chat card: show its org as connected. */
@@ -40,6 +46,10 @@ export class HuiDatadogSettings extends LitElement {
   override createRenderRoot() { return this; }
   override connectedCallback() { super.connectedCallback(); window.addEventListener(DATADOG_CHANGED, this.#changed); void this.#refresh(); }
   override disconnectedCallback() { super.disconnectedCallback(); window.removeEventListener(DATADOG_CHANGED, this.#changed); this.#request++; this.#stopPolling(); }
+  override updated() {
+    const dialog = this.querySelector<HTMLDialogElement>("dialog.datadog-add-dialog");
+    if (dialog) ensureModal(dialog);
+  }
 
   #stopPolling() {
     if (this.#poll) clearTimeout(this.#poll);
@@ -61,13 +71,14 @@ export class HuiDatadogSettings extends LitElement {
     if (next.login.phase === "pending") this.#poll = setTimeout(() => void this.#refresh(), POLL_MS);
   }
 
-  async #refresh() {
+  /** `keepError`: after a failed action, so its message stays on screen. */
+  async #refresh(keepError = false) {
     const request = ++this.#request;
     try {
       const next = await loadDatadogConnection();
       if (request !== this.#request) return;
       this.#apply(next);
-      this.#error = "";
+      if (!keepError) this.#error = "";
     } catch (error) {
       if (request !== this.#request) return;
       this.#error = error instanceof Error ? error.message : "Datadog status could not be loaded.";
@@ -96,7 +107,7 @@ export class HuiDatadogSettings extends LitElement {
     } catch (error) {
       if (request === this.#request) {
         this.#error = error instanceof Error ? error.message : "The Datadog request failed.";
-        void this.#refresh();
+        void this.#refresh(true);
       }
       return false;
     } finally {
@@ -105,22 +116,26 @@ export class HuiDatadogSettings extends LitElement {
     }
   }
 
-  async #add(event: SubmitEvent) {
-    event.preventDefault();
-    const org = { name: this.#name.trim(), site: this.#site.trim() };
-    if (await this.#run(() => addDatadogOrg(org), `Added ${datadogOrgLabel(org)}.`, true)) {
-      this.#name = "";
-      this.#site = DEFAULT_DATADOG_SITE;
-      this.requestUpdate();
-    }
+  #openAdd() {
+    this.#adding = true;
+    this.#name = "";
+    this.#site = DEFAULT_DATADOG_SITE;
+    this.#otherSite = "";
+    this.#error = "";
+    this.requestUpdate();
   }
 
-  /** Picking one of pup's own session names fills in its site. */
-  #onName(value: string) {
-    this.#name = value;
-    const matches = this.#connection?.pupOrgs.filter((org) => org.name === value.trim()) ?? [];
-    if (matches.length === 1) this.#site = matches[0]!.site;
+  #closeAdd() {
+    closeModal(this.querySelector<HTMLDialogElement>("dialog.datadog-add-dialog") ?? undefined);
+    this.#adding = false;
+    this.#error = "";
     this.requestUpdate();
+  }
+
+  async #add(event: SubmitEvent) {
+    event.preventDefault();
+    const org = { name: this.#name.trim(), site: this.#site === OTHER_SITE ? this.#otherSite.trim() : this.#site };
+    if (await this.#run(() => addDatadogOrg(org), `Added ${datadogOrgLabel(org)}.`, true)) this.#closeAdd();
   }
 
   #renderStatus(connection: DatadogConnection | undefined) {
@@ -174,20 +189,38 @@ export class HuiDatadogSettings extends LitElement {
     </div>`;
   }
 
-  #renderForm(connection: DatadogConnection) {
-    const names = [...new Set(connection.pupOrgs.map((org) => org.name).filter(Boolean))];
-    return html`<form class="settings-row datadog-settings__form" @submit=${(event: SubmitEvent) => void this.#add(event)}>
-      <label class="field"><span>Org name</span>
-        <input class="input" name="name" list="datadog-pup-orgs" autocomplete="off" spellcheck="false" maxlength="100"
-          placeholder="prod" .value=${live(this.#name)} @input=${(event: Event) => this.#onName((event.target as HTMLInputElement).value)} /></label>
-      <label class="field"><span>Site</span>
-        <input class="input" name="site" list="datadog-sites" autocomplete="off" spellcheck="false" required
-          .value=${live(this.#site)} @input=${(event: Event) => { this.#site = (event.target as HTMLInputElement).value; }} /></label>
-      <datalist id="datadog-pup-orgs">${names.map((name) => html`<option value=${name}></option>`)}</datalist>
-      <datalist id="datadog-sites">${DATADOG_APP_HOSTS.map((host) => html`<option value=${host}></option>`)}</datalist>
-      <button type="submit" class="btn btn--sm" ?disabled=${this.#busy || connection.login.phase === "pending"}>Add org</button>
-      <p class="settings-row__desc datadog-settings__hint">The org name is pup's session name (<code>pup auth login --org &lt;name&gt;</code>); leave it empty for pup's default session. The site is the host in your Datadog links.</p>
-    </form>`;
+  /** *Add org*: the default Datadog site preselected, the org name suggesting pup's logins for that site. */
+  #renderAddDialog(connection: DatadogConnection) {
+    if (!this.#adding) return nothing;
+    const site = this.#site === OTHER_SITE ? this.#otherSite.trim().toLowerCase() : this.#site;
+    const names = [...new Set(connection.pupOrgs.filter((org) => org.site === site).map((org) => org.name).filter(Boolean))];
+    const close = () => { if (!this.#busy) this.#closeAdd(); };
+    return html`<dialog class="hui-modal-dialog group-action-dialog datadog-add-dialog" aria-labelledby="datadog-add-title"
+      @cancel=${(event: Event) => { event.preventDefault(); close(); }}
+      @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); } }}>
+      <form class="exec-approval-card datadog-add" @submit=${(event: SubmitEvent) => void this.#add(event)}>
+        <div class="exec-approval-title" id="datadog-add-title">Add Datadog org</div>
+        <div class="exec-approval-sub">Dashboard links on this site are read through the org's pup login. When pup has none yet, signing in starts right away.</div>
+        <label class="field input-dialog__field"><span>Site</span>
+          <select class="settings-input" name="site" ?disabled=${this.#busy} @change=${(event: Event) => { this.#site = (event.target as HTMLSelectElement).value; this.requestUpdate(); }}>
+            ${DATADOG_APP_HOSTS.map((host) => html`<option value=${host} ?selected=${this.#site === host}>${host === DEFAULT_DATADOG_SITE ? `${host} (default)` : host}</option>`)}
+            <option value=${OTHER_SITE} ?selected=${this.#site === OTHER_SITE}>Other host…</option>
+          </select></label>
+        ${this.#site === OTHER_SITE ? html`<label class="field input-dialog__field"><span>Host</span>
+          <input class="settings-input" name="host" required autocomplete="off" spellcheck="false" placeholder="mycompany.datadoghq.com" ?disabled=${this.#busy}
+            .value=${live(this.#otherSite)} @input=${(event: Event) => { this.#otherSite = (event.target as HTMLInputElement).value; this.requestUpdate(); }} /></label>` : nothing}
+        <label class="field input-dialog__field"><span>Org name</span>
+          <input class="settings-input" name="name" list="datadog-pup-orgs" autocomplete="off" spellcheck="false" maxlength="100" autofocus
+            placeholder="Empty: pup's default login" ?disabled=${this.#busy} .value=${live(this.#name)} @input=${(event: Event) => { this.#name = (event.target as HTMLInputElement).value; }} /></label>
+        <datalist id="datadog-pup-orgs">${names.map((name) => html`<option value=${name}></option>`)}</datalist>
+        <p class="exec-approval-sub">The org name is pup's login name, as in <code>pup auth login --org &lt;name&gt;</code>.${names.length ? " pup already has logins for this site; pick one from the suggestions." : ""}</p>
+        ${this.#error ? html`<p class="group-action-dialog__error" role="alert">${this.#error}</p>` : nothing}
+        <div class="exec-approval-actions">
+          <button type="submit" class="btn primary" ?disabled=${this.#busy}>${this.#busy ? "Adding…" : "Add org"}</button>
+          <button type="button" class="btn" ?disabled=${this.#busy} @click=${close}>Cancel</button>
+        </div>
+      </form>
+    </dialog>`;
   }
 
   #renderBody(connection: DatadogConnection) {
@@ -211,7 +244,7 @@ export class HuiDatadogSettings extends LitElement {
             <span class="settings-row__title">No orgs yet</span>
             <span class="settings-row__desc">Share links preview without one. Add the pup orgs whose dashboard links HUI should draw; a link tries the orgs of its site in this order.</span>
           </div></div>`}
-      ${this.#renderForm(connection)}`;
+      ${this.#renderAddDialog(connection)}`;
   }
 
   override render() {
@@ -222,8 +255,11 @@ export class HuiDatadogSettings extends LitElement {
           <h2 class="settings-section__heading">Datadog</h2>
           <p class="settings-section__desc">Chat cards for Datadog share links and dashboard widgets come from the Datadog CLI (<code>pup</code>) of the machine running HUI. Tokens stay in pup; HUI keeps only org names and sites.</p>
         </div>
-        <div class="settings-section__actions">${this.#renderStatus(connection)}</div></div>
-        ${this.#error ? html`<p class="jira-settings__error" role="alert">${this.#error}</p>` : nothing}
+        <div class="settings-section__actions">
+          ${this.#renderStatus(connection)}
+          ${connection?.cli.installed ? html`<button type="button" class="btn primary btn--sm" ?disabled=${this.#busy} @click=${() => this.#openAdd()}>Add org</button>` : nothing}
+        </div></div>
+        ${this.#error && !this.#adding ? html`<p class="jira-settings__error" role="alert">${this.#error}</p>` : nothing}
         ${this.#notice ? html`<p class="jira-settings__notice" role="status">${this.#notice}</p>` : nothing}
         <div class="settings-group">${this.#loading || !connection ? nothing : this.#renderBody(connection)}</div>
       </section>`;
