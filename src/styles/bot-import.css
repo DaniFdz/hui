@@ -45,6 +45,9 @@
 .bot-import__field { display: grid; gap: 6px; min-width: 0; }
 .bot-import__field--inline { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; }
 .bot-import__label { color: var(--text-strong); font-size: var(--control-ui-text-sm); font-weight: 600; }
+/* A settings input is sized for a Settings row (16px): in these dialogs it reads at their text's size. Touch screens
+   keep their 16px floor (base.css), so focusing one never zooms the page. */
+.bot-import-dialog .settings-input { font-size: var(--control-ui-text-sm); }
 .bot-import__paste { min-height: 180px; resize: vertical; font-family: var(--font-mono); font-size: var(--control-ui-text-sm); line-height: 1.45; }
 .bot-import__hint { display: block; margin: 0; color: var(--muted); font-size: var(--control-ui-text-sm); line-height: 1.45; }
 .bot-import__error { margin: 0; }
