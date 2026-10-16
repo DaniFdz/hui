@@ -7,7 +7,7 @@
  * Download saves them (`buildExport`, the gateway's own).
  */
 import { html, nothing, type TemplateResult } from "lit";
-import { buildExport, type BotExportBuild, type BotExportGroup, type BotExportReview } from "../../shared/bot-export.ts";
+import { buildExport, changeGroups, type BotExportBuild, type BotExportGroup, type BotExportReview } from "../../shared/bot-export.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview } from "../../shared/bot-templates.ts";
 import { botTriggerFilterSummary, cooldownLabel } from "../../shared/bot-triggers.ts";
 import type { BotView } from "../lib/bots.ts";
@@ -273,7 +273,7 @@ function renderReview(props: BotExportDialogProps, review: BotExportReview) {
     ${SECTIONS.map(([group, title, about]) => {
       const changes = review.changes.filter((change) => pick(change.id, change.group) === group);
       return changes.length ? section(title, String(changes.length), html`<p class="bot-import__hint">${about}</p><ul class="bot-import__list">${changes.map((change) => html`<li class="bot-export__change" data-change=${change.id}>
-          <div class="bot-export__row"><span class="bot-import__muted">${label(change.part)}</span>${picker(`What happens to “${change.quote.slice(0, 60)}”`, CHANGE_GROUPS, group, props, change.id)}</div>
+          <div class="bot-export__row"><span class="bot-import__muted">${label(change.part)}</span>${picker(`What happens to “${change.quote.slice(0, 60)}”`, CHANGE_GROUPS.filter(([each]) => changeGroups(change.part).includes(each)), group, props, change.id)}</div>
           ${textBlock(change.quote)}
           <div class="bot-export__outcome">${outcome(build.outcomes[change.id], group)}</div>
           <div class="bot-import__hint">${change.reason}</div>

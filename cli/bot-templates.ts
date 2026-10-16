@@ -18,8 +18,8 @@ import { formatSchedule, GatewayError, request, type BotFlags, type BotIO } from
 const SKIPPED = new Set([".git", "node_modules", ".DS_Store", "__MACOSX"]);
 const PREVIEW_TIMEOUT_MS = 90_000;
 const IMPORT_TIMEOUT_MS = 120_000;
-/** The gateway reads every part with the utility model, one after another, and stops at four minutes. */
-const REVIEW_TIMEOUT_MS = 5 * 60_000;
+/** The gateway reads every part with the utility model, a few at once, and stops at six minutes. */
+const REVIEW_TIMEOUT_MS = 7 * 60_000;
 
 /** A folder's files for an import, by their paths below the folder's own name; bounded like the gateway's limits. */
 export async function folderSource(dir: string): Promise<BotImportSource> {

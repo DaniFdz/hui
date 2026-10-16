@@ -11,7 +11,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import {
-  BOT_EXPORT_GROUPS, buildExport, type BotExportChange, type BotExportCleanup, type BotExportFileChange, type BotExportGroup,
+  buildExport, changeGroups, type BotExportChange, type BotExportCleanup, type BotExportFileChange, type BotExportGroup,
   type BotExportMeta, type BotExportPart, type BotExportReview, type BotExportSchedule,
 } from "../shared/bot-export.ts";
 import { BOT_SKILL_TEXT_FILE } from "../shared/bot-templates.ts";
@@ -44,9 +44,11 @@ export type BotExportDeps = {
   now?: () => number;
 };
 
-/** One request to the reviewer, and the whole review. */
-const CALL_MS = 60_000;
-const REVIEW_MS = 4 * 60_000;
+/** One request to the reviewer, the whole review, and how many parts it reads at once. A utility model behind a gateway
+ * can take over a minute on a long SOUL.md. */
+const CALL_MS = 150_000;
+const REVIEW_MS = 6 * 60_000;
+const READ_AT_ONCE = 4;
 /** Inside a zip every file is dated 1980-01-01, the earliest a ZIP date can be: a local date would tell the time zone. */
 const ZIP_DATE = new Date(1980, 0, 1);
 const RANK = { remove: 0, ask: 1, confirm: 2 } as const;
@@ -92,11 +94,15 @@ export class BotExportService {
     const identity = await this.#deps.identity(bot.worker?.id);
     const { parts, cleanup, copies, meta, leftOut } = this.#parts(input, identity);
     const others = (await this.#deps.bots.list({ archived: "all" })).filter((each) => each.id !== bot.id).map((each) => each.handle);
-    const { model, warning, found, needs } = await this.#reviewParts(parts, copies, identity, others);
+    const { model, found, needs, warning: unread } = await this.#reviewParts(parts, copies, identity, others);
+    // Without a profile name the cleanup can't take the operator's name out: only the reviewer looks for it.
+    const warning = [identity.operator ? "" : "Your name isn't set in Settings → Profile, so HUI couldn't take it out for you: look for it in every file below.", unread ?? ""].filter(Boolean).join(" ");
 
-    // One change per passage, the strictest group first. A passage found in a script changes the text where it also
-    // appears (shown as the first such part); the script itself is a file change. What the reviewer wrote is checked
-    // against the picks when the zip is made (`buildExport`).
+    // One change per passage, the strictest group first. A change lives in the part it was found in if that part can take
+    // its group, else in the first text part that holds the passage and can (a passage found in a script changes the text
+    // where it also appears; the script itself is a file change). The profile can't ask or confirm (`changeGroups`): a
+    // passage only it holds leaves it like a removed one when asked, which the operator sees and can keep, and stays as
+    // written when confirmed. What the reviewer wrote is checked against the picks when the zip is made (`buildExport`).
     const byQuote = new Map<string, ReviewedChange & { part: string }>();
     for (const change of found) {
       const seen = byQuote.get(change.quote);
@@ -104,9 +110,13 @@ export class BotExportService {
     }
     const kept = [...byQuote.values()];
     const text = parts.filter((part) => part.kind === "text");
+    const holds = (part: BotExportPart, quote: string) => part.fields.some((field) => field.text.includes(quote));
     const changes: BotExportChange[] = kept.flatMap((change) => {
-      const home = text.find((part) => part.id === change.part) ?? text.find((part) => part.fields.some((field) => field.text.includes(change.quote)));
-      return home ? [{ ...change, part: home.id }] : [];
+      const fits = (part: BotExportPart) => changeGroups(part.id).includes(change.group);
+      const home = text.find((part) => part.id === change.part && fits(part)) ?? text.find((part) => fits(part) && holds(part, change.quote));
+      if (home) return [{ ...change, part: home.id }];
+      const profile = text.find((part) => part.id === "profile" && holds(part, change.quote));
+      return profile && change.group === "ask" ? [{ ...change, part: profile.id, group: "remove" as const, replacement: "" }] : [];
     }).map((change, index) => ({ id: `c${index + 1}`, ...change }));
     const files = this.#scripts(parts, cleanup, copies, kept);
     const review: BotExportReview = {
@@ -141,7 +151,7 @@ export class BotExportService {
     if (value === undefined) return {};
     if (!isRecord(value)) throw new BotInputError("picks must map a change's id to its group.");
     const allowed = new Map<string, readonly string[]>([
-      ...review.changes.map((change) => [change.id, BOT_EXPORT_GROUPS] as const),
+      ...review.changes.map((change) => [change.id, changeGroups(change.part)] as const),
       ...review.files.map((file) => [file.id, ["keep", "remove", "confirm"]] as const),
       ...review.needs.map((need) => [need.id, ["keep", "remove"]] as const),
     ]);
@@ -262,49 +272,58 @@ export class BotExportService {
     return { parts, cleanup, copies, meta, leftOut };
   }
 
-  /** The utility model reads each part in turn, one retry each, within the review's time; a part it can't is unread. */
+  /** The utility model reads the parts, a few at once, one quicker retry each, within the review's time; a part it can't is unread.
+   * What it found comes back in the parts' order, however the requests end. */
   async #reviewParts(parts: BotExportPart[], copies: Map<string, { key: string; text: string }[]>, identity: CleanupIdentity, others: readonly string[]): Promise<{
     model?: string; warning?: string; found: (ReviewedChange & { part: string })[]; needs: string[];
   }> {
-    const found: (ReviewedChange & { part: string })[] = [];
-    const needs: string[] = [];
     const model = await this.#deps.utilityModel().catch(() => undefined);
     if (!model) {
       for (const part of parts) part.unread = "No utility model is set.";
-      return { found, needs, warning: "No utility model is set in Settings → Models, so only the automatic cleanup ran: read every file below before you share it." };
+      return { found: [], needs: [], warning: "No utility model is set in Settings → Models, so only the automatic cleanup ran: read every file below before you share it." };
     }
     const system = reviewSystemPrompt({ ...(identity.operator ? { name: identity.operator } : {}), username: identity.username, bots: others });
     const deadline = this.#now() + REVIEW_MS;
-    for (const part of parts) {
+    const results: { changes: (ReviewedChange & { part: string })[]; needs: string[] }[] = parts.map(() => ({ changes: [], needs: [] }));
+    const read = async (index: number) => {
+      const part = parts[index]!;
       const fields = copies.get(part.id) ?? [];
       const whole = fields.map((field) => field.text);
       let unread: string | undefined;
       for (const chunk of reviewChunks({ label: part.label, script: part.kind === "script", fields })) {
-        if (this.#now() > deadline) {
+        if (this.#now() >= deadline) {
           unread = "The review ran out of time before this part.";
           break;
         }
-        const answer = await this.#ask(model, system, reviewPrompt(chunk), whole, identity);
+        const answer = await this.#ask(model, system, reviewPrompt(chunk), whole, identity, deadline);
         if (typeof answer === "string") {
           unread = answer;
           break;
         }
-        found.push(...answer.changes.map((change) => ({ ...change, part: part.id })));
-        needs.push(...answer.needs);
+        results[index]!.changes.push(...answer.changes.map((change) => ({ ...change, part: part.id })));
+        results[index]!.needs.push(...answer.needs);
       }
       part.read = !unread;
       if (unread) part.unread = unread;
-    }
+    };
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, parts.length) }, async () => {
+      for (let index = next++; index < parts.length; index = next++) await read(index);
+    }));
     const missed = parts.filter((part) => !part.read).length;
-    return { model, found, needs, ...(missed ? { warning: `The utility model didn't read ${missed} of ${parts.length} parts (each says why): read them yourself before you share it.` } : {}) };
+    return { model, found: results.flatMap((result) => result.changes), needs: results.flatMap((result) => result.needs), ...(missed ? { warning: `The utility model didn't read ${missed} of ${parts.length} parts (each says why): read them yourself before you share it.` } : {}) };
   }
 
-  /** One part (or a chunk of it) to the reviewer: its checked answer, or why there is none. */
-  async #ask(model: string, system: string, prompt: string, fields: readonly string[], identity: CleanupIdentity): Promise<ReviewAnswer | string> {
+  /** One part (or a chunk of it) to the reviewer: its checked answer, or why there is none. No request or retry outlives
+   * the review's end. */
+  async #ask(model: string, system: string, prompt: string, fields: readonly string[], identity: CleanupIdentity, deadline: number): Promise<ReviewAnswer | string> {
     let failure = "The utility model's answer couldn't be read.";
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      const left = Math.ceil(deadline - this.#now());
+      if (left <= 0) break;
       try {
-        const answer = parseReviewAnswer(await this.#deps.completion(model, { system, prompt, signal: AbortSignal.timeout(CALL_MS) }), fields, identity);
+        // The retry reasons as little as the model allows: a slow model still reads the part, if less carefully.
+        const answer = parseReviewAnswer(await this.#deps.completion(model, { system, prompt, signal: AbortSignal.timeout(Math.min(CALL_MS, left)), least: attempt > 0 }), fields, identity);
         if (answer) return answer;
       } catch (error) {
         failure = `The utility model failed: ${error instanceof Error ? oneLine(error.message, 200) : "no answer"}.`;

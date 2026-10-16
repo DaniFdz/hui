@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { applyChanges, buildExport, type BotExportManifest } from "../shared/bot-export.ts";
+import { applyChanges, buildExport, changeGroups, type BotExportManifest } from "../shared/bot-export.ts";
 import type { BotView } from "../shared/bots.ts";
 import type { BotTrigger } from "../shared/bot-triggers.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
@@ -112,7 +112,45 @@ test("a review cleans before the model reads, and the reviewer's changes, script
   assert.deepEqual(review.meta.routines, [{ schedule: { kind: "cron", expression: "0 9 * * 1-5" } }], "a cron without its time zone");
   assert.equal(review.meta.model, "claude-sonnet-4-5", "the provider stays behind");
   assert.ok(review.parts.every((part) => part.read));
+  assert.equal(review.warning, undefined, "every part read and the owner's name known");
   assert.equal(review.model, "hui-e2e/fixture");
+});
+
+test("the reviewer reads a few parts at once, and what it found keeps the parts' order", async () => {
+  const requests: { prompt: string; least?: boolean }[] = [];
+  let releaseSoul!: () => void;
+  const lastPartAsked = new Promise<void>((resolve) => { releaseSoul = resolve; });
+  let open = 0;
+  let most = 0;
+  const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => {
+    requests.push(request);
+    open += 1;
+    most = Math.max(most, open);
+    // SOUL.md, an early part, answers only once the last part (the trigger) has been asked.
+    if (request.prompt.startsWith("Part: SOUL.md")) await lastPartAsked;
+    if (request.prompt.startsWith("Part: Trigger")) releaseSoul();
+    open -= 1;
+    return JSON.stringify({ changes: PASSAGES.filter((change) => request.prompt.includes(change.quote)) });
+  } });
+  const review = await service.review("ada");
+  assert.ok(requests.every((request) => !request.least), "a first read reasons");
+  assert.ok(most > 1 && most <= 4, `${most} parts at once`);
+  assert.deepEqual(review.changes.map((change) => [change.id, change.quote]), [["c1", "Pat Doe"], ["c2", "acme/widgets"], ["c3", "Approve only when CI is green"]]);
+});
+
+test("a part whose first read fails is read again with the least reasoning; one that fails twice is unread, and the review says so", async () => {
+  const asked: { part: string; least: boolean }[] = [];
+  const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => {
+    const part = request.prompt.split("\n")[0]!;
+    asked.push({ part, least: Boolean(request.least) });
+    if (part === "Part: SOUL.md" && !request.least || part.startsWith("Part: Trigger")) throw new Error("Request was aborted");
+    return JSON.stringify({ changes: PASSAGES.filter((change) => request.prompt.includes(change.quote)) });
+  } });
+  const review = await service.review("ada");
+  assert.deepEqual(asked.filter((each) => each.part === "Part: SOUL.md").map((each) => each.least), [false, true]);
+  assert.equal(review.parts.find((part) => part.id === "SOUL.md")!.read, true);
+  assert.equal(review.parts.find((part) => part.id === "triggers/0")!.unread, "The utility model failed: Request was aborted.");
+  assert.match(review.warning ?? "", /didn't read 1 of \d+ parts/u);
 });
 
 test("the download holds exactly what the review and the picks make: no handle, path, date, memory or link, and open points for the new owner", async () => {
@@ -174,6 +212,8 @@ test("a download is refused when the review is gone, the bot changed since, or a
 test("without a utility model only the cleanup runs and the review says so; a bot without a soul can't be exported yet", async () => {
   const none = await harness({ model: undefined }).service.review("ada");
   assert.match(none.warning ?? "", /No utility model is set/u);
+  const unnamed = await new BotExportService({ ...harnessDeps(), identity: async () => ({ homes: ["/Users/dani.fernandez"], username: "dani.fernandez", hostnames: [], workers: [] }) }).review("ada");
+  assert.equal(unnamed.warning, "Your name isn't set in Settings → Profile, so HUI couldn't take it out for you: look for it in every file below.", "without a profile name only the reviewer looks for it");
   assert.deepEqual(none.changes, []);
   assert.ok(none.parts.every((part) => !part.read && part.unread === "No utility model is set."));
   assert.match(none.parts.find((part) => part.id === "SOUL.md")!.fields[0]!.text, /\{\{user\}\}'s review assistant/u);
@@ -229,6 +269,54 @@ test("a passage the reviewer flags in a script changes the text where it also st
   assert.equal(JSON.stringify(manifest).toLowerCase().includes("pat doe"), false, JSON.stringify(manifest.open));
   assert.doesNotMatch(files.get("SOUL.md")!, /Pat Doe/u, "a replacement that repeats the passage gives way");
   assert.deepEqual(manifest.needs, ["Access to [removed]'s calendar", "[removed]'s laptop"]);
+});
+
+test("the profile can't hold a blank or a point to agree: an ask only it holds leaves it like a removed one, a confirm there stays as written", async () => {
+  const bot = { ...BOT, title: "Runs gh pr list for the platform team" };
+  const service = new BotExportService({
+    ...harnessDeps(),
+    bots: { get: async () => bot, list: async () => [bot], soul: async () => SOUL } as unknown as BotExportDeps["bots"],
+    completion: async (_model, request) => JSON.stringify({ changes: request.prompt.startsWith("Part: Profile")
+      ? [{ quote: "the platform team", group: "ask", reason: "Their team.", label: "your team", question: "Which team?" }, { quote: "Runs gh pr list", group: "confirm", reason: "A rule.", question: "Run it?" }]
+      // A script's ask, which only the profile also holds.
+      : request.prompt.includes("gh pr list --search") ? [{ quote: "gh pr list", group: "ask", reason: "Their command.", label: "your command", question: "Which command?" }] : [] }),
+  });
+  const review = await service.review("ada");
+  assert.deepEqual(review.changes.map((change) => [change.id, change.part, change.quote, change.group, change.replacement]), [["c1", "profile", "the platform team", "remove", ""], ["c2", "profile", "gh pr list", "remove", ""]]);
+  assert.ok(review.changes.every((change) => changeGroups(change.part).includes(change.group)), "every change takes its group where it lives");
+  await assert.rejects(service.export("ada", { review: review.id, picks: { c1: "ask" } }), (error: unknown) => error instanceof BotInputError && error.message === "c1 takes keep, remove.");
+  const manifest = JSON.parse(unzip((await service.export("ada", { review: review.id, picks: {} })).data).get("bot.json")!) as BotExportManifest;
+  assert.equal(manifest.bot.name, "Ada");
+  assert.equal(manifest.bot.title, "Runs for", "the confirmed passage stays as written, the asked ones leave no gap");
+  assert.ok(manifest.open.every((point) => point.where !== "Profile"));
+});
+
+test("no request or retry outlives the review's end", async () => {
+  let clock = 0;
+  const asked: string[] = [];
+  const service = new BotExportService({ ...harnessDeps(), now: () => clock, completion: async (_model, request) => {
+    const part = request.prompt.split("\n")[0]!;
+    asked.push(part);
+    if (part !== "Part: SOUL.md") return JSON.stringify({ changes: [] });
+    clock += 6 * 60_000; // its first read takes the whole review
+    throw new Error("Request was aborted");
+  } });
+  const review = await service.review("ada");
+  assert.equal(asked.filter((part) => part === "Part: SOUL.md").length, 1, "no retry once the review is over");
+  assert.equal(review.parts.find((part) => part.id === "SOUL.md")!.unread, "The utility model failed: Request was aborted.");
+  assert.ok(review.parts.some((part) => part.unread === "The review ran out of time before this part."));
+});
+
+test("a passage asked elsewhere leaves the profile like a removed one: the bot's name is never a blank", async () => {
+  const review = await harness({ answer: () => JSON.stringify({ changes: [] }) }).service.review("ada");
+  const asked = {
+    ...review,
+    parts: review.parts.map((part) => part.id === "SOUL.md" ? { ...part, fields: [{ key: "text", text: "I'm Ada, a review assistant." }] } : part),
+    changes: [{ id: "c1", part: "SOUL.md", quote: "Ada", group: "ask" as const, reason: "x", replacement: "", label: "the bot's name", question: "What should I be called?" }],
+  };
+  const build = buildExport(asked, {});
+  assert.equal(build.name, "Bot");
+  assert.equal(build.files.find((file) => file.path === "SOUL.md")!.text, "I'm [ask: the bot's name], a review assistant.\n");
 });
 
 test("a name the picks remove whole travels as a plain one; a newer review replaces one still running", async () => {

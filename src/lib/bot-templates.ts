@@ -16,8 +16,8 @@ export type { BotExportGroup, BotExportReview } from "../../shared/bot-export.ts
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 /** A preview may fetch a page or unpack an archive; creating starts a chat, its memory and maybe its first turn. */
 const IMPORT_TIMEOUT_MS = 90_000;
-/** A review has the utility model read every part of the bot, one after another (the gateway stops at four minutes). */
-const REVIEW_TIMEOUT_MS = 5 * 60_000;
+/** A review has the utility model read every part of the bot (the gateway stops at six minutes). */
+const REVIEW_TIMEOUT_MS = 7 * 60_000;
 
 /** Where an import's source comes from, as the dialog's tabs name them. */
 export type BotImportTab = "file" | "link" | "paste";

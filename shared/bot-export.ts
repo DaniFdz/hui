@@ -68,6 +68,12 @@ export type BotExportManifest = {
 export const BOT_EXPORT_GROUPS = ["keep", "remove", "ask", "confirm"] as const;
 export type BotExportGroup = (typeof BOT_EXPORT_GROUPS)[number];
 
+/** What a change in this part can become. The profile (the bot's name and title) is set before its first chat, so it
+ * can't hold a blank or a point to agree. */
+export function changeGroups(part: string): readonly BotExportGroup[] {
+  return part === "profile" ? ["keep", "remove"] : BOT_EXPORT_GROUPS;
+}
+
 /** One text of a part: a profile field, SOUL.md, a skill's file, a routine's or a trigger's field. */
 export type BotExportField = { key: string; text: string };
 
@@ -133,7 +139,7 @@ export type BotExportReview = {
   name: string;
   /** The utility model that read it; absent when none did. */
   model?: string;
-  /** Why the model read nothing, or not everything. */
+  /** What the operator must check themselves: the cleanup had no profile name, or the model read nothing or not everything. */
   warning?: string;
   parts: BotExportPart[];
   cleanup: BotExportCleanup[];
@@ -231,10 +237,16 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
    * of what they missed (another case). */
   const marks = replacements.map((pair) => ({ quote: pair.quote, replacement: pair.replacement || "[removed]" }));
   const tidy = (text: string) => scrub(applyChanges(text, marks));
+  // The profile is set before the first chat, so a passage asked elsewhere leaves it like a removed one: never a blank.
+  const asked = new Set(review.changes.filter((change) => group(change.id, change.group) === "ask").map((change) => change.quote));
+  const inProfile = replacements.map((pair) => asked.has(pair.quote) ? { ...pair, replacement: "" } : pair);
   const parts = new Map(review.parts.map((part) => [part.id, part]));
   const fields = (id: string): Record<string, string> => {
     const part = parts.get(id);
-    return Object.fromEntries((part?.fields ?? []).map((field) => [field.key, part!.kind === "text" ? applyChanges(field.text, replacements) : field.text]));
+    return Object.fromEntries((part?.fields ?? []).map((field) => [field.key, part!.kind !== "text" ? field.text
+      // A passage taken out of a name or title leaves no double space behind.
+      : id === "profile" ? applyChanges(field.text, inProfile).replace(/[ \t]{2,}/gu, " ").trim()
+      : applyChanges(field.text, replacements)]));
   };
   // Where an open point is: a routine or a trigger by its name as it travels, so a removed passage never names it.
   const where = (id: string) => id.startsWith("routines/") ? `Routine “${fields(id)["name"] ?? ""}”` : id.startsWith("triggers/") ? `Trigger “${fields(id)["name"] ?? ""}”` : parts.get(id)?.label ?? id;

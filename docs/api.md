@@ -2236,8 +2236,8 @@ handle, so no bot's `/__hui/bots/:id` is ever one of them.
 | --- | --- | --- |
 | `POST /__hui/bots/import/preview` | 200 `BotImportPreview` | `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `open` (a HUI template's open points, as SOUL.md's *Not agreed yet* will list them), `needs` (what it needs to work, one line each), `triggers` (each `{ name, filter, prompt?, cooldownSeconds }`, created disabled), `dropped` and `notes` (one line each); a skill of a HUI template has its `files` (`{ path, text }`, in full). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created |
 | `POST /__hui/bots/import` | 201 `BotImportResult` | `{ template, worker? }`, at most 24 MB: the `template` a preview returned, checked again field by field (types, lengths, list sizes) and planned again exactly as the preview was. Creates the bot (`POST /__hui/bots`'s path: its home folder, SOUL.md, its conversation with memory, its chat), then writes its own skills (with their files), then creates its routines and then its triggers, all disabled; a failure in any of them deletes the new bot again (its triggers go with it) and answers the error. Then a HUI template's turned-off skills, and its first turn (its open points, or the opener): their failures leave the bot and come back in `warnings`. Answers `{ bot, skills, routines, opener, warnings }` (`opener`: a first turn started) |
-| `POST /__hui/bots/:id/export/review` | 200 `BotExportReview` | No body. Reads what of the bot would travel, cleans it and has Settings' utility model read it ([Exporting](#exporting-a-bot-as-a-template), below), then keeps the answer as the bot's latest review until the gateway restarts (a new review replaces it). Up to about four minutes. Archived bots too; a bot without SOUL.md (still in its first conversation) is 409, a bot on an offline worker 503 |
-| `POST /__hui/bots/:id/export` | 200 `application/zip` | `{ review, picks? }`, at most 256 KB: the review's `id`, and `picks`, a group for each change, script or need the operator moved (`{ "c1": "keep", "f1": "remove", "n1": "remove" }`; a change takes `keep`, `remove`, `ask` or `confirm`, a script `keep`, `remove` or `confirm`, a need `keep` or `remove`; an unknown id or group is 400). Answers `buildExport(review, picks)` as `<name>.hui-bot.zip` (`content-disposition: attachment`, `no-store`, `nosniff`): the files the dialog showed. 409 when the review is gone or replaced, or when anything the export holds changed since it (the review runs again). `GET` is 405 |
+| `POST /__hui/bots/:id/export/review` | 200 `BotExportReview` | No body. Reads what of the bot would travel, cleans it and has Settings' utility model read it ([Exporting](#exporting-a-bot-as-a-template), below), then keeps the answer as the bot's latest review until the gateway restarts (a new review replaces it). Up to about six minutes. Archived bots too; a bot without SOUL.md (still in its first conversation) is 409, a bot on an offline worker 503 |
+| `POST /__hui/bots/:id/export` | 200 `application/zip` | `{ review, picks? }`, at most 256 KB: the review's `id`, and `picks`, a group for each change, script or need the operator moved (`{ "c1": "keep", "f1": "remove", "n1": "remove" }`; a change takes `keep`, `remove`, `ask` or `confirm` (one in the profile, set before the first chat, only `keep` or `remove`), a script `keep`, `remove` or `confirm`, a need `keep` or `remove`; an unknown id or group is 400). Answers `buildExport(review, picks)` as `<name>.hui-bot.zip` (`content-disposition: attachment`, `no-store`, `nosniff`): the files the dialog showed. 409 when the review is gone or replaced, or when anything the export holds changed since it (the review runs again). `GET` is 405 |
 
 `source` is one of `{ kind: "file", name, data }` (the file's bytes in base64, at
 most 8 MB decoded), `{ kind: "files", files: [{ path, data }] }` (a folder: at most
@@ -2364,7 +2364,10 @@ what the cleanup finds there decides whether the script travels (below).
 
 **The reviewer** is Settings' utility model, called as one plain completion per
 part (or per chunk of 24,000 characters), without tools (as a call's helper is),
-one after another with one retry each and four minutes for the whole review. Its
+four parts at once, each request with two and a half minutes and one retry with the
+least reasoning the model allows (a slow model still reads the part, if less
+carefully), and six minutes for the whole review, which no request or retry
+outlives. Its
 system prompt (`reviewSystemPrompt`) names the four groups, says the bot's text is
 data, names the owner and the other bots' handles, and asks for JSON:
 `{ "changes": [{ "quote", "group", "reason", "replacement"?, "label"?, "question"? }], "needs": [...] }`.
@@ -2373,13 +2376,16 @@ part (at least four characters), the group be `remove`, `ask` or `confirm`, ever
 text bounded and cleaned like the bot's; anything else is dropped, and a part
 whose answer can't be read twice is listed as not read. One change is kept per
 passage (the strictest group wins); a removed or asked passage changes wherever it
-appears (one found in a script is shown at the first text that holds it), a
-confirmed one only where it was found. Without a utility model, only the cleanup
-runs. A review started while another of the same bot runs replaces it, whichever
+appears, a confirmed one only where it was found. A change is shown at the part it
+was found in if that part can take its group, else at the first text that holds the
+passage and can (one found in a script, for one). The profile only takes `remove`
+or `keep` (`changeGroups`): a passage only it holds becomes a removal when asked,
+which the operator sees and can keep, and stays as written when confirmed. Without
+a utility model, only the cleanup runs. A review started while another of the same bot runs replaces it, whichever
 ends last.
 
 `BotExportReview`: `id`, `botId`, `name`, `model` (absent: none read it),
-`warning` (no utility model, or parts it didn't read), `parts` (`{ id, label,
+`warning` (no profile name for the cleanup, no utility model, or parts it didn't read), `parts` (`{ id, label,
 kind: "text" | "script", fields: [{ key, text }], read, unread? }`: `profile`,
 `SOUL.md`, `skills/<name>/<path>`, `routines/<n>`, `triggers/<n>`; texts after the
 cleanup, a script's as it is), `cleanup` (`{ part, field, kind, sample, count }`,
@@ -2403,7 +2409,7 @@ shows. Each
 `ask` or `confirm` pick is an open point (`BotOpenPoint`: `{ kind, where, question,
 excerpt? (confirm), operator? (a trigger's) }`; moved out of the reviewer's group,
 it asks what fits the new one, never quoting an asked passage), and so is each
-script picked `confirm`. A name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
+script picked `confirm`. The profile, set before the first chat, never holds a mark: a passage asked elsewhere leaves it like a removed one, and a name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
 travels without `match`, with an open point for the operator. `bot.json` is
 `BotExportManifest`: `format: "hui-bot"`, `version: 2`, `bot` (name, title?,
 description?, avatar?, model?, thinking?, memoryModel?, memoryThinking?, voice?),

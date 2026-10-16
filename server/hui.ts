@@ -46,6 +46,7 @@ import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
 import { BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotReply, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
+import { lowestThinkingLevel, withUpstreamThinkingMap } from "./runtimes/thinking-level.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
 import { isThinkingLevel } from "../shared/thinking.ts";
@@ -571,9 +572,10 @@ const THEME_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 
-/** One completion through the gateway's models (HUI's provider accounts included), at low thinking: the call's helper
- * and its record use the bot's utility model. */
-const callCompletion: CallCompletion = async (ref, { system, prompt, signal }) => {
+/** One completion through the gateway's models (HUI's provider accounts included), at low thinking, or with `least` at the
+ * least the model allows (a gateway model without levels of its own takes its upstream's): the call's helper and its
+ * record use the bot's utility model, the export reviewer's retry `least`. */
+const callCompletion: CallCompletion = async (ref, { system, prompt, signal, least }) => {
   const host = durableHost();
   await host.open();
   const slash = ref.indexOf("/");
@@ -583,8 +585,9 @@ const callCompletion: CallCompletion = async (ref, { system, prompt, signal }) =
     model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
   }
   if (!model) throw new Error(`Unknown model: ${ref}`);
-  const level = clampThinkingLevel(model, "low");
-  const reply = await host.models.completeSimple(model, {
+  const sent = least ? withUpstreamThinkingMap(model, (provider, id) => host.models.getModel(provider, id)) : model;
+  const level = least ? lowestThinkingLevel(sent) : clampThinkingLevel(model, "low");
+  const reply = await host.models.completeSimple(sent, {
     systemPrompt: system,
     messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
   }, { signal, ...(level === "off" ? {} : { reasoning: level }) });

@@ -15,8 +15,9 @@ import type { ActiveCall } from "./calls.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
 import { boundBytes, memorySlice } from "./calls.ts";
 
-/** One model completion: the reply's text. Throws when the model fails or the signal aborts. */
-export type CallCompletion = (model: string, request: { system: string; prompt: string; signal: AbortSignal }) => Promise<string>;
+/** One model completion: the reply's text. Throws when the model fails or the signal aborts. `least` reasons as little as
+ * the model allows, for a quick retry (a gateway's DeepSeek answers in 6 s instead of almost two minutes at "low"). */
+export type CallCompletion = (model: string, request: { system: string; prompt: string; signal: AbortSignal; least?: boolean }) => Promise<string>;
 
 const MODEL_REF = /^[^/\s]+\/\S+$/u;
 
