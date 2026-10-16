@@ -3958,6 +3958,17 @@ async function handleRequest(
           await prepared?.cleanupRejected();
           throw error;
         }
+        // Writing to an archived conversation restores it, subagents included. A bot's chat is restored with its bot.
+        if (record.archived && !record.bot) {
+          // The message is in: a failed restore must not report it refused, or its resend would run it twice.
+          await updateSession(id, { archived: false }).catch((error: unknown) => recordDiagnosticEvent({
+            area: "session",
+            level: "error",
+            action: "restore_on_send_failed",
+            sessionId: id,
+            summary: error instanceof Error ? error.message : "Could not restore an archived conversation.",
+          }));
+        }
       };
       try {
         // A resend of a send the gateway already took (the browser stopped waiting) answers with its outcome,

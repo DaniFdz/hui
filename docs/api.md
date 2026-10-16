@@ -2575,7 +2575,9 @@ appears.
 ```
 
 Responds `{ "ok": true }` once pi has *accepted* the prompt, not when the turn
-finishes.
+finishes. A prompt, steer or follow-up accepted into an archived session
+restores it and its subagents, as `PATCH { "archived": false }` does; a bot's
+chat stays archived until its bot is restored.
 
 `requestId` (optional, 1 to 100 letters, digits or `. : _ -`; anything else is a
 400) makes a resend safe. The gateway remembers, per session, what it did with

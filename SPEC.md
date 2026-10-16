@@ -1248,6 +1248,7 @@ it through the normal hydration path.
 Archiving or restoring a session applies to its complete descendant tree in one
 registry update, even across session groups. Archiving hides the tree from active
 lists but does not cancel running work; later children inherit the archive state.
+Sending a message to an archived session (not a bot's chat) restores its tree.
 Deleting a session removes the complete subtree from HUI, closes its live runtimes
 and terminals only after persistence succeeds, and leaves all PI transcripts and
 worktrees untouched. A failed write rolls back every deletion guard. The delete
