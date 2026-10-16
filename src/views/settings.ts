@@ -26,6 +26,7 @@ import "./settings-vscode.ts";
 import "./settings-jira.ts";
 import "./settings-calls.ts";
 import "./settings-github.ts";
+import "./settings-datadog.ts";
 import "./settings-providers.ts";
 import "./settings-workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
@@ -519,6 +520,12 @@ function renderChatSection(props: SettingsProps) {
         renderSettingsToggle("GitHub link previews", chat.githubEmbeds,
           (checked) => props.onChangeChat({ ...chat, githubEmbeds: checked })),
       )}
+      ${renderRow(
+        "Datadog link previews",
+        "Show up to three cards for Datadog share links and dashboard widgets after a message, through the orgs in Integrations. Drawing a widget makes Datadog keep a snapshot image at an unguessable link, as its own sharing does.",
+        renderSettingsToggle("Datadog link previews", chat.datadogEmbeds,
+          (checked) => props.onChangeChat({ ...chat, datadogEmbeds: checked })),
+      )}
     `,
   );
 }
@@ -651,12 +658,13 @@ function renderSkillsPage(props: SettingsProps) {
   `;
 }
 
-/** One section per external service: Jira, then GitHub. */
+/** One section per external service: Jira, GitHub, then Datadog. */
 function renderIntegrationsPage() {
   return html`
     <p class="settings-page__intro">Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.</p>
     <hui-jira-settings></hui-jira-settings>
     <hui-github-settings></hui-github-settings>
+    <hui-datadog-settings></hui-datadog-settings>
   `;
 }
 

@@ -102,8 +102,9 @@ export function githubRefKey(ref: GitHubRef): string {
   return ref.kind === "repo" ? `repo:${repo}` : `item:${repo}#${ref.number}`;
 }
 
-/** Text with fenced and inline code blanked out, keeping offsets. Code is quoted, not referenced. */
-function withoutCode(text: string): string {
+/** Text with fenced and inline code blanked out, keeping offsets. Code is quoted, not referenced.
+ * Datadog link previews (`datadog.ts`) skip code the same way. */
+export function withoutCode(text: string): string {
   const blank = (match: string) => match.replace(/[^\n]/gu, " ");
   return text.replace(/(^|\n)(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n\2[^\n]*(?=\n|$)|$)/gu, blank).replace(/`[^`\n]+`/gu, blank);
 }

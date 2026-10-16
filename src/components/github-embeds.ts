@@ -98,7 +98,8 @@ function accessibleName(ref: GitHubRef, result: GitHubPreviewResult | undefined)
   return `Issue ${preview.repository}#${preview.number}, ${issueState(preview).label.toLowerCase()}: ${preview.title}`;
 }
 
-const SETTLE_MS = 800;
+/** How long a message's text must stay unchanged before it unfurls; Datadog cards (`datadog-embeds.ts`) share it. */
+export const SETTLE_MS = 800;
 const PULL_EMBED_SELECTOR = "a.github-embed[data-kind=\"pull\"]";
 
 type PullEmbedAnchor = HTMLAnchorElement & { githubPreview?: GitHubPreview };

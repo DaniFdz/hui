@@ -936,6 +936,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `status` | HUI process | Derived live state; never persisted |
 | `~/.config/hui/bots.json` | HUI | Bots, separate from `sessions.json`: `{ version: 1, bots: BotRecord[] }`, mode 0600. Serialized mutations, atomic rename. A record that does not validate is skipped, reported once in Logs and written back untouched; a file with a newer `version` or invalid JSON is refused and never overwritten. See [Bots](#bots). |
 | `~/.config/hui/backlog.json` | HUI | Kanban backlog, separate from `sessions.json`: `{ version: 1, tasks: BacklogLocalTask[], jira: { [KEY]: { group } } }`. A task is `{ id, title, problem, fix, cwd?, group, createdAt, jira?: { key, url } }`. Per Jira key only non-default HUI metadata (its group) is stored, never Jira facts. Serialized mutations, atomic rename; a file with a newer `version` or invalid JSON is refused and never overwritten. See [Kanban backlog](#kanban-backlog). |
+| `~/.config/hui/datadog.json` | HUI | Datadog orgs for link previews: `{ version: 1, orgs: [{ name, site }] }`, mode 0600, atomic rename. Names and sites only; pup keeps the tokens. A file HUI cannot read, or with another `version`, is reported and never overwritten. See [Datadog orgs](#datadog-orgs). |
 
 Registry mutations are serialized inside the gateway and written with an
 atomic rename. This prevents a boot-time `piSessionFile` save, a rename and a
@@ -4404,6 +4405,146 @@ hovercard as the session PR badges, with the full Markdown description.
 it) is the opt-out, exposed as Settings → Appearance → Chat → *GitHub link
 previews*. When off, no preview is requested or rendered; PR badges keep using
 the lookup.
+
+### Datadog link previews
+
+Chat messages (user and assistant) unfurl Datadog links after the message text,
+after the GitHub cards: at most **three** per message (their own cap), in reading
+order, one per URL. An HTTPS link without port or credentials on a host under
+`datadoghq.com`, `datadoghq.eu`, `datad0g.com` or `ddog-gov.com` counts when it is
+a share link (`/s/<a>/<b>`) or a dashboard (`/dashboard/<xxx-xxx-xxx>[/…]`);
+`tile_focus` or `fullscreen_widget` makes it a widget link. Brackets in a query
+(`tpl_var_env[0]=prod`) stay part of the link. Links inside inline or fenced code
+and every other Datadog page do not count. A streaming message unfurls once its
+text has been stable for 800 ms.
+
+| Route | Behaviour |
+| --- | --- |
+| `GET /__hui/datadog/previews?url=…` (1–3 `url`, ≤ 4,000 characters each) | `{ previews: DatadogPreviewResult[] }` in request order; 400 for more URLs or a link that is not a share or dashboard link |
+
+```ts
+type DatadogPreviewResult = {
+  url: string;
+  preview?: {
+    kind: "share" | "widget" | "dashboard";
+    url: string; title: string;
+    detail?: string;        // a widget's dashboard title, or a dashboard's description
+    org?: string;           // the org that answered ("" for pup's default session)
+    from?: number; to?: number; relative?: boolean;  // a widget's range, epoch ms
+    image?: string;         // data:image/…;base64,…
+  };
+  error?: "not_found" | "signed_out" | "no_org" | "cli_missing" | "unavailable";
+  signIn?: { name: string; site: string };  // with signed_out: the org to sign in to
+};
+```
+
+- **Share links** are public pages. The gateway reads the page's `og:title` and
+  `og:image` itself, only from the public app hosts (`app.datadoghq.com`,
+  `app.datadoghq.eu`, `us3`/`us5.datadoghq.com`, `ap1`/`ap2.datadoghq.com`,
+  `app.ddog-gov.com`, `us2.ddog-gov.com`, `app.datad0g.com`, `dd.datad0g.com`) or a
+  configured org's site; any other host is `no_org`. A 404 or a page without a
+  title is `not_found`.
+- **Dashboard links** try the [configured orgs](#datadog-orgs) whose site equals
+  the link host, in list order, with `pup dashboards get <id>`: a 404 or 403 moves
+  to the next org. "authentication expired" or a 401 runs `pup auth refresh` for
+  that org once and retries; still failing, or "authentication required", marks
+  the org signed out and moves on. No org for the host is `no_org`. When every org
+  failed, the result is `signed_out` (the first signed-out org in `signIn`) if one
+  was signed out, else `unavailable` if one failed otherwise, else `not_found`. A
+  widget found in the dashboard (inside groups too) becomes a `widget` preview:
+  its title (or the dashboard's), the dashboard title as `detail`, the org and the
+  time range. A link without a widget, or whose widget is gone, is a `dashboard`
+  preview with the description as `detail`.
+- **Time range**: `fullscreen_start_ts`/`fullscreen_end_ts` for full-screen
+  links, else `from_ts`/`to_ts`, used as-is (also with `live=true`) so the card
+  shows what the sender saw; without one, the past hour at lookup time
+  (`relative: true`). The browser shows it in local time.
+- **Template variables** are replaced in every string of the widget definition,
+  title included, never in raw JSON text. Values come from the link
+  (`tpl_var_<name>`, `tpl_var_<name>[i]`), else the dashboard's `defaults`, else
+  its `default`, else `*`. `$name` becomes `prefix:value` (the value when the
+  variable has no prefix), `(prefix:a OR prefix:b)` for several values and `*` for
+  none or `*`; `$name.value` becomes the first value. Longer names match first, so
+  `$env` never eats `$environment`; unknown `$words` stay.
+- **Graphs**: `pup api v1/graph/snapshot` with the substituted definition and the
+  range in seconds; the gateway polls the returned snapshot URL every 500 ms for
+  up to 10 s until it answers an image. Note, free text, image, iframe, group and
+  powerpack widgets are not drawn. A snapshot that fails (a session without the
+  scope answers 403), never finishes or answers anything but pending JSON or an
+  image leaves the widget preview without `image`, and the card says "Datadog
+  could not draw this widget." Datadog keeps each snapshot at an unguessable
+  public URL, the mechanism of its own sharing and Slack app; HUI never sends that
+  URL to the browser.
+- **Fetching**: share pages ≤ 1 MB and images ≤ 2 MB, 10 s each, HTTPS on an
+  allowed host, at most two redirects, each re-checked against the same hosts.
+  Images (snapshots and `og:image`, any host under a Datadog domain) count only
+  when their bytes start like PNG, JPEG, GIF or WebP, and reach the browser as
+  `data:` URLs.
+- **pup** runs as `pup … -o json --no-agent --read-only [--org=<name>]` with
+  `DD_SITE` set to the org's pup site (`app.<x>` becomes `<x>`; other hosts such
+  as `us3.datadoghq.com` or `dd.datad0g.com` stay), without `DD_API_KEY`,
+  `DD_APP_KEY`, `DD_ACCESS_TOKEN`, `DD_ORG`, `DD_OUTPUT`, `PUP_OUTPUT`, `PUP_FILTER`
+  or `PUP_AGENT_MODE`, stdin closed, 15 s and 16 MB per call, at most four at once.
+  Its output never reaches the browser; failures map to the coarse `error`.
+- **Caching**: a lookup has 25 s (the browser waits 40 s for the batch), then is
+  `unavailable`. Results stay in gateway memory: share, dashboard and fixed-range
+  widget previews 1 h; `relative` ones and widgets Datadog did not draw 5 min;
+  `not_found` 5 min, `unavailable` 60 s, `signed_out`/`no_org`/`cli_missing`
+  15 s; at most 100 results and 64 MB of images; concurrent requests for one link
+  share a lookup. A successful sign-in or an org change clears the cache. The
+  browser keeps at most 60 results per page for 5 min (failures 30 s) and forgets
+  them when a sign-in succeeds or an org is added or removed.
+
+A card is an article, not a link: its title links to Datadog, its graph is a
+button that opens the [media viewer](#rich-markdown-embeds), and a `signed_out`
+card has **Sign in to <org>**, which posts `/__hui/datadog/login` (or, on a 409,
+waits on the sign-in already running for that org), polls `GET /__hui/datadog`
+every 1.5 s until that org's sign-in ends, and reloads every Datadog card on the
+page once the org shows `connected`. A failure shows pup's reason on the card; a
+cancel or another org's sign-in is not a success. The same reload, and a refresh
+of an open Settings page, follow a sign-in finished anywhere and an org added or
+removed in Settings.
+
+`Settings.chat.datadogEmbeds` (default `true`; only an explicit `false` disables
+it) is the opt-out, exposed as Settings → Appearance → Chat → *Datadog link
+previews*. When off, no preview is requested or rendered.
+
+### Datadog orgs
+
+Settings → Integrations → Datadog lists the orgs HUI reads dashboard links
+through. An org is a pup session name (empty: pup's default session for that
+site) and the Datadog host its links use. HUI keeps the list in
+`~/.config/hui/datadog.json` (`{ version: 1, orgs: [{ name, site }] }`, mode
+0600, atomic rename) and owns no Datadog credential: pup keeps its tokens. A file
+HUI cannot read, or with another `version`, fails these routes with 500 (previews
+then find no org) and is never overwritten. `HUI_PUP_CLI` overrides the
+executable for E2E.
+
+```ts
+type DatadogConnection = {
+  cli: { installed: false } | { installed: true; version: string };
+  orgs: { name: string; site: string; status: "connected" | "signed_out" | "unknown" }[];
+  pupOrgs: { name: string; site: string }[];  // pup's own sessions, for suggestions
+  login:
+    | { phase: "idle" }
+    | { phase: "pending"; org: { name: string; site: string }; url?: string; expiresAt: number }
+    | { phase: "failed"; org: { name: string; site: string }; message: string };
+};
+```
+
+| Route | Behaviour |
+| --- | --- |
+| `GET /__hui/datadog` | Runs `pup --version` (remembered once pup answers) and `pup auth list`. An org is `connected` when pup has its session (same name, `null` for the default one, and site) with status `valid`, or `expired` with a refresh token pup renews on its next call; otherwise `signed_out`. `unknown` when pup is missing or its list fails. A lookup that ended signed out keeps the org `signed_out` until a sign-in or a lookup through it succeeds |
+| `POST /__hui/datadog/orgs` `{ name?, site? }` | Adds an org: `name` trimmed, ≤ 100 characters, no control characters; `site` a host or HTTPS URL under a Datadog domain without port (default `app.datadoghq.com`; a bare `datadoghq.com` means `app.datadoghq.com`). 400 invalid, 409 duplicate name and site. When the new org is `signed_out` and no sign-in runs, starts its sign-in |
+| `DELETE /__hui/datadog/orgs?name=&site=` | Removes an org from HUI; pup keeps its session. 404 when unknown |
+| `POST /__hui/datadog/login` `{ name, site }` | Runs `pup auth login [--org=<name>] --site=<pup site> --no-agent` for a configured org (404 otherwise) and returns at once with `phase: "pending"`; `url` appears once pup prints its sign-in page (`If the browser doesn't open, visit: …`, a Datadog URL). pup opens the browser on the gateway's machine and waits for its localhost callback, so a browser elsewhere cannot finish it. 409 while another sign-in runs, 400 without pup |
+| `DELETE /__hui/datadog/login` | Stops a pending sign-in (SIGTERM) and returns to `idle`; also dismisses a `failed` one |
+
+One sign-in runs per gateway, without `--read-only` (that would narrow the scopes
+of the operator's own session). Exit 0 returns to `idle` and clears the org's
+signed-out mark and the cached previews; a non-zero exit is `failed` with the
+last line pup printed (ANSI removed, ≤ 300 characters). HUI stops a sign-in after
+6 minutes (pup gives up on its callback after 5) and when the gateway stops.
 
 ### GPT-Live calls
 

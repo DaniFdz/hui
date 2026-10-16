@@ -127,19 +127,23 @@ test("normalizes OpenClaw-compatible chat preferences", () => {
     collapseTaskProgress: true,
     sendShortcut: "modifierEnter",
     githubEmbeds: false,
+    datadogEmbeds: false,
   } }).chat, {
     messageWidth: "wide",
     collapseTaskProgress: true,
     sendShortcut: "modifierEnter",
     githubEmbeds: false,
+    datadogEmbeds: false,
   });
   assert.deepEqual(normalizeSettings({ chat: {
     messageWidth: "huge",
     collapseTaskProgress: "yes",
     sendShortcut: "space",
     githubEmbeds: "no",
+    datadogEmbeds: 0,
   } }).chat, DEFAULT_SETTINGS.chat);
   assert.equal(DEFAULT_SETTINGS.chat.githubEmbeds, true);
+  assert.equal(DEFAULT_SETTINGS.chat.datadogEmbeds, true);
 });
 
 test("drops the retired dashboard widget preference from legacy files", () => {

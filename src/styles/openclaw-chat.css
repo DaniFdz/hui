@@ -577,6 +577,48 @@ hui-github-embeds:empty { display: none; }
 .github-embed__del { color: var(--danger); }
 .github-embed__tag { padding: 0 6px; border: 1px solid var(--border); border-radius: 999px; font-size: 11px; line-height: 18px; }
 
+/* Datadog link previews after a message (at most three, Slack-style). Graphs keep Datadog's light rendering. */
+hui-datadog-embeds { display: block; }
+hui-datadog-embeds:empty { display: none; }
+.datadog-embeds { display: grid; gap: 8px; width: min(100%, 560px); margin-top: 10px; }
+.datadog-embed {
+  --datadog-purple: #632ca6;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px 12px 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--datadog-purple);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: normal;
+}
+.datadog-embed[data-loading="true"] { opacity: .75; }
+.datadog-embed__head { display: flex; min-width: 0; align-items: center; gap: 6px; }
+.datadog-embed__mark { display: inline-flex; flex: none; color: color-mix(in srgb, var(--datadog-purple) 70%, var(--text-strong)); }
+.datadog-embed__mark svg { width: 16px; height: 16px; }
+.datadog-embed__title { min-width: 0; color: var(--text-strong); font-weight: 600; overflow-wrap: anywhere; text-decoration: none; }
+.datadog-embed__title:hover { text-decoration: underline; }
+.datadog-embed__title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.datadog-embed__meta { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.datadog-embed__body { display: -webkit-box; overflow: hidden; color: var(--muted); -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.datadog-embed__body--muted { font-style: italic; }
+.datadog-embed__image {
+  display: block;
+  width: 100%;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff;
+  cursor: zoom-in;
+}
+.datadog-embed__image > img { display: block; width: 100%; height: auto; }
+.datadog-embed__image:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.datadog-embed__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; color: var(--muted); font-size: 12px; }
+
 hui-math.markdown-math--inline { display: inline; max-width: 100%; }
 hui-math.markdown-math--block {
   display: block;

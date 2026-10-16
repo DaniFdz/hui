@@ -180,6 +180,16 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   OpenClaw's device-code layout; once GitHub confirms, the section turns
   Connected. Without `gh` on the gateway's PATH it shows "GitHub CLI required"
   with an install link instead of a sign-in button. The token stays in gh.
+- Settings → Integrations → Datadog lists the orgs Datadog link previews read
+  through, each a `pup` session name (empty: pup's default session) and the
+  host its links use (default `app.datadoghq.com`), with *Connected* or *Sign
+  in needed*. The add form suggests pup's own session names and fills in the
+  site of the one picked. Adding an org pup has no session for starts *Sign
+  in*: `pup auth login` runs on the HUI machine and opens the browser there,
+  the section waits with *Open sign-in page* and *Cancel*, then turns the org
+  Connected. *Remove* forgets the org in HUI; pup keeps its session. Without
+  `pup` on the gateway's PATH the section shows "Datadog CLI not found" with an
+  install link. Tokens stay in pup.
 - Contributions (first sidebar destination) has two tabs, *GitHub* (default)
   and *Calendar*; the browser remembers the choice, and GitHub is read only
   once its tab is shown. The GitHub tab charts the GitHub activity of every
@@ -258,6 +268,20 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   without it the card still links to GitHub and says why there is no preview.
   Hovering a PR card shows its full description in the PR badge hovercard.
   Settings → Appearance → Chat → *GitHub link previews* turns embeds off.
+- Chat messages unfurl Datadog links as cards after the message (after GitHub's,
+  at most three per message, like Slack). A share link (`/s/…`) shows its title
+  and graph from the public share page and needs no org. A dashboard link that
+  points at a widget (`tile_focus` or `fullscreen_widget`) shows the widget's
+  title, org, dashboard and time range, and a graph Datadog draws for it with
+  the link's time range (the past hour when it has none) and template
+  variables; a dashboard link without a widget shows its title and
+  description. Dashboard links try the Datadog orgs of their host in the order
+  of Settings → Integrations → Datadog; a card says when no org fits, when the
+  dashboard is not found and when an org's session has ended, with **Sign in**,
+  which runs the same sign-in as Settings and reloads every card once it
+  succeeds. Clicking a graph opens the media viewer. Settings → Appearance →
+  Chat → *Datadog link previews* turns the cards off; drawing a widget makes
+  Datadog keep a snapshot image at an unguessable link, as its own sharing does.
 - The session multiplexer follows OpenClaw 2026.9.5: columns contain vertically
   stacked panes. Drag a sidebar session to any pane's left/right edge to add a
   column, top/bottom edge to add a row, or center to replace that pane's session.

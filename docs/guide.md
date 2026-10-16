@@ -983,6 +983,41 @@ load scripts, styles and fonts from a few public CDNs (cdnjs, jsDelivr, esm.sh,
 unpkg, Google and Bunny fonts), which then see your IP address.
 [docs/api.md](api.md#agent-widgets) has the full contract.
 
+## Datadog links in the chat
+
+Paste a Datadog link in a message, or let the agent write one, and HUI shows it
+as a card under the message, like Slack does: up to three per message.
+
+- **Share links** (`app.datadoghq.com/s/…`, from a widget's *Share* menu) show
+  the widget's title and graph straight away; they are public, so no sign-in is
+  needed.
+- **Dashboard links that point at a widget** (the link you copy while a widget is
+  focused or full screen, with `tile_focus=` or `fullscreen_widget=`) show the
+  widget's graph for the time range and template variables in the link, so the
+  card shows what the sender saw. Without a time range it shows the past hour.
+- **Other dashboard links** show the dashboard's title and description.
+- Click a graph to open it full size, zoom, copy or save it.
+
+Dashboard links need the org they belong to. HUI reads them through the Datadog
+CLI, [pup](https://github.com/DataDog/pup), installed on the machine that runs
+HUI. Add your orgs in **Settings → Integrations → Datadog**: the org name is
+pup's session name (what you pass to `pup auth login --org <name>`; leave it
+empty for pup's default session) and the site is the host in your links
+(`app.datadoghq.com` unless you use another one). A link tries the orgs of its
+site in the order you added them, until one has the dashboard.
+
+When an org has no pup session yet, or its session has ended, HUI offers **Sign
+in**: pup opens Datadog's sign-in page in the browser of the machine running HUI
+(Settings also links to it), and once you approve, the cards load
+again. **Remove** forgets an org in HUI; pup keeps its session. Tokens never leave
+pup: HUI stores only the org names and sites.
+
+To draw a widget, HUI asks Datadog for a snapshot of it, which Datadog keeps at a
+long, unguessable link, as it does for its own sharing and its Slack app. HUI
+never shows that link. **Settings → Appearance → Chat → Datadog link
+previews** turns the cards off. [docs/api.md](api.md#datadog-link-previews) has
+the full contract.
+
 ## Codemode: one script, many tool calls
 
 Sessions can use PI's **codemode** tool: instead of calling tools one at a time,

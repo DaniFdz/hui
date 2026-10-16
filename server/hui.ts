@@ -155,6 +155,9 @@ import { GitHubCli, GitHubCliError } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
 import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
+import { MAX_DATADOG_EMBEDS, parseDatadogUrl } from "../shared/datadog.ts";
+import { DatadogError, DatadogOrgs } from "./datadog.ts";
+import { DatadogPreviews } from "./datadog-previews.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
@@ -246,6 +249,10 @@ const GITHUB_ROUTE = `${PREFIX}github`;
 const GITHUB_LOGIN_ROUTE = `${GITHUB_ROUTE}/login`;
 const GITHUB_PREVIEWS_ROUTE = `${GITHUB_ROUTE}/previews`;
 const GITHUB_CONTRIBUTIONS_ROUTE = `${GITHUB_ROUTE}/contributions`;
+const DATADOG_ROUTE = `${PREFIX}datadog`;
+const DATADOG_ORGS_ROUTE = `${DATADOG_ROUTE}/orgs`;
+const DATADOG_LOGIN_ROUTE = `${DATADOG_ROUTE}/login`;
+const DATADOG_PREVIEWS_ROUTE = `${DATADOG_ROUTE}/previews`;
 const JIRA_ROUTE = `${PREFIX}jira`;
 const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
 /** Create (POST) or draft (POST …/draft) a Jira work item for one session. */
@@ -1303,6 +1310,18 @@ const triggers = createGatewayTriggers({
 });
 const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
+
+/* ── Datadog ── orgs, sign-in and previews run through the operator's `pup`; HUI never sees a token.
+ * `HUI_PUP_CLI` points E2E at a fake executable. A sign-in or an org change drops cached previews. */
+const datadogOrgs = new DatadogOrgs({ command: process.env["HUI_PUP_CLI"] || "pup", onChange: () => datadogPreviews.clear() });
+const datadogPreviews = new DatadogPreviews(datadogOrgs);
+
+/** A Datadog route failure: the operator's input (400/404/409) or HUI's own (500), never pup's output. */
+function sendDatadogError(response: ServerResponse, error: unknown): void {
+  if (error instanceof DatadogError) sendJson(response, error.status, { error: error.message });
+  else if (error instanceof SyntaxError) sendJson(response, 400, { error: "Send a JSON body." });
+  else sendJson(response, 500, { error: error instanceof Error ? error.message : "Datadog request failed." });
+}
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
 
 const worktreeService = new WorktreeService({
@@ -3399,6 +3418,62 @@ async function handleRequest(
     return;
   }
 
+  if (path === DATADOG_ROUTE) {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    try {
+      sendJson(response, 200, await datadogOrgs.connection());
+    } catch (error) {
+      sendDatadogError(response, error);
+    }
+    return;
+  }
+
+  if (path === DATADOG_ORGS_ROUTE) {
+    if (request.method !== "POST" && request.method !== "DELETE") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    try {
+      const params = new URL(request.url ?? "/", "http://localhost").searchParams;
+      sendJson(response, 200, request.method === "POST"
+        ? await datadogOrgs.add(await readBody(request))
+        : await datadogOrgs.remove({ name: params.get("name") ?? "", site: params.get("site") ?? "" }));
+    } catch (error) {
+      sendDatadogError(response, error);
+    }
+    return;
+  }
+
+  if (path === DATADOG_LOGIN_ROUTE) {
+    if (request.method !== "POST" && request.method !== "DELETE") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    try {
+      sendJson(response, 200, request.method === "POST" ? await datadogOrgs.startLogin(await readBody(request)) : await datadogOrgs.cancelLogin());
+    } catch (error) {
+      sendDatadogError(response, error);
+    }
+    return;
+  }
+
+  if (path === DATADOG_PREVIEWS_ROUTE) {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "method not allowed" });
+      return;
+    }
+    const urls = new URL(request.url ?? "/", "http://localhost").searchParams.getAll("url");
+    if (urls.length === 0 || urls.length > MAX_DATADOG_EMBEDS || urls.some((url) => url.length > 4_000 || !parseDatadogUrl(url))) {
+      sendJson(response, 400, { error: `Pass 1-${MAX_DATADOG_EMBEDS} Datadog share or dashboard URLs.` });
+      return;
+    }
+    sendJson(response, 200, { previews: await Promise.all(urls.map((url) => datadogPreviews.lookup(url))) });
+    return;
+  }
+
   if (path === JIRA_ROUTE) {
     await jiraConfigReady;
     if (request.method === "GET") {
@@ -4488,6 +4563,7 @@ export async function stopBackend(): Promise<void> {
     vscode.dispose();
     terminals.dispose();
     githubCli.dispose();
+    datadogOrgs.dispose();
     // Before the sessions close: a delivery still going out reaches its bot, and every trigger write has settled.
     await triggers.stop();
     automation.dispose();

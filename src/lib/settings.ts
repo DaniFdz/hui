@@ -28,6 +28,8 @@ export type Settings = {
     sendShortcut: "enter" | "modifierEnter";
     /** Unfurl GitHub repositories, pull requests and issues after chat messages. */
     githubEmbeds: boolean;
+    /** Unfurl Datadog share links and dashboard widgets after chat messages. */
+    datadogEmbeds: boolean;
   };
   profileName: string;
   profileHandle: string;
@@ -111,6 +113,7 @@ export const DEFAULT_SETTINGS: Settings = {
     collapseTaskProgress: false,
     sendShortcut: "enter",
     githubEmbeds: true,
+    datadogEmbeds: true,
   },
   profileName: "HUI Operator",
   profileHandle: "",
@@ -256,6 +259,7 @@ function normalizeChat(value: unknown): Settings["chat"] {
     sendShortcut: shortcut === "modifierEnter" ? shortcut : "enter",
     // Opt-out: only an explicit false disables previews.
     githubEmbeds: source["githubEmbeds"] !== false,
+    datadogEmbeds: source["datadogEmbeds"] !== false,
   };
 }
 
