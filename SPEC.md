@@ -1753,10 +1753,12 @@ everything the Bots tab can, through the same routes.
   are on, every Durable conversation lists the bots it may tag in its system
   prompt, byte-stable while the roster is, and has a `message_bot` tool. A tag
   arrives in the bot's chat as `[from @handle] …` from a bot or
-  `[from agent: <title>] …` from a session, like a message (a prompt, or a
-  follow-up while it works), and the bot answers there: nothing comes back to
-  the tagger. Bots can tag back; sessions can't be tagged. The operator tags in
-  any composer: `@` suggests bots before files, and the message goes to the
+  `[from agent: <title> · reply-to agent:<id>] …` from a session, like a
+  message (a prompt, or a follow-up while it works). There is no automatic
+  reply, but a bot can send updates to that agent's return address through
+  the same tool. Only a bot that received the agent's handoff may use it;
+  unrelated sessions cannot be contacted. Bots can still tag each other. The
+  operator tags in any composer: `@` suggests bots before files, and the message goes to the
   chat's own agent or bot as typed, for which a tagged bot is an order to send
   it what the operator asks. Chains stop after three hops, a bot's subagents
   don't tag, and each bot, or session with its subagents, sends at most 30 tags
@@ -1873,6 +1875,38 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Bots can notify the agent that handed them work (2026-10-16)
+
+The owner wants a coding agent to hand a PR shepherd its PR and a compact
+record of the decisions already made. The shepherd fixes CI and conflicts,
+but sends human and code-reviewer comments back to that same agent for a
+decision. Bot-to-bot handoffs remain supported. This extends the one-way
+session tags below without opening general cross-session messaging.
+
+- A session's tag carries its gateway-generated `agent:<session id>` return
+  address in the attribution header. The title stays sanitized and bounded.
+- A bot replies with `message_bot({ to: "agent:<id>", message })`. HUI accepts
+  it only when the bot's own received-message history or current run input
+  contains a handoff with that address. Forwarded body text and assistant
+  quotes grant no route. Ordinary sessions cannot use return addresses.
+- A reply prompts an idle calling agent or queues behind a busy one, attributed
+  to the bot. It never counts as the operator. A missing or archived agent,
+  or a subagent that already finished, fails visibly rather than redirecting
+  the notification elsewhere.
+- Existing bot tagging policies, disabled-bots checks and hourly budgets stay
+  in force. The three-hop bound follows the turn a reply starts: a tag the
+  session sends from that turn is the next hop. A later turn (the operator's,
+  a subagent's report, a routine or a trigger) starts a new chain, with the
+  hourly budgets as the backstop.
+- Any turn of the bot may reply, a trigger's too: a reviewer's comment that
+  wakes the bot can reach the session that handed it the PR. The session reads
+  the reply as the bot's words, never as the operator's instructions.
+- Return addresses live in the existing transcript, so later watcher turns
+  can use them without a new routing store or a registry migration. Old tags
+  without an address remain readable; their replies stay in the bot's chat.
+
+The contract is [docs/api.md#tagging-bots](docs/api.md#tagging-bots).
 
 ### Bot exports are templates, reviewed for personal information (2026-10-16)
 

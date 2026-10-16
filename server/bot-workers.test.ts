@@ -305,7 +305,7 @@ test("message_bot crosses both ways between a bot here and the bot on the worker
   assert.match(systemOf(await chatRequest("[from @home] hello from the fixture")), /- @home \(Home\)/u, "its roster on the worker lists the bot here");
 });
 
-test("a session on the worker lists the bots it may tag, from this gateway, and tags one as an agent", { timeout: 180_000 }, async () => {
+test("sessions and bots exchange attributed handoffs and agent replies across the worker connection", { timeout: 180_000 }, async () => {
   const home = botOf(await call("/__hui/bots/home"));
   const created = await call("/__hui/sessions", "POST", { cwd: join(remoteHome, "project"), worker: workerId, tool: "durable", title: "Survey the ridge" });
   assert.equal(created.status, 200, JSON.stringify(created.body));
@@ -315,13 +315,28 @@ test("a session on the worker lists the bots it may tag, from this gateway, and 
   const prompted = await call(`/__hui/sessions/${session.id}/prompt`, "POST", { text: "E2E_MESSAGE_BOT @home SURVEY_TAG" });
   assert.equal(prompted.status, 200, JSON.stringify(prompted.body));
   await settledWith(session.id, says("assistant", "message_bot answered: Queued for @home."), "the session's tag to be accepted");
-  await settledWith(home.sessionId, says("user", "[from agent: Survey the ridge] hello from the fixture"), "Home to get the session's tag");
+  await settledWith(home.sessionId, says("user", `[from agent: Survey the ridge · reply-to agent:${session.id}] hello from the fixture`), "Home to get the session's tag");
   // Its host asked this gateway for the list, as a bot there does, and offered message_bot alone.
   const request = await chatRequest("SURVEY_TAG");
   assert.match(systemOf(request), /This HUI has bots: persistent assistants/u);
   assert.match(systemOf(request), /- @home \(Home\)/u);
   assert.doesNotMatch(systemOf(request), /You are @/u, "not a bot's chat");
   assert.deepEqual(request?.tools?.filter((tool) => ["message_bot", "write_soul", "set_profile"].includes(tool.name ?? "")).map((tool) => tool.name), ["message_bot"]);
+  const reply = (id: string, message: string) => callsOf({ name: "message_bot", input: { to: `agent:${id}`, message } });
+  await call("/__hui/bots/home/messages", "POST", { text: reply(session.id, "Decide how to address the ridge review."), wait: true, timeoutSeconds: 120 });
+  await settledWith(session.id, says("user", "[from @home] Decide how to address the ridge review."), "the originating agent on the worker to receive Home's decision request");
+
+  // The reverse direction also needs the worker bot's received-message history available at the gateway.
+  const rover = botOf(await call("/__hui/bots/rover"));
+  const local = await call("/__hui/sessions", "POST", { cwd: root, tool: "durable", title: "Survey the valley" });
+  assert.equal(local.status, 200, JSON.stringify(local.body));
+  const localId = (local.body["session"] as { id: string }).id;
+  await waitFor(() => liveSessions.status(localId) === "idle", "the local agent to start");
+  await call(`/__hui/sessions/${localId}/prompt`, "POST", { text: "E2E_MESSAGE_BOT @rover VALLEY_TAG" });
+  await settledWith(rover.sessionId, says("user", `[from agent: Survey the valley · reply-to agent:${localId}] hello from the fixture`), "Rover on the worker to receive the local agent's handoff");
+  await call("/__hui/bots/rover/messages", "POST", { text: reply(localId, "Decide how to address the valley review."), wait: true, timeoutSeconds: 120 });
+  await settledWith(localId, says("user", "[from @rover] Decide how to address the valley review."), "the originating local agent to receive Rover's decision request");
+  await call(`/__hui/sessions/${localId}`, "DELETE");
   await call(`/__hui/sessions/${session.id}`, "DELETE");
 });
 

@@ -381,6 +381,8 @@ export type BotTurnOrigin =
   | { kind: "operator" } | { kind: "kickoff" } | { kind: "imported" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string }
   | { kind: "bot"; handle: string } | { kind: "agent"; title: string };
 
+const AGENT_TAG = /^\[from agent: ([^\]\n]*?)(?: · reply-to (agent:[A-Za-z0-9_-]{1,94}))?(?: · hop [1-9]\d*)?\] /u;
+
 export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (!text) return { kind: "operator" };
   if (text.startsWith("[routine: ")) return { kind: "routine", name: /^\[routine: (.*?)\] /u.exec(text)?.[1] ?? "" };
@@ -388,16 +390,20 @@ export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (text.startsWith("[trigger: ")) return { kind: "trigger", name: /^\[trigger: ([^\]·\n]*?)(?: · |\])/u.exec(text)?.[1] ?? "" };
   const bot = /^\[from @([a-z0-9-]+)(?: · hop [1-9]\d*)?\] /u.exec(text);
   if (bot) return { kind: "bot", handle: bot[1]! };
-  const agent = /^\[from agent: ([^\]\n]*)\] /u.exec(text);
+  const agent = AGENT_TAG.exec(text);
   if (agent) return { kind: "agent", title: agent[1]! };
   if (botKickoffName(text) === undefined) return { kind: "operator" };
   return text.split("\n", 3).includes(BOT_IMPORTED_KICKOFF_LINE) ? { kind: "imported" } : { kind: "kickoff" };
 }
 
-/** How a session's tag starts in the bot's chat: its title on one line, at most 80 characters, without the brackets and
- * `·` the prefix's readers rely on. A session is never tagged itself, so its tags are always a chain's first hop. */
-export function agentTagPrefix(title: string): string {
-  return `[from agent: ${previewLine(title.replace(/[[\]·]/gu, " "), 80) || "Untitled session"}] `;
+/** The gateway's return address in an agent's attribution header; never one embedded in a forwarded message. */
+export function agentReplyTo(text: string | undefined): string | undefined {
+  return AGENT_TAG.exec(text ?? "")?.[2];
+}
+
+/** How a session's tag starts in the bot's chat: a sanitized title, its return address and the chain's current hop. */
+export function agentTagPrefix(title: string, sessionId: string, hop = 1): string {
+  return `[from agent: ${previewLine(title.replace(/[[\]·]/gu, " "), 80) || "Untitled session"} · reply-to agent:${sessionId}${hop === 1 ? "" : ` · hop ${hop}`}] `;
 }
 
 /**
