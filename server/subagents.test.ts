@@ -908,22 +908,36 @@ test("a running swarm does not hold back an ordinary result, and Stop reports no
   assert.match(state.parentRuntime.steered[0]!, /Ordinary answer/);
   assert.doesNotMatch(state.parentRuntime.steered[0]!, /Finished before Stop/);
 
-  await state.service.cancelCollected("parent");
+  // Stop: the turn ends while the collected children are cancelled, whose own delivery pass then finds an idle parent.
   state.parentRuntime.finish("Stopped");
   await waitForStatus(state.manager, "parent", "idle");
+  await state.service.cancelCollected("parent");
   await state.service.flushCompletions();
   // This double's steering never reaches its transcript, so the ordinary result is offered again; nothing else is.
   assert.ok(state.parentRuntime.prompts.every((prompt) => !/task-[01]/.test(prompt)));
 });
 
-test("a restart interrupts queued subagents, and calls wait for that recovery", async (t) => {
+test("a restart interrupts queued subagents", async (t) => {
   const state = await swarm(33);
   state.service.dispose();
   const restarted = new SubagentService(state.manager, async () => state.records(), state.update, () => new Date(timestamp), () => "unused");
   t.onTestFinished(() => { restarted.dispose(); state.manager.disposeAll(); });
-  void restarted.initialize();
+  await restarted.initialize();
   const waited = await restarted.handle("parent", "agents_wait", { ids: ["task-32"] }) as { completed: Array<{ status: string; error?: string }> };
   assert.deepEqual(waited.completed.map(({ status, error }) => ({ status, error })), [
     { status: "interrupted", error: "The HUI gateway restarted before this subagent finished." },
   ]);
+});
+
+test("deleting a child ends a wait on it with an error naming it", async (t) => {
+  const state = await swarm(1);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  const waited = state.service.handle("parent", "agents_wait", { ids: ["task-0"] });
+  await waitForStatus(state.manager, "child-0", "running");
+  // As deleteSession does: tombstone, remove the row, forget, finish.
+  const token = state.manager.tombstone("child-0");
+  await state.update((current) => current.filter((item) => item.id !== "child-0"));
+  state.service.forgetSessions(new Set(["child-0"]));
+  state.manager.finishDelete("child-0", token);
+  await assert.rejects(waited, /Subagent deleted while waiting: task-0/);
 });

@@ -178,8 +178,6 @@ export class SubagentService {
   #running = new Map<string, string>();
   /** `agents_wait` calls, told about every registry change, and with nothing when the service shuts down. */
   #waiters = new Set<(records?: readonly SessionRecord[]) => void>();
-  /** Startup recovery: a call must not see a task the previous gateway left `running`. */
-  #ready: Promise<void> = Promise.resolve();
   private readonly sessions: SessionAccess;
   private readonly registryReader: typeof readRegistry;
   private readonly registryUpdater: typeof updateRegistry;
@@ -201,12 +199,7 @@ export class SubagentService {
     sessions.setSubagentSnapshotProvider((parentId) => this.snapshot(parentId));
   }
 
-  initialize(): Promise<void> {
-    this.#ready = this.#recover();
-    return this.#ready;
-  }
-
-  async #recover(): Promise<void> {
+  async initialize(): Promise<void> {
     const now = this.now().toISOString();
     const records = await this.registryUpdater((current) => current.map((record) =>
       record.subagent && ACTIVE_STATUSES.has(record.subagent.status)
@@ -264,6 +257,8 @@ export class SubagentService {
       else this.#tasks.delete(parentId);
       if (!ids.has(parentId)) this.sessions.notifySnapshot(parentId);
     }
+    // A wait on a deleted child ends now, naming it.
+    if (this.#waiters.size) void this.registryReader().then((records) => { for (const waiter of this.#waiters) waiter(records); }, () => undefined);
   }
 
   async handle(
@@ -272,7 +267,6 @@ export class SubagentService {
     params: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<unknown> {
-    await this.#ready.catch(() => undefined);
     if (this.#disposed) throw new Error("Subagent service is shutting down.");
     switch (action) {
       case "sessions_spawn": return this.#spawn(callerSessionId, params);
@@ -421,9 +415,12 @@ export class SubagentService {
     const taskId = child.subagent!.taskId;
     try {
       await this.#waitUntilReady(child.id);
-      // Only from `starting`: a task cancelled meanwhile stays cancelled.
-      if (!(await this.#markRunning(child.id))) return;
       const completion = this.#waitForCompletion(child, runTimeoutSeconds);
+      // Only from `starting`, and not once a cancel settled it (its control is gone): a cancelled task stays so.
+      if (!(await this.#markRunning(child.id)) || !this.#controls.has(taskId)) {
+        completion.cancel();
+        return;
+      }
       try {
         await this.sessions.prompt(child.id, `[Subagent Task]\n${child.subagent!.task}`);
       } catch (error) {
@@ -852,13 +849,16 @@ export class SubagentService {
   /** The operator stopped the parent: its queued and running collected children stop with it. Nothing of theirs is
    * delivered back, finished results its wait had not returned included, which would start another turn. */
   async cancelCollected(parentId: string): Promise<void> {
-    await this.#ready.catch(() => undefined);
     const collected = (record: SessionRecord) => record.parentId === parentId && record.subagent?.collect === true;
-    const active = (await this.registryReader()).filter((record) => collected(record) && ACTIVE_STATUSES.has(record.subagent!.status));
-    await Promise.all(active.map((child) => this.#cancel(child, "Stopped with its parent.", false)));
-    this.#replaceCache(await this.registryUpdater((current) => current.map((record) =>
+    // Before the cancels, whose own delivery pass would otherwise hand a stopped parent these results, and after, for
+    // children that finished meanwhile.
+    const settle = async () => this.#replaceCache(await this.registryUpdater((current) => current.map((record) =>
       collected(record) && record.subagent!.completionDelivery === "pending"
         ? { ...record, subagent: { ...record.subagent!, completionDelivery: "delivered" as const } } : record)));
+    await settle();
+    const active = (await this.registryReader()).filter((record) => collected(record) && ACTIVE_STATUSES.has(record.subagent!.status));
+    await Promise.all(active.map((child) => this.#cancel(child, "Stopped with its parent.", false)));
+    await settle();
   }
 
   /** Wait until every listed child of the caller has finished, or the timeout passes. What it returns counts as
