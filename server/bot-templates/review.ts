@@ -114,7 +114,8 @@ export function parseReviewAnswer(answer: string, fields: readonly string[], ide
     if (!isRecord(item) || typeof item["quote"] !== "string") continue;
     const group = item["group"];
     if (group !== "remove" && group !== "ask" && group !== "confirm") continue;
-    const quote = [item["quote"], item["quote"].trim()].find((candidate) => candidate.length >= MIN_QUOTE && fields.some((field) => field.includes(candidate)));
+    // Four characters at least, not counting spaces: a quote of indentation alone would match everywhere.
+    const quote = [item["quote"], item["quote"].trim()].find((candidate) => candidate.trim().length >= MIN_QUOTE && fields.some((field) => field.includes(candidate)));
     if (!quote) continue;
     const reason = text(item["reason"], 200, identity) || "The reviewer flagged it.";
     // What the new owner gives, should the passage be asked: never the passage itself, which is the owner's.

@@ -215,14 +215,14 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
   const group = (id: string, fallback: BotExportGroup): BotExportGroup => picks[id] ?? fallback;
   // What the reviewer wrote travels too (replacements, labels, questions, needs): none of it may repeat a passage the
   // picks remove or ask, in any case. A label or replacement that would gives way to a plain one; other text is scrubbed.
-  const hidden = review.changes.filter((change) => ["remove", "ask"].includes(group(change.id, change.group))).map((change) => change.quote);
+  const hidden = review.changes.filter((change) => ["remove", "ask"].includes(group(change.id, change.group))).map((change) => change.quote.trim()).filter(Boolean);
   // Any case and any spacing: a reviewer writes "Pat Doe" for a passage that wraps a line.
-  const hiddenPattern = hidden.length ? new RegExp([...hidden].sort((a, b) => b.length - a.length).map((quote) => escape(quote.trim()).replace(/\s+/gu, "\\s+")).join("|"), "giu") : undefined;
+  const hiddenPattern = hidden.length ? new RegExp([...hidden].sort((a, b) => b.length - a.length).map((quote) => escape(quote).replace(/\s+/gu, "\\s+")).join("|"), "giu") : undefined;
   const leaks = (text: string) => hiddenPattern !== undefined && text.search(hiddenPattern) !== -1;
   const scrub = (text: string) => hiddenPattern ? text.replace(hiddenPattern, "[removed]") : text;
   // A label that would repeat a passage gives way to a numbered plain one, so the new owner can tell them apart.
   let plain = 0;
-  const labels = new Map(review.changes.map((change) => [change.id, leaks(change.label) ? `your own value${(plain += 1) > 1 ? ` ${plain}` : ""}` : change.label]));
+  const labels = new Map(review.changes.map((change) => [change.id, group(change.id, change.group) === "ask" && leaks(change.label) ? `your own value${(plain += 1) > 1 ? ` ${plain}` : ""}` : change.label]));
   const label = (change: BotExportChange) => labels.get(change.id) ?? change.label;
   const replacements = review.changes.flatMap((change) => {
     const picked = group(change.id, change.group);

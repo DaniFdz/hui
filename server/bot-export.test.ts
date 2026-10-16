@@ -290,3 +290,11 @@ test("an excerpt is tidied before it is shortened, labels that give way stay apa
   assert.equal(build.outcomes[confirm.id]!.question, "Approve only on green CI, as [removed] asked?", "what the reviewer wrote, scrubbed whatever its spacing");
   assert.equal(manifest.open.find((point) => point.kind === "confirm")?.excerpt, "Approve only when CI is green, as a teammate asked.", "the excerpt as the text now reads, though the passage wrapped a line");
 });
+
+test("a quote of whitespace alone is no passage: it never reaches the zip's scrub", async () => {
+  const review = await harness({ answer: (prompt) => JSON.stringify({ changes: prompt.startsWith("Part: SOUL.md") ? [{ quote: "    ", group: "remove", reason: "x" }, { quote: "\n\n\n\n", group: "ask", reason: "y" }, { quote: "Pat Doe", group: "remove", reason: "A name." }] : [] }) }).service.review("ada");
+  assert.deepEqual(review.changes.map((change) => change.quote), ["Pat Doe"]);
+  const build = buildExport(review, {});
+  assert.doesNotMatch(build.files.find((file) => file.path === "SOUL.md")!.text, /\[removed\]\[removed\]/u);
+});
+
