@@ -1087,6 +1087,18 @@ requests:
    ([`e2e/bot-tagging.browser.md`](../e2e/bot-tagging.browser.md), screens in
    the pull request).
 
+16. **Reply to the originating agent** (implemented and verified locally
+   2026-10-16; SPEC.md, "Bots can notify the agent that handed them work"):
+   `message_bot` accepts a reply-only `agent:<session id>` address attached by
+   the gateway to session handoffs. Received-message receipts authorize later
+   notifications without opening general cross-session sends. Bot policies,
+   budgets, attributed inputs and the hop bound remain in force through agent
+   replies. Proof: `server/bot-service.test.ts` (delivery, queues and denial
+   cases), `server/bot-workers.test.ts` (real Durable tools across the worker
+   connection in both directions), `server/runtimes/durable-bots.test.ts`, and
+   an isolated Browser-tool agent → bot → agent journey at desktop/mobile
+   ([`e2e/bot-agent-replies.browser.md`](../e2e/bot-agent-replies.browser.md)).
+
 ### HUI-19 — Agent widgets
 
 Done 2026-10-06. Agents and bots show interactive HTML/SVG widgets inline in the
