@@ -29,9 +29,14 @@ cleanup). No operator HUI state was read or changed; the real run read Datadog o
 
 ## Observed
 
-- Settings → Integrations → Datadog: *No orgs yet* and the add form (name, site
-  `app.datadoghq.com`, hint). Adding `dani-org` answered *Added dani-org.* and the
-  row *app.datadoghq.com · Connected*; it survived a reload.
+- Settings → Integrations → Datadog: *No orgs yet* and **Add org**, whose dialog
+  preselects *app.datadoghq.com (default)* (the other public sites listed; *Other
+  host…* adds a required *Host* field) and focuses *Org name*, which suggests pup's
+  logins for that site. Adding `dani-org` closed the dialog, answered *Added
+  dani-org.* and showed *app.datadoghq.com · Connected*; it survived a reload.
+  Adding it again kept the dialog open with *That org is already in the list.* in
+  red; Escape closed it, left Settings open and put focus back on **Add org**. At
+  390×844 the dialog fit with full-width buttons.
 - The real share link (`app.datadoghq.com/s/yB5yjZ/dgj-s33-htg`) showed
   *[streaming-topicstats] Lag (time) for a detailed topic* with the same graph
   Slack unfurls. The widget link showed *CPU usage (%)*, *dani-org · Home Server ·

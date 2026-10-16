@@ -214,7 +214,7 @@ export class HuiDatadogSettings extends LitElement {
             placeholder="Empty: pup's default login" ?disabled=${this.#busy} .value=${live(this.#name)} @input=${(event: Event) => { this.#name = (event.target as HTMLInputElement).value; }} /></label>
         <datalist id="datadog-pup-orgs">${names.map((name) => html`<option value=${name}></option>`)}</datalist>
         <p class="exec-approval-sub">The org name is pup's login name, as in <code>pup auth login --org &lt;name&gt;</code>.${names.length ? " pup already has logins for this site; pick one from the suggestions." : ""}</p>
-        ${this.#error ? html`<p class="group-action-dialog__error" role="alert">${this.#error}</p>` : nothing}
+        ${this.#error ? html`<p class="jira-settings__error" role="alert">${this.#error}</p>` : nothing}
         <div class="exec-approval-actions">
           <button type="submit" class="btn primary" ?disabled=${this.#busy}>${this.#busy ? "Adding…" : "Add org"}</button>
           <button type="button" class="btn" ?disabled=${this.#busy} @click=${close}>Cancel</button>
