@@ -20,6 +20,11 @@ import { isThinkingLevel } from "../shared/thinking.ts";
 import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "../src/lib/subagent-completion.ts";
 
 const MAX_ACTIVE_SUBAGENTS = 8;
+/** Collected children of one session tree (OpenClaw's Swarm defaults): at most this many start or run at once… */
+const MAX_RUNNING_COLLECTED = 32;
+/** …and at most this many are queued, starting or running; more are refused. */
+const MAX_LIVE_COLLECTED = 50;
+const MAX_WAIT_IDS = 100;
 const READY_TIMEOUT_MS = 30_000;
 const DELIVERY_RETRY_MS = 5_000;
 const HISTORY_MAX_BYTES = 80 * 1024;
@@ -51,6 +56,8 @@ type SessionAccess = Pick<
 type RunControl = {
   settle: (status: SubagentStatus, error?: string) => void;
 };
+
+type QueuedChild = { child: SessionRecord; root: string; runTimeoutSeconds: number };
 
 export class AgentToolInputError extends Error {
   override name = "AgentToolInputError";
@@ -104,6 +111,16 @@ function visibleTree(records: readonly SessionRecord[], callerId: string): Sessi
   return records.filter((record) => rootSessionId(records, record.id) === root);
 }
 
+/** The session and its ancestors. */
+function lineage(records: readonly SessionRecord[], sessionId: string): SessionRecord[] {
+  const byId = new Map(records.map((record) => [record.id, record]));
+  const chain: SessionRecord[] = [];
+  for (let current = byId.get(sessionId); current && !chain.includes(current); current = current.parentId ? byId.get(current.parentId) : undefined) {
+    chain.push(current);
+  }
+  return chain;
+}
+
 function taskView(record: SessionRecord): SubagentTaskView | undefined {
   if (!record.parentId || !record.subagent) return undefined;
   return {
@@ -155,6 +172,12 @@ export class SubagentService {
   #deliveryFlights = new Map<string, Promise<void>>();
   #admitted = new Map<string, string>();
   #deliveryTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Collected children waiting for a slot, in spawn order. In memory only: they are saved as `starting`. */
+  #queue = new Map<string, QueuedChild>();
+  /** Collected children started from the queue, by task ID, with their tree's root. */
+  #running = new Map<string, string>();
+  /** `agents_wait` calls, told about every registry change, and with nothing when the service shuts down. */
+  #waiters = new Set<(records?: readonly SessionRecord[]) => void>();
   private readonly sessions: SessionAccess;
   private readonly registryReader: typeof readRegistry;
   private readonly registryUpdater: typeof updateRegistry;
@@ -203,14 +226,21 @@ export class SubagentService {
     if (this.#deliveryTimer) clearTimeout(this.#deliveryTimer);
     this.#deliveryTimer = undefined;
     this.#admitted.clear();
+    this.#queue.clear();
     for (const timer of this.#timers) clearTimeout(timer);
     this.#timers.clear();
     for (const control of this.#controls.values()) control.settle("interrupted");
     this.#controls.clear();
+    for (const waiter of this.#waiters) waiter();
   }
 
   snapshot(parentId: string): readonly SubagentTaskView[] {
-    return this.#tasks.get(parentId) ?? [];
+    return (this.#tasks.get(parentId) ?? []).map((task) => this.#queue.has(task.taskId) ? { ...task, status: "queued" } : task);
+  }
+
+  #status(record: SessionRecord): SubagentTaskView["status"] | null {
+    if (!record.subagent) return null;
+    return this.#queue.has(record.subagent.taskId) ? "queued" : record.subagent.status;
   }
 
   /** Drop task projections after a registry subtree was durably removed. */
@@ -219,6 +249,7 @@ export class SubagentService {
       const kept = tasks.filter((task) => {
         if (!ids.has(parentId) && !ids.has(task.sessionId)) return true;
         this.#admitted.delete(task.taskId);
+        this.#queue.delete(task.taskId);
         return false;
       });
       if (kept.length === tasks.length) continue;
@@ -226,16 +257,20 @@ export class SubagentService {
       else this.#tasks.delete(parentId);
       if (!ids.has(parentId)) this.sessions.notifySnapshot(parentId);
     }
+    // A wait on a deleted child ends now, naming it.
+    if (this.#waiters.size) void this.registryReader().then((records) => { for (const waiter of this.#waiters) waiter(records); }, () => undefined);
   }
 
   async handle(
     callerSessionId: string,
     action: string,
     params: Record<string, unknown>,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     if (this.#disposed) throw new Error("Subagent service is shutting down.");
     switch (action) {
       case "sessions_spawn": return this.#spawn(callerSessionId, params);
+      case "agents_wait": return this.#wait(callerSessionId, params, signal);
       case "sessions_list": return this.#list(callerSessionId, params);
       case "sessions_history": return this.#history(callerSessionId, params);
       case "sessions_send": return this.#send(callerSessionId, params);
@@ -250,6 +285,7 @@ export class SubagentService {
     const model = text(params, "model", 200, true);
     const thinking = text(params, "thinking", 16, true);
     const runTimeoutSeconds = integer(params, "runTimeoutSeconds", 0, 0, 3_600);
+    const collect = params["collect"] === true;
     if (model && !/^[^/\s]+\/\S+$/.test(model)) {
       throw new AgentToolInputError("model must use provider/id format.");
     }
@@ -261,15 +297,26 @@ export class SubagentService {
     const sessionId = this.uuid();
     const now = this.now().toISOString();
     let child: SessionRecord | undefined;
+    let root = "";
     const records = await this.registryUpdater((current) => {
       const caller = current.find((record) => record.id === callerId);
       if (!caller) throw new AgentToolInputError(`Unknown caller session: ${callerId}`);
-      const root = rootSessionId(current, callerId);
+      root = rootSessionId(current, callerId);
+      // Ordinary and collected children have separate limits.
       const active = current.filter((record) =>
         record.subagent && ACTIVE_STATUSES.has(record.subagent.status) &&
+        (record.subagent.collect === true) === collect &&
         rootSessionId(current, record.id) === root,
       ).length;
-      if (active >= MAX_ACTIVE_SUBAGENTS) {
+      if (collect) {
+        // One level of collected children: their caps and the parent's lane assume a flat group.
+        if (lineage(current, callerId).some((record) => record.subagent?.collect)) {
+          throw new AgentToolInputError("A collected subagent cannot spawn collected subagents of its own; return the work to its parent.");
+        }
+        if (active >= MAX_LIVE_COLLECTED) {
+          throw new AgentToolInputError(`At most ${MAX_LIVE_COLLECTED} collected subagents may be queued or running in one session tree.`);
+        }
+      } else if (active >= MAX_ACTIVE_SUBAGENTS) {
         throw new AgentToolInputError(`At most ${MAX_ACTIVE_SUBAGENTS} subagents may run in one session tree.`);
       }
       child = {
@@ -292,6 +339,7 @@ export class SubagentService {
           status: "starting",
           startedAt: now,
           updatedAt: now,
+          ...(collect ? { collect: true as const } : {}),
         },
         createdAt: now,
         updatedAt: now,
@@ -302,10 +350,10 @@ export class SubagentService {
         child,
       ];
     });
+    if (collect) this.#queue.set(taskId, { child: child!, root, runTimeoutSeconds });
     this.#replaceCache(records);
-    // A fresh UUID has no old tombstone to clear. Preserve any concurrent
-    // ancestor deletion that committed after registration and before launch.
-    this.sessions.ensure(child!);
+    if (collect) this.#pump();
+    else this.#launch(child!, runTimeoutSeconds);
     recordDiagnosticEvent({
       area: "session",
       level: "info",
@@ -313,21 +361,41 @@ export class SubagentService {
       summary: `Spawned subagent: ${child!.title}`,
       sessionId: callerId,
     });
-    void this.#run(child!, runTimeoutSeconds).catch((error: unknown) => {
-      recordDiagnosticEvent({
-        area: "session",
-        level: "error",
-        action: "subagent_run_failed",
-        summary: error instanceof Error ? error.message : "Could not finish subagent bookkeeping.",
-        sessionId: callerId,
-      });
-    });
     return {
       status: "accepted",
       taskId,
       childSessionKey: sessionId,
       label: child!.title,
+      ...(this.#queue.has(taskId) ? { queued: true } : {}),
     };
+  }
+
+  #launch(child: SessionRecord, runTimeoutSeconds: number): void {
+    // A fresh UUID has no old tombstone to clear. Preserve any concurrent
+    // ancestor deletion that committed after registration and before launch.
+    this.sessions.ensure(child);
+    void this.#run(child, runTimeoutSeconds).catch((error: unknown) => {
+      recordDiagnosticEvent({
+        area: "session",
+        level: "error",
+        action: "subagent_run_failed",
+        summary: error instanceof Error ? error.message : "Could not finish subagent bookkeeping.",
+        sessionId: child.parentId,
+      });
+    });
+  }
+
+  /** Start queued collected children, in spawn order, while their tree has a free slot. */
+  #pump(): void {
+    if (this.#disposed) return;
+    for (const [taskId, queued] of this.#queue) {
+      const running = [...this.#running.values()].filter((root) => root === queued.root).length;
+      if (running >= MAX_RUNNING_COLLECTED) continue;
+      this.#queue.delete(taskId);
+      this.#running.set(taskId, queued.root);
+      this.#launch(queued.child, queued.runTimeoutSeconds);
+      this.sessions.notifySnapshot(queued.child.parentId!);
+    }
   }
 
   /** Reject an unknown model before a child exists, so the caller can retry in
@@ -347,21 +415,23 @@ export class SubagentService {
     const taskId = child.subagent!.taskId;
     try {
       await this.#waitUntilReady(child.id);
-      const current = (await this.registryReader()).find((record) => record.id === child.id);
-      if (!current?.subagent || !ACTIVE_STATUSES.has(current.subagent.status)) return;
-      await this.#patchTask(child.id, (record, now) => ({
-        ...record,
-        status: "running",
-        updatedAt: now,
-      }));
       const completion = this.#waitForCompletion(child, runTimeoutSeconds);
-      try {
-        await this.sessions.prompt(child.id, `[Subagent Task]\n${child.subagent!.task}`);
-      } catch (error) {
+      // Only from `starting`: a task cancelled meanwhile stays cancelled.
+      if (!(await this.#markRunning(child.id))) {
         completion.cancel();
-        throw error;
+        return;
+      }
+      // Settled during that save (cancelled, or its runtime failed; its control is gone): record that, unprompted.
+      if (this.#controls.has(taskId)) {
+        try {
+          await this.sessions.prompt(child.id, `[Subagent Task]\n${child.subagent!.task}`);
+        } catch (error) {
+          completion.cancel();
+          throw error;
+        }
       }
       const outcome = await completion.promise;
+      if (outcome.status === "cancelled") return; // #cancel records it
       const summary = outcome.status === "completed"
         ? truncate(lastAssistant(this.sessions.transcript(child.id)), 20_000)
         : "";
@@ -375,6 +445,7 @@ export class SubagentService {
       );
     } finally {
       this.#controls.delete(taskId);
+      if (this.#running.delete(taskId)) this.#pump();
     }
   }
 
@@ -425,11 +496,13 @@ export class SubagentService {
     return { promise, cancel: () => settle("failed", "The subagent prompt was rejected.") };
   }
 
+  /** `deliver: false` when nothing should reach the parent, such as children its Stop cancelled. */
   async #finishTask(
     sessionId: string,
     status: SubagentStatus,
     summary = "",
     error = "",
+    deliver = true,
   ): Promise<void> {
     let finished = false;
     const now = this.now().toISOString();
@@ -446,7 +519,7 @@ export class SubagentService {
           status,
           updatedAt: now,
           endedAt: now,
-          completionDelivery: "pending",
+          completionDelivery: deliver ? "pending" : "delivered",
           ...(summary ? { summary } : {}),
           ...(error ? { error } : {}),
         },
@@ -458,11 +531,13 @@ export class SubagentService {
     // publishing first would let this cleanup race with the new runtime.
     this.sessions.release(sessionId);
     this.#replaceCache(records);
+    const child = records.find((record) => record.id === sessionId);
+    // Its slot frees now, not after the delivery below.
+    if (child?.subagent && this.#running.delete(child.subagent.taskId)) this.#pump();
     // Shutdown deliberately settles in-memory controls. The next gateway marks
     // unfinished records interrupted; do not wake a parent while this one is
     // tearing its runtimes down.
     if (this.#disposed) return;
-    const child = records.find((record) => record.id === sessionId);
     if (!child?.parentId) return;
     recordDiagnosticEvent({
       area: "session",
@@ -544,12 +619,17 @@ export class SubagentService {
       for (const id of ids) this.#admitted.delete(id);
       this.#replaceCache(updated);
     }
-    if (records.some((record) => record.parentId === parentId && record.subagent && ACTIVE_STATUSES.has(record.subagent.status))) return;
+    // Completions are batched until the parent's ordinary children have all finished; a Swarm does not hold them.
+    if (records.some((record) => record.parentId === parentId && record.subagent && !record.subagent.collect &&
+      ACTIVE_STATUSES.has(record.subagent.status))) return;
     const queue = this.sessions.snapshot(parentId).queue;
     const busy = ["running", "waiting"].includes(this.sessions.status(parentId));
     const remaining = candidates.filter((record) => {
       const id = record.subagent!.taskId;
       if (observed.has(id)) return false;
+      // A busy parent may still collect it with `agents_wait`; once idle, an uncollected result is delivered. Until
+      // then the retry timer polls every five seconds, as for any pending delivery.
+      if (record.subagent!.collect && busy) return false;
       const admitted = this.#admitted.get(id);
       // A busy turn may already have consumed steering while the transcript
       // projection is waiting for settlement. Never inject it twice mid-turn.
@@ -593,7 +673,7 @@ export class SubagentService {
         title: record.title,
         parentSessionKey: record.parentId ?? null,
         runtimeStatus: this.sessions.status(record.id),
-        subagentStatus: record.subagent?.status ?? null,
+        subagentStatus: this.#status(record),
         updatedAt: record.updatedAt,
       })),
     };
@@ -730,7 +810,7 @@ export class SubagentService {
           parentSessionKey: record.parentId,
           label: record.title,
           task: record.subagent!.task,
-          status: record.subagent!.status,
+          status: this.#status(record),
           updatedAt: record.subagent!.updatedAt,
         })),
       };
@@ -754,12 +834,109 @@ export class SubagentService {
       await this.sessions.steer(target.id, `[Parent steering]\n${message}`);
       return { status: "steered", sessionKey: target.id, taskId: target.subagent.taskId };
     }
-    this.#controls.get(target.subagent.taskId)?.settle("cancelled");
+    await this.#cancel(target, "Cancelled by another agent.");
+    return { status: "cancelled", sessionKey: target.id, taskId: target.subagent.taskId };
+  }
+
+  /** The run, settled as cancelled, leaves recording the outcome to this. */
+  async #cancel(target: SessionRecord, error: string, deliver = true): Promise<void> {
+    const taskId = target.subagent!.taskId;
+    this.#queue.delete(taskId);
+    this.#controls.get(taskId)?.settle("cancelled");
     if (this.sessions.status(target.id) === "running" || this.sessions.status(target.id) === "waiting") {
       await this.sessions.abort(target.id).catch(() => undefined);
     }
-    await this.#finishTask(target.id, "cancelled", "", "Cancelled by another agent.");
-    return { status: "cancelled", sessionKey: target.id, taskId: target.subagent.taskId };
+    await this.#finishTask(target.id, "cancelled", "", error, deliver);
+  }
+
+  /** The operator stopped the parent: its queued and running collected children stop with it. Nothing of theirs is
+   * delivered back, finished results its wait had not returned included, which would start another turn. */
+  async cancelCollected(parentId: string): Promise<void> {
+    const collected = (record: SessionRecord) => record.parentId === parentId && record.subagent?.collect === true;
+    // Before the cancels, whose own delivery pass would otherwise hand a stopped parent these results, and after, for
+    // children that finished meanwhile.
+    const settle = async () => this.#replaceCache(await this.registryUpdater((current) => current.map((record) =>
+      collected(record) && record.subagent!.completionDelivery === "pending"
+        ? { ...record, subagent: { ...record.subagent!, completionDelivery: "delivered" as const } } : record)));
+    // A delivery already under way read its results before this; let it finish while the parent is still busy.
+    await this.#deliveryFlights.get(parentId);
+    await settle();
+    const active = (await this.registryReader()).filter((record) => collected(record) && ACTIVE_STATUSES.has(record.subagent!.status));
+    await Promise.all(active.map((child) => this.#cancel(child, "Stopped with its parent.", false)));
+    await settle();
+  }
+
+  /** Wait until every listed child of the caller has finished, or the timeout passes. What it returns counts as
+   * delivered, so the parent is not told again. */
+  async #wait(callerId: string, params: Record<string, unknown>, signal?: AbortSignal) {
+    const ids = params["ids"];
+    if (!Array.isArray(ids) || !ids.length || ids.length > MAX_WAIT_IDS || !ids.every((id) => typeof id === "string" && id.trim())) {
+      throw new AgentToolInputError(`ids must list 1-${MAX_WAIT_IDS} task ids.`);
+    }
+    const wanted = (ids as string[]).map((id) => id.trim());
+    const timeoutSeconds = integer(params, "timeoutSeconds", 600, 1, 3_600);
+    const pick = (records: readonly SessionRecord[]) => wanted.map((id) => records.find((record) =>
+      record.parentId === callerId && record.subagent && (record.subagent.taskId === id || record.id === id)));
+    // A deleted child ends the wait too; the call then fails, naming it.
+    const finished = (records: readonly SessionRecord[]) => {
+      const picked = pick(records);
+      return picked.some((record) => !record) || picked.every((record) => !ACTIVE_STATUSES.has(record!.subagent!.status));
+    };
+    // Listen before the first read, so a child finishing in between still wakes the wait.
+    let wake!: () => void;
+    const woken = new Promise<void>((resolve) => { wake = resolve; });
+    const listener = (records?: readonly SessionRecord[]) => { if (!records || finished(records)) wake(); };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort = () => {};
+    this.#waiters.add(listener);
+    try {
+      const initial = await this.registryReader();
+      const unknown = wanted.filter((_, index) => !pick(initial)[index]);
+      if (unknown.length) throw new AgentToolInputError(`Not a subagent of this session: ${unknown.join(", ")}`);
+      if (!finished(initial)) {
+        await Promise.race([
+          woken,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, timeoutSeconds * 1_000);
+            this.#timers.add(timer);
+          }),
+          new Promise<never>((_, reject) => {
+            onAbort = () => reject(new Error("The wait was cancelled."));
+            if (signal?.aborted) onAbort();
+            else signal?.addEventListener("abort", onAbort, { once: true });
+          }),
+        ]);
+      }
+    } finally {
+      this.#waiters.delete(listener);
+      signal?.removeEventListener("abort", onAbort);
+      if (timer) {
+        clearTimeout(timer);
+        this.#timers.delete(timer);
+      }
+    }
+    const records = pick(await this.registryReader());
+    const deleted = wanted.filter((_, index) => !records[index]);
+    if (deleted.length) throw new AgentToolInputError(`Subagent deleted while waiting: ${deleted.join(", ")}`);
+    const done = records.filter((record) => record && !ACTIVE_STATUSES.has(record.subagent!.status)) as SessionRecord[];
+    const returned = new Set(done.map((record) => record.subagent!.taskId));
+    if (returned.size) {
+      this.#replaceCache(await this.registryUpdater((current) => current.map((record) =>
+        record.subagent?.completionDelivery === "pending" && returned.has(record.subagent.taskId)
+          ? { ...record, subagent: { ...record.subagent, completionDelivery: "delivered" as const } } : record)));
+      for (const id of returned) this.#admitted.delete(id);
+    }
+    return {
+      completed: done.map((record) => ({
+        taskId: record.subagent!.taskId,
+        sessionKey: record.id,
+        label: record.title,
+        status: record.subagent!.status,
+        ...(record.subagent!.summary ? { result: record.subagent!.summary } : {}),
+        ...(record.subagent!.error ? { error: record.subagent!.error } : {}),
+      })),
+      pending: records.filter((record) => record && ACTIVE_STATUSES.has(record.subagent!.status)).map((record) => record!.subagent!.taskId),
+    };
   }
 
   async #authorizedTarget(callerId: string, targetId: string): Promise<SessionRecord> {
@@ -800,21 +977,16 @@ export class SubagentService {
     });
   }
 
-  async #patchTask(
-    sessionId: string,
-    mutate: (
-      task: NonNullable<SessionRecord["subagent"]>,
-      now: string,
-    ) => NonNullable<SessionRecord["subagent"]>,
-  ): Promise<SessionRecord[]> {
+  async #markRunning(sessionId: string): Promise<boolean> {
+    let started = false;
     const now = this.now().toISOString();
-    const records = await this.registryUpdater((current) => current.map((record) =>
-      record.id === sessionId && record.subagent
-        ? { ...record, subagent: mutate(record.subagent, now), updatedAt: now }
-        : record,
-    ));
+    const records = await this.registryUpdater((current) => current.map((record) => {
+      if (record.id !== sessionId || record.subagent?.status !== "starting") return record;
+      started = true;
+      return { ...record, subagent: { ...record.subagent, status: "running" as const, updatedAt: now }, updatedAt: now };
+    }));
     this.#replaceCache(records);
-    return records;
+    return started;
   }
 
   #replaceCache(records: readonly SessionRecord[]): void {
@@ -831,6 +1003,7 @@ export class SubagentService {
       children.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     }
     this.#tasks = next;
+    for (const waiter of this.#waiters) waiter(records);
     for (const parentId of new Set([...previousParents, ...next.keys()])) {
       this.sessions.notifySnapshot(parentId);
     }

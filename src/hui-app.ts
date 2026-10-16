@@ -8,6 +8,7 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
+import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "./lib/subagent-activity.ts";
 import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
@@ -2486,15 +2487,15 @@ export class HuiApp extends HuiElement {
     this.setStatus(snapshot.status);
   }
 
-  /** OpenClaw keeps finished background tasks visible briefly. Schedule the
-   * render that removes the final recent row even if the session stays idle. */
+  /** OpenClaw keeps a finished batch of subagents visible for a while. Schedule
+   * the render that removes it even if the session stays idle. */
   private scheduleSubagentExpiry(): void {
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     const now = Date.now();
     const nextExpiry = this.subagents
-      .filter((task) => task.status !== "starting" && task.status !== "running")
-      .map((task) => Date.parse(task.endedAt ?? task.updatedAt) + 60_000)
+      .filter((task) => !isSubagentActive(task.status))
+      .map((task) => Date.parse(task.endedAt ?? task.updatedAt) + FINISHED_BATCH_VISIBLE_MS)
       .filter((expiry) => Number.isFinite(expiry) && expiry > now)
       .sort((a, b) => a - b)[0];
     if (nextExpiry === undefined) return;
