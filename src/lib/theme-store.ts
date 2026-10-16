@@ -1,12 +1,14 @@
 /**
  * Themes come from the config backend, which merges the repo's built-ins with
  * any theme files in `~/.config/hui/themes/`. A theme is one file carrying both
- * modes, so there is nothing to pair here.
+ * modes, so there is nothing to pair here. A user accent is applied over the
+ * active theme, its lightness solved per mode so it reads on that theme's page.
  */
 import { currentSettings, fetchJson } from "./settings-store.ts";
 import { applyThemeMode, type ThemeMode, type ThemeVariant } from "./theme.ts";
-import { mapTheme, swatchesFor, type ShadcnTheme, type ThemeSwatches } from "./shadcn-theme.ts";
+import { mapTheme, swatchesFor, themeColor, type ShadcnTheme, type ThemeSwatches, type ThemeTokens } from "./shadcn-theme.ts";
 import { controlUiAccentInk } from "./accent-contrast.ts";
+import { parseColor, readableOn, toHex, TEXT_CONTRAST, type Rgb } from "./color-contrast.ts";
 
 const THEMES_URL = "/__hui/themes";
 const IMPORT_URL = "/__hui/themes/import";
@@ -24,6 +26,21 @@ let themes: ThemeRef[] = [];
 let selectedId = "";
 let selectedVariant: ThemeVariant = "both";
 let selectedTokens: Readonly<Record<string, string>> | undefined;
+let selectedSurfaces: AccentSurfaces = {};
+
+/** The page surfaces a user accent must read on, per mode the active theme carries. */
+export type AccentSurfaces = { light?: readonly Rgb[]; dark?: readonly Rgb[] };
+
+/** A mode's page and card colors, the surfaces accent text appears on. */
+export function accentSurfaces(modes: { light?: ThemeTokens; dark?: ThemeTokens }): AccentSurfaces {
+  const read = (tokens: ThemeTokens | undefined) => {
+    const surfaces = tokens ? [themeColor(tokens["--bg"]), themeColor(tokens["--card"])] : [];
+    return surfaces.every((surface): surface is Rgb => surface !== undefined) && surfaces.length ? surfaces : undefined;
+  };
+  const light = read(modes.light);
+  const dark = read(modes.dark);
+  return { ...(light ? { light } : {}), ...(dark ? { dark } : {}) };
+}
 
 const ACCENT_TOKENS = [
   "--ring", "--accent", "--accent-foreground", "--accent-hover",
@@ -66,17 +83,44 @@ function applyTokens(tokens: Readonly<Record<string, string>>): void {
   }
 }
 
-export function accentOverrideTokens(accent: string): Record<string, string> {
-  const ink = controlUiAccentInk(accent);
+/** The accent as chosen, or moved to the lightness that reads on these surfaces (hue kept). */
+function solvedAccent(accent: string, surfaces: readonly Rgb[] | undefined): string {
+  const source = parseColor(accent);
+  if (!source || !surfaces?.length) return accent;
+  const solved = readableOn(source, surfaces, TEXT_CONTRAST);
+  return solved === source ? accent : toHex(solved);
+}
+
+/**
+ * The accent roles for a user accent. Without surfaces the accent is used as
+ * chosen. With them, each mode the theme carries gets the accent at a lightness
+ * that reads on its page (a bright amber darkens on a light theme and stays as
+ * it is on a dark one), paired through `light-dark()` when the theme has both;
+ * hover then moves toward that mode's ink instead of always toward white.
+ */
+export function accentOverrideTokens(accent: string, surfaces: AccentSurfaces = {}): Record<string, string> {
+  const light = surfaces.light ? solvedAccent(accent, surfaces.light) : undefined;
+  const dark = surfaces.dark ? solvedAccent(accent, surfaces.dark) : undefined;
+  const pair = (forLight: string, forDark: string) => light !== undefined && dark !== undefined
+    ? (forLight === forDark ? forLight : `light-dark(${forLight}, ${forDark})`)
+    : light !== undefined ? forLight : forDark;
+  const color = light === undefined && dark === undefined ? accent : pair(light ?? accent, dark ?? accent);
+  const ink = light === undefined && dark === undefined
+    ? controlUiAccentInk(accent)
+    : pair(controlUiAccentInk(light ?? accent), controlUiAccentInk(dark ?? accent));
+  const hover = (token: string) => {
+    const toward = (target: string) => `color-mix(in srgb, var(${token}) 82%, ${target} 18%)`;
+    return light === undefined && dark === undefined ? toward("white") : pair(toward("black"), toward("white"));
+  };
   return {
-    "--ring": accent,
-    "--accent": accent,
-    "--accent-muted": accent,
-    "--primary": accent,
+    "--ring": color,
+    "--accent": color,
+    "--accent-muted": color,
+    "--primary": color,
     "--accent-foreground": ink,
     "--primary-foreground": ink,
-    "--accent-hover": "color-mix(in srgb, var(--accent) 82%, white 18%)",
-    "--primary-hover": "color-mix(in srgb, var(--primary) 82%, white 18%)",
+    "--accent-hover": hover("--accent"),
+    "--primary-hover": hover("--primary"),
     "--accent-subtle": "color-mix(in srgb, var(--accent) 16%, transparent)",
     "--accent-glow": "color-mix(in srgb, var(--accent) 30%, transparent)",
     "--focus": "color-mix(in srgb, var(--ring) 22%, transparent)",
@@ -96,7 +140,7 @@ export function applyAccent(accent: string): void {
     }
     return;
   }
-  for (const [token, value] of Object.entries(accentOverrideTokens(accent))) style.setProperty(token, value);
+  for (const [token, value] of Object.entries(accentOverrideTokens(accent, selectedSurfaces))) style.setProperty(token, value);
 }
 
 function acceptList(body: { themes?: ThemeRef[] }): readonly ThemeRef[] {
@@ -134,6 +178,7 @@ export async function applyTheme(id: string): Promise<ThemeVariant | undefined> 
   const tokens = palette ? {} : mapped.tokens;
   applyTokens(tokens);
   selectedTokens = tokens;
+  selectedSurfaces = accentSurfaces(mapped.modes);
   applyAccent(currentSettings().accent);
   document.documentElement.dataset["themeFamily"] = theme.id;
   document.documentElement.dataset["themePalette"] = palette ?? "custom";
