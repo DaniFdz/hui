@@ -1816,12 +1816,114 @@ everything the Bots tab can, through the same routes.
   no audio, only the call's card in the chat.
 - **Import and export**: + → **Import bot…** makes a bot from another platform's
   template (Grok Bot, OpenClaw, Claude Code, Letta, character cards, CrewAI) or a
-  HUI export, after a preview of everything it would get; a bot's ⋯ →
-  **Export…** saves it as a zip that import reads back (decision below).
+  HUI template, after a preview of everything it would get; a bot's ⋯ →
+  **Export…** makes it a template someone else can import: an automatic cleanup
+  and Settings' utility model review it for personal information, the operator
+  checks every change, and **Download** saves the zip (decisions below).
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Bot exports are templates, reviewed for personal information (2026-10-16)
+
+The owner wanted Export to make something another person can import: "I want a
+subagent to judge what should be removed, and what should be under the judge of
+the user importing the template. For example, if it contains the name of the
+user, it should always ask it anyways, if the template is for a pr autoapprover
+its okay to include the scripts etc, but maybe the rules of when and when not to
+approve should be disucussed with the user". Offered an exact backup beside a
+cleaned template, he chose only the template; Settings' utility model as the
+reviewer; the bot asking the new owner in its first chat; and triggers, the
+scripts beside a skill and a list of what the bot needs, all in the first
+version. This supersedes the export half of [Bots import other platforms'
+templates and export their
+own](#bots-import-other-platforms-templates-and-export-their-own-2026-10-07);
+its import half stands. The contract is
+[docs/api.md#importing-and-exporting-bots](docs/api.md#importing-and-exporting-bots).
+
+- **Every export is a template.** Nothing copies a bot exactly any more: what
+  leaves is cleaned and reviewed, and its memory never leaves (`?memory=1` and
+  `--memory` go). A bot still in its first conversation, without SOUL.md, can't
+  be exported yet. A version 1 export, memory included, still imports.
+- **Four groups.** Each passage is **kept** (it travels as it is: what the bot
+  does and how, its procedures and scripts), **removed** (it never leaves: facts
+  about the operator and the people around them, private links and
+  identifiers, secrets), **asked** (the answer is the operator's own: it becomes
+  an `[ask: …]` mark and the new owner gives theirs, as their name or the
+  repositories and channels to watch) or **confirmed** (it travels as a starting
+  point the bot agrees with the new owner before acting on it, as when to
+  approve a pull request and when never to). A removed or asked passage goes
+  wherever it appears in the bot; a kept or confirmed one only where it was
+  found.
+- **An automatic cleanup first.** Before a model reads anything, the operator's
+  profile name becomes `{{user}}`, and so does any word of it of three letters
+  or more written as in the profile, unless it is a common word (Will, Mark);
+  home folder paths become `~`; and e-mail addresses, the machine's user and
+  host names and worker names inside a path, address or link, `*.ts.net` names,
+  IP addresses other than loopback, Slack IDs and text shaped like a key or
+  token become `[removed]`. The cleanup is listed with the reviewer's changes but
+  can't be moved: the reviewer reads, and the export starts from, the cleaned
+  text. A replacement, question or need the reviewer writes is cleaned the same
+  way before it is shown.
+- **Then the utility model reviews it**, a part at a time (a long file in
+  chunks), as a plain model call with no tools. It quotes the exact passages it
+  would change, each with its group, its reason, a short replacement and, when
+  asked or confirmed, the question for the new owner, and lists what the bot
+  needs to work (a signed-in CLI, a listener for a trigger). HUI applies the
+  quotes itself, on the cleaned text, the longer one where two overlap among
+  the changes not kept, and drops quotes it can't find or shorter than four
+  characters and any replacement or question that repeats a removed or asked
+  passage: the reviewer never rewrites the bot, and text it reads can't make it
+  do more. Without a utility model, or for a part where it fails, only the
+  cleanup runs, and the review says which parts the model didn't read.
+- **Scripts are kept whole or left out.** Markdown (SOUL.md, a skill's Markdown
+  and text files, prompts) changes in place; a script or other file beside a
+  skill is never rewritten, and the reviewer reads a cleaned copy of it. A
+  removed passage or a cleanup hit in it makes the file stay behind; an asked or
+  confirmed one keeps it as it is, as a confirmed file whose question asks the
+  new owner to change it. The operator can move either way. Dotfiles and
+  dot-folders, `node_modules`, caches, logs, links, binaries and oversized files
+  always stay behind, and scripts arrive without permission to run (the bot runs
+  them through `bash` or `python`).
+- **The operator decides what leaves.** ⋯ → Export… shows every change by group
+  with its reason and a group picker, what the bot needs (each line kept or
+  removed the same way), what stays behind and why, and every file as it will
+  be saved, following the picks. The gateway keeps each bot's latest review
+  until it restarts: **Download** sends only the picks, and when anything the
+  export holds changed since, or the review is gone or replaced, it is refused
+  and the review runs again. What was removed stays in the dialog, never in the
+  file. `hui bot export` prints the same review with its id and asks before
+  saving; `--review <id> --set <change>=<group>` saves that review with other
+  picks, and `--yes` saves without asking.
+- **What travels.** Name, title, description and look; model and utility model
+  by bare id, thinking level and voice; SOUL.md; each of its own skills'
+  folders, as above; routines, their times read in the importer's time zone (a
+  routine that runs once stays behind); triggers (name, filter, prompt and
+  cooldown, never their link; a filter value the cleanup or the reviewer
+  touches is left out and becomes an open point); the built-in tools and its
+  own skills it has turned off; the open points; and what it needs. Nothing
+  else: no handle (an import makes one from the name), no path, no export date,
+  a fixed date inside the zip, and a file name made from the bot's name.
+- **The new owner agrees it in the bot's first chat.** The import preview lists
+  the open points and what the bot needs, and shows every trigger and skill file
+  in full: imported text is untrusted, as all of it. `{{user}}` becomes the
+  importer's profile name ("the operator" without one) in its name, title and
+  description, its Markdown and its prompts. The open points go into SOUL.md
+  under *Not agreed yet*, each saying where it is and who settles it (a trigger
+  only the operator can, in the Routines tab), with room kept for them before
+  the soul's 20,000 characters cut the persona.
+  The bot speaks first: a kickoff asks it to greet the operator and go through
+  them, a question or two at a time, then rewrite its soul without that section.
+  An imported bot's first turn, this one or a template's first message, is not
+  the operator's: its gated tools refuse, as in a routine's turn, so it can't
+  rewrite its soul or profile before the operator has said a word. That only
+  holds the first turn back; the preview, which shows everything, is what
+  protects the new owner. Routines and triggers start disabled, as every
+  import's; a trigger gets its link from **New URL**.
+- **Not yet.** Editing a passage or undoing the cleanup in the review (the zip's
+  files stay plain text), adding a change the reviewer missed (fix the bot and
+  export again), and the files beside other platforms' skills.
 
 ### Listeners are the only triggers (2026-10-09)
 
