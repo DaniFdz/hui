@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 
-import { BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, botTurnOrigin, mentionsBot, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
+import { agentReplyTo, BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, botTurnOrigin, mentionsBot, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
@@ -1317,6 +1317,7 @@ test("mentions are whole handles, not addresses, longer handles or paths", () =>
 test("hop markers are read only at the start of a run's input", () => {
   assert.equal(hopOf("[from @ada] hi"), 1);
   assert.equal(hopOf("[from agent: Fix the login bug] hi"), 1, "a session's tag starts a chain");
+  assert.equal(agentReplyTo("[from agent: Fix the login bug] hi"), undefined, "a tag from before return addresses grants no route");
   assert.equal(hopOf("[from @ada-2 · hop 3] hi"), 3);
   assert.equal(hopOf("hello [from @ada] hi"), undefined);
   assert.equal(hopOf("[routine: x] [from @ada] hi"), undefined);

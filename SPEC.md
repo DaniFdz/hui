@@ -1895,8 +1895,13 @@ session tags below without opening general cross-session messaging.
   or a subagent that already finished, fails visibly rather than redirecting
   the notification elsewhere.
 - Existing bot tagging policies, disabled-bots checks and hourly budgets stay
-  in force. The three-hop bound follows agent replies and subsequent tags too;
-  receiving a bot's reply cannot reset a session's next tag to hop 1.
+  in force. The three-hop bound follows the turn a reply starts: a tag the
+  session sends from that turn is the next hop. A later turn (the operator's,
+  a subagent's report, a routine or a trigger) starts a new chain, with the
+  hourly budgets as the backstop.
+- Any turn of the bot may reply, a trigger's too: a reviewer's comment that
+  wakes the bot can reach the session that handed it the PR. The session reads
+  the reply as the bot's words, never as the operator's instructions.
 - Return addresses live in the existing transcript, so later watcher turns
   can use them without a new routing store or a registry migration. Old tags
   without an address remain readable; their replies stay in the bot's chat.

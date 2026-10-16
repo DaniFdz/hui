@@ -2134,8 +2134,11 @@ Beyond hop 3 the tool refuses. From a session it is
 `[from agent: <title> · reply-to agent:<session id>] <message>`
 (`agentTagPrefix`: the session's title on one line, at most 80 characters,
 without `[`, `]` or `·`); when the session is answering a bot message, the
-header also carries ` · hop N+1` before `]`. `hopOf` preserves the bound across
-both kinds of sender, including a session that receives a bot's reply. For the
+header also carries ` · hop N+1` before `]`. `hopOf` reads the hop from the
+message that started the caller's current run, from a bot or a session alike, so
+a session's tag from the turn a bot's reply started is the next hop; any later
+run (the operator's, a subagent's report, a routine, a trigger) starts at hop 1,
+with the hourly limit as the backstop. For the
 bot it reaches, a session's tag is not the operator (`BotTurnOrigin` `{ kind: "agent", title }`): `write_soul`,
 `set_profile` and the `routines` tool's add and update refuse in its turn, as for
 another bot's. The run's originating input is the session's recovery journal
