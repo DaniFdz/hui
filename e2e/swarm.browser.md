@@ -36,6 +36,7 @@ call("E2E_SWARM_OK", three("E2E_SUBAGENT_CHILD"));
    32 blue dots, one hollow and one red, and "32 running · 1 queued · 1 failed or
    stopped". **Child details** lists **Flaky check** ("The subagent exceeded 1
    seconds."), the running checks and the queued one ("Waiting for a free slot…").
+   The sidebar shows the parent alone, with no row for any helper.
 2. Release the replay once: 32 checks complete and the queued **Check 33** starts.
    Release again: the parent's reply is `Collected 34 results: {"timed_out":1,"completed":33}`
    and the card reads "33 completed · 1 failed or stopped" with "Child runs

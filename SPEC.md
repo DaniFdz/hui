@@ -1251,7 +1251,9 @@ final response is in the conversation. **Child details** lists each child with i
 status, latest summary or error and run time; activating one opens the real child
 transcript. A batch that all succeeded folds into a single "N completed" row. The
 card stays for an hour after the batch finished (OpenClaw's retention). Child
-sessions nest below their parent in the sidebar. Each parent with visible children has a separate keyboard-accessible
+sessions nest below their parent in the sidebar, except collected children, which
+have no sidebar row (as in OpenClaw): the card lists and opens them, and the parent
+row still shows their work as background activity. Each parent with visible children has a separate keyboard-accessible
 disclosure button that folds its entire subtree without changing the open session.
 Folding is kept in memory for the current page; search and status filters reveal
 matches without clearing the fold choices. PI remains the sole transcript writer. HUI persists only lineage,

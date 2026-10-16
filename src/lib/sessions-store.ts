@@ -111,6 +111,8 @@ export type SessionView = {
     endedAt?: string;
     summary?: string;
     error?: string;
+    /** A Swarm helper: its result goes back to the parent's script, and it has no sidebar row. */
+    collect?: true;
   };
   /** Kanban development stage; absent (or `backlog` from older gateways)
    * means Investigation. */
