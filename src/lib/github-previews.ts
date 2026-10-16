@@ -12,6 +12,12 @@ const SUCCESS_TTL_MS = 60_000;
 
 type Entry = { at: number; result: Promise<GitHubPreviewResult> };
 const cache = new Map<string, Entry>();
+/** The latest answer per URL, kept past its TTL: a card shown again draws at once and refreshes in place. */
+const settled = new Map<string, GitHubPreviewResult>();
+
+export function settledGitHubPreview(ref: GitHubRef): GitHubPreviewResult | undefined {
+  return settled.get(ref.url.toLowerCase());
+}
 
 function fresh(entry: Entry | undefined, now: number): entry is Entry {
   return Boolean(entry) && now - entry!.at < SUCCESS_TTL_MS;
@@ -33,6 +39,7 @@ export function loadGitHubPreviews(refs: readonly GitHubRef[], now = Date.now(),
         result: batch.then((results) => results[index] ?? { url: ref.url, error: "unavailable" }),
       };
       cache.set(key, entry);
+      void entry.result.then((result) => { if (cache.get(key) === entry) settled.set(key, result); });
       // Failures age out sooner so a later render retries once the cause is fixed.
       void entry.result.then((result) => { if (result.error && cache.get(key) === entry) entry.at = now - SUCCESS_TTL_MS + FAILURE_RETRY_MS; });
     });
@@ -43,6 +50,7 @@ export function loadGitHubPreviews(refs: readonly GitHubRef[], now = Date.now(),
 /** Test helper. */
 export function clearGitHubPreviewCache(): void {
   cache.clear();
+  settled.clear();
 }
 
 export function compactCount(value: number): string {

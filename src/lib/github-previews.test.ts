@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import { parseGitHubUrl, type GitHubPreviewResult } from "../../shared/github-links.ts";
-import { clearGitHubPreviewCache, compactCount, loadGitHubPreviews, previewErrorLabel } from "./github-previews.ts";
+import { clearGitHubPreviewCache, compactCount, loadGitHubPreviews, previewErrorLabel, settledGitHubPreview } from "./github-previews.ts";
 
 const ref = (url: string) => parseGitHubUrl(url)!;
 
@@ -23,6 +23,18 @@ test("batches one request per message and reuses results across renders", async 
   assert.equal(requests.length, 1, "fresh results are not refetched");
   await loadGitHubPreviews(refs, 31_000, fetcher);
   assert.equal(requests.length, 2, "failures retry after 30 seconds");
+});
+
+test("an answer stays readable at once while a stale one is fetched again", async () => {
+  clearGitHubPreviewCache();
+  const pull = ref("https://github.com/a/b/pull/2");
+  assert.equal(settledGitHubPreview(pull), undefined, "nothing before the first answer");
+  const fetcher = async <T>(): Promise<T> => ({ previews: [{ url: pull.url, error: "not_found" }] }) as T;
+  await loadGitHubPreviews([pull], 0, fetcher);
+  assert.deepEqual(settledGitHubPreview(pull), { url: pull.url, error: "not_found" });
+  const refetch = loadGitHubPreviews([pull], 120_000, fetcher);
+  assert.deepEqual(settledGitHubPreview(pull), { url: pull.url, error: "not_found" }, "kept while the refetch runs");
+  await refetch;
 });
 
 test("a failed request becomes unavailable instead of rejecting", async () => {

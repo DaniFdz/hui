@@ -131,6 +131,9 @@
    the entire conversation. Only the position rail queried it; its controller
    measures the thread instead (position-rail.ts). */
 .chat-thread { container-type: normal; }
+/* The pinned reference turns scroll anchoring off; HUI keeps no anchoring of its own, so content
+   that grows above the reader (a GitHub preview, an image, a diagram) would push the view down. */
+.chat-thread { overflow-anchor: auto; }
 .chat-position-rail__marks {
   --chat-position-marks-height: min(
     var(--chat-position-rail-height),
