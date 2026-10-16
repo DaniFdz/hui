@@ -473,6 +473,8 @@ function markup(value: unknown): string {
     const template = value as { strings: readonly string[]; values: unknown[] };
     return template.strings.map((part, i) => part + markup(template.values[i])).join("");
   }
+  // A directive's arguments, such as the HTML `unsafeHTML` renders.
+  if (value && typeof value === "object" && "_$litDirective$" in value && "values" in value) return markup((value as { values: unknown[] }).values);
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
@@ -588,4 +590,62 @@ test("the Parallel tasks card counts the latest batch of subagents and folds a b
   assert.match(succeeded, /<span class="chat-swarm__counts">2 completed<\/span>/u);
   assert.doesNotMatch(succeeded, /chat-swarm__marker /u);
   assert.match(succeeded, /Child runs finished\. Check the conversation for the final response\./u);
+});
+
+test("messages HUI delivered from bots, sessions and routines show their sender on the left, never as yours", async () => {
+  const grace = { id: "b-grace", handle: "grace", name: "Grace", avatar: { color: "#2fc49a" } };
+  const groups = [{ name: "", sessions: [{ id: "s-fix", title: "Implement retry fix", group: "", cwd: "/repo", tool: "durable", status: "idle" }] }];
+  const html = await renderWorkerSession("idle", { bots: [grace], groups, transcript: [
+    { kind: "message", id: "u", role: "user", text: "@grace babysit PR #7" },
+    { kind: "tool", id: "m", name: "message_bot", status: "succeeded", args: { to: "@grace", message: "Babysit PR #7. Keep 3 retries." }, output: "Queued for @grace." },
+    { kind: "message", id: "a", role: "assistant", text: "Handed to Grace." },
+    { kind: "message", id: "g", role: "user", text: "[from @grace · hop 2] PR #7 review needs your decision." },
+    { kind: "message", id: "x", role: "user", text: "[from @ghost] Still here." },
+    { kind: "message", id: "s", role: "user", text: "[from agent: Implement retry fix · reply-to agent:s-fix] Please babysit PR #7." },
+    { kind: "message", id: "r", role: "user", text: "[routine: Daily standup] Summarize yesterday." },
+  ] });
+  const row = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`), html.indexOf("data-chat-row-key=", html.indexOf(`data-chat-row-key=${id}`) + 1));
+
+  const bot = row("g");
+  assert.match(html, /class="chat-group user [^"]*chat-group--peer[^"]*" data-chat-row-key=g style=--chat-sender-color: #2fc49a>/u);
+  assert.match(bot, /<span class="chat-sender-avatar" aria-hidden="true"><span class="bot-avatar bot-avatar--sm bot-avatar--face"/u);
+  assert.match(bot, /<div class="chat-text">.*PR #7 review needs your decision\./u);
+  assert.match(bot, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u);
+  assert.match(bot, /aria-label=Copy message/u);
+  assert.doesNotMatch(bot, /\[from @grace|>You<|chat-group-rewind/u);
+
+  assert.match(row("x"), /<span class="chat-sender-icon">G<\/span>.*<span class="chat-sender-name">@ghost<\/span>/u, "a bot HUI doesn't know: its handle, no guessed face");
+  assert.match(row("s"), /<span class="chat-sender-icon"><svg.*<a class="chat-sender-name chat-sender-link" href=\/sessions\/s-fix @click=>Implement retry fix<\/a>/u);
+  assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
+  assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
+
+  const handoff = row("m");
+  assert.match(handoff, /<details class="chat-tool-msg-collapse chat-handoff" data-status=succeeded style=--chat-sender-color: #2fc49a/u);
+  assert.match(handoff, /<span class="chat-tool-msg-summary__label">Sent to <strong>Grace<\/strong><\/span> <span class="chat-tool-msg-summary__preview">Babysit PR #7\. Keep 3 retries\.<\/span>/u);
+  assert.doesNotMatch(handoff, /Ran 1 command/u);
+});
+
+test("what an agent sends shows its target: a bot by handle or name, the calling agent's session, or why it wasn't sent", async () => {
+  const grace = { id: "b-grace", handle: "grace", name: "Grace", avatar: { color: "#2fc49a" } };
+  const groups = [{ name: "", sessions: [{ id: "s-fix", title: "Implement retry fix", group: "", cwd: "/repo", tool: "durable", status: "idle" }] }];
+  const call = (id: string, to: string | undefined, status: string, output?: string) =>
+    ({ kind: "tool", id, name: "message_bot", status, args: to === undefined ? {} : { to, message: "Keep the limit?" }, ...(output ? { output } : {}) });
+  const html = await renderWorkerSession("idle", { bots: [grace], groups, transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    call("by-name", "Grace", "succeeded"),
+    call("agent", "agent:s-fix", "succeeded"),
+    call("gone", "agent:s-gone", "succeeded"),
+    call("refused", "@ghost", "failed", "No bot is called \"@ghost\"."),
+    call("pending", undefined, "running"),
+  ] });
+  const label = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`)).match(/<span class="chat-tool-msg-summary__label">(.*?)<\/span>/u)?.[1];
+  assert.equal(label("by-name"), "Sent to <strong>Grace</strong>");
+  assert.equal(label("agent"), "Sent to <strong>Implement retry fix</strong>");
+  assert.equal(label("gone"), "Sent to <strong>the calling agent</strong>");
+  assert.equal(label("refused"), "Not sent to <strong>@ghost</strong>");
+  assert.match(html, /data-status=failed[^]*<p class="chat-run-error" role="alert">No bot is called "@ghost"\.<\/p>/u);
+  // No target yet (its arguments still on their way): an ordinary tool row, never "Sending to @".
+  const pending = html.slice(html.indexOf("data-chat-row-key=pending"));
+  assert.doesNotMatch(pending, /chat-handoff/u);
+  assert.match(pending, /chat-activity-group/u);
 });

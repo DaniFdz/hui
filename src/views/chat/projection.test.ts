@@ -1,6 +1,44 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { activityLabel, browserPreviewRow, projectChatTranscript, workingLabel } from "./projection.ts";
+import { agentTagPrefix } from "../../../shared/bots.ts";
+import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel } from "./projection.ts";
+
+test("a message HUI delivered names its sender and keeps only what they wrote", () => {
+  assert.deepEqual(attributedMessage("[from @grace · hop 2] PR #7 needs **your** decision."), { sender: { kind: "bot", handle: "grace" }, body: "PR #7 needs **your** decision." });
+  assert.deepEqual(attributedMessage("[from @ada] hi"), { sender: { kind: "bot", handle: "ada" }, body: "hi" });
+  // The gateway's own header for a session's tag, return address and hop included.
+  assert.deepEqual(attributedMessage(`${agentTagPrefix("Fix [retry] · now", "9b2e-41", 2)}Please babysit PR #7.`),
+    { sender: { kind: "session", title: "Fix retry now", id: "9b2e-41" }, body: "Please babysit PR #7." });
+  assert.deepEqual(attributedMessage("[from agent: Release prep] older tag"), { sender: { kind: "session", title: "Release prep" }, body: "older tag" });
+  assert.deepEqual(attributedMessage("[Inter-session message from Build (2) (s-1)]\nDone, see the log."),
+    { sender: { kind: "session", title: "Build (2)", id: "s-1" }, body: "Done, see the log." });
+  assert.deepEqual(attributedMessage("[Subagent Task]\nCheck the tests."), { sender: { kind: "parent" }, body: "Check the tests." });
+  assert.deepEqual(attributedMessage("[routine: a]b] Summarize my inbox."), { sender: { kind: "routine", name: "a]b" }, body: "Summarize my inbox." });
+  assert.deepEqual(attributedMessage("[trigger: PR merged · PR #7 merged · by dani] Write the notes.\n\nDetails"),
+    { sender: { kind: "trigger", name: "PR merged", summary: "PR #7 merged · by dani" }, body: "Write the notes.\n\nDetails" });
+  assert.deepEqual(attributedMessage("[trigger: Alerts · 3 events within 5 min]\n\nWhat a listener reported"),
+    { sender: { kind: "trigger", name: "Alerts", summary: "3 events within 5 min" }, body: "What a listener reported" });
+  for (const own of ["hello", "[from @grace]no space", "see [from @grace] hi", "[HUI bot created]\nname: Scout", "[Subagent Task] same line", "[routine: x", "[trigger: x · y"]) {
+    assert.equal(attributedMessage(own), undefined, own);
+  }
+});
+
+test("user rows group by sender, and what the agent sends a bot stays in sight", () => {
+  const rows = projectChatTranscript([
+    { kind: "message", id: "u1", role: "user", text: "@grace babysit PR #7" },
+    { kind: "tool", id: "r", name: "read", status: "succeeded" },
+    { kind: "tool", id: "m", name: "message_bot", status: "succeeded", args: { to: "@grace", message: "Babysit PR #7." } },
+    { kind: "message", id: "a1", role: "assistant", text: "Handed to Grace." },
+    { kind: "message", id: "g1", role: "user", text: "[from @grace · hop 2] Keep the retry limit?" },
+    { kind: "message", id: "g2", role: "user", text: "[from @grace · hop 2] CI is green." },
+    { kind: "message", id: "d1", role: "user", text: "[from @dee] Numbers attached." },
+    { kind: "message", id: "u2", role: "user", text: "Keep it." },
+  ]);
+  assert.deepEqual(rows.map((row) => row.kind === "messages" ? `${row.role}:${row.messages.map((item) => item.id).join(",")}:${row.sender?.kind === "bot" ? row.sender.handle : "-"}`
+    : row.kind === "activity" ? `activity:${row.items.map((item) => item.id).join(",")}` : row.kind), [
+    "user:u1:-", "activity:r", "activity:m", "assistant:a1:-", "user:g1,g2:grace", "user:d1:dee", "user:u2:-",
+  ]);
+});
 
 test("a widget call keeps a row of its own once its turn settles", () => {
   const items = [

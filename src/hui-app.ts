@@ -307,6 +307,11 @@ function withoutSetting<Value>(record: Partial<Record<BotSettingKey, Value>>, ke
 type PaneBot = Omit<HomeBot, "onTogglePanel" | "onAction">;
 const paneBotProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
 
+/** The shell's bots in a pane: Lit stores each new list, but only a change of what its chat shows of them (name, face)
+ * renders it again, not a bot's status or latest message. */
+const botFaces = (bots: unknown) => JSON.stringify((bots as readonly BotView[] | undefined)?.map(({ id, handle, name, avatar }) => [id, handle, name, avatar]));
+const paneBotsProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => botFaces(value) !== botFaces(old) };
+
 /** Defined by `defineHuiApp`, not on import: main.ts loads this module while the
  * saved appearance is still being read, and the app must not paint before it. */
 export class HuiApp extends HuiElement {
@@ -662,8 +667,10 @@ export class HuiApp extends HuiElement {
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
   @property(paneCallback) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
-  /** The shell's bots, which an `@` in this pane's composer suggests. */
-  @property(paneCallback) paneMentionable: (() => readonly BotView[]) | undefined;
+  /** The shell's bots while bots are on: an `@` in this pane's composer suggests them, and its chat shows their faces. */
+  @property(paneBotsProperty) paneBots: readonly BotView[] | undefined;
+  /** Opens a bot's chat in the shell, from its name on a message. */
+  @property(paneCallback) onPaneOpenBot: ((botId: string) => void) | undefined;
   /** Set on the bot route's pane while the bot can be called. */
   @property(paneCallProperty) paneCall: PaneCall | undefined;
   @property(paneCallback) onPaneCall: (() => void) | undefined;
@@ -2985,8 +2992,8 @@ export class HuiApp extends HuiElement {
     });
   };
 
-  /** The bots an `@` in this composer may suggest: the shell's roster while bots are on (Labs → Bots). */
-  private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneMentionable?.() ?? [] : botsEnabled(this.settings) ? this.bots : [];
+  /** The shell's roster while bots are on (Labs → Bots): what an `@` in this composer suggests and whose faces its chat shows. */
+  private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneBots ?? [] : botsEnabled(this.settings) ? this.bots : [];
 
   private retryLocalPaths = () => {
     const query = this.localPathQuery;
@@ -4184,6 +4191,8 @@ export class HuiApp extends HuiElement {
     this.navigate({ kind: "bot", id: bot.id });
   };
 
+  private openBot = (botId: string) => this.navigate({ kind: "bot", id: botId });
+
   /**
    * Bots were turned on or off (Settings → Labs → Bots): the bot stream follows, and with bots off a bot's page goes
    * home and a call hangs up. Nothing is forgotten here: the roster, the remembered Agents | Bots choice and the panel
@@ -4725,7 +4734,8 @@ export class HuiApp extends HuiElement {
           .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
           .paneCall=${paneCall}
           .onPaneCall=${paneCall ? this.paneCallAction(bot) : undefined}
-          .paneMentionable=${this.mentionable}
+          .paneBots=${this.mentionable()}
+          .onPaneOpenBot=${this.openBot}
         ></hui-app>`)}
         ${call && !call.minimized ? renderCallView(this.callViewProps(bot, call)) : nothing}
       </div>
@@ -5643,6 +5653,8 @@ export class HuiApp extends HuiElement {
         ...(this.onPaneBotAction ? { onAction: (action: BotHeaderAction) => this.onPaneBotAction?.(action) } : {}),
       } } : {}),
       transcript: this.transcript,
+      bots: this.mentionable(),
+      onOpenBot: this.embeddedPane ? this.onPaneOpenBot : this.openBot,
       subagents: this.subagents,
       opening: this.opening,
       openError: this.openError,
@@ -5944,7 +5956,8 @@ export class HuiApp extends HuiElement {
       .paneGroups=${this.sessionListRevision ? this.groups : undefined}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
-      .paneMentionable=${this.mentionable}
+      .paneBots=${this.mentionable()}
+      .onPaneOpenBot=${this.openBot}
     ></hui-app>`;
 
   private paneLabel = (pane: SessionPane) => this.listedSession(pane.sessionId)?.title ?? "Session";
