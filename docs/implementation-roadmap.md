@@ -1054,6 +1054,26 @@ requests:
    isolated gateway driven in a browser
    ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
    the pull request).
+14. **Tagging bots by @handle** (implemented 2026-10-16; the owner's request,
+   SPEC.md, "Agents and bots tag bots by @handle"): each bot reads like a skill,
+   its description saying when to tag it and `tagging` who may (anyone, only
+   when the operator's message names it, nobody), both in a Tagging section of
+   its Settings tab and `hui bot add|edit --description --tagging`, carried by
+   export and import. While bots are on every Durable session lists the bots it
+   may tag in its `bots` section and has `message_bot` (`hui-bot-tag`), a
+   session on a worker asking the gateway for the list; a session's tag arrives
+   as `[from agent: <title>]`, which no gated tool takes for the operator, and
+   nothing comes back. The composer's `@` suggests bots before files. A bot's
+   subagents don't tag and a session shares its hourly budget with its
+   subagents. Proof: `server/bot-service.test.ts` (sessions' tags, the mention
+   rule and HUI's own messages, budgets, rosters), `server/bots.test.ts`,
+   `server/runtimes/durable-bots.test.ts` (the tool and section in a session,
+   on and off), `server/bot-workers.test.ts` (a session on a worker),
+   `server/bot-routines.test.ts`, the template tests, `cli/main.test.ts`,
+   `cli/bots.test.ts`, `src/lib/bots.test.ts`, `src/lib/local-paths.test.ts`,
+   `src/views/bots.test.ts` and an isolated gateway driven in a browser
+   ([`e2e/bot-tagging.browser.md`](../e2e/bot-tagging.browser.md), screens in
+   the pull request).
 
 ### HUI-19 — Agent widgets
 
