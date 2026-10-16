@@ -16,8 +16,8 @@ export type ReviewedPart = { label: string; script: boolean; fields: readonly { 
 export type ReviewedChange = { quote: string; group: Exclude<BotExportGroup, "keep">; reason: string; replacement: string; label: string; question: string };
 export type ReviewAnswer = { changes: ReviewedChange[]; needs: string[] };
 
-/** A part's text is sent in pieces of at most this many characters. */
-/** A piece of a part per request: a utility model misses less in a section than in a whole long soul. */
+/** A part's text goes in pieces of at most this many characters, one request each: a utility model misses less in a
+ * section than in a whole long soul. A passage across two pieces can't be quoted; cuts fall between sections first. */
 const REVIEW_CHUNK = 3_000;
 /** Shorter quotes would change too much wherever they appear. */
 const MIN_QUOTE = 4;
@@ -59,10 +59,15 @@ export function reviewPrompt(part: ReviewedPart): string {
   ].join("\n");
 }
 
-/** Host names in a text, in a link or with three labels or more (`us1.example.io`), for the reviewer to judge one by one:
- * reading a long procedure, a model passes over them. */
+/** Top-level domains a host outside a link must end in to count: `vite.config.ts` and `process.env.home` are no hosts. */
+const TOP_LEVEL = new Set(["com", "net", "org", "io", "dev", "ai", "co", "app", "cloud", "internal", "local", "lan", "corp", "info", "biz", "gov", "edu", "us", "eu", "uk", "de", "fr", "es", "it", "nl", "ch", "se", "jp", "ca", "au", "in", "br"]);
+
+/** Host names in a text, in a link or with three labels or more under a common top-level domain (`us1.example.io`), for
+ * the reviewer to judge one by one: reading a long procedure, a model passes over them. A call (`os.path.join(`) isn't one. */
 export function hostsIn(text: string): string[] {
-  return [...new Set([...text.matchAll(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})|\b((?:[a-z0-9-]+\.){2,}[a-z]{2,})\b/giu)].map((match) => (match[1] ?? match[2]!).toLowerCase()))];
+  const hosts = [...text.matchAll(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})|\b((?:[a-z0-9-]+\.){2,}([a-z]{2,}))\b(?!\()/giu)]
+    .flatMap((match) => match[1] ? [match[1]] : TOP_LEVEL.has(match[3]!.toLowerCase()) ? [match[2]!] : []);
+  return [...new Set(hosts.map((host) => host.toLowerCase()))];
 }
 
 /** A part's fields in requests of at most `size` characters: a long field cut before a heading, else at a blank line,

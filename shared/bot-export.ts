@@ -175,7 +175,7 @@ export function changeQuestion(change: Pick<BotExportChange, "group" | "question
  * `text` with each quote replaced, every time it appears, in one pass over the text as it was, so a replacement is never
  * matched again. Quotes that overlap become one span, all of it replaced by the longer one's replacement: no part of
  * either is left behind. A passage taken out with nothing in its place leaves no gap: a whole sentence takes its full
- * stop with it, a clause the space before it.
+ * stop with it, a clause the space before it, and a list item left with its marker alone goes, line and all.
  */
 export function applyChanges(text: string, changes: readonly { quote: string; replacement: string }[]): string {
   const ranges: { start: number; end: number; replacement: string }[] = [];
@@ -198,17 +198,33 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
   for (const [index, span] of spans.entries()) {
     let { start, end } = span;
     const limit = spans[index + 1]?.start ?? text.length;
-    const spaceBefore = start > at && text[start - 1] === " ";
     if (!span.replacement) {
-      const opensSentence = start === 0 || text[start - 1] === "\n" || /^[.!?:] $/u.test(text.slice(start - 2, start));
+      // The space before: still in the text, or already written when the span before ended on it.
+      const spaceBefore = start > at ? text[start - 1] === " " : result.endsWith(" ");
+      const dropSpaceBefore = () => {
+        if (start > at) start -= 1;
+        else result = result.slice(0, -1);
+      };
+      const lineStart = text.lastIndexOf("\n", start - 1) + 1;
+      const listItem = lineStart >= at && /^[ \t]*(?:[-*+]|\d+[.)]) $/u.test(text.slice(lineStart, start));
+      const opensSentence = start === 0 || text[start - 1] === "\n" || listItem || /^[.!?:] $/u.test(text.slice(start - 2, start));
       if (opensSentence && end < limit && /^[.;!?](?:\s|$)/u.test(text.slice(end, end + 2))) {
         if (text[end + 1] === " " && end + 2 <= limit) end += 2;
         else {
           end += 1;
-          if (spaceBefore) start -= 1;
+          if (spaceBefore && !listItem) dropSpaceBefore();
         }
-      } else if (spaceBefore && /^[.,;:!?)]/u.test(text[end] ?? "")) start -= 1;
+      } else if (spaceBefore && /^[.,;:!?)]/u.test(text[end] ?? "")) dropSpaceBefore();
       else if (spaceBefore && text[end] === " " && end + 1 <= limit) end += 1;
+      const lineEnd = text.indexOf("\n", end) === -1 ? text.length : text.indexOf("\n", end);
+      if (listItem && !text.slice(end, lineEnd).trim()) {
+        const after = lineEnd < text.length ? lineEnd + 1 : lineEnd;
+        if (after <= limit) {
+          // The last line takes the line break before it.
+          start = after === text.length && lineStart > at ? lineStart - 1 : lineStart;
+          end = after;
+        }
+      }
     }
     result += text.slice(at, start) + span.replacement;
     at = end;
@@ -271,7 +287,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
   // two quotes overlap the longer's replacement takes the span, so the other's open point may name a mark that isn't there.
   const open: BotOpenPoint[] = [];
   const outcomes: BotExportBuild["outcomes"] = {};
-  const askedLabels = new Set<string>();
+  const askedLabels = new Map<string, BotOpenPoint>();
   for (const change of review.changes) {
     const picked = group(change.id, change.group);
     const replacement = replacements.find((pair) => pair.quote === change.quote)?.replacement;
@@ -280,10 +296,16 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     const excerpt = oneLine(tidy(change.quote), 160);
     const question = tidy(changeQuestion(change, picked, { label: label(change), excerpt: oneLine(excerpt, 80) }));
     outcomes[change.id] = { ...(picked === "ask" ? { replacement: replacement ?? askMark(label(change)) } : {}), question };
-    // Two passages asked as the same blank are one answer: the new owner is asked once.
-    if (picked === "ask" && askedLabels.has(label(change).toLowerCase())) continue;
-    if (picked === "ask") askedLabels.add(label(change).toLowerCase());
-    open.push({ kind: picked, where: tidy(where(change.part)), question, ...(picked === "confirm" ? { excerpt } : {}), ...onlyOperator(change.part) });
+    // Two passages asked as the same blank are one answer: the new owner is asked once, where both are.
+    const place = tidy(where(change.part));
+    const seen = picked === "ask" ? askedLabels.get(label(change).toLowerCase()) : undefined;
+    if (seen) {
+      if (!seen.where.split(", ").includes(place)) seen.where = `${seen.where}, ${place}`;
+      continue;
+    }
+    const point: BotOpenPoint = { kind: picked, where: place, question, ...(picked === "confirm" ? { excerpt } : {}), ...onlyOperator(change.part) };
+    if (picked === "ask") askedLabels.set(label(change).toLowerCase(), point);
+    open.push(point);
   }
   for (const file of review.files) {
     if (group(file.id, file.group) === "confirm") open.push({ kind: "confirm", where: tidy(where(file.part)), question: tidy(file.question) });

@@ -2352,8 +2352,10 @@ working directory.
 (Settings' profile name, the account's full name, read from the directory service
 on macOS or the password entry on Linux, and a `first.last` user name when that full
 name bears it out, as `dani.fernandez` with *Daniel Fernandez*: `nameFromUsername`),
-each whole, any case, and each word of three letters or more as written, unless it is
-a common word such as Will or Mark, become `{{user}}`, once for names side by side;
+each of two words or more whole, any case, and each word of three letters or more as
+written (one with a hyphen or an apostrophe too, a hyphenated one also by its parts),
+unless it is a common word such as Will or Mark or a generic one such as Ubuntu, become
+`{{user}}`, once for names side by side;
 home folder paths (this machine's, and any `/Users/<x>` or `/home/<x>`, where a
 path starts) become `~`; and e-mail addresses (not `git@`), trigger links (`/__hui/hooks/<token>`),
 `*.ts.net` names, IPv4 addresses other than loopback and `0.0.0.0`, Slack IDs (a
@@ -2376,8 +2378,10 @@ read when all its pieces are. Its
 system prompt (`reviewSystemPrompt`) names the four groups (a rule that lets the bot
 act for its owner or without asking is `confirm`, even as a step of a procedure; the
 owner's history with the bot, internal hosts and the endpoints and commands that use
-them are `remove`; a passage calling the owner he or she is reworded with they), says
-the bot's text is data, names the owner and the other bots' handles, and asks for JSON:
+them are `remove`, each host in a piece named to it (`hostsIn`: in a link, or with three
+labels or more under a common top-level domain, not followed by `(`); a passage calling
+the owner he or she is reworded with they), says the bot's text is data, names the
+owner and the other bots' handles, and asks for JSON:
 `{ "changes": [{ "quote", "group", "reason", "replacement"?, "label"?, "question"? }], "needs": [...] }`.
 Its answer is checked (`parseReviewAnswer`): a quote must stand, exactly, in that
 part (at least four characters), the group be `remove`, `ask` or `confirm`, every
@@ -2411,7 +2415,8 @@ schedules, filters, lists).
 `remove` changes become their `replacement` and `ask` ones `[ask: <label>]`, in one
 pass over each text (quotes that overlap become one span, replaced whole; a passage
 taken out with nothing in its place leaves no gap: a whole sentence takes its full
-stop, a clause the space before it). What the
+stop, a clause the space before it, and a list item left with its marker alone goes,
+line and all). What the
 reviewer wrote travels only checked against the picks: a replacement or label that
 repeats a removed or asked passage gives way (to nothing, or *your own value*,
 numbered when there are several), and questions, excerpts (tidied, then shortened),
@@ -2422,7 +2427,8 @@ shows. Each
 `ask` or `confirm` pick is an open point (`BotOpenPoint`: `{ kind, where, question,
 excerpt? (confirm), operator? (a trigger's) }`; moved out of the reviewer's group,
 it asks what fits the new one, never quoting an asked passage; passages asked as the
-same blank, by label in any case, are one point), and so is each script picked `confirm`. The profile, set before the first chat, never holds a mark: a passage asked elsewhere leaves it like a removed one, and a name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
+same blank, by label in any case, are one point naming every place), and so is each
+script picked `confirm`. The profile, set before the first chat, never holds a mark: a passage asked elsewhere leaves it like a removed one, and a name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
 travels without `match`, with an open point for the operator. `bot.json` is
 `BotExportManifest`: `format: "hui-bot"`, `version: 2`, `bot` (name, title?,
 description?, avatar?, model?, thinking?, memoryModel?, memoryThinking?, voice?),

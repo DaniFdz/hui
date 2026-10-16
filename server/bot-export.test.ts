@@ -146,6 +146,19 @@ test("a long part is read in pieces cut before a heading, else at a blank line, 
   assert.equal(pieces.join(""), text);
 });
 
+test("a part read in pieces is unread when one piece fails, and keeps what the others found", async () => {
+  const long = ["# One", "I review pull requests with Pat Doe.", "x".repeat(2_000), "", "# Two", "y".repeat(2_000), "Approve only when CI is green."].join("\n");
+  const service = new BotExportService({ ...harnessDeps({ soul: long, prompts: [] }), completion: async (_model, request) => {
+    if (request.prompt.includes("# Two")) throw new Error("down");
+    return JSON.stringify({ changes: PASSAGES.filter((change) => request.prompt.includes(change.quote)) });
+  } });
+  const review = await service.review("ada");
+  const soul = review.parts.find((part) => part.id === "SOUL.md")!;
+  assert.equal(soul.read, false);
+  assert.equal(soul.unread, "The utility model failed: down.");
+  assert.deepEqual(review.changes.filter((change) => change.part === "SOUL.md").map((change) => change.quote), ["Pat Doe"], "the first piece's change stays; the second piece's is lost");
+});
+
 test("a long list of what the bot needs is merged by one quick request, and kept as it was when that request fails", async () => {
   const needs = ["GitHub CLI signed in", "A GitHub account", "Slack access", "Slack MCP", "A listener", "A trigger", "Network access"];
   for (const fails of [false, true]) {
@@ -165,6 +178,7 @@ test("a long list of what the bot needs is merged by one quick request, and kept
 test("host names in a link or with three labels are put to the reviewer one by one; file names and versions aren't", () => {
   assert.deepEqual(hostsIn("GET `https://risk-gateway.us1.corp.io/internal/v1` with `tool token --datacenter us1.corp.io`; see https://github.com/x, SKILL.md, draft.mjs, v1.2.3 and e.g. this."),
     ["risk-gateway.us1.corp.io", "us1.corp.io", "github.com"]);
+  assert.deepEqual(hostsIn("os.path.join(a), process.env.home, vite.config.ts and bot-export.test.ts"), [], "code and file names");
 });
 
 test("two passages asked as the same blank are asked once", async () => {
@@ -175,6 +189,9 @@ test("two passages asked as the same blank are asked once", async () => {
   ] };
   const build = buildExport(same, {});
   assert.deepEqual(build.open.filter((point) => point.kind === "ask" && point.where === "SOUL.md").map((point) => point.question), ["Which repositories?"]);
+  const notes = review.parts.find((part) => part.id === "skills/review/notes.md")!;
+  const apart = buildExport({ ...same, changes: [same.changes[0]!, { ...same.changes[1]!, part: notes.id }] }, {});
+  assert.deepEqual(apart.open.filter((point) => point.kind === "ask" && point.where.startsWith("SOUL.md")).map((point) => point.where), [`SOUL.md, ${notes.label}`], "asked once, where both are");
   assert.match(build.files.find((file) => file.path === "SOUL.md")!.text, /\[ask: the repositories to watch\].*\[ask: The repositories to watch\]/su, "both blanks stay");
 });
 
@@ -297,6 +314,9 @@ test("applyChanges replaces every occurrence in one pass, the longer where two o
   assert.equal(out("obtain tokens with `cmd`. Keep it", "with `cmd`"), "obtain tokens. Keep it", "a clause takes the space before it");
   assert.equal(out("a b c", "b"), "a c");
   assert.equal(applyChanges("a b c", [{ quote: "b", replacement: "B" }]), "a B c", "a replacement changes nothing around it");
+  assert.equal(applyChanges("a b c d", [{ quote: "b", replacement: "" }, { quote: "c", replacement: "" }]), "a d", "two side by side leave one space");
+  assert.equal(out("Rules:\n- Do X.\n- Do Y.\n", "Do X"), "Rules:\n- Do Y.\n", "a list item left with its marker alone goes");
+  assert.equal(out("Rules:\n1. Do X.\n2. Do Y.", "Do Y."), "Rules:\n1. Do X.", "the last line takes the line break before it");
 });
 
 test("a passage the reviewer flags in a script changes the text where it also stands, and wording that repeats a removed one never travels", async () => {

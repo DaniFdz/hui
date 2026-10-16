@@ -114,17 +114,18 @@ export class BotExportService {
     const kept = [...byQuote.values()];
     const text = parts.filter((part) => part.kind === "text");
     const holds = (part: BotExportPart, quote: string) => part.fields.some((field) => field.text.includes(quote));
+    // The bot's whole name is the template's: a change to it starts kept, for the operator to see and decide.
+    const name = text.find((part) => part.id === "profile")?.fields.find((field) => field.key === "name")?.text.trim();
+    const isName = (change: ReviewedChange) => Boolean(name) && change.quote.trim() === name;
     const changes: BotExportChange[] = kept.flatMap((change): Omit<BotExportChange, "id">[] => {
-      // The bot's whole name is the template's: a change to it starts kept, for the operator to see and decide.
-      const name = text.find((part) => part.id === "profile")?.fields.find((field) => field.key === "name")?.text.trim();
-      if (name && change.quote.trim() === name) return [{ ...change, part: "profile", group: "keep" as const }];
+      if (isName(change)) return [{ ...change, part: "profile", group: "keep" as const }];
       const fits = (part: BotExportPart) => changeGroups(part.id).includes(change.group);
       const home = text.find((part) => part.id === change.part && fits(part)) ?? text.find((part) => fits(part) && holds(part, change.quote));
       if (home) return [{ ...change, part: home.id }];
       const profile = text.find((part) => part.id === "profile" && holds(part, change.quote));
       return profile && change.group === "ask" ? [{ ...change, part: profile.id, group: "remove" as const, replacement: "" }] : [];
     }).map((change, index) => ({ id: `c${index + 1}`, ...change }));
-    const files = this.#scripts(parts, cleanup, copies, kept);
+    const files = this.#scripts(parts, cleanup, copies, kept.filter((change) => !isName(change)));
     const review: BotExportReview = {
       id: randomUUID(), botId: bot.id, name: bot.name,
       ...(model ? { model } : {}), ...(warning ? { warning } : {}),

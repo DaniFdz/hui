@@ -88,13 +88,15 @@ function rules(identity: CleanupIdentity): Rule[] {
       replace: (match, at) => inPath(at.input, at.offset, at.offset + match.length) ? REMOVED : match, sample: () => name,
     });
   }
-  // Every name whole first, the longest first, then their words.
+  // Every name of two words or more whole first, in any case, the longest first; then each word as written, a
+  // hyphenated one also by its parts. A one-word name is only a word, so a common one (Will) or a generic one (Ubuntu)
+  // stays.
   const own = ownNames(identity).sort((a, b) => b.length - a.length);
-  for (const name of own) {
+  for (const name of own.filter((each) => each.includes(" "))) {
     list.push({ kind: "your name", pattern: new RegExp(`(?<![\\p{L}\\p{N}])${name.split(" ").map(escape).join("\\s+")}(?![\\p{L}\\p{N}])`, "giu"), replace: () => USER_PLACEHOLDER });
   }
-  for (const word of new Set(own.flatMap((name) => name.split(" ")))) {
-    if (word.length < 3 || COMMON_WORDS.has(word.toLowerCase()) || GENERIC_NAMES.has(word.toLowerCase()) || !/^\p{L}+$/u.test(word)) continue;
+  for (const word of new Set(own.flatMap((name) => name.split(" ")).flatMap((word) => [word, ...word.includes("-") ? word.split("-") : []]))) {
+    if (word.length < 3 || COMMON_WORDS.has(word.toLowerCase()) || GENERIC_NAMES.has(word.toLowerCase()) || !/^[\p{L}'’-]+$/u.test(word)) continue;
     list.push({ kind: "your name", pattern: new RegExp(`(?<![\\p{L}\\p{N}])${escape(word)}(?![\\p{L}\\p{N}])`, "gu"), replace: () => USER_PLACEHOLDER });
   }
   return list;
@@ -136,7 +138,7 @@ export function personalIn(identifier: string, identity: CleanupIdentity): strin
   const hit = cleanText(identifier, identity).hits[0];
   if (hit) return hit.kind;
   const words = new Set(identifier.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
-  const own = ownNames(identity).join(" ").toLowerCase().split(" ").filter((word) => word.length >= 3 && !COMMON_WORDS.has(word));
+  const own = ownNames(identity).join(" ").toLowerCase().split(/[\s-]+/u).filter((word) => word.length >= 3 && !COMMON_WORDS.has(word));
   if (own.some((word) => words.has(word))) return "your name";
   return machineNames(identity).find(([, name]) => new RegExp(`(?<![A-Za-z0-9])${escape(name)}(?![A-Za-z0-9])`, "iu").test(identifier))?.[0];
 }
