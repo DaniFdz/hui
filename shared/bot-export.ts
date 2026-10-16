@@ -288,7 +288,8 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
       } else if (spaceBefore && !listItem && /^[.,;:!?)]/u.test(text[end] ?? "")) {
         // A clause ending its sentence takes the "and" or "or" that joined it: "A and B." without B is "A.". Looked for in
         // what is written, where a removal just before may have taken a space.
-        const joined = /(?:,\s*|\s)(?:and|or) $/u.exec((result + text.slice(at, start)).slice(-8));
+        // ponytail: one joining word; "X and Y and Z." without Y and Z keeps the first "and".
+        const joined = /(?:,[ \t]*|[ \t])(?:and|or) $/u.exec((result + text.slice(at, start)).slice(-8));
         if (joined) {
           const cut = joined[0].length;
           if (cut <= start - at) start -= cut;

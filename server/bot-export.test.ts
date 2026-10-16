@@ -390,6 +390,7 @@ test("applyChanges replaces every occurrence in one pass, the longer where two o
   assert.equal(out("I read and write.", "read"), "I and write.", "an \"and\" stays when the clause doesn't end the sentence");
   assert.equal(applyChanges("Tell X and Y.", [{ quote: "X", replacement: "" }, { quote: "Y", replacement: "" }]), "Tell.", "seen past a removal just before");
   assert.equal(applyChanges("A and B C.", [{ quote: "B", replacement: "" }, { quote: "C", replacement: "" }]), "A.");
+  assert.equal(out("Foo\nor Pat Doe.", "Pat Doe"), "Foo\nor.", "an \"or\" opening a line keeps its line");
 });
 
 test("a passage the reviewer flags in a script changes the text where it also stands, and wording that repeats a removed one never travels", async () => {

@@ -2391,8 +2391,7 @@ part (at least four characters), the group be `remove`, `ask` or `confirm`, ever
 text bounded and cleaned like the bot's; anything else is dropped, and a part
 whose answer can't be read twice is listed as not read. One change is kept per
 passage (the strictest group wins), and a narrower confirm gives way to a wider
-change in the same part that holds it (a removed or asked passage always stays: it
-changes wherever it appears, in other parts and scripts too); a removed or asked passage changes wherever it
+change in the same part that holds it (a removed or asked passage always stays); a removed or asked passage changes wherever it
 appears, a confirmed one only where it was found. More than six needs, as the pieces
 listed them, are merged by one more request with the least reasoning
 (`NEEDS_MERGE_PROMPT`, at most ten lines), kept as they were if it fails. A change is shown at the part it
