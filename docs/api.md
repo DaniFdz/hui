@@ -2351,10 +2351,10 @@ working directory.
 **The cleanup** (`cleanText`) runs first, on every part: Settings' profile name
 (whole, any case, and each word of three letters or more as written in the
 profile, unless it is a common word such as Will or Mark) becomes `{{user}}`;
-home folder paths (this machine's, and any `/Users/<x>` or `/home/<x>`) become
-`~`; and e-mail addresses (not `git@`), trigger links (`/__hui/hooks/<token>`),
-`*.ts.net` names, IPv4 addresses other than loopback and `0.0.0.0`, Slack IDs (two
-digits at least), private keys and text shaped like a key or token (`ghp_`,
+home folder paths (this machine's, and any `/Users/<x>` or `/home/<x>`, where a
+path starts) become `~`; and e-mail addresses (not `git@`), trigger links (`/__hui/hooks/<token>`),
+`*.ts.net` names, IPv4 addresses other than loopback and `0.0.0.0`, Slack IDs (a
+letter, then a digit: `C0123ABCD`), private keys and text shaped like a key or token (`ghp_`,
 `github_pat_`, `xox?-`, `sk-`, `AKIA`, JWTs, a value with a digit after `token:`,
 `password=` or `Bearer`, never code that reads one such as `process.env.TOKEN`)
 become `[removed]`, as do this machine's user and host names and its workers' names
@@ -2394,9 +2394,12 @@ schedules, filters, lists).
 `remove` changes become their `replacement` and `ask` ones `[ask: <label>]`, in one
 pass over each text (quotes that overlap become one span, replaced whole). What the
 reviewer wrote travels only checked against the picks: a replacement or label that
-repeats a removed or asked passage gives way (to nothing, or *your own value*), and
-questions, excerpts, where and needs get the picks' replacements (a passage taken
-out shows as `[removed]`), then `[removed]` for the passage in any other case. Each
+repeats a removed or asked passage gives way (to nothing, or *your own value*,
+numbered when there are several), and questions, excerpts (tidied, then shortened),
+where and needs get the picks' replacements (a passage taken out shows as
+`[removed]`), then `[removed]` for the passage in any other case or spacing. The
+build also says what each picked change comes to (`outcomes`), which the dialog
+shows. Each
 `ask` or `confirm` pick is an open point (`BotOpenPoint`: `{ kind, where, question,
 excerpt? (confirm), operator? (a trigger's) }`; moved out of the reviewer's group,
 it asks what fits the new one, never quoting an asked passage), and so is each

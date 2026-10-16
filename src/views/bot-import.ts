@@ -7,7 +7,7 @@
  * Download saves them (`buildExport`, the gateway's own).
  */
 import { html, nothing, type TemplateResult } from "lit";
-import { askMark, buildExport, changeQuestion, type BotExportGroup, type BotExportReview } from "../../shared/bot-export.ts";
+import { buildExport, type BotExportBuild, type BotExportGroup, type BotExportReview } from "../../shared/bot-export.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview } from "../../shared/bot-templates.ts";
 import { botTriggerFilterSummary, cooldownLabel } from "../../shared/bot-triggers.ts";
 import type { BotView } from "../lib/bots.ts";
@@ -238,12 +238,11 @@ function picker(label: string, groups: readonly [BotExportGroup, string][], valu
     </select></label>`;
 }
 
-/** What a passage becomes in its group. */
-function outcome(change: BotExportReview["changes"][number], group: BotExportGroup) {
-  if (group === "remove") return change.replacement ? html`Becomes <q>${change.replacement}</q>` : "Taken out";
-  const words = { label: change.label, excerpt: change.quote.replace(/\s+/gu, " ").trim().slice(0, 80) };
-  if (group === "ask") return html`Becomes <code>${askMark(change.label)}</code> · asks: ${changeQuestion(change, "ask", words)}`;
-  if (group === "confirm") return html`Asks: ${changeQuestion(change, "confirm", words)}`;
+/** What a passage comes to in its group, exactly as the zip says it (`buildExport`'s outcomes). */
+function outcome(result: BotExportBuild["outcomes"][string] | undefined, group: BotExportGroup) {
+  if (group === "remove") return result?.replacement ? html`Becomes <q>${result.replacement}</q>` : "Taken out";
+  if (group === "ask") return html`Becomes <code>${result?.replacement ?? ""}</code> · asks: ${result?.question ?? ""}`;
+  if (group === "confirm") return html`Asks: ${result?.question ?? ""}`;
   return "Travels as written";
 }
 
@@ -276,7 +275,7 @@ function renderReview(props: BotExportDialogProps, review: BotExportReview) {
       return changes.length ? section(title, String(changes.length), html`<p class="bot-import__hint">${about}</p><ul class="bot-import__list">${changes.map((change) => html`<li class="bot-export__change" data-change=${change.id}>
           <div class="bot-export__row"><span class="bot-import__muted">${label(change.part)}</span>${picker(`What happens to “${change.quote.slice(0, 60)}”`, CHANGE_GROUPS, group, props, change.id)}</div>
           ${textBlock(change.quote)}
-          <div class="bot-export__outcome">${outcome(change, group)}</div>
+          <div class="bot-export__outcome">${outcome(build.outcomes[change.id], group)}</div>
           <div class="bot-import__hint">${change.reason}</div>
         </li>`)}</ul>`, { name: `export-${group}`, open: group !== "keep" }) : nothing;
     })}

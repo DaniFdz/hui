@@ -268,3 +268,25 @@ test("a skill or file whose name gives the operator away stays behind", async ()
   assert.ok(review.leftOut.includes("Skill plain: notes-for-dani.md, whose path holds your name; rename it to share it."));
   assert.deepEqual(review.meta.skills, ["review", "plain"]);
 });
+
+test("an excerpt is tidied before it is shortened, labels that give way stay apart, and the dialog's outcomes are the zip's", async () => {
+  const answer = (prompt: string) => !prompt.startsWith("Part: SOUL.md") ? JSON.stringify({ changes: [] }) : JSON.stringify({
+    changes: [
+      { quote: "Pat\nDoe", group: "remove", reason: "A name.", replacement: "a teammate" },
+      { quote: "Approve only when CI is green, as Pat\nDoe asked.", group: "confirm", reason: "A rule.", question: "Approve only on green CI, as Pat Doe asked?" },
+      { quote: "acme/widgets", group: "ask", reason: "Repo.", label: "acme/widgets or yours", question: "Which repositories?" },
+      { quote: "review assistant", group: "ask", reason: "Role.", label: "like Pat Doe's", question: "What should I be?" },
+    ],
+  });
+  const { service, state } = harness({ answer });
+  state.soul = SOUL.replace("with Pat Doe.", "with Pat\nDoe.").replace("Approve only when CI is green.", "Approve only when CI is green, as Pat\nDoe asked.");
+  const review = await service.review("ada");
+  const build = buildExport(review, {});
+  const manifest = JSON.parse(build.files[0]!.text) as BotExportManifest;
+  assert.equal(JSON.stringify(manifest).includes("Pat"), false, JSON.stringify(manifest.open));
+  const soul = build.files.find((file) => file.path === "SOUL.md")!.text;
+  assert.ok(soul.includes("[ask: your own value]") && soul.includes("[ask: your own value 2]"), soul);
+  const confirm = review.changes.find((change) => change.group === "confirm")!;
+  assert.equal(build.outcomes[confirm.id]!.question, "Approve only on green CI, as [removed] asked?", "what the reviewer wrote, scrubbed whatever its spacing");
+  assert.equal(manifest.open.find((point) => point.kind === "confirm")?.excerpt, "Approve only when CI is green, as a teammate asked.", "the excerpt as the text now reads, though the passage wrapped a line");
+});

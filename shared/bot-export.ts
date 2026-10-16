@@ -148,8 +148,15 @@ export type BotExportReview = {
 /** `POST /__hui/bots/:id/export`: the review, and the group of each change, script or need the operator moved. */
 export type BotExportRequest = { review: string; picks: Record<string, BotExportGroup> };
 
-/** What `buildExport` makes: the bot's final name, the zip's file name, its files in order and its open points. */
-export type BotExportBuild = { name: string; fileName: string; files: { path: string; text: string }[]; open: BotOpenPoint[] };
+/** What `buildExport` makes: the bot's final name, the zip's file name, its files in order, its open points, and what each
+ * change picked comes to in them (what a passage becomes, what it asks), for the dialog to say. */
+export type BotExportBuild = {
+  name: string;
+  fileName: string;
+  files: { path: string; text: string }[];
+  open: BotOpenPoint[];
+  outcomes: Record<string, { replacement?: string; question?: string }>;
+};
 
 /** The mark an asked passage becomes. */
 export const askMark = (label: string): string => `[ask: ${label}]`;
@@ -209,10 +216,14 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
   // What the reviewer wrote travels too (replacements, labels, questions, needs): none of it may repeat a passage the
   // picks remove or ask, in any case. A label or replacement that would gives way to a plain one; other text is scrubbed.
   const hidden = review.changes.filter((change) => ["remove", "ask"].includes(group(change.id, change.group))).map((change) => change.quote);
-  const hiddenPattern = hidden.length ? new RegExp([...hidden].sort((a, b) => b.length - a.length).map(escape).join("|"), "giu") : undefined;
+  // Any case and any spacing: a reviewer writes "Pat Doe" for a passage that wraps a line.
+  const hiddenPattern = hidden.length ? new RegExp([...hidden].sort((a, b) => b.length - a.length).map((quote) => escape(quote.trim()).replace(/\s+/gu, "\\s+")).join("|"), "giu") : undefined;
   const leaks = (text: string) => hiddenPattern !== undefined && text.search(hiddenPattern) !== -1;
   const scrub = (text: string) => hiddenPattern ? text.replace(hiddenPattern, "[removed]") : text;
-  const label = (change: BotExportChange) => leaks(change.label) ? "your own value" : change.label;
+  // A label that would repeat a passage gives way to a numbered plain one, so the new owner can tell them apart.
+  let plain = 0;
+  const labels = new Map(review.changes.map((change) => [change.id, leaks(change.label) ? `your own value${(plain += 1) > 1 ? ` ${plain}` : ""}` : change.label]));
+  const label = (change: BotExportChange) => labels.get(change.id) ?? change.label;
   const replacements = review.changes.flatMap((change) => {
     const picked = group(change.id, change.group);
     return picked === "remove" ? [{ quote: change.quote, replacement: leaks(change.replacement) ? "" : change.replacement }]
@@ -232,12 +243,18 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
   const where = (id: string) => id.startsWith("routines/") ? `Routine “${fields(id)["name"] ?? ""}”` : id.startsWith("triggers/") ? `Trigger “${fields(id)["name"] ?? ""}”` : parts.get(id)?.label ?? id;
   const onlyOperator = (id: string) => id.startsWith("triggers/") ? { operator: true as const } : {};
 
+  // A passage cut short or squeezed onto one line could slip past the scrub: it is tidied first, then shortened. Where
+  // two quotes overlap the longer's replacement takes the span, so the other's open point may name a mark that isn't there.
   const open: BotOpenPoint[] = [];
+  const outcomes: BotExportBuild["outcomes"] = {};
   for (const change of review.changes) {
     const picked = group(change.id, change.group);
+    const replacement = replacements.find((pair) => pair.quote === change.quote)?.replacement;
+    if (picked === "remove") outcomes[change.id] = { replacement: replacement ?? "" };
     if (picked !== "ask" && picked !== "confirm") continue;
-    const excerpt = tidy(oneLine(change.quote, 160));
+    const excerpt = oneLine(tidy(change.quote), 160);
     const question = tidy(changeQuestion(change, picked, { label: label(change), excerpt: oneLine(excerpt, 80) }));
+    outcomes[change.id] = { ...(picked === "ask" ? { replacement: replacement ?? askMark(label(change)) } : {}), question };
     open.push({ kind: picked, where: tidy(where(change.part)), question, ...(picked === "confirm" ? { excerpt } : {}), ...onlyOperator(change.part) });
   }
   for (const file of review.files) {
@@ -300,5 +317,5 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     if (change && group(change.id, change.group) === "remove") continue;
     files.push({ path: part.id, text: ending(fields(part.id)["text"] ?? "") });
   }
-  return { name, fileName: botExportFileName(name), files, open };
+  return { name, fileName: botExportFileName(name), files, open, outcomes };
 }

@@ -49,3 +49,14 @@ test("code that reads a secret, words with a digit and a worker's home are not a
   assert.equal(skillFilePath("docs/Skill.MD"), "docs/Skill.MD", "only beside it");
   assert.equal(caseClash(["a.sh", "b.sh", "A.sh"]), "A.sh");
 });
+
+test("relative paths, words with a digit and names that only contain a worker's are left alone", () => {
+  const text = "Edit src/home/index.ts and templates/Users/list.html; use DOCKER2024 and UBUNTU2204 images.";
+  assert.deepEqual(clean(text), { text, hits: [] });
+  assert.equal(clean("cd /home/bits/app").text, "cd ~/app", "a home folder where a path starts still goes");
+  const workers = { ...IDENTITY, workers: ["lab", "gpu"] };
+  assert.equal(personalIn("label-issues", workers), undefined);
+  assert.equal(personalIn("debug-gpus", workers), undefined);
+  assert.equal(personalIn("lab-notes.md", workers), "a worker's name");
+  assert.equal(personalIn("templates/home/index.html", IDENTITY), undefined);
+});

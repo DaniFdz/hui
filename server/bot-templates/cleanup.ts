@@ -72,10 +72,12 @@ function rules(identity: CleanupIdentity): Rule[] {
       pattern: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/gu,
       replace: (match) => match.startsWith("127.") || match === "0.0.0.0" ? match : REMOVED,
     },
-    { kind: "a Slack ID", pattern: /\b[UCWGD](?=(?:[A-Z]*\d){2})[A-Z0-9]{8,11}\b/gu, replace: () => REMOVED },
+    // A Slack ID's letter is followed by a digit (C0123ABCD), which DOCKER2024 is not.
+    { kind: "a Slack ID", pattern: /\b[UCWGD]\d[A-Z0-9]{7,10}\b/gu, replace: () => REMOVED },
   ];
+  // Only where a path starts: `src/home/index.ts` is no one's home.
   const homes = identity.homes.filter((home) => home && home !== "/").map((home) => `${escape(home)}(?![^/\\s"'\`])|`).join("");
-  list.push({ kind: "a home folder", pattern: new RegExp(`${homes}/(?:Users|home)/[^/\\s"'\`]+`, "gu"), replace: () => "~" });
+  list.push({ kind: "a home folder", pattern: new RegExp(`(?<![\\w.~-])(?:${homes}/(?:Users|home)/[^/\\s"'\`]+)`, "gu"), replace: () => "~" });
   const names = machineNames(identity);
   for (const [kind, name] of names) {
     // Only inside a path, an address or a link: a token holding a / or an @.
@@ -115,8 +117,7 @@ export function personalIn(identifier: string, identity: CleanupIdentity): strin
   const words = new Set(identifier.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
   const own = (identity.operator ?? "").toLowerCase().split(/\s+/u).filter((word) => word.length >= 3 && !COMMON_WORDS.has(word));
   if (own.some((word) => words.has(word))) return "your name";
-  const joined = identifier.toLowerCase();
-  return machineNames(identity).find(([, name]) => joined.includes(name.toLowerCase()))?.[0];
+  return machineNames(identity).find(([, name]) => new RegExp(`(?<![A-Za-z0-9])${escape(name)}(?![A-Za-z0-9])`, "iu").test(identifier))?.[0];
 }
 
 /** `text` with the cleanup done, and what it did, by kind. */
