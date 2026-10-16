@@ -416,16 +416,19 @@ export class SubagentService {
     try {
       await this.#waitUntilReady(child.id);
       const completion = this.#waitForCompletion(child, runTimeoutSeconds);
-      // Only from `starting`, and not once a cancel settled it (its control is gone): a cancelled task stays so.
-      if (!(await this.#markRunning(child.id)) || !this.#controls.has(taskId)) {
+      // Only from `starting`: a task cancelled meanwhile stays cancelled.
+      if (!(await this.#markRunning(child.id))) {
         completion.cancel();
         return;
       }
-      try {
-        await this.sessions.prompt(child.id, `[Subagent Task]\n${child.subagent!.task}`);
-      } catch (error) {
-        completion.cancel();
-        throw error;
+      // Settled during that save (cancelled, or its runtime failed; its control is gone): record that, unprompted.
+      if (this.#controls.has(taskId)) {
+        try {
+          await this.sessions.prompt(child.id, `[Subagent Task]\n${child.subagent!.task}`);
+        } catch (error) {
+          completion.cancel();
+          throw error;
+        }
       }
       const outcome = await completion.promise;
       if (outcome.status === "cancelled") return; // #cancel records it
@@ -855,6 +858,8 @@ export class SubagentService {
     const settle = async () => this.#replaceCache(await this.registryUpdater((current) => current.map((record) =>
       collected(record) && record.subagent!.completionDelivery === "pending"
         ? { ...record, subagent: { ...record.subagent!, completionDelivery: "delivered" as const } } : record)));
+    // A delivery already under way read its results before this; let it finish while the parent is still busy.
+    await this.#deliveryFlights.get(parentId);
     await settle();
     const active = (await this.registryReader()).filter((record) => collected(record) && ACTIVE_STATUSES.has(record.subagent!.status));
     await Promise.all(active.map((child) => this.#cancel(child, "Stopped with its parent.", false)));
@@ -873,7 +878,10 @@ export class SubagentService {
     const pick = (records: readonly SessionRecord[]) => wanted.map((id) => records.find((record) =>
       record.parentId === callerId && record.subagent && (record.subagent.taskId === id || record.id === id)));
     // A deleted child ends the wait too; the call then fails, naming it.
-    const finished = (records: readonly SessionRecord[]) => pick(records).every((record) => !record || !ACTIVE_STATUSES.has(record.subagent!.status));
+    const finished = (records: readonly SessionRecord[]) => {
+      const picked = pick(records);
+      return picked.some((record) => !record) || picked.every((record) => !ACTIVE_STATUSES.has(record!.subagent!.status));
+    };
     // Listen before the first read, so a child finishing in between still wakes the wait.
     let wake!: () => void;
     const woken = new Promise<void>((resolve) => { wake = resolve; });

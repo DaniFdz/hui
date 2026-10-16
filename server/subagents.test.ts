@@ -45,6 +45,7 @@ class CoordinatedSession implements RuntimeSession {
   #resolveDisposed!: () => void;
   #streaming = false;
   #listeners = new Set<(event: RuntimeEvent) => void>();
+  #exitListeners = new Set<() => void>();
   #promptListeners = new Set<(prompt: string) => void>();
   readonly huiId: string;
   private readonly autoSettle: boolean;
@@ -92,6 +93,16 @@ class CoordinatedSession implements RuntimeSession {
 
   async listModels(): Promise<readonly RuntimeModel[]> {
     return this.models;
+  }
+
+  onExit(listener: () => void): () => void {
+    this.#exitListeners.add(listener);
+    return () => this.#exitListeners.delete(listener);
+  }
+
+  /** The runtime process dies. */
+  exit(): void {
+    for (const listener of this.#exitListeners) listener();
   }
 
   subscribe(listener: (event: RuntimeEvent) => void): () => void {
@@ -929,10 +940,10 @@ test("a restart interrupts queued subagents", async (t) => {
   ]);
 });
 
-test("deleting a child ends a wait on it with an error naming it", async (t) => {
-  const state = await swarm(1);
+test("deleting a child ends a wait on it with an error naming it, while others still run", async (t) => {
+  const state = await swarm(2);
   t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
-  const waited = state.service.handle("parent", "agents_wait", { ids: ["task-0"] });
+  const waited = state.service.handle("parent", "agents_wait", { ids: ["task-0", "task-1"] });
   await waitForStatus(state.manager, "child-0", "running");
   // As deleteSession does: tombstone, remove the row, forget, finish.
   const token = state.manager.tombstone("child-0");
@@ -940,4 +951,25 @@ test("deleting a child ends a wait on it with an error naming it", async (t) => 
   state.service.forgetSessions(new Set(["child-0"]));
   state.manager.finishDelete("child-0", token);
   await assert.rejects(waited, /Subagent deleted while waiting: task-0/);
+});
+
+test("a child whose runtime fails as it starts is recorded as failed, not left running", async (t) => {
+  const state = await swarm(0, ["task-x", "child-x"]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  // The runtime exits during the save that marks the task running.
+  const update = state.update;
+  let failNext = true;
+  const service = new SubagentService(state.manager, async () => state.records(), async (mutate) => {
+    const records = await update(mutate);
+    if (failNext && records.some((item) => item.id === "child-x" && item.subagent?.status === "running")) {
+      failNext = false;
+      state.sessions.get("child-x")!.exit();
+    }
+    return records;
+  }, () => new Date(timestamp), (() => { const ids = ["task-x", "child-x"]; return () => ids.shift()!; })());
+  t.onTestFinished(() => service.dispose());
+  await service.handle("parent", "sessions_spawn", { task: "Starts and dies", collect: true });
+  const waited = await service.handle("parent", "agents_wait", { ids: ["task-x"], timeoutSeconds: 30 }) as { completed: Array<{ status: string }> };
+  assert.deepEqual(waited.completed.map(({ status }) => status), ["failed"]);
+  assert.equal(state.sessions.get("child-x")?.prompts.length ?? 0, 0, "never prompted");
 });
