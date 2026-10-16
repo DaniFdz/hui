@@ -7,7 +7,7 @@
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import { botLook, isBotFaceEars, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceEars, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
+import { botLook, isBotFaceEars, isBotFaceShape, isBotTagging, storedTagging, type BotAvatar, type BotAvatarPatch, type BotFaceEars, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
@@ -47,6 +47,10 @@ export type BotDraft = {
   voiceLanguage?: string;
   /** A GPT-Live call voice ("" for Settings' default); absent leaves it as it is. */
   callVoice?: string;
+  /** What it does and when to tag it ("" clears it); absent leaves it as it is. */
+  description?: string;
+  /** Who may tag it (`BOT_TAGGING`); absent leaves it as it is. */
+  tagging?: string;
 };
 
 /** OptChat's view budget: the memory panel reports sizes against it. */
@@ -160,11 +164,13 @@ export function parseBot(value: unknown): BotView | undefined {
     const entry = optionalText(value[key], maximum);
     if (entry) optional[key] = entry;
   }
+  const tagging = storedTagging(value["tagging"]);
   return {
     id,
     handle: text(value["handle"], 64),
     name,
     ...optional,
+    ...(tagging ? { tagging } : {}),
     cwd: text(value["cwd"], 4_096),
     ...(worker ? { worker } : {}),
     ...(avatar ? { avatar } : {}),
@@ -392,12 +398,16 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   const live = draft.callVoice === undefined ? undefined : gptLiveVoice(draft.callVoice) ?? "";
   if (live !== undefined && live !== (bot.voice?.live ?? "")) voice.live = live;
   if (Object.keys(voice).length) patch.voice = voice;
+  const description = draft.description?.trim();
+  if (description !== undefined && description !== (bot.description ?? "")) patch.description = description;
+  if (isBotTagging(draft.tagging) && draft.tagging !== (bot.tagging ?? "anyone")) patch.tagging = draft.tagging;
   return patch;
 }
 
 /** A control of a bot's Settings tab, by what it saves through `PATCH /__hui/bots/:id`: the look's shape, color and
  * emoji are parts of `avatar`, a call's voice and language parts of `voice`. */
-export type BotSettingKey = "name" | "title" | "shape" | "ears" | "color" | "emoji" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
+export type BotSettingKey =
+  "name" | "title" | "shape" | "ears" | "color" | "emoji" | "description" | "tagging" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
 export type BotSettingValue = string;
 
 /** What a control shows for the bot as it is: "" for a default, the look as the bot shows it. */
@@ -409,6 +419,8 @@ export function botSettingOf(bot: BotView, key: BotSettingKey): BotSettingValue 
     case "ears": return botLook(bot).ears ?? "";
     case "color": return botLook(bot).color;
     case "emoji": return bot.avatar?.emoji ?? "";
+    case "description": return bot.description ?? "";
+    case "tagging": return bot.tagging ?? "anyone";
     case "model": return bot.model ?? "";
     case "thinking": return bot.thinking ?? "";
     case "memoryModel": return bot.memoryModel ?? "";
@@ -442,6 +454,8 @@ export function botDraftOf(bot: BotView): BotDraft {
     memoryModel: bot.memoryModel ?? "",
     voiceLanguage: bot.voice?.language ?? "",
     callVoice: bot.voice?.live ?? "",
+    description: bot.description ?? "",
+    tagging: bot.tagging ?? "anyone",
   };
 }
 

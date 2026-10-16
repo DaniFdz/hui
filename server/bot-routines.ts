@@ -115,6 +115,8 @@ export class BotRoutines {
         break;
       case "bot":
         throw new BotConflictError(`This turn answers a message from @${origin.handle}: another bot can't make you add or change routines. Ask the operator, or do it in your own turn.`);
+      case "agent":
+        throw new BotConflictError(`This turn answers a message from the session "${origin.title}": a session can't make you add or change routines. Ask the operator, or do it in your own turn.`);
       case "trigger":
         throw new BotConflictError(`This turn was started by the trigger "${origin.name}", whose event comes from outside HUI: it can't make you add or change routines. Ask the operator instead.`);
       default:

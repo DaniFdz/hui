@@ -159,11 +159,20 @@ test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceSt
   assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
 });
 
-test("the Settings tab: Profile, Model, Calls and Workspace, each change saved on its own", () => {
+test("the Settings tab: Profile, Tagging, Model, Calls and Workspace, each change saved on its own", () => {
   const source = read("./bot-settings.ts");
   const tab = between(source, "export function renderBotSettings(", "\n}\n");
-  assert.ok(tab.indexOf("renderProfile(props)") < tab.indexOf("renderModels(props)") && tab.indexOf("renderModels(props)") < tab.indexOf("renderCalls(props)")
-    && tab.indexOf("renderCalls(props)") < tab.indexOf("renderWorkspace(props)"), "Profile on top, then Model, Calls and Workspace");
+  assert.ok(tab.indexOf("renderProfile(props)") < tab.indexOf("renderTagging(props)") && tab.indexOf("renderTagging(props)") < tab.indexOf("renderModels(props)")
+    && tab.indexOf("renderModels(props)") < tab.indexOf("renderCalls(props)") && tab.indexOf("renderCalls(props)") < tab.indexOf("renderWorkspace(props)"),
+    "Profile on top, then Tagging, Model, Calls and Workspace");
+  const tagging = between(source, "function renderTagging(", "function renderModels(");
+  assert.match(tagging, /setting: "description", keys: \["description"\], stacked: true, title: "When to tag it"/u);
+  assert.match(tagging, /<textarea class="settings-input bot-settings__description"[^>]*maxlength=\$\{BOT_LIMITS\.description\}/u);
+  assert.match(tagging, /onTextKeydown\(event, "description", props\)\} @blur=\$\{\(event: FocusEvent\) => onTextBlur\(event, "description", props\)\}/u, "the description saves on Enter or blur");
+  assert.match(tagging, /setting: "tagging", keys: \["tagging"\], title: "Who can tag it"/u);
+  assert.match(tagging, /onChange: \(next\) => props\.onChange\("tagging", next\)/u, "who can tag it saves as it changes");
+  assert.match(source, /\{ value: "anyone", label: "Anyone"[\s\S]*\{ value: "mention", label: "Only when @mentioned"[\s\S]*\{ value: "nobody", label: "Nobody"/u);
+  assert.match(source, /if \(!value && key !== "title" && key !== "description"\)/u, "a description can be cleared, as a title can");
   const profile = between(source, "/** Name, title and look, edited in place", "function renderModels(");
   assert.match(profile, /setting: "name", keys: \["name"\]/u);
   assert.match(profile, /setting: "title", keys: \["title"\]/u);

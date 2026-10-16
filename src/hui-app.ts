@@ -113,6 +113,7 @@ import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
 import {
+  botMentionSuggestions,
   completeLocalPath,
   loadLocalPathSuggestions,
   type LocalPathQuery,
@@ -675,6 +676,8 @@ export class HuiApp extends HuiElement {
   /** Embedded panes own the composer but not the sidebar; report draft
    * presence so the shell can project the pencil onto the session row. */
   @property(paneCallback) onPaneDraftChange: ((sessionId: string, hasDraft: boolean) => void) | undefined;
+  /** The shell's bots, which an `@` in this pane's composer suggests. */
+  @property(paneCallback) paneMentionable: (() => readonly BotView[]) | undefined;
   /** Set on the bot route's pane while the bot can be called. */
   @property(paneCallProperty) paneCall: PaneCall | undefined;
   @property(paneCallback) onPaneCall: (() => void) | undefined;
@@ -2975,21 +2978,27 @@ export class HuiApp extends HuiElement {
     if (sameQuery && (this.localPathsLoading || this.localPaths.length > 0 || this.localPathsError)) return;
     this.localPathActiveIndex = 0;
     this.slashActiveIndex = 0;
-    this.localPaths = [];
+    // A mention tags a bot as well as naming a file: the bots it matches come first, at once. A session still on PI's SDK
+    // worker has no message_bot.
+    const bots = query.mention && this.selected?.tool !== "pi" ? botMentionSuggestions(this.mentionable(), query.input, this.selected?.bot?.id) : [];
+    this.localPaths = bots;
     const request = ++this.localPathsRequest;
     this.localPathsLoading = true;
     this.localPathsError = "";
     void loadLocalPathSuggestions(workspace, query.input).then((paths) => {
       if (request !== this.localPathsRequest) return;
-      this.localPaths = paths;
+      this.localPaths = [...bots, ...paths];
     }).catch((error: unknown) => {
       if (request !== this.localPathsRequest) return;
-      this.localPaths = [];
+      this.localPaths = bots;
       this.localPathsError = error instanceof Error ? error.message : "Could not load local paths.";
     }).finally(() => {
       if (request === this.localPathsRequest) this.localPathsLoading = false;
     });
   };
+
+  /** The bots an `@` in this composer may suggest: the shell's roster while bots are on (Labs → Bots). */
+  private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneMentionable?.() ?? [] : botsEnabled(this.settings) ? this.bots : [];
 
   private retryLocalPaths = () => {
     const query = this.localPathQuery;
@@ -3020,7 +3029,7 @@ export class HuiApp extends HuiElement {
       textarea.value = completed.text;
       textarea.focus();
       textarea.setSelectionRange(completed.caret, completed.caret);
-      if (suggestion.kind === "file") {
+      if (suggestion.kind !== "directory") {
         requestAnimationFrame(() => this.resetLocalPaths());
       }
     });
@@ -4827,6 +4836,7 @@ export class HuiApp extends HuiElement {
           .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
           .paneCall=${paneCall}
           .onPaneCall=${paneCall ? this.paneCallAction(bot) : undefined}
+          .paneMentionable=${this.mentionable}
         ></hui-app>`)}
         ${call && !call.minimized ? renderCallView(this.callViewProps(bot, call)) : nothing}
       </div>
@@ -6054,6 +6064,7 @@ export class HuiApp extends HuiElement {
       .paneGroups=${this.sessionListRevision ? this.groups : undefined}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
+      .paneMentionable=${this.mentionable}
     ></hui-app>`;
 
   private paneLabel = (pane: SessionPane) => this.listedSession(pane.sessionId)?.title ?? "Session";

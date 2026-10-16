@@ -87,7 +87,8 @@ function integer(
   return raw;
 }
 
-function rootSessionId(records: readonly SessionRecord[], sessionId: string): string {
+/** The session a subagent's tree starts at: `sessionId`'s parent's parent…, itself without a parent. */
+export function rootSessionId(records: readonly SessionRecord[], sessionId: string): string {
   const byId = new Map(records.map((record) => [record.id, record]));
   let current = byId.get(sessionId);
   if (!current) throw new AgentToolInputError(`Unknown session: ${sessionId}`);

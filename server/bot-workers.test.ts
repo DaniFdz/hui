@@ -302,7 +302,27 @@ test("message_bot crosses both ways between a bot here and the bot on the worker
   assert.deepEqual(back.body, { status: "answered", reply: "message_bot answered: Queued for @rover." });
   await settledWith(rover.sessionId, (entries) => says("user", "[from @home] hello from the fixture")(entries), "Rover to get Home's message");
   await waitFor(async () => await chatRequest("[from @home] hello from the fixture"), "Rover's run on the worker");
-  assert.match(systemOf(await chatRequest("[from @home] hello from the fixture")), /- @home: Home/u, "its roster on the worker lists the bot here");
+  assert.match(systemOf(await chatRequest("[from @home] hello from the fixture")), /- @home \(Home\)/u, "its roster on the worker lists the bot here");
+});
+
+test("a session on the worker lists the bots it may tag, from this gateway, and tags one as an agent", { timeout: 180_000 }, async () => {
+  const home = botOf(await call("/__hui/bots/home"));
+  const created = await call("/__hui/sessions", "POST", { cwd: join(remoteHome, "project"), worker: workerId, tool: "durable", title: "Survey the ridge" });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const session = created.body["session"] as { id: string };
+  // Its runtime starts on the worker before it takes a prompt.
+  await waitFor(() => liveSessions.status(session.id) === "idle", "the session on the worker to start");
+  const prompted = await call(`/__hui/sessions/${session.id}/prompt`, "POST", { text: "E2E_MESSAGE_BOT @home SURVEY_TAG" });
+  assert.equal(prompted.status, 200, JSON.stringify(prompted.body));
+  await settledWith(session.id, says("assistant", "message_bot answered: Queued for @home."), "the session's tag to be accepted");
+  await settledWith(home.sessionId, says("user", "[from agent: Survey the ridge] hello from the fixture"), "Home to get the session's tag");
+  // Its host asked this gateway for the list, as a bot there does, and offered message_bot alone.
+  const request = await chatRequest("SURVEY_TAG");
+  assert.match(systemOf(request), /This HUI has bots: persistent assistants/u);
+  assert.match(systemOf(request), /- @home \(Home\)/u);
+  assert.doesNotMatch(systemOf(request), /You are @/u, "not a bot's chat");
+  assert.deepEqual(request?.tools?.filter((tool) => ["message_bot", "write_soul", "set_profile"].includes(tool.name ?? "")).map((tool) => tool.name), ["message_bot"]);
+  await call(`/__hui/sessions/${session.id}`, "DELETE");
 });
 
 test("a bot on the worker schedules its own temporary routine: its routines tool crosses to this gateway as the bot's session, and that routine's turn there removes it", { timeout: 180_000 }, async () => {
@@ -432,7 +452,7 @@ test("on the worker too, write_soul refuses a turn that a routine, a trigger or 
   const soulPath = join(rover.cwd, "SOUL.md");
   const before = await readFile(soulPath, "utf8");
   const writeSoul = (soul: string) => `E2E_CALL:${Buffer.from(JSON.stringify({ name: "write_soul", input: { soul } })).toString("base64url")}`;
-  const refused = "tool answered: Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.";
+  const refused = "tool answered: Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot or a session. Ask the operator instead.";
   const startsWith = (start: string) => (entry: TranscriptEntry) => entry.kind === "message" && entry.role === "user" && entry.text.startsWith(start);
   const toolAnswer = (entry: TranscriptEntry) => entry.kind === "message" && entry.role === "assistant" && entry.text.startsWith("tool answered: ");
   /** What write_soul told Rover in the turn of the latest message starting with `start`, once that turn on the worker
@@ -496,8 +516,8 @@ test("on the worker, a gated tool judges the run by every input it took: a trigg
   await standingRoutine(t, rover.sessionId, "Added by a trigger");
   assert.equal((await call("/__hui/bots/rover/triggers", "POST", { name: "Drop" })).status, 201);
   const refusals = (answer: string, trigger: string) => {
-    assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger or another bot\./u, "set_profile");
-    assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot\./u, "write_soul");
+    assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot or a session\./u, "set_profile");
+    assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot or a session\./u, "write_soul");
     assert.match(answer, /You have \d+ triggers:/u, "list still works");
     assert.equal(answer.split(`This turn was started by the trigger "${trigger}", whose event comes from outside HUI: it can't make you add or change routines.`).length, 3, "the routines tool's add and update");
   };

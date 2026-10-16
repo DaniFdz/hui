@@ -67,6 +67,10 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
     assert.throws(() => parseCli(["bot", "edit", "ada", "--language", language]), /--language must be one of Whisper's language codes, such as en, es, fr, de or ja \(not a name like Spanish\); "" goes back to Auto\./u, language);
   }
   assert.throws(() => parseCli(["bot", "list", "--language", "es"]), /--language is not valid for bot list/u);
+  for (const tagging of ["anyone", "Mention", "nobody"]) assert.equal(parseCli(["bot", "edit", "ada", "--tagging", tagging]).values.tagging, tagging, tagging);
+  for (const tagging of ["everyone", ""]) assert.throws(() => parseCli(["bot", "edit", "ada", "--tagging", tagging]), /--tagging must be one of: anyone, mention, nobody\./u, tagging);
+  assert.equal(parseCli(["bot", "add", "--description", "Finds sources."]).values.description, "Finds sources.");
+  assert.equal(parseCli(["bot", "edit", "ada", "--description", ""]).values.description, "", "\"\" clears it");
   for (const voice of ["cove", "Ember", "vale", ""]) assert.equal(parseCli(["bot", "edit", "ada", "--call-voice", voice]).values["call-voice"], voice, voice);
   assert.equal(parseCli(["bot", "add", "--name", "Ada", "--call-voice", "sol"]).values["call-voice"], "sol");
   for (const voice of ["marin", "alloy", "x"]) {
@@ -171,7 +175,7 @@ test("HELP lists every hui bot command", () => {
   for (const line of [
     "hui bot list [--archived] [--json]",
     "hui bot show <bot> [--json]",
-    "hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]",
+    "hui bot add [--name <name>] [--title <text>] [--description <text>] [--tagging <anyone|mention|nobody>]",
     "[--worker <name|id>] [--model <provider/model>]",
     "hui bot delete <bot> [--yes] [--json]",
     "Delete removes a bot for good, active or archived",
@@ -196,6 +200,8 @@ test("HELP lists every hui bot command", () => {
     "On edit, --model \"\" and --thinking \"\" go back to the model and",
     "[--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>]",
     "--call-voice is the bot's GPT-Live voice on calls",
+    "[--soul-file <path|->] [--cwd <dir>]",
+    "--tagging who may: anyone, the default, whenever a task fits; mention, only",
     "--language is the language it",
   ]) assert.ok(HELP.includes(line), line);
   assert.doesNotMatch(HELP, /VoiceStudio|--voice/u, "VoiceStudio's flags are gone");

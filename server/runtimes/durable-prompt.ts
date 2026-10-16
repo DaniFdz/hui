@@ -23,7 +23,7 @@ import { BOT_ACCESS_CONTRIBUTIONS, botSkills, botSkillsPrompt, LOAD_SKILL_TOOL }
 import { BOT_ROUTINES_CONTRIBUTION, ROUTINES_TOOL } from "./durable-bot-routines.ts";
 import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
-export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins">;
+export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins" | "labs">;
 
 /** What a conversation's PI extensions add: their tools' snippets, and the prompt `before_agent_start` gave the run. */
 export type PromptExtras = { readonly contributions: Record<string, Contribution>; readonly run?: RunPrompt };

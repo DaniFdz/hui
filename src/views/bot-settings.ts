@@ -1,7 +1,7 @@
 /**
  * A bot's Settings tab (HUI-18), after Grok Bot's "Bot settings": who the bot
- * is, the models it runs on, how it sounds on calls and where it works, as
- * compact rows in the style of HUI's Settings pages. Each change saves on its
+ * is, how agents and bots tag it, the models it runs on, how it sounds on calls
+ * and where it works, as compact rows in the style of HUI's Settings pages. Each change saves on its
  * own through `PATCH /__hui/bots/:id` (owned by `hui-app.ts`): its row says
  * while the save is pending and shows a refusal. There is no Save button.
  * Rendering only.
@@ -12,7 +12,7 @@ import { botSettingOf, type BotSettingKey, type BotSettingValue, type BotView } 
 import type { RuntimeModel } from "../lib/sessions-store.ts";
 import {
   BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botColorName,
-  isBotFaceEars, isBotFaceShape, type BotAvatar, type BotFaceEars, type BotFaceShape,
+  isBotFaceEars, isBotFaceShape, type BotAvatar, type BotFaceEars, type BotFaceShape, type BotTagging,
 } from "../../shared/bots.ts";
 import { FACE_LEAF_COLOR, faceEars, facePath, faceViewBox } from "../lib/bot-face.ts";
 import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
@@ -58,6 +58,12 @@ export type BotSettingsProps = {
 
 /** "Gateway default" sends "": the bot goes back to the model and thinking level a new chat gets. */
 const THINKING_CHOICES = [{ value: "", label: "Gateway default" }, ...BOT_THINKING_LEVELS.map((level) => ({ value: level, label: THINKING_LABELS[level] }))];
+/** Who can tag a bot, as a skill's frontmatter says when it loads. */
+const TAGGING_CHOICES: readonly { value: BotTagging; label: string; description: string }[] = [
+  { value: "anyone", label: "Anyone", description: "Agents and bots, when a task fits" },
+  { value: "mention", label: "Only when @mentioned", description: "When your message tags it" },
+  { value: "nobody", label: "Nobody", description: "Only you, in its chat" },
+];
 
 /** `empty` labels the default choice, the empty value. */
 function modelOptions(models: readonly RuntimeModel[], empty: string, current: string) {
@@ -207,6 +213,26 @@ function renderProfile(props: BotSettingsProps) {
   </section>`;
 }
 
+/** How agents and bots hand it work: what they read to decide (its description, like a skill's) and who may tag it. */
+function renderTagging(props: BotSettingsProps) {
+  const { bot } = props;
+  const descriptionId = `${props.id}-settings-description`;
+  const tagging = botSettingValue(bot, props.saves, "tagging");
+  return html`<section class="bot-settings__section" aria-labelledby=${`${props.id}-settings-tagging`}>
+    ${sectionHead(props, "tagging", "Tagging", tagging === "nobody" ? undefined : `@${bot.handle} from any chat`)}
+    <div class="settings-group bot-settings__group">
+      ${renderRow(props, { setting: "description", keys: ["description"], stacked: true, title: "When to tag it", labelFor: descriptionId,
+        desc: `What agents and bots read to decide when to tag it, as they read a skill's description.${bot.title ? " Without it, its title stands in." : ""}`,
+        control: html`<textarea class="settings-input bot-settings__description" id=${descriptionId} name="description" rows="3" maxlength=${BOT_LIMITS.description}
+          placeholder="What it does, and when to tag it" .value=${bot.description ?? ""}
+          @keydown=${(event: KeyboardEvent) => onTextKeydown(event, "description", props)} @blur=${(event: FocusEvent) => onTextBlur(event, "description", props)}></textarea>` })}
+      ${renderRow(props, { setting: "tagging", keys: ["tagging"], title: "Who can tag it",
+        desc: TAGGING_CHOICES.find((choice) => choice.value === tagging)?.description,
+        control: renderPicker({ label: "Who can tag it", value: tagging, options: TAGGING_CHOICES, onChange: (next) => props.onChange("tagging", next) }) })}
+    </div>
+  </section>`;
+}
+
 function renderModels(props: BotSettingsProps) {
   const value = (key: BotSettingKey) => botSettingValue(props.bot, props.saves, key);
   const model = value("model");
@@ -260,15 +286,16 @@ function renderCalls(props: BotSettingsProps) {
 }
 
 /** The text controls: they save on Enter or when the focus leaves them. */
-type TextKey = "name" | "title" | "emoji" | "cwd";
+type TextKey = "name" | "title" | "emoji" | "description" | "cwd";
+type TextControl = HTMLInputElement | HTMLTextAreaElement;
 
 /** Saves what a text control holds, if it changed. An emptied name, emoji or directory keeps the bot's (only a
- * title can be cleared). Leaving the control does not send again what it already sent (a refused value stays
- * refused until it is edited); Enter does. */
-function commitText(input: HTMLInputElement, key: TextKey, props: BotSettingsProps, explicit: boolean) {
+ * title or a description can be cleared). Leaving the control does not send again what it already sent (a refused
+ * value stays refused until it is edited); Enter does. */
+function commitText(input: TextControl, key: TextKey, props: BotSettingsProps, explicit: boolean) {
   const current = botSettingOf(props.bot, key);
   const value = input.value.trim();
-  if (!value && key !== "title") {
+  if (!value && key !== "title" && key !== "description") {
     input.value = current;
     return;
   }
@@ -278,15 +305,15 @@ function commitText(input: HTMLInputElement, key: TextKey, props: BotSettingsPro
 }
 
 /** The directory's suggestions are open and list something, so Escape is theirs to close. */
-function suggestionsShowing(input: HTMLInputElement): boolean {
+function suggestionsShowing(input: TextControl): boolean {
   return input.getAttribute("aria-expanded") === "true" && Boolean(input.closest(".new-session-page__directory-picker")?.querySelector('[role="option"]'));
 }
 
-/** Enter saves; Escape takes back what was typed, before it closes anything (the directory's suggestions first).
- * Keys from a suggestion choose it. */
+/** Enter saves (a description is one paragraph, as rosters show it); Escape takes back what was typed, before it
+ * closes anything (the directory's suggestions first). Keys from a suggestion choose it. */
 function onTextKeydown(event: KeyboardEvent, key: TextKey, props: BotSettingsProps) {
   const input = event.target;
-  if (!(input instanceof HTMLInputElement) || event.isComposing) return;
+  if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) || event.isComposing) return;
   if (event.key === "Enter") {
     event.preventDefault();
     commitText(input, key, props, true);
@@ -302,7 +329,7 @@ function onTextKeydown(event: KeyboardEvent, key: TextKey, props: BotSettingsPro
 
 function onTextBlur(event: FocusEvent, key: TextKey, props: BotSettingsProps) {
   const input = event.target;
-  if (input instanceof HTMLInputElement && !input.disabled) commitText(input, key, props, false);
+  if ((input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) && !input.disabled) commitText(input, key, props, false);
 }
 
 /** The directory field saves when the focus leaves it and its suggestions alike. */
@@ -364,6 +391,7 @@ function renderWorkspace(props: BotSettingsProps) {
 export function renderBotSettings(props: BotSettingsProps) {
   return html`<div class="bot-settings">
     ${renderProfile(props)}
+    ${renderTagging(props)}
     ${renderModels(props)}
     ${renderCalls(props)}
     ${renderWorkspace(props)}

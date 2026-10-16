@@ -707,14 +707,27 @@ them, and `hui doctor --fix` deletes them with what they left
 ([Triggers](#triggers-1), under `hui doctor`). A listener can watch any of those
 for you instead.
 
-### Bots talking to bots
+### Tagging bots
 
-Every bot's chat has a `message_bot` tool and a short list of the other bots.
-A message arrives in the other bot's chat as `[from @ada] …`, and that bot
-answers in its own chat; nothing comes back to the sender by itself. To stop
-loops, an answer to a bot message is marked `[from @bob · hop 2]` and HUI
-refuses to go beyond three hops; a bot can also send at most 30 bot messages an
-hour. Archived bots can neither send nor receive them.
+Agents and bots hand a bot work by tagging it, the way they load a skill. Each
+bot's Settings tab has a **Tagging** section: **When to tag it** is what agents
+and bots read to decide (what it does, and when to bring it in; its title stands
+in until you write one), and **Who can tag it** is *Anyone* (whenever a task
+fits), *Only when @mentioned* (only when your message names it) or *Nobody*.
+From a terminal: `hui bot edit ada --description "…" --tagging mention`.
+
+While bots are on, every session and every bot knows the bots it may tag and has
+a `message_bot` tool. To ask yourself, type `@` in any chat: bots come first in
+the list, and `@ada please add this to the release notes` makes that chat's agent
+send Ada the request, with the context she needs. The tag arrives in Ada's chat
+as `[from agent: <session title>] …` from a session or `[from @bob] …` from a
+bot, and she answers there; nothing comes back to the tagger by itself (bots can
+tag back, sessions can't be tagged). A tag from a session or another bot never
+counts as you: it can't rewrite the bot's SOUL.md, profile or routines. To stop
+loops, a tag sent while answering one is marked `[from @bob · hop 2]` and HUI
+refuses to go beyond three hops; a bot's subagents don't tag (the bot does), and
+each bot, or session with its subagents, can send at most 30 tags an hour.
+Archived bots can neither send nor receive them.
 
 ### Memory
 

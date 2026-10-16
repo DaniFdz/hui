@@ -3,7 +3,7 @@
  * models this gateway resolves, its memories into SOUL.md, and a template that came back from the browser checked
  * again before anything is created from it. Pure: the service passes what the gateway knows.
  */
-import { BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape } from "../../shared/bots.ts";
+import { BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape, storedTagging } from "../../shared/bots.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateIntegration } from "../../shared/bot-templates.ts";
 import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
@@ -215,12 +215,14 @@ export function normalizeTemplate(value: unknown): BotTemplate {
     const voice = isRecord(hui["voice"]) ? hui["voice"] : {};
     const language = voiceLanguage(voice["language"]);
     const live = gptLiveVoice(voice["live"]);
+    const tagging = storedTagging(hui["tagging"]);
     template.hui = {
       ...(handle ? { handle } : {}),
       ...(levels.includes(thinking) ? { thinking } : {}),
       ...(memoryModel ? { memoryModel } : {}),
       ...(levels.includes(memoryThinking) ? { memoryThinking } : {}),
       ...(language || live ? { voice: { ...(language ? { language } : {}), ...(live ? { live } : {}) } } : {}),
+      ...(tagging ? { tagging } : {}),
       disabledTools: items(hui["disabledTools"], "disabled tools", 500).map((name) => oneLine(text(name, "tool", 200), 200)).filter(Boolean),
       disabledSkills: items(hui["disabledSkills"], "disabled skills", 500).map((name) => oneLine(text(name, "skill", 200), 200)).filter(Boolean),
     };

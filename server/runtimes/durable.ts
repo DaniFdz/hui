@@ -322,16 +322,18 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   }
 
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
-   * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat, and drops the browser when
-   * Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
+   * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat (`message_bot` alone for any
+   * other conversation while Labs → Bots is on), and drops the browser when Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
    * it has no use for them (`durable-bot-access.ts`), and without the HUI tools that act on another machine than this
    * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Codemode, in the default selection, goes with
    * Settings → Tools → Codemode off, or a bot's chat that has it turned off. Applies per conversation, at start and on
    * every change. */
   async applyTools(): Promise<void> {
-    const { browser, codemode } = await this.#host.settings();
+    const { browser, codemode, labs } = await this.#host.settings();
     const browserEnabled = browser.enabled !== false;
     const bot = await this.#host.botStateFor(this.#conversation.id);
+    // A session tags bots while they are on; a bot's chat has message_bot among its own tools.
+    const tag = !bot && labs.bots ? this.#host.botTag : undefined;
     this.#botChat = bot !== undefined;
     const inactive = new Map([
       ...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])),
@@ -342,7 +344,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     // on, and only there. Each is selected per conversation; every other conversation's selection stays as it was.
     const optchat = await this.#host.optchat.toolsFor(this.#conversation.id);
     const botTools = bot ? await this.#host.botToolsFor(this.#conversation.id) : undefined;
-    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : [])];
+    const added = [...(this.#extensions ? [this.#extensions.extension] : []), ...(optchat ? [optchat] : []), ...(botTools ? [botTools] : []), ...(tag ? [tag] : [])];
     let withCodemode = codemode.enabled;
     const remove = [...inactive.values()];
     this.#botOffer = [];

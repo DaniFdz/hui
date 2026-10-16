@@ -411,6 +411,21 @@ test("the Profile rows send the name, title and look that changed, one part at a
   assert.deepEqual(botChangePatch(owl, botSettingChange("shape", "round")), { avatar: { shape: "round" } }, "a shape waits behind the emoji");
 });
 
+test("the Tagging rows send its description and who can tag it, only when they change", () => {
+  const bot = parseBot({ ...RECORD, description: "Finds sources.", tagging: "mention" }) as BotView;
+  assert.equal(bot.tagging, "mention");
+  assert.equal(parseBot({ ...RECORD, tagging: "anyone" })?.tagging, undefined, "the default is no field");
+  assert.equal(parseBot({ ...RECORD, tagging: "sometimes" })?.tagging, undefined);
+  assert.deepEqual(["description", "tagging"].map((key) => botSettingOf(bot, key as never)), ["Finds sources.", "mention"]);
+  assert.equal(botSettingOf(parseBot(RECORD) as BotView, "tagging"), "anyone");
+  assert.equal(botChangePatch(bot, botSettingChange("description", " Finds sources. ")), undefined, "an untouched description sends nothing");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("description", "")), { description: "" }, "an emptied description clears it");
+  assert.equal(botChangePatch(bot, botSettingChange("tagging", "mention")), undefined);
+  assert.deepEqual(botChangePatch(bot, botSettingChange("tagging", "anyone")), { tagging: "anyone" }, "back to the default");
+  assert.deepEqual(botChangePatch(bot, botSettingChange("tagging", "nobody")), { tagging: "nobody" });
+  assert.equal(botChangePatch(bot, botSettingChange("tagging", "everyone")), undefined, "nothing invalid reaches the gateway");
+});
+
 test("+ creates a bot without a name: the gateway calls it New Bot, and it asks what to call it", async () => {
   const original = globalThis.fetch;
   const calls: { url: string; method: string; body: string }[] = [];

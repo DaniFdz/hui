@@ -1712,10 +1712,23 @@ everything the Bots tab can, through the same routes.
   rest. The Routines tab lists them and `hui bot trigger` manages them; only
   the operator adds or changes one, and the bot's `triggers` tool lists and
   removes its own.
-- **Bots talk to bots** with a `message_bot` tool only bots' chats have,
-  beside a byte-stable list of the other bots in their system prompt. A message
-  arrives as `[from @handle] …`; chains stop after three hops and each bot sends
-  at most 30 bot messages an hour.
+- **Tagging.** Agents and bots hand a bot work by tagging it, `@handle`. A bot
+  is described like a skill: its description says what it does and when to tag
+  it (its title stands in without one), and the operator chooses who may tag
+  it: *Anyone* (the default: whenever a task fits the description), *Only when
+  @mentioned* (only in a turn whose operator message names it, as a skill with
+  `disable-model-invocation` waits for `/skill:name`) or *Nobody*. While bots
+  are on, every Durable conversation lists the bots it may tag in its system
+  prompt, byte-stable while the roster is, and has a `message_bot` tool. A tag
+  arrives in the bot's chat as `[from @handle] …` from a bot or
+  `[from agent: <title>] …` from a session, like a message (a prompt, or a
+  follow-up while it works), and the bot answers there: nothing comes back to
+  the tagger. Bots can tag back; sessions can't be tagged. The operator tags in
+  any composer: `@` suggests bots before files, and the message goes to the
+  chat's own agent or bot as typed, for which a tagged bot is an order to send
+  it what the operator asks. Chains stop after three hops, a bot's subagents
+  don't tag, and each bot, or session with its subagents, sends at most 30 tags
+  an hour (decision below).
 - **Memory** is OptChat's ([docs/optchat.md](docs/optchat.md)): every message
   kept word for word and condensed into a summary tree a fresh turn reads, so
   the chat is never compacted. Bots reach it only through one interface, so its
@@ -1794,8 +1807,9 @@ everything the Bots tab can, through the same routes.
   each switch saves the whole list and waits for it, and the tab reads the
   catalog again when the bots stream shows the bot changed.
   Settings holds the rest of the bot as compact rows: Profile (name with its
-  handle, title, and the look, a row that opens into Face or Emoji),
-  Model (model, thinking and utility model; *Gateway default* leaves the model
+  handle, title, and the look, a row that opens into Face or Emoji), Tagging
+  (*When to tag it*, the description agents and bots read, and *Who can tag
+  it*), Model (model, thinking and utility model; *Gateway default* leaves the model
   and thinking level to the gateway, and choosing it clears the bot's own),
   Calls (call voice and language; without a ChatGPT login its head says calls
   need one) and Workspace (the directory, locked while the bot works, with
@@ -1822,6 +1836,50 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Agents and bots tag bots by @handle (2026-10-16)
+
+The owner asked for bots to tag each other, each bot "like a skill so both
+agents and bots knows him and knows whether they need to tag him for a task, or
+never tag him", with `@ada` sending something to Ada, for agents and bots
+alike. Of the options offered he chose tags that don't wait for an answer, the
+operator's `@ada` handled by the chat's own agent, and three choices of who may
+tag a bot. The contract is [docs/api.md#tagging-bots](docs/api.md#tagging-bots).
+
+- **A bot reads like a skill.** Its description (`description`, at most 500
+  characters, which its Settings tab now edits) is the routing text: what it
+  does and when to tag it, its title standing in without one. Who may tag it
+  (`tagging`: `anyone`, the default and never stored, `mention` or `nobody`) is
+  the operator's alone: the Settings tab, `PATCH` and `hui bot edit --tagging`.
+- **Fire and forget.** A tag works as `message_bot` already did between bots:
+  delivered like a message, answered in the bot's chat, nothing coming back. A
+  session can't be tagged, so a bot answers a session's tag in its own chat,
+  where the operator reads it.
+- **The operator's `@ada` goes through the chat's agent.** The message reaches
+  the chat's agent (or bot) as typed; its prompt says a bot the operator tags is
+  to get what they ask, with the context it needs. One way to tag for everyone,
+  and the bot gets the context the operator's words assume. The composer
+  suggests bots after `@`, before the files it already suggests: never the bot
+  whose chat it is, an archived bot or one nobody may tag.
+- **HUI enforces who may tag.** A *Nobody* bot is in no list, and
+  `message_bot` refuses it. An *Only when @mentioned* bot is listed apart, and
+  `message_bot` reaches it only when the operator named `@handle` in the
+  message that started the tagger's run or one that joined it since; a
+  routine's, a trigger's, a bot's or a session's message never counts, nor
+  what HUI writes itself (a subagent's task or report).
+- **A session's tag is not the operator.** For the bot it reaches, it counts as
+  another bot's message does: it never rewrites SOUL.md, the profile or
+  routines, and it is hop 1 of a chain.
+- **No new loops.** A session can't be tagged, so its tags only start chains,
+  which three hops still end. A bot's subagents don't tag: the bot does, within
+  its chain's hops. A session shares its hourly budget with its subagents.
+- **Only while bots are on.** With Labs → Bots off no conversation lists bots,
+  and no session here has `message_bot`, as before; turning it on or off offers
+  every open Durable session its tools again. A session on a remote worker
+  reads the list from the gateway on each request, as a bot there does, and
+  gets or loses the tool at its next start; meanwhile the gateway refuses its
+  tags. Sessions still on PI's SDK worker don't tag, and their composers
+  suggest no bots.
 
 ### Listeners are the only triggers (2026-10-09)
 

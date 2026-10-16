@@ -111,6 +111,9 @@
 /* A face brings its own size (src/styles/bot-face.css) and needs no tile. */
 .bot-avatar.bot-avatar--face { width: auto; height: auto; border-radius: 0; background: none; }
 .bot-avatar__glyph { line-height: 1; }
+/* A bot in the composer's @ menu: its small face or tile, scaled into the menu's 22px icon box. */
+.mention-menu .slash-menu-icon--bot { overflow: visible; }
+.mention-menu .slash-menu-icon--bot > .bot-avatar { transform: scale(.7); }
 .bot-avatar__badge {
   position: absolute;
   right: -2px;
@@ -745,6 +748,9 @@
 .bot-settings .settings-row__desc { font-size: var(--control-ui-text-xs); line-height: 1.4; }
 .bot-settings .bot-setting__status { color: var(--muted); font-size: var(--control-ui-text-xs); }
 .bot-settings .bot-setting__error { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: var(--control-ui-text-xs); line-height: 1.4; overflow-wrap: anywhere; }
+/* When to tag it: prose a paragraph long, in the body's type rather than code's, as wide as its row (over the
+ * settings rows' 340px field width). */
+.bot-settings .bot-setting--stacked .settings-row__control > textarea.bot-settings__description { width: 100%; min-height: 64px; font-family: inherit; font-size: var(--control-ui-text-sm); line-height: 1.45; }
 /* Name and title: a field beside the row's title, the handle under it. */
 .bot-settings .bot-setting:not(.bot-setting--stacked) .settings-row__control > .settings-input { width: 184px; min-width: 0; font-size: var(--control-ui-text-sm); }
 .bot-settings .bot-setting .settings-row__desc { overflow-wrap: anywhere; }

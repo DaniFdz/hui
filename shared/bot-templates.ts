@@ -9,7 +9,7 @@
  * disabled, and a model it names is kept only when this gateway resolves it.
  */
 import type { AutomationSchedule } from "../src/lib/automation-types.ts";
-import { BOT_KICKOFF_MARKER, type BotFaceEars, type BotFaceShape, type BotView, type BotVoice } from "./bots.ts";
+import { BOT_KICKOFF_MARKER, type BotFaceEars, type BotFaceShape, type BotTagging, type BotView, type BotVoice } from "./bots.ts";
 
 /** The formats HUI reads, by id, with the name the preview shows. */
 export const BOT_TEMPLATE_FORMATS = {
@@ -100,6 +100,8 @@ export type BotTemplate = {
     memoryModel?: string;
     memoryThinking?: string;
     voice?: BotVoice;
+    /** Who may tag it, when not anyone. */
+    tagging?: Exclude<BotTagging, "anyone">;
     /** Off in the exported bot, by name; only those this gateway has are turned off. */
     disabledTools?: string[];
     disabledSkills?: string[];
@@ -205,6 +207,7 @@ export type BotExportManifest = {
     memoryModel?: string;
     memoryThinking?: string;
     voice?: BotVoice;
+    tagging?: Exclude<BotTagging, "anyone">;
   };
   routines: { name: string; description?: string; prompt: string; schedule: AutomationSchedule; enabled: boolean; timeoutSeconds?: number }[];
   disabledTools: string[];
