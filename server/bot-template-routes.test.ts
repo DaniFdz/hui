@@ -162,6 +162,7 @@ test("a Claude Code subagent keeps on only the tools its list maps to, and nothi
 
 test("a bot exports to a zip that imports back: profile, soul, its own skills, routines, its lists and its memory", async () => {
   assert.ok(nova, "Nova was imported");
+  assert.equal((await call(`/__hui/bots/${nova.id}`, "PATCH", { tagging: "mention" })).status, 200);
   const exported = await call(`/__hui/bots/${nova.id}/export?memory=1`);
   assert.equal(exported.status, 200);
   assert.equal(exported.headers.get("content-type"), "application/zip");
@@ -170,7 +171,7 @@ test("a bot exports to a zip that imports back: profile, soul, its own skills, r
   assert.deepEqual([...files.keys()], ["bot.json", "SOUL.md", "skills/weather/SKILL.md", "memory.md"]);
   const manifest = JSON.parse(files.get("bot.json")!) as Record<string, unknown>;
   assert.equal(manifest["format"], "hui-bot");
-  assert.deepEqual(manifest["bot"], { name: "Nova", handle: "nova", description: "calm and precise", avatar: { emoji: "🦊" } }, "a bot on the gateway's defaults exports none of its own");
+  assert.deepEqual(manifest["bot"], { name: "Nova", handle: "nova", description: "calm and precise", avatar: { emoji: "🦊" }, tagging: "mention" }, "a bot on the gateway's defaults exports none of its own");
   assert.deepEqual((manifest["routines"] as AutomationTask[]).map((routine) => [routine.name, routine.enabled, routine.schedule]), [["Heartbeat", false, { kind: "every", everyMs: 1_800_000 }]]);
   assert.deepEqual(manifest["skills"], ["weather"]);
   assert.match(files.get("memory.md")!, /^# Memory of @nova \(Nova\)/u);

@@ -111,6 +111,10 @@
 /* A face brings its own size (src/styles/bot-face.css) and needs no tile. */
 .bot-avatar.bot-avatar--face { width: auto; height: auto; border-radius: 0; background: none; }
 .bot-avatar__glyph { line-height: 1; }
+/* A bot in the composer's @ menu: its small face or tile, scaled into the 22px column the menu gives icons (outside
+ * .slash-menu-icon, whose icon rules would shrink the face's own SVG). */
+.mention-menu .mention-menu__face { display: grid; place-items: center; width: 22px; height: 22px; }
+.mention-menu .mention-menu__face > .bot-avatar { transform: scale(.7); }
 .bot-avatar__badge {
   position: absolute;
   right: -2px;
@@ -705,6 +709,9 @@
 .bot-settings .settings-row__desc { font-size: var(--control-ui-text-xs); line-height: 1.4; }
 .bot-settings .bot-setting__status { color: var(--muted); font-size: var(--control-ui-text-xs); }
 .bot-settings .bot-setting__error { grid-column: 1 / -1; margin: 0; color: var(--danger); font-size: var(--control-ui-text-xs); line-height: 1.4; overflow-wrap: anywhere; }
+/* When to tag it: prose a paragraph long, in the body's type rather than code's, as wide as its row (over the
+ * settings rows' 340px field width). */
+.bot-settings .bot-setting--stacked .settings-row__control > textarea.bot-settings__description { width: 100%; min-height: 64px; font-family: inherit; font-size: var(--control-ui-text-sm); line-height: 1.45; }
 /* Name and title: a field beside the row's title, the handle under it. */
 .bot-settings .bot-setting:not(.bot-setting--stacked) .settings-row__control > .settings-input { width: 184px; min-width: 0; font-size: var(--control-ui-text-sm); }
 .bot-settings .bot-setting .settings-row__desc { overflow-wrap: anywhere; }
@@ -713,6 +720,12 @@
 .bot-settings .new-session-page__directory-menu { position: relative; top: auto; margin-top: 6px; width: 100%; min-width: 0; max-width: 100%; }
 .bot-settings .new-session-page__directory-picker > input { font-size: var(--control-ui-text-sm); }
 .bot-settings .new-session-page__directory-picker > input:disabled { opacity: .6; cursor: not-allowed; }
+/* base.css keeps every text control at 16px or more on touch screens so iOS doesn't zoom into a focused one; the
+ * viewport's maximum-scale=1 already prevents that zoom (as for .pi-install-form's field, app.css), so these compact
+ * fields keep their type on phones too instead of towering over their rows. */
+@media (pointer: coarse) {
+  .bot-settings :is(.settings-row__control > .settings-input, .new-session-page__directory-picker > input) { font-size: var(--control-ui-text-sm) !important; }
+}
 /* Runs on, beside the Workspace heading: the machine a bot stays on, read-only (its worker, or Local), named as the
  * roster's + menu names it. A bot on a worker says why under the section, in the panel's hint type. */
 .bot-settings__note .bot-machine { display: inline-flex; align-items: center; gap: 4px; color: var(--text); font-weight: 500; vertical-align: bottom; }

@@ -40,7 +40,7 @@ import { botRecentRuns, botRoutineRuns, botRoutines, routineFacts, routineSchedu
 import { botToolsOffLabel } from "../lib/bot-tools.ts";
 import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
-import { botCallsLabel, botModelLabel, renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";
+import { botCallsLabel, botModelLabel, botTaggingLabel, renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";
 import { renderBotToolsTab, type BotToolsProps } from "./bot-tools.ts";
 import { agoLabel, renderBotTriggers, TRIGGER_RUN_LABELS, type BotTriggersProps } from "./bot-triggers.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
@@ -660,6 +660,7 @@ function renderSetup(props: BotPanelProps) {
   return html`<section class="bot-overview__section" aria-labelledby=${`${props.id}-overview-setup`}>
     ${overviewHead(props, "setup", "Setup")}
     <div class="bot-overview__list">
+      ${row("settings-tagging", "settings", "Tagging", botTaggingLabel(bot), bot.description ?? botTaggingLabel(bot))}
       ${row("settings-model", "settings", "Model", botModelLabel(bot, props.settings.models))}
       ${row("tools", "tools", "Tools & skills", botToolsOffLabel(bot))}
       ${row("settings-calls", "settings", "Calls", botCallsLabel(bot, props.settings.call))}

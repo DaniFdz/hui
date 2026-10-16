@@ -201,12 +201,14 @@ export class DurableHost implements ExtensionHost {
   #invokeTool: DurableToolInvoker;
   #lookupCaller: (conversationId: ConversationId) => Promise<string | undefined>;
   #tools: Extension;
-  /** The `bots`, `bot_access` and `soul` sections (inert outside bots' chats), and the tools only bots' chats select:
-   * `message_bot`, `write_soul`, `set_profile`, `request_access`, `load_skill` and `routines` (`durable-bots.ts`,
-   * `durable-bot-access.ts`, `durable-bot-routines.ts`). */
-  #bots: { section: Extension; tools: Extension };
-  /** The `bots` section of a bot's chat; the gateway sets it, a worker host leaves it unset. */
-  botSection: ((botId: string) => Promise<string | undefined>) | undefined;
+  /** The `bots`, `bot_access` and `soul` sections (a session's `bots` while bots are on, the rest inert outside bots'
+   * chats), the tools only bots' chats select: `message_bot`, `write_soul`, `set_profile`, `request_access`,
+   * `load_skill` and `routines` (`durable-bots.ts`, `durable-bot-access.ts`, `durable-bot-routines.ts`), and
+   * `message_bot` alone for sessions. */
+  #bots: { section: Extension; tools: Extension; tag: Extension };
+  /** The `bots` section of a bot's chat, or with no bot of a session's (the bots it may tag); the gateway answers, a
+   * worker's host asks the gateway. */
+  botSection: ((botId: string | undefined, conversationId: ConversationId) => Promise<string | undefined>) | undefined;
   /** Where bots' SOUL.md files are on this host, for the `soul` section; the gateway sets it (each bot's home folder in
    * HUI's configuration), a host without one leaves the section out. */
   botSouls: BotSoulHost | undefined;
@@ -312,7 +314,7 @@ export class DurableHost implements ExtensionHost {
     });
     this.#bots = huiBotsExtensions({
       chat: (conversationId) => this.chatFor(conversationId),
-      invoke, section: async (botId) => this.botSection?.(botId), souls: () => this.botSouls,
+      invoke, section: async (botId, conversationId) => this.botSection?.(botId, conversationId), souls: () => this.botSouls,
       tools: [...access.tools, botRoutinesTool({ invoke })], sections: access.sections,
     });
     // A bot's chat lists only the skills the operator left on, its own among them.
@@ -346,6 +348,9 @@ export class DurableHost implements ExtensionHost {
 
   /** Tools only bots' chats are offered. */
   get botTools(): readonly ToolRegistration[] { return this.#bots.tools.tools ?? []; }
+
+  /** `message_bot` alone, which a session selects while bots are on (`DurableSession.applyTools`). */
+  get botTag(): Extension { return this.#bots.tag; }
 
   /** The extension carrying `message_bot` and a bot's own tools when the conversation is a bot's chat; its session
    * selects it. */
@@ -508,7 +513,7 @@ export class DurableHost implements ExtensionHost {
       // selection: only an OptChat conversation, or a bot's chat, adds them.
       // Codemode is in the default selection, last, so a conversation stores nothing while Settings keep it on.
       const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, this.#bots.section, this.codemode];
-      for (const extension of [...base, this.optchat.toolsExtension, this.#bots.tools]) this.#registry.install(extension);
+      for (const extension of [...base, this.optchat.toolsExtension, this.#bots.tools, this.#bots.tag]) this.#registry.install(extension);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
         registry: this.#registry,

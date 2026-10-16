@@ -776,3 +776,14 @@ test("--call-voice sets the bot's GPT-Live voice, \"\" goes back to Settings' de
   assert.match(formatBot({ ...base, voice: { language: "es", live: "juniper" } }), /\nlanguage: es \(Spanish\)\ncall voice: Juniper\nroutines: /u);
   assert.doesNotMatch(formatBot(base), /call voice:/u, "without one it follows Settings");
 });
+
+test("--description says what a bot does and when to tag it, --tagging who may, and show says both", async (t) => {
+  const gateway = await fakeGateway(t);
+  await botCommand(gateway.base, "edit", ["ada"], { description: "Release notes. Tag her when a PR merges.", tagging: " Mention " }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { description: "Release notes. Tag her when a PR merges.", tagging: "mention" });
+  await botCommand(gateway.base, "add", [], { name: "Lola", tagging: "nobody" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", tagging: "nobody" });
+  const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
+  assert.match(formatBot({ ...base, description: "Finds sources.", tagging: "mention" }), /\ndescription: Finds sources\.\ntagging: only when your message tags it\n/u);
+  assert.match(formatBot(base), /\ntagging: anyone, when a task fits its description\n/u);
+});

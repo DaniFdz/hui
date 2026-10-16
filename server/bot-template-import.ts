@@ -191,6 +191,7 @@ export class BotTemplateService {
         ...(bot.memoryModel ? { memoryModel: bot.memoryModel } : {}),
         ...(bot.memoryThinking ? { memoryThinking: bot.memoryThinking } : {}),
         ...(bot.voice ? { voice: { ...bot.voice } } : {}),
+        ...(bot.tagging ? { tagging: bot.tagging } : {}),
       },
       routines: tasks.filter((task) => task.sessionId === bot.sessionId).map((task) => ({
         name: task.name, ...(task.description ? { description: task.description } : {}), prompt: task.prompt, schedule: task.schedule,
@@ -360,6 +361,7 @@ export class BotTemplateService {
     }
     if (template.hui?.memoryThinking && levels.includes(template.hui.memoryThinking)) input["memoryThinking"] = template.hui.memoryThinking;
     if (template.hui?.voice && Object.keys(template.hui.voice).length) input["voice"] = { ...template.hui.voice };
+    if (template.hui?.tagging) input["tagging"] = template.hui.tagging;
 
     // Routines: disabled, each on the schedule HUI reads from it.
     const timezone = this.#deps.timezone();

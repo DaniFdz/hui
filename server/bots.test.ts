@@ -121,6 +121,19 @@ test("a patch carries only what changes and may clear optional text and avatar k
   assert.equal(patchedAvatar({ emoji: "🦊" }, { emoji: "" }), undefined);
 });
 
+test("who may tag a bot is anyone (stored as nothing), only when mentioned, or nobody", () => {
+  assert.deepEqual(normalizeBotInput({ name: "Ada", tagging: "mention", description: "Release notes. Tag her when a PR merges." }), {
+    name: "Ada", description: "Release notes. Tag her when a PR merges.", tagging: "mention",
+  });
+  assert.deepEqual(normalizeBotInput({ name: "Ada", tagging: "anyone" }), { name: "Ada" }, "the default is not stored");
+  assert.deepEqual(normalizeBotPatch({ tagging: "anyone" }), { tagging: "anyone" }, "a patch can go back to the default");
+  assert.deepEqual(normalizeBotPatch({ tagging: "nobody" }), { tagging: "nobody" });
+  for (const tagging of ["everyone", "", null, 1]) assert.throws(() => normalizeBotPatch({ tagging }), /Who can tag the bot must be one of: anyone, mention, nobody\./u, String(tagging));
+  assert.equal(parseBotRecord(bot("b1", "ada", { tagging: "nobody" }))?.tagging, "nobody");
+  assert.equal(parseBotRecord({ ...bot("b1", "ada"), tagging: "anyone" })?.tagging, undefined);
+  assert.equal(parseBotRecord({ ...bot("b1", "ada"), tagging: "sometimes" })?.tagging, undefined, "a bad value is dropped, never the bot");
+});
+
 test("a bot's look: a face shape, ears and any #rrggbb color, an emoji beside them; \"\" or null clears", () => {
   assert.deepEqual(normalizeBotInput({ name: "Ada", avatar: { shape: "heart", color: "#2FC49A" } }), { name: "Ada", avatar: { shape: "heart", color: "#2fc49a" } });
   assert.deepEqual(normalizeBotInput({ name: "Ada", avatar: { emoji: "🦊", shape: "cookie" } }), { name: "Ada", avatar: { emoji: "🦊", shape: "cookie" } }, "the face waits behind an emoji");

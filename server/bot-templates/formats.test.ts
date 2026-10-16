@@ -276,7 +276,7 @@ test("CrewAI agents.yaml: each agent a candidate, role as title, goal and backst
 test("a HUI export reads back whole: profile, soul, its own skills, exact routines, lists, and the memory after its line", () => {
   const manifest = {
     format: "hui-bot" as const, version: 1 as const, exportedAt: "2026-10-07T10:00:00.000Z",
-    bot: { name: "Ada", handle: "ada", title: "Planner", avatar: { emoji: "🦉", shape: "heart" as const, ears: "bear" as const, color: "#2fc49a" }, model: "hui-e2e/fixture", thinking: "high", memoryModel: "hui-e2e/other", voice: { language: "es" as const } },
+    bot: { name: "Ada", handle: "ada", title: "Planner", avatar: { emoji: "🦉", shape: "heart" as const, ears: "bear" as const, color: "#2fc49a" }, model: "hui-e2e/fixture", thinking: "high", memoryModel: "hui-e2e/other", voice: { language: "es" as const }, tagging: "mention" as const },
     routines: [{ name: "Digest", prompt: "Sum up the day.", schedule: { kind: "cron" as const, expression: "0 18 * * *", timezone: "Europe/Madrid" }, enabled: true }],
     disabledTools: ["bash"], disabledSkills: [{ name: "release-notes", path: "/x/release-notes/SKILL.md" }], skills: ["plans"], memory: "memory.md" as const,
   };
@@ -284,7 +284,7 @@ test("a HUI export reads back whole: profile, soul, its own skills, exact routin
   const [choice] = readFileTemplates("ada.hui-bot.zip", zip);
   const template = choice!.template;
   assert.deepEqual([template.format, template.name, template.title, template.emoji, template.avatar, template.model], ["hui", "Ada", "Planner", "🦉", { shape: "heart", ears: "bear", color: "#2fc49a" }, "hui-e2e/fixture"]);
-  assert.deepEqual(template.hui, { handle: "ada", thinking: "high", memoryModel: "hui-e2e/other", voice: { language: "es" }, disabledTools: ["bash"], disabledSkills: ["release-notes"] });
+  assert.deepEqual(template.hui, { handle: "ada", thinking: "high", memoryModel: "hui-e2e/other", voice: { language: "es" }, tagging: "mention", disabledTools: ["bash"], disabledSkills: ["release-notes"] });
   assert.equal(template.soul, "# Who I am\n\nAda plans.");
   assert.deepEqual(template.skills, [{ name: "plans", description: "Plan a week", content: "Plan it." }]);
   assert.deepEqual(template.routines, [{ name: "Digest", prompt: "Sum up the day.", automation: { kind: "cron", expression: "0 18 * * *", timezone: "Europe/Madrid" }, schedule: "cron 0 18 * * * Europe/Madrid" }]);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
-import { botCallsLabel, botModelLabel } from "./bot-settings.ts";
+import { botCallsLabel, botModelLabel, botTaggingLabel } from "./bot-settings.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const between = (source: string, start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
@@ -160,11 +160,20 @@ test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceSt
   assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
 });
 
-test("the Settings page: Profile, Model, Calls and Workspace, each change saved on its own", () => {
+test("the Settings page: Profile, Tagging, Model, Calls and Workspace, each change saved on its own", () => {
   const source = read("./bot-settings.ts");
   const tab = between(source, "export function renderBotSettings(", "\n}\n");
-  assert.ok(tab.indexOf("renderProfile(props)") < tab.indexOf("renderModels(props)") && tab.indexOf("renderModels(props)") < tab.indexOf("renderCalls(props)")
-    && tab.indexOf("renderCalls(props)") < tab.indexOf("renderWorkspace(props)"), "Profile on top, then Model, Calls and Workspace");
+  assert.ok(tab.indexOf("renderProfile(props)") < tab.indexOf("renderTagging(props)") && tab.indexOf("renderTagging(props)") < tab.indexOf("renderModels(props)")
+    && tab.indexOf("renderModels(props)") < tab.indexOf("renderCalls(props)") && tab.indexOf("renderCalls(props)") < tab.indexOf("renderWorkspace(props)"),
+    "Profile on top, then Tagging, Model, Calls and Workspace");
+  const tagging = between(source, "function renderTagging(", "function renderModels(");
+  assert.match(tagging, /setting: "description", keys: \["description"\], stacked: true, title: "When to tag it"/u);
+  assert.match(tagging, /<textarea class="settings-input bot-settings__description"[^>]*maxlength=\$\{BOT_LIMITS\.description\}/u);
+  assert.match(tagging, /onTextKeydown\(event, "description", props\)\} @blur=\$\{\(event: FocusEvent\) => onTextBlur\(event, "description", props\)\}/u, "the description saves on Enter or blur");
+  assert.match(tagging, /setting: "tagging", keys: \["tagging"\], title: "Who can tag it"/u);
+  assert.match(tagging, /onChange: \(next\) => props\.onChange\("tagging", next\)/u, "who can tag it saves as it changes");
+  assert.match(source, /\{ value: "anyone", label: "Anyone"[\s\S]*\{ value: "mention", label: "Only when @mentioned"[\s\S]*\{ value: "nobody", label: "Nobody"/u);
+  assert.match(source, /if \(!value && key !== "title" && key !== "description"\)/u, "a description can be cleared, as a title can");
   const profile = between(source, "/** Name, title and look, edited in place", "function renderModels(");
   assert.match(profile, /setting: "name", keys: \["name"\]/u);
   assert.match(profile, /setting: "title", keys: \["title"\]/u);
@@ -244,7 +253,10 @@ test("the Settings page uses no fixed heights that could clip it", () => {
   assert.doesNotMatch(css, /\.bot-dialog/u, "no dialog styles are left");
 });
 
-test("the overview's Model and Calls rows name what the bot runs on and how it sounds on calls", () => {
+test("the overview's Tagging, Model and Calls rows name who may tag the bot, what it runs on and how it sounds on calls", () => {
+  assert.deepEqual([botTaggingLabel({}), botTaggingLabel({ tagging: "mention" }), botTaggingLabel({ tagging: "nobody" })], ["Anyone", "Only when @mentioned", "Nobody"]);
+  assert.match(between(read("./bots.ts"), "function renderSetup(", "function renderOverview("), /row\("settings-tagging", "settings", "Tagging", botTaggingLabel\(bot\), bot\.description \?\? botTaggingLabel\(bot\)\)/u,
+    "it opens Settings at Tagging, its description as the title");
   const models = [{ provider: "anthropic", id: "claude-x", name: "Claude X" }];
   assert.equal(botModelLabel({}, models), "Gateway default");
   assert.equal(botModelLabel({ model: "anthropic/claude-x", thinking: "xhigh" }, models), "Claude X · Extra high");

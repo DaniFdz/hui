@@ -10,7 +10,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
   BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, botColorName, botFaceEars, botDisplayCwd, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME,
-  type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotQuestion, type BotSkillSelector, type BotSoul, type BotsUpdate, type BotView,
+  type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotQuestion, type BotSkillSelector, type BotSoul, type BotsUpdate, type BotTagging, type BotView,
 } from "../shared/bots.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
 import { gptLiveVoiceLabel } from "../shared/calls.ts";
@@ -23,6 +23,10 @@ export type BotFlags = {
   yes?: boolean;
   name?: string;
   title?: string;
+  /** What it does and when to tag it. */
+  description?: string;
+  /** Who may tag it: anyone, mention or nobody. */
+  tagging?: string;
   "soul-file"?: string;
   file?: string;
   cwd?: string;
@@ -193,6 +197,8 @@ async function botBody(flags: BotFlags, io: BotIO): Promise<Record<string, unkno
   const body: Record<string, unknown> = {};
   if (flags.name !== undefined) body["name"] = flags.name;
   if (flags.title !== undefined) body["title"] = flags.title;
+  if (flags.description !== undefined) body["description"] = flags.description;
+  if (flags.tagging !== undefined) body["tagging"] = flags.tagging.trim().toLowerCase();
   if (flags["soul-file"] !== undefined) body["soul"] = await readText(flags["soul-file"], io);
   // `~` is the gateway user's home there; anything else is relative to where the command runs. On a worker, `~` is the
   // remote user's home, and the worker checks the folder.
@@ -838,6 +844,13 @@ export function formatBots(list: readonly BotView[], archived = false): string {
   ].join("  ")).join("\n");
 }
 
+/** Who may tag a bot, as `hui bot show` says it. */
+const TAGGING_TEXT: Readonly<Record<BotTagging, string>> = {
+  anyone: "anyone, when a task fits its description",
+  mention: "only when your message tags it",
+  nobody: "nobody",
+};
+
 /** `es (Spanish)`; `auto` when the bot answers in the language it hears. */
 function formatLanguage(value: string | undefined): string {
   const code = voiceLanguage(value);
@@ -861,6 +874,7 @@ export function formatBot(bot: BotView): string {
     `id: ${bot.id}`,
     ...(bot.lastMessage ? [`last message (${bot.lastMessage.role}, ${bot.lastMessage.at}): ${bot.lastMessage.text}`] : []),
     ...(bot.description ? [`description: ${bot.description}`] : []),
+    `tagging: ${TAGGING_TEXT[bot.tagging ?? "anyone"]}`,
     `soul: ${bot.soul ? `SOUL.md (hui bot soul ${bot.handle})` : "none yet: it writes SOUL.md in its first conversation"}`,
   ].join("\n");
 }
