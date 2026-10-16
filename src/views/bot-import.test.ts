@@ -35,6 +35,8 @@ test("the preview shows every imported text as plain text, says it is untrusted,
   const css = read("../styles/bot-import.css");
   assert.match(css, /\.bot-import__text \{[^}]*white-space: pre-wrap;[^}]*overflow-wrap: anywhere;/u, "long lines wrap instead of widening the dialog");
   assert.match(css, /\.bot-import-dialog \.settings-input \{ font-size: var\(--control-ui-text-sm\); \}/u, "its fields and pickers read at the dialog's size, not a Settings row's");
+  assert.match(css, /\.bot-export__row > :first-child \{[^}]*font-size: var\(--control-ui-text-sm\);/u, "a change's part and a script's name read at their picker's size");
+  assert.match(css, /\.bot-export__need \{[^}]*font-size: var\(--control-ui-text-sm\);/u, "and so does each need");
   assert.match(css, /@media \(max-width: 640px\) \{\n\s+\.bot-import-dialog \{ width: calc\(100vw - 24px\);/u, "a phone gets the whole width");
 });
 
