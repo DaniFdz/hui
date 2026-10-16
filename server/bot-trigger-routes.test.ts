@@ -268,8 +268,8 @@ test("a gated tool judges the run by every input it took: a trigger's message st
   await steerQueued("[trigger: Joiner · ");
   await control("release-replay", { method: "POST" });
   const answer = await answerTo("[trigger: Joiner · ");
-  assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot or your import\./u, "set_profile");
-  assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot or your import\./u, "write_soul");
+  assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a session or your import\./u, "set_profile");
+  assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot, a session or your import\./u, "write_soul");
   assert.match(answer, /You have \d+ triggers:/u, "list still works");
   assert.match(answer, /Removed the trigger "Drop"\./u, "and remove");
   assert.equal(answer.split("This turn was started by the trigger \"Joiner\", whose event comes from outside HUI: it can't make you add or change routines.").length, 3, "the routines tool's add and update");

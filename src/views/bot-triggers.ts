@@ -1,8 +1,8 @@
 /**
- * The Triggers section of a bot's Routines tab (HUI-18): its triggers with what they let through, when they last fired,
- * their cooldown, what their listener last reported, an on/off switch, Test, New URL and Delete; the latest runs; and
- * the add form. A trigger's URL shows once, right after it was made or replaced. Rendering only:
- * `BotTriggersController` (`src/lib/bot-triggers.ts`) owns the state and every request.
+ * The Triggers page of a bot's panel (HUI-18): its triggers with what they let through, when they last fired, their
+ * cooldown, what their listener last reported, an on/off switch, Test, New URL and Delete; the latest runs; and the add
+ * form. A trigger's URL shows once, right after it was made or replaced. Rendering only: `BotTriggersController`
+ * (`src/lib/bot-triggers.ts`) owns the state and every request.
  */
 import { html, nothing } from "lit";
 import { BOT_TRIGGER_LIMITS, botTriggerFilterSummary, cooldownLabel, type BotTrigger, type BotTriggerRun } from "../../shared/bot-triggers.ts";
@@ -14,9 +14,10 @@ import { loadViewAssets } from "../lib/view-assets.ts";
 
 loadViewAssets(() => import("../styles/bot-triggers.css"));
 
-export type BotTriggersProps = { bot: BotView; now: number; state: BotTriggersState } & BotTriggersActions;
+/** `adding`: the page opened on its add form (the overview's +). */
+export type BotTriggersProps = { bot: BotView; now: number; state: BotTriggersState; adding?: boolean } & BotTriggersActions;
 
-const RUN_LABELS: Record<BotTriggerRun["status"], string> = { fired: "Fired", coalesced: "Coalesced", skipped: "Skipped", failed: "Failed" };
+export const TRIGGER_RUN_LABELS: Record<BotTriggerRun["status"], string> = { fired: "Fired", coalesced: "Coalesced", skipped: "Skipped", failed: "Failed" };
 /** The cooldowns the form offers, in seconds. */
 export const COOLDOWN_CHOICES: readonly number[] = [0, 60, 300, 900, 3_600];
 
@@ -85,7 +86,7 @@ function renderRevealed(revealed: RevealedHook, props: BotTriggersProps) {
 function renderRun(run: BotTriggerRun, now: number) {
   const tags = [...(run.test ? ["test"] : []), ...(run.catchUp ? ["catch-up"] : []), ...(run.events > 1 ? [`${run.events} events`] : [])];
   return html`<li class="bot-run bot-trigger-run" data-run=${run.id} data-status=${run.status}>
-    <div class="bot-run__head"><span class="bot-run__name">${run.triggerName}</span><span class="bot-run__status">${RUN_LABELS[run.status]}</span></div>
+    <div class="bot-run__head"><span class="bot-run__name">${run.triggerName}</span><span class="bot-run__status">${TRIGGER_RUN_LABELS[run.status]}</span></div>
     <p class="bot-run__facts">${agoLabel(run.at, now)}${tags.length ? ` · ${tags.join(" · ")}` : ""}</p>
     ${run.summary ? html`<p class="bot-run__body">${run.summary}</p>` : nothing}
     ${run.reason ? html`<p class="bot-run__body ${run.status === "failed" ? "bot-run__body--error" : ""}" role=${run.status === "failed" ? "alert" : nothing}>${run.reason}</p>` : nothing}
@@ -155,11 +156,10 @@ function renderForm(props: BotTriggersProps, open: boolean) {
   </details>`;
 }
 
-/** The Triggers section, below the routines. */
+/** The Triggers page; the panel's header names it. */
 export function renderBotTriggers(props: BotTriggersProps) {
   const { state } = props;
   const list = state.list;
-  const headingId = `bot-triggers-${props.bot.id}`;
   let body;
   if (!list) {
     body = state.error
@@ -173,13 +173,10 @@ export function renderBotTriggers(props: BotTriggersProps) {
       ${list.triggers.length
         ? html`<ul class="bot-triggers__list" aria-label="Triggers">${list.triggers.map((trigger) => renderTrigger(trigger, props))}</ul>`
         : html`<p class="bot-panel__hint">No triggers yet. A trigger wakes ${props.bot.name} when a listener you run reports something: a program that watches what HUI doesn't read itself, such as a Slack or a Jira board, and sends what it finds to the trigger's URL.</p>`}
-      ${renderForm(props, list.triggers.length === 0)}
+      ${renderForm(props, list.triggers.length === 0 || Boolean(props.adding))}
       ${list.runs.length ? html`<h4 class="bot-triggers__subheading">Latest trigger runs</h4><ul class="bot-runs">${list.runs.slice(0, 10).map((run) => renderRun(run, props.now))}</ul>` : nothing}
       <p class="bot-panel__hint">${list.deliveries.lastHour} of ${list.deliveries.perHour} trigger deliveries in the last hour.</p>
       ${state.error ? html`<p class="bot-field__error" role="alert">Refresh failed: ${state.error}</p>` : nothing}`;
   }
-  return html`<section class="bot-panel__section bot-triggers" aria-labelledby=${headingId}>
-    <h3 class="bot-panel__heading" id=${headingId}>Triggers</h3>
-    ${body}
-  </section>`;
+  return html`<section class="bot-panel__section bot-triggers">${body}</section>`;
 }

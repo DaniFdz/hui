@@ -22,7 +22,7 @@ import { durableContext, type DurableHost } from "./runtimes/durable-host.ts";
 import { defaultThinking, durableConversationId, durableReference, initialModel, modelRef, textOf } from "./runtimes/durable.ts";
 import { restoreAttachmentNames } from "./runtimes/pi.ts";
 
-/** Where the Tools tab says a bot's own skills (`skills/` in its home folder) come from. */
+/** Where the Tools & skills page says a bot's own skills (`skills/` in its home folder) come from. */
 export const BOT_OWN_SKILLS_SOURCE = "Its own skills";
 
 /** Entries a cold read looks back through for the newest message. */

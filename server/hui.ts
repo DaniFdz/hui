@@ -412,14 +412,15 @@ function accountFullName(username: string): Promise<string | undefined> {
 function automationStoreFailure(error: unknown): never {
   throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
 }
-// A bot's chat lists the other bots in its `bots` prompt section (a worker's host asks for those of the bots there, and
-// learns each bot's name with it), and reads its SOUL.md (or has its first conversation) in its `soul` section, from
-// its home folder in HUI's configuration; a worker's host reads the home folders it keeps itself.
+// A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag while bots are on (a
+// worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
+// SOUL.md (or has its first conversation) in its `soul` section, from its home folder in HUI's configuration; a worker's
+// host reads the home folders it keeps itself.
 durableHost().botSection = (botId) => bots.section(botId);
 workers.serve("bot.section", async (workerId, params) => {
-  const botId = String(params["botId"] ?? "");
+  const botId = typeof params["botId"] === "string" ? params["botId"] : undefined;
   const section = await bots.workerSection(workerId, botId);
-  return { section: section ?? null, name: bots.identity(botId)?.name ?? null };
+  return { section: section ?? null, name: botId === undefined ? null : bots.identity(botId)?.name ?? null };
 });
 durableHost().botSouls = {
   home: (botId) => botHome(botId),
@@ -475,7 +476,7 @@ liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
   // Behind the check where a bot's chat runs: HUI's own refusal of a tool the operator turned off in that chat.
   await bots.checkToolAllowed(invocation.callerSessionId, invocation.action);
-  // A bot's chat only: the service refuses every other caller.
+  // A bot's chat, or any session while bots are on: the service decides who may tag whom.
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
   // A bot's gated tools judge its run by every input it took, as the host running the chat saw them (`runOrigins`).
   if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params, invocation.runOrigins);
@@ -518,7 +519,7 @@ registerAgentToolHandler(async (invocation) => {
   }
   return invocation.action === "present_media"
     ? presentMediaForSession(invocation.callerSessionId, invocation.params)
-    : subagents.handle(invocation.callerSessionId, invocation.action, invocation.params);
+    : subagents.handle(invocation.callerSessionId, invocation.action, invocation.params, invocation.signal);
 });
 
 function initializeSubagents(): void {
@@ -691,7 +692,8 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
   if (botsWereOn && !botsEnabled(settings)) quietBots();
-  if (before.codemode.enabled !== settings.codemode.enabled) await durableHost().applyTools();
+  // Codemode, and while bots are on every session's message_bot, are offered per conversation.
+  if (before.codemode.enabled !== settings.codemode.enabled || botsWereOn !== botsEnabled(settings)) await durableHost().applyTools();
   return settings;
 }
 
@@ -4206,7 +4208,13 @@ async function handleRequest(
     }
     if (action[2] === "abort" && request.method === "POST") {
       try {
+        // Stop also stops the helpers this conversation collects (Swarm), even when the turn itself refuses to stop.
+        const helpers = subagents.cancelCollected(id).catch((error: unknown) => recordDiagnosticEvent({
+          area: "session", level: "warning", action: "subagent_cancel_failed", sessionId: id,
+          summary: error instanceof Error ? error.message : "Could not stop this conversation's collected subagents.",
+        }));
         await liveSessions.abort(id);
+        await helpers;
         sendJson(response, 200, { ok: true });
       } catch (error) {
         sendJson(response, error instanceof SessionBusyError ? 409 : 400, {

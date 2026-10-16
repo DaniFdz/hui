@@ -93,7 +93,7 @@ export function formatImportPreview(preview: BotImportPreview): string {
     }
   }
   if (preview.triggers.length) {
-    lines.push("", "Triggers, created disabled (a listener you run wakes them; each gets its URL with hui bot trigger list and New URL in its Routines tab):");
+    lines.push("", "Triggers, created disabled (a listener you run wakes them; each gets its URL with hui bot trigger list and New URL on its Triggers page):");
     for (const trigger of preview.triggers) lines.push(`  ${trigger.name} · ${botTriggerFilterSummary(trigger)} · cooldown ${cooldownLabel(trigger.cooldownSeconds)}`, ...(trigger.prompt ? [indent(trigger.prompt, "    ")] : []));
   }
   if (preview.integrations.length) {

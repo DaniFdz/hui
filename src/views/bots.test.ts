@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
+import { botCallsLabel, botModelLabel, botTaggingLabel } from "./bot-settings.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const between = (source: string, start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
@@ -22,7 +23,7 @@ test("roster rows show each bot's state and keep their badges; archived bots sle
   assert.match(between(source, "function archivedRow(", "function renderRosterToggles("), /renderBotAvatar\(bot, "sm", \{ state: "offline" \}\)/u);
 });
 
-test("the Settings tab's Look is Face (shape and color) or Emoji, as native radio groups, each choice saved on its own", () => {
+test("the Settings page's Look is Face (shape and color) or Emoji, as native radio groups, each choice saved on its own", () => {
   const source = read("./bot-settings.ts");
   const look = between(source, "function renderLook(", "/** Name, title and look, edited in place");
   assert.match(look, /<details class="settings-row bot-setting bot-look" data-setting="look">/u, "a row that opens into the editor");
@@ -159,11 +160,20 @@ test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceSt
   assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
 });
 
-test("the Settings tab: Profile, Model, Calls and Workspace, each change saved on its own", () => {
+test("the Settings page: Profile, Tagging, Model, Calls and Workspace, each change saved on its own", () => {
   const source = read("./bot-settings.ts");
   const tab = between(source, "export function renderBotSettings(", "\n}\n");
-  assert.ok(tab.indexOf("renderProfile(props)") < tab.indexOf("renderModels(props)") && tab.indexOf("renderModels(props)") < tab.indexOf("renderCalls(props)")
-    && tab.indexOf("renderCalls(props)") < tab.indexOf("renderWorkspace(props)"), "Profile on top, then Model, Calls and Workspace");
+  assert.ok(tab.indexOf("renderProfile(props)") < tab.indexOf("renderTagging(props)") && tab.indexOf("renderTagging(props)") < tab.indexOf("renderModels(props)")
+    && tab.indexOf("renderModels(props)") < tab.indexOf("renderCalls(props)") && tab.indexOf("renderCalls(props)") < tab.indexOf("renderWorkspace(props)"),
+    "Profile on top, then Tagging, Model, Calls and Workspace");
+  const tagging = between(source, "function renderTagging(", "function renderModels(");
+  assert.match(tagging, /setting: "description", keys: \["description"\], stacked: true, title: "When to tag it"/u);
+  assert.match(tagging, /<textarea class="settings-input bot-settings__description"[^>]*maxlength=\$\{BOT_LIMITS\.description\}/u);
+  assert.match(tagging, /onTextKeydown\(event, "description", props\)\} @blur=\$\{\(event: FocusEvent\) => onTextBlur\(event, "description", props\)\}/u, "the description saves on Enter or blur");
+  assert.match(tagging, /setting: "tagging", keys: \["tagging"\], title: "Who can tag it"/u);
+  assert.match(tagging, /onChange: \(next\) => props\.onChange\("tagging", next\)/u, "who can tag it saves as it changes");
+  assert.match(source, /\{ value: "anyone", label: "Anyone"[\s\S]*\{ value: "mention", label: "Only when @mentioned"[\s\S]*\{ value: "nobody", label: "Nobody"/u);
+  assert.match(source, /if \(!value && key !== "title" && key !== "description"\)/u, "a description can be cleared, as a title can");
   const profile = between(source, "/** Name, title and look, edited in place", "function renderModels(");
   assert.match(profile, /setting: "name", keys: \["name"\]/u);
   assert.match(profile, /setting: "title", keys: \["title"\]/u);
@@ -197,51 +207,62 @@ test("the Settings tab: Profile, Model, Calls and Workspace, each change saved o
   assert.match(between(app, "private botSettingsCall(", "private botSettingsSavesOf("),
     /return \{ defaultVoice: this\.settings\.calls\.voice, \.\.\.\(this\.callsStatus \? \{ ready: callsReady\(this\.callsStatus\) \} : \{\}\) \};/u,
     "Settings' voice, and whether calls can run once the gateway has said (callsReady, as Call uses)");
-  assert.match(app, /\n\s+call: settingsCall,\n/u, "the tab always gets its Calls section");
+  assert.match(app, /\n\s+call: settingsCall,\n/u, "the page always gets its Calls section");
 });
 
-test("the roster's Edit opens the bot's chat on its Settings tab, docked or as the sheet", () => {
+test("the roster's Edit opens the bot's chat with its panel on Settings, docked or as the sheet", () => {
   const source = read("./bots.ts");
   assert.match(source, /<span class="session-menu__text">Edit bot…<\/span>/u, "the ellipsis of a place to make choices, as Settings… has, and as the header's ⋯ menu says");
   const app = read("../hui-app.ts");
   assert.match(between(app, "private openEditBot = ", "private showBotSettings("), /this\.showBotSettings\(bot\.id\);/u);
   const show = between(app, "private showBotSettings(", "private toggleBotSettings(");
   assert.match(show, /this\.navigate\(\{ kind: "bot", id: botId \}\)/u);
-  assert.match(show, /this\.botPanel = \{ open: this\.mobileNavLayout \? this\.botPanel\.open : true, tab: "settings" \};/u);
   assert.match(show, /if \(this\.mobileNavLayout\) this\.botSheetOpen = true;/u, "the sheet on narrow screens");
-  assert.match(show, /\.bot-panel \[role="tab"\]\[aria-selected="true"\]'\)\?\.focus\(\)/u, "the focus lands on the tab");
+  assert.match(show, /this\.botPanel = \{ \.\.\.this\.botPanel, open: true \};/u, "docked, it opens at the width it had");
+  assert.match(show, /this\.selectBotPanelView\("settings"\);/u);
   assert.doesNotMatch(app, /mode: "edit"/u, "the old Edit dialog is gone");
 });
 
-test("the panel's tabs take their own row under the header and keep their keys; Ctrl+Shift+, toggles Settings", () => {
+test("the panel opens on the bot's overview, whose rows open its pages with a way back; Ctrl+Shift+, toggles Settings", () => {
   const source = read("./bots.ts");
-  const panel = between(source, "export function renderBotPanel(", "/* ── New bot and Edit profile dialogs");
-  assert.match(panel, /<header class="bot-panel__header">\s*<h2 class="bot-panel__title">\$\{props\.bot\.name\}<\/h2>\s*<button[^>]*bot-panel__close/u, "the header: the bot's name and Close");
-  assert.match(panel, /<\/header>\s*<div class="bot-panel__tabs" role="tablist"/u, "the tabs right under it, a row of their own");
-  assert.match(panel, /@keydown=\$\{\(event: KeyboardEvent\) => onPanelTabKeydown\(event, props\)\}/u, "arrows, Home and End");
-  assert.match(panel, /title=\$\{tab === "settings" \? `Settings \(\$\{botSettingsShortcutLabel\(\)\}\)` : nothing\}/u);
-  assert.match(source, /case "settings": return keyed\(props\.bot\.id, renderBotSettings\(/u, "another bot's Settings start afresh");
-  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
-  const tabs = css.match(/\.bot-panel__tabs \{[^}]*\}/u)?.[0] ?? "";
-  assert.match(tabs, /overflow-x: auto;/u, "a larger text scale scrolls the row instead of clipping a label");
-  assert.match(tabs, /box-shadow: inset 0 -1px 0/u, "the divider is drawn inside, so the underline is not clipped");
-  const tab = css.match(/\.bot-panel__tab \{[^}]*\}/u)?.[0] ?? "";
-  assert.match(tab, /flex: 1 0 auto;/u, "tabs grow to fill the row and never shrink below their labels");
-  assert.match(tab, /white-space: nowrap;/u);
-  assert.doesNotMatch(tabs, /[\s;{]width: \d/u, "no fixed width");
+  const overview = between(source, "function renderOverview(", "function renderPanelView(");
+  const order = ["renderProfile(props)", "renderRoutinesSummary(props)", "renderTriggersSummary(props, now)", "renderActivity(props, now)", "renderSetup(props)"].map((part) => overview.indexOf(part));
+  assert.ok(order.every((at, index) => at > (order[index - 1] ?? -1)), "who it is, what it does on its own, then how it is set up");
+  assert.match(between(source, "function renderPanelHeader(", "/** The panel beside the bot's chat"), /bot-panel__back" aria-label=\$\{`Back to \$\{props\.bot\.name\}`\}/u, "every page has a way back");
+  assert.doesNotMatch(between(source, "/* ── side panel", "/* ── archive confirmation"), /role="tab"|SOUL\.md|memory/iu, "no tabs, and neither Soul nor Memory");
   const app = read("../hui-app.ts");
   assert.match(app, /if \(isBotSettingsShortcut\(event\)\) \{\n\s+if \(this\.view !== "bot" \|\| this\.settingsOpen \|\| this\.commandPaletteOpen \|\| document\.querySelector\("dialog\[open\]"\)\) return;/u);
-  assert.match(between(app, "private toggleBotSettings(", "private openEditProfile("), /if \(this\.botPanelVisible\(\) && this\.botPanel\.tab === "settings"\) this\.closeBotPanel\(\);\n\s+else this\.showBotSettings\(bot\.id\);/u);
+  assert.match(between(app, "private toggleBotSettings(", "private utilityModelName("), /if \(this\.botPanelVisible\(\) && this\.botPanelView === "settings"\) this\.closeBotPanel\(\);\n\s+else this\.showBotSettings\(bot\.id\);/u);
+  assert.match(app, /if \(this\.view !== "bot" \|\| this\.activeBotId !== target\.id\) \{\n\s+this\.botSheetOpen = false;\n\s+this\.botPanelView = "overview";\n\s+this\.botPanelOpenedFrom = "";\n\s+this\.botPanelExpanded = false;/u, "a bot opens on its overview, docked, also when it is opened again");
 });
 
-test("the Settings tab uses no fixed heights that could clip it", () => {
+test("an expanded panel keeps the chat mounted underneath, and Escape brings the chat back instead of stopping its turn", () => {
   const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
-  const tab = css.slice(css.indexOf("/* ── Settings tab"), css.indexOf("/* The Look:"));
+  assert.match(css, /\.bot-workspace--expanded > \.bot-workspace__chat \{ position: absolute; inset: 0; visibility: hidden; pointer-events: none; \}/u, "hidden, never unmounted: its stream, draft and scroll survive");
+  const app = read("../hui-app.ts");
+  assert.match(between(app, "private handleGlobalEscape(", "private readonly onPageHide"), /if \(this\.botPanelShownExpanded\(\)\) \{\n\s+event\.preventDefault\(\);\n\s+this\.expandBotPanel\(false\);\n\s+return;\n\s+\}\n\s+this\.botPaneApp\(\)\?\.handleGlobalEscape\(event\);/u);
+});
+
+test("the Settings page uses no fixed heights that could clip it", () => {
+  const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
+  const tab = css.slice(css.indexOf("/* ── Settings page"), css.indexOf("/* The Look:"));
   // An icon's size is no container's height.
   assert.doesNotMatch(tab.replace(/[^{}]*\bsvg \{[^}]*\}/gu, ""), /(^|[\s;{])(max-)?height: \d/mu, "no fixed or maximum height");
   assert.match(tab, /\.bot-settings \.settings-row\.bot-setting \{[^}]*min-height: 0;/u, "compact rows");
   assert.match(tab, /\.bot-settings \.bot-setting--stacked \.settings-row__control \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/u, "a stacked control takes the row's width");
   assert.doesNotMatch(css, /\.bot-dialog/u, "no dialog styles are left");
+});
+
+test("the overview's Tagging, Model and Calls rows name who may tag the bot, what it runs on and how it sounds on calls", () => {
+  assert.deepEqual([botTaggingLabel({}), botTaggingLabel({ tagging: "mention" }), botTaggingLabel({ tagging: "nobody" })], ["Anyone", "Only when @mentioned", "Nobody"]);
+  assert.match(between(read("./bots.ts"), "function renderSetup(", "function renderOverview("), /row\("settings-tagging", "settings", "Tagging", botTaggingLabel\(bot\), bot\.description \?\? botTaggingLabel\(bot\)\)/u,
+    "it opens Settings at Tagging, its description as the title");
+  const models = [{ provider: "anthropic", id: "claude-x", name: "Claude X" }];
+  assert.equal(botModelLabel({}, models), "Gateway default");
+  assert.equal(botModelLabel({ model: "anthropic/claude-x", thinking: "xhigh" }, models), "Claude X · Extra high");
+  assert.equal(botModelLabel({ model: "openai/gone", thinking: "dancing" }, models), "openai/gone", "a model gone from the catalog still shows; an unknown thinking level doesn't");
+  assert.equal(botCallsLabel({}, { defaultVoice: "sol" }), "Sol · Auto", "Settings' voice while it has none of its own");
+  assert.equal(botCallsLabel({ voice: { live: "maple", language: "es" } }, { defaultVoice: "sol" }), "Maple · Spanish");
 });
 
 test("the roster's + is a menu, New bot (on Local or on each worker while a worker exists) then Import bot…, and a choice creates the bot there at once", () => {
@@ -300,7 +321,7 @@ test("a bot on a worker shows the machine compactly in its roster row, its chat 
   assert.match(css, /\.app-shell \.bot-row__machine \{[^}]*max-width: 45%;/u, "a long name never crowds the preview out");
   assert.match(css, /\.bot-chat-identity__machine svg \{ flex: none; width: 11px; height: 11px; \}/u);
   assert.match(between(source, "export function renderBotArchiveDialog(", "/* ── delete confirmation"), /stay on \$\{bot\.worker\?\.name \?\? "this machine"\}/u);
-  assert.match(between(source, "function renderMemoryTab(", "export function renderBotPanel("), /Summarizer since HUI started on \$\{props\.bot\.worker\.name\}/u, "a worker's compactor counts since its host opened the memory");
+  assert.match(between(source, "function renderProfile(", "function renderRoutinesSummary("), /bot\.worker \? `on \$\{bot\.worker\.name\}` : ""/u, "its profile says where it runs");
   const deleting = source.slice(source.indexOf("export function renderBotDeleteDialog("));
   assert.match(deleting, /its memory and its folder\$\{bot\.worker \? ` on \$\{bot\.worker\.name\}` : ""\} \(SOUL\.md and every file in it\) go/u, "its folder on the worker");
   assert.match(deleting, /bot\.status === "disconnected" \? `; HUI is not connected to \$\{bot\.worker\.name\} now, so those go there when it reconnects` : ""/u, "and when they go while the worker is offline");

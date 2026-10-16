@@ -220,7 +220,7 @@ export class BotExportService {
     const routines = tasks.filter((task) => task.sessionId === bot.sessionId);
     const exported = {
       name: bot.name, title: bot.title, description: bot.description, avatar: bot.avatar, model: bot.model, thinking: bot.thinking,
-      memoryModel: bot.memoryModel, memoryThinking: bot.memoryThinking, voice: bot.voice, soul, skills,
+      memoryModel: bot.memoryModel, memoryThinking: bot.memoryThinking, voice: bot.voice, tagging: bot.tagging, soul, skills,
       routines: routines.map(({ name, description, prompt, schedule }) => ({ name, description, prompt, schedule })),
       triggers: triggers.map(({ name, filter, prompt, cooldownSeconds }) => ({ name, filter, prompt, cooldownSeconds })),
       disabledTools, disabledSkills,
@@ -309,6 +309,7 @@ export class BotExportService {
       ...(bare(bot.memoryModel) ? { memoryModel: bare(bot.memoryModel)! } : {}),
       ...(bot.memoryThinking ? { memoryThinking: bot.memoryThinking } : {}),
       ...(bot.voice && Object.keys(bot.voice).length ? { voice: { ...bot.voice } } : {}),
+      ...(bot.tagging ? { tagging: bot.tagging } : {}),
       routines, triggers,
       disabledTools: input.disabledTools, disabledSkills: input.disabledSkills.filter((name) => skills.some((skill) => skill.name === name)), skills: skills.map((skill) => skill.name),
     };

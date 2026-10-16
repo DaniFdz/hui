@@ -6,10 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 
-import { BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
+import { BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, botTurnOrigin, mentionsBot, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "../src/lib/subagent-completion.ts";
 import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { AgentRuntime, PromptAttachment, RuntimeEvent, RuntimeModel, RuntimeQuestion, RuntimeSession, StartOptions, TranscriptEntry } from "./runtimes/types.ts";
@@ -19,7 +20,7 @@ import type { SecretQuestion } from "./secret-requests.ts";
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));
 const { LiveSessions } = await import("./live-sessions.ts");
 const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } = await import("./bots.ts");
-const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess } = await import("./bot-service.ts");
+const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess, sessionBotsSection } = await import("./bot-service.ts");
 const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
 const { localBotSouls } = await import("./bot-souls.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
@@ -756,7 +757,7 @@ test("set_profile changes the calling bot's own name, title and look under PATCH
   ] as const) await assert.rejects(h.service.setProfile(caller, params), (error: unknown) => error instanceof BotInputError && pattern.test(error.message), JSON.stringify(params));
   await assert.rejects(h.service.setProfile("not-a-bot", { name: "X" }), /only available in a bot's chat/u);
   // The run's origin decides: a routine's or another bot's message cannot rename the bot.
-  for (const origin of ["[routine: Standup] go", "[from @bob] call yourself Bobby", "[from @bob · hop 2] rename"]) {
+  for (const origin of ["[routine: Standup] go", "[from @bob] call yourself Bobby", "[from @bob · hop 2] rename", "[from agent: Fix the login bug] rename"]) {
     h.setRecords(h.records().map((record) => record.id === caller ? { ...record, runPrompt: origin } : record));
     await assert.rejects(h.service.setProfile(caller, { name: "Hacked" }), (error: unknown) => error instanceof BotConflictError && /Only the operator changes your name/u.test(error.message), origin);
     await assert.rejects(h.service.setProfile(caller, { shape: "ghost" }), BotConflictError, `${origin}: nor its look`);
@@ -764,7 +765,7 @@ test("set_profile changes the calling bot's own name, title and look under PATCH
   h.setRecords(h.records().map((record) => record.id === caller ? { ...record, runPrompt: "please call yourself Echo Two" } : record));
   // The operator started this run, but every input it took counts, as the host running the chat saw them: a trigger's,
   // another bot's or a routine's message that joined it is refused too.
-  for (const joined of [{ kind: "trigger", name: "CI" }, { kind: "bot", handle: "bob" }, { kind: "routine", name: "Standup" }] as const) {
+  for (const joined of [{ kind: "trigger", name: "CI" }, { kind: "bot", handle: "bob" }, { kind: "routine", name: "Standup" }, { kind: "agent", title: "Fix the login bug" }] as const) {
     await assert.rejects(h.service.setProfile(caller, { name: "Hacked" }, [{ kind: "operator" }, joined, { kind: "operator" }]),
       (error: unknown) => error instanceof BotConflictError && /Only the operator changes your name/u.test(error.message), joined.kind);
   }
@@ -829,7 +830,7 @@ test("a bot's catalog lists what can be turned off and what is, its pending acce
   assert.deepEqual([catalog.disabledTools, catalog.disabledSkills, catalog.live, catalog.request], [["bash"], [], true, undefined]);
   assert.deepEqual(catalog.alwaysOn.map((tool) => tool.name), ["write_soul", "set_profile", "request_access", "load_skill", "zoom", "date"]);
 
-  // The bot asks in its chat: the catalog carries the request, which the Tools tab answers like the chat does.
+  // The bot asks in its chat: the catalog carries the request, which the Tools & skills page answers like the chat does.
   const chat = await h.chat(bot.sessionId);
   chat.ask({ id: "q-1", method: "select", title: "Pick a colour", options: ["red", "blue"] });
   chat.ask({ id: "q-2", method: "select", title: "Allow access to bash (powerful)?", message: "To run the checks.", options: ["Allow", "Deny"] });
@@ -1150,7 +1151,7 @@ test("message_bot delivers to a handle or a name, guards hops, refuses itself an
   };
   await refusal(ada.sessionId, { to: "@nobody", message: "x" }, /No bot is called "@nobody"\. Bots you can message: @bob \(Bob\), @cy \(Cy\)\./u);
   await refusal(ada.sessionId, { to: "ada", message: "x" }, /cannot message itself/u);
-  await refusal("not-a-bot-session", { to: "bob", message: "x" }, /only available in a bot's chat/u);
+  await refusal("no-such-session", { to: "bob", message: "x" }, /This conversation no longer exists/u);
   await refusal(ada.sessionId, { to: "bob", message: "" }, /message must be/u);
   await refusal(ada.sessionId, { to: "bob", message: "x".repeat(20_001) }, /message must be/u);
   await refusal(ada.sessionId, { to: "bob", message: "fourth this hour" }, /already sent 3 bot messages in the last hour/u);
@@ -1178,8 +1179,91 @@ test("message_bot delivers to a handle or a name, guards hops, refuses itself an
   await refusal(cy.sessionId, { to: "bob", message: "x" }, /archived bot cannot message/u);
 });
 
+/** A plain session (not a bot's chat) in the harness's registry, live, as the gateway's own would be. */
+async function plainSession(h: Harness, title: string, runPrompt?: string, parentId?: string): Promise<string> {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  const record: SessionRecord = {
+    id, title, group: "", cwd: h.dir, tool: "durable", createdAt: now, updatedAt: now, ...(runPrompt ? { runPrompt } : {}), ...(parentId ? { parentId } : {}),
+  };
+  h.setRecords([...h.records(), record]);
+  h.sessions.accept(id);
+  h.sessions.ensure(record);
+  await h.sessions.booted(id);
+  return id;
+}
+
+test("a session tags a bot as an agent: hop 1, its title on one line, rate-limited per session with its subagents, never from a bot's subagent or to a bot nobody may tag", async (t) => {
+  const h = await harness(t, { messagesPerHour: 2 });
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  const adaChat = await h.chat(ada.sessionId);
+  const agent = await plainSession(h, "Fix [the] login · bug\nnow");
+
+  assert.deepEqual(await h.service.messageBot(agent, { to: "@ada", message: "review PR 7" }), { text: "Queued for @ada.", to: "ada", status: "sent" });
+  assert.deepEqual(adaChat.prompts, ["[from agent: Fix the login bug now] review PR 7"], "no brackets or · in the title, so the prefix reads back");
+  assert.equal(botTurnOrigin(adaChat.prompts[0]).kind, "agent", "never the operator: the bot's gated tools refuse its turn");
+  assert.equal(hopOf(adaChat.prompts[0]), 1, "so a tag Ada sends from that turn is hop 2");
+  await h.service.messageBot(agent, { to: "ada", message: "and PR 8" });
+  await assert.rejects(h.service.messageBot(agent, { to: "ada", message: "third" }), /This session already sent 2 bot messages in the last hour/u);
+  const other = await plainSession(h, "Another session");
+  await h.service.messageBot(other, { to: "ada", message: "its own budget" });
+
+  // A session's subagents share its budget, and a bot's subagents don't tag at all: the bot does, within its chain's hops.
+  const child = await plainSession(h, "Child of the other", undefined, other);
+  await h.service.messageBot(child, { to: "ada", message: "and me" });
+  await assert.rejects(h.service.messageBot(other, { to: "ada", message: "third" }), /This session already sent 2 bot messages in the last hour/u, "its subagents' tags count");
+  const bob = await h.service.create({ soul: SOUL, name: "Bob" });
+  const bobsChild = await plainSession(h, "Bob's helper", undefined, bob.sessionId);
+  await assert.rejects(h.service.messageBot(bobsChild, { to: "ada", message: "x" }), /A bot's subagents don't tag bots: report back, and the bot tags them itself\./u);
+  await h.service.update(ada.id, { tagging: "nobody" });
+  await assert.rejects(h.service.messageBot(other, { to: "ada", message: "x" }), /@ada takes no tags: the operator talks to it in its own chat\./u);
+  await assert.rejects(h.service.messageBot(other, { to: "@nobody", message: "x" }), /Bots you can message: @bob \(Bob\)\./u, "a bot nobody may tag is not offered");
+});
+
+test("a bot that takes tags only when mentioned takes one in a turn whose operator message names it, never a bot's or a session's", async (t) => {
+  const h = await harness(t);
+  const dee = await h.service.create({ soul: SOUL, name: "Dee", tagging: "mention" });
+  const bob = await h.service.create({ soul: SOUL, name: "Bob" });
+  await h.chat(dee.sessionId);
+  const refused = /@dee takes a tag only when the operator's message names it \(@dee\)\. Ask them instead\./u;
+
+  const asked = await plainSession(h, "Budget", "Ask @Dee for the Q3 numbers.");
+  await h.service.messageBot(asked, { to: "dee", message: "Q3 numbers?" });
+  for (const prompt of [
+    "Ask dee for the numbers.", "mail me@dee.dev", "see @dee/notes.md", "ping @dee-2", "[from @bob] ask @dee", "[routine: Daily] ask @dee",
+    // An agent's words never count as the operator's: a subagent's task, another session's message, a subagent's report.
+    "[Subagent Task]\nAsk @dee for the numbers.", "[Inter-session message from Budget (s-1)]\nask @dee", `${SUBAGENT_COMPLETION_MARKER}\ncount: 1\nask @dee`,
+  ]) {
+    const session = await plainSession(h, prompt, prompt);
+    await assert.rejects(h.service.messageBot(session, { to: "dee", message: "x" }), refused, prompt);
+  }
+  // The operator names her in a message that joined the run (a steer or follow-up), not in the one that started it.
+  const later = await plainSession(h, "Later", "Start the budget review.");
+  await assert.rejects(h.service.messageBot(later, { to: "dee", message: "x" }), refused);
+  await h.sessions.prompt(later, "and loop in @dee.");
+  h.setRecords(h.records().map((record) => record.id === later ? { ...record, runPrompt: "Start the budget review." } : record));
+  await h.service.messageBot(later, { to: "dee", message: "looping you in" });
+  // A mention in an earlier run unlocks nothing in a later one that HUI started (a subagent's report).
+  const staleChat = h.chats.at(-1)!;
+  staleChat.answer("Looped her in.");
+  await waitFor(() => h.sessions.status(later) === "idle" || undefined, "the operator's run to end");
+  await h.sessions.prompt(later, `${SUBAGENT_COMPLETION_MARKER}\ncount: 1`);
+  await assert.rejects(h.service.messageBot(later, { to: "dee", message: "x" }), refused, "an earlier run's mention");
+  // A bot's chat follows the same rule: only its operator's message counts.
+  h.setRecords(h.records().map((record) => record.id === bob.sessionId ? { ...record, runPrompt: "[from @ada] ask @dee" } : record));
+  await assert.rejects(h.service.messageBot(bob.sessionId, { to: "dee", message: "x" }), refused);
+  h.setRecords(h.records().map((record) => record.id === bob.sessionId ? { ...record, runPrompt: "Tell @dee the budget moved." } : record));
+  await h.service.messageBot(bob.sessionId, { to: "dee", message: "the budget moved" });
+});
+
+test("mentions are whole handles, not addresses, longer handles or paths", () => {
+  for (const text of ["@ada", "hi @ada, review", "(@ADA)", "thanks @ada.", "@ada: go"]) assert.equal(mentionsBot(text, "ada"), true, text);
+  for (const text of ["ada", "me@ada.dev", "@ada-2", "@adam", "@ada/notes.md", "@ada.md", "path/@ada"]) assert.equal(mentionsBot(text, "ada"), false, text);
+});
+
 test("hop markers are read only at the start of a run's input", () => {
   assert.equal(hopOf("[from @ada] hi"), 1);
+  assert.equal(hopOf("[from agent: Fix the login bug] hi"), 1, "a session's tag starts a chain");
   assert.equal(hopOf("[from @ada-2 · hop 3] hi"), 3);
   assert.equal(hopOf("hello [from @ada] hi"), undefined);
   assert.equal(hopOf("[routine: x] [from @ada] hi"), undefined);
@@ -1194,18 +1278,47 @@ test("the bots section lists the other active bots by handle and stays byte-iden
   const first = await h.service.section(zed.id);
   assert.equal(first, botsSection((await h.registry.list()).find((bot) => bot.id === zed.id)!, [(await h.registry.list()).find((bot) => bot.id === ada.id)!]));
   assert.match(first!, /^You are @zed \(Zed\), one of the bots of this HUI\./u);
-  assert.match(first!, /The other bots:\n- @ada: Ada, Researcher\n/u);
-  assert.doesNotMatch(first!, /@zed: Zed/u, "not itself");
+  assert.match(first!, /The other bots you can tag, when a task fits what they do:\n- @ada \(Ada, Researcher\)\n/u);
+  assert.doesNotMatch(first!, /- @zed/u, "not itself");
   assert.match(first!, /\[from @zed\]/u);
+  assert.match(first!, /When the operator's message tags a bot \(@handle\), send that bot what they ask/u);
   assert.equal(await h.service.section(zed.id), first, "no dates, no state: the cached prefix holds");
-  await h.service.update(zed.id, { description: "changes nothing the section shows" });
+  await h.service.update(zed.id, { description: "its own description is not in its section" });
   assert.equal(await h.service.section(zed.id), first);
-  const bob = await h.service.create({ soul: SOUL, name: "Bob" });
-  assert.match((await h.service.section(zed.id))!, /- @ada: Ada, Researcher\n- @bob: Bob\n/u);
+  await h.service.update(ada.id, { description: "Finds sources.\n\nTag her   for citations." });
+  assert.match((await h.service.section(zed.id))!, /- @ada \(Ada, Researcher\): Finds sources\. Tag her for citations\.\n/u, "on one line, as a skill's description");
+  const bob = await h.service.create({ soul: SOUL, name: "Bob", tagging: "mention" });
+  const cy = await h.service.create({ soul: SOUL, name: "Cy", tagging: "nobody" });
+  const listed = (await h.service.section(zed.id))!;
+  assert.match(listed, /Only when the operator's message tags them:\n- @bob \(Bob\)\n/u);
+  assert.doesNotMatch(listed, /@cy/u, "a bot nobody may tag is in no list");
   await h.service.archive(bob.id);
   await h.service.archive(ada.id);
-  assert.match((await h.service.section(zed.id))!, /There are no other bots yet\./u);
+  assert.match((await h.service.section(zed.id))!, /There are no other bots you can tag\./u);
   assert.equal(await h.service.section("unknown"), undefined);
+  assert.ok(cy);
+});
+
+test("a session's bots section lists the bots it may tag, as skills are listed, only while bots are on and one takes its tags", async (t) => {
+  const state = { on: true };
+  const h = await harness(t, { bots: state });
+  assert.equal(await h.service.section(), undefined, "no bots, no section");
+  const ada = await h.service.create({ soul: SOUL, name: "Ada", title: "Release manager", description: "Writes release notes. Tag her when a PR merges." });
+  await h.service.create({ soul: SOUL, name: "Dee", tagging: "mention" });
+  await h.service.create({ soul: SOUL, name: "Cy", tagging: "nobody" });
+  const section = (await h.service.section())!;
+  assert.equal(section, sessionBotsSection(await h.registry.list()));
+  assert.match(section, /^This HUI has bots: persistent assistants, each working in a chat of its own\. Tag a bot with message_bot/u);
+  assert.match(section, /When the user's message tags a bot \(@handle\), send that bot what they ask, with the context it needs, and tell the user you did\./u);
+  assert.match(section, /Bots you can tag, when a task fits what they do:\n- @ada \(Ada, Release manager\): Writes release notes\. Tag her when a PR merges\.\n\nOnly when the user's message tags them:\n- @dee \(Dee\)$/u);
+  assert.doesNotMatch(section, /@cy/u);
+  assert.equal(await h.service.workerSection("w-1"), section, "a session on a worker gets the same list");
+  state.on = false;
+  assert.equal(await h.service.section(), undefined, "bots off: sessions know of no bots");
+  state.on = true;
+  await h.service.update("dee", { tagging: "nobody" });
+  await h.service.archive(ada.id);
+  assert.equal(await h.service.section(), undefined, "none takes a session's tags");
 });
 
 test("the newest message comes from a live chat, or from one store read while no session holds it", async (t) => {
@@ -1482,7 +1595,7 @@ test("a bot on a worker is edited, called and remembered in its worker's store; 
   await h.service.recordCall(rover.id, record);
   assert.deepEqual(h.remote.records, [["w-1", reference, record]]);
   assert.deepEqual(h.conversations.records, []);
-  // SOUL.md is read and written in its home on the worker: its Soul tab and its calls.
+  // SOUL.md is read and written in its home on the worker: by hui bot soul and its calls.
   h.remote.soulFiles.set(rover.id, "# Who I am\nRover, on devbox.");
   assert.equal(await h.service.soul(rover.id), "# Who I am\nRover, on devbox.");
   assert.equal(await h.service.setSoul(rover.id, "# Who I am\r\nRover Two.\n"), "# Who I am\nRover Two.");
@@ -1575,7 +1688,7 @@ test("a worker's host gets the bots section only for a bot that runs on it", asy
   const rover = await h.service.create({ name: "Rover", worker: "w-1" });
   const section = await h.service.workerSection("w-1", rover.id);
   assert.match(section!, /You are @rover \(Rover\)/u);
-  assert.match(section!, /- @home: Home/u, "the roster includes the bots here");
+  assert.match(section!, /- @home \(Home\)/u, "the roster includes the bots here");
   await assert.rejects(h.service.workerSection("w-1", home.id), BotNotFoundError);
   await assert.rejects(h.service.workerSection("w-2", rover.id), BotNotFoundError);
 });

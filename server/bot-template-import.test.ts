@@ -120,6 +120,9 @@ test("the plan: a unique handle, a skill renamed away from its directory's, the 
   assert.deepEqual(routines.map((routine) => [routine.name, routine.enabled, routine.schedule, routine.sessionId]), [["Deals", false, { kind: "cron", expression: "0 8 * * 1-5", timezone: "UTC" }, "session-new"]]);
   assert.match(sent[0]!, /^\[HUI bot created\]\nname: Trip Planner\n[\s\S]*\n\nWhere to\?$/u);
   assert.deepEqual([result.skills, result.routines, result.opener, result.warnings], [["weather-2"], 1, true, []]);
+  const { service: exported, created: again } = harness();
+  await exported.create({ template: { ...GROK_LIKE, format: "hui", hui: { tagging: "nobody" } } });
+  assert.equal(again[0]!["tagging"], "nobody", "a HUI export keeps who may tag the bot");
   const planned = await harness().service.preview({ source: { kind: "text", text: JSON.stringify(GROK_LIKE) } }).catch((error: unknown) => error);
   assert.ok(planned instanceof Error, "a template is not a source: the preview reads sources only");
 });

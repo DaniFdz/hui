@@ -30,14 +30,15 @@ import { mkdir, realpath, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import {
-  BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook, handleFromName, isBotAccessQuestion,
-  previewLine, runTurnOrigins,
+  agentTagPrefix, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook, botTurnOrigin,
+  handleFromName, isBotAccessQuestion, mentionsBot, previewLine, runTurnOrigins, storedTagging,
   type BotAccessRequest, type BotCatalog, type BotSkillRef, type BotSkillSelector,
   type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
   type BotQuestion, type BotRecord, type BotReply, type BotTurnOrigin, type BotView,
 } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "../src/lib/subagent-completion.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import {
   BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
@@ -46,6 +47,7 @@ import {
 import { SessionBusyError, type HuiQuestion, type LiveSessions } from "./live-sessions.ts";
 import type { PromptAttachment, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
 import type { SessionRecord } from "./sessions.ts";
+import { rootSessionId } from "./subagents.ts";
 import { resolveWorkingDirectory } from "./working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 
@@ -57,7 +59,8 @@ export const MAX_BOT_HOPS = 3;
 const READY_TIMEOUT_MS = 60_000;
 /** How often the bot list looks at SOUL.md again by itself, for a hand edit; HUI's own writes and a settled turn count at once. */
 const SOUL_RECHECK_MS = 10_000;
-const HOP = /^\[from @[a-z0-9-]+(?: · hop ([1-9]\d*))?\] /u;
+/** A bot's tag (`[from @x] …`, `[from @x · hop N] …`) or a session's (`[from agent: title] …`, always hop 1). */
+const HOP = /^\[from (?:@[a-z0-9-]+(?: · hop ([1-9]\d*))?|agent: [^\]\n]*)\] /u;
 
 export type BotSessions = Pick<
   LiveSessions,
@@ -414,6 +417,7 @@ export class BotService {
       throw error;
     }
     const now = new Date(this.#now()).toISOString();
+    const tagging = storedTagging(input.tagging);
     try {
       const bot = await this.#registry.update((bots) => {
         const handles = new Set(bots.map((bot) => bot.handle));
@@ -424,6 +428,7 @@ export class BotService {
           name: input.name,
           ...(input.title ? { title: input.title } : {}),
           ...(input.description ? { description: input.description } : {}),
+          ...(tagging ? { tagging } : {}),
           cwd,
           ...(worker ? { worker: worker.id } : {}),
           ...(input.model ? { model: input.model } : {}),
@@ -561,7 +566,7 @@ export class BotService {
    * What the operator can turn off in the bot's chat and what is off (`GET /__hui/bots/:id/catalog`), from its
    * `hui.bot` document; a roster copy that differs is repaired. Opening the chat lists its extensions' tools; an
    * archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). Its pending
-   * access request comes along, so the Tools tab can answer it too. A bot on a worker: from its document and offer
+   * access request comes along, so the Tools & skills page can answer it too. A bot on a worker: from its document and offer
    * there, skills by their mirrored paths; while HUI is not connected to the worker, a 503 that names it.
    */
   async catalog(target: string): Promise<BotCatalog> {
@@ -666,8 +671,8 @@ export class BotService {
   /**
    * `set_profile` from the bot whose chat `callerSessionId` is: its own name, title and/or look (shape, ears, color by
    * palette name or hex, emoji), under `PATCH`'s rules (`update`, so a derived handle follows the name). Only the operator decides them: a run that took any input from a
-   * routine, a trigger or another bot is refused, the one that started it (its run's originating input, `runPrompt`)
-   * or any since (`runOrigins`, as the host running the chat saw them; none from a host that can't tell).
+   * routine, a trigger, another bot, a session or its import is refused, the one that started it (its run's originating input,
+   * `runPrompt`) or any since (`runOrigins`, as the host running the chat saw them; none from a host that can't tell).
    */
   async setProfile(callerSessionId: string, params: Record<string, unknown>, runOrigins?: readonly BotTurnOrigin[]): Promise<{ text: string; name: string; handle: string }> {
     await this.#assertActive();
@@ -676,7 +681,7 @@ export class BotService {
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
     const origins = runTurnOrigins((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt, runOrigins);
     if (origins.some((origin) => origin.kind !== "operator" && origin.kind !== "kickoff")) {
-      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot or your import. Ask the operator instead.");
+      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a session or your import. Ask the operator instead.");
     }
     const unknown = Object.keys(params).filter((key) => !PROFILE_KEYS.includes(key));
     if (unknown.length) throw new BotInputError(`set_profile takes ${PROFILE_KEYS.join(", ")} only, not ${unknown.join(", ")}.`);
@@ -957,50 +962,76 @@ export class BotService {
   }
 
   /**
-   * `message_bot` from the bot whose chat `callerSessionId` is. Delivered as
-   * `[from @sender] …`, one hop more than the message that started the
-   * sender's current run; refused beyond `MAX_BOT_HOPS`, to itself, and past
-   * the hourly limit. Fire-and-forget: it returns once the message is accepted.
+   * `message_bot`: a tag from the bot or the session whose chat `callerSessionId` is. Delivered as `[from @sender] …`
+   * from a bot, one hop more than the message that started its current run, or as `[from agent: <title>] …` from a
+   * session; refused beyond `MAX_BOT_HOPS`, to the bot itself, to a bot nobody may tag, to one that takes tags only when
+   * the operator asks without their asking (`operatorMentioned`), and past the hourly limit. Fire-and-forget: it
+   * returns once the message is accepted.
    */
   async messageBot(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string; to: string; status: "sent" | "queued" }> {
     await this.#assertActive();
-    const bots = await this.#registry.list();
+    const [bots, records] = await Promise.all([this.#registry.list(), this.#deps.readSessions()]);
+    const caller = records.find((record) => record.id === callerSessionId);
+    if (!caller) throw new BotInputError("This conversation no longer exists.");
     const sender = bots.find((bot) => bot.sessionId === callerSessionId);
-    if (!sender) throw new BotInputError("message_bot is only available in a bot's chat.");
-    if (sender.archived) throw new BotConflictError("An archived bot cannot message other bots.");
+    if (sender?.archived) throw new BotConflictError("An archived bot cannot message other bots.");
     const to = typeof params["to"] === "string" ? params["to"].trim() : "";
     const message = typeof params["message"] === "string" ? params["message"].trim() : "";
     if (!to || to.length > 100) throw new BotInputError("to must name a bot: its @handle or its exact name.");
     if (!message || message.length > BOT_LIMITS.message) throw new BotInputError(`message must be 1-${BOT_LIMITS.message} characters.`);
     const target = messageTarget(bots, sender, to);
-    if (target.id === sender.id) throw new BotInputError("A bot cannot message itself.");
+    if (target.id === sender?.id) throw new BotInputError("A bot cannot message itself.");
     if (target.archived) throw new BotConflictError(`@${target.handle} is archived and cannot receive messages.`);
-    const records = await this.#deps.readSessions();
-    const hop = (hopOf(records.find((record) => record.id === callerSessionId)?.runPrompt) ?? 0) + 1;
+    if (target.tagging === "nobody") throw new BotConflictError(`@${target.handle} takes no tags: the operator talks to it in its own chat.`);
+    if (target.tagging === "mention" && !this.#operatorMentioned(caller, target.handle)) {
+      throw new BotConflictError(`@${target.handle} takes a tag only when the operator's message names it (@${target.handle}). Ask them instead.`);
+    }
+    const hop = (hopOf(caller.runPrompt) ?? 0) + 1;
     if (hop > MAX_BOT_HOPS) {
       throw new BotConflictError(`This turn answers a message that already crossed ${MAX_BOT_HOPS} bots. HUI stops bot-to-bot chains there so bots cannot loop; answer in your own chat instead.`);
     }
+    // A session and the subagents it spawned share one hourly budget. A bot's subagents don't tag: the bot does, so a
+    // chain can't start again at hop 1 through them.
+    const root = rootSessionId(records, caller.id);
+    if (!sender && bots.some((bot) => bot.sessionId === root)) throw new BotConflictError("A bot's subagents don't tag bots: report back, and the bot tags them itself.");
     const now = this.#now();
-    const recent = (this.#sent.get(sender.id) ?? []).filter((at) => now - at < HOUR_MS);
+    const key = sender?.id ?? root;
+    const recent = (this.#sent.get(key) ?? []).filter((at) => now - at < HOUR_MS);
     if (recent.length >= this.#messagesPerHour) {
-      throw new BotConflictError(`@${sender.handle} already sent ${this.#messagesPerHour} bot messages in the last hour. Wait before sending more.`);
+      throw new BotConflictError(`${sender ? `@${sender.handle}` : "This session"} already sent ${this.#messagesPerHour} bot messages in the last hour. Wait before sending more.`);
     }
     const record = records.find((candidate) => candidate.id === target.sessionId);
     if (!record) throw new BotConflictError(`@${target.handle}'s chat is missing from HUI's session registry.`);
-    const delivery = await this.#deliver(record, `[from @${sender.handle}${hop === 1 ? "" : ` · hop ${hop}`}] ${message}`, undefined);
-    this.#sent.set(sender.id, [...recent, now]);
+    // A session is never tagged itself, so its tag is always a chain's first hop.
+    const from = sender ? `[from @${sender.handle}${hop === 1 ? "" : ` · hop ${hop}`}] ` : agentTagPrefix(caller.title);
+    const delivery = await this.#deliver(record, `${from}${message}`, undefined);
+    this.#sent.set(key, [...recent, now]);
     return { text: `Queued for @${target.handle}.`, to: target.handle, status: delivery.status };
   }
 
-  /** The `bots` system prompt section of one bot's chat. */
-  async section(botId: string): Promise<string | undefined> {
-    const bots = await this.#registry.list();
-    const self = bots.find((bot) => bot.id === botId);
-    return self ? botsSection(self, bots.filter((bot) => bot.id !== self.id && !bot.archived)) : undefined;
+  /** Whether the operator asked for `@handle` in the run going now: in the message that started it (its `runPrompt`) or
+   * one that joined it since (a steer or follow-up), never in an earlier run, and never in a message that isn't theirs
+   * (`operatorText`). */
+  #operatorMentioned(caller: SessionRecord, handle: string): boolean {
+    const asked = this.#sessions.transcript(caller.id).flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []);
+    const start = caller.runPrompt === undefined ? -1 : asked.lastIndexOf(caller.runPrompt);
+    // A run the transcript doesn't show from its first message (one recovered after a restart): that message and the newest.
+    const run = start === -1 ? [caller.runPrompt, asked.at(-1)] : asked.slice(start);
+    return run.some((text) => text !== undefined && operatorText(text) && mentionsBot(text, handle));
   }
 
-  /** The section a worker's host asks for, for a bot whose chat runs on that worker only. */
-  async workerSection(workerId: string, botId: string): Promise<string | undefined> {
+  /** The `bots` system prompt section of a bot's chat, or with no `botId` of a session's: undefined while bots are off
+   * or no bot takes its tags. */
+  async section(botId?: string): Promise<string | undefined> {
+    const bots = await this.#registry.list();
+    if (botId === undefined) return await this.#isActive() ? sessionBotsSection(bots) : undefined;
+    const self = bots.find((bot) => bot.id === botId);
+    return self ? botsSection(self, bots.filter((bot) => bot.id !== self.id)) : undefined;
+  }
+
+  /** The section a worker's host asks for: a session's there, or a bot's whose chat runs on that worker only. */
+  async workerSection(workerId: string, botId?: string): Promise<string | undefined> {
+    if (botId === undefined) return this.section();
     const bot = (await this.#registry.list()).find((candidate) => candidate.id === botId);
     if (!bot || bot.worker !== workerId) throw new BotNotFoundError("That bot does not run on this worker.");
     return this.section(bot.id);
@@ -1326,25 +1357,60 @@ export class BotService {
   }
 }
 
-/** The hop of the bot message a run input starts with (`[from @x]` is hop 1); undefined for any other input. */
+/** The hop of the tag a run input starts with (`[from @x]` and `[from agent: …]` are hop 1); undefined for any other input. */
 export function hopOf(text: string | undefined): number | undefined {
   const match = HOP.exec(text ?? "");
   return match ? Number(match[1] ?? 1) : undefined;
 }
 
+/** How the messages HUI writes into a session start (`subagents.ts`): a subagent's task, another session's message and
+ * a subagent's report. */
+const HUI_MESSAGES = ["[Subagent Task]", "[Inter-session message ", SUBAGENT_COMPLETION_MARKER];
+
+/** A message the operator wrote: not a routine's, a trigger's, a bot's or a session's tag, a new bot's kickoff, nor one
+ * HUI writes itself (`HUI_MESSAGES`): an agent's words never count as the operator's. */
+function operatorText(text: string): boolean {
+  return botTurnOrigin(text).kind === "operator" && !HUI_MESSAGES.some((start) => text.startsWith(start));
+}
+
+/** One bot as a roster lists it, on one line: its handle, name and title, then what it does and when to tag it. */
+function rosterLine(bot: BotRecord): string {
+  return `- @${bot.handle} (${bot.name}${bot.title ? `, ${bot.title}` : ""})${bot.description ? `: ${previewLine(bot.description, BOT_LIMITS.description)}` : ""}`;
+}
+
+/** The bots a chat may tag, by handle: those anyone may tag under `fits`, then those that wait for the operator's
+ * mention under `mentioned`. Never an archived bot or one nobody may tag. */
+function rosterBlocks(bots: readonly BotRecord[], fits: string, mentioned: string): string[] {
+  const listed = bots.filter((bot) => !bot.archived && bot.tagging !== "nobody").sort((a, b) => a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0);
+  const block = (title: string, group: readonly BotRecord[]) => group.length ? [`${title}\n${group.map(rosterLine).join("\n")}`] : [];
+  return [...block(fits, listed.filter((bot) => !bot.tagging)), ...block(mentioned, listed.filter((bot) => bot.tagging === "mention"))];
+}
+
 /**
- * The `bots` section: who this bot is, the other bots and how to reach them.
+ * The `bots` section of a session (not a bot's chat): the bots it may tag, as skills are listed, and how; undefined
+ * when none takes its tags. The same for every session and byte-stable while the roster is (ordered by handle, no
+ * dates), so it stays inside the prompt cache.
+ */
+export function sessionBotsSection(bots: readonly BotRecord[]): string | undefined {
+  const roster = rosterBlocks(bots, "Bots you can tag, when a task fits what they do:", "Only when the user's message tags them:");
+  if (!roster.length) return undefined;
+  return [
+    `This HUI has bots: persistent assistants, each working in a chat of its own. Tag a bot with message_bot({ to: "@handle", message }) to hand it work: the message lands in its chat marked as yours and the bot answers there; nothing comes back to you. When the user's message tags a bot (@handle), send that bot what they ask, with the context it needs, and tell the user you did.`,
+    ...roster,
+  ].join("\n\n");
+}
+
+/**
+ * The `bots` section of a bot's chat: who this bot is, the other bots it may tag and how to reach them.
  * Byte-stable while the roster is unchanged (ordered by handle, no dates), so
  * it stays inside the prompt cache.
  */
 export function botsSection(self: BotRecord, others: readonly BotRecord[]): string {
-  const roster = [...others]
-    .sort((a, b) => a.handle < b.handle ? -1 : a.handle > b.handle ? 1 : 0)
-    .map((bot) => `- @${bot.handle}: ${bot.name}${bot.title ? `, ${bot.title}` : ""}`);
+  const roster = rosterBlocks(others, "The other bots you can tag, when a task fits what they do:", "Only when the operator's message tags them:");
   return [
     `You are @${self.handle} (${self.name}), one of the bots of this HUI. Each bot works in a chat of its own.`,
-    roster.length ? `The other bots:\n${roster.join("\n")}` : "There are no other bots yet.",
-    `message_bot({ to: "@handle", message }) puts a message in another bot's chat, where it reads "[from @${self.handle}] …" and that bot answers in its own chat; nothing comes back to you by itself. A message from a bot starts with "[from @handle]" or "[from @handle · hop N]": answer it with message_bot only when there is something new to say. HUI stops a chain of bot messages after ${MAX_BOT_HOPS} hops.`,
+    ...(roster.length ? roster : ["There are no other bots you can tag."]),
+    `Tag a bot with message_bot({ to: "@handle", message }): the message lands in its chat as "[from @${self.handle}] …" and it answers there; nothing comes back to you by itself. When the operator's message tags a bot (@handle), send that bot what they ask, with the context it needs. A message from a bot starts with "[from @handle]" or "[from @handle · hop N]": answer it with message_bot only when there is something new to say. One from a session's agent starts with "[from agent: <title>]": sessions can't be tagged, so answer it in your chat. HUI stops a chain of bot messages after ${MAX_BOT_HOPS} hops.`,
     `The user can call you by voice. A voice model talks for you and your utility model answers its quick questions from your memory; work that needs your tools arrives here as a message starting with "[call task]": do it and answer briefly in plain sentences, which the call reads out if it is still going. After each call your chat and memory get its record, marked "[call]": a summary and the whole transcript.`,
   ].join("\n\n");
 }
@@ -1361,14 +1427,15 @@ export function lastTranscriptMessage(transcript: readonly TranscriptEntry[], fa
   return undefined;
 }
 
-/** `message_bot`'s target: a handle (`@` optional), else an exact name in any case. Unknown or shared names list the roster. */
-function messageTarget(bots: readonly BotRecord[], sender: BotRecord, to: string): BotRecord {
+/** `message_bot`'s target: a handle (`@` optional), else an exact name in any case. Unknown or shared names list the
+ * bots the caller may tag. */
+function messageTarget(bots: readonly BotRecord[], sender: BotRecord | undefined, to: string): BotRecord {
   const handle = to.replace(/^@/u, "").toLowerCase();
   const byHandle = bots.find((bot) => bot.handle === handle);
   if (byHandle) return byHandle;
   const named = bots.filter((bot) => bot.name.toLowerCase() === to.toLowerCase());
   if (named.length === 1) return named[0]!;
-  const roster = sortBots(bots.filter((bot) => bot.id !== sender.id && !bot.archived)).map((bot) => `@${bot.handle} (${bot.name})`).join(", ");
+  const roster = sortBots(bots.filter((bot) => bot.id !== sender?.id && !bot.archived && bot.tagging !== "nobody")).map((bot) => `@${bot.handle} (${bot.name})`).join(", ");
   const problem = named.length ? `${named.length} bots are named "${to}"; use a handle` : `No bot is called "${to}"`;
   throw new BotInputError(`${problem}. Bots you can message: ${roster || "none yet"}.`);
 }
@@ -1507,6 +1574,10 @@ function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updat
     if (value === undefined) continue;
     if (value) next[key] = value;
     else delete next[key];
+  }
+  if (patch.tagging !== undefined) {
+    if (patch.tagging === "anyone") delete next.tagging;
+    else next.tagging = patch.tagging;
   }
   if (cwd !== undefined) next.cwd = cwd;
   if (patch.avatar !== undefined) {

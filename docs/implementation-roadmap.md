@@ -1054,7 +1054,39 @@ requests:
    isolated gateway driven in a browser
    ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
    the pull request).
-14. **Bot exports as templates, reviewed for personal information** (implemented
+14. **The panel as a profile** (implemented 2026-10-16; the owner's request,
+   SPEC.md, "The bot panel is a profile you can resize and expand"): the panel
+   opens on the bot's overview (profile, routines, triggers, activity, setup),
+   whose rows open its Routines, Triggers, Tools & skills and Settings pages;
+   its edge resizes it and the width is remembered; Expand fills the bot's view
+   over a hidden, still-mounted chat. The Memory and Soul tabs and their client
+   code went; `hui bot memory` and `hui bot soul` stay. Proof:
+   `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
+   `src/lib/bot-tools.test.ts`, `src/views/bots.test.ts` and an isolated
+   gateway driven in a browser
+   ([`e2e/bots.browser.md`](../e2e/bots.browser.md), screens in the pull
+   request).
+15. **Tagging bots by @handle** (implemented 2026-10-16; the owner's request,
+   SPEC.md, "Agents and bots tag bots by @handle"): each bot reads like a skill,
+   its description saying when to tag it and `tagging` who may (anyone, only
+   when the operator's message names it, nobody), both in a Tagging section of
+   its Settings page and `hui bot add|edit --description --tagging`, carried by
+   export and import. While bots are on every Durable session lists the bots it
+   may tag in its `bots` section and has `message_bot` (`hui-bot-tag`), a
+   session on a worker asking the gateway for the list; a session's tag arrives
+   as `[from agent: <title>]`, which no gated tool takes for the operator, and
+   nothing comes back. The composer's `@` suggests bots before files. A bot's
+   subagents don't tag and a session shares its hourly budget with its
+   subagents. Proof: `server/bot-service.test.ts` (sessions' tags, the mention
+   rule and HUI's own messages, budgets, rosters), `server/bots.test.ts`,
+   `server/runtimes/durable-bots.test.ts` (the tool and section in a session,
+   on and off), `server/bot-workers.test.ts` (a session on a worker),
+   `server/bot-routines.test.ts`, the template tests, `cli/main.test.ts`,
+   `cli/bots.test.ts`, `src/lib/bots.test.ts`, `src/lib/local-paths.test.ts`,
+   `src/views/bots.test.ts` and an isolated gateway driven in a browser
+   ([`e2e/bot-tagging.browser.md`](../e2e/bot-tagging.browser.md), screens in
+   the pull request).
+16. **Bot exports as templates, reviewed for personal information** (implemented
    2026-10-16; the owner's request, SPEC.md, "Bot exports are templates, reviewed
    for personal information"): ⋯ → Export… cleans the bot (`bot-templates/cleanup.ts`),
    has Settings' utility model sort what is left into removed, asked, confirmed

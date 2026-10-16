@@ -5,7 +5,7 @@
  * `buildExport`, which turns a review and the operator's picks into the files the zip holds. Pure and shared, so the
  * export dialog shows exactly the files the gateway then saves. See docs/api.md#importing-and-exporting-bots.
  */
-import { handleFromName, type BotFaceEars, type BotFaceShape, type BotVoice } from "./bots.ts";
+import { handleFromName, type BotFaceEars, type BotFaceShape, type BotTagging, type BotVoice } from "./bots.ts";
 import type { BotTriggerFilter } from "./bot-triggers.ts";
 
 export const BOT_EXPORT_FORMAT = "hui-bot";
@@ -26,7 +26,7 @@ export type BotOpenPoint = {
   question: string;
   /** The passage a confirm point is about, shortened. */
   excerpt?: string;
-  /** Only the operator can settle it (a trigger, in the Routines tab): the bot tells them where. */
+  /** Only the operator can settle it (a trigger, on its Triggers page): the bot tells them where. */
   operator?: true;
 };
 
@@ -48,6 +48,8 @@ export type BotExportManifest = {
     memoryModel?: string;
     memoryThinking?: string;
     voice?: BotVoice;
+    /** Who may tag it, when not anyone: a policy, it travels as it is. */
+    tagging?: Exclude<BotTagging, "anyone">;
   };
   routines: { name: string; description?: string; prompt: string; schedule: BotExportSchedule }[];
   triggers: BotTemplateTrigger[];
@@ -127,6 +129,7 @@ export type BotExportMeta = {
   memoryModel?: string;
   memoryThinking?: string;
   voice?: BotVoice;
+  tagging?: Exclude<BotTagging, "anyone">;
   routines: { schedule: BotExportSchedule }[];
   /** Each trigger's filter; a `match` value is its part's `match` field. */
   triggers: { filter: BotTriggerFilter; cooldownSeconds: number }[];
@@ -419,7 +422,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     // A value the cleanup or a removed or asked passage touched would never match: its owner sets a new one.
     const touched = match !== undefined && (text["match"] !== original || review.cleanup.some((hit) => hit.part === id && hit.field === "match"));
     if (touched) {
-      open.push({ kind: "ask", where: tidy(where(id)), question: `Which ${match.field || "event"} should wake it? Its filter matched a value of the previous owner's: set yours in the Routines tab.`, operator: true });
+      open.push({ kind: "ask", where: tidy(where(id)), question: `Which ${match.field || "event"} should wake it? Its filter matched a value of the previous owner's: set yours on its Triggers page.`, operator: true });
     }
     return {
       name: text["name"] || `Trigger ${index + 1}`,
@@ -441,6 +444,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
       ...(meta.memoryModel ? { memoryModel: meta.memoryModel } : {}),
       ...(meta.memoryThinking ? { memoryThinking: meta.memoryThinking } : {}),
       ...(meta.voice ? { voice: meta.voice } : {}),
+      ...(meta.tagging ? { tagging: meta.tagging } : {}),
     },
     routines,
     triggers,

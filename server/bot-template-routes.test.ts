@@ -163,6 +163,7 @@ test("a Claude Code subagent keeps on only the tools its list maps to, and nothi
 
 test("a bot exports as a reviewed template: the cleanup and the utility model sort it, the picks make the zip, and its import asks the new owner", async () => {
   assert.ok(nova, "Nova was imported");
+  assert.equal((await call(`/__hui/bots/${nova.id}`, "PATCH", { tagging: "mention" })).status, 200);
   const settings = (await call<Record<string, unknown> & { models: Record<string, string> }>("/__hui/settings")).body;
   const put = (change: Record<string, unknown>) => call("/__hui/settings", "PUT", { ...settings, ...change });
   assert.equal((await put({ models: { ...settings.models, utility: "hui-e2e/fixture" }, profileName: "Dani Fernandez" })).status, 200);
@@ -201,6 +202,7 @@ test("a bot exports as a reviewed template: the cleanup and the utility model so
     const manifest = JSON.parse(files.get("bot.json")!) as BotExportManifest;
     assert.equal(manifest.version, 2);
     assert.equal("handle" in manifest.bot, false);
+    assert.equal(manifest.bot.tagging, "mention", "who may tag it travels: a policy, nothing of the owner's");
     assert.deepEqual(manifest.triggers, [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review it with a teammate.", cooldownSeconds: 300 }]);
     assert.deepEqual(manifest.open.map((point) => [point.kind, point.where]), [["ask", "SOUL.md"], ["confirm", "SOUL.md"], ["confirm", "Skill weather: scripts/check.sh"]]);
     assert.equal(manifest.open[2]!.question, "It came from someone else's setup: check it before it runs. Which repositories should I watch for pull requests?");

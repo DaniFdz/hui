@@ -6,7 +6,7 @@
  * memories do. Importing either gives the profile, soul, skills, routines (disabled, as every import's) and lists back.
  */
 import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotOpenPoint, type BotTemplateTrigger } from "../../shared/bot-export.ts";
-import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, type BotVoice } from "../../shared/bots.ts";
+import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../shared/bots.ts";
 import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateSkillFile } from "../../shared/bot-templates.ts";
 import { BOT_TRIGGER_LIMITS } from "../../shared/bot-triggers.ts";
 import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
@@ -142,12 +142,14 @@ export function parseHuiExport(all: readonly ImportFile[], origin?: string, pars
   if (shape || ears || color) template.avatar = { ...(shape ? { shape } : {}), ...(ears ? { ears } : {}), ...(color ? { color } : {}) };
   if (str(bot["model"])) template.model = str(bot["model"]);
   const voice = isRecord(bot["voice"]) ? bot["voice"] : undefined;
+  const tagging = storedTagging(bot["tagging"]);
   const extras: NonNullable<BotTemplate["hui"]> = {
     ...(str(bot["handle"]) ? { handle: str(bot["handle"]) } : {}),
     ...(str(bot["thinking"]) ? { thinking: str(bot["thinking"]) } : {}),
     ...(str(bot["memoryModel"]) ? { memoryModel: str(bot["memoryModel"]) } : {}),
     ...(str(bot["memoryThinking"]) ? { memoryThinking: str(bot["memoryThinking"]) } : {}),
     ...(voice ? { voice: { ...(str(voice["language"]) ? { language: str(voice["language"]) } : {}), ...(str(voice["live"]) ? { live: str(voice["live"]) } : {}) } as BotVoice } : {}),
+    ...(tagging ? { tagging } : {}),
     disabledTools: Array.isArray(manifest["disabledTools"]) ? manifest["disabledTools"].map(str).filter(Boolean) : [],
     disabledSkills: Array.isArray(manifest["disabledSkills"]) ? manifest["disabledSkills"].map((skill) => isRecord(skill) ? str(skill["name"]) : str(skill)).filter(Boolean) : [],
   };

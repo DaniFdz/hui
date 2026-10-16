@@ -12,7 +12,7 @@
  */
 import type { AutomationSchedule } from "../src/lib/automation-types.ts";
 import type { BotOpenPoint, BotTemplateTrigger } from "./bot-export.ts";
-import { BOT_IMPORTED_KICKOFF_LINE, BOT_KICKOFF_MARKER, type BotFaceEars, type BotFaceShape, type BotView, type BotVoice } from "./bots.ts";
+import { BOT_IMPORTED_KICKOFF_LINE, BOT_KICKOFF_MARKER, type BotFaceEars, type BotFaceShape, type BotTagging, type BotView, type BotVoice } from "./bots.ts";
 
 /** The formats HUI reads, by id, with the name the preview shows. */
 export const BOT_TEMPLATE_FORMATS = {
@@ -119,6 +119,8 @@ export type BotTemplate = {
     memoryModel?: string;
     memoryThinking?: string;
     voice?: BotVoice;
+    /** Who may tag it, when not anyone. */
+    tagging?: Exclude<BotTagging, "anyone">;
     /** Off in the exported bot, by name; only those this gateway has are turned off. */
     disabledTools?: string[];
     disabledSkills?: string[];
@@ -240,7 +242,7 @@ export function notAgreedSection(open: readonly BotOpenPoint[]): string {
   return [
     `## ${BOT_NOT_AGREED_HEADING}`,
     "",
-    "You came from a template someone else shared. Agree these with the operator before you act on them: an [ask: …] mark is a blank for their answer, and a passage to confirm is the previous owner's choice. Once they have answered, rewrite your soul with their answers and without this section, and change the rest where it is (a routine with your routines tool, a skill's file with your file tools if you have them, else tell the operator). Only the operator can change a trigger: tell them to do it in the Routines tab.",
+    "You came from a template someone else shared. Agree these with the operator before you act on them: an [ask: …] mark is a blank for their answer, and a passage to confirm is the previous owner's choice. Once they have answered, rewrite your soul with their answers and without this section, and change the rest where it is (a routine with your routines tool, a skill's file with your file tools if you have them, else tell the operator). Only the operator can change a trigger: tell them to do it on the Triggers page of your panel.",
     "",
     ...open.map((point) => `- ${point.kind === "ask" ? "Ask" : "Confirm"} (${point.where}${point.operator ? ", only the operator can change it" : ""}): ${point.question}${point.excerpt ? ` “${point.excerpt}”` : ""}`),
   ].join("\n");

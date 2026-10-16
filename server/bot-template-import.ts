@@ -16,7 +16,7 @@
  * Nothing an import brings turns on more than a new bot has: a template can only turn tools off, routines and triggers
  * start disabled, a model is kept only when it resolves, and its first turn is not the operator's (its gated tools
  * refuse). Its skills are on, like every skill of a bot: they are text the operator read in the preview, they widen no
- * tool, and each can be turned off in the Tools tab. The export side is `bot-export.ts`.
+ * tool, and each can be turned off on the Tools & skills page. The export side is `bot-export.ts`.
  */
 import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar } from "../shared/bots.ts";
 import type { BotTemplateTrigger } from "../shared/bot-export.ts";
@@ -288,7 +288,7 @@ export class BotTemplateService {
       disabledTools = offered.filter((tool) => !keep.has(tool));
       if (unknown.length) dropped.push(`Claude Code tools with nothing like them here: ${listed(unknown)}.`);
       const kept = offered.filter((tool) => keep.has(tool));
-      notes.push(`Its tools list keeps ${kept.length ? listed(kept) : "none of HUI's tools"} on and turns the other ${plural(disabledTools.length, "tool")} off; turn any back on in its Tools tab.`);
+      notes.push(`Its tools list keeps ${kept.length ? listed(kept) : "none of HUI's tools"} on and turns the other ${plural(disabledTools.length, "tool")} off; turn any back on from its Tools & skills page.`);
     } else if (template.hui?.disabledTools?.length) {
       disabledTools = template.hui.disabledTools.filter((tool) => offered.includes(tool));
       const missing = template.hui.disabledTools.filter((tool) => !offered.includes(tool));
@@ -364,6 +364,7 @@ export class BotTemplateService {
     }
     if (template.hui?.memoryThinking && levels.includes(template.hui.memoryThinking)) input["memoryThinking"] = template.hui.memoryThinking;
     if (template.hui?.voice && Object.keys(template.hui.voice).length) input["voice"] = { ...template.hui.voice };
+    if (template.hui?.tagging) input["tagging"] = template.hui.tagging;
 
     // Routines: disabled, each on the schedule HUI reads from it.
     const timezone = this.#deps.timezone();
@@ -376,9 +377,9 @@ export class BotTemplateService {
         ...(routine.description ? { description: routine.description.slice(0, 500) } : {}),
       };
     });
-    if (routines.length) notes.push(`${routines.length === 1 ? "Its routine starts" : `Its ${routines.length} routines start`} disabled: check ${routines.length === 1 ? "it" : "them"} in its Routines tab, then turn ${routines.length === 1 ? "it" : "them"} on.`);
+    if (routines.length) notes.push(`${routines.length === 1 ? "Its routine starts" : `Its ${routines.length} routines start`} disabled: check ${routines.length === 1 ? "it" : "them"} on its Routines page, then turn ${routines.length === 1 ? "it" : "them"} on.`);
     const triggers = template.triggers ?? [];
-    if (triggers.length) notes.push(`${triggers.length === 1 ? "Its trigger starts" : `Its ${triggers.length} triggers start`} disabled: a listener you run wakes ${triggers.length === 1 ? "it" : "them"}, through a URL from New URL in its Routines tab.`);
+    if (triggers.length) notes.push(`${triggers.length === 1 ? "Its trigger starts" : `Its ${triggers.length} triggers start`} disabled: a listener you run wakes ${triggers.length === 1 ? "it" : "them"}, through a URL from New URL on its Triggers page.`);
     // An older worker's host reads an import's first turn as the operator's (it lets the bot rewrite its soul there): on
     // one the bot waits for the operator's first message instead. A worker that keeps skills' files knows the turn.
     const pointsTurn = open.length > 0 && (!worker || keepsFiles);

@@ -85,12 +85,12 @@ function controlledMedia(initialMatches = true) {
 }
 
 test("the primary sidebar lists work destinations and ends with Settings", () => {
-  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["contributions", "cron", "plugins", "skills"]);
+  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["contributions", "sessions"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);
-  // Kanban is a HUI route rendered directly below Automations.
-  assert.match(nav, /item\.id === "cron" \? kanbanNavItem\(props\)/u);
+  // Kanban is a HUI route rendered directly below Contributions.
+  assert.match(nav, /item\.id === "contributions" \? kanbanNavItem\(props\)/u);
   assert.match(nav, /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>\s*<\/a>\s*$/u);
 });
 

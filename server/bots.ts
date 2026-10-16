@@ -24,7 +24,8 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import {
-  BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, BOTS_OFF_MESSAGE, handleFromName, isBotFaceEars, isBotFaceShape, NEW_BOT_NAME,
+  BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_TAGGING, BOT_THINKING_LEVELS, BOTS_OFF_MESSAGE, handleFromName, isBotFaceEars, isBotFaceShape, isBotTagging,
+  NEW_BOT_NAME, storedTagging,
   type BotAccess, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice,
   type BotVoicePatch,
 } from "../shared/bots.ts";
@@ -164,6 +165,7 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
   const level = (key: string): string | undefined => LEVELS.has(str(raw[key])) ? str(raw[key]) : undefined;
   const title = text("title", BOT_LIMITS.title);
   const description = text("description", BOT_LIMITS.description);
+  const tagging = storedTagging(raw["tagging"]);
   const chatModel = model("model");
   const thinking = level("thinking");
   const memoryModel = model("memoryModel");
@@ -177,6 +179,7 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
     id, handle, name,
     ...(title ? { title } : {}),
     ...(description ? { description } : {}),
+    ...(tagging ? { tagging } : {}),
     cwd,
     ...(worker ? { worker } : {}),
     ...(chatModel ? { model: chatModel } : {}),
@@ -361,8 +364,8 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 }
 
 const INPUT_KEYS = new Set([
-  "name", "handle", "title", "description", "soul", "cwd", "worker", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice", "hidden",
-  "disabledTools", "disabledSkills",
+  "name", "handle", "title", "description", "tagging", "soul", "cwd", "worker", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice",
+  "hidden", "disabledTools", "disabledSkills",
 ]);
 const LABELS: Record<string, string> = {
   name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", soul: "SOUL.md",
@@ -545,6 +548,8 @@ export function normalizeBotInput(value: unknown): BotInput {
   if (patch.handle) result.handle = patch.handle;
   if (patch.title) result.title = patch.title;
   if (patch.description) result.description = patch.description;
+  const tagging = storedTagging(patch.tagging);
+  if (tagging) result.tagging = tagging;
   if (soul) result.soul = soul;
   if (patch.cwd) result.cwd = patch.cwd;
   if (patch.model) result.model = patch.model;
@@ -573,6 +578,10 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   if ("handle" in input) patch.handle = handleField(input["handle"]);
   if ("title" in input) patch.title = textField(input["title"], "title", BOT_LIMITS.title, { line: true });
   if ("description" in input) patch.description = textField(input["description"], "description", BOT_LIMITS.description);
+  if ("tagging" in input) {
+    if (!isBotTagging(input["tagging"])) throw new BotInputError(`Who can tag the bot must be one of: ${BOT_TAGGING.join(", ")}.`);
+    patch.tagging = input["tagging"];
+  }
   if ("cwd" in input) patch.cwd = cwdField(input["cwd"]);
   // `""` puts the chat back on the model or thinking level a new chat gets, and the memory on the chat's own model.
   if ("model" in input) patch.model = modelField(input["model"], "model");

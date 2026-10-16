@@ -12,7 +12,7 @@ import { packageVersion, type Installation } from "./installation.ts";
 import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
-import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_THINKING_LEVELS, botFaceColor, botFaceEars, botFaceShape } from "../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_TAGGING, BOT_THINKING_LEVELS, botFaceColor, botFaceEars, botFaceShape, isBotTagging } from "../shared/bots.ts";
 import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 import { checkTriggerAdd } from "./bot-triggers.ts";
@@ -38,7 +38,8 @@ export const HELP = `Usage:
   hui workers remove <name|id> [--json]
   hui bot list [--archived] [--json]
   hui bot show <bot> [--json]
-  hui bot add [--name <name>] [--title <text>] [--soul-file <path|->] [--cwd <dir>]
+  hui bot add [--name <name>] [--title <text>] [--description <text>] [--tagging <anyone|mention|nobody>]
+              [--soul-file <path|->] [--cwd <dir>]
               [--worker <name|id>] [--model <provider/model>] [--thinking <level>] [--utility-model <provider/model>] [--emoji <e>]
               [--shape <shape>] [--ears <cat|bear|bunny|antenna|sprout|horns>] [--color <name|#rrggbb>]
               [--language <code>] [--call-voice <cove|arbor|breeze|ember|juniper|maple|sol|spruce|vale>]
@@ -99,7 +100,11 @@ tab; "bots" works as "bot". <bot> is an id, a handle or
 an exact name. A new bot starts by asking what you expect from it (talk with
 hui bot chat <handle>), then writes its persona, SOUL.md, itself; --soul-file
 gives it one instead (- reads stdin) and skips that first conversation. Without
---name it is "New Bot" and first asks what to call it. Soul prints SOUL.md;
+--name it is "New Bot" and first asks what to call it. Agents and bots tag a
+bot (@handle) to hand it work, as they load a skill: --description says what it
+does and when to tag it (its title stands in without one; "" clears it on edit),
+and --tagging who may: anyone, the default, whenever a task fits; mention, only
+when your message names @handle; nobody, never. Soul prints SOUL.md;
 --file replaces it, and an empty file removes it so the bot asks again.
 --worker runs a new bot on a remote worker of Settings → Workers, by name or id,
 which HUI must be connected to: its chat, memory, folder and SOUL.md live there,
@@ -197,6 +202,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     archived: { type: "boolean" }, title: { type: "string" }, "soul-file": { type: "string" }, file: { type: "string" }, yes: { type: "boolean", short: "y" },
     cwd: { type: "string" }, worker: { type: "string" }, model: { type: "string" }, thinking: { type: "string" }, "memory-model": { type: "string" }, "utility-model": { type: "string" },
     emoji: { type: "string" }, shape: { type: "string" }, ears: { type: "string" }, color: { type: "string" }, voice: { type: "string" }, "voice-speed": { type: "string" }, language: { type: "string" }, "call-voice": { type: "string" }, wait: { type: "boolean" }, timeout: { type: "string" }, zoom: { type: "string" }, html: { type: "string" },
+    tagging: { type: "string" },
     prompt: { type: "string" }, at: { type: "string" }, every: { type: "string" }, cron: { type: "string" }, timezone: { type: "string" },
     allow: { type: "string" }, deny: { type: "string" }, "deny-tools": { type: "string" }, "deny-skills": { type: "string" },
     bot: { type: "string" }, session: { type: "string" }, description: { type: "string" }, until: { type: "string" }, runs: { type: "string" }, disabled: { type: "boolean" },
@@ -302,7 +308,7 @@ function checkScheduleCommand(command: string, operands: readonly string[], valu
 }
 
 /** The flags `bot add` and `bot edit` share. */
-const BOT_FIELDS = ["name", "title", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "ears", "color", "language", "call-voice"];
+const BOT_FIELDS = ["name", "title", "description", "tagging", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "ears", "color", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
   "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
@@ -347,6 +353,7 @@ function checkBotCommand(command: string, operands: readonly string[], values: R
   if (given("call-voice") && !cleared("call-voice") && !gptLiveVoice(values["call-voice"])) {
     throw new Error(`--call-voice must be one of GPT-Live's voices: ${GPT_LIVE_VOICES.join(", ")}; "" goes back to Settings' default.`);
   }
+  if (given("tagging") && !isBotTagging(String(values["tagging"]).trim().toLowerCase())) throw new Error(`--tagging must be one of: ${BOT_TAGGING.join(", ")}.`);
   if (given("timeout") && (!values["wait"] || !/^\d+$/u.test(String(values["timeout"])) || Number(values["timeout"]) < 1 || Number(values["timeout"]) > 3600)) {
     throw new Error("--timeout needs --wait and 1-3600 seconds.");
   }

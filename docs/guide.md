@@ -262,16 +262,24 @@ most recently active first, with their latest message, and **+** creates one at
 once: a bot called *New Bot* whose chat opens on its greeting, asking what to call
 it and what you expect from it (the chat opens on a small note, "New Bot was
 created", where that first turn began).
-A bot's chat opens beside its **Routines | Memory | Soul | Tools | Settings** panel:
-Routines adds schedules (every few minutes, hours or days, daily, weekly or
-once, in your browser's time zone), runs one now and shows how the last runs
-went; Memory shows how much the bot remembers and what writing its summaries
-has cost, lets you open any summary line down to the original message, and
-**Open memory page** opens the whole memory in a new tab; Soul shows the bot's
-SOUL.md, with **Edit** to change it yourself (or, before the bot has written
-one, **Write it yourself**), and follows it when the bot rewrites it; Tools
-turns the bot's tools and skills on and off ([Tools and skills](#tools-and-skills));
-Settings is everything else you can change about the bot ([below](#creating-and-editing)).
+A bot's chat opens beside its panel, after OpenAI's Dots. It starts on the
+bot's overview: its face, name, role and what it is doing, with **Call** and
+**Edit**; its routines and triggers, each with a switch, and **+** to add one;
+**Activity**, the latest runs of both; and **Setup**, one row each for who may
+tag it, its model, tools and skills, call voice and workspace. Each row opens a page, and the
+arrow at the top goes back: **Routines** adds schedules (every few minutes,
+hours or days, daily, weekly or once, in your browser's time zone), runs one now
+and shows how the last runs went; **Triggers** wakes the bot when a listener of
+yours reports something ([Triggers](#triggers)); **Tools & skills** turns the
+bot's tools and skills on and off ([Tools and skills](#tools-and-skills));
+**Settings** is everything else you can change about the bot
+([below](#creating-and-editing)). Drag the panel's left edge to make it wider
+or narrower (or click the edge and use the arrow keys); HUI remembers the
+width. **Expand** (the arrows at the top) lets the panel fill the bot's view, and
+**Esc** or the same button brings the chat back. On a phone the panel opens as a
+sheet over the chat. The panel doesn't show the bot's SOUL.md or its memory:
+ask the bot what it remembers or tell it what to change, or use `hui bot soul`
+and `hui bot memory` from a terminal.
 A row's **⋯** menu (also in the bot's chat header) opens its Settings (**Edit
 bot…**), hides, archives or deletes the bot; **Show archived** lists archived
 bots so you can restore them, or delete one with its trash icon. Deleting asks
@@ -288,7 +296,7 @@ failure and does a little hop when a turn ends. On a call it fills the screen
 in the bot's color, puffs up as it listens to your voice and stretches with its
 own. The large faces (an empty chat, a call) look at your pointer. With
 *reduce motion* on in your system settings the faces keep still and change only
-their expression. The **Look** in a bot's Settings tab chooses **Face** (shape, ears
+their expression. The **Look** on a bot's Settings page chooses **Face** (shape, ears
 and color) or **Emoji**; a bot that already had an emoji keeps it until you choose
 Face. You can also just tell the bot ("be a ghost with horns"): it changes its own
 look, but only when you ask in your own message. Bots you never styled, new ones
@@ -360,7 +368,7 @@ takes the ears off. `hui bot show` prints the look.
 `--memory-model` picks the model that writes the memory's summaries. An empty
 value clears a choice: `hui bot edit ada --model "" --thinking ""` puts the chat
 back on the model and thinking level a new chat gets (*Gateway default* in the
-bot's Settings tab), and `--memory-model ""` puts the utility model back on its
+bot's Settings page), and `--memory-model ""` puts the utility model back on its
 default (Settings' utility model, then the chat's own model).
 
 A bot's chat refuses what would end or fork it: `/clear`, `/compact`, rewind
@@ -412,8 +420,8 @@ messaging other bots, managing its own routines, and the skills PI finds there.
 Everything is on until you
 turn something off, and whatever appears later (a new extension, a HUI update, a
 new skill) is on too. That is the trade-off of everything on by default: a bot
-you restricted by hand gains newly installed tools, so look at its Tools tab
-after installing one.
+you restricted by hand gains newly installed tools, so look at its Tools & skills
+page after installing one.
 
 The bot panel's **Tools** tab shows **Available tools**, grouped as Files,
 Shell, HUI, each extension by its source, and Bots, each with a switch and what
@@ -441,7 +449,7 @@ hui bot add --name Scout --deny-tools bash,write,edit --deny-skills release-note
 can be turned off once the bot exists.
 
 When the bot needs something you turned off, it asks: a question appears in its
-chat (and at the top of its Tools tab, and in `hui bot chat`) naming what it
+chat (and at the top of its Tools & skills page, and in `hui bot chat`) naming what it
 wants, marked when it's powerful, and why, with **Allow** and **Deny**. Only you
 answer it: a request raised in a turn a routine or another bot started says so,
 and still waits for you. Allow turns the items back on from the bot's next step;
@@ -478,24 +486,24 @@ hui bot add --name Rover --worker devbox --cwd ~/src/app  # a folder there: abso
 ```
 
 HUI must be connected to the worker when you create the bot. Where a bot runs
-is chosen once: it never moves, and its Settings tab shows the machine
+is chosen once: it never moves, and its Settings page shows the machine
 (**Workspace → Runs on**) without offering to change it. Its home folder, HUI's
 private folder for it under the worker's HUI data directory
 (`~/.local/share/hui-worker/bots/<id>`), holds its SOUL.md and is its working
-directory unless you choose a folder on the worker (its Settings tab suggests
+directory unless you choose a folder on the worker (its Settings page suggests
 that worker's folders, never this machine's), shown as `devbox:/path`; SOUL.md
 never goes in a folder you chose. The roster and the bot's chat show the worker beside its name,
 `hui bot list` marks it `on devbox` and `hui bot show` names it.
 
-Everything else works as for a bot here: messages, routines, Stop, its Memory
-panel and Soul tab, calls, archiving and deleting, and messages between bots in
+Everything else works as for a bot here: messages, routines, Stop, its panel,
+`hui bot soul` and `hui bot memory`, calls, archiving and deleting, and messages between bots in
 both directions (a bot on a worker sees every bot in its list). Its memory's
 summaries are written on the worker with its utility model. A secret it asks for
 is given in its chat's **Secret** card here, as for any session on a worker, and
 the worker writes the file, where its commands run.
 
 **When the worker is offline**, the bot shows it (reconnecting, or
-disconnected), its row keeps its latest message, its Memory panel and Soul tab
+disconnected), its row keeps its latest message, `hui bot soul` and `hui bot memory`
 say the worker is offline, and messages to it fail with that reason until HUI is
 connected again. Deleting it still takes it off the roster at once: HUI notes
 what is left on the worker (its memory and home folder) on this machine and
@@ -508,8 +516,8 @@ skills by their mirrored copies there (`~/.local/share/hui-worker/mirror/agent/s
 It doesn't list the terminal, the browser or watchers: they stay on this machine,
 so the bot isn't offered them and there is nothing to turn off. What you turn off is
 kept and enforced on the worker; when the bot asks for something back, you
-answer here, and its Tools tab and roster row follow. While the worker is offline
-its Tools tab says so, like its Memory and Soul.
+answer here, and its Tools & skills page and roster row follow. While the worker is offline
+its Tools & skills page says so.
 
 **Limits.** A bot on a worker has the limits of any session on a worker: the
 terminal, the managed browser and watchers act on this machine, so it can't use
@@ -540,7 +548,7 @@ question, which you then answer in `hui bot chat` (a secret in its Secret card).
 ### Routines
 
 Routines are Automation tasks aimed at a bot's chat; they appear in Automations
-too. You add them in the bot's Routines tab, in Automations, or from a terminal,
+too. You add them in the bot's panel, in Automations, or from a terminal,
 where `hui schedule` manages every scheduled task and `hui bot routine` a bot's:
 
 ```sh
@@ -556,11 +564,11 @@ A bot can also schedule its own routines, with a tool of its own: ask it to
 "check every 5 minutes until #82 is green" and it adds a **temporary** routine
 that ends by itself, at a time (*until 18:00*) and/or after a number of runs
 (*3 runs left*), and removes it as soon as it's done, even from that routine's
-own turn. The Routines tab and Automations show who made each one (*made by
+own turn. The bot's Routines page and Automations show who made each one (*made by
 @ada*) and its limits. A bot only ever sees and changes the routines of its own
 chat, can have at most 20 active ones, never more often than once a minute, and
 a message from another bot or a trigger can't make it add or change one (yours
-and its routines' can). Turn **Manage its own routines** off in its Tools tab
+and its routines' can). Turn **Manage its own routines** off on its Tools & skills page
 to stop it.
 
 A routine's message reaches the bot as `[routine: <name>] <prompt>`. A busy bot
@@ -696,7 +704,7 @@ Then point a listener that reports the messages asking you for a review at its
 URL. The bot reviews from the delivery alone and answers in its chat; nothing is
 posted anywhere.
 
-**Only you add or change triggers.** A bot's `triggers` tool (Tools tab, under
+**Only you add or change triggers.** A bot's `triggers` tool (Tools & skills page, under
 Bots) lists its triggers and removes one, but can't add or change any: a
 trigger's URL holds a secret that would pass through the model, and what a
 listener reports can be your own messages.
@@ -707,14 +715,28 @@ them, and `hui doctor --fix` deletes them with what they left
 ([Triggers](#triggers-1), under `hui doctor`). A listener can watch any of those
 for you instead.
 
-### Bots talking to bots
+### Tagging bots
 
-Every bot's chat has a `message_bot` tool and a short list of the other bots.
-A message arrives in the other bot's chat as `[from @ada] …`, and that bot
-answers in its own chat; nothing comes back to the sender by itself. To stop
-loops, an answer to a bot message is marked `[from @bob · hop 2]` and HUI
-refuses to go beyond three hops; a bot can also send at most 30 bot messages an
-hour. Archived bots can neither send nor receive them.
+Agents and bots hand a bot work by tagging it, the way they load a skill. The
+**Tagging** section of a bot's Settings page (its panel's Setup → Tagging) holds
+**When to tag it**, what agents and bots read to decide (what it does, and when
+to bring it in; its title stands in until you write one), and **Who can tag
+it**: *Anyone* (whenever a task fits), *Only when @mentioned* (only when your
+message names it) or *Nobody*. From a terminal: `hui bot edit ada --description
+"…" --tagging mention`.
+
+While bots are on, every session and every bot knows the bots it may tag and has
+a `message_bot` tool. To ask yourself, type `@` in any chat: bots come first in
+the list, and `@ada please add this to the release notes` makes that chat's agent
+send Ada the request, with the context she needs. The tag arrives in Ada's chat
+as `[from agent: <session title>] …` from a session or `[from @bob] …` from a
+bot, and she answers there; nothing comes back to the tagger by itself (bots can
+tag back, sessions can't be tagged). A tag from a session or another bot never
+counts as you: it can't rewrite the bot's SOUL.md, profile or routines. To stop
+loops, a tag sent while answering one is marked `[from @bob · hop 2]` and HUI
+refuses to go beyond three hops; a bot's subagents don't tag (the bot does), and
+each bot, or session with its subagents, can send at most 30 tags an hour.
+Archived bots can neither send nor receive them.
 
 ### Memory
 
@@ -746,7 +768,7 @@ back. One call runs at a time.
 Settings → Models → **Calls** shows the account calls use (the first one not
 waiting for its quota, as model turns choose) and the **default voice**. Each bot
 can have its own **Call voice**, one of GPT-Live's voices, and a **Language**,
-in its Settings tab or from a terminal:
+on its Settings page or from a terminal:
 
 ```sh
 hui bot edit ada --call-voice ember --language es
@@ -823,12 +845,12 @@ how each integration maps to a HUI tool (or that HUI has none), the tools it
 turns off, its model, and a list of what was left out and why. **Imported text
 is untrusted**: read it, then **Create bot**. A file with several agents lets
 you pick one. An import never turns on more than a new bot has: its routines
-start **disabled** (check them in its Routines tab, then turn them on), a tools
+start **disabled** (check them on its Routines page, then turn them on), a tools
 list can only turn tools off, and a model it names is kept only when this
 gateway has it. What it already knew goes into its SOUL.md, under *What you
-already know*, where you can edit it in its Soul tab. Its skills are its own: they
+already know*: tell it what to change, or replace it with `hui bot soul`. Its skills are its own: they
 live in its folder, only it loads them, and they are on like every skill (turn
-any off in its Tools tab). With a first message, the bot's chat opens with it.
+any off on its Tools & skills page). With a first message, the bot's chat opens with it.
 
 A bot's **⋯ → Export…** makes it a template someone else can import, without
 what is yours. HUI first cleans it: your name (your profile's, your account's, and

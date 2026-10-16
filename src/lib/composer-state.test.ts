@@ -3,6 +3,7 @@ import { test } from "vitest";
 import {
   canSubmitComposer,
   composerEnterMode,
+  composerPlaceholder,
   questionAnswer,
   restoreRejectedSubmission,
   streamingAfterSubmission,
@@ -26,6 +27,17 @@ test("plain Enter inserts a newline on touch devices while hardware modifiers st
 test("modifier Enter preference keeps plain Enter as a newline", () => {
   assert.equal(composerEnterMode({ streaming: false, shiftKey: false, ctrlKey: false, metaKey: false, isComposing: false, sendShortcut: "modifierEnter" }), "newline");
   assert.equal(composerEnterMode({ streaming: false, shiftKey: false, ctrlKey: true, metaKey: false, isComposing: false, sendShortcut: "modifierEnter" }), "prompt");
+});
+
+test("a busy composer names the steer and queue shortcuts for its platform", () => {
+  const busy = { reconnecting: false, streaming: true, coarsePointer: false, applePlatform: true } as const;
+  assert.equal(composerPlaceholder(busy), "↵ adds to this run · ⌘↵ queues for later");
+  assert.equal(composerPlaceholder({ ...busy, applePlatform: false }), "↵ adds to this run · Ctrl+↵ queues for later");
+  assert.equal(composerPlaceholder({ ...busy, applePlatform: false, sendShortcut: "modifierEnter" }), "Send adds to this run · Ctrl+↵ queues for later");
+  assert.equal(composerPlaceholder({ ...busy, coarsePointer: true }), "Add to this run…");
+  assert.equal(composerPlaceholder({ ...busy, streaming: false }), "Send a message…");
+  assert.equal(composerPlaceholder({ ...busy, reconnecting: true }), "Draft while HUI reconnects…");
+  assert.equal(composerPlaceholder({ ...busy, status: "disconnected", reconnecting: true }), "Draft while disconnected…");
 });
 
 test("composer preserves work while disconnected or sending", () => {

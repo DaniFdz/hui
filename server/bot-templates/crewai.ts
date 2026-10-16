@@ -35,7 +35,7 @@ export function parseCrewAiAgents(text: string, origin?: string): { key: string;
     }
     template.soul = sections([["Goal", str(agent["goal"])], ["Backstory", str(agent["backstory"])]]);
     const placeholders = [...new Set([role, template.soul].join("\n").match(/\{[A-Za-z_][A-Za-z0-9_]*\}/gu) ?? [])];
-    if (placeholders.length) template.notes.push(`It keeps CrewAI's placeholders ${placeholders.join(", ")}, which a crew fills in at run time: replace them in its Soul tab.`);
+    if (placeholders.length) template.notes.push(`It keeps CrewAI's placeholders ${placeholders.join(", ")}, which a crew fills in at run time: ask it to replace them, or replace them with hui bot soul.`);
     const llm = str(agent["llm"]) || (isRecord(agent["llm"]) ? str(agent["llm"]["model"]) : "");
     if (llm) template.model = llm;
     const tools = Array.isArray(agent["tools"]) ? agent["tools"].map(str).filter(Boolean) : [];

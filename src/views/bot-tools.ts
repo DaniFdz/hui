@@ -1,5 +1,5 @@
 /**
- * A bot's Tools tab (HUI-18): "Available tools", every one on until the
+ * A bot's Tools & skills page (HUI-18): "Available tools", every one on until the
  * operator turns it off, grouped as Files, Shell, HUI, each extension by its
  * source, and Bots; then its skills, searchable once there are many; an access
  * request waiting in its chat, answerable here as in the chat; and what is

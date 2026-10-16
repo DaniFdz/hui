@@ -316,7 +316,7 @@ const server = createServer(async (request, response) => {
     return finish(response, "tool_use");
   }
   if (latestToolResult?.id === "tool-e2e-write-soul") {
-    text(response, "I wrote my SOUL.md. Change it in the Soul tab, or just tell me.");
+    text(response, "I wrote my SOUL.md. To change it, just tell me.");
     return finish(response);
   }
   // A bot naming itself with set_profile, as the operator said.

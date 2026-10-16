@@ -221,7 +221,7 @@ stores nothing while it is on. Settings → Tools → Codemode off
 (`settings.codemode.enabled: false`, on by default) makes every open session
 configure `extensions: { remove: [codemode] }` from its next request, and new
 and reopened sessions start that way; a session on a remote worker follows once
-it reopens there. A bot's chat also goes without it when its Tools tab turns
+it reopens there. A bot's chat also goes without it when its Tools & skills page turns
 `codemode` off. Scripts reach only the tools the conversation has: a tool
 removed from it (browser off, a bot's disabled tools) is not callable from
 scripts either. A script has no deadline unless it sets `timeout_ms` in its
@@ -755,8 +755,10 @@ type SubagentRecord = {
   summary?: string;
   error?: string;
   completionDelivery?: "pending" | "delivered"; // absent for legacy tasks
+  collect?: true; // collected by the parent with agents_wait (Swarm)
 };
-type SubagentTaskView = SubagentRecord & {
+type SubagentTaskView = Omit<SubagentRecord, "status"> & {
+  status: SubagentStatus | "queued"; // queued: a collected child waiting for a slot
   sessionId: string;
   parentSessionId: string;
   title: string;
@@ -948,7 +950,8 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking and a bounded run timeout; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids |
+| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking, a bounded run timeout and `collect`; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
+| `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished or at the timeout (default 600, 1-3600 s) with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId] }`; an abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |
@@ -963,7 +966,15 @@ and unrelated session metadata never enter tool output. A PI child cancels a
 call (Stop) by dropping its connection; the handler sees that as the call's
 abort signal, as it sees a Durable tool call's own.
 
-`sessions_spawn` allows at most eight active descendants per root. A child has
+`sessions_spawn` allows at most eight active ordinary descendants per root.
+Collected children (`collect: true`, saved with `subagent.collect: true`) have
+their own limits per root: 32 starting or running, the rest queued in memory in
+spawn order and saved as `starting`, at most 50 queued or running. A collected
+child or its descendants cannot spawn collected children. A collected child's
+result keeps the delivery marker below, but while its parent is running or
+waiting HUI does not deliver it, so `agents_wait` can collect it; the operator's
+Stop on the parent (`POST /__hui/sessions/:id/abort`) cancels its queued and
+running collected children with `completionDelivery: "delivered"`. A child has
 its own PI process/session file and receives `[Subagent Task]` as its first user
 turn. On settlement HUI persists the terminal lifecycle and bounded summary,
 then prompts an idle parent or attempts steering on a running/waiting parent.
@@ -1338,7 +1349,8 @@ type BotRecord = {
   handle: string;              // unique; lowercase [a-z0-9-], 1–32, no leading/trailing dash; "events" and "import" are reserved
   name: string;                // 1–60, one line
   title?: string;              // role, ≤ 80, one line
-  description?: string;        // ≤ 500
+  description?: string;        // ≤ 500; what it does and when to tag it, as a skill's description (below)
+  tagging?: "mention" | "nobody"; // who may tag it (below); absent: anyone
   cwd: string;                 // absolute existing directory (on a worker, a directory there); the persona is not here but SOUL.md (below)
   worker?: string;             // the remote worker (Settings → Workers) the chat runs on, by id; set at creation, never changed
   model?: string;              // "provider/id" of the chat
@@ -1485,8 +1497,9 @@ While it is off, bots are dormant and nothing about them is deleted:
   again.
 - **Nothing starts a bot's turn**: every turn HUI starts for a bot (a message,
   a routine, a `message_bot` message, a call's hand-off, a new bot's first turn)
-  passes one check in `BotService` that refuses with that message, as do the
-  bot-only tools `message_bot`, `set_profile` and `routines`. A bot's chat that starts a
+  passes one check in `BotService` that refuses with that message, as do
+  `message_bot` (from a bot or a session), `set_profile` and `routines`. No
+  session lists bots or is offered `message_bot` then ([Tagging bots](#tagging-bots)). A bot's chat that starts a
   turn anyway (Durable resuming a run a restart interrupted, a worker's host
   reattaching, a subagent reporting back) is stopped as soon as it reports
   `running` or `waiting`.
@@ -1529,7 +1542,7 @@ failures; other methods answer 405.
 | `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
 | `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle`, `disabledTools` and `disabledSkills` (below; tools checked against those every chat has, before an extension's, and skills against its directory's, on the machine it runs on), `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker), with its home folder and SOUL.md) and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
 | `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks, `ears: ""` takes them off), `avatar: null` clears them all (an unknown `shape` or `ears` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
+| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `tagging: "anyone"` goes back to the default (another value is 400); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks, `ears: ""` takes them off), `avatar: null` clears them all (an unknown `shape` or `ears` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
 | `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
 | `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }`, plus `queued: true` for a bot whose worker is offline ([then](#bots-on-a-worker) its memory and home there go at the worker's next connection) | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
 | `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
@@ -1602,8 +1615,7 @@ operator said or agreed to, asking about the rest (often its boundaries) rather
 than guessing. Once it knows enough, usually after a few exchanges, it saves
 SOUL.md with `write_soul` (suggested sections: who I am, what I look after,
 how I work, when I reach out, boundaries) and, in the same reply, says so,
-gives a short summary and says how to change it (the Soul tab of its panel, or
-telling it). Those last details come only in `write_soul`'s result, once the
+gives a short summary and says how to change it (by telling it). Those last details come only in `write_soul`'s result, once the
 file is written, so they stay out of SOUL.md.
 
 `set_profile({ name?, title?, shape?, ears?, color?, emoji? })`, beside it,
@@ -1659,9 +1671,9 @@ conversation checks, where the tool runs (a worker's host for a bot there):
 of every input the run took since (`DurableSession.runOrigins`, above) and of
 the newest one the conversation took, read from its store (a follow-up joins a
 running turn, as a message to a busy bot on a worker does there). If any came
-from a routine, a trigger, another bot or an import, it refuses:
+from a routine, a trigger, another bot, a session or an import, it refuses:
 "Only the operator changes your soul, and this turn was started by a routine, a
-trigger, another bot or your import. Ask the operator instead." It refuses as well when no
+trigger, another bot, a session or your import. Ask the operator instead." It refuses as well when no
 live chat follows the conversation on that host, since nothing there can tell
 who started the turn.
 Refusals (empty, too long, not a bot's chat, a host without a resolver, a turn
@@ -1756,7 +1768,7 @@ everything on by default: a bot restricted by hand gains newly installed tools.
 **Asking for more.** `request_access({ tools?, skills?, reason })` asks the
 operator to turn back on tools or skills that are off. It raises a session
 question in the chat (the chat's question card, `hui bot chat`, `needs-input`
-from `hui bot send --wait`, and the Tools tab's `request` all show it):
+from `hui bot send --wait`, and the panel's Tools & skills page's `request` all show it):
 
 ```text
 Allow access to bash (powerful) and the beta skill?
@@ -1875,7 +1887,7 @@ routines({
   no cap); `every` is at least a minute (cron fires at most once a minute
   anyway); names are unique among its routines.
 - **Recorded as its own.** What it adds carries `createdBy: { kind: "bot", botId,
-  handle }`; the Routines tab, Automations and `hui schedule` show *made by
+  handle }`; the panel's Routines page, Automations and `hui schedule` show *made by
   @handle*.
 - **Temporary routines** take `until` and/or `runs` ([Automation](#post-__huiautomationtasks)):
   HUI deletes the routine after either, by itself. The bot can remove one
@@ -2058,7 +2070,7 @@ changes triggers: a trigger's URL holds a secret that would pass through the
 model, and what its listener reports can be the operator's own messages. The
 tool has no `add` or `update`, and its handler refuses any other action (400). A
 trigger a bot added while bots still could (`createdBy: "bot"`) is listed as
-such. The tool is an ordinary switch of the Tools tab under Bots, on by default
+such. The tool is an ordinary switch of the Tools & skills page under Bots, on by default
 and not powerful; turned off, the bridge refuses it as any tool that is off.
 
 While bots are off, the trigger routes and the URLs answer 409
@@ -2066,32 +2078,77 @@ While bots are off, the trigger routes and the URLs answer 409
 listener sends those events again later. A cooldown that ends meanwhile is
 recorded as skipped.
 
-### Bot-to-bot messages
+### Tagging bots
+
+Agents and bots hand a bot work by tagging it with `message_bot({ to, message })`
+(`to` ≤ 100, `message` ≤ 20,000 characters), as they load a skill: each bot is
+described by its `description` (what it does and when to tag it; its `title`
+stands in without one) and `tagging` says who may tag it: `anyone` (absent, the
+default) whenever a task fits, `mention` only in a turn whose operator message
+names `@handle`, and `nobody` never.
 
 Every gateway's default Durable selection includes the `hui-bots` extension,
-whose prompt sections `bots` and `soul` (above) read the conversation's
-`hui.bot` document and render nothing without it. The tool `message_bot({ to, message })` (`to` ≤ 100,
-`message` ≤ 20,000 characters) lives in a second extension, `hui-bots-tools` (with `write_soul`, `set_profile`, `triggers`, `request_access`, `load_skill` and `routines`),
-installed but selected only by a bot's chat (`DurableSession.applyTools`), and
-refuses in any conversation without the document. Every other conversation's
-offered tools, system prompt and stored agent are unchanged. The section lists
-the bot itself and the other non-archived bots (handle, name, title, ordered by
-handle) and how to use the tool; it is byte-identical while that roster is
-unchanged. The same extension carries `write_soul` (above).
+whose prompt section `bots` is, in a bot's chat, who it is, the other bots it
+may tag and how, and, in any other conversation (a session's agent, a subagent
+included), the bots it may tag (`sessionBotsSection`), rendered only while bots
+are on and some bot takes its tags; `soul` (above) reads the conversation's
+`hui.bot` document and renders nothing without it. Both lists hold the
+non-archived bots other than `nobody` ones, one line each (`- @handle (name,
+title): description`, the description on one line), ordered by handle: those
+anyone may tag, then the `mention` ones under their own heading. They are
+byte-identical while that roster is unchanged. The section tells a session's
+agent and a bot alike that a bot the operator's message tags (`@handle`) is to
+get what the operator asks, with the context it needs: the operator tags through
+the chat's own agent, whose message goes to it as typed (the composer suggests
+bots after `@`, [below](#tagging-in-the-composer)).
 
-`message_bot` reaches HUI's agent-tool handler as the calling chat's session,
-which must be a non-archived bot's chat. Targets resolve by handle (`@`
-optional, any case), then exact name in any case; an unknown or shared name, an
-archived target and the bot itself are refused, unknown and shared names with
-the list of bots it can message. The message is delivered like an operator's
-message without a wait (prompt when idle, follow-up when busy), and the tool
-returns "Queued for @<handle>." once it is accepted. Loop guard: when the
-sender's current run started from `[from @x] …` (hop 1) or `[from @x · hop N]
-…`, the delivered text is `[from @<sender> · hop N+1] <message>`, otherwise
-`[from @<sender>] <message>`; beyond hop 3 the tool refuses. The run's
-originating input is the session's recovery journal (`runPrompt`). Each bot may
-send 30 bot messages per hour (gateway memory, a backstop). Refusals are tool
-errors the model reads.
+`message_bot` lives in two extensions, both installed and outside the default
+selection: `hui-bots-tools` (with `write_soul`, `set_profile`, `triggers`,
+`request_access`, `load_skill` and `routines`), which only a bot's chat selects,
+and `hui-bot-tag`, `message_bot` alone, which every other Durable conversation
+selects while Settings → Labs → Bots is on (`DurableSession.applyTools`; turning
+bots on or off offers every open session its tools again). Sessions still on
+PI's SDK worker have neither. The tool forwards to HUI's agent-tool handler as
+the calling chat's session, which decides: a non-archived bot's chat, or any
+session while bots are on (409 `BOTS_OFF_MESSAGE` otherwise). Targets resolve by
+handle (`@` optional, any case), then exact name in any case; an unknown or
+shared name, an archived target and the bot itself are refused, unknown and
+shared names with the list of bots the caller may tag. A `nobody` bot is refused
+("takes no tags"); a `mention` bot is refused unless the operator named
+`@handle` (`mentionsBot`: the handle whole, any case, not inside an address,
+a longer handle or a path) in one of the user messages of the caller's run: the
+one that started it (its `runPrompt`) and every one since in its transcript (a
+run the transcript doesn't show from its start: that message and the newest). A
+routine's, a trigger's, a bot's or a session's tag, a new bot's kickoff and what
+HUI writes itself (`[Subagent Task]`, `[Inter-session message …]` and a
+subagent's completion event) never count. A bot's subagents (sessions whose tree
+starts at a bot's chat) are refused: the bot tags, within its chain's hops. The message is delivered like an operator's message without a wait
+(prompt when idle, follow-up when busy), and the tool returns "Queued for
+@<handle>." once it is accepted: nothing comes back to the tagger, and the bot
+answers in its own chat. From a bot the delivered text is
+`[from @<sender>] <message>`, or `[from @<sender> · hop N+1] <message>` when the
+sender's current run started from `[from @x] …` (hop 1) or `[from @x · hop N] …`;
+beyond hop 3 the tool refuses. From a session it is
+`[from agent: <title>] <message>` (`agentTagPrefix`: the session's title on one
+line, at most 80 characters, without `[`, `]` or `·`); a session is never tagged,
+so its tag is always hop 1. For the bot it reaches, a session's tag is not the
+operator (`BotTurnOrigin` `{ kind: "agent", title }`): `write_soul`,
+`set_profile` and the `routines` tool's add and update refuse in its turn, as for
+another bot's. The run's originating input is the session's recovery journal
+(`runPrompt`). Each bot, and each session tree (a session and its subagents),
+may send 30 tags per hour (gateway memory, a backstop). Refusals are tool errors
+the model reads. A session on a remote worker keeps or lacks `hui-bot-tag` until
+its next start after bots are turned off or on; the gateway's refusal covers it
+meanwhile.
+
+#### Tagging in the composer
+
+While bots are on, an `@` mention in any composer (a session's, a bot's chat, a
+new session's; not a session still on PI's SDK worker) lists the bots its text starts their handle or name with, any
+case, before the local paths it already lists: at most five, by handle, each with
+its face, `@handle`, name and title; never an archived bot, one nobody may tag or
+the bot whose chat it is. Choosing one inserts `@handle ` and closes the list.
+The message goes to the chat's agent unchanged.
 
 ### Bots on a worker
 
@@ -2140,7 +2197,11 @@ at once after a create or a `PUT`), never a request per list.
 
 The host's `bots` prompt section comes from this gateway: the host asks it
 (`bot.section`), which answers only for a bot that runs on that worker, so a
-bot on a worker knows the whole roster and `message_bot` crosses both ways
+bot on a worker knows the whole roster and `message_bot` crosses both ways. A
+session on the worker gets its list of the bots it may tag the same way (`bot.section`
+without `botId`, asked of its own gateway only while the Settings mirrored
+there have bots on), and its `hui-bot-tag` from those Settings at its next start;
+its tags reach the gateway the same way
 (its tool call reaches the gateway through the agent-tool bridge, as any HUI
 tool of a remote session). With no gateway attached the section is left out,
 as `message_bot` could not deliver anything then either. OptChat's compactor
@@ -2270,7 +2331,7 @@ What creating does with a template, the same plan for the preview and the create
   while they fit in its 20,000 characters (the rest are listed as left out).
   OptChat's memory is the chat's own log, a projection of its Durable entries,
   so nothing else can seed it; in SOUL.md the bot reads them on every request
-  and the operator edits them in the Soul tab.
+  and the operator changes them by telling it or with `hui bot soul`.
 - **Opener.** The bot's first turn: a kickoff (`botOpenerKickoffText`: the
   `[HUI bot created]` marker, so the chat shows "<name> was created", never the
   operator's bubble) that asks it to send the opener as written. Its answer is a
@@ -2291,7 +2352,7 @@ What creating does with a template, the same plan for the preview and the create
   `load_skill`, its catalog, where they show as *Its own skills*). A name a skill
   of its directory already has gets `-2` (the directory's would win the name).
   They are on, like every skill of a bot: they are text the preview showed in
-  full, they widen no tool, and each can be turned off in the Tools tab.
+  full, they widen no tool, and each can be turned off on the Tools & skills page.
 - **Routines** are Automation tasks aimed at its chat, created **disabled**. A
   schedule is read as a cron expression (`cron <expr> [zone]` too), `at <time>`,
   an interval (`every 30m`, `hourly`) or a phrase (`daily at 9:00`, `weekdays at
@@ -2438,7 +2499,7 @@ apart as only the operator changes it), and so is each
 script picked `confirm`. The profile, set before the first chat, never holds a mark: a passage asked elsewhere leaves it like a removed one, and a name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
 travels without `match`, with an open point for the operator. `bot.json` is
 `BotExportManifest`: `format: "hui-bot"`, `version: 2`, `bot` (name, title?,
-description?, avatar?, model?, thinking?, memoryModel?, memoryThinking?, voice?),
+description?, avatar?, model?, thinking?, memoryModel?, memoryThinking?, voice?, tagging?),
 `routines` (`{ name, description?, prompt, schedule: { kind: "every", everyMs } |
 { kind: "cron", expression } }`), `triggers`, `disabledTools`,
 `disabledSkills` (names), `skills` (names), `open` and `needs`; then `SOUL.md` and
@@ -3065,8 +3126,9 @@ prevents the UI from continuing to display the durable-but-no-longer-live model.
 
 ### `POST /__hui/sessions/:id/abort`
 
-Stops the turn in flight without deleting or closing the session. Responds
-`{ "ok": true }`; starting sessions return 409.
+Stops the turn in flight without deleting or closing the session, and cancels
+the session's queued and running collected subagents (Swarm) even when the turn
+refuses to stop. Responds `{ "ok": true }`; starting sessions return 409.
 
 ### `POST /__hui/sessions/:id/rewind`
 
@@ -3189,7 +3251,7 @@ fields, absent from tasks written before them (which load unchanged; a value
 that isn't valid is left out rather than failing the store):
 
 - `createdBy`: `{ "kind": "operator" }` for a task made through these routes (the
-  Automations page, a bot's Routines tab, `hui schedule`, `hui bot routine`), or
+  Automations page, a bot's Routines page, `hui schedule`, `hui bot routine`), or
   `{ "kind": "bot", "botId", "handle" }` for one a bot made with its
   [`routines`](#routines) tool. A body never sets it.
 - `until`: a temporary task's end, ISO.

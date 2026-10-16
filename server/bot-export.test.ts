@@ -261,7 +261,7 @@ test("the download holds exactly what the review and the picks make: no handle, 
   assert.deepEqual(manifest.open, [
     { kind: "ask", where: "SOUL.md", question: "Which repositories should I watch?" },
     { kind: "confirm", where: "SOUL.md", question: "Approve only on green CI?", excerpt: "Approve only when CI is green" },
-    { kind: "ask", where: "Trigger “Reviews”", question: "Which fields.user should wake it? Its filter matched a value of the previous owner's: set yours in the Routines tab.", operator: true },
+    { kind: "ask", where: "Trigger “Reviews”", question: "Which fields.user should wake it? Its filter matched a value of the previous owner's: set yours on its Triggers page.", operator: true },
   ]);
   assert.deepEqual(manifest.needs, ["The GitHub CLI signed in"]);
   assert.equal(files.get("SOUL.md"), "# Who I am\n\nI'm {{user}}'s review assistant. I review pull requests in [ask: the repositories to watch] with a teammate.\nApprove only when CI is green. Mail [removed] when unsure.\n");
@@ -278,7 +278,7 @@ test("the operator's picks move changes: a script kept as it is travels, a kept 
   const files = unzip((await service.export("ada", { review: review.id, picks })).data);
   assert.ok(files.has("skills/review/scripts/approve.sh"));
   const manifest = JSON.parse(files.get("bot.json")!) as BotExportManifest;
-  assert.deepEqual(manifest.open.map((point) => point.question), ["What should stand for [ask: a teammate's name]?", "Which repositories should I watch?", "Which fields.user should wake it? Its filter matched a value of the previous owner's: set yours in the Routines tab."]);
+  assert.deepEqual(manifest.open.map((point) => point.question), ["What should stand for [ask: a teammate's name]?", "Which repositories should I watch?", "Which fields.user should wake it? Its filter matched a value of the previous owner's: set yours on its Triggers page."]);
   assert.equal(JSON.stringify(manifest).includes("Pat Doe"), false, "a removed passage moved to asked is still not quoted");
   assert.match(files.get("SOUL.md")!, /with \[ask: a teammate's name\]\./u);
   assert.deepEqual(manifest.needs, []);

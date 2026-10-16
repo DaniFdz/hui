@@ -16,7 +16,7 @@ export type AutomationRunStatus =
   | "cancelled";
 
 /**
- * Who made a task: the operator (Automations, a bot's Routines tab, `hui schedule` and `hui bot routine`) or a bot,
+ * Who made a task: the operator (Automations, a bot's Routines page, `hui schedule` and `hui bot routine`) or a bot,
  * with its `routines` tool, named by its id and the handle it had then.
  */
 export type AutomationCreator = { kind: "operator" } | { kind: "bot"; botId: string; handle: string };

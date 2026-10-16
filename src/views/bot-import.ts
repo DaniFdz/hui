@@ -161,7 +161,7 @@ function renderPreviewStep(props: BotImportDialogProps, preview: BotImportPrevie
         <div><strong>${skill.name}</strong>${skill.original && skill.original !== skill.name ? html` <span class="bot-import__muted">(from ${skill.original})</span>` : nothing} — ${skill.description}</div>
         <details><summary>Instructions</summary>${textBlock(skill.content)}</details>
         ${skill.files?.length ? html`<details><summary>${plural(skill.files.length, "file")} beside it</summary><ul class="bot-import__list">${skill.files.map((file) => html`<li><code>${file.path}</code>${textBlock(file.text)}</li>`)}</ul></details>` : nothing}
-      </li>`)}</ul><p class="bot-import__hint">Its own, in its home folder: only this bot loads them. They are on, like every skill of a bot; turn any off in its Tools tab.</p>`, { name: "skills" }) : nothing}
+      </li>`)}</ul><p class="bot-import__hint">Its own, in its home folder: only this bot loads them. They are on, like every skill of a bot; turn any off on its Tools & skills page.</p>`, { name: "skills" }) : nothing}
     ${preview.routines.length ? section("Routines", `${preview.routines.length} · disabled`, html`<ul class="bot-import__list">${preview.routines.map((routine) => html`<li>
         <div><strong>${routine.name}</strong> · ${describeRoutineSchedule(routine.schedule)}${routine.guessed ? html` <span class="bot-import__warn">· assumed${routine.scheduleText ? ` from “${routine.scheduleText}”` : ""}, check it</span>` : routine.scheduleText ? html` <span class="bot-import__muted">· “${routine.scheduleText}”</span>` : nothing}</div>
         ${textBlock(routine.prompt)}
@@ -169,7 +169,7 @@ function renderPreviewStep(props: BotImportDialogProps, preview: BotImportPrevie
     ${preview.triggers.length ? section("Triggers", `${preview.triggers.length} · disabled`, html`<ul class="bot-import__list">${preview.triggers.map((trigger) => html`<li>
         <div><strong>${trigger.name}</strong> · ${botTriggerFilterSummary(trigger)} · cooldown ${cooldownLabel(trigger.cooldownSeconds)}</div>
         ${trigger.prompt ? textBlock(trigger.prompt) : nothing}
-      </li>`)}</ul><p class="bot-import__hint">A listener you run wakes them: each gets its URL from New URL in the bot's Routines tab.</p>`, { name: "triggers" }) : nothing}
+      </li>`)}</ul><p class="bot-import__hint">A listener you run wakes them: each gets its URL from New URL on the bot's Triggers page.</p>`, { name: "triggers" }) : nothing}
     ${preview.integrations.length ? section("Integrations", missing ? `${missing} missing` : "all mapped", html`<ul class="bot-import__list bot-import__list--compact">${preview.integrations.map((integration) => html`<li class=${integration.tool ? "is-mapped" : "is-missing"}>
         <span aria-hidden="true">${integration.tool ? icons.check : icons.circleX}</span>
         <span><strong>${integration.name}</strong>${integration.tool ? html` → ${integration.tool.label} <code>${integration.tool.name}</code>` : html` <span class="bot-import__muted">· missing: HUI has no tool for it</span>`}</span>

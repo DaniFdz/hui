@@ -32,8 +32,9 @@ import type {
 } from "../lib/sessions-store.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
-import { isSubagentActive, subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
-import { composerEnterMode } from "../lib/composer-state.ts";
+import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
+import { composerEnterMode, composerPlaceholder } from "../lib/composer-state.ts";
+import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
 import { icons } from "../lib/icons.ts";
@@ -133,7 +134,9 @@ function renderProviderIcon(provider: string, trigger = false) {
   );
 }
 
+/** Render reads it for the composer's placeholder, so it answers false where there is no window (Node render tests). */
 function hasCoarsePointer(): boolean {
+  if (typeof window === "undefined") return false;
   return window.matchMedia?.("(pointer: coarse)").matches === true || navigator.maxTouchPoints > 0;
 }
 
@@ -1293,6 +1296,7 @@ function renderWorkingIndicator(props: HomeProps) {
 }
 
 function subagentSnippet(task: SubagentTaskView): string {
+  if (task.status === "queued") return "Waiting for a free slot…";
   if (task.status === "starting") return "Starting…";
   if (task.status === "running") return task.summary?.trim() || "Running…";
   if (task.status === "completed") return task.summary?.trim() || "Completed";
@@ -1306,13 +1310,14 @@ function renderSubagentStatusIcon(status: string) {
   const state = subagentVisualState(status);
   if (state === "running") return orbitIcon;
   if (state === "completed") return html`<span class="hui-subagent-status hui-subagent-status--completed">${icons.check}</span>`;
-  if (state === "cancelled") return html`<span class="hui-subagent-status hui-subagent-status--cancelled">${icons.circle}</span>`;
+  if (state === "queued") return html`<span class="hui-subagent-status hui-subagent-status--queued">${icons.circle}</span>`;
+  if (state === "cancelled") return html`<span class="hui-subagent-status hui-subagent-status--cancelled">${icons.circleX}</span>`;
   return html`<span class="hui-subagent-status hui-subagent-status--failed">${icons.alertTriangle}</span>`;
 }
 
 function renderSubagentRow(props: HomeProps, task: SubagentTaskView, now: number) {
   const snippet = subagentSnippet(task).replace(/\s+/g, " ");
-  const elapsed = subagentElapsed(task, now);
+  const elapsed = task.status === "queued" ? undefined : subagentElapsed(task, now);
   return html`<button
     class="chat-subagents__row chat-subagents__row--${subagentVisualState(task.status)}"
     data-subagent-task-id=${task.taskId}
@@ -1328,34 +1333,54 @@ function renderSubagentRow(props: HomeProps, task: SubagentTaskView, now: number
   </button>`;
 }
 
+/** OpenClaw's Swarm card, between the transcript and the composer, for the latest batch of this session's subagents:
+ * one dot per child, counts, and under Child details the children, each opening its session. A batch that all
+ * succeeded folds into one row. */
 function renderSubagentActivity(props: HomeProps) {
   const now = Date.now();
-  const visible = props.subagents.filter((task) => {
-    if (isSubagentActive(task.status)) return true;
-    const endedAt = Date.parse(task.endedAt ?? task.updatedAt);
-    return Number.isFinite(endedAt) && endedAt + 60_000 > now;
-  });
-  if (visible.length === 0) return nothing;
-  if (visible.length === 1) {
-    return html`<div class="chat-subagents" aria-label="Background agents">${renderSubagentRow(props, visible[0]!, now)}</div>`;
-  }
-  const running = visible.filter((task) => isSubagentActive(task.status)).length;
-  const current = visible.find((task) => isSubagentActive(task.status)) ?? visible[0]!;
-  const id = "subagents";
+  const tasks = latestSubagentBatch(props.subagents, now);
+  if (tasks.length === 0) return nothing;
+  const states = tasks.map((task) => subagentVisualState(task.status));
+  const count = (state: SubagentVisualState) => states.filter((each) => each === state).length;
+  const running = count("running");
+  const queued = count("queued");
+  const done = count("completed");
+  const failed = tasks.length - running - queued - done;
+  const finished = running + queued === 0;
+  const succeeded = finished && failed === 0;
+  const title = tasks.length === 1 ? tasks[0]!.title : "Parallel tasks";
+  const counts = finished
+    ? `${done} completed · ${failed} failed or stopped`
+    : `${running} running · ${queued} queued · ${failed} failed or stopped`;
+  const outcome = html`<span class="chat-swarm__outcome">${props.streaming
+    ? "Child runs finished. The parent is processing their results."
+    : "Child runs finished. Check the conversation for the final response."}</span>`;
+  const markers = (["running", "queued", "failed", "done"] as const).flatMap((marker) =>
+    Array.from({ length: { running, queued, failed, done }[marker] }, () => html`<span class="chat-swarm__marker chat-swarm__marker--${marker}"></span>`));
+  // Per batch, so a new batch starts folded.
+  const id = `subagents:${tasks[0]!.taskId}`;
   const expanded = props.expandedActivityIds.has(id);
-  return html`<details class="chat-subagents chat-subagents--group" aria-label="Background agents" .open=${expanded}
-    @toggle=${(event: Event) => {
-      const open = (event.currentTarget as HTMLDetailsElement).open;
-      if (open !== expanded) props.onActivityExpanded(id, open);
-    }}>
-    <summary class="chat-subagents__summary">
-      <span class="chat-subagents__icon">${renderSubagentStatusIcon(running ? "running" : current.status)}</span>
-      <span class="chat-subagents__label">${visible.length} subagents</span>
-      <span class="chat-subagents__snippet">${running ? `${running} running · ${current.title}` : "All finished"}</span>
-      <span class="chat-subagents__chevron" aria-hidden="true">${chevronDownIcon}</span>
-    </summary>
-    <div class="chat-subagents__list">${visible.map((task) => renderSubagentRow(props, task, now))}</div>
-  </details>`;
+  return html`<aside class="chat-swarm" aria-label="Parallel tasks">
+    <details class="chat-swarm__group ${succeeded ? "chat-swarm__group--completed" : ""}" .open=${expanded}
+      @toggle=${(event: Event) => {
+        const open = (event.currentTarget as HTMLDetailsElement).open;
+        if (open !== expanded) props.onActivityExpanded(id, open);
+      }}>
+      <summary class="chat-swarm__summary">${succeeded
+        ? html`<span class="chat-swarm__task-icon chat-swarm__task-icon--done" aria-hidden="true">${icons.check}</span>
+          <span class="chat-swarm__header"><strong title=${title}>${title}</strong></span>
+          <span class="chat-swarm__counts">${done} completed</span>
+          <span class="chat-swarm__disclosure"><span class="sr-only">Child details</span>${chevronDownIcon}</span>`
+        : html`<span class="chat-swarm__header"><strong title=${title}>${title}</strong><span>${done + failed} of ${tasks.length}</span></span>
+          <span class="chat-swarm__markers" aria-hidden="true">${markers}</span>
+          <span class="chat-swarm__counts">${counts}</span>
+          ${finished ? outcome : nothing}
+          <span class="chat-swarm__disclosure">Child details ${chevronDownIcon}</span>`}
+      </summary>
+      ${succeeded ? outcome : nothing}
+      <div class="chat-swarm__tasks">${tasks.map((task) => renderSubagentRow(props, task, now))}</div>
+    </details>
+  </aside>`;
 }
 
 function submitPromptFromForm(props: HomeProps, form: HTMLFormElement, mode: PromptMode) {
@@ -1615,7 +1640,14 @@ function renderComposer(props: HomeProps) {
                 }
               }}
               @paste=${onComposerPaste(props)}
-              placeholder=${props.session?.status === "disconnected" ? "Draft while disconnected…" : disconnected ? "Draft while HUI reconnects…" : props.streaming ? "Add to this run…" : "Send a message…"}
+              placeholder=${composerPlaceholder({
+                status: props.session?.status,
+                reconnecting: disconnected,
+                streaming: props.streaming,
+                coarsePointer: hasCoarsePointer(),
+                sendShortcut: props.chatPreferences.sendShortcut,
+                applePlatform: APPLE_PLATFORM,
+              })}
               ?disabled=${booting || props.sending}
               aria-label="Message"
               role="combobox" aria-autocomplete="list" aria-haspopup="listbox"
@@ -2381,10 +2413,11 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
                     @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${renderSubagentActivity(props)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>
+                ${renderSubagentActivity(props)}
                 ${renderComposer(props)}
               </div>
             </div>

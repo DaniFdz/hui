@@ -463,7 +463,7 @@ test("tools and skills print what a bot has, on or off, and --deny / --allow sen
     "  off  alpha  Writes release notes.  [/skills]",
     "  on   beta   Triage.  [HUI defaults]",
     "",
-    "Waiting for you: Allow access to bash (powerful)? Answer it in hui bot chat bob or the Tools tab.",
+    "Waiting for you: Allow access to bash (powerful)? Answer it in hui bot chat bob or on its Tools & skills page.",
     "",
   ].join("\n"));
   await botCommand(gateway.base, "skills", ["bob"], { allow: "alpha" }, terminal().io);
@@ -775,4 +775,15 @@ test("--call-voice sets the bot's GPT-Live voice, \"\" goes back to Settings' de
   const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
   assert.match(formatBot({ ...base, voice: { language: "es", live: "juniper" } }), /\nlanguage: es \(Spanish\)\ncall voice: Juniper\nroutines: /u);
   assert.doesNotMatch(formatBot(base), /call voice:/u, "without one it follows Settings");
+});
+
+test("--description says what a bot does and when to tag it, --tagging who may, and show says both", async (t) => {
+  const gateway = await fakeGateway(t);
+  await botCommand(gateway.base, "edit", ["ada"], { description: "Release notes. Tag her when a PR merges.", tagging: " Mention " }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { description: "Release notes. Tag her when a PR merges.", tagging: "mention" });
+  await botCommand(gateway.base, "add", [], { name: "Lola", tagging: "nobody" }, terminal().io);
+  assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", tagging: "nobody" });
+  const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
+  assert.match(formatBot({ ...base, description: "Finds sources.", tagging: "mention" }), /\ndescription: Finds sources\.\ntagging: only when your message tags it\n/u);
+  assert.match(formatBot(base), /\ntagging: anyone, when a task fits its description\n/u);
 });

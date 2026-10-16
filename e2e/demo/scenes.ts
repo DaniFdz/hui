@@ -29,7 +29,7 @@ const link = (text: string): Target => ({ css: "a", text });
 /** A subagent's sidebar row, whose link also shows its run time. */
 const child = (title: string): Target => ({ css: "a", contains: title });
 
-/** Sends a follow-up once the session is idle, whose composer reads "Send a message…" (a busy one reads "Add to this run…"). */
+/** Sends a follow-up once the session is idle, whose composer reads "Send a message…" (a busy one names the steer and queue shortcuts). */
 async function send(d: Director, prompt: string) {
   await d.click({ placeholder: "Send a message…" });
   await d.type(prompt);
@@ -291,7 +291,7 @@ export const scenes: Scene[] = [
       roster: "Bots are agents that stay. Each one has a face, a single long-running chat, and a memory.",
       routine: "They schedule their own routines. Ask Scout for a weekday digest, and it sets one up.",
       run: "Run it now, and the digest already knows what you told it earlier.",
-      memory: "And everything it remembers is right here, for you to read.",
+      panel: "Its panel shows what it does on its own, and expands when you need the room.",
     },
     async run({ director: d }) {
       await d.caption("Bots are agents that stay: a face, one chat and a memory");
@@ -309,18 +309,21 @@ export const scenes: Scene[] = [
       await d.pause(1_000);
       await d.caption("Run one now, and it remembers what you told it");
       await d.say("run");
+      await d.click({ css: ".bot-overview__name", text: "Morning digest" });
       await d.click({ label: "Run now: Morning digest" });
       await d.waitFor({ contains: "Nothing is blocked" }, 30_000);
       await d.zoom({ contains: "Priya owns the rollback" , last: true }, 1.4);
       await d.pause(2_200);
       await d.zoom();
-      await d.caption("Its memory is yours to read");
-      await d.say("memory");
-      await d.click({ css: ".bot-panel__tab[data-tab=memory]" });
+      await d.caption("Its panel shows what it does, and expands");
+      await d.say("panel");
+      await d.click({ label: "Back to Scout" });
+      await d.click({ label: "Expand the panel" });
       await d.pause(800);
-      await d.zoom({ css: ".bot-panel__tab[data-tab=memory]" }, 1.5);
+      await d.zoom({ css: ".bot-overview" }, 1.3);
       await d.pause(2_400);
       await d.zoom();
+      await d.click({ label: "Show the chat beside the panel" });
       await d.caption();
     },
   },

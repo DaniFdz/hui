@@ -1,9 +1,9 @@
 /**
- * A bot's triggers in the Bots tab (HUI-18): the Triggers section of its panel's Routines tab. It reads
- * `GET /__hui/bots/:id/triggers` while the tab shows (again every few seconds, since triggers fire on their own),
+ * A bot's triggers in the Bots tab (HUI-18): the list on its panel's overview and its Triggers page. It reads
+ * `GET /__hui/bots/:id/triggers` while either shows (again every few seconds, since triggers fire on their own),
  * adds, switches, tests and deletes triggers through the trigger routes, and shows a trigger's URL, which its listener
  * reports to, once, right after it was made or replaced. `BotTriggersController` keeps that state outside `hui-app.ts`,
- * as the Tools tab's controller does; the view is `src/views/bot-triggers.ts`.
+ * as the Tools & skills page's controller does; the view is `src/views/bot-triggers.ts`.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import {

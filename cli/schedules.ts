@@ -58,7 +58,7 @@ export function scheduleText(schedule: AutomationSchedule): string {
   return `cron ${schedule.expression} (${schedule.timezone})`;
 }
 
-/** Who made it and its limits, as the bot's Routines tab shows them: `made by @ada · until … · 3 runs left`. */
+/** Who made it and its limits, as the bot's Routines page shows them: `made by @ada · until … · 3 runs left`. */
 export function taskFacts(task: Pick<AutomationTask, "createdBy" | "until" | "runsLeft">): string {
   return [
     ...(task.createdBy?.kind === "bot" ? [`made by @${task.createdBy.handle}`] : []),

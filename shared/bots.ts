@@ -40,6 +40,29 @@ export { PI_THINKING_LEVELS as BOT_THINKING_LEVELS } from "./thinking.ts";
 export const BOT_HANDLE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/u;
 
 /**
+ * Who may tag a bot (`message_bot`), as a skill's frontmatter says when it loads: `anyone` (the default, never stored)
+ * whenever a task fits its description; `mention` only in a turn whose operator message names `@handle`, as a skill with
+ * `disable-model-invocation` waits for `/skill:name`; `nobody` never, and it is in no list.
+ */
+export const BOT_TAGGING = ["anyone", "mention", "nobody"] as const;
+export type BotTagging = (typeof BOT_TAGGING)[number];
+
+export function isBotTagging(value: unknown): value is BotTagging {
+  return typeof value === "string" && (BOT_TAGGING as readonly string[]).includes(value);
+}
+
+/** `tagging` as a record keeps it: `mention` or `nobody`; anything else, the default `anyone` included, is nothing. */
+export function storedTagging(value: unknown): Exclude<BotTagging, "anyone"> | undefined {
+  return value === "mention" || value === "nobody" ? value : undefined;
+}
+
+/** Whether `text` tags `@handle`, any case: the handle whole, not inside an address (`me@ada.dev`), a longer handle
+ * (`@ada-2`) or a path (`@ada/notes.md`, `@ada.md`). */
+export function mentionsBot(text: string, handle: string): boolean {
+  return new RegExp(`(?<![\\w@./-])@${handle}(?![\\w/-]|\\.\\w)`, "iu").test(text);
+}
+
+/**
  * A bot's face, after OpenAI's Dots: a plush shape in a color, with two dot
  * eyes and no mouth, and optionally ears (or an antenna, a sprout, horns) on
  * top. Stored in `avatar` beside the emoji, which still wins while set (a bot
@@ -94,7 +117,10 @@ export type BotRecord = {
   name: string;
   /** Its role, one line. */
   title?: string;
+  /** What it does and when to tag it, as a skill's description: what agents and other bots read to decide. */
   description?: string;
+  /** Who may tag it; absent: anyone. */
+  tagging?: Exclude<BotTagging, "anyone">;
   /** Absolute working directory of its chat; on a worker, a directory there. Its persona is not here: it is SOUL.md in
    * the bot's home folder, on the machine its chat runs on. */
   cwd: string;
@@ -138,6 +164,8 @@ export type BotInput = {
   handle?: string;
   title?: string;
   description?: string;
+  /** `anyone` is the default, stored as nothing. */
+  tagging?: BotTagging;
   /** SOUL.md for the new bot, at most 20,000 characters: it starts with this persona and skips the first conversation. */
   soul?: string;
   /** Absolute or `~/`; absent: a new directory of its own in HUI's configuration (on a worker, in HUI's data directory there). */
@@ -169,7 +197,8 @@ export type BotInput = {
  * call voice) clears that key and `voice: null` clears both. `disabledTools` and
  * `disabledSkills` replace the whole list (`[]` turns everything back on),
  * validated against the bot's catalog; they apply from its chat's next request.
- * SOUL.md changes through `PUT /__hui/bots/:id/soul` instead.
+ * `tagging: "anyone"` goes back to the default. SOUL.md changes through
+ * `PUT /__hui/bots/:id/soul` instead.
  */
 export type BotPatch = Partial<Omit<BotInput, "avatar" | "voice" | "soul" | "worker">> & { avatar?: BotAvatarPatch | null; voice?: BotVoicePatch | null };
 
@@ -285,7 +314,7 @@ export type BotsUpdate = { revision: number; ids?: string[]; upserts: BotView[] 
 
 /* ── tools and skills ─────────────────────────────────────────────────── */
 
-/** How the Tools tab groups a tool: files, shell, HUI's own, an extension's (by its source), or bots'. */
+/** How the Tools & skills page groups a tool: files, shell, HUI's own, an extension's (by its source), or bots'. */
 export type BotToolGroup = "files" | "shell" | "hui" | "extension" | "bots";
 
 /** One tool the operator can turn off in a bot's chat. */
@@ -346,9 +375,11 @@ export function isBotAccessQuestion(question: { method: string; title?: string; 
 }
 
 /** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), a trigger
- * (`[trigger: name · …] …`), another bot (`[from @handle] …`), HUI's kickoff of a new bot, an imported bot's first turn
- * (a kickoff with `from: template`), or else the operator. */
-export type BotTurnOrigin = { kind: "operator" } | { kind: "kickoff" } | { kind: "imported" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string } | { kind: "bot"; handle: string };
+ * (`[trigger: name · …] …`), another bot (`[from @handle] …`), a session's agent (`[from agent: title] …`), HUI's
+ * kickoff of a new bot, an imported bot's first turn (a kickoff with `from: template`), or else the operator. */
+export type BotTurnOrigin =
+  | { kind: "operator" } | { kind: "kickoff" } | { kind: "imported" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string }
+  | { kind: "bot"; handle: string } | { kind: "agent"; title: string };
 
 export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (!text) return { kind: "operator" };
@@ -357,8 +388,16 @@ export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (text.startsWith("[trigger: ")) return { kind: "trigger", name: /^\[trigger: ([^\]·\n]*?)(?: · |\])/u.exec(text)?.[1] ?? "" };
   const bot = /^\[from @([a-z0-9-]+)(?: · hop [1-9]\d*)?\] /u.exec(text);
   if (bot) return { kind: "bot", handle: bot[1]! };
+  const agent = /^\[from agent: ([^\]\n]*)\] /u.exec(text);
+  if (agent) return { kind: "agent", title: agent[1]! };
   if (botKickoffName(text) === undefined) return { kind: "operator" };
   return text.split("\n", 3).includes(BOT_IMPORTED_KICKOFF_LINE) ? { kind: "imported" } : { kind: "kickoff" };
+}
+
+/** How a session's tag starts in the bot's chat: its title on one line, at most 80 characters, without the brackets and
+ * `·` the prefix's readers rely on. A session is never tagged itself, so its tags are always a chain's first hop. */
+export function agentTagPrefix(title: string): string {
+  return `[from agent: ${previewLine(title.replace(/[[\]·]/gu, " "), 80) || "Untitled session"}] `;
 }
 
 /**
@@ -380,10 +419,11 @@ export function parseRunOrigins(value: unknown): BotTurnOrigin[] | undefined {
   if (!Array.isArray(value) || value.length > MAX_RUN_ORIGINS) return undefined;
   const origins: BotTurnOrigin[] = [];
   for (const item of value) {
-    const { kind, name, handle } = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
+    const { kind, name, handle, title } = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
     if (kind === "operator" || kind === "kickoff" || kind === "imported") origins.push({ kind });
     else if ((kind === "routine" || kind === "trigger") && typeof name === "string") origins.push({ kind, name });
     else if (kind === "bot" && typeof handle === "string") origins.push({ kind, handle });
+    else if (kind === "agent" && typeof title === "string") origins.push({ kind, title });
     else return undefined;
   }
   return origins;

@@ -23,12 +23,14 @@ import { createServer, type Server, type Socket } from "node:net";
 import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import type { ConversationId } from "@earendil-works/pi-durable";
 import type { BotTurnOrigin } from "../../shared/bots.ts";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools-bridge.ts";
 import { operatorName } from "../bot-souls.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import { SECRET_REQUEST_TIMEOUT_MS, SecretFiles, type SecretAnswer } from "../secret-requests.ts";
 import { QUESTIONNAIRE_WAIT_MS } from "../questionnaires.ts";
+import { agentsWaitTransportMs } from "../runtimes/agent-tools-extension.mjs";
 import { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
@@ -174,8 +176,8 @@ export class WorkerHost {
       // The gateway's bridge refuses these for every session here; a bot's chat isn't offered them.
       gatewayOnlyTools: GATEWAY_ONLY_TOOLS,
     });
-    // A bot's chat here lists the other bots as the gateway that owns them says.
-    this.#durable.botSection = (botId) => this.#botSection(botId);
+    // A bot's chat here lists the other bots as the gateway that owns them says, and a session the bots it may tag.
+    this.#durable.botSection = (botId, conversationId) => this.#botSection(botId, conversationId);
     this.#bots = hostBots({
       durable: this.#durable, home: paths.home, botsDir: join(paths.dataDir, "bots"),
       // A bot without a model of its own starts on Settings' primary model, as on the gateway.
@@ -515,10 +517,17 @@ export class WorkerHost {
     return undefined;
   }
 
-  /** A bot chat's `bots` section, from a connected gateway (the one that owns the bot answers); with none attached the
-   * section is left out, as message_bot cannot reach another bot then either. Asked before each of the chat's model
-   * requests, so a gateway that has gone quiet (before the keep-alive drops it) delays a request by seconds at most. */
-  async #botSection(botId: string): Promise<string | undefined> {
+  /** A chat's `bots` section, from a connected gateway: a bot's from the one that owns the bot, a session's (the bots it
+   * may tag) from its own, asked only while the Settings it mirrors here have bots on. With none attached the section is
+   * left out, as message_bot cannot reach a bot then either. Asked before each of the chat's model requests, so a
+   * gateway that has gone quiet (before the keep-alive drops it) delays a request by seconds at most. */
+  async #botSection(botId: string | undefined, conversationId: ConversationId): Promise<string | undefined> {
+    if (botId === undefined) {
+      if (!(await readHuiSettings()).labs.bots) return undefined;
+      const peer = this.#gateway(this.#callers.get(String(conversationId)));
+      const reply = await peer?.request<{ section?: unknown }>("bot.section", {}, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
+      return typeof reply?.section === "string" ? reply.section : undefined;
+    }
     for (const peer of [...this.#peers]) {
       if (peer.closed) continue;
       const reply = await peer.request<{ section?: unknown; name?: unknown }>("bot.section", { botId }, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
@@ -534,8 +543,9 @@ export class WorkerHost {
   async #gatewayTool(key: string, action: string, params: Record<string, unknown>, signal?: AbortSignal, runOrigins?: readonly BotTurnOrigin[]): Promise<unknown> {
     const peer = this.#gateway(key);
     if (!peer) throw new Error("HUI is not connected to this worker right now; its tools are unavailable until it reconnects.");
-    // A questionnaire waits for the operator, possibly for hours.
-    if (action !== "secret_request") return peer.request("bridge", { key, action, params, ...(runOrigins ? { runOrigins } : {}) }, action === "ask_user_question" ? QUESTIONNAIRE_WAIT_MS : 170_000, signal);
+    // A questionnaire waits for the operator, possibly for hours, and `agents_wait` for its subagents.
+    const timeoutMs = action === "ask_user_question" ? QUESTIONNAIRE_WAIT_MS : action === "agents_wait" ? agentsWaitTransportMs(params) : 170_000;
+    if (action !== "secret_request") return peer.request("bridge", { key, action, params, ...(runOrigins ? { runOrigins } : {}) }, timeoutMs, signal);
     // The operator answers on the gateway; the file belongs here, where the
     // session's commands run, and only its path goes on to the agent.
     const answer = await peer.request<SecretAnswer>("secret-request", { key, params }, SECRET_REQUEST_TIMEOUT_MS + 60_000, signal);

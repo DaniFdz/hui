@@ -2,12 +2,12 @@
  * Client half of the bots API (`/__hui/bots`, owned by `server/`; the contract
  * is in `docs/api.md`). A bot is a named agent with one permanent chat: its
  * session is an ordinary HUI session whose view carries `bot`, so the chat
- * itself reuses the session API and only roster, settings and memory live here.
+ * itself reuses the session API and only the roster and its settings live here.
  *
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import { botLook, isBotFaceEars, isBotFaceShape, type BotAvatar, type BotAvatarPatch, type BotFaceEars, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
+import { botLook, isBotFaceEars, isBotFaceShape, isBotTagging, storedTagging, type BotAvatar, type BotAvatarPatch, type BotFaceEars, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
@@ -21,9 +21,7 @@ const BOTS_EVENTS_URL = "/__hui/bots/events";
 /** Creating a bot starts its session and memory before the gateway answers. */
 const CREATE_BOT_TIMEOUT_MS = 60_000;
 
-export type BotMemory = { status: BotMemoryStatus; view: string };
-
-/** A bot's editable fields as its Settings tab holds them. Empty model fields mean the default: the gateway's
+/** A bot's editable fields as its Settings page holds them. Empty model fields mean the default: the gateway's
  * model, the default thinking level, Settings' utility model. The persona is not here: the bot writes its SOUL.md in
  * its first conversation. */
 export type BotDraft = {
@@ -47,10 +45,11 @@ export type BotDraft = {
   voiceLanguage?: string;
   /** A GPT-Live call voice ("" for Settings' default); absent leaves it as it is. */
   callVoice?: string;
+  /** What it does and when to tag it ("" clears it); absent leaves it as it is. */
+  description?: string;
+  /** Who may tag it (`BOT_TAGGING`); absent leaves it as it is. */
+  tagging?: string;
 };
-
-/** OptChat's view budget: the memory panel reports sizes against it. */
-export const BOT_MEMORY_BUDGET_BYTES = 128_000;
 
 const SESSION_STATUSES: readonly BotSessionStatus[] = ["idle", "running", "waiting", "starting", "error", "reconnecting", "disconnected"];
 
@@ -147,7 +146,7 @@ export function parseBot(value: unknown): BotView | undefined {
   const voice = parseVoice(value["voice"]);
   const lastMessage = parseLastMessage(value["lastMessage"]);
   const memory = parseBotMemoryStatus(value["memory"]);
-  // What the operator turned off in its chat (the Tools tab reads the details from the catalog).
+  // What the operator turned off in its chat (the Tools & skills page reads the details from the catalog).
   const disabledTools = Array.isArray(value["disabledTools"]) ? value["disabledTools"].filter((name): name is string => typeof name === "string") : [];
   const disabledSkills = Array.isArray(value["disabledSkills"])
     ? value["disabledSkills"].flatMap((raw) => isRecord(raw) && typeof raw["name"] === "string" && typeof raw["path"] === "string" ? [{ name: raw["name"], path: raw["path"] }] : [])
@@ -160,11 +159,13 @@ export function parseBot(value: unknown): BotView | undefined {
     const entry = optionalText(value[key], maximum);
     if (entry) optional[key] = entry;
   }
+  const tagging = storedTagging(value["tagging"]);
   return {
     id,
     handle: text(value["handle"], 64),
     name,
     ...optional,
+    ...(tagging ? { tagging } : {}),
     cwd: text(value["cwd"], 4_096),
     ...(worker ? { worker } : {}),
     ...(avatar ? { avatar } : {}),
@@ -201,12 +202,6 @@ function parseBotBody(body: unknown, failure: string): BotView {
   const bot = isRecord(body) ? parseBot(body["bot"]) : undefined;
   if (!bot) throw new Error(failure);
   return bot;
-}
-
-export function parseBotMemory(body: unknown): BotMemory {
-  const status = isRecord(body) ? parseBotMemoryStatus(body["status"]) : undefined;
-  if (!status) throw new Error("The bot's memory status did not come back.");
-  return { status, view: isRecord(body) && typeof body["view"] === "string" ? body["view"] : "" };
 }
 
 /* ── live list ────────────────────────────────────────────────────────────── */
@@ -392,12 +387,16 @@ export function botPatchFromDraft(bot: BotView, draft: BotDraft): BotPatch {
   const live = draft.callVoice === undefined ? undefined : gptLiveVoice(draft.callVoice) ?? "";
   if (live !== undefined && live !== (bot.voice?.live ?? "")) voice.live = live;
   if (Object.keys(voice).length) patch.voice = voice;
+  const description = draft.description?.trim();
+  if (description !== undefined && description !== (bot.description ?? "")) patch.description = description;
+  if (isBotTagging(draft.tagging) && draft.tagging !== (bot.tagging ?? "anyone")) patch.tagging = draft.tagging;
   return patch;
 }
 
-/** A control of a bot's Settings tab, by what it saves through `PATCH /__hui/bots/:id`: the look's shape, color and
+/** A control of a bot's Settings page, by what it saves through `PATCH /__hui/bots/:id`: the look's shape, color and
  * emoji are parts of `avatar`, a call's voice and language parts of `voice`. */
-export type BotSettingKey = "name" | "title" | "shape" | "ears" | "color" | "emoji" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
+export type BotSettingKey =
+  "name" | "title" | "shape" | "ears" | "color" | "emoji" | "description" | "tagging" | "model" | "thinking" | "memoryModel" | "callVoice" | "voiceLanguage" | "cwd";
 export type BotSettingValue = string;
 
 /** What a control shows for the bot as it is: "" for a default, the look as the bot shows it. */
@@ -409,6 +408,8 @@ export function botSettingOf(bot: BotView, key: BotSettingKey): BotSettingValue 
     case "ears": return botLook(bot).ears ?? "";
     case "color": return botLook(bot).color;
     case "emoji": return bot.avatar?.emoji ?? "";
+    case "description": return bot.description ?? "";
+    case "tagging": return bot.tagging ?? "anyone";
     case "model": return bot.model ?? "";
     case "thinking": return bot.thinking ?? "";
     case "memoryModel": return bot.memoryModel ?? "";
@@ -442,10 +443,12 @@ export function botDraftOf(bot: BotView): BotDraft {
     memoryModel: bot.memoryModel ?? "",
     voiceLanguage: bot.voice?.language ?? "",
     callVoice: bot.voice?.live ?? "",
+    description: bot.description ?? "",
+    tagging: bot.tagging ?? "anyone",
   };
 }
 
-/** One change from the Settings tab as the PATCH
+/** One change from the Settings page as the PATCH
  * that makes it: only what differs from the bot now, by the edit rules above
  * (an empty model or thinking level goes back to the gateway's defaults, an
  * empty utility model to Settings', and a blank name or workspace changes
@@ -543,66 +546,4 @@ export async function restoreBot(id: string): Promise<BotView> {
 /** Deletes an archived bot for good: its routines and chat go from HUI; its files stay. */
 export async function deleteBot(id: string): Promise<void> {
   await fetchJson<unknown>(botUrl(id, "?permanent=1"), { method: "DELETE", signal: AbortSignal.timeout(30_000) });
-}
-
-/**
- * What says the bot's SOUL.md may have changed, for the open Soul tab: its soul flag (the bot wrote it), its
- * `updatedAt` (HUI wrote it) and its latest message (a turn settled, in which the bot may have rewritten it).
- */
-export function botSoulKey(bot: Pick<BotView, "soul" | "updatedAt" | "lastMessage">): string {
-  return `${bot.soul ? "soul" : "none"}|${bot.updatedAt}|${bot.lastMessage?.at ?? ""}`;
-}
-
-/** SOUL.md's text from `GET`/`PUT …/soul`, or null while the bot has none (its first conversation). */
-export function parseBotSoul(body: unknown): string | null {
-  const soul = isRecord(body) ? body["soul"] : undefined;
-  if (soul === null) return null;
-  if (typeof soul !== "string") throw new Error("The bot's soul did not come back.");
-  return soul.trim() ? soul : null;
-}
-
-export async function loadBotSoul(id: string): Promise<string | null> {
-  return parseBotSoul(await fetchJson<unknown>(botUrl(id, "/soul"), { signal: AbortSignal.timeout(10_000) }));
-}
-
-/** Replaces the bot's SOUL.md; `""` removes it, so the bot asks what you expect again at its next turn. Resolves with
- * what the gateway stored. */
-export async function saveBotSoul(id: string, soul: string): Promise<string | null> {
-  return parseBotSoul(await fetchJson<unknown>(botUrl(id, "/soul"), {
-    method: "PUT",
-    headers: JSON_HEADERS,
-    body: JSON.stringify({ soul }),
-    signal: AbortSignal.timeout(30_000),
-  }));
-}
-
-/** 503: the gateway cannot read this chat's memory (no OptChat for it, or a
- * store another process owns). Unlike a failed read, asking again on every
- * change cannot fix that; Retry still asks. */
-export class BotMemoryUnavailableError extends Error {
-  override name = "BotMemoryUnavailableError";
-}
-
-export async function loadBotMemory(id: string): Promise<BotMemory> {
-  const response = await trackedFetch(botUrl(id, "/memory"), { headers: CLIENT_HEADERS, cache: "no-store", signal: AbortSignal.timeout(5000) });
-  const body = await response.json().catch(() => undefined) as unknown;
-  if (!response.ok) {
-    const message = isRecord(body) && typeof body["error"] === "string" ? body["error"] : `The bot's memory returned HTTP ${response.status}.`;
-    throw response.status === 503 ? new BotMemoryUnavailableError(message) : new Error(message);
-  }
-  return parseBotMemory(body);
-}
-
-/** One line of the view opened into its two halves, or a message whole (n = 1). */
-export async function zoomBotMemory(id: string, line: { id: number; n: number }): Promise<string> {
-  const body = await fetchJson<unknown>(botUrl(id, `/memory/zoom?id=${line.id}&n=${line.n}`));
-  if (!isRecord(body) || typeof body["text"] !== "string") throw new Error("The memory line did not come back.");
-  return body["text"];
-}
-
-/** OptChat's browse page. A link opens it: the gateway accepts a page load the
- * browser attests as same-origin, and serves it under a policy that runs,
- * loads and frames nothing (docs/api.md#bots). */
-export function botMemoryPageUrl(id: string): string {
-  return botUrl(id, "/memory/html");
 }
