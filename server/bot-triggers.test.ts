@@ -296,7 +296,7 @@ test("the triggers tool lists a bot's own triggers and removes one; only the ope
   assert.match((await f.service.tool("chat-ada", { action: "list" })).text, /- Reviews \([0-9a-f]{8}\) · Listener · fields\.channel equals "G01REVIEWS" · PR links only · cooldown 1 min · on · never fired$/u);
   for (const params of [{ action: "add", name: "Mine", source: "listener" }, { action: "update", trigger: "Reviews", prompt: "Answer every ping." }, { action: "explode" }]) {
     await assert.rejects(f.service.tool("chat-ada", params),
-      (error: unknown) => error instanceof TriggerInputError && /^Only the operator adds or changes triggers, in the Routines tab of your panel or with hui bot trigger add: .* action must be list or remove\.$/u.test(error.message), params.action);
+      (error: unknown) => error instanceof TriggerInputError && /^Only the operator adds or changes triggers, on the Triggers page of your panel or with hui bot trigger add: .* action must be list or remove\.$/u.test(error.message), params.action);
   }
   assert.deepEqual((await f.service.list("ada")).triggers.map((each) => each.prompt), ["Look at it."], "nothing changed");
   await assert.rejects(f.service.tool("chat-ada", { action: "remove" }), /Name the trigger to remove/u);

@@ -245,7 +245,7 @@ export async function renderSoulSection(host: BotSoulHost, botId: string): Promi
 /** `write_soul`'s text: line ends as `\n`, trimmed, non-empty and within `BOT_LIMITS.soul`; otherwise what to fix. */
 export function soulToolText(raw: string): string {
   const soul = raw.replace(/\r\n?/gu, "\n").trim();
-  if (!soul) throw new Error("Write the whole SOUL.md: it cannot be empty. To start over, the operator clears it in the Soul tab.");
+  if (!soul) throw new Error("Write the whole SOUL.md: it cannot be empty. To start over, the operator clears it with hui bot soul.");
   if (soul.length > BOT_LIMITS.soul) {
     throw new Error(`SOUL.md must be at most ${BOT_LIMITS.soul.toLocaleString("en-US")} characters; this one has ${soul.length.toLocaleString("en-US")}. Shorten it and write it again.`);
   }
@@ -306,7 +306,7 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         await writeSoulFile(file, soul);
         const saved = `Saved your SOUL.md (${soul.length.toLocaleString("en-US")} characters); it applies from your next request.`;
         return { output: [{ type: "text", text: first
-          ? `${saved} This ends your first conversation: now tell the operator you saved your SOUL.md, sum it up in a few lines, and end by telling them how to change it later: in the Soul tab of your panel in HUI, or by just telling you.`
+          ? `${saved} This ends your first conversation: now tell the operator you saved your SOUL.md, sum it up in a few lines, and end by telling them how to change it later: by just telling you.`
           : `${saved} Tell the operator what you changed.` }] };
       } catch (error) {
         if (context.abortSignal?.aborted) throw error;

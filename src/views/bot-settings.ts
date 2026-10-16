@@ -1,10 +1,11 @@
 /**
- * A bot's Settings tab (HUI-18), after Grok Bot's "Bot settings": who the bot
- * is, the models it runs on, how it sounds on calls and where it works, as
- * compact rows in the style of HUI's Settings pages. Each change saves on its
- * own through `PATCH /__hui/bots/:id` (owned by `hui-app.ts`): its row says
- * while the save is pending and shows a refusal. There is no Save button.
- * Rendering only.
+ * A bot's Settings page in its panel (HUI-18), after Grok Bot's "Bot settings":
+ * who the bot is, the models it runs on, how it sounds on calls and where it
+ * works, as compact rows in the style of HUI's Settings pages, and the one-line
+ * summaries the panel's overview shows of them. Each change saves on its own
+ * through `PATCH /__hui/bots/:id` (owned by `hui-app.ts`): its row says while
+ * the save is pending and shows a refusal. There is no Save button. Rendering
+ * only.
  */
 import { html, nothing, svg, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
@@ -15,7 +16,8 @@ import {
   isBotFaceEars, isBotFaceShape, type BotAvatar, type BotFaceEars, type BotFaceShape,
 } from "../../shared/bots.ts";
 import { FACE_LEAF_COLOR, faceEars, facePath, faceViewBox } from "../lib/bot-face.ts";
-import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
+import { callVoice, GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
+import { voiceLanguageName } from "../../shared/voice.ts";
 import { languageOptions } from "../lib/voice.ts";
 import { renderPicker } from "./settings-picker.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
@@ -64,6 +66,19 @@ function modelOptions(models: readonly RuntimeModel[], empty: string, current: s
   const options = [{ value: "", label: empty }, ...models.map((model) => ({ value: `${model.provider}/${model.id}`, label: model.name, description: model.provider }))];
   // A model no longer in the catalog still shows what the bot runs on.
   return current && !options.some((option) => option.value === current) ? [...options, { value: current, label: current }] : options;
+}
+
+/** The overview's Model row: the bot's model by its catalog name (Gateway default without one) and its thinking. */
+export function botModelLabel(bot: Pick<BotView, "model" | "thinking">, models: readonly RuntimeModel[]): string {
+  const name = bot.model ? models.find((model) => `${model.provider}/${model.id}` === bot.model)?.name ?? bot.model : "Gateway default";
+  const thinking = BOT_THINKING_LEVELS.find((level) => level === bot.thinking);
+  return thinking ? `${name} · ${THINKING_LABELS[thinking]}` : name;
+}
+
+/** The overview's Calls row: the voice it calls with (its own, else Settings') and the language it speaks. */
+export function botCallsLabel(bot: Pick<BotView, "voice">, call: BotSettingsCall): string {
+  const language = bot.voice?.language ? voiceLanguageName(bot.voice.language) : "Auto";
+  return `${gptLiveVoiceLabel(callVoice(bot.voice?.live, call.defaultVoice))} · ${language}`;
 }
 
 /** Every language's English name and code, read once: they never change while HUI runs. */

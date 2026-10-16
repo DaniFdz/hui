@@ -1054,6 +1054,18 @@ requests:
    isolated gateway driven in a browser
    ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
    the pull request).
+14. **The panel as a profile** (implemented 2026-10-16; the owner's request,
+   SPEC.md, "The bot panel is a profile you can resize and expand"): the panel
+   opens on the bot's overview (profile, routines, triggers, activity, setup),
+   whose rows open its Routines, Triggers, Tools & skills and Settings pages;
+   its edge resizes it and the width is remembered; Expand fills the bot's view
+   over a hidden, still-mounted chat. The Memory and Soul tabs and their client
+   code went; `hui bot memory` and `hui bot soul` stay. Proof:
+   `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
+   `src/lib/bot-tools.test.ts`, `src/views/bots.test.ts` and an isolated
+   gateway driven in a browser
+   ([`e2e/bots.browser.md`](../e2e/bots.browser.md), screens in the pull
+   request).
 
 ### HUI-19 — Agent widgets
 

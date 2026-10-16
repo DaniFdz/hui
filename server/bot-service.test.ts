@@ -829,7 +829,7 @@ test("a bot's catalog lists what can be turned off and what is, its pending acce
   assert.deepEqual([catalog.disabledTools, catalog.disabledSkills, catalog.live, catalog.request], [["bash"], [], true, undefined]);
   assert.deepEqual(catalog.alwaysOn.map((tool) => tool.name), ["write_soul", "set_profile", "request_access", "load_skill", "zoom", "date"]);
 
-  // The bot asks in its chat: the catalog carries the request, which the Tools tab answers like the chat does.
+  // The bot asks in its chat: the catalog carries the request, which the Tools & skills page answers like the chat does.
   const chat = await h.chat(bot.sessionId);
   chat.ask({ id: "q-1", method: "select", title: "Pick a colour", options: ["red", "blue"] });
   chat.ask({ id: "q-2", method: "select", title: "Allow access to bash (powerful)?", message: "To run the checks.", options: ["Allow", "Deny"] });
@@ -1482,7 +1482,7 @@ test("a bot on a worker is edited, called and remembered in its worker's store; 
   await h.service.recordCall(rover.id, record);
   assert.deepEqual(h.remote.records, [["w-1", reference, record]]);
   assert.deepEqual(h.conversations.records, []);
-  // SOUL.md is read and written in its home on the worker: its Soul tab and its calls.
+  // SOUL.md is read and written in its home on the worker: by hui bot soul and its calls.
   h.remote.soulFiles.set(rover.id, "# Who I am\nRover, on devbox.");
   assert.equal(await h.service.soul(rover.id), "# Who I am\nRover, on devbox.");
   assert.equal(await h.service.setSoul(rover.id, "# Who I am\r\nRover Two.\n"), "# Who I am\nRover Two.");

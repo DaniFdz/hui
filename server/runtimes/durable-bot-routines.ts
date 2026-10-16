@@ -4,7 +4,7 @@
  * included. It lives in the `hui-bots-tools` extension beside `write_soul`, `set_profile` and `request_access`, so
  * only bots' chats are offered it, and it reaches the gateway through HUI's agent-tool bridge as the chat's session,
  * from a worker's host too: the gateway (`server/bot-routines.ts`) owns every rule. Unlike a bot's own tools, the
- * operator can turn it off in the Tools tab ("Manage its own routines", on by default, not powerful).
+ * operator can turn it off on the Tools & skills page ("Manage its own routines", on by default, not powerful).
  */
 import { defineTool, type ConversationId, type ToolRegistration } from "@earendil-works/pi-durable";
 import { Type } from "typebox";

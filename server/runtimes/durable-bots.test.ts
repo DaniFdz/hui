@@ -327,7 +327,7 @@ test("the first conversation: greet, ask what the operator expects a question or
     "Once you know enough, usually after a few exchanges (or as soon as the operator would rather not say more)",
     "about you and your work only", "Its result tells you how to close your first conversation, in that same reply.",
   ]) assert.ok(named.includes(part), part);
-  assert.doesNotMatch(named, /Soul tab|by just telling you/u, "how to change it comes in write_soul's result, once the file is written: told it up front, a real model put that line in SOUL.md");
+  assert.doesNotMatch(named, /by just telling you/u, "how to change it comes in write_soul's result, once the file is written: told it up front, a real model put that line in SOUL.md");
   const nameless = firstConversationSection(file, undefined);
   assert.match(nameless, /your first conversation with the operator, which starts now/u);
   assert.match(nameless, /greet the operator in a sentence/u);
@@ -391,7 +391,7 @@ test("write_soul replaces a bot's whole SOUL.md atomically in its home folder, w
 
   const saved = await run("\r\n# Who I am\r\nAda, terse.\n\n");
   assert.equal(saved.isError, undefined);
-  assert.match(text(saved), /Saved your SOUL\.md \(22 characters\); it applies from your next request\. This ends your first conversation: now tell the operator you saved your SOUL\.md, sum it up in a few lines, and end by telling them how to change it later: in the Soul tab of your panel in HUI, or by just telling you\./u, "the first save says what the reply owes the operator");
+  assert.match(text(saved), /Saved your SOUL\.md \(22 characters\); it applies from your next request\. This ends your first conversation: now tell the operator you saved your SOUL\.md, sum it up in a few lines, and end by telling them how to change it later: by just telling you\./u, "the first save says what the reply owes the operator");
   assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, terse.\n", "trimmed, Unix line ends, in the home folder it made");
   const { readdir, stat } = await import("node:fs/promises");
   assert.equal((await stat(file)).mode & 0o777, 0o600);

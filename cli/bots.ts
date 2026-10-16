@@ -775,7 +775,7 @@ const TOOL_GROUPS: readonly [BotCatalogTool["group"], string][] = [["files", "Fi
 
 /** A pending access request, and where to answer it. */
 function formatRequest(bot: BotView, catalog: BotCatalog): string[] {
-  return catalog.request ? ["", `Waiting for you: ${catalog.request.title} Answer it in hui bot chat ${bot.handle} or the Tools tab.`] : [];
+  return catalog.request ? ["", `Waiting for you: ${catalog.request.title} Answer it in hui bot chat ${bot.handle} or on its Tools & skills page.`] : [];
 }
 
 /** The tools, grouped, each on or off; powerful ones marked. */

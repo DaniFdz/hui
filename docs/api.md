@@ -221,7 +221,7 @@ stores nothing while it is on. Settings → Tools → Codemode off
 (`settings.codemode.enabled: false`, on by default) makes every open session
 configure `extensions: { remove: [codemode] }` from its next request, and new
 and reopened sessions start that way; a session on a remote worker follows once
-it reopens there. A bot's chat also goes without it when its Tools tab turns
+it reopens there. A bot's chat also goes without it when its Tools & skills page turns
 `codemode` off. Scripts reach only the tools the conversation has: a tool
 removed from it (browser off, a bot's disabled tools) is not callable from
 scripts either. A script has no deadline unless it sets `timeout_ms` in its
@@ -1602,8 +1602,7 @@ operator said or agreed to, asking about the rest (often its boundaries) rather
 than guessing. Once it knows enough, usually after a few exchanges, it saves
 SOUL.md with `write_soul` (suggested sections: who I am, what I look after,
 how I work, when I reach out, boundaries) and, in the same reply, says so,
-gives a short summary and says how to change it (the Soul tab of its panel, or
-telling it). Those last details come only in `write_soul`'s result, once the
+gives a short summary and says how to change it (by telling it). Those last details come only in `write_soul`'s result, once the
 file is written, so they stay out of SOUL.md.
 
 `set_profile({ name?, title?, shape?, ears?, color?, emoji? })`, beside it,
@@ -1747,7 +1746,7 @@ everything on by default: a bot restricted by hand gains newly installed tools.
 **Asking for more.** `request_access({ tools?, skills?, reason })` asks the
 operator to turn back on tools or skills that are off. It raises a session
 question in the chat (the chat's question card, `hui bot chat`, `needs-input`
-from `hui bot send --wait`, and the Tools tab's `request` all show it):
+from `hui bot send --wait`, and the panel's Tools & skills page's `request` all show it):
 
 ```text
 Allow access to bash (powerful) and the beta skill?
@@ -1864,7 +1863,7 @@ routines({
   no cap); `every` is at least a minute (cron fires at most once a minute
   anyway); names are unique among its routines.
 - **Recorded as its own.** What it adds carries `createdBy: { kind: "bot", botId,
-  handle }`; the Routines tab, Automations and `hui schedule` show *made by
+  handle }`; the panel's Routines page, Automations and `hui schedule` show *made by
   @handle*.
 - **Temporary routines** take `until` and/or `runs` ([Automation](#post-__huiautomationtasks)):
   HUI deletes the routine after either, by itself. The bot can remove one
@@ -2047,7 +2046,7 @@ changes triggers: a trigger's URL holds a secret that would pass through the
 model, and what its listener reports can be the operator's own messages. The
 tool has no `add` or `update`, and its handler refuses any other action (400). A
 trigger a bot added while bots still could (`createdBy: "bot"`) is listed as
-such. The tool is an ordinary switch of the Tools tab under Bots, on by default
+such. The tool is an ordinary switch of the Tools & skills page under Bots, on by default
 and not powerful; turned off, the bridge refuses it as any tool that is off.
 
 While bots are off, the trigger routes and the URLs answer 409
@@ -2255,7 +2254,7 @@ What creating does with a template, the same plan for the preview and the create
   while they fit in its 20,000 characters (the rest are listed as left out).
   OptChat's memory is the chat's own log, a projection of its Durable entries,
   so nothing else can seed it; in SOUL.md the bot reads them on every request
-  and the operator edits them in the Soul tab.
+  and the operator changes them by telling it or with `hui bot soul`.
 - **Opener.** The bot's first turn: a kickoff (`botOpenerKickoffText`: the
   `[HUI bot created]` marker, so the chat shows "<name> was created", never the
   operator's bubble) that asks it to send the opener as written. Its answer is a
@@ -2271,7 +2270,7 @@ What creating does with a template, the same plan for the preview and the create
   `load_skill`, its catalog, where they show as *Its own skills*). A name a skill
   of its directory already has gets `-2` (the directory's would win the name).
   They are on, like every skill of a bot: they are text the preview showed in
-  full, they widen no tool, and each can be turned off in the Tools tab.
+  full, they widen no tool, and each can be turned off on the Tools & skills page.
 - **Routines** are Automation tasks aimed at its chat, created **disabled**. A
   schedule is read as a cron expression (`cron <expr> [zone]` too), `at <time>`,
   an interval (`every 30m`, `hourly`) or a phrase (`daily at 9:00`, `weekdays at
@@ -3039,7 +3038,7 @@ fields, absent from tasks written before them (which load unchanged; a value
 that isn't valid is left out rather than failing the store):
 
 - `createdBy`: `{ "kind": "operator" }` for a task made through these routes (the
-  Automations page, a bot's Routines tab, `hui schedule`, `hui bot routine`), or
+  Automations page, a bot's Routines page, `hui schedule`, `hui bot routine`), or
   `{ "kind": "bot", "botId", "handle" }` for one a bot made with its
   [`routines`](#routines) tool. A body never sets it.
 - `until`: a temporary task's end, ISO.

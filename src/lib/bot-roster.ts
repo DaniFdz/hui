@@ -1,7 +1,8 @@
 /**
  * Pure presentation rules for the sidebar's Bots tab: which bots the roster
  * shows and in what order, how a row reads, and the browser-local choices
- * (selected tab, side panel) that are reading preferences, not gateway state.
+ * (selected tab, the side panel's open state and width) that are reading
+ * preferences, not gateway state.
  */
 import type { BotView } from "./bots.ts";
 
@@ -40,18 +41,30 @@ export function tabAfterKey<Tab extends string>(tabs: readonly Tab[], current: T
 
 /* ── side panel ───────────────────────────────────────────────────────────── */
 
-export type BotPanelTab = "routines" | "memory" | "soul" | "tools" | "settings";
-/** The panel's tabs in order: what the bot does and knows, who it is, what it may use, then its Settings, last. */
-export const BOT_PANEL_TABS: readonly BotPanelTab[] = ["routines", "memory", "soul", "tools", "settings"];
-export type BotPanelState = { open: boolean; tab: BotPanelTab };
+/** The panel opens on the bot's overview; the others are the pages its rows open, each with a way back. */
+export type BotPanelView = "overview" | "routines" | "triggers" | "tools" | "settings";
+/** Open or closed and its width are remembered; the page it shows and whether it is expanded are not. */
+export type BotPanelState = { open: boolean; width: number };
 export const BOT_PANEL_KEY = "hui.bot-panel";
-export const DEFAULT_BOT_PANEL: Readonly<BotPanelState> = { open: true, tab: "routines" };
+export const BOT_PANEL_MIN_WIDTH = 320;
+const BOT_PANEL_DEFAULT_WIDTH = 344;
+/** The room the chat keeps beside the panel, as beside the Work pane. */
+const BOT_PANEL_CHAT_ROOM = 420;
+export const DEFAULT_BOT_PANEL: Readonly<BotPanelState> = { open: true, width: BOT_PANEL_DEFAULT_WIDTH };
+
+/** A width the panel can take beside a chat in `available` pixels: never under its minimum, never so wide the chat
+ * loses its room. */
+export function clampBotPanelWidth(width: number, available = Number.POSITIVE_INFINITY): number {
+  const max = Math.max(BOT_PANEL_MIN_WIDTH, available - BOT_PANEL_CHAT_ROOM);
+  return Math.round(Math.min(max, Math.max(BOT_PANEL_MIN_WIDTH, width)));
+}
 
 export function normalizeBotPanel(value: unknown): BotPanelState {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const width = raw["width"];
   return {
     open: raw["open"] !== false,
-    tab: BOT_PANEL_TABS.find((tab) => tab === raw["tab"]) ?? "routines",
+    width: typeof width === "number" && Number.isFinite(width) ? clampBotPanelWidth(width) : BOT_PANEL_DEFAULT_WIDTH,
   };
 }
 
@@ -69,7 +82,7 @@ export function writeBotPanel(panel: BotPanelState) {
 
 const APPLE_PLATFORM = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/u.test(navigator.platform);
 
-/** Ctrl+Shift+, (⇧⌘, on Apple platforms) toggles a bot's Settings tab, as in Grok Bot. The comma key by its
+/** Ctrl+Shift+, (⇧⌘, on Apple platforms) toggles a bot's Settings page, as in Grok Bot. The comma key by its
  * position, so layouts whose Shift+comma types another character still match. */
 export function isBotSettingsShortcut(
   event: Pick<KeyboardEvent, "altKey" | "code" | "ctrlKey" | "defaultPrevented" | "isComposing" | "key" | "metaKey" | "shiftKey">,

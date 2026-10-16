@@ -350,10 +350,10 @@ test("a bot made on the worker without a soul speaks first there, writes SOUL.md
 
   // write_soul runs on the worker: SOUL.md lands in the bot's home there, and nothing of it on this machine.
   const wrote = await call("/__hui/bots/echo/messages", "POST", { text: "E2E_WRITE_SOUL keep the trail notes", wait: true, timeoutSeconds: 120 });
-  assert.deepEqual(wrote.body, { status: "answered", reply: "I wrote my SOUL.md. Change it in the Soul tab, or just tell me." });
+  assert.deepEqual(wrote.body, { status: "answered", reply: "I wrote my SOUL.md. To change it, just tell me." });
   assert.equal(await readFile(soulPath, "utf8"), "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n");
   assert.ok(!existsSync(join(root, "gateway", "config", "hui", "bots", fresh.id)));
-  assert.deepEqual((await call("/__hui/bots/echo/soul")).body, { soul: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot." }, "the Soul tab reads it from the worker");
+  assert.deepEqual((await call("/__hui/bots/echo/soul")).body, { soul: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot." }, "the soul route reads it from the worker");
   await waitFor(async () => botOf(await call("/__hui/bots/echo")).soul || undefined, "the list to see it, read on the worker in the background");
   // The operator's edit is written there too, and the next request there reads it.
   assert.deepEqual((await call("/__hui/bots/echo/soul", "PUT", { soul: "# Who I am\r\nOPERATOR_SOUL on devbox.\n" })).body, { soul: "# Who I am\nOPERATOR_SOUL on devbox." });
@@ -696,7 +696,7 @@ test("a bot on the worker has the tools and skills a session there has until the
   const [question] = asked.body["questions"] as Array<{ id: string; title: string; options?: string[] }>;
   assert.deepEqual([question?.title, question?.options], ["Allow access to bash (powerful)?", ["Allow", "Deny"]]);
   catalog = (await call("/__hui/bots/surveyor/catalog")).body as unknown as BotCatalog;
-  assert.equal(catalog.request?.id, question!.id, "the Tools tab sees the same request");
+  assert.equal(catalog.request?.id, question!.id, "the Tools & skills page sees the same request");
   assert.equal((await call(`/__hui/sessions/${surveyor.sessionId}/question`, "POST", { id: question!.id, value: "Allow" })).status, 200);
   await settledWith(surveyor.sessionId, says("assistant", "you now have bash"), "the granted turn on the worker");
   const granted = (await providerRequests()).filter((request) => !isCompactor(request) && JSON.stringify(request.messages).includes("tool-e2e-request-access")).at(-1);
@@ -734,12 +734,12 @@ test("a disconnected worker: creating there, its bot's memory and messages fail 
   const message = await call("/__hui/bots/crow/messages", "POST", { text: "are you there?" });
   assert.equal(message.status, 503);
   assert.match(String(message.body["error"]), /runs on devbox, which HUI is disconnected from/u);
-  // Its Soul tab cannot read or write SOUL.md, which is on the worker.
+  // Its soul route cannot read or write SOUL.md, which is on the worker.
   for (const reply of [await call("/__hui/bots/crow/soul"), await call("/__hui/bots/crow/soul", "PUT", { soul: "# Who I am\nElsewhere." })]) {
     assert.equal(reply.status, 503);
     assert.match(String(reply.body["error"]), /^devbox, where this bot runs, is offline/u);
   }
-  // Nor its Tools tab its lists, which are in its document there.
+  // Nor its Tools & skills page its lists, which are in its document there.
   const catalog = await call("/__hui/bots/crow/catalog");
   assert.equal(catalog.status, 503);
   assert.match(String(catalog.body["error"]), /^devbox, where this bot runs, is offline/u);
