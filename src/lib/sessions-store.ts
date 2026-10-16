@@ -111,6 +111,8 @@ export type SessionView = {
     endedAt?: string;
     summary?: string;
     error?: string;
+    /** A Swarm helper: its result goes back to the parent's script, and it has no sidebar row. */
+    collect?: true;
   };
   /** Kanban development stage; absent (or `backlog` from older gateways)
    * means Investigation. */
@@ -135,7 +137,8 @@ export type SubagentTaskView = {
   parentSessionId: string;
   title: string;
   task: string;
-  status: SubagentStatus;
+  /** `queued`: a collected child waiting for a free slot. */
+  status: SubagentStatus | "queued";
   startedAt: string;
   updatedAt: string;
   endedAt?: string;

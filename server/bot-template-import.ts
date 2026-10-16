@@ -11,7 +11,7 @@
  *
  * Nothing an import brings turns on more than a new bot has: a template can only turn tools off, routines start
  * disabled, and a model is kept only when it resolves. Its skills are on, like every skill of a bot: they are text the
- * operator read in the preview, they widen no tool, and each can be turned off in the Tools tab.
+ * operator read in the preview, they widen no tool, and each can be turned off on the Tools & skills page.
  *
  * An export is a zip: bot.json (profile, routines, the tool and skill lists), SOUL.md, the bot's own skills and, when
  * asked for, memory.md (its memory's view). Importing it gives the bot back.
@@ -297,7 +297,7 @@ export class BotTemplateService {
       disabledTools = offered.filter((tool) => !keep.has(tool));
       if (unknown.length) dropped.push(`Claude Code tools with nothing like them here: ${listed(unknown)}.`);
       const kept = offered.filter((tool) => keep.has(tool));
-      notes.push(`Its tools list keeps ${kept.length ? listed(kept) : "none of HUI's tools"} on and turns the other ${plural(disabledTools.length, "tool")} off; turn any back on in its Tools tab.`);
+      notes.push(`Its tools list keeps ${kept.length ? listed(kept) : "none of HUI's tools"} on and turns the other ${plural(disabledTools.length, "tool")} off; turn any back on from its Tools & skills page.`);
     } else if (template.hui?.disabledTools?.length) {
       disabledTools = template.hui.disabledTools.filter((tool) => offered.includes(tool));
       const missing = template.hui.disabledTools.filter((tool) => !offered.includes(tool));
@@ -374,7 +374,7 @@ export class BotTemplateService {
         ...(routine.description ? { description: routine.description.slice(0, 500) } : {}),
       };
     });
-    if (routines.length) notes.push(`${routines.length === 1 ? "Its routine starts" : `Its ${routines.length} routines start`} disabled: check ${routines.length === 1 ? "it" : "them"} in its Routines tab, then turn ${routines.length === 1 ? "it" : "them"} on.`);
+    if (routines.length) notes.push(`${routines.length === 1 ? "Its routine starts" : `Its ${routines.length} routines start`} disabled: check ${routines.length === 1 ? "it" : "them"} on its Routines page, then turn ${routines.length === 1 ? "it" : "them"} on.`);
 
     const integrations = template.integrations.map((integration) => {
       const tool = matchIntegration(integration, offer.tools);

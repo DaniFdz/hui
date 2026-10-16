@@ -673,6 +673,7 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .hui-subagent-status--completed, .sidebar-child-status--completed { color: var(--ok); }
 .hui-subagent-status--failed, .sidebar-child-status--failed { color: var(--danger, var(--destructive)); }
 .hui-subagent-status--cancelled, .sidebar-child-status--cancelled { color: var(--muted); opacity: .6; }
+.hui-subagent-status--queued { color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .hui-orbit { animation: none; } }
 
 /* Subagent completion system event: never a user bubble. */

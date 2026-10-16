@@ -1218,15 +1218,42 @@ data, trailing action instructions). Completions are batched until all active
 siblings finish and render as a system card, never as a "You" bubble. Delivery
 steers an active parent, prompts an idle one, or queues a follow-up if steering
 cannot be accepted. This does not abort the parent's current run. At most eight
-descendants may be active in one tree.
+ordinary descendants may be active in one tree.
+
+**Swarm.** Modeled on OpenClaw's Swarm, a spawn with `collect: true` creates a
+collected child: its result is for the parent to collect with `agents_wait`,
+typically from one `codemode` script that spawns many helpers and awaits them
+together, instead of arriving as a completion event. `agents_wait` takes the
+caller's own children's task IDs and returns once all of them have finished, or
+at its timeout (600 s by default, at most an hour) with those finished so far and
+the pending ones; Stop cancels the wait. In one tree at most 32 collected children
+start or run at once; more wait in a queue held in memory (saved as `starting`) and
+start in spawn order as slots free; at most 50 may be queued or running, and the
+next is refused. Collected children have their own limits and do not count toward
+the eight. A collected child, or anything below one, cannot spawn collected
+children. Nothing is lost: a result no wait returned is delivered as an ordinary
+completion event once the parent is no longer busy, and a returned result is never
+delivered again. The operator's Stop on the parent also cancels its queued and
+running collected children, and those cancellations are not reported back. A
+restart interrupts queued ones like any active task.
 
 Visibility is the current session tree, not the whole registry: parent, child
 and sibling sessions can exchange bounded messages and history, while unrelated
 sessions remain inaccessible. PI reaches this contract through a random-token,
 loopback-only bridge inherited by its process; no browser route exposes these
-operations. The UI copies OpenClaw's recent background-task rows, opens the real
-child transcript on activation, and nests child sessions below their parent in
-the sidebar. Each parent with visible children has a separate keyboard-accessible
+operations. Between the transcript and the composer, the UI shows OpenClaw's
+**Parallel tasks** card for the latest batch of a conversation's children (a child
+spawned while an earlier one is still active joins its batch; a batch of one is
+titled with that child): "complete of total", one dot per child (running, queued,
+failed or stopped, done), the running/queued/failed-or-stopped counts, and once all
+have finished, a note that the parent is processing their results or that its
+final response is in the conversation. **Child details** lists each child with its
+status, latest summary or error and run time; activating one opens the real child
+transcript. A batch that all succeeded folds into a single "N completed" row. The
+card stays for an hour after the batch finished (OpenClaw's retention). Child
+sessions nest below their parent in the sidebar, except collected children, which
+have no sidebar row (as in OpenClaw): the card lists and opens them, and the parent
+row still shows their work as background activity. Each parent with visible children has a separate keyboard-accessible
 disclosure button that folds its entire subtree without changing the open session.
 Folding is kept in memory for the current page; search and status filters reveal
 matches without clearing the fold choices. PI remains the sole transcript writer. HUI persists only lineage,
@@ -1675,8 +1702,8 @@ everything the Bots tab can, through the same routes.
   operator's turns (and HUI's kickoff) can rewrite it: SOUL.md steers every
   later turn, so a turn that took a message from a routine, a trigger or
   another bot (the one that started it, or one that joined it while it ran)
-  can't, as it can't rename the bot. The operator can also edit it in the
-  Soul tab or with `hui bot soul`. A bot without a
+  can't, as it can't rename the bot. The operator can also replace it with
+  `hui bot soul`; the bot's panel doesn't show it (decision below). A bot without a
   model of its own runs on Settings' primary model, like a new session.
 - **Named by talking.** A bot created without a name is *New Bot*; its first
   conversation asks what to call it, and it renames itself with a bot-only
@@ -1698,7 +1725,7 @@ everything the Bots tab can, through the same routes.
   every scheduled task from a terminal (decision below).
 - **Tools and skills.** A bot has every tool and skill a session in its
   directory has, new ones included, until the operator turns some off in its
-  panel's Tools tab or with `hui bot tools` / `hui bot skills`. The host that
+  panel's Tools page or with `hui bot tools` / `hui bot skills`. The host that
   runs its chat enforces what is off (a worker's host for a bot on a worker); the
   bot asks for it back with `request_access`, which only the operator answers.
   Tools are the boundary, not a sandbox.
@@ -1709,7 +1736,8 @@ everything the Bots tab can, through the same routes.
   delivery carrying the pull requests it links to, read through the gateway's
   `gh`. Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
   a cooldown coalesces events into one delivery and an hourly cap holds the
-  rest. The Routines tab lists them and `hui bot trigger` manages them; only
+  rest. The bot's panel lists them on its overview and manages them on its
+  Triggers page, and `hui bot trigger` manages them too; only
   the operator adds or changes one, and the bot's `triggers` tool lists and
   removes its own.
 - **Tagging.** Agents and bots hand a bot work by tagging it, `@handle`. A bot
@@ -1760,7 +1788,7 @@ everything the Bots tab can, through the same routes.
   defaults, and a refusal shows in the roster's notice. While a remote worker
   exists the toolbar's + is a menu, *New bot on Local* or on each worker, and
   the bot is created on the machine chosen. A row's menu offers
-  Edit (the bot's chat on its Settings tab), Hide/Unhide (*Show hidden* while
+  Edit (the bot's chat with its panel on Settings), Hide/Unhide (*Show hidden* while
   any are hidden), Archive, confirmed, with a Restore toast, and Delete…;
   *Show archived* (while any are archived) lists archived bots with Restore and
   Delete (an icon that shows on the row under the pointer or keyboard, and
@@ -1775,38 +1803,37 @@ everything the Bots tab can, through the same routes.
   rewind are not offered. A new bot speaks first: its chat opens on a small
   centered note, *<name> was created*, where HUI started its first turn, then
   the bot's questions (an empty chat says *Say hi to <name>*). Opening it
-  marks it read. A **Routines | Memory | Soul | Tools | Settings** panel docks beside
-  the chat (open or closed and the tab are remembered; on narrow screens it
-  opens on request as a sheet over the chat); its header names the bot beside
-  Close and its tabs fill a row of their own under it. Routines lists the bot's Automation tasks with schedule,
+  marks it read. A **panel** docks beside the chat (open or closed and its
+  width are remembered; on narrow screens it opens on request as a sheet over
+  the chat). Docked, its left edge resizes it, by dragging or with ← → (Shift
+  for bigger steps), Home and End on it, from 320 px to what leaves the chat
+  420 px, and **Expand** in its header makes it fill the bot's view, the chat
+  kept open underneath; Escape or the same button brings the chat back (and
+  never stops a turn behind the panel). The panel opens on the bot's
+  **overview**, after OpenAI's Dots (decision below): its face, name, role and
+  what it is doing, with Call (while it can be called) and Edit; its routines
+  and triggers, a line each with an enable switch and a + that opens their page
+  on its add form; *Activity*, the latest runs of both, newest first; and
+  *Setup*, a row each for Model (its model and thinking), Tools & skills (what
+  is off), Calls (voice and language) and Workspace (its own folder, or the end
+  of the one chosen). Wide, the overview takes two columns. Each row opens a
+  page with a way back that returns the focus to it: **Routines**, the bot's
+  Automation tasks with schedule,
   next run, who made one when the bot did and a temporary one's limits (*made by
   @ada*, *until 18:00*, *3 runs left*), an enable switch, Run now and Delete, adds routines every N
   minutes/hours/days, daily, weekly or once in the browser's time zone, and shows
-  the latest runs; under them, Triggers lists the bot's triggers (what they let
+  the latest runs; **Triggers**, the bot's triggers (what they let
   through, last fired, the listener's last report or its silence, cooldown,
   events waiting, an enable switch, Test, New URL and Delete), shows a new
   trigger's URL once with Copy, adds triggers and shows their latest runs, read
-  again every few seconds while it shows. Memory shows messages, the view against its 128 KB budget
-  (a full view merges back to 64 KB in one batch), its lines, pending summaries, what the summarizer spent since the gateway
-  started (calls, tokens, a cost once one is reported), *Summarizing memory…*
-  and failures, and lists the view's `id+n|text` lines (a click opens a line
-  into its halves, down to a message whole); while open it reads the memory
-  again whenever the bots stream reports it changed, with no timer. *Open memory
-  page* is a plain link to OptChat's browse page, opened in a new tab. Soul
-  shows SOUL.md as Markdown, through the chat's renderer, with **Edit**: a
-  textarea with Save and Cancel (Escape), the count against 20,000 characters
-  and the gateway's refusal inline; saving it empty removes SOUL.md. Before the
-  bot has one it says *<name> writes its soul in your first conversation* and
-  offers **Write it yourself**. While open it reads SOUL.md again when the bots
-  stream says the bot or HUI may have written it (its soul flag, its
-  `updatedAt`, or its latest message once a turn is over), with no timer.
-  Tools shows *Available tools*, one switch per tool with what it does, grouped
+  again every few seconds while the overview or it shows.
+  **Tools & skills** shows *Available tools*, one switch per tool with what it does, grouped
   as Files, Shell, HUI, each extension by its source and Bots (powerful ones
   labelled), the bot's skills with a search once there are eight or more, what
   is always on, and an access request its chat waits on, with Allow and Deny;
-  each switch saves the whole list and waits for it, and the tab reads the
+  each switch saves the whole list and waits for it, and the page reads the
   catalog again when the bots stream shows the bot changed.
-  Settings holds the rest of the bot as compact rows: Profile (name with its
+  **Settings** holds the rest of the bot as compact rows: Profile (name with its
   handle, title, and the look, a row that opens into Face or Emoji), Tagging
   (*When to tag it*, the description agents and bots read, and *Who can tag
   it*), Model (model, thinking and utility model; *Gateway default* leaves the model
@@ -1816,12 +1843,15 @@ everything the Bots tab can, through the same routes.
   folder suggestions from the machine it runs on, and, while a worker exists,
   Runs on, that machine read-only). Each change is its own `PATCH`, sent in
   order, with the row's pending state and refusal inline and no Save button;
-  typed text saves on Enter or blur.
-  Ctrl+Shift+, (⇧⌘,) shows or hides it on a bot's chat.
+  typed text saves on Enter or blur. A Setup row opens Settings at its section.
+  Ctrl+Shift+, (⇧⌘,) opens Settings on a bot's chat, or closes the panel while
+  Settings shows. The panel shows neither SOUL.md nor the memory: the bot keeps
+  both, `hui bot soul` and `hui bot memory` read them, and a memory whose
+  summaries keep failing still warns on the roster.
 - **Calls** talk through GPT-Live (see the decisions below): the header's
   **Call** shows whenever HUI has a ChatGPT login. A bot has a call voice, its
   own or Settings → Models → Calls' default, and a language it speaks on calls
-  (its Settings tab, or `--call-voice`/`--language`): one of Whisper's
+  (its Settings page, or `--call-voice`/`--language`): one of Whisper's
   languages, never a translation, or Auto to answer in the language spoken. The
   call view takes the bot's color and shows its face listening to the
   microphone and speaking with the bot's audio, a timer, both sides' captions,
@@ -1847,10 +1877,10 @@ operator's `@ada` handled by the chat's own agent, and three choices of who may
 tag a bot. The contract is [docs/api.md#tagging-bots](docs/api.md#tagging-bots).
 
 - **A bot reads like a skill.** Its description (`description`, at most 500
-  characters, which its Settings tab now edits) is the routing text: what it
+  characters, which its Settings page now edits) is the routing text: what it
   does and when to tag it, its title standing in without one. Who may tag it
   (`tagging`: `anyone`, the default and never stored, `mention` or `nobody`) is
-  the operator's alone: the Settings tab, `PATCH` and `hui bot edit --tagging`.
+  the operator's alone: the Settings page, `PATCH` and `hui bot edit --tagging`.
 - **Fire and forget.** A tag works as `message_bot` already did between bots:
   delivered like a message, answered in the bot's chat, nothing coming back. A
   session can't be tagged, so a bot answers a session's tag in its own chat,
@@ -1880,6 +1910,49 @@ tag a bot. The contract is [docs/api.md#tagging-bots](docs/api.md#tagging-bots).
   gets or loses the tool at its next start; meanwhile the gateway refuses its
   tags. Sessions still on PI's SDK worker don't tag, and their composers
   suggest no bots.
+
+### The bot panel is a profile you can resize and expand (2026-10-16)
+
+The owner: "the sidebar they have needs to be improved. Right now it cannot be
+expanded, it has useless information, like the soul, memory etc. Check how
+other bots harnesses do it, like grok bot, openai dots, opendots or hermes
+bots". OpenAI's Dots opens a profile beside the chat (the face, its name, when
+it was last active, call and message buttons, then what it is doing, has
+scheduled and has made) and keeps the persona, the memory and the model out of
+sight. Grok Bot's info pane holds the bot's screen and its routines, leaves
+memory to asking the bot, keeps models "beneath the interface" and does not
+resize. OpenDots edits a bot in a dialog and gives the space beside the chat to
+its work. Hermes Desktop docks only the bot's schedule beside the chat, folded
+away, puts the persona under Advanced in a dialog, and lets every pane be
+dragged wider. None shows a memory's internals. From three clickable mockups the
+owner chose the profile with pages (over Routines | Tools | Settings tabs and
+over Activity | Settings), both a draggable edge and an Expand button, and
+Soul and Memory leaving the panel rather than shrinking to a row each.
+
+- **An overview, then pages.** The panel opens on the bot's overview: who it is
+  (face, name, role, what it is doing; Call and Edit), what it does on its own
+  (routines and triggers with their switches, and their latest runs together
+  as Activity) and how it is set up (Model, Tools & skills, Calls, Workspace).
+  Rows open the Routines, Triggers, Tools & skills and Settings pages, which
+  are the old tabs' content; each has a way back. Wide, the overview splits in
+  two columns. Each bot opens on its overview.
+- **Resizable and expandable**, as the Work pane: a dragged or keyed left edge
+  whose width the browser remembers with open or closed (`hui.bot-panel`; a
+  record from the tabbed panel keeps its open state and starts at 344 px), and
+  Expand, never remembered, which keeps the chat mounted underneath, hidden, so
+  a reply streaming in, a draft and the scroll are there when it comes back.
+  Escape brings the chat back before it could reach the chat and stop a turn.
+- **Soul and Memory leave the panel; neither changes.** The bot still writes
+  SOUL.md in its first conversation and follows it, and OptChat still keeps
+  every message. `hui bot soul` replaces SOUL.md, `hui bot memory` reads the
+  memory (`--zoom`, `--html` for its browse page), the roster still warns while
+  summaries keep failing, and the bot's first save tells the operator to change
+  SOUL.md by telling it. This supersedes the Soul tab of [Bots write their own
+  SOUL.md in a first conversation](#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06)
+  and the panel's tabs of [Bots are set up like Grok
+  Bot](#bots-are-set-up-like-grok-bot-2026-10-06).
+- **Browser-only.** No route, record or stored format on the gateway changes,
+  so no `hui doctor` check is needed.
 
 ### Listeners are the only triggers (2026-10-09)
 

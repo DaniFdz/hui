@@ -40,6 +40,11 @@ function questionnaireText(result) {
   return `User has answered your questions: ${segments.join(" ")} You can now continue with the user's answers in mind.`;
 }
 
+/** Above `agents_wait`'s own timeout (server/subagents.ts), so the wait, not the transport, ends it. */
+export function agentsWaitTransportMs(params) {
+  return ((params?.timeoutSeconds ?? 600) + 30) * 1_000;
+}
+
 /** A day: the gateway's `QUESTIONNAIRE_WAIT_MS` (server/questionnaires.ts). */
 const QUESTIONNAIRE_WAIT_MS = 24 * 60 * 60_000;
 
@@ -107,6 +112,7 @@ Every question also offers a free-text answer the card adds itself, and the user
     promptGuidelines: [
       "Use sessions_spawn only for a concrete bounded task that can run independently.",
       "Continue useful non-overlapping work after spawning; the child reports back when finished.",
+      "To fan work out over many helpers (about five or more) and combine their answers, spawn them with collect: true from one codemode script and await agents_wait with their taskIds there: their results return to the script, not the conversation. Up to 32 run at once and more queue; prefer Promise.allSettled-style handling so one failed helper keeps the others' results. Each tool result in a script is JSON text: JSON.parse it.",
     ],
     parameters: Type.Object({
       task: Type.String({ minLength: 1, maxLength: 20_000 }),
@@ -117,9 +123,23 @@ Every question also offers a free-text answer the card adds itself, and the user
         Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"), Type.Literal("max"),
       ])),
       runTimeoutSeconds: Type.Optional(Type.Number({ minimum: 0, maximum: 3_600 })),
+      collect: Type.Optional(Type.Boolean({ description: "Collect the result with agents_wait instead of having it reported back to this conversation. Queues when 32 are already running." })),
     }),
     async execute(_toolCallId, params) {
       return output(await invoke("sessions_spawn", params));
+    },
+  });
+
+  pi.registerTool({
+    name: "agents_wait",
+    label: "Wait for subagents",
+    description: "Wait until the listed subagents of this session have finished and return their results; at the timeout, return those finished so far and the pending ones.",
+    parameters: Type.Object({
+      ids: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { minItems: 1, maxItems: 100, description: "taskIds from sessions_spawn." }),
+      timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 3_600, description: "Default 600." })),
+    }),
+    async execute(_toolCallId, params, signal) {
+      return output(await invokeHuiBridge("agents_wait", params, { timeoutMs: agentsWaitTransportMs(params), signal }));
     },
   });
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { applyBotsUpdate, botChangePatch, botDraftOf, botInputFromDraft, botMemoryPageUrl, BotMemoryUnavailableError, botPatchFromDraft, botSettingChange, botSettingOf, botSoulKey, createBot, isBotSession, isNewBotsFrame, loadBotMemory, loadBotSoul, loadBots, parseBotsUpdate, parseBotSoul, saveBotSoul, subscribeBots, parseBot, parseBotList, parseBotMemory, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, createBot, isBotSession, isNewBotsFrame, loadBots, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 import { botLook, BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
 
@@ -76,11 +76,6 @@ test("memory status counts are whole and failures need an error to show", () => 
   assert.deepEqual(parseBotMemoryStatus({ messages: 3.7, built: "2", pending: -1, viewBytes: 512, viewLines: 2.5, failing: { node: "0+1" } }), { messages: 3, built: 0, pending: 0, viewBytes: 512, viewLines: 2, usage: NO_USAGE });
   assert.deepEqual(parseBotMemoryStatus({ messages: 1, built: 0, pending: 1, viewBytes: 9, failing: { error: "timeout" } })?.failing, { node: "", error: "timeout", since: "" });
   assert.equal(parseBotMemoryStatus(undefined), undefined);
-  assert.deepEqual(parseBotMemory({ status: { messages: 1, built: 1, pending: 0, viewBytes: 20, viewLines: 1, usage: USAGE }, view: "<chat>\n0+1|user: hi\n</chat>" }), {
-    status: { messages: 1, built: 1, pending: 0, viewBytes: 20, viewLines: 1, usage: USAGE },
-    view: "<chat>\n0+1|user: hi\n</chat>",
-  });
-  assert.throws(() => parseBotMemory({ view: "" }), /memory status/u);
 });
 
 test("the compactor's usage keeps whole token counts and a cost only when one was reported", () => {
@@ -157,34 +152,6 @@ test("the bot stream reads SSE frames, reports a gateway without it, and stops w
   assert.deepEqual([off, asked], ["off", 1]);
 });
 
-test("the memory page is the gateway's own route, which a same-origin link opens", () => {
-  assert.equal(botMemoryPageUrl("b1"), "/__hui/bots/b1/memory/html");
-  assert.equal(botMemoryPageUrl("b 1/x"), "/__hui/bots/b%201%2Fx/memory/html", "an id never escapes its path segment");
-});
-
-test("memory reads tell a memory the gateway cannot read apart from a failed read", async () => {
-  const original = globalThis.fetch;
-  const answers = [
-    new Response(JSON.stringify({ error: "@scout's chat has no OptChat memory in this gateway." }), { status: 503 }),
-    new Response(JSON.stringify({ error: "unknown bot: x" }), { status: 404 }),
-    new Response(JSON.stringify({ status: { messages: 2, built: 1, pending: 1, viewBytes: 40, viewLines: 1, usage: NO_USAGE }, view: "<chat>\n0+1|user: hi\n</chat>" }), { status: 200 }),
-  ];
-  const urls: string[] = [];
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    urls.push(String(input));
-    assert.equal(new Headers(init?.headers).get("x-hui"), "1");
-    return answers.shift()!;
-  }) as typeof fetch;
-  try {
-    await assert.rejects(loadBotMemory("b 1"), (error: unknown) => error instanceof BotMemoryUnavailableError && /no OptChat memory/u.test((error as Error).message));
-    await assert.rejects(loadBotMemory("b1"), (error: unknown) => !(error instanceof BotMemoryUnavailableError) && /unknown bot/u.test((error as Error).message));
-    assert.deepEqual(await loadBotMemory("b1"), { status: { messages: 2, built: 1, pending: 1, viewBytes: 40, viewLines: 1, usage: NO_USAGE }, view: "<chat>\n0+1|user: hi\n</chat>" });
-    assert.equal(urls[0], "/__hui/bots/b%201/memory");
-  } finally {
-    globalThis.fetch = original;
-  }
-});
-
 test("reading the list asks for active and archived bots, as the stream lists both", async () => {
   const original = globalThis.fetch;
   const urls: string[] = [];
@@ -201,49 +168,6 @@ test("reading the list asks for active and archived bots, as the stream lists bo
   } finally {
     globalThis.fetch = original;
   }
-});
-
-test("SOUL.md is read and replaced through the soul route; null while the bot has none", async () => {
-  assert.equal(parseBotSoul({ soul: "# Who I am\nScout." }), "# Who I am\nScout.");
-  assert.equal(parseBotSoul({ soul: null }), null);
-  assert.equal(parseBotSoul({ soul: "  \n" }), null, "blank is none");
-  assert.throws(() => parseBotSoul({}), /did not come back/u);
-  assert.throws(() => parseBotSoul({ soul: 3 }), /did not come back/u);
-  const original = globalThis.fetch;
-  const calls: Array<{ url: string; method: string; body: string; header: string | null }> = [];
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    calls.push({ url: String(input), method: init?.method ?? "GET", body: String(init?.body ?? ""), header: new Headers(init?.headers).get("x-hui") });
-    if (init?.method === "PUT") {
-      const soul = (JSON.parse(String(init.body)) as { soul: string }).soul.trim();
-      return soul.length > 20_000
-        ? new Response(JSON.stringify({ error: "SOUL.md must be at most 20000 characters (it has 20001)." }), { status: 400 })
-        : new Response(JSON.stringify({ soul: soul || null }), { status: 200 });
-    }
-    return new Response(JSON.stringify({ soul: null }), { status: 200 });
-  }) as typeof fetch;
-  try {
-    assert.equal(await loadBotSoul("b 1"), null);
-    assert.equal(await saveBotSoul("b 1", " # Who I am\n"), "# Who I am");
-    assert.equal(await saveBotSoul("b 1", ""), null, "an empty soul removes SOUL.md");
-    await assert.rejects(saveBotSoul("b 1", "s".repeat(20_001)), /at most 20000 characters/u, "the gateway's refusal, word for word");
-    assert.deepEqual(calls.map(({ url, method, header }) => [url, method, header]), [
-      ["/__hui/bots/b%201/soul", "GET", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"], ["/__hui/bots/b%201/soul", "PUT", "1"],
-    ]);
-    assert.deepEqual(JSON.parse(calls[1]!.body), { soul: " # Who I am\n" });
-  } finally {
-    globalThis.fetch = original;
-  }
-});
-
-test("the Soul tab reads SOUL.md again when the bot wrote it, HUI did, or a turn settled", () => {
-  const bot = parseBot(RECORD) as BotView;
-  const key = botSoulKey(bot);
-  assert.equal(botSoulKey({ ...bot }), key, "the same bot: nothing to read");
-  assert.notEqual(botSoulKey({ ...bot, soul: false }), key, "the soul came or went");
-  assert.notEqual(botSoulKey({ ...bot, updatedAt: "2026-10-05T10:00:00.000Z" }), key, "HUI wrote it");
-  assert.notEqual(botSoulKey({ ...bot, lastMessage: { role: "assistant", text: "Saved.", at: "2026-10-05T10:00:00.000Z" } }), key, "a turn moved on");
-  const settledRead: BotView = { ...bot, status: "idle", unread: false };
-  assert.equal(botSoulKey(settledRead), key, "status and unread alone are not news");
 });
 
 const EMPTY_DRAFT: BotDraft = { name: "", title: "", cwd: "", emoji: "", model: "", thinking: "", memoryModel: "" };
@@ -379,7 +303,7 @@ test("the dialog's call voice goes with a new bot, and an edit sends it when it 
   assert.equal(parseBot({ ...RECORD, voice: { live: "nova" } })?.voice, undefined);
 });
 
-test("the Settings tab sends one change at a time by the edit rules, and nothing for a choice that stays", () => {
+test("the Settings page sends one change at a time by the edit rules, and nothing for a choice that stays", () => {
   const bot = { ...(parseBot(RECORD) as BotView), voice: { language: "es" as const, live: "sol" as const } };
   assert.deepEqual(botPatchFromDraft(bot, botDraftOf(bot)), {}, "the bot as it is changes nothing");
   assert.equal(botChangePatch(bot, { model: "anthropic/claude" }), undefined, "the same model sends nothing");

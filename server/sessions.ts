@@ -105,6 +105,9 @@ export type SubagentRecord = {
   error?: string;
   /** Absent on legacy tasks; pending until observed in the parent transcript. */
   completionDelivery?: "pending" | "delivered";
+  /** Spawned with `collect: true`: the parent collects the result with `agents_wait`. A collected child waiting for
+   * a free slot is saved as `starting`; its queue is in memory, so a restart interrupts it like any active task. */
+  collect?: true;
 };
 
 export class SessionRegistryError extends Error {
@@ -170,6 +173,7 @@ function toSubagent(raw: unknown): SubagentRecord | undefined {
     ...(error ? { error } : {}),
     ...(raw["completionDelivery"] === "pending" || raw["completionDelivery"] === "delivered"
       ? { completionDelivery: raw["completionDelivery"] } : {}),
+    ...(raw["collect"] === true ? { collect: true as const } : {}),
   };
 }
 

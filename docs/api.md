@@ -221,7 +221,7 @@ stores nothing while it is on. Settings → Tools → Codemode off
 (`settings.codemode.enabled: false`, on by default) makes every open session
 configure `extensions: { remove: [codemode] }` from its next request, and new
 and reopened sessions start that way; a session on a remote worker follows once
-it reopens there. A bot's chat also goes without it when its Tools tab turns
+it reopens there. A bot's chat also goes without it when its Tools & skills page turns
 `codemode` off. Scripts reach only the tools the conversation has: a tool
 removed from it (browser off, a bot's disabled tools) is not callable from
 scripts either. A script has no deadline unless it sets `timeout_ms` in its
@@ -755,8 +755,10 @@ type SubagentRecord = {
   summary?: string;
   error?: string;
   completionDelivery?: "pending" | "delivered"; // absent for legacy tasks
+  collect?: true; // collected by the parent with agents_wait (Swarm)
 };
-type SubagentTaskView = SubagentRecord & {
+type SubagentTaskView = Omit<SubagentRecord, "status"> & {
+  status: SubagentStatus | "queued"; // queued: a collected child waiting for a slot
   sessionId: string;
   parentSessionId: string;
   title: string;
@@ -948,7 +950,8 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking and a bounded run timeout; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids |
+| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking, a bounded run timeout and `collect`; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
+| `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished or at the timeout (default 600, 1-3600 s) with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId] }`; an abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |
@@ -963,7 +966,15 @@ and unrelated session metadata never enter tool output. A PI child cancels a
 call (Stop) by dropping its connection; the handler sees that as the call's
 abort signal, as it sees a Durable tool call's own.
 
-`sessions_spawn` allows at most eight active descendants per root. A child has
+`sessions_spawn` allows at most eight active ordinary descendants per root.
+Collected children (`collect: true`, saved with `subagent.collect: true`) have
+their own limits per root: 32 starting or running, the rest queued in memory in
+spawn order and saved as `starting`, at most 50 queued or running. A collected
+child or its descendants cannot spawn collected children. A collected child's
+result keeps the delivery marker below, but while its parent is running or
+waiting HUI does not deliver it, so `agents_wait` can collect it; the operator's
+Stop on the parent (`POST /__hui/sessions/:id/abort`) cancels its queued and
+running collected children with `completionDelivery: "delivered"`. A child has
 its own PI process/session file and receives `[Subagent Task]` as its first user
 turn. On settlement HUI persists the terminal lifecycle and bounded summary,
 then prompts an idle parent or attempts steering on a running/waiting parent.
@@ -1604,8 +1615,7 @@ operator said or agreed to, asking about the rest (often its boundaries) rather
 than guessing. Once it knows enough, usually after a few exchanges, it saves
 SOUL.md with `write_soul` (suggested sections: who I am, what I look after,
 how I work, when I reach out, boundaries) and, in the same reply, says so,
-gives a short summary and says how to change it (the Soul tab of its panel, or
-telling it). Those last details come only in `write_soul`'s result, once the
+gives a short summary and says how to change it (by telling it). Those last details come only in `write_soul`'s result, once the
 file is written, so they stay out of SOUL.md.
 
 `set_profile({ name?, title?, shape?, ears?, color?, emoji? })`, beside it,
@@ -1749,7 +1759,7 @@ everything on by default: a bot restricted by hand gains newly installed tools.
 **Asking for more.** `request_access({ tools?, skills?, reason })` asks the
 operator to turn back on tools or skills that are off. It raises a session
 question in the chat (the chat's question card, `hui bot chat`, `needs-input`
-from `hui bot send --wait`, and the Tools tab's `request` all show it):
+from `hui bot send --wait`, and the panel's Tools & skills page's `request` all show it):
 
 ```text
 Allow access to bash (powerful) and the beta skill?
@@ -1866,7 +1876,7 @@ routines({
   no cap); `every` is at least a minute (cron fires at most once a minute
   anyway); names are unique among its routines.
 - **Recorded as its own.** What it adds carries `createdBy: { kind: "bot", botId,
-  handle }`; the Routines tab, Automations and `hui schedule` show *made by
+  handle }`; the panel's Routines page, Automations and `hui schedule` show *made by
   @handle*.
 - **Temporary routines** take `until` and/or `runs` ([Automation](#post-__huiautomationtasks)):
   HUI deletes the routine after either, by itself. The bot can remove one
@@ -2049,7 +2059,7 @@ changes triggers: a trigger's URL holds a secret that would pass through the
 model, and what its listener reports can be the operator's own messages. The
 tool has no `add` or `update`, and its handler refuses any other action (400). A
 trigger a bot added while bots still could (`createdBy: "bot"`) is listed as
-such. The tool is an ordinary switch of the Tools tab under Bots, on by default
+such. The tool is an ordinary switch of the Tools & skills page under Bots, on by default
 and not powerful; turned off, the bridge refuses it as any tool that is off.
 
 While bots are off, the trigger routes and the URLs answer 409
@@ -2306,7 +2316,7 @@ What creating does with a template, the same plan for the preview and the create
   while they fit in its 20,000 characters (the rest are listed as left out).
   OptChat's memory is the chat's own log, a projection of its Durable entries,
   so nothing else can seed it; in SOUL.md the bot reads them on every request
-  and the operator edits them in the Soul tab.
+  and the operator changes them by telling it or with `hui bot soul`.
 - **Opener.** The bot's first turn: a kickoff (`botOpenerKickoffText`: the
   `[HUI bot created]` marker, so the chat shows "<name> was created", never the
   operator's bubble) that asks it to send the opener as written. Its answer is a
@@ -2322,7 +2332,7 @@ What creating does with a template, the same plan for the preview and the create
   `load_skill`, its catalog, where they show as *Its own skills*). A name a skill
   of its directory already has gets `-2` (the directory's would win the name).
   They are on, like every skill of a bot: they are text the preview showed in
-  full, they widen no tool, and each can be turned off in the Tools tab.
+  full, they widen no tool, and each can be turned off on the Tools & skills page.
 - **Routines** are Automation tasks aimed at its chat, created **disabled**. A
   schedule is read as a cron expression (`cron <expr> [zone]` too), `at <time>`,
   an interval (`every 30m`, `hourly`) or a phrase (`daily at 9:00`, `weekdays at
@@ -2966,8 +2976,9 @@ prevents the UI from continuing to display the durable-but-no-longer-live model.
 
 ### `POST /__hui/sessions/:id/abort`
 
-Stops the turn in flight without deleting or closing the session. Responds
-`{ "ok": true }`; starting sessions return 409.
+Stops the turn in flight without deleting or closing the session, and cancels
+the session's queued and running collected subagents (Swarm) even when the turn
+refuses to stop. Responds `{ "ok": true }`; starting sessions return 409.
 
 ### `POST /__hui/sessions/:id/rewind`
 
@@ -3090,7 +3101,7 @@ fields, absent from tasks written before them (which load unchanged; a value
 that isn't valid is left out rather than failing the store):
 
 - `createdBy`: `{ "kind": "operator" }` for a task made through these routes (the
-  Automations page, a bot's Routines tab, `hui schedule`, `hui bot routine`), or
+  Automations page, a bot's Routines page, `hui schedule`, `hui bot routine`), or
   `{ "kind": "bot", "botId", "handle" }` for one a bot made with its
   [`routines`](#routines) tool. A body never sets it.
 - `until`: a temporary task's end, ISO.

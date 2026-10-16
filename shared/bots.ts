@@ -310,7 +310,7 @@ export type BotsUpdate = { revision: number; ids?: string[]; upserts: BotView[] 
 
 /* ── tools and skills ─────────────────────────────────────────────────── */
 
-/** How the Tools tab groups a tool: files, shell, HUI's own, an extension's (by its source), or bots'. */
+/** How the Tools & skills page groups a tool: files, shell, HUI's own, an extension's (by its source), or bots'. */
 export type BotToolGroup = "files" | "shell" | "hui" | "extension" | "bots";
 
 /** One tool the operator can turn off in a bot's chat. */

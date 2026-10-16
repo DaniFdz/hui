@@ -4,6 +4,7 @@
  * browser's timezone; nothing here schedules anything, the gateway does.
  */
 import type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask } from "./automation-types.ts";
+import type { BotTriggerRun } from "../../shared/bot-triggers.ts";
 
 export type RoutineCadence = "every" | "daily" | "weekly" | "once";
 export type RoutineEveryUnit = "minutes" | "hours" | "days";
@@ -92,7 +93,7 @@ export function routineEndLabel(until: string, now: number, timeZone?: string): 
 }
 
 /**
- * What a routine shows beside its schedule, in the bot's Routines tab and on the Automations page: who made it when a
+ * What a routine shows beside its schedule, on the bot's Routines page and the Automations page: who made it when a
  * bot did, and a temporary routine's limits: "made by @ada", "until 18:00", "3 runs left". `handle` names the bot by
  * its id now (a handle can follow a new name); the one stored when it was made stands in.
  */
@@ -117,6 +118,18 @@ export function botRoutines(snapshot: AutomationSnapshot | undefined, sessionId:
   return snapshot.tasks
     .filter((task) => task.sessionId === sessionId)
     .toSorted((a, b) => next(a) - next(b) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+/** A run the bot did on its own, a routine's (Automation) or a trigger's, and when: a routine's when it started. */
+export type BotRecentRun = { kind: "routine"; run: AutomationRun; at: string } | { kind: "trigger"; run: BotTriggerRun; at: string };
+
+/** The overview's Activity: its routines' and triggers' runs together, newest first. */
+export function botRecentRuns(routineRuns: readonly AutomationRun[], triggerRuns: readonly BotTriggerRun[], limit = 5): BotRecentRun[] {
+  const time = (entry: BotRecentRun) => Date.parse(entry.at) || 0;
+  return [
+    ...routineRuns.map((run): BotRecentRun => ({ kind: "routine", run, at: run.startedAt ?? run.createdAt })),
+    ...triggerRuns.map((run): BotRecentRun => ({ kind: "trigger", run, at: run.at })),
+  ].toSorted((a, b) => time(b) - time(a)).slice(0, limit);
 }
 
 /** The latest runs into the bot's chat, newest first. */

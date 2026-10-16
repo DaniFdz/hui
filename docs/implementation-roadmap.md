@@ -1054,11 +1054,23 @@ requests:
    isolated gateway driven in a browser
    ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
    the pull request).
-14. **Tagging bots by @handle** (implemented 2026-10-16; the owner's request,
+14. **The panel as a profile** (implemented 2026-10-16; the owner's request,
+   SPEC.md, "The bot panel is a profile you can resize and expand"): the panel
+   opens on the bot's overview (profile, routines, triggers, activity, setup),
+   whose rows open its Routines, Triggers, Tools & skills and Settings pages;
+   its edge resizes it and the width is remembered; Expand fills the bot's view
+   over a hidden, still-mounted chat. The Memory and Soul tabs and their client
+   code went; `hui bot memory` and `hui bot soul` stay. Proof:
+   `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
+   `src/lib/bot-tools.test.ts`, `src/views/bots.test.ts` and an isolated
+   gateway driven in a browser
+   ([`e2e/bots.browser.md`](../e2e/bots.browser.md), screens in the pull
+   request).
+15. **Tagging bots by @handle** (implemented 2026-10-16; the owner's request,
    SPEC.md, "Agents and bots tag bots by @handle"): each bot reads like a skill,
    its description saying when to tag it and `tagging` who may (anyone, only
    when the operator's message names it, nobody), both in a Tagging section of
-   its Settings tab and `hui bot add|edit --description --tagging`, carried by
+   its Settings page and `hui bot add|edit --description --tagging`, carried by
    export and import. While bots are on every Durable session lists the bots it
    may tag in its `bots` section and has `message_bot` (`hui-bot-tag`), a
    session on a worker asking the gateway for the list; a session's tag arrives

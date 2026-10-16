@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { botRoutineRuns, botRoutines, routineCadenceSummary, routineEndLabel, routineFacts, routineSchedule, RoutineFormError } from "./bot-routines.ts";
+import { botRecentRuns, botRoutineRuns, botRoutines, routineCadenceSummary, routineEndLabel, routineFacts, routineSchedule, RoutineFormError } from "./bot-routines.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask } from "./automation-types.ts";
 
 const TZ = "Europe/Madrid";
@@ -67,6 +67,16 @@ test("a bot's routines and runs are the Automation tasks that target its chat", 
   assert.deepEqual(botRoutineRuns(snapshot, "bot", 1).map(({ id }) => id), ["r3"]);
   assert.deepEqual(botRoutines(undefined, "bot"), []);
   assert.deepEqual(botRoutineRuns(undefined, "bot"), []);
+});
+
+test("the overview's Activity lists routine and trigger runs together, newest first", () => {
+  const trigger = (id: string, at: string) => ({ id, triggerId: "g", triggerName: "Reviews", at, status: "fired" as const, events: 1, summary: "" });
+  const runs = botRecentRuns(
+    [run("r1", "bot", "2026-10-05T08:00:00.000Z"), { ...run("r2", "bot", "2026-10-05T06:00:00.000Z"), startedAt: "2026-10-05T11:00:00.000Z" }],
+    [trigger("g1", "2026-10-05T09:00:00.000Z"), trigger("g2", "not a date")],
+  );
+  assert.deepEqual(runs.map(({ kind, run }) => `${kind}:${run.id}`), ["routine:r2", "trigger:g1", "routine:r1", "trigger:g2"], "a run that started is placed by its start; a time that can't be read goes last");
+  assert.equal(botRecentRuns([run("r1", "bot", "2026-10-05T08:00:00.000Z")], [trigger("g1", "2026-10-05T09:00:00.000Z")], 1)[0]?.run.id, "g1");
 });
 
 test("a routine shows who made it when a bot did, and a temporary routine's end and runs left", () => {

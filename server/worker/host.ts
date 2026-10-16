@@ -30,6 +30,7 @@ import { operatorName } from "../bot-souls.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import { SECRET_REQUEST_TIMEOUT_MS, SecretFiles, type SecretAnswer } from "../secret-requests.ts";
 import { QUESTIONNAIRE_WAIT_MS } from "../questionnaires.ts";
+import { agentsWaitTransportMs } from "../runtimes/agent-tools-extension.mjs";
 import { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
@@ -542,8 +543,9 @@ export class WorkerHost {
   async #gatewayTool(key: string, action: string, params: Record<string, unknown>, signal?: AbortSignal, runOrigins?: readonly BotTurnOrigin[]): Promise<unknown> {
     const peer = this.#gateway(key);
     if (!peer) throw new Error("HUI is not connected to this worker right now; its tools are unavailable until it reconnects.");
-    // A questionnaire waits for the operator, possibly for hours.
-    if (action !== "secret_request") return peer.request("bridge", { key, action, params, ...(runOrigins ? { runOrigins } : {}) }, action === "ask_user_question" ? QUESTIONNAIRE_WAIT_MS : 170_000, signal);
+    // A questionnaire waits for the operator, possibly for hours, and `agents_wait` for its subagents.
+    const timeoutMs = action === "ask_user_question" ? QUESTIONNAIRE_WAIT_MS : action === "agents_wait" ? agentsWaitTransportMs(params) : 170_000;
+    if (action !== "secret_request") return peer.request("bridge", { key, action, params, ...(runOrigins ? { runOrigins } : {}) }, timeoutMs, signal);
     // The operator answers on the gateway; the file belongs here, where the
     // session's commands run, and only its path goes on to the agent.
     const answer = await peer.request<SecretAnswer>("secret-request", { key, params }, SECRET_REQUEST_TIMEOUT_MS + 60_000, signal);

@@ -701,7 +701,7 @@ test("a bot without a soul speaks first on the primary model, writes SOUL.md its
 
   // The operator answers; the bot saves SOUL.md with write_soul, and the next request carries it.
   const wrote = await call(`/__hui/bots/${nova.id}/messages`, "POST", { text: "E2E_WRITE_SOUL keep my notes tidy", wait: true, timeoutSeconds: 60 });
-  assert.deepEqual(wrote.body, { status: "answered", reply: "I wrote my SOUL.md. Change it in the Soul tab, or just tell me." });
+  assert.deepEqual(wrote.body, { status: "answered", reply: "I wrote my SOUL.md. To change it, just tell me." });
   assert.equal(await readFile(soulPath, "utf8"), "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n");
   assert.deepEqual((await call(`/__hui/bots/${nova.id}/soul`)).body, { soul: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot." });
   assert.equal(botOf(await call(`/__hui/bots/${nova.id}`)).soul, true, "the list sees it once that turn settled");
