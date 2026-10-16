@@ -755,8 +755,10 @@ type SubagentRecord = {
   summary?: string;
   error?: string;
   completionDelivery?: "pending" | "delivered"; // absent for legacy tasks
+  collect?: true; // collected by the parent with agents_wait (Swarm)
 };
-type SubagentTaskView = SubagentRecord & {
+type SubagentTaskView = Omit<SubagentRecord, "status"> & {
+  status: SubagentStatus | "queued"; // queued: a collected child waiting for a slot
   sessionId: string;
   parentSessionId: string;
   title: string;
@@ -948,7 +950,8 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking and a bounded run timeout; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids |
+| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking, a bounded run timeout and `collect`; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
+| `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished or at the timeout (default 600, 1-3600 s) with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId] }`; an abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |
@@ -963,7 +966,15 @@ and unrelated session metadata never enter tool output. A PI child cancels a
 call (Stop) by dropping its connection; the handler sees that as the call's
 abort signal, as it sees a Durable tool call's own.
 
-`sessions_spawn` allows at most eight active descendants per root. A child has
+`sessions_spawn` allows at most eight active ordinary descendants per root.
+Collected children (`collect: true`, saved with `subagent.collect: true`) have
+their own limits per root: 32 starting or running, the rest queued in memory in
+spawn order and saved as `starting`, at most 50 queued or running. A collected
+child or its descendants cannot spawn collected children. A collected child's
+result keeps the delivery marker below, but while its parent is running or
+waiting HUI does not deliver it, so `agents_wait` can collect it; the operator's
+Stop on the parent (`POST /__hui/sessions/:id/abort`) cancels its queued and
+running collected children with `completionDelivery: "delivered"`. A child has
 its own PI process/session file and receives `[Subagent Task]` as its first user
 turn. On settlement HUI persists the terminal lifecycle and bounded summary,
 then prompts an idle parent or attempts steering on a running/waiting parent.
@@ -2914,8 +2925,9 @@ prevents the UI from continuing to display the durable-but-no-longer-live model.
 
 ### `POST /__hui/sessions/:id/abort`
 
-Stops the turn in flight without deleting or closing the session. Responds
-`{ "ok": true }`; starting sessions return 409.
+Stops the turn in flight without deleting or closing the session, and cancels
+the session's queued and running collected subagents (Swarm) even when the turn
+refuses to stop. Responds `{ "ok": true }`; starting sessions return 409.
 
 ### `POST /__hui/sessions/:id/rewind`
 
