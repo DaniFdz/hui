@@ -2409,7 +2409,9 @@ schedules, filters, lists).
 
 **The zip** (`buildExport`, shared by the gateway and the dialog): the picked
 `remove` changes become their `replacement` and `ask` ones `[ask: <label>]`, in one
-pass over each text (quotes that overlap become one span, replaced whole). What the
+pass over each text (quotes that overlap become one span, replaced whole; a passage
+taken out with nothing in its place leaves no gap: a whole sentence takes its full
+stop, a clause the space before it). What the
 reviewer wrote travels only checked against the picks: a replacement or label that
 repeats a removed or asked passage gives way (to nothing, or *your own value*,
 numbered when there are several), and questions, excerpts (tidied, then shortened),

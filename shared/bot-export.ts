@@ -174,7 +174,8 @@ export function changeQuestion(change: Pick<BotExportChange, "group" | "question
 /**
  * `text` with each quote replaced, every time it appears, in one pass over the text as it was, so a replacement is never
  * matched again. Quotes that overlap become one span, all of it replaced by the longer one's replacement: no part of
- * either is left behind.
+ * either is left behind. A passage taken out with nothing in its place leaves no gap: a whole sentence takes its full
+ * stop with it, a clause the space before it.
  */
 export function applyChanges(text: string, changes: readonly { quote: string; replacement: string }[]): string {
   const ranges: { start: number; end: number; replacement: string }[] = [];
@@ -194,9 +195,23 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
   }
   let result = "";
   let at = 0;
-  for (const span of spans) {
-    result += text.slice(at, span.start) + span.replacement;
-    at = span.end;
+  for (const [index, span] of spans.entries()) {
+    let { start, end } = span;
+    const limit = spans[index + 1]?.start ?? text.length;
+    const spaceBefore = start > at && text[start - 1] === " ";
+    if (!span.replacement) {
+      const opensSentence = start === 0 || text[start - 1] === "\n" || /^[.!?:] $/u.test(text.slice(start - 2, start));
+      if (opensSentence && end < limit && /^[.;!?](?:\s|$)/u.test(text.slice(end, end + 2))) {
+        if (text[end + 1] === " " && end + 2 <= limit) end += 2;
+        else {
+          end += 1;
+          if (spaceBefore) start -= 1;
+        }
+      } else if (spaceBefore && /^[.,;:!?)]/u.test(text[end] ?? "")) start -= 1;
+      else if (spaceBefore && text[end] === " " && end + 1 <= limit) end += 1;
+    }
+    result += text.slice(at, start) + span.replacement;
+    at = end;
   }
   return result + text.slice(at);
 }

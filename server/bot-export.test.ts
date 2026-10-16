@@ -290,6 +290,13 @@ test("applyChanges replaces every occurrence in one pass, the longer where two o
   assert.equal(applyChanges("Pat Doe met Pat. Doe left.", [{ quote: "Pat", replacement: "[x]" }, { quote: "Pat Doe", replacement: "a teammate" }]), "a teammate met [x]. Doe left.");
   assert.equal(applyChanges("name: Pat", [{ quote: "Pat", replacement: "[ask: your name]" }, { quote: "name", replacement: "N" }]), "N: [ask: your name]", "a replacement is never matched again");
   assert.equal(applyChanges("met Carol Bob Jones today", [{ quote: "Carol Bob", replacement: "X" }, { quote: "Bob Jones", replacement: "Y" }]), "met X today", "two quotes that overlap leave nothing of either");
+  // A passage taken out with nothing in its place leaves no gap.
+  const out = (text: string, quote: string) => applyChanges(text, [{ quote, replacement: "" }]);
+  assert.equal(out("Uses audience `x`. GET `url`. The current one", "GET `url`"), "Uses audience `x`. The current one", "a whole sentence takes its stop");
+  assert.equal(out("One. Two.\nThree", "Two"), "One.\nThree", "at a line's end, the space before it too");
+  assert.equal(out("obtain tokens with `cmd`. Keep it", "with `cmd`"), "obtain tokens. Keep it", "a clause takes the space before it");
+  assert.equal(out("a b c", "b"), "a c");
+  assert.equal(applyChanges("a b c", [{ quote: "b", replacement: "B" }]), "a B c", "a replacement changes nothing around it");
 });
 
 test("a passage the reviewer flags in a script changes the text where it also stands, and wording that repeats a removed one never travels", async () => {
