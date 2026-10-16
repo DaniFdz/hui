@@ -38,6 +38,7 @@ test("the preview shows every imported text as plain text, says it is untrusted,
 });
 
 test("the export dialog shows the gateway's review and the files Download saves, and sends back only the picks", () => {
+  assert.match(read("./bot-import.ts"), /<select class="settings-input" \.value=\$\{live\(value\)\}/u, "a row's select reused for another change shows that change's group");
   const source = read("./bot-import.ts");
   const review = between(source, "function renderReview(", "export function renderBotExportDialog(");
   assert.match(review, /const build = buildExport\(review, picks\);/u, "the files shown are the gateway's own build of the review and the picks");

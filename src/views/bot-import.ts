@@ -7,6 +7,7 @@
  * Download saves them (`buildExport`, the gateway's own).
  */
 import { html, nothing, type TemplateResult } from "lit";
+import { live } from "lit/directives/live.js";
 import { buildExport, changeGroups, type BotExportBuild, type BotExportGroup, type BotExportReview } from "../../shared/bot-export.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview } from "../../shared/bot-templates.ts";
 import { botTriggerFilterSummary, cooldownLabel } from "../../shared/bot-triggers.ts";
@@ -231,9 +232,11 @@ const SECTIONS: readonly [BotExportGroup, string, string][] = [
   ["keep", "Kept", "Travels as written."],
 ];
 
+/** A change's group picker. The rows move between sections as the operator picks, so a row's select can be reused for
+ * another change: its live value is set each render, not only its options' first `selected`. */
 function picker(label: string, groups: readonly [BotExportGroup, string][], value: BotExportGroup, props: BotExportDialogProps, id: string) {
   return html`<label class="bot-export__pick"><span class="sr-only">${label}</span>
-    <select class="settings-input" ?disabled=${props.pending} @change=${(event: Event) => props.onPick(id, (event.currentTarget as HTMLSelectElement).value as BotExportGroup)}>
+    <select class="settings-input" .value=${live(value)} ?disabled=${props.pending} @change=${(event: Event) => props.onPick(id, (event.currentTarget as HTMLSelectElement).value as BotExportGroup)}>
       ${groups.map(([group, name]) => html`<option value=${group} ?selected=${group === value}>${name}</option>`)}
     </select></label>`;
 }
@@ -277,7 +280,7 @@ function renderReview(props: BotExportDialogProps, review: BotExportReview) {
           ${textBlock(change.quote)}
           <div class="bot-export__outcome">${outcome(build.outcomes[change.id], group)}</div>
           <div class="bot-import__hint">${change.reason}</div>
-        </li>`)}</ul>`, { name: `export-${group}`, open: group !== "keep" }) : nothing;
+        </li>`)}</ul>`, { name: `export-${group}`, open: true }) : nothing;
     })}
     ${review.files.length ? section("Scripts", String(review.files.length), html`<p class="bot-import__hint">A script is never rewritten: it travels as it is, travels for the new owner to check, or stays behind.</p><ul class="bot-import__list">${review.files.map((file) => html`<li class="bot-export__change" data-change=${file.id}>
         <div class="bot-export__row"><strong>${label(file.part)}</strong>${picker(`What happens to ${label(file.part)}`, FILE_GROUPS, pick(file.id, file.group), props, file.id)}</div>
