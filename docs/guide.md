@@ -729,11 +729,16 @@ While bots are on, every session and every bot knows the bots it may tag and has
 a `message_bot` tool. To ask yourself, type `@` in any chat: bots come first in
 the list, and `@ada please add this to the release notes` makes that chat's agent
 send Ada the request, with the context she needs. The tag arrives in Ada's chat
-as `[from agent: <session title>] …` from a session or `[from @bob] …` from a
-bot, and she answers there; nothing comes back to the tagger by itself (bots can
-tag back, sessions can't be tagged). A tag from a session or another bot never
-counts as you: it can't rewrite the bot's SOUL.md, profile or routines. To stop
-loops, a tag sent while answering one is marked `[from @bob · hop 2]` and HUI
+as `[from agent: <session title> · reply-to agent:<id>] …` from a session or
+`[from @bob] …` from a bot. There is no automatic reply, but Ada can send an
+update or decision request to the calling agent with
+`message_bot({ to: "agent:<id>", message: "…" })`. Only a bot that received that
+agent's handoff can use its return address; ordinary sessions cannot message
+unrelated sessions this way. An idle agent receives a new turn, and a busy one
+receives a queued follow-up. Bots still reply to other bots by handle. Old
+handoffs without a return address can only be answered in the bot's chat.
+A tag or reply never counts as you: it can't rewrite the bot's SOUL.md, profile
+or routines. To stop loops, a tag sent while answering one is marked `[from @bob · hop 2]` and HUI
 refuses to go beyond three hops; a bot's subagents don't tag (the bot does), and
 each bot, or session with its subagents, can send at most 30 tags an hour.
 Archived bots can neither send nor receive them.
