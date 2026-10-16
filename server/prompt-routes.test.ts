@@ -57,7 +57,8 @@ afterAll(async () => {
   const exit = once(provider, "exit");
   provider.kill();
   await exit;
-  await rm(dir, { recursive: true, force: true });
+  // A finished turn saves its unread and run flags in the background; one may land while this deletes.
+  await rm(dir, { recursive: true, force: true, maxRetries: 3 });
 });
 
 async function call(path: string, method = "GET", body?: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
