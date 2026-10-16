@@ -259,7 +259,7 @@ export function soulToolText(raw: string): string {
 export function huiBotsExtensions(options: BotsExtensionOptions): { section: Extension; tools: Extension; tag: Extension } {
   const messageBot: ToolRegistration = defineTool({
     name: MESSAGE_BOT_TOOL,
-    description: "Tag a bot of this HUI: send it a message in its own chat, with your attribution and an agent return address. No automatic reply. A bot can use the same tool to send updates back to its calling agent.",
+    description: "Tag a bot of this HUI: send it a message, which arrives in its own chat marked as yours. Nothing comes back by itself; a bot may send a session updates later. A bot also uses it to send those updates, to the agent:<id> address a session's tag carried.",
     parameters: Type.Object({
       to: Type.String({ minLength: 1, maxLength: 100, description: "The bot's handle (@handle) or exact name; a bot may also reply to an agent:<id> address from a received handoff." }),
       message: Type.String({ minLength: 1, maxLength: BOT_LIMITS.message }),

@@ -1182,21 +1182,22 @@ export class BotService {
     return { bot, reference: this.#reference(bot, await this.#sessionOf(bot)) };
   }
 
-  /** Starts the chat's runtime if needed and waits until it takes input. */
+  /** Starts the chat's runtime if needed and waits until it takes input: a bot's chat, or the session a bot answers. */
   async #open(record: SessionRecord): Promise<void> {
-    if (!this.#sessions.ensure(record)) throw new BotNotFoundError("This bot's chat no longer exists.");
-    await this.#ready(record.id, record.worker);
+    const chat = record.bot ? "The bot's chat" : "That session";
+    if (!this.#sessions.ensure(record)) throw new BotNotFoundError(`${chat} no longer exists.`);
+    await this.#ready(record.id, chat, record.worker);
   }
 
   /** Resolves once the chat is no longer booting: idle takes a prompt, busy a follow-up. A chat on a worker HUI cannot
    * reach fails naming it, as its session does. */
-  #ready(id: string, worker?: string): Promise<void> {
+  #ready(id: string, chat: string, worker?: string): Promise<void> {
     const unreachable = (status: "reconnecting" | "disconnected"): Error => {
-      if (!worker) return new BotConflictError("The bot's chat is unreachable.");
+      if (!worker) return new BotConflictError(`${chat} is unreachable.`);
       const name = this.#deps.workers?.nameOf(worker) ?? "its worker";
       return new BotWorkerOfflineError(status === "reconnecting"
-        ? `The bot's chat runs on ${name}, which HUI is reconnecting to. It keeps running there; try again once it is back.`
-        : `The bot's chat runs on ${name}, which HUI is disconnected from. Connect it in Settings → Workers to continue.`);
+        ? `${chat} runs on ${name}, which HUI is reconnecting to. It keeps running there; try again once it is back.`
+        : `${chat} runs on ${name}, which HUI is disconnected from. Connect it in Settings → Workers to continue.`);
     };
     return new Promise((resolve, reject) => {
       let done = false;
@@ -1209,15 +1210,15 @@ export class BotService {
         else resolve();
       };
       const inspect = (status: string) => {
-        if (status === "error") finish(new BotConflictError("The bot's chat could not start. Open it to see why."));
+        if (status === "error") finish(new BotConflictError(`${chat} could not start. Open it to see why.`));
         else if (status === "reconnecting" || status === "disconnected") finish(unreachable(status));
         else if (status !== "starting") finish();
       };
-      const timer = setTimeout(() => finish(new BotConflictError("The bot's chat did not start in time.")), this.#readyTimeoutMs);
+      const timer = setTimeout(() => finish(new BotConflictError(`${chat} did not start in time.`)), this.#readyTimeoutMs);
       const watched = this.#sessions.watch(id, (message) => {
         if (message.kind === "status") inspect(message.status);
         else if (message.kind === "snapshot") inspect(message.snapshot.status);
-        else if (message.kind === "closed") finish(new BotConflictError("The bot's chat exited."));
+        else if (message.kind === "closed") finish(new BotConflictError(`${chat} exited.`));
       });
       inspect(watched.snapshot.status);
     });
@@ -1233,8 +1234,8 @@ export class BotService {
   }
 
   /** A prompt while idle, else a follow-up; with `wait`, also the outcome of the run that answers it. Every bot turn
-   * HUI starts passes here (messages, routines, `message_bot`, calls' hand-offs, a new bot's first turn), so bots that
-   * are off refuse here. */
+   * HUI starts passes here (messages, routines, `message_bot`, calls' hand-offs, a new bot's first turn), and so does a
+   * bot's reply to a session, so bots that are off refuse here. */
   async #deliver(
     record: SessionRecord,
     text: string,
