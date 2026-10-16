@@ -31,6 +31,29 @@ export function composerEnterMode(input: {
 }
 
 /**
+ * What the empty chat composer says. While a run is busy on a keyboard device it names both busy actions, so
+ * queueing a follow-up for after the run is discoverable where the operator types: ⌘ on Apple platforms, Ctrl
+ * elsewhere. Touch devices keep the short text, since plain Enter is a line break there and Send's hold menu
+ * offers Enqueue.
+ */
+export function composerPlaceholder(input: {
+  status?: SessionStatus;
+  reconnecting: boolean;
+  streaming: boolean;
+  coarsePointer: boolean;
+  sendShortcut?: "enter" | "modifierEnter";
+  applePlatform: boolean;
+}): string {
+  if (input.status === "disconnected") return "Draft while disconnected…";
+  if (input.reconnecting) return "Draft while HUI reconnects…";
+  if (!input.streaming) return "Send a message…";
+  if (input.coarsePointer) return "Add to this run…";
+  const queue = `${input.applePlatform ? "⌘↵" : "Ctrl+↵"} queues for later`;
+  // With the modifier-Enter preference plain Enter is a line break, so only Send steers.
+  return input.sendShortcut === "modifierEnter" ? `Send adds to this run · ${queue}` : `↵ adds to this run · ${queue}`;
+}
+
+/**
  * A normal prompt locks immediately, but accepting its HTTP request must not
  * re-lock a turn that already settled over SSE. Local providers can finish the
  * whole turn while the server is still persisting the activity timestamp.

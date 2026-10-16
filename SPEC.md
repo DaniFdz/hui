@@ -1049,7 +1049,11 @@ Busy composer actions are explicit: **Steer** enters PI's steering queue before
 the next model call; **Follow up** runs only after the current agent run settles.
 On coarse-pointer devices, plain Enter remains a line break, tapping Send steers
 by default, and holding Send exposes Follow up as an **Enqueue** action. Desktop
-uses plain Enter or Send to steer and Command/Ctrl+Enter to enqueue.
+uses plain Enter or Send to steer and Command/Ctrl+Enter to enqueue. While a run
+is busy on a keyboard device, the empty composer's placeholder names both
+shortcuts (`↵ adds to this run · ⌘↵ queues for later`, with `Ctrl+↵` off Apple
+platforms, and `Send adds to this run` when plain Enter is a line break);
+touch devices keep `Add to this run…`.
 When PI consumes either queue, HUI projects that instruction into the transcript
 immediately so a slow response never appears without its causal user message.
 A normal prompt remains rejected while busy. PI RPC exposes select, confirm,
