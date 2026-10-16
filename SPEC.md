@@ -1857,8 +1857,9 @@ its import half stands. The contract is
   wherever it appears in the bot; a kept or confirmed one only where it was
   found.
 - **An automatic cleanup first.** Before a model reads anything, the operator's
-  profile name becomes `{{user}}`, and so does any word of it of three letters
-  or more written as in the profile, unless it is a common word (Will, Mark);
+  names become `{{user}}` (the profile name, the account's full name, and a
+  `first.last` user name that full name bears out), and so does any word of them
+  of three letters or more as written, unless it is a common word (Will, Mark);
   home folder paths become `~`; and e-mail addresses, the machine's user and
   host names and worker names inside a path, address or link, `*.ts.net` names,
   IP addresses other than loopback, Slack IDs and text shaped like a key or

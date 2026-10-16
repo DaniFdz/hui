@@ -12,6 +12,7 @@ import { BotExportService, type BotExportDeps } from "./bot-export.ts";
 import type { BotOwnSkill } from "./bot-skills.ts";
 import { BotConflictError, BotInputError } from "./bots.ts";
 import { readZip } from "./bot-templates/zip.ts";
+import { hostsIn, NEEDS_MERGE_PROMPT, reviewChunks } from "./bot-templates/review.ts";
 
 const SOUL = [
   "# Who I am",
@@ -138,6 +139,45 @@ test("the reviewer reads a few parts at once, and what it found keeps the parts'
   assert.deepEqual(review.changes.map((change) => [change.id, change.quote]), [["c1", "Pat Doe"], ["c2", "acme/widgets"], ["c3", "Approve only when CI is green"]]);
 });
 
+test("a long part is read in pieces cut before a heading, else at a blank line, losing nothing", () => {
+  const text = ["# One", "a".repeat(30), "", "# Two", "b".repeat(30), "", "c".repeat(30)].join("\n");
+  const pieces = reviewChunks({ label: "SOUL.md", script: false, fields: [{ key: "text", text }] }, 50).map((piece) => piece.fields.map((field) => field.text).join(""));
+  assert.deepEqual(pieces, [`# One\n${"a".repeat(30)}\n\n`, `# Two\n${"b".repeat(30)}\n`, `\n${"c".repeat(30)}`]);
+  assert.equal(pieces.join(""), text);
+});
+
+test("a long list of what the bot needs is merged by one quick request, and kept as it was when that request fails", async () => {
+  const needs = ["GitHub CLI signed in", "A GitHub account", "Slack access", "Slack MCP", "A listener", "A trigger", "Network access"];
+  for (const fails of [false, true]) {
+    const merges: { least?: boolean }[] = [];
+    const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => {
+      if (request.system !== NEEDS_MERGE_PROMPT) return JSON.stringify({ changes: [], needs: request.prompt.startsWith("Part: SOUL.md") ? needs : [] });
+      merges.push(request);
+      if (fails) throw new Error("down");
+      return JSON.stringify({ needs: ["GitHub signed in", "Slack access and a listener"] });
+    } });
+    const review = await service.review("ada");
+    assert.deepEqual(review.needs.map((need) => need.text), fails ? needs : ["GitHub signed in", "Slack access and a listener"]);
+    assert.deepEqual(merges.map((request) => request.least), [true]);
+  }
+});
+
+test("host names in a link or with three labels are put to the reviewer one by one; file names and versions aren't", () => {
+  assert.deepEqual(hostsIn("GET `https://risk-gateway.us1.corp.io/internal/v1` with `tool token --datacenter us1.corp.io`; see https://github.com/x, SKILL.md, draft.mjs, v1.2.3 and e.g. this."),
+    ["risk-gateway.us1.corp.io", "us1.corp.io", "github.com"]);
+});
+
+test("two passages asked as the same blank are asked once", async () => {
+  const review = await harness({ answer: () => JSON.stringify({ changes: [] }) }).service.review("ada");
+  const same = { ...review, changes: [
+    { id: "c1", part: "SOUL.md", quote: "acme/widgets", group: "ask" as const, reason: "x", replacement: "", label: "the repositories to watch", question: "Which repositories?" },
+    { id: "c2", part: "SOUL.md", quote: "Pat Doe", group: "ask" as const, reason: "x", replacement: "", label: "The repositories to watch", question: "Which repositories, again?" },
+  ] };
+  const build = buildExport(same, {});
+  assert.deepEqual(build.open.filter((point) => point.kind === "ask" && point.where === "SOUL.md").map((point) => point.question), ["Which repositories?"]);
+  assert.match(build.files.find((file) => file.path === "SOUL.md")!.text, /\[ask: the repositories to watch\].*\[ask: The repositories to watch\]/su, "both blanks stay");
+});
+
 test("a part whose first read fails is read again with the least reasoning; one that fails twice is unread, and the review says so", async () => {
   const asked: { part: string; least: boolean }[] = [];
   const service = new BotExportService({ ...harnessDeps(), completion: async (_model, request) => {
@@ -213,7 +253,12 @@ test("without a utility model only the cleanup runs and the review says so; a bo
   const none = await harness({ model: undefined }).service.review("ada");
   assert.match(none.warning ?? "", /No utility model is set/u);
   const unnamed = await new BotExportService({ ...harnessDeps(), identity: async () => ({ homes: ["/Users/dani.fernandez"], username: "dani.fernandez", hostnames: [], workers: [] }) }).review("ada");
-  assert.equal(unnamed.warning, "Your name isn't set in Settings → Profile, so HUI couldn't take it out for you: look for it in every file below.", "without a profile name only the reviewer looks for it");
+  assert.equal(unnamed.warning, "Your name isn't set in Settings → Profile, so HUI couldn't take it out for you: look for it in every file below.", "without a name only the reviewer looks for it");
+  const state = { soul: SOUL as string | null, prompts: [] as { system: string; prompt: string }[] };
+  const known = await new BotExportService({ ...harnessDeps(state), identity: async () => ({ names: ["Daniel Fernandez Ocana", "Dani Fernandez"], homes: ["/Users/dani.fernandez"], username: "dani.fernandez", hostnames: [], workers: [] }) }).review("ada");
+  assert.equal(known.warning, undefined, "the account's names are enough");
+  assert.match(known.parts.find((part) => part.id === "SOUL.md")!.fields[0]!.text, /I'm \{\{user\}\}'s review assistant/u);
+  assert.match(state.prompts[0]!.system, /The owner is Daniel Fernandez Ocana, also Dani Fernandez, user name dani\.fernandez/u);
   assert.deepEqual(none.changes, []);
   assert.ok(none.parts.every((part) => !part.read && part.unread === "No utility model is set."));
   assert.match(none.parts.find((part) => part.id === "SOUL.md")!.fields[0]!.text, /\{\{user\}\}'s review assistant/u);
@@ -289,6 +334,20 @@ test("the profile can't hold a blank or a point to agree: an ask only it holds l
   assert.equal(manifest.bot.name, "Ada");
   assert.equal(manifest.bot.title, "Runs for", "the confirmed passage stays as written, the asked ones leave no gap");
   assert.ok(manifest.open.every((point) => point.where !== "Profile"));
+});
+
+test("a change to the bot's whole name starts kept: the name travels unless the operator removes it", async () => {
+  const bot = { ...BOT, name: "Master" };
+  const service = new BotExportService({
+    ...harnessDeps(),
+    bots: { get: async () => bot, list: async () => [bot], soul: async () => SOUL } as unknown as BotExportDeps["bots"],
+    completion: async (_model, request) => JSON.stringify({ changes: request.prompt.startsWith("Part: Profile") ? [{ quote: "Master", group: "remove", reason: "The bot's name.", replacement: "" }, { quote: "PR review assistant", group: "remove", reason: "x", replacement: "helper" }] : [] }),
+  });
+  const review = await service.review("ada");
+  assert.deepEqual(review.changes.map((change) => [change.id, change.quote, change.group]), [["c1", "Master", "keep"], ["c2", "PR review assistant", "remove"]]);
+  const name = async (picks: Record<string, "keep" | "remove">) => (JSON.parse(unzip((await service.export("ada", { review: review.id, picks })).data).get("bot.json")!) as BotExportManifest).bot.name;
+  assert.equal(await name({}), "Master");
+  assert.equal(await name({ c1: "remove" }), "Bot");
 });
 
 test("no request or retry outlives the review's end", async () => {

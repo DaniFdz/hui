@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { caseClash, skillFilePath } from "./common.ts";
-import { cleanText, personalIn } from "./cleanup.ts";
+import { cleanText, nameFromUsername, personalIn } from "./cleanup.ts";
 
 const IDENTITY = { operator: "Dani Fernandez", homes: ["/Users/dani.fernandez"], username: "dani.fernandez", hostnames: ["COMP-K7WX9J.local"], workers: ["devbox", "dev"] };
 const clean = (text: string) => cleanText(text, IDENTITY);
@@ -24,6 +24,19 @@ test("the operator's name, home folders, e-mail addresses, machine and worker na
   ].join("\n"));
   assert.deepEqual(hits.find((hit) => hit.kind === "a key or token"), { kind: "a key or token", sample: "ghp_…", count: 3 }, "a secret is never shown whole");
   assert.deepEqual(hits.find((hit) => hit.kind === "your name"), { kind: "your name", sample: "Dani Fernandez", count: 2 });
+});
+
+test("without a profile name the account's names go, one placeholder a mention; a user name reads as a name only when the account's full name bears it out", () => {
+  const identity = { homes: [], username: "dani.fernandez", hostnames: [], workers: [], names: ["Daniel Fernandez Ocana", "Dani Fernandez"] };
+  const { text, hits } = cleanText("Dani asked me. Daniel Fernandez Ocana reviews; Dani Fernandez Ocana approves. Ask Fernandez.", identity);
+  assert.equal(text, "{{user}} asked me. {{user}} reviews; {{user}} approves. Ask {{user}}.");
+  assert.deepEqual(hits.map((hit) => [hit.kind, hit.count]), [["your name", 5]]);
+  assert.equal(personalIn("dani-reviews", identity), "your name");
+  assert.equal(nameFromUsername("dani.fernandez", "Daniel Fernandez Ocana"), "Dani Fernandez", "a short name begins a word of the full name");
+  assert.equal(nameFromUsername("dani.fernandez", undefined), undefined, "nothing bears it out");
+  assert.equal(nameFromUsername("build.agent", "Daniel Fernandez Ocana"), undefined, "a service account");
+  assert.equal(nameFromUsername("dfernandez", "Daniel Fernandez Ocana"), undefined, "not first.last");
+  assert.equal(nameFromUsername("ci.user2", "Ci User"), undefined, "a part with a digit");
 });
 
 test("ordinary text stays: common words of a name, git's address, loopback, versions, generic machine names outside paths", () => {

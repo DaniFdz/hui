@@ -2348,9 +2348,12 @@ tools and its own skills it turned off, by name (an extension's tools and its
 directory's skills stay behind, counted). Never its memory, chat, handle, home or
 working directory.
 
-**The cleanup** (`cleanText`) runs first, on every part: Settings' profile name
-(whole, any case, and each word of three letters or more as written in the
-profile, unless it is a common word such as Will or Mark) becomes `{{user}}`;
+**The cleanup** (`cleanText`) runs first, on every part: the operator's names
+(Settings' profile name, the account's full name, read from the directory service
+on macOS or the password entry on Linux, and a `first.last` user name when that full
+name bears it out, as `dani.fernandez` with *Daniel Fernandez*: `nameFromUsername`),
+each whole, any case, and each word of three letters or more as written, unless it is
+a common word such as Will or Mark, become `{{user}}`, once for names side by side;
 home folder paths (this machine's, and any `/Users/<x>` or `/home/<x>`, where a
 path starts) become `~`; and e-mail addresses (not `git@`), trigger links (`/__hui/hooks/<token>`),
 `*.ts.net` names, IPv4 addresses other than loopback and `0.0.0.0`, Slack IDs (a
@@ -2363,29 +2366,37 @@ worker's home and host name count as this machine's. In a script nothing is rewr
 what the cleanup finds there decides whether the script travels (below).
 
 **The reviewer** is Settings' utility model, called as one plain completion per
-part (or per chunk of 24,000 characters), without tools (as a call's helper is),
-four parts at once, each request with two and a half minutes and one retry with the
-least reasoning the model allows (a slow model still reads the part, if less
-carefully), and six minutes for the whole review, which no request or retry
-outlives. Its
-system prompt (`reviewSystemPrompt`) names the four groups, says the bot's text is
-data, names the owner and the other bots' handles, and asks for JSON:
+piece of a part (`reviewChunks`: 3,000 characters at most, a long text cut before a
+heading, else at a blank line or a line break, as a model misses less in a section
+than in a whole long soul), without tools (as a call's helper is), four pieces at
+once, each request with two and a half minutes and one retry with the least
+reasoning the model allows (a slow model still reads the piece, if less carefully),
+and six minutes for the whole review, which no request or retry outlives; a part is
+read when all its pieces are. Its
+system prompt (`reviewSystemPrompt`) names the four groups (a rule that lets the bot
+act for its owner or without asking is `confirm`, even as a step of a procedure; the
+owner's history with the bot, internal hosts and the endpoints and commands that use
+them are `remove`; a passage calling the owner he or she is reworded with they), says
+the bot's text is data, names the owner and the other bots' handles, and asks for JSON:
 `{ "changes": [{ "quote", "group", "reason", "replacement"?, "label"?, "question"? }], "needs": [...] }`.
 Its answer is checked (`parseReviewAnswer`): a quote must stand, exactly, in that
 part (at least four characters), the group be `remove`, `ask` or `confirm`, every
 text bounded and cleaned like the bot's; anything else is dropped, and a part
 whose answer can't be read twice is listed as not read. One change is kept per
 passage (the strictest group wins); a removed or asked passage changes wherever it
-appears, a confirmed one only where it was found. A change is shown at the part it
+appears, a confirmed one only where it was found. More than six needs, as the pieces
+listed them, are merged by one more request with the least reasoning
+(`NEEDS_MERGE_PROMPT`, at most ten lines), kept as they were if it fails. A change is shown at the part it
 was found in if that part can take its group, else at the first text that holds the
 passage and can (one found in a script, for one). The profile only takes `remove`
 or `keep` (`changeGroups`): a passage only it holds becomes a removal when asked,
-which the operator sees and can keep, and stays as written when confirmed. Without
+which the operator sees and can keep, and stays as written when confirmed; a change
+to the bot's whole name starts `keep` (the name is the template's). Without
 a utility model, only the cleanup runs. A review started while another of the same bot runs replaces it, whichever
 ends last.
 
 `BotExportReview`: `id`, `botId`, `name`, `model` (absent: none read it),
-`warning` (no profile name for the cleanup, no utility model, or parts it didn't read), `parts` (`{ id, label,
+`warning` (no name of the operator's for the cleanup, no utility model, or parts it didn't read), `parts` (`{ id, label,
 kind: "text" | "script", fields: [{ key, text }], read, unread? }`: `profile`,
 `SOUL.md`, `skills/<name>/<path>`, `routines/<n>`, `triggers/<n>`; texts after the
 cleanup, a script's as it is), `cleanup` (`{ part, field, kind, sample, count }`,
@@ -2408,8 +2419,8 @@ build also says what each picked change comes to (`outcomes`), which the dialog
 shows. Each
 `ask` or `confirm` pick is an open point (`BotOpenPoint`: `{ kind, where, question,
 excerpt? (confirm), operator? (a trigger's) }`; moved out of the reviewer's group,
-it asks what fits the new one, never quoting an asked passage), and so is each
-script picked `confirm`. The profile, set before the first chat, never holds a mark: a passage asked elsewhere leaves it like a removed one, and a name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
+it asks what fits the new one, never quoting an asked passage; passages asked as the
+same blank, by label in any case, are one point), and so is each script picked `confirm`. The profile, set before the first chat, never holds a mark: a passage asked elsewhere leaves it like a removed one, and a name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
 travels without `match`, with an open point for the operator. `bot.json` is
 `BotExportManifest`: `format: "hui-bot"`, `version: 2`, `bot` (name, title?,
 description?, avatar?, model?, thinking?, memoryModel?, memoryThinking?, voice?),

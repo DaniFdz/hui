@@ -1,6 +1,6 @@
 /**
  * The automatic cleanup of a bot's export (SPEC.md, "Bot exports are templates, reviewed for personal information"),
- * before any model reads it: the operator's profile name becomes `{{user}}`, home folder paths `~`, and e-mail
+ * before any model reads it: the operator's names (the profile's, the account's) become `{{user}}`, home folder paths `~`, and e-mail
  * addresses, this machine's user and host names and its workers' names inside a path, address or link, tailnet names,
  * IP addresses, Slack IDs and text shaped like a key or token `[removed]`. Text changes in place (`cleanText`); a script
  * is only searched, never rewritten (`cleanText(…).hits`). Pure: the export service says who the operator is.
@@ -9,6 +9,8 @@
 export type CleanupIdentity = {
   /** Settings' profile name, when it is set. */
   operator?: string;
+  /** Other names the operator goes by on this machine: the account's full name, and the user name read as one. */
+  names?: readonly string[];
   /** The home folders of this machine and, for a bot on a worker, of the worker. */
   homes: readonly string[];
   /** This machine's user name. */
@@ -86,15 +88,34 @@ function rules(identity: CleanupIdentity): Rule[] {
       replace: (match, at) => inPath(at.input, at.offset, at.offset + match.length) ? REMOVED : match, sample: () => name,
     });
   }
-  const operator = identity.operator?.replace(/\s+/gu, " ").trim();
-  if (operator) {
-    list.push({ kind: "your name", pattern: new RegExp(`(?<![\\p{L}\\p{N}])${operator.split(" ").map(escape).join("\\s+")}(?![\\p{L}\\p{N}])`, "giu"), replace: () => USER_PLACEHOLDER });
-    for (const word of new Set(operator.split(" "))) {
-      if (word.length < 3 || COMMON_WORDS.has(word.toLowerCase()) || !/^\p{L}+$/u.test(word)) continue;
-      list.push({ kind: "your name", pattern: new RegExp(`(?<![\\p{L}\\p{N}])${escape(word)}(?![\\p{L}\\p{N}])`, "gu"), replace: () => USER_PLACEHOLDER });
-    }
+  // Every name whole first, the longest first, then their words.
+  const own = ownNames(identity).sort((a, b) => b.length - a.length);
+  for (const name of own) {
+    list.push({ kind: "your name", pattern: new RegExp(`(?<![\\p{L}\\p{N}])${name.split(" ").map(escape).join("\\s+")}(?![\\p{L}\\p{N}])`, "giu"), replace: () => USER_PLACEHOLDER });
+  }
+  for (const word of new Set(own.flatMap((name) => name.split(" ")))) {
+    if (word.length < 3 || COMMON_WORDS.has(word.toLowerCase()) || GENERIC_NAMES.has(word.toLowerCase()) || !/^\p{L}+$/u.test(word)) continue;
+    list.push({ kind: "your name", pattern: new RegExp(`(?<![\\p{L}\\p{N}])${escape(word)}(?![\\p{L}\\p{N}])`, "gu"), replace: () => USER_PLACEHOLDER });
   }
   return list;
+}
+
+/** The names the operator goes by, each once, its spacing tidied. */
+function ownNames(identity: CleanupIdentity): string[] {
+  return [...new Set([identity.operator, ...identity.names ?? []].map((name) => name?.replace(/\s+/gu, " ").trim() ?? "").filter(Boolean))];
+}
+
+/**
+ * A first.last user name read as its owner's name ("dani.fernandez" is "Dani Fernandez") when the account's full name
+ * bears it out: a part is one of its words, or begins one, as a short name does ("Dani", "Daniel"). A service
+ * account's user name doesn't read as one.
+ */
+export function nameFromUsername(username: string, fullName: string | undefined): string | undefined {
+  const parts = username.split(".");
+  const words = (fullName ?? "").toLowerCase().split(/\s+/u).filter(Boolean);
+  if (parts.length < 2 || !parts.every((part) => /^\p{L}{2,}$/u.test(part))) return undefined;
+  if (!parts.some((part) => part.length >= 3 && words.some((word) => word.startsWith(part.toLowerCase())))) return undefined;
+  return parts.map((part) => part[0]!.toUpperCase() + part.slice(1).toLowerCase()).join(" ");
 }
 
 /** This machine's user name, host names and workers' names, as distinctive as a cleanup needs them. */
@@ -115,7 +136,7 @@ export function personalIn(identifier: string, identity: CleanupIdentity): strin
   const hit = cleanText(identifier, identity).hits[0];
   if (hit) return hit.kind;
   const words = new Set(identifier.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
-  const own = (identity.operator ?? "").toLowerCase().split(/\s+/u).filter((word) => word.length >= 3 && !COMMON_WORDS.has(word));
+  const own = ownNames(identity).join(" ").toLowerCase().split(" ").filter((word) => word.length >= 3 && !COMMON_WORDS.has(word));
   if (own.some((word) => words.has(word))) return "your name";
   return machineNames(identity).find(([, name]) => new RegExp(`(?<![A-Za-z0-9])${escape(name)}(?![A-Za-z0-9])`, "iu").test(identifier))?.[0];
 }
@@ -137,5 +158,6 @@ export function cleanText(text: string, identity: CleanupIdentity): { text: stri
       return replaced;
     });
   }
-  return { text: result, hits: [...hits.values()] };
+  // A name taken out word by word ("Dani Fernandez Ocana", two names apart) is one placeholder.
+  return { text: result.replace(/\{\{user\}\}(?:[ \t]+\{\{user\}\})+/gu, USER_PLACEHOLDER), hits: [...hits.values()] };
 }

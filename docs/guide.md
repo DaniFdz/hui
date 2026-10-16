@@ -831,8 +831,9 @@ live in its folder, only it loads them, and they are on like every skill (turn
 any off in its Tools tab). With a first message, the bot's chat opens with it.
 
 A bot's **⋯ → Export…** makes it a template someone else can import, without
-what is yours. HUI first cleans it: your name becomes `{{user}}` (the new owner's
-name once imported), your home folder `~`, and e-mail addresses, keys and tokens,
+what is yours. HUI first cleans it: your name (your profile's, your account's, and
+a `first.last` user name) becomes `{{user}}` (the new owner's name once imported),
+your home folder `~`, and e-mail addresses, keys and tokens,
 your machine's and workers' names in paths and links, tailnet names, IP addresses
 and Slack IDs `[removed]`. Then Settings' utility model reads each part and sorts
 what it finds:

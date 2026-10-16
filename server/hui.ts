@@ -34,6 +34,7 @@ import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
 import { isHookPath } from "./bot-triggers-listener.ts";
 import { BotExportService } from "./bot-export.ts";
+import { nameFromUsername } from "./bot-templates/cleanup.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
@@ -88,7 +89,7 @@ import {
   PiMutationService,
 } from "./pi-mutations.ts";
 import { readGatewayHealth, readWorkspaceInspection } from "./control-surfaces.ts";
-import { WorktreeService } from "./worktree-inventory.ts";
+import { runCommand, WorktreeService } from "./worktree-inventory.ts";
 import type { WorktreeRisk } from "../shared/worktrees.ts";
 import {
   liveSessions,
@@ -388,14 +389,26 @@ const botTemplateRoutes = createBotTemplateRoutes({
       const remote = await workers.list().catch(() => []);
       // A bot on a worker: that machine's home and host name are its owner's too.
       const there = remote.find((each) => each.id === worker)?.host;
+      const username = userInfo().username;
+      const fullName = await accountFullName(username);
+      const names = [fullName, nameFromUsername(username, fullName)].filter((name): name is string => Boolean(name));
       return {
-        ...(operator ? { operator } : {}), username: userInfo().username,
+        ...(operator ? { operator } : {}), ...(names.length ? { names } : {}), username,
         homes: [homedir(), ...there ? [there.home] : []], hostnames: [hostname(), ...there ? [there.hostname] : []],
         workers: remote.map((each) => each.name),
       };
     },
   }),
 });
+/** This account's full name, for an export's cleanup: macOS keeps it in the directory service, Linux in the password
+ * entry's comment. Read once; none when neither answers. */
+let accountName: Promise<string | undefined> | undefined;
+function accountFullName(username: string): Promise<string | undefined> {
+  return accountName ??= (process.platform === "darwin"
+    ? runCommand("dscl", [".", "-read", `/Users/${username}`, "RealName"], { timeoutMs: 5_000 }).then((result) => result.code ? "" : result.stdout.replace(/^RealName:/u, ""))
+    : runCommand("getent", ["passwd", username], { timeoutMs: 5_000 }).then((result) => result.code ? "" : result.stdout.split(":")[4]?.split(",")[0] ?? "")
+  ).then((name) => name.replace(/\s+/gu, " ").trim() || undefined);
+}
 function automationStoreFailure(error: unknown): never {
   throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
 }

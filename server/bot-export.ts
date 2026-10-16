@@ -23,7 +23,7 @@ import type { BotOwnSkill, BotSkillFiles } from "./bot-skills.ts";
 import { BotConflictError, BotInputError } from "./bots.ts";
 import { cleanText, personalIn, type CleanupIdentity } from "./bot-templates/cleanup.ts";
 import { isRecord, oneLine } from "./bot-templates/common.ts";
-import { parseReviewAnswer, reviewChunks, reviewPrompt, reviewSystemPrompt, type ReviewAnswer, type ReviewedChange } from "./bot-templates/review.ts";
+import { NEEDS_MERGE_PROMPT, parseNeeds, parseReviewAnswer, reviewChunks, reviewPrompt, reviewSystemPrompt, type ReviewAnswer, type ReviewedChange } from "./bot-templates/review.ts";
 import { writeZip } from "./bot-templates/zip.ts";
 import type { CallCompletion } from "./call-helper.ts";
 
@@ -49,6 +49,8 @@ export type BotExportDeps = {
 const CALL_MS = 150_000;
 const REVIEW_MS = 6 * 60_000;
 const READ_AT_ONCE = 4;
+/** Longer than this, what the bot needs is merged (`NEEDS_MERGE_PROMPT`). */
+const MERGE_NEEDS_OVER = 6;
 /** Inside a zip every file is dated 1980-01-01, the earliest a ZIP date can be: a local date would tell the time zone. */
 const ZIP_DATE = new Date(1980, 0, 1);
 const RANK = { remove: 0, ask: 1, confirm: 2 } as const;
@@ -95,14 +97,15 @@ export class BotExportService {
     const { parts, cleanup, copies, meta, leftOut } = this.#parts(input, identity);
     const others = (await this.#deps.bots.list({ archived: "all" })).filter((each) => each.id !== bot.id).map((each) => each.handle);
     const { model, found, needs, warning: unread } = await this.#reviewParts(parts, copies, identity, others);
-    // Without a profile name the cleanup can't take the operator's name out: only the reviewer looks for it.
-    const warning = [identity.operator ? "" : "Your name isn't set in Settings → Profile, so HUI couldn't take it out for you: look for it in every file below.", unread ?? ""].filter(Boolean).join(" ");
+    // Without a name for the operator the cleanup can't take it out: only the reviewer looks for it.
+    const warning = [identity.operator || identity.names?.length ? "" : "Your name isn't set in Settings → Profile, so HUI couldn't take it out for you: look for it in every file below.", unread ?? ""].filter(Boolean).join(" ");
 
     // One change per passage, the strictest group first. A change lives in the part it was found in if that part can take
     // its group, else in the first text part that holds the passage and can (a passage found in a script changes the text
     // where it also appears; the script itself is a file change). The profile can't ask or confirm (`changeGroups`): a
     // passage only it holds leaves it like a removed one when asked, which the operator sees and can keep, and stays as
-    // written when confirmed. What the reviewer wrote is checked against the picks when the zip is made (`buildExport`).
+    // written when confirmed; the bot's whole name starts kept. What the reviewer wrote is checked against the picks when
+    // the zip is made (`buildExport`).
     const byQuote = new Map<string, ReviewedChange & { part: string }>();
     for (const change of found) {
       const seen = byQuote.get(change.quote);
@@ -111,7 +114,10 @@ export class BotExportService {
     const kept = [...byQuote.values()];
     const text = parts.filter((part) => part.kind === "text");
     const holds = (part: BotExportPart, quote: string) => part.fields.some((field) => field.text.includes(quote));
-    const changes: BotExportChange[] = kept.flatMap((change) => {
+    const changes: BotExportChange[] = kept.flatMap((change): Omit<BotExportChange, "id">[] => {
+      // The bot's whole name is the template's: a change to it starts kept, for the operator to see and decide.
+      const name = text.find((part) => part.id === "profile")?.fields.find((field) => field.key === "name")?.text.trim();
+      if (name && change.quote.trim() === name) return [{ ...change, part: "profile", group: "keep" as const }];
       const fits = (part: BotExportPart) => changeGroups(part.id).includes(change.group);
       const home = text.find((part) => part.id === change.part && fits(part)) ?? text.find((part) => fits(part) && holds(part, change.quote));
       if (home) return [{ ...change, part: home.id }];
@@ -272,8 +278,8 @@ export class BotExportService {
     return { parts, cleanup, copies, meta, leftOut };
   }
 
-  /** The utility model reads the parts, a few at once, one quicker retry each, within the review's time; a part it can't is unread.
-   * What it found comes back in the parts' order, however the requests end. */
+  /** The utility model reads the parts in pieces, a few at once, one quicker retry each, within the review's time; a part it
+   * can't read whole is unread. What it found comes back in the parts' order, however the requests end. */
   async #reviewParts(parts: BotExportPart[], copies: Map<string, { key: string; text: string }[]>, identity: CleanupIdentity, others: readonly string[]): Promise<{
     model?: string; warning?: string; found: (ReviewedChange & { part: string })[]; needs: string[];
   }> {
@@ -282,36 +288,52 @@ export class BotExportService {
       for (const part of parts) part.unread = "No utility model is set.";
       return { found: [], needs: [], warning: "No utility model is set in Settings → Models, so only the automatic cleanup ran: read every file below before you share it." };
     }
-    const system = reviewSystemPrompt({ ...(identity.operator ? { name: identity.operator } : {}), username: identity.username, bots: others });
+    const known = [...new Set([identity.operator, ...identity.names ?? []].filter((name): name is string => Boolean(name)))];
+    const system = reviewSystemPrompt({ ...(known.length ? { name: known.join(", also ") } : {}), username: identity.username, bots: others });
     const deadline = this.#now() + REVIEW_MS;
-    const results: { changes: (ReviewedChange & { part: string })[]; needs: string[] }[] = parts.map(() => ({ changes: [], needs: [] }));
-    const read = async (index: number) => {
+    // Every piece of every part is one request; a part is unread when one of its pieces is.
+    const pieces = parts.flatMap((part, index) => reviewChunks({ label: part.label, script: part.kind === "script", fields: copies.get(part.id) ?? [] }).map((chunk) => ({ index, chunk })));
+    const results: { changes: (ReviewedChange & { part: string })[]; needs: string[] }[] = pieces.map(() => ({ changes: [], needs: [] }));
+    const unread = new Map<number, string>();
+    const read = async (at: number) => {
+      const { index, chunk } = pieces[at]!;
       const part = parts[index]!;
-      const fields = copies.get(part.id) ?? [];
-      const whole = fields.map((field) => field.text);
-      let unread: string | undefined;
-      for (const chunk of reviewChunks({ label: part.label, script: part.kind === "script", fields })) {
-        if (this.#now() >= deadline) {
-          unread = "The review ran out of time before this part.";
-          break;
-        }
-        const answer = await this.#ask(model, system, reviewPrompt(chunk), whole, identity, deadline);
-        if (typeof answer === "string") {
-          unread = answer;
-          break;
-        }
-        results[index]!.changes.push(...answer.changes.map((change) => ({ ...change, part: part.id })));
-        results[index]!.needs.push(...answer.needs);
+      if (this.#now() >= deadline) {
+        if (!unread.has(index)) unread.set(index, "The review ran out of time before this part.");
+        return;
       }
-      part.read = !unread;
-      if (unread) part.unread = unread;
+      const answer = await this.#ask(model, system, reviewPrompt(chunk), (copies.get(part.id) ?? []).map((field) => field.text), identity, deadline);
+      if (typeof answer === "string") {
+        if (!unread.has(index)) unread.set(index, answer);
+        return;
+      }
+      results[at]!.changes.push(...answer.changes.map((change) => ({ ...change, part: part.id })));
+      results[at]!.needs.push(...answer.needs);
     };
     let next = 0;
-    await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, parts.length) }, async () => {
-      for (let index = next++; index < parts.length; index = next++) await read(index);
+    await Promise.all(Array.from({ length: Math.min(READ_AT_ONCE, pieces.length) }, async () => {
+      for (let at = next++; at < pieces.length; at = next++) await read(at);
     }));
+    for (const [index, part] of parts.entries()) {
+      part.read = !unread.has(index);
+      if (unread.has(index)) part.unread = unread.get(index)!;
+    }
     const missed = parts.filter((part) => !part.read).length;
-    return { model, found: results.flatMap((result) => result.changes), needs: results.flatMap((result) => result.needs), ...(missed ? { warning: `The utility model didn't read ${missed} of ${parts.length} parts (each says why): read them yourself before you share it.` } : {}) };
+    const needs = await this.#mergeNeeds(model, results.flatMap((result) => result.needs), identity, deadline);
+    return { model, found: results.flatMap((result) => result.changes), needs, ...(missed ? { warning: `The utility model didn't read ${missed} of ${parts.length} parts (each says why): read them yourself before you share it.` } : {}) };
+  }
+
+  /** What each piece's reader said the bot needs, merged by one quick request when the list runs long (pieces repeat the
+   * same need in other words); as it was when that request fails. */
+  async #mergeNeeds(model: string, needs: readonly string[], identity: CleanupIdentity, deadline: number): Promise<string[]> {
+    const unique = [...new Map(needs.map((need) => [need.toLowerCase(), need])).values()];
+    const left = Math.ceil(deadline - this.#now());
+    if (unique.length <= MERGE_NEEDS_OVER || left <= 0) return unique;
+    try {
+      return parseNeeds(await this.#deps.completion(model, { system: NEEDS_MERGE_PROMPT, prompt: unique.join("\n"), signal: AbortSignal.timeout(Math.min(CALL_MS, left)), least: true }), identity) ?? unique;
+    } catch {
+      return unique;
+    }
   }
 
   /** One part (or a chunk of it) to the reviewer: its checked answer, or why there is none. No request or retry outlives

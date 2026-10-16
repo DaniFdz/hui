@@ -97,8 +97,8 @@ export type BotExportChange = {
   part: string;
   /** Exactly as it stands in the part's cleaned text. */
   quote: string;
-  /** The reviewer's group: what happens unless the operator picks another. */
-  group: Exclude<BotExportGroup, "keep">;
+  /** The reviewer's group, what happens unless the operator picks another: `keep` only for the bot's whole name. */
+  group: BotExportGroup;
   reason: string;
   /** What a removed passage becomes; may be empty. */
   replacement: string;
@@ -256,6 +256,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
   // two quotes overlap the longer's replacement takes the span, so the other's open point may name a mark that isn't there.
   const open: BotOpenPoint[] = [];
   const outcomes: BotExportBuild["outcomes"] = {};
+  const askedLabels = new Set<string>();
   for (const change of review.changes) {
     const picked = group(change.id, change.group);
     const replacement = replacements.find((pair) => pair.quote === change.quote)?.replacement;
@@ -264,6 +265,9 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     const excerpt = oneLine(tidy(change.quote), 160);
     const question = tidy(changeQuestion(change, picked, { label: label(change), excerpt: oneLine(excerpt, 80) }));
     outcomes[change.id] = { ...(picked === "ask" ? { replacement: replacement ?? askMark(label(change)) } : {}), question };
+    // Two passages asked as the same blank are one answer: the new owner is asked once.
+    if (picked === "ask" && askedLabels.has(label(change).toLowerCase())) continue;
+    if (picked === "ask") askedLabels.add(label(change).toLowerCase());
     open.push({ kind: picked, where: tidy(where(change.part)), question, ...(picked === "confirm" ? { excerpt } : {}), ...onlyOperator(change.part) });
   }
   for (const file of review.files) {
