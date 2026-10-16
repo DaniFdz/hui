@@ -14,7 +14,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
 | `sidebar-brand` — brand line with actions | new session then session search on the left; collapse on the right |
-| `sidebar-nav` — page destinations | Contributions, Automations, Plugins, Skills, then Settings; no Home entry. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
+| `sidebar-nav` — page destinations | Contributions, Kanban, Sessions, then Settings; no Home entry. Automations, Plugins and Skills live in Settings. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
 | `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
 | main region — header, body, composer | session header, transcript, composer |
@@ -1403,7 +1403,7 @@ gateway memory and do not survive a restart.
 
 ## Kanban
 
-**Kanban** sits directly below Automations in the sidebar (`/kanban`). It has
+**Kanban** sits directly below Contributions in the sidebar (`/kanban`). It has
 five columns: **Backlog**, then the development stages Investigation,
 Implementation, Testing and Done.
 

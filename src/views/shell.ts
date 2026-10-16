@@ -45,12 +45,11 @@ loadViewAssets(
  */
 
 /** Sidebar destinations. Sessions are opened from the list below and New
- * Session from the header, so there is no separate Home entry. */
+ * Session from the header, so there is no separate Home entry. Automations,
+ * Plugins and Skills live in Settings. */
 export const PRIMARY_NAV = [
   { id: "contributions", label: "Contributions", icon: openclawIcons.gitPullRequest },
-  { id: "cron", label: "Automations", icon: icons.calendarClock },
-  { id: "plugins", label: "Plugins", icon: icons.plug },
-  { id: "skills", label: "Skills", icon: icons.book },
+  { id: "sessions", label: "Sessions", icon: icons.messageSquare },
 ] as const;
 
 /** Compact content geometry and the platform-aware browser drawer contract
@@ -742,7 +741,7 @@ function renderImportNote(props: ShellProps) {
 }
 
 /** Kanban is a HUI-owned route, not an OpenClaw catalogue page; it sits
- * directly below Automations. */
+ * directly below Contributions. */
 function kanbanNavItem(props: ShellProps) {
   const active = props.view === "kanban";
   return html`<a
@@ -885,7 +884,7 @@ export function renderSidebar(props: ShellProps) {
                 >
                   <span class="nav-item__icon" aria-hidden="true">${item.icon}</span>
                   <span class="nav-item__text">${item.label}</span>
-                </a>${item.id === "cron" ? kanbanNavItem(props) : nothing}` : nothing;
+                </a>${item.id === "contributions" ? kanbanNavItem(props) : nothing}` : nothing;
             })}
             <a
               href="/settings/appearance"

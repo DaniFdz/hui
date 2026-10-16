@@ -14,7 +14,7 @@ unstaged (Backlog); one unread; one archived Done session.
 
 ## Journeys and observed results
 
-1. Sidebar shows **Kanban** directly below Automations; clicking it opens
+1. Sidebar shows **Kanban** directly below Contributions; clicking it opens
    `/kanban` with five columns and per-column counts, lanes API, DOCS, WEB with
    their paths. The archived session is absent. The unread session shows
    status **Done**.
