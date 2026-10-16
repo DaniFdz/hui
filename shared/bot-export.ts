@@ -145,9 +145,6 @@ export type BotExportReview = {
   meta: BotExportMeta;
 };
 
-/** `POST /__hui/bots/:id/export`: the review, and the group of each change, script or need the operator moved. */
-export type BotExportRequest = { review: string; picks: Record<string, BotExportGroup> };
-
 /** What `buildExport` makes: the bot's final name, the zip's file name, its files in order, its open points, and what each
  * change picked comes to in them (what a passage becomes, what it asks), for the dialog to say. */
 export type BotExportBuild = {

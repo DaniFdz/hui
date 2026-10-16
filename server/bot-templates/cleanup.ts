@@ -22,8 +22,8 @@ export type CleanupIdentity = {
 /** What one rule changed in a text: its kind, how often, and what the first one was (a secret shortened). */
 export type CleanupHit = { kind: string; sample: string; count: number };
 
-export const REMOVED = "[removed]";
-export const USER_PLACEHOLDER = "{{user}}";
+const REMOVED = "[removed]";
+const USER_PLACEHOLDER = "{{user}}";
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 const masked = (secret: string) => `${secret.slice(0, 4)}…`;

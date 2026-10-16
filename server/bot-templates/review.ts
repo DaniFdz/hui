@@ -17,9 +17,9 @@ export type ReviewedChange = { quote: string; group: Exclude<BotExportGroup, "ke
 export type ReviewAnswer = { changes: ReviewedChange[]; needs: string[] };
 
 /** A part's text is sent in pieces of at most this many characters. */
-export const REVIEW_CHUNK = 24_000;
+const REVIEW_CHUNK = 24_000;
 /** Shorter quotes would change too much wherever they appear. */
-export const MIN_QUOTE = 4;
+const MIN_QUOTE = 4;
 const MAX_NEEDS = 10;
 
 /** The reviewer's instructions: the four groups, what HUI already did, who the owner is and the answer's shape. */
@@ -81,14 +81,14 @@ export function reviewChunks(part: ReviewedPart, size = REVIEW_CHUNK): ReviewedP
 }
 
 /** A reason as the thing a new owner would give instead: "A teammate's name." is "a teammate's name". */
-export function labelOf(reason: string): string {
+function labelOf(reason: string): string {
   const label = oneLine(reason.replace(/\.$/u, ""), 60);
   // Lowercased unless it starts with an acronym ("API key", "PR").
   return /^[A-Z](?![A-Z])/u.test(label) ? `${label.charAt(0).toLowerCase()}${label.slice(1)}` : label || "your own value";
 }
 
 /** What an asked passage asks (never quoting it: it is the owner's) or a confirmed one does (it travels anyway). */
-export function defaultQuestion(group: "ask" | "confirm", quote: string, label: string): string {
+function defaultQuestion(group: "ask" | "confirm", quote: string, label: string): string {
   return group === "ask" ? `What should stand for [ask: ${label}]?` : `Keep this as it is: “${oneLine(quote, 80)}”?`;
 }
 
