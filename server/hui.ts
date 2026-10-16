@@ -19,7 +19,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
+import { homedir, hostname, userInfo } from "node:os";
 import { basename, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +33,7 @@ import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type B
 import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
 import { isHookPath } from "./bot-triggers-listener.ts";
+import { BotExportService } from "./bot-export.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
@@ -346,14 +347,16 @@ const botRoutes = createBotRoutes({
     }
   },
 });
-/** Bots imported from other platforms' templates, and exported (`bot-template-import.ts`): under `/__hui/bots`, so Labs →
- * Bots gates them too. */
+/** Bots imported from other platforms' templates (`bot-template-import.ts`), and exported as templates reviewed for
+ * personal information (`bot-export.ts`): under `/__hui/bots`, so Labs → Bots gates them too. */
 const localSkills = localBotSkills();
+// What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
+const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
+const botSkillFiles = (worker?: string) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills;
 const botTemplateRoutes = createBotTemplateRoutes({
   service: new BotTemplateService({
     bots,
-    // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
-    offer: (worker) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR),
+    offer: newBotOffer,
     models: async () => {
       const host = durableHost();
       await host.open();
@@ -361,13 +364,29 @@ const botTemplateRoutes = createBotTemplateRoutes({
       return (await host.models.getAvailable()).map((model) => ({ provider: model.provider, id: model.id }));
     },
     routines: { tasks: async () => (await automation.snapshot()).tasks, create: (input) => automation.create(input) },
-    skills: (worker) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills,
+    triggers: { create: (botId, input) => triggers.service.create(botId, input) },
+    skills: botSkillFiles,
     findWorker: (target) => botWorkers.find(target),
     operator: async () => soulOperatorName((await readSettings()).profileName),
     timezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
     fetchPage: (url) => fetchGrokBotPage(url),
     skillsWritten: (cwd) => durableHost().prompt.reload(cwd),
     report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
+  }),
+  exports: new BotExportService({
+    bots,
+    offer: newBotOffer,
+    routines: { tasks: async () => (await automation.snapshot()).tasks },
+    triggers: { list: async (botId) => (await triggers.service.list(botId)).triggers },
+    skills: botSkillFiles,
+    utilityModel: async () => (await readSettings()).models.utility || undefined,
+    // A plain completion, as a call's helper makes: the reviewer has no tools, whatever the text it reads asks for.
+    completion: (model, request) => callCompletion(model, request),
+    identity: async () => {
+      const operator = soulOperatorName((await readSettings()).profileName);
+      const remote = (await workers.list().catch(() => [])).map((worker) => worker.name);
+      return { ...(operator ? { operator } : {}), home: homedir(), username: userInfo().username, hostname: hostname(), workers: remote };
+    },
   }),
 });
 function automationStoreFailure(error: unknown): never {

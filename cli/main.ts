@@ -45,7 +45,7 @@ export const HELP = `Usage:
               [--deny-tools <a,b>] [--deny-skills <a,b>] [--json]
   hui bot edit <bot> [same flags as add but --soul-file, --worker and --deny-*] [--json]
   hui bot import <file|folder|url|-> [--worker <name|id>] [--agent <name>] [--yes] [--json]
-  hui bot export <bot> [--out <file>] [--memory] [--yes] [--json]
+  hui bot export <bot> [--out <file>] [--review <id> --set <change>=<group>...] [--yes] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
   hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
@@ -136,10 +136,14 @@ export, or a persona as text (- reads stdin). It prints everything the bot would
 get first (imported text is untrusted) and asks before creating it; --yes skips
 that. --agent picks one agent of a file that holds several. An import turns
 nothing on beyond a new bot's defaults: its routines start disabled and a
-subagent's tools list only turns tools off. Export saves the bot as
-<handle>.hui-bot.zip (profile, SOUL.md, its own skills, routines and what you
-turned off; --memory adds its memory), which import reads back; it never
-replaces a file without --yes.
+subagent's tools list only turns tools off. Export makes the bot a template
+someone else can import: HUI cleans out your name, paths, addresses and keys,
+Settings' utility model sorts the rest into removed, asked (the new owner gives
+theirs), confirmed (they agree to it first) and kept, and it prints that review
+and asks before saving <name>.hui-bot.zip (--yes saves it as reviewed). Its
+memory never leaves. --review <id> --set c1=keep saves a printed review with
+other picks; a script is kept, confirmed or removed whole. It never replaces a
+file without --yes.
 Remove archives: the chat transcript and memory are kept and its routines are
 disabled. Delete removes a bot for good, active or archived: its turn stops, its
 chat leaves HUI, and its routines, memory and folder (SOUL.md and every file in
@@ -196,7 +200,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     bot: { type: "string" }, session: { type: "string" }, description: { type: "string" }, until: { type: "string" }, runs: { type: "string" }, disabled: { type: "boolean" },
     match: { type: "string" }, cooldown: { type: "string" },
     "pr-links": { type: "boolean" }, "allow-bots": { type: "boolean" }, "allow-external": { type: "boolean" },
-    agent: { type: "string" }, out: { type: "string" }, memory: { type: "boolean" },
+    agent: { type: "string" }, out: { type: "string" }, review: { type: "string" }, set: { type: "string", multiple: true }, memory: { type: "boolean" },
   } as const;
   const { values, positionals } = parseArgs({ args, allowPositionals: true, strict: true, options });
   if (values.help || !args.length) return { command: "help", values };
@@ -204,6 +208,8 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   // VoiceStudio is gone (2026-10-06): its flags say what took their place instead of failing as unknown options.
   if (values.voice !== undefined) throw new Error(`--voice is gone: HUI no longer uses VoiceStudio. A bot speaks on calls with one of GPT-Live's voices: --call-voice <${GPT_LIVE_VOICES.join("|")}>.`);
   if (values["voice-speed"] !== undefined) throw new Error("--voice-speed is gone: HUI no longer uses VoiceStudio, and GPT-Live sets the pace of its own voices.");
+  // Exports became templates reviewed for personal information (2026-10-16): a bot's memory never leaves.
+  if (values.memory !== undefined) throw new Error("--memory is gone: hui bot export makes a template someone else can import, reviewed for personal information, and a bot's memory never leaves.");
   const [first, second, ...extra] = positionals;
   const bots = first === "bot" || first === "bots";
   const schedules = first === "schedule" || first === "schedules";
@@ -225,7 +231,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
     "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
     "bot soul": ["file", "json"], "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
-    "bot import": ["worker", "agent", "yes", "json"], "bot export": ["out", "memory", "yes", "json"],
+    "bot import": ["worker", "agent", "yes", "json"], "bot export": ["out", "review", "set", "yes", "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
     "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],

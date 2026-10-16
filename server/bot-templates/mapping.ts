@@ -9,6 +9,7 @@ import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage } from "../../shared/voice.ts";
 import { isRecord, oneLine, str, TemplateFormatError } from "./common.ts";
+import { needsList, openPoints, skillFiles, templateTriggers } from "./hui-export.ts";
 
 /* ── integrations ─────────────────────────────────────────────────────── */
 
@@ -89,10 +90,10 @@ export const KNOWN_HEADING = "## What you already know";
  * of an imported bot) gets them at its end, under no second heading. Memories need a persona: without one the bot writes
  * its own soul in its first conversation, and they stay out.
  */
-export function composeSoul(persona: string, memories: readonly { name?: string; text: string }[], source: string): { soul: string; included: number; cut: boolean } {
+export function composeSoul(persona: string, memories: readonly { name?: string; text: string }[], source: string, limit: number = BOT_LIMITS.soul): { soul: string; included: number; cut: boolean } {
   let soul = persona.trim();
-  const cut = soul.length > BOT_LIMITS.soul;
-  if (cut) soul = soul.slice(0, BOT_LIMITS.soul).trimEnd();
+  const cut = soul.length > limit;
+  if (cut) soul = soul.slice(0, limit).trimEnd();
   if (!soul || !memories.length) return { soul, included: 0, cut };
   const head = soul.includes(KNOWN_HEADING) ? "" : `${KNOWN_HEADING}\n\nBrought over from ${source} when HUI created you. It is what you knew there; the operator may correct it.\n\n`;
   let body = "";
@@ -103,7 +104,7 @@ export function composeSoul(persona: string, memories: readonly { name?: string;
     const line = text.includes("\n") ? `### ${memory.name ? oneLine(memory.name, 120) : "Note"}\n\n${text}` : `- ${memory.name ? `**${oneLine(memory.name, 120)}:** ` : ""}${text}`;
     // Bullets stay together; a section stands apart from what is around it.
     const next = body ? `${body}${line.startsWith("- ") && previous.startsWith("- ") ? "\n" : "\n\n"}${line}` : line;
-    if (`${soul}\n\n${head}${next}`.length > BOT_LIMITS.soul) break;
+    if (`${soul}\n\n${head}${next}`.length > limit) break;
     body = next;
     previous = line;
     included += 1;
@@ -159,7 +160,9 @@ export function normalizeTemplate(value: unknown): BotTemplate {
     }).filter((memory) => memory.text),
     skills: items(value["skills"], "skills", BOT_TEMPLATE_LIMITS.skills).map((skill) => {
       if (!isRecord(skill)) throw new TemplateFormatError("Each skill must be an object.");
-      return { name: text(skill["name"], "skill name", 200, true), description: oneLine(text(skill["description"], "skill description", 5_000), 1_024), content: text(skill["content"], "skill", BOT_TEMPLATE_LIMITS.skill) };
+      const name = text(skill["name"], "skill name", 200, true);
+      const files = skillFiles(skill["files"], name, []);
+      return { name, description: oneLine(text(skill["description"], "skill description", 5_000), 1_024), content: text(skill["content"], "skill", BOT_TEMPLATE_LIMITS.skill), ...(files.length ? { files } : {}) };
     }),
     routines: items(value["routines"], "routines", BOT_TEMPLATE_LIMITS.routines).map((routine) => {
       if (!isRecord(routine)) throw new TemplateFormatError("Each routine must be an object.");
@@ -205,6 +208,10 @@ export function normalizeTemplate(value: unknown): BotTemplate {
     template.avatar = { ...(isBotFaceShape(shape) ? { shape } : {}), ...(isBotFaceEars(ears) ? { ears } : {}), ...(/^#[0-9a-f]{6}$/u.test(color) ? { color } : {}) };
   }
   if (value["tools"] !== undefined) template.tools = items(value["tools"], "tools", 200).map((tool) => oneLine(text(tool, "tool", 200), 200)).filter(Boolean);
+  // A HUI template's points for its new owner, needs and triggers, bounded as its reader bounds them.
+  if (value["open"] !== undefined) template.open = openPoints(value["open"]);
+  if (value["needs"] !== undefined) template.needs = needsList(value["needs"]);
+  if (value["triggers"] !== undefined) template.triggers = templateTriggers(value["triggers"], []);
   if (isRecord(value["hui"])) {
     const hui = value["hui"];
     const levels: readonly string[] = BOT_THINKING_LEVELS;

@@ -2,14 +2,16 @@
  * Importing and exporting bots over `/__hui/bots` (HUI-18); see docs/api.md#importing-and-exporting-bots. Under the bots'
  * prefix, so Settings → Labs → Bots gates them like every bot route (409 while off).
  *
- *   POST /__hui/bots/import/preview   { source, pick?, worker? } → BotImportPreview; nothing is created
- *   POST /__hui/bots/import           { template, worker? } → 201 BotImportResult
- *   GET  /__hui/bots/:id/export       the bot as `<handle>.hui-bot.zip`; `?memory=1` adds its memory's view
+ *   POST /__hui/bots/import/preview     { source, pick?, worker? } → BotImportPreview; nothing is created
+ *   POST /__hui/bots/import             { template, worker? } → 201 BotImportResult
+ *   POST /__hui/bots/:id/export/review  → BotExportReview: the bot cleaned and read by the utility model, kept as its latest
+ *   POST /__hui/bots/:id/export         { review, picks } → the template as `<name>.hui-bot.zip`; 409 once the bot changed
  *
  * `import` is a reserved handle, so no bot's `/__hui/bots/:id` is ever this route.
  */
 import type { ServerResponse } from "node:http";
 import { AutomationConflictError, AutomationInputError } from "./automation.ts";
+import type { BotExportService } from "./bot-export.ts";
 import type { BotTemplateService } from "./bot-template-import.ts";
 import { botErrorStatus, type BotRouteRequest } from "./bot-routes.ts";
 import { BotInputError } from "./bots.ts";
@@ -18,7 +20,9 @@ import { TemplateFetchError } from "./bot-templates/fetch.ts";
 
 export const BOT_IMPORT_ROUTE = "/__hui/bots/import";
 export const BOT_IMPORT_PREVIEW_ROUTE = "/__hui/bots/import/preview";
-const EXPORT = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/export$/u;
+const EXPORT = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/export(\/review)?$/u;
+/** The picks for a review. */
+const PICKS_BODY_BYTES = 256 * 1024;
 /** A source in base64: a folder of 16 MB, a third more, and its paths. */
 const SOURCE_BODY_BYTES = 32 * 1024 * 1024;
 /** A template as a preview returned it. */
@@ -36,8 +40,8 @@ export function templateErrorStatus(error: unknown): number {
   return botErrorStatus(error);
 }
 
-export function createBotTemplateRoutes(deps: { service: BotTemplateService }) {
-  const { service } = deps;
+export function createBotTemplateRoutes(deps: { service: BotTemplateService; exports: BotExportService }) {
+  const { service, exports } = deps;
 
   async function json(request: BotRouteRequest, maxBytes: number): Promise<unknown> {
     try {
@@ -52,9 +56,9 @@ export function createBotTemplateRoutes(deps: { service: BotTemplateService }) {
     if (request.path !== BOT_IMPORT_ROUTE && request.path !== BOT_IMPORT_PREVIEW_ROUTE && !exported) return undefined;
     try {
       if (exported) {
-        if (request.method !== "GET") return { status: 405, body: { error: "method not allowed" } };
-        const memory = request.query.get("memory");
-        const file = await service.export(exported[1]!, { memory: memory === "1" || memory === "true" });
+        if (request.method !== "POST") return { status: 405, body: { error: "method not allowed" } };
+        if (exported[2]) return { status: 200, body: await exports.review(exported[1]!) };
+        const file = await exports.export(exported[1]!, await json(request, PICKS_BODY_BYTES));
         return { status: 200, file: { name: file.name, type: "application/zip", data: file.data } };
       }
       if (request.method !== "POST") return { status: 405, body: { error: "method not allowed" } };

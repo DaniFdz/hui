@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { BotView } from "../shared/bots.ts";
+import { BOT_LIMITS, botKickoffText, botTurnOrigin, parseRunOrigins, type BotView } from "../shared/bots.ts";
+import { botOpenerKickoffText, botTemplateKickoffText, type BotTemplate } from "../shared/bot-templates.ts";
+import type { BotTriggerInput } from "../shared/bot-triggers.ts";
 import type { AutomationTask, AutomationTaskInput } from "../src/lib/automation-types.ts";
 import { BotTemplateService, type BotTemplateDeps } from "./bot-template-import.ts";
 import type { BotOffer } from "./bot-service.ts";
@@ -26,8 +28,9 @@ function view(id: string, body: Record<string, unknown>): BotView {
 }
 
 /** A service over fakes that record what it asks for; `failRoutine` makes creating a routine fail. */
-function harness(options: { failRoutine?: boolean; workerSkills?: boolean } = {}) {
+function harness(options: { failRoutine?: boolean; failTrigger?: boolean; workerSkills?: boolean; workerFiles?: boolean; operator?: string } = {}) {
   const calls: string[] = [];
+  const triggers: { botId: string; input: BotTriggerInput }[] = [];
   const created: Record<string, unknown>[] = [];
   const written: { botId: string; skills: readonly BotOwnSkill[] }[] = [];
   const routines: AutomationTaskInput[] = [];
@@ -67,7 +70,16 @@ function harness(options: { failRoutine?: boolean; workerSkills?: boolean } = {}
         return { id: "t", ...input } as unknown as AutomationTask;
       },
     },
+    triggers: {
+      create: async (botId, input) => {
+        calls.push("trigger");
+        if (options.failTrigger) throw new Error("the trigger store is broken");
+        triggers.push({ botId, input });
+        return {};
+      },
+    },
     skills: (worker) => worker && !options.workerSkills ? undefined : {
+      files: !worker || options.workerFiles === true,
       write: async (botId, skills) => {
         calls.push("skills");
         written.push({ botId, skills });
@@ -75,12 +87,12 @@ function harness(options: { failRoutine?: boolean; workerSkills?: boolean } = {}
       read: async () => [],
     },
     findWorker: async (target) => ({ id: "w1", name: target }),
-    operator: async () => undefined,
+    operator: async () => options.operator,
     timezone: () => "UTC",
     fetchPage: async () => { throw new Error("no network in this test"); },
     now: () => Date.parse("2026-10-07T10:00:00Z"),
   };
-  return { service: new BotTemplateService(deps), calls, created, written, routines, sent };
+  return { service: new BotTemplateService(deps), calls, created, written, routines, sent, triggers };
 }
 
 const GROK_LIKE = {
@@ -131,4 +143,65 @@ test("on a worker that can't keep a bot's own skills they are listed as dropped,
   const result = await service.create({ template: { ...GROK_LIKE, opener: undefined }, worker: "devbox" });
   assert.deepEqual(result.skills, []);
   assert.deepEqual(calls, ["create", "routine"]);
+});
+
+/** A HUI template as an export makes it: `{{user}}` for the owner, an asked mark, open points, a trigger, a script. */
+const HUI_TEMPLATE: BotTemplate = {
+  format: "hui", name: "{{user}}'s reviewer", soul: "# Who I am\n\nI review for {{user}}: [ask: the repositories to watch].",
+  memories: [], routines: [], integrations: [], dropped: [], notes: [],
+  skills: [{ name: "review", description: "Review a pull request", content: "Run scripts/approve.sh for {{user}}.", files: [{ path: "scripts/approve.sh", text: "echo {{user}}\n" }, { path: "notes.md", text: "Ask {{user}}.\n" }] }],
+  open: [
+    { kind: "ask", where: "SOUL.md", question: "Which repositories should I watch?" },
+    { kind: "confirm", where: "Trigger “Reviews”", question: "Keep {{user}}'s rule?", excerpt: "Review it.", operator: true },
+  ],
+  needs: ["The GitHub CLI signed in"],
+  triggers: [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review it for {{user}}.", cooldownSeconds: 60 }],
+  hui: { disabledTools: [], disabledSkills: [] },
+};
+
+test("a HUI template: {{user}} is your name, its open points close SOUL.md, its trigger starts off, its skill's files come along and its first turn starts on the points", async () => {
+  const { service, calls, created, written, triggers, sent } = harness({ operator: "Ada Lovelace" });
+  const preview = await service.preview({ source: { kind: "text", text: JSON.stringify({ format: "hui-bot", version: 2, bot: { name: "{{user}}'s reviewer" } }) } });
+  assert.equal(preview.bot.name, "Ada Lovelace's reviewer", "the preview reads a template's name filled in");
+  const result = await service.create({ template: HUI_TEMPLATE });
+  assert.deepEqual(calls, ["create", "skills", "trigger", "send"], "the bot, its skills, its trigger, then its first turn");
+  assert.equal(created[0]!["name"], "Ada Lovelace's reviewer");
+  const soul = String(created[0]!["soul"]);
+  assert.ok(soul.startsWith("# Who I am\n\nI review for Ada Lovelace: [ask: the repositories to watch].\n\n## Not agreed yet\n\n"), soul);
+  assert.match(soul, /\n- Ask \(SOUL\.md\): Which repositories should I watch\?\n- Confirm \(Trigger “Reviews”, only the operator can change it\): Keep Ada Lovelace's rule\? “Review it\.”$/u);
+  const skill = written[0]!.skills[0]!;
+  assert.match(skill.text, /Run scripts\/approve\.sh for Ada Lovelace\./u);
+  assert.deepEqual(skill.files, [{ path: "scripts/approve.sh", text: "echo {{user}}\n" }, { path: "notes.md", text: "Ask Ada Lovelace.\n" }], "a script is never filled in, Markdown is");
+  assert.deepEqual(triggers, [{ botId: "new", input: { name: "Reviews", source: "listener", filter: { prLinks: true }, prompt: "Review it for Ada Lovelace.", enabled: false, cooldownSeconds: 60 } }]);
+  assert.equal(sent[0], botTemplateKickoffText("Ada Lovelace's reviewer"));
+  assert.equal(result.opener, true);
+});
+
+test("without a name in Settings {{user}} is the operator; the persona is cut, never the open points, to fit SOUL.md", async () => {
+  const { service, created } = harness();
+  await service.create({ template: { ...HUI_TEMPLATE, soul: `I serve {{user}}. ${"x".repeat(BOT_LIMITS.soul)}` } });
+  const soul = String(created[0]!["soul"]);
+  assert.ok(soul.startsWith("I serve the operator. "));
+  assert.ok(soul.length <= BOT_LIMITS.soul, `${soul.length} characters`);
+  assert.match(soul, /\n## Not agreed yet\n[\s\S]*Keep the operator's rule\? “Review it\.”$/u);
+});
+
+test("a worker that keeps SKILL.md only gets no files, listed as left out; a trigger that fails deletes the new bot again", async () => {
+  const older = harness({ workerSkills: true, workerFiles: false });
+  const preview = await older.service.preview({ source: { kind: "text", text: JSON.stringify({ format: "hui-bot", version: 2, bot: { name: "R" }, skills: [] }) }, worker: "devbox" });
+  assert.deepEqual(preview.skills, []);
+  await older.service.create({ template: HUI_TEMPLATE, worker: "devbox" });
+  assert.equal(older.written[0]!.skills[0]!.files, undefined);
+  const planned = await older.service.create({ template: HUI_TEMPLATE, worker: "devbox" });
+  assert.deepEqual(planned.skills, ["review"]);
+  const failing = harness({ failTrigger: true });
+  await assert.rejects(failing.service.create({ template: HUI_TEMPLATE }), /the trigger store is broken/u);
+  assert.deepEqual(failing.calls, ["create", "skills", "trigger", "delete new"]);
+});
+
+test("an imported bot's first turn is not the operator's, so its gated tools refuse; a new bot's kickoff still is", () => {
+  assert.deepEqual(botTurnOrigin(botTemplateKickoffText("Rev")), { kind: "imported" });
+  assert.deepEqual(botTurnOrigin(botOpenerKickoffText("Rev", "Hi!")), { kind: "imported" });
+  assert.deepEqual(botTurnOrigin(botKickoffText("Rev")), { kind: "kickoff" });
+  assert.deepEqual(parseRunOrigins([{ kind: "imported" }, { kind: "operator" }]), [{ kind: "imported" }, { kind: "operator" }], "a worker's host sends it along");
 });

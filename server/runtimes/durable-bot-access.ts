@@ -327,6 +327,7 @@ export function turnNote(input: string | undefined): string | undefined {
     case "trigger": return `Asked while handling the trigger "${origin.name}".`;
     case "bot": return `Asked while handling a message from @${origin.handle}.`;
     case "kickoff": return "Asked in its first turn, before you wrote.";
+    case "imported": return "Asked in its first turn after it was imported, before you wrote.";
     case "operator": return undefined;
   }
 }

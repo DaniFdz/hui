@@ -6,6 +6,14 @@ import { appendFile, readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 
 let port = Number(process.env.HUI_E2E_PROVIDER_PORT ?? 43127);
+
+/** What the export reviewer flags in fixture bots: a teammate's name, the repositories to watch and an approval rule. */
+const REVIEW_PASSAGES = [
+  { quote: "Pat Doe", group: "remove", reason: "A teammate's name.", replacement: "a teammate" },
+  { quote: "acme/widgets", group: "ask", reason: "The owner's own repository.", label: "the repositories to watch", question: "Which repositories should I watch for pull requests?" },
+  { quote: "Approve only when CI is green", group: "confirm", reason: "An approval rule.", question: "Should I approve only when CI is green, or do you want other rules?" },
+];
+
 const workspace = process.env.HUI_E2E_WORKSPACE;
 const logFile = process.env.HUI_E2E_PROVIDER_LOG;
 if (!workspace || !logFile) throw new Error("HUI_E2E_WORKSPACE and HUI_E2E_PROVIDER_LOG are required");
@@ -235,6 +243,14 @@ const server = createServer(async (request, response) => {
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   messageStart(response);
 
+  // A bot export's reviewer (Settings' utility model): a change for each fixture passage the part holds, and a need for a
+  // part that runs gh.
+  if (flattenedText(body.system).includes("You check a HUI bot before its owner shares it")) {
+    const changes = REVIEW_PASSAGES.filter((change) => source.includes(change.quote));
+    text(response, JSON.stringify({ changes, needs: source.includes("gh pr") ? ["The GitHub CLI signed in, with access to the repositories it reviews"] : [] }));
+    return finish(response);
+  }
+
   // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
   // response, and the next answer quotes every result.
   // E2E_ASK_USER:<name> does the same with ask_user_question and the workspace's `ask-<name>.json`: its input, or an
@@ -271,6 +287,11 @@ const server = createServer(async (request, response) => {
   }
   if (latestToolResult?.id === "tool-e2e-message-bot") {
     text(response, `message_bot answered: ${typeof latestToolResult.result === "string" ? latestToolResult.result : JSON.stringify(latestToolResult.result)}`);
+    return finish(response);
+  }
+  // A bot imported from a HUI template with open points: its first turn greets and starts on them.
+  if (source.includes("[HUI bot created]") && source.includes("from: template") && source.includes("Not agreed yet")) {
+    text(response, "Hi! I came from a template someone shared. First thing to agree: which repositories should I watch for pull requests?");
     return finish(response);
   }
   // An imported bot's first turn, which HUI starts to send its template's opener: the opener, as written.

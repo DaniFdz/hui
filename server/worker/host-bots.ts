@@ -24,7 +24,9 @@ import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../../sha
 import { parseCallRecord } from "../../shared/calls.ts";
 import { durableBotConversations } from "../bot-conversations.ts";
 import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
+import { BOT_TEMPLATE_LIMITS } from "../../shared/bot-templates.ts";
 import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bot-skills.ts";
+import { skillFilePath } from "../bot-templates/common.ts";
 import { localBotSouls } from "../bot-souls.ts";
 import { accessField, normalizeSoul } from "../bots.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
@@ -42,6 +44,8 @@ export const BOT_ACCESS_FEATURE = "bot-access";
 export const BOT_ACCESS_FRAME = "bot.access";
 /** What `hello` lists when the host keeps a bot's own skills in its home (`bot.skills.*`, `bot-skills.ts`): an imported bot's. */
 export const BOT_SKILLS_FEATURE = "bot-skills";
+/** What `hello` lists when `bot.skills.*` also carry the files beside a SKILL.md (a template's scripts). */
+export const BOT_SKILL_FILES_FEATURE = "bot-skill-files";
 
 const ID = /^[A-Za-z0-9_-]{1,100}$/u;
 const MODEL = /^[^/\s]+\/\S+$/u;
@@ -102,14 +106,26 @@ function memorySettings(value: unknown): BotMemorySettings {
   return { name, ...(model ? { model } : {}), ...(thinking ? { thinking } : {}) };
 }
 
-/** A bot's own skills as `bot.skills.write` takes them: at most 200, each a skill's name and a SKILL.md of at most 256 KB. */
+/** A bot's own skills as `bot.skills.write` takes them: at most 200, each a skill's name, a SKILL.md of at most 256 KB and
+ * the files beside it, within a template's limits. */
 function skillFiles(value: unknown): BotOwnSkill[] {
   if (!Array.isArray(value) || value.length > 200) throw new Error("A bot's skills must be a list of at most 200.");
   return value.map((skill) => {
     if (!isRecord(skill) || typeof skill["name"] !== "string" || !BOT_SKILL_NAME.test(skill["name"]) || typeof skill["text"] !== "string" || skill["text"].length > 256 * 1024) {
       throw new Error("Each of a bot's skills needs a skill's name and its SKILL.md.");
     }
-    return { name: skill["name"], text: skill["text"] };
+    const files = skill["files"] ?? [];
+    if (!Array.isArray(files) || files.length > BOT_TEMPLATE_LIMITS.skillFiles) throw new Error(`A skill has at most ${BOT_TEMPLATE_LIMITS.skillFiles} files beside its SKILL.md.`);
+    let total = 0;
+    const checked = files.map((file) => {
+      if (!isRecord(file) || typeof file["path"] !== "string" || skillFilePath(file["path"]) !== file["path"] || typeof file["text"] !== "string") {
+        throw new Error("Each file of a skill needs its path inside the skill's folder and its text.");
+      }
+      total += Buffer.byteLength(file["text"]);
+      if (Buffer.byteLength(file["text"]) > BOT_TEMPLATE_LIMITS.skillFileBytes || total > BOT_TEMPLATE_LIMITS.skillFilesBytes) throw new Error(`The files of skill ${skill["name"]} are too large.`);
+      return { path: file["path"], text: file["text"] };
+    });
+    return { name: skill["name"], text: skill["text"], ...(checked.length ? { files: checked } : {}) };
   });
 }
 
@@ -237,7 +253,8 @@ export function hostBots(options: HostBotsOptions) {
         return {};
       },
       "bot.soul.read": async (params) => ({ soul: (await souls.read(botId(params["botId"]))) ?? null }),
-      /** Writes a bot's own skills into its home here (an import's), each `{ name, text }`: its folder's name and SKILL.md. */
+      /** Writes a bot's own skills into its home here (an import's), each `{ name, text, files? }`: its folder's name, SKILL.md
+       * and the files beside it. */
       "bot.skills.write": async (params) => {
         await ownSkills.write(botId(params["botId"]), skillFiles(params["skills"]));
         return {};

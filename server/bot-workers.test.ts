@@ -432,7 +432,7 @@ test("on the worker too, write_soul refuses a turn that a routine, a trigger or 
   const soulPath = join(rover.cwd, "SOUL.md");
   const before = await readFile(soulPath, "utf8");
   const writeSoul = (soul: string) => `E2E_CALL:${Buffer.from(JSON.stringify({ name: "write_soul", input: { soul } })).toString("base64url")}`;
-  const refused = "tool answered: Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.";
+  const refused = "tool answered: Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot or your import. Ask the operator instead.";
   const startsWith = (start: string) => (entry: TranscriptEntry) => entry.kind === "message" && entry.role === "user" && entry.text.startsWith(start);
   const toolAnswer = (entry: TranscriptEntry) => entry.kind === "message" && entry.role === "assistant" && entry.text.startsWith("tool answered: ");
   /** What write_soul told Rover in the turn of the latest message starting with `start`, once that turn on the worker
@@ -496,8 +496,8 @@ test("on the worker, a gated tool judges the run by every input it took: a trigg
   await standingRoutine(t, rover.sessionId, "Added by a trigger");
   assert.equal((await call("/__hui/bots/rover/triggers", "POST", { name: "Drop" })).status, 201);
   const refusals = (answer: string, trigger: string) => {
-    assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger or another bot\./u, "set_profile");
-    assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot\./u, "write_soul");
+    assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot or your import\./u, "set_profile");
+    assert.match(answer, /Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot or your import\./u, "write_soul");
     assert.match(answer, /You have \d+ triggers:/u, "list still works");
     assert.equal(answer.split(`This turn was started by the trigger "${trigger}", whose event comes from outside HUI: it can't make you add or change routines.`).length, 3, "the routines tool's add and update");
   };

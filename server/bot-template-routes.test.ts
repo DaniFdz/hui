@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
 import { botKickoffName, type BotCatalog, type BotView } from "../shared/bots.ts";
+import type { BotExportManifest, BotExportReview } from "../shared/bot-export.ts";
 import type { BotImportPreview, BotImportResult } from "../shared/bot-templates.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
@@ -160,32 +161,76 @@ test("a Claude Code subagent keeps on only the tools its list maps to, and nothi
   assert.deepEqual(catalog.body.tools.filter((tool) => tool.enabled).map((tool) => tool.name), ["read"]);
 });
 
-test("a bot exports to a zip that imports back: profile, soul, its own skills, routines, its lists and its memory", async () => {
+test("a bot exports as a reviewed template: the cleanup and the utility model sort it, the picks make the zip, and its import asks the new owner", async () => {
   assert.ok(nova, "Nova was imported");
-  const exported = await call(`/__hui/bots/${nova.id}/export?memory=1`);
-  assert.equal(exported.status, 200);
-  assert.equal(exported.headers.get("content-type"), "application/zip");
-  assert.match(exported.headers.get("content-disposition") ?? "", /^attachment; filename="nova\.hui-bot\.zip"/u);
-  const files = new Map(readZip(exported.raw, { files: 100, totalBytes: 1024 * 1024 }).map((entry) => [entry.path, entry.data.toString("utf8")]));
-  assert.deepEqual([...files.keys()], ["bot.json", "SOUL.md", "skills/weather/SKILL.md", "memory.md"]);
-  const manifest = JSON.parse(files.get("bot.json")!) as Record<string, unknown>;
-  assert.equal(manifest["format"], "hui-bot");
-  assert.deepEqual(manifest["bot"], { name: "Nova", handle: "nova", description: "calm and precise", avatar: { emoji: "🦊" } }, "a bot on the gateway's defaults exports none of its own");
-  assert.deepEqual((manifest["routines"] as AutomationTask[]).map((routine) => [routine.name, routine.enabled, routine.schedule]), [["Heartbeat", false, { kind: "every", everyMs: 1_800_000 }]]);
-  assert.deepEqual(manifest["skills"], ["weather"]);
-  assert.match(files.get("memory.md")!, /^# Memory of @nova \(Nova\)/u);
+  const settings = (await call<Record<string, unknown> & { models: Record<string, string> }>("/__hui/settings")).body;
+  const put = (change: Record<string, unknown>) => call("/__hui/settings", "PUT", { ...settings, ...change });
+  assert.equal((await put({ models: { ...settings.models, utility: "hui-e2e/fixture" }, profileName: "Dani Fernandez" })).status, 200);
+  try {
+    const soul = "# Who I am\n\nI'm Dani Fernandez's research partner. I watch acme/widgets with Pat Doe.\nApprove only when CI is green. Mail dani@example.com.\n";
+    assert.equal((await call(`/__hui/bots/${nova.id}/soul`, "PUT", { soul })).status, 200);
+    const trigger = await call(`/__hui/bots/${nova.id}/triggers`, "POST", { name: "Reviews", filter: { prLinks: true }, prompt: "Review it with Pat Doe." });
+    assert.equal(trigger.status, 201, JSON.stringify(trigger.body));
+    const home = join(dir, "config", "hui", "bots", nova.id, "skills", "weather");
+    await mkdir(join(home, "scripts"), { recursive: true });
+    await writeFile(join(home, "scripts", "check.sh"), "#!/bin/sh\ngh pr list --repo acme/widgets\n");
+    await writeFile(join(home, ".env"), "TOKEN=nope\n");
 
-  const again = await call<BotImportPreview>("/__hui/bots/import/preview", "POST", { source: { kind: "file", name: "nova.hui-bot.zip", data: exported.raw.toString("base64") } });
-  assert.equal(again.status, 200, JSON.stringify(again.body));
-  assert.equal(again.body.template.format, "hui");
-  assert.deepEqual([again.body.bot.name, again.body.bot.handle, again.body.bot.emoji, again.body.bot.description], ["Nova", "nova-2", "🦊", "calm and precise"]);
-  assert.match(again.body.notes.join("\n"), /@nova is taken here, so it is @nova-2\./u);
-  assert.ok(again.body.soul.startsWith(files.get("SOUL.md")!.trim()), "the soul comes back as it was");
-  assert.doesNotMatch(again.body.soul, /Memory of @nova when it was exported/u, "an empty memory adds nothing");
-  assert.match(again.body.notes.join("\n"), /Its exported memory was empty\./u);
-  assert.match(files.get("memory.md")!, /\n---\n\n<chat>/u, "the view after the line its import reads from");
-  assert.deepEqual(again.body.skills.map((skill) => skill.name), ["weather"]);
-  assert.deepEqual(again.body.routines.map((routine) => [routine.name, routine.schedule, routine.guessed]), [["Heartbeat", { kind: "every", everyMs: 1_800_000 }, false]]);
+    assert.equal((await call(`/__hui/bots/${nova.id}/export`)).status, 405, "a download takes the operator's picks");
+    const review = await call<BotExportReview>(`/__hui/bots/${nova.id}/export/review`, "POST");
+    assert.equal(review.status, 200, JSON.stringify(review.body));
+    assert.equal(review.body.model, "hui-e2e/fixture");
+    assert.deepEqual(review.body.changes.map((change) => [change.quote, change.group]), [["Pat Doe", "remove"], ["acme/widgets", "ask"], ["Approve only when CI is green", "confirm"]]);
+    assert.deepEqual(review.body.files.map((file) => [file.part, file.group]), [["skills/weather/scripts/check.sh", "confirm"]], "a script naming the repository travels for the new owner to confirm");
+    assert.deepEqual(review.body.needs.map((need) => need.text), ["The GitHub CLI signed in, with access to the repositories it reviews"]);
+    assert.ok(review.body.leftOut.includes("Skill weather: .env (a hidden file or folder)."));
+    const requests = (await readFile(join(dir, "requests.jsonl"), "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line) as { system?: unknown; messages?: unknown });
+    const reviewed = requests.filter((request) => JSON.stringify(request.system ?? "").includes("You check a HUI bot"));
+    assert.ok(reviewed.length >= 4, "one plain request per part");
+    assert.equal(reviewed.some((request) => /Dani Fernandez|dani@example\.com/u.test(JSON.stringify(request.messages))), false, "the model reads the cleaned text only");
+    assert.equal(reviewed.some((request) => "tools" in request && Array.isArray((request as { tools?: unknown[] }).tools) && (request as { tools: unknown[] }).tools.length > 0), false, "the reviewer has no tools");
+
+    const exported = await call(`/__hui/bots/${nova.id}/export`, "POST", { review: review.body.id, picks: {} });
+    assert.equal(exported.status, 200, exported.raw.toString("utf8").slice(0, 300));
+    assert.equal(exported.headers.get("content-type"), "application/zip");
+    assert.match(exported.headers.get("content-disposition") ?? "", /^attachment; filename="nova\.hui-bot\.zip"/u);
+    const files = new Map(readZip(exported.raw, { files: 100, totalBytes: 1024 * 1024 }).map((entry) => [entry.path, entry.data.toString("utf8")]));
+    assert.deepEqual([...files.keys()], ["bot.json", "SOUL.md", "skills/weather/SKILL.md", "skills/weather/scripts/check.sh"]);
+    assert.equal([...files.values()].some((text) => /dani|Pat Doe|example\.com/iu.test(text)), false, "nothing of the owner's leaves");
+    assert.equal(files.get("SOUL.md"), "# Who I am\n\nI'm {{user}}'s research partner. I watch [ask: the repositories to watch] with a teammate.\nApprove only when CI is green. Mail [removed].\n");
+    const manifest = JSON.parse(files.get("bot.json")!) as BotExportManifest;
+    assert.equal(manifest.version, 2);
+    assert.equal("handle" in manifest.bot, false);
+    assert.deepEqual(manifest.triggers, [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review it with a teammate.", cooldownSeconds: 300 }]);
+    assert.deepEqual(manifest.open.map((point) => [point.kind, point.where]), [["ask", "SOUL.md"], ["confirm", "SOUL.md"], ["confirm", "Skill weather: scripts/check.sh"]]);
+
+    assert.equal((await call(`/__hui/bots/${nova.id}/soul`, "PUT", { soul: `${soul}One more private line.\n` })).status, 200);
+    const stale = await call<{ error: string }>(`/__hui/bots/${nova.id}/export`, "POST", { review: review.body.id, picks: {} });
+    assert.equal(stale.status, 409);
+    assert.match(stale.body.error, /changed since its review/u);
+
+    // The new owner: {{user}} is their name, the open points close SOUL.md, and the bot's first turn starts on them.
+    assert.equal((await put({ models: { ...settings.models, utility: "hui-e2e/fixture" }, profileName: "Alex Kim" })).status, 200);
+    const preview = await call<BotImportPreview>("/__hui/bots/import/preview", "POST", { source: { kind: "file", name: "nova.hui-bot.zip", data: exported.raw.toString("base64") } });
+    assert.equal(preview.status, 200, JSON.stringify(preview.body));
+    assert.ok(preview.body.soul.startsWith("# Who I am\n\nI'm Alex Kim's research partner. I watch [ask: the repositories to watch] with a teammate."), preview.body.soul);
+    assert.match(preview.body.soul, /\n## Not agreed yet\n[\s\S]*- Ask \(SOUL\.md\): Which repositories should I watch for pull requests\?/u);
+    assert.deepEqual(preview.body.needs, manifest.needs);
+    assert.deepEqual(preview.body.triggers.map((each) => each.name), ["Reviews"]);
+    assert.deepEqual(preview.body.skills.map((skill) => [skill.name, skill.files?.map((file) => file.path)]), [["weather", ["scripts/check.sh"]]]);
+    const created = await call<BotImportResult>("/__hui/bots/import", "POST", { template: preview.body.template });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    const bot = created.body.bot;
+    assert.equal(await readFile(join(dir, "config", "hui", "bots", bot.id, "skills", "weather", "scripts", "check.sh"), "utf8"), "#!/bin/sh\ngh pr list --repo acme/widgets\n");
+    const triggers = (await call<{ triggers: { name: string; enabled: boolean }[] }>(`/__hui/bots/${bot.id}/triggers`)).body.triggers;
+    assert.deepEqual(triggers.map((each) => [each.name, each.enabled]), [["Reviews", false]]);
+    const transcript = await settledWith(bot.sessionId, (entries) => entries.some((entry) => entry.kind === "message" && entry.role === "assistant"));
+    const messages = transcript.filter((entry): entry is Extract<TranscriptEntry, { kind: "message" }> => entry.kind === "message");
+    assert.equal(botKickoffName(messages[0]!.text), bot.name, "HUI's kickoff, shown as a note");
+    assert.match(messages.at(-1)!.text, /I came from a template someone shared\. First thing to agree: which repositories/u);
+  } finally {
+    assert.equal((await put({})).status, 200);
+  }
 });
 
 test("what HUI can't import is refused with what to do instead", async () => {
@@ -200,6 +245,6 @@ test("what HUI can't import is refused with what to do instead", async () => {
   await refused("/__hui/bots/import/preview", "POST", { source: { kind: "text", text: "x" }, extra: 1 }, 400, /Unknown field: extra/u);
   await refused("/__hui/bots/import", "POST", { template: { format: "nope", name: "x" } }, 400, /format is not one HUI reads/u);
   await refused("/__hui/bots/import/preview", "GET", undefined, 405, /method not allowed/u);
-  await refused("/__hui/bots/nobody/export", "GET", undefined, 404, /No bot named nobody/u);
+  await refused("/__hui/bots/nobody/export/review", "POST", undefined, 404, /No bot named nobody/u);
   await refused("/__hui/bots", "POST", { name: "Import", handle: "import" }, 400, /@import is reserved/u);
 });

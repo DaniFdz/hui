@@ -1,0 +1,318 @@
+/**
+ * Exporting a bot as a template someone else imports (HUI-18; SPEC.md, "Bot exports are templates, reviewed for
+ * personal information"; the contract is docs/api.md#importing-and-exporting-bots).
+ *
+ * `review` reads what of the bot would travel (its profile, SOUL.md, its own skills' folders, routines, triggers and
+ * turned-off lists), cleans it (`bot-templates/cleanup.ts`), has Settings' utility model read each part as a plain
+ * completion, with no tools (`bot-templates/review.ts`), and keeps the result as the bot's latest review until the
+ * gateway restarts. `export` takes only the operator's picks for that review and refuses when anything the export holds
+ * changed since, so nothing leaves unreviewed; otherwise it zips exactly what `buildExport` makes of the review: the
+ * files the dialog showed.
+ */
+import { createHash, randomUUID } from "node:crypto";
+import {
+  BOT_EXPORT_GROUPS, buildExport, type BotExportChange, type BotExportCleanup, type BotExportFileChange, type BotExportGroup,
+  type BotExportMeta, type BotExportPart, type BotExportReview, type BotExportSchedule,
+} from "../shared/bot-export.ts";
+import { BOT_SKILL_TEXT_FILE } from "../shared/bot-templates.ts";
+import type { BotView } from "../shared/bots.ts";
+import type { BotTrigger } from "../shared/bot-triggers.ts";
+import type { AutomationTask } from "../src/lib/automation-types.ts";
+import type { BotOffer, BotService } from "./bot-service.ts";
+import type { BotOwnSkill, BotSkillFiles } from "./bot-skills.ts";
+import { BotConflictError, BotInputError } from "./bots.ts";
+import { cleanText, type CleanupIdentity } from "./bot-templates/cleanup.ts";
+import { isRecord, oneLine } from "./bot-templates/common.ts";
+import { defaultQuestion, parseReviewAnswer, reviewChunks, reviewPrompt, reviewSystemPrompt, type ReviewAnswer, type ReviewedChange } from "./bot-templates/review.ts";
+import { writeZip } from "./bot-templates/zip.ts";
+import type { CallCompletion } from "./call-helper.ts";
+
+export type BotExportDeps = {
+  bots: Pick<BotService, "get" | "list" | "soul">;
+  /** What a new bot's chat is offered, here or on a worker: its tools are the built-in ones an export lists. */
+  offer(worker?: string): Promise<BotOffer>;
+  routines: { tasks(): Promise<readonly AutomationTask[]> };
+  triggers: { list(botId: string): Promise<readonly BotTrigger[]> };
+  /** A bot's own skills where its chat runs; undefined when that worker can't keep them. */
+  skills(worker?: string): BotSkillFiles | undefined;
+  /** Settings' utility model; undefined: the review is the cleanup alone. */
+  utilityModel(): Promise<string | undefined>;
+  /** One plain completion, no tools: the reviewer. */
+  completion: CallCompletion;
+  /** Who the operator is, for the cleanup. */
+  identity(): Promise<CleanupIdentity>;
+  now?: () => number;
+};
+
+/** One request to the reviewer, and the whole review. */
+const CALL_MS = 60_000;
+const REVIEW_MS = 4 * 60_000;
+/** Inside a zip every file is dated 1980-01-01, the earliest a ZIP date can be: a local date would tell the time zone. */
+const ZIP_DATE = new Date(1980, 0, 1);
+const RANK = { remove: 0, ask: 1, confirm: 2 } as const;
+
+/** What of a bot an export reads, and the hash that tells whether it changed since its review. */
+type Input = {
+  bot: BotView;
+  soul: string;
+  skills: BotOwnSkill[];
+  skillsKept: "all" | "skill-md" | "none";
+  routines: AutomationTask[];
+  triggers: BotTrigger[];
+  disabledTools: string[];
+  disabledSkills: string[];
+  /** Turned off, but left out: tools of its extensions and skills of its directories. */
+  otherTools: number;
+  otherSkills: number;
+  hash: string;
+};
+
+const bare = (model: string | undefined) => model?.slice(model.indexOf("/") + 1) || undefined;
+
+export class BotExportService {
+  readonly #deps: BotExportDeps;
+  readonly #now: () => number;
+  /** Each bot's latest review, until the gateway restarts. */
+  readonly #reviews = new Map<string, { review: BotExportReview; hash: string }>();
+
+  constructor(deps: BotExportDeps) {
+    this.#deps = deps;
+    this.#now = deps.now ?? Date.now;
+  }
+
+  /** `POST /__hui/bots/:id/export/review`. */
+  async review(target: string): Promise<BotExportReview> {
+    const bot = await this.#deps.bots.get(target);
+    const input = await this.#read(bot);
+    if (!input.soul.trim()) throw new BotConflictError(`${bot.name} has no soul yet: finish its first conversation, then export it.`);
+    const identity = await this.#deps.identity();
+    const { parts, cleanup, copies, meta, leftOut } = this.#parts(input, identity);
+    const others = (await this.#deps.bots.list({ archived: "all" })).filter((each) => each.id !== bot.id).map((each) => each.handle);
+    const { model, warning, found, needs } = await this.#reviewParts(parts, copies, identity, others);
+
+    // One change per passage, the strictest group first. What the reviewer wrote must not carry a removed or asked
+    // passage out again: such a replacement, label or question gives way to a plain one (the change itself stays).
+    const byQuote = new Map<string, ReviewedChange & { part: string }>();
+    for (const change of found) {
+      const seen = byQuote.get(change.quote);
+      if (!seen || RANK[change.group] < RANK[seen.group]) byQuote.set(change.quote, change);
+    }
+    const hidden = [...byQuote.values()].filter((change) => change.group !== "confirm").map((change) => change.quote.toLowerCase());
+    const leaks = (text: string) => hidden.some((quote) => text.toLowerCase().includes(quote));
+    const kept = [...byQuote.values()].map((change) => {
+      const label = leaks(change.label) ? "your own value" : change.label;
+      const question = change.group === "remove" || !leaks(change.question) ? change.question : defaultQuestion(change.group, change.quote, label);
+      return { ...change, replacement: leaks(change.replacement) ? "" : change.replacement, label, question };
+    });
+    const kind = new Map(parts.map((part) => [part.id, part.kind]));
+    const changes: BotExportChange[] = kept.filter((change) => kind.get(change.part) === "text").map((change, index) => ({ id: `c${index + 1}`, ...change }));
+    const files = this.#scripts(parts, cleanup, copies, kept);
+    const review: BotExportReview = {
+      id: randomUUID(), botId: bot.id, name: bot.name,
+      ...(model ? { model } : {}), ...(warning ? { warning } : {}),
+      parts, cleanup, changes, files,
+      needs: [...new Map(needs.map((need) => [need.toLowerCase(), need])).values()].slice(0, 30).map((text, index) => ({ id: `n${index + 1}`, text })),
+      leftOut, meta,
+    };
+    this.#reviews.set(bot.id, { review, hash: input.hash });
+    return review;
+  }
+
+  /** `POST /__hui/bots/:id/export`: `{ review, picks }`, the zip of what the review and the picks make. */
+  async export(target: string, body: unknown): Promise<{ name: string; data: Buffer }> {
+    if (!isRecord(body)) throw new BotInputError("An export needs { review, picks }.");
+    const unknown = Object.keys(body).filter((key) => key !== "review" && key !== "picks");
+    if (unknown.length) throw new BotInputError(`Unknown field${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}.`);
+    if (typeof body["review"] !== "string" || !body["review"]) throw new BotInputError("review must name the review the picks are for.");
+    const bot = await this.#deps.bots.get(target);
+    const held = this.#reviews.get(bot.id);
+    if (!held || held.review.id !== body["review"]) throw new BotConflictError("This review is gone (HUI restarted, or a newer review replaced it): review the bot again.");
+    const picks = this.#picks(held.review, body["picks"]);
+    if ((await this.#read(bot)).hash !== held.hash) throw new BotConflictError(`${bot.name} changed since its review: review it again before you download it.`);
+    const build = buildExport(held.review, picks);
+    return { name: build.fileName, data: writeZip(build.files.map((file) => ({ path: file.path, data: Buffer.from(file.text, "utf8") })), ZIP_DATE) };
+  }
+
+  /** Each pick names a change, script or need of the review, with a group it takes. */
+  #picks(review: BotExportReview, value: unknown): Record<string, BotExportGroup> {
+    if (value === undefined) return {};
+    if (!isRecord(value)) throw new BotInputError("picks must map a change's id to its group.");
+    const allowed = new Map<string, readonly string[]>([
+      ...review.changes.map((change) => [change.id, BOT_EXPORT_GROUPS] as const),
+      ...review.files.map((file) => [file.id, ["keep", "remove", "confirm"]] as const),
+      ...review.needs.map((need) => [need.id, ["keep", "remove"]] as const),
+    ]);
+    for (const [id, group] of Object.entries(value)) {
+      const groups = allowed.get(id);
+      if (!groups) throw new BotInputError(`This review has no change ${id}.`);
+      if (typeof group !== "string" || !groups.includes(group)) throw new BotInputError(`${id} takes ${groups.join(", ")}.`);
+    }
+    return value as Record<string, BotExportGroup>;
+  }
+
+  /** What of the bot would travel, read where it runs, and its hash: exactly what the export holds, nothing else. */
+  async #read(bot: BotView): Promise<Input> {
+    const own = this.#deps.skills(bot.worker?.id);
+    const [soul, tasks, triggers, offer, skills] = await Promise.all([
+      this.#deps.bots.soul(bot.id), this.#deps.routines.tasks(), this.#deps.triggers.list(bot.id), this.#deps.offer(bot.worker?.id), own ? own.read(bot.id) : [],
+    ]);
+    // A new bot's tools: the built-in ones. An extension's tool may be the operator's own, and a new owner's bot has its own.
+    const builtIn = new Set(offer.tools.filter((tool) => tool.group !== "extension").map((tool) => tool.name));
+    const disabledTools = (bot.disabledTools ?? []).filter((name) => builtIn.has(name));
+    const ownNames = new Set(skills.map((skill) => skill.name));
+    const disabledSkills = (bot.disabledSkills ?? []).filter((ref) => ownNames.has(ref.name) && ref.path.includes(`/${bot.id}/skills/`)).map((ref) => ref.name);
+    const routines = tasks.filter((task) => task.sessionId === bot.sessionId);
+    const exported = {
+      name: bot.name, title: bot.title, description: bot.description, avatar: bot.avatar, model: bot.model, thinking: bot.thinking,
+      memoryModel: bot.memoryModel, memoryThinking: bot.memoryThinking, voice: bot.voice, soul, skills,
+      routines: routines.map(({ name, description, prompt, schedule, timeoutSeconds }) => ({ name, description, prompt, schedule, timeoutSeconds })),
+      triggers: triggers.map(({ name, filter, prompt, cooldownSeconds }) => ({ name, filter, prompt, cooldownSeconds })),
+      disabledTools, disabledSkills,
+    };
+    return {
+      bot, soul: soul ?? "", skills, skillsKept: !own ? "none" : own.files ? "all" : "skill-md", routines, triggers: [...triggers], disabledTools, disabledSkills,
+      otherTools: (bot.disabledTools ?? []).length - disabledTools.length, otherSkills: (bot.disabledSkills ?? []).length - disabledSkills.length,
+      hash: createHash("sha256").update(JSON.stringify(exported)).digest("hex"),
+    };
+  }
+
+  /** The bot as parts, cleaned (a script only searched), what the reviewer reads of each, and what travels unread. */
+  #parts(input: Input, identity: CleanupIdentity) {
+    const { bot } = input;
+    const parts: BotExportPart[] = [];
+    const cleanup: BotExportCleanup[] = [];
+    const copies = new Map<string, { key: string; text: string }[]>();
+    const leftOut = ["Its memory and its chat: an export never carries them."];
+    const clean = (part: string, field: string, value: string) => {
+      const result = cleanText(value, identity);
+      for (const hit of result.hits) cleanup.push({ part, field, ...hit });
+      return result.text;
+    };
+    const text = (id: string, label: string, fields: readonly (readonly [key: string, value: string | undefined])[]) => {
+      const cleaned = fields.flatMap(([key, value]) => value ? [{ key, text: clean(id, key, value) }] : []);
+      parts.push({ id, label, kind: "text", fields: cleaned, read: false });
+      copies.set(id, cleaned);
+    };
+    // A label is the operator's to read; what the cleanup finds in it is counted with its part's own field.
+    const plain = (value: string) => cleanText(value, identity).text;
+    const script = (id: string, label: string, value: string) => {
+      parts.push({ id, label, kind: "script", fields: [{ key: "text", text: value }], read: false });
+      copies.set(id, [{ key: "text", text: clean(id, "text", value) }]);
+    };
+
+    text("profile", "Profile", [["name", bot.name], ["title", bot.title], ["description", bot.description]]);
+    text("SOUL.md", "SOUL.md", [["text", input.soul]]);
+    for (const skill of input.skills) {
+      text(`skills/${skill.name}/SKILL.md`, `Skill ${skill.name}: SKILL.md`, [["text", skill.text]]);
+      for (const file of skill.files ?? []) {
+        const id = `skills/${skill.name}/${file.path}`;
+        const label = `Skill ${skill.name}: ${file.path}`;
+        if (BOT_SKILL_TEXT_FILE.test(file.path)) text(id, label, [["text", file.text]]);
+        else script(id, label, file.text);
+      }
+      for (const skipped of skill.skipped ?? []) leftOut.push(`Skill ${skill.name}: ${skipped.path} (${skipped.reason}).`);
+    }
+    if (input.skillsKept === "skill-md" && input.skills.length) leftOut.push(`The files beside its skills' SKILL.md: ${bot.worker?.name ?? "its worker"} runs an older HUI worker that can't send them.`);
+    if (input.skillsKept === "none") leftOut.push(`Its own skills: ${bot.worker?.name ?? "its worker"} runs an older HUI worker that can't keep them.`);
+
+    const routines: BotExportMeta["routines"] = [];
+    for (const task of input.routines) {
+      if (task.schedule.kind === "at") {
+        leftOut.push(`Routine “${plain(task.name)}”: it runs once, at a time of yours.`);
+        continue;
+      }
+      const schedule: BotExportSchedule = task.schedule.kind === "every" ? { kind: "every", everyMs: task.schedule.everyMs } : { kind: "cron", expression: task.schedule.expression };
+      const id = `routines/${routines.length}`;
+      routines.push({ schedule, ...(task.timeoutSeconds ? { timeoutSeconds: task.timeoutSeconds } : {}) });
+      text(id, `Routine “${plain(task.name)}”`, [["name", task.name], ["description", task.description], ["prompt", task.prompt]]);
+    }
+    const triggers: BotExportMeta["triggers"] = input.triggers.map((trigger, index) => {
+      const id = `triggers/${index}`;
+      text(id, `Trigger “${plain(trigger.name)}”`, [["name", trigger.name], ["prompt", trigger.prompt], ["match", trigger.filter.match?.value]]);
+      return { filter: trigger.filter, cooldownSeconds: trigger.cooldownSeconds };
+    });
+    if (input.otherTools) leftOut.push(`${input.otherTools} turned-off tool${input.otherTools === 1 ? "" : "s"} of your extensions: a new owner's bot has its own.`);
+    if (input.otherSkills) leftOut.push(`${input.otherSkills} turned-off skill${input.otherSkills === 1 ? "" : "s"} of your folders: a new owner's bot has its own.`);
+
+    const avatar = bot.avatar && Object.keys(bot.avatar).length ? { ...bot.avatar } : undefined;
+    const meta: BotExportMeta = {
+      ...(avatar ? { avatar } : {}),
+      ...(bare(bot.model) ? { model: bare(bot.model)! } : {}),
+      ...(bot.thinking ? { thinking: bot.thinking } : {}),
+      ...(bare(bot.memoryModel) ? { memoryModel: bare(bot.memoryModel)! } : {}),
+      ...(bot.memoryThinking ? { memoryThinking: bot.memoryThinking } : {}),
+      ...(bot.voice && Object.keys(bot.voice).length ? { voice: { ...bot.voice } } : {}),
+      routines, triggers,
+      disabledTools: input.disabledTools, disabledSkills: input.disabledSkills, skills: input.skills.map((skill) => skill.name),
+    };
+    return { parts, cleanup, copies, meta, leftOut };
+  }
+
+  /** The utility model reads each part in turn, one retry each, within the review's time; a part it can't is unread. */
+  async #reviewParts(parts: BotExportPart[], copies: Map<string, { key: string; text: string }[]>, identity: CleanupIdentity, others: readonly string[]): Promise<{
+    model?: string; warning?: string; found: (ReviewedChange & { part: string })[]; needs: string[];
+  }> {
+    const found: (ReviewedChange & { part: string })[] = [];
+    const needs: string[] = [];
+    const model = await this.#deps.utilityModel().catch(() => undefined);
+    if (!model) {
+      for (const part of parts) part.unread = "No utility model is set.";
+      return { found, needs, warning: "No utility model is set in Settings → Models, so only the automatic cleanup ran: read every file below before you share it." };
+    }
+    const system = reviewSystemPrompt({ ...(identity.operator ? { name: identity.operator } : {}), username: identity.username, bots: others });
+    const deadline = this.#now() + REVIEW_MS;
+    for (const part of parts) {
+      const fields = copies.get(part.id) ?? [];
+      const whole = fields.map((field) => field.text);
+      let unread: string | undefined;
+      for (const chunk of reviewChunks({ label: part.label, script: part.kind === "script", fields })) {
+        if (this.#now() > deadline) {
+          unread = "The review ran out of time before this part.";
+          break;
+        }
+        const answer = await this.#ask(model, system, reviewPrompt(chunk), whole, identity);
+        if (typeof answer === "string") {
+          unread = answer;
+          break;
+        }
+        found.push(...answer.changes.map((change) => ({ ...change, part: part.id })));
+        needs.push(...answer.needs);
+      }
+      part.read = !unread;
+      if (unread) part.unread = unread;
+    }
+    const missed = parts.filter((part) => !part.read).length;
+    return { model, found, needs, ...(missed ? { warning: `The utility model didn't read ${missed} of ${parts.length} parts (each says why): read them yourself before you share it.` } : {}) };
+  }
+
+  /** One part (or a chunk of it) to the reviewer: its checked answer, or why there is none. */
+  async #ask(model: string, system: string, prompt: string, fields: readonly string[], identity: CleanupIdentity): Promise<ReviewAnswer | string> {
+    let failure = "The utility model's answer couldn't be read.";
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const answer = parseReviewAnswer(await this.#deps.completion(model, { system, prompt, signal: AbortSignal.timeout(CALL_MS) }), fields, identity);
+        if (answer) return answer;
+      } catch (error) {
+        failure = `The utility model failed: ${error instanceof Error ? oneLine(error.message, 200) : "no answer"}.`;
+      }
+    }
+    return failure;
+  }
+
+  /** A script is never rewritten: a cleanup hit or a removed passage in it keeps it behind, an asked or confirmed one
+   * (wherever the reviewer flagged it) lets it travel for the new owner to confirm, else it travels as it is. */
+  #scripts(parts: readonly BotExportPart[], cleanup: readonly BotExportCleanup[], copies: Map<string, { key: string; text: string }[]>, changes: readonly (ReviewedChange & { part: string })[]): BotExportFileChange[] {
+    const files: BotExportFileChange[] = [];
+    for (const part of parts.filter((each) => each.kind === "script")) {
+      const copy = copies.get(part.id)?.[0]?.text ?? "";
+      const hits = cleanup.filter((each) => each.part === part.id);
+      const found = changes.filter((change) => copy.includes(change.quote));
+      if (!hits.length && !found.length) continue;
+      const reasons = [...hits.map((hit) => `HUI found ${hit.kind} in it (${hit.sample}).`), ...found.map((change) => `${change.reason} “${oneLine(change.quote, 80)}”`)];
+      const group = hits.length || found.some((change) => change.group === "remove") ? "remove" : "confirm";
+      const question = found.find((change) => change.group !== "remove")?.question || `Check ${part.label} before it runs: it came from someone else's setup.`;
+      files.push({ id: `f${files.length + 1}`, part: part.id, group, reasons, question });
+    }
+    return files;
+  }
+}

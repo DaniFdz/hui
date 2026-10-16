@@ -7,6 +7,7 @@ import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { BOT_LIMITS } from "../../shared/bots.ts";
 import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateSkill } from "../../shared/bot-templates.ts";
 import { isOneGrapheme } from "../bots.ts";
+import { safeRelativePath } from "./zip.ts";
 
 /** The source is not a template HUI reads, or it is broken: the routes answer 400 with the message. */
 export class TemplateFormatError extends Error {
@@ -131,6 +132,13 @@ export function skillFromFile(text: string, fallbackName: string, dropped: strin
  */
 export function skillFileText(skill: Pick<BotTemplateSkill, "name" | "description" | "content">): string {
   return `---\nname: ${JSON.stringify(skill.name)}\ndescription: ${JSON.stringify(oneLine(skill.description, 1_024))}\n---\n\n${skill.content.trim()}\n`;
+}
+
+/** A file's path inside its skill's folder, or undefined: relative, inside it, no hidden part, and not SKILL.md itself. */
+export function skillFilePath(raw: string): string | undefined {
+  const path = safeRelativePath(raw);
+  if (!path || path === "SKILL.md" || path.split("/").some((part) => part.startsWith("."))) return undefined;
+  return path;
 }
 
 /** Files under one folder, by their path below it. */

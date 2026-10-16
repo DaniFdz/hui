@@ -440,7 +440,7 @@ test("write_soul refuses a turn that a routine, a trigger or another bot started
     const reply = entries.slice(entries.findIndex(isUser(text)) + 1).find(toolAnswer);
     return reply?.kind === "message" ? reply.text : "";
   };
-  const refused = "tool answered: Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.";
+  const refused = "tool answered: Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot or your import. Ask the operator instead.";
   for (const [who, marker] of [["a routine", "[routine: Morning digest]"], ["a trigger", "[trigger: CI · checks failed on #4]"], ["another bot", "[from @scout]"], ["another bot, a hop on", "[from @scout · hop 2]"]] as const) {
     const text = `${marker} ${writeSoul(`# Who I am\nRewritten in a turn ${who} started.`)}`;
     await session.prompt(text);

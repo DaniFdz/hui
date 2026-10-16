@@ -1,26 +1,30 @@
 /**
- * Importing bots from other platforms' templates, and exporting HUI's (HUI-18; docs/api.md#importing-and-exporting-bots).
+ * Importing bots from other platforms' templates and HUI's own (HUI-18; docs/api.md#importing-and-exporting-bots).
  *
  * An import reads its source (`bot-templates/`) into a `BotTemplate`, then plans it against this gateway: the handle it
  * gets, SOUL.md (its persona, then its memories under "What you already know": OptChat's memory is the chat's own log,
  * so nothing else can seed it), the model it names when one resolves, the tools a Claude Code subagent keeps, its
  * skills (renamed when a skill of its directory has the name), its routines' schedules and the HUI tool each
  * integration maps to. The preview is that plan; creating runs it again on the template the preview showed and makes
- * the bot through `BotService.create`, then its own skills, then its routines (disabled): a failure there deletes the
- * new bot again. Its opener is its first turn, a kickoff that asks it to send it.
+ * the bot through `BotService.create`, then its own skills, then its routines and triggers (disabled): a failure there
+ * deletes the new bot again. Its opener is its first turn, a kickoff that asks it to send it.
  *
- * Nothing an import brings turns on more than a new bot has: a template can only turn tools off, routines start
- * disabled, and a model is kept only when it resolves. Its skills are on, like every skill of a bot: they are text the
- * operator read in the preview, they widen no tool, and each can be turned off in the Tools tab.
+ * A HUI template (`shared/bot-export.ts` makes them) brings more: `{{user}}` becomes this operator's name, its open
+ * points go into SOUL.md under "Not agreed yet", and its first turn asks the bot to go through them with the operator;
+ * its triggers and the files beside its skills come with it.
  *
- * An export is a zip: bot.json (profile, routines, the tool and skill lists), SOUL.md, the bot's own skills and, when
- * asked for, memory.md (its memory's view). Importing it gives the bot back.
+ * Nothing an import brings turns on more than a new bot has: a template can only turn tools off, routines and triggers
+ * start disabled, a model is kept only when it resolves, and its first turn is not the operator's (its gated tools
+ * refuse). Its skills are on, like every skill of a bot: they are text the operator read in the preview, they widen no
+ * tool, and each can be turned off in the Tools tab. The export side is `bot-export.ts`.
  */
-import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar, type BotView } from "../shared/bots.ts";
+import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar } from "../shared/bots.ts";
+import type { BotTemplateTrigger } from "../shared/bot-export.ts";
 import {
-  BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, botExportFileName, botOpenerKickoffText,
-  type BotExportManifest, type BotImportPreview, type BotImportResult, type BotImportRoutine, type BotTemplate,
+  BOT_SKILL_TEXT_FILE, BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, botOpenerKickoffText, botTemplateKickoffText, notAgreedSection,
+  type BotImportPreview, type BotImportResult, type BotImportRoutine, type BotTemplate,
 } from "../shared/bot-templates.ts";
+import type { BotTriggerInput } from "../shared/bot-triggers.ts";
 import type { AutomationSchedule, AutomationTask, AutomationTaskInput } from "../src/lib/automation-types.ts";
 import { nextScheduleAt } from "./automation.ts";
 import type { BotOffer, BotService } from "./bot-service.ts";
@@ -30,18 +34,19 @@ import { CLAUDE_CODE_TOOLS } from "./bot-templates/claude-code.ts";
 import { isRecord, oneLine, skillFileText, skillName, TemplateFormatError, type ImportFile } from "./bot-templates/common.ts";
 import { readFileTemplates, readFolderTemplates, readTextTemplates, type TemplateChoice } from "./bot-templates/detect.ts";
 import { parseGrokBotPage, grokBotUrl } from "./bot-templates/grok.ts";
-import { huiExportEntries } from "./bot-templates/hui-export.ts";
 import { composeSoul, matchIntegration, normalizeTemplate, resolveModel, type ModelInfo } from "./bot-templates/mapping.ts";
 import { readSchedule } from "./bot-templates/schedule.ts";
-import { safeRelativePath, writeZip } from "./bot-templates/zip.ts";
+import { safeRelativePath } from "./bot-templates/zip.ts";
 
 export type BotTemplateDeps = {
-  bots: Pick<BotService, "create" | "get" | "list" | "send" | "delete" | "update" | "catalog" | "soul" | "memory">;
+  bots: Pick<BotService, "create" | "get" | "list" | "send" | "delete" | "update" | "catalog">;
   /** What a new bot's chat is offered (the tools every chat has, the skills of a new home folder), here or on a worker. */
   offer(worker?: string): Promise<BotOffer>;
   /** Every model this gateway resolves. */
   models(): Promise<readonly ModelInfo[]>;
   routines: { tasks(): Promise<readonly AutomationTask[]>; create(input: AutomationTaskInput): Promise<AutomationTask> };
+  /** A HUI template's triggers, made for the new bot (disabled). */
+  triggers: { create(botId: string, input: BotTriggerInput): Promise<unknown> };
   /** A bot's own skills where its chat runs; undefined when that worker can't keep them. */
   skills(worker?: string): BotSkillFiles | undefined;
   /** A remote worker by id or exact name; absent: bots run here only. */
@@ -62,8 +67,9 @@ type Plan = {
   preview: Omit<BotImportPreview, "template" | "candidates" | "pick">;
   /** `POST /__hui/bots`'s body. */
   input: Record<string, unknown>;
-  skills: { name: string; text: string }[];
+  skills: { name: string; text: string; files?: { path: string; text: string }[] }[];
   routines: (BotImportRoutine & { description?: string })[];
+  triggers: BotTemplateTrigger[];
   /** A HUI export's turned-off skills, by name: set once its own skills exist. */
   disabledSkills: string[];
 };
@@ -83,6 +89,32 @@ function base64(value: unknown, what: string): Buffer {
   if (typeof value !== "string" || !/^[A-Za-z0-9+/=\s]*$/u.test(value)) throw new BotInputError(`${what} must be base64.`);
   if (value.length > Math.ceil(BOT_TEMPLATE_LIMITS.fileBytes / 3) * 4 + 1_024) throw new BotInputError(`${what} is larger than ${BOT_TEMPLATE_LIMITS.fileBytes / 1024 / 1024} MB.`);
   return Buffer.from(value, "base64");
+}
+
+/**
+ * A HUI template with `{{user}}` as this operator's name ("the operator" without one): in its profile, Markdown, prompts
+ * and open points, never in a script or a trigger's filter. Other formats as they are (a character card's macros were
+ * filled in when it was read).
+ */
+function withOperator(template: BotTemplate, operator: string | undefined): BotTemplate {
+  if (template.format !== "hui") return template;
+  const user = operator || "the operator";
+  const fill = (text: string) => text.replace(/\{\{\s*user\s*\}\}/giu, user);
+  return {
+    ...template,
+    name: fill(template.name),
+    ...(template.title !== undefined ? { title: fill(template.title) } : {}),
+    ...(template.description !== undefined ? { description: fill(template.description) } : {}),
+    soul: fill(template.soul),
+    skills: template.skills.map((skill) => ({
+      ...skill, description: fill(skill.description), content: fill(skill.content),
+      ...(skill.files ? { files: skill.files.map((file) => BOT_SKILL_TEXT_FILE.test(file.path) ? { ...file, text: fill(file.text) } : file) } : {}),
+    })),
+    routines: template.routines.map((routine) => ({ ...routine, name: fill(routine.name), prompt: fill(routine.prompt), ...(routine.description !== undefined ? { description: fill(routine.description) } : {}) })),
+    ...(template.triggers ? { triggers: template.triggers.map((trigger) => ({ ...trigger, name: fill(trigger.name), ...(trigger.prompt !== undefined ? { prompt: fill(trigger.prompt) } : {}) })) } : {}),
+    ...(template.open ? { open: template.open.map((point) => ({ ...point, where: fill(point.where), question: fill(point.question), ...(point.excerpt !== undefined ? { excerpt: fill(point.excerpt) } : {}) })) } : {}),
+    ...(template.needs ? { needs: template.needs.map(fill) } : {}),
+  };
 }
 
 /** A schedule HUI keeps as it is: a HUI export's, when it still has a next run. */
@@ -143,8 +175,11 @@ export class BotTemplateService {
           ...(routine.description ? { description: routine.description } : {}),
         });
       }
+      for (const trigger of plan.triggers) {
+        await this.#deps.triggers.create(bot.id, { name: trigger.name, source: "listener", filter: trigger.filter, ...(trigger.prompt ? { prompt: trigger.prompt } : {}), enabled: false, cooldownSeconds: trigger.cooldownSeconds });
+      }
     } catch (error) {
-      // Half an import is no import: the bot goes again, with its folder and the routines made so far.
+      // Half an import is no import: the bot goes again, with its folder and the routines and triggers made so far.
       await this.#deps.bots.delete(bot.id).catch((cleanup: unknown) => this.#report("error", "bot_import_rollback_failed", `@${bot.handle} was left half imported`, cleanup));
       throw error;
     }
@@ -157,64 +192,18 @@ export class BotTemplateService {
         warnings.push(`Its skills ${listed(plan.disabledSkills)} stay on: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    // Its first turn: going through a HUI template's open points, or sending its template's opener.
     let opener = false;
-    if (plan.preview.opener) {
+    const kickoff = plan.preview.open.length ? botTemplateKickoffText(bot.name) : plan.preview.opener ? botOpenerKickoffText(bot.name, plan.preview.opener) : undefined;
+    if (kickoff) {
       try {
-        await this.#deps.bots.send(bot.id, { text: botOpenerKickoffText(bot.name, plan.preview.opener) });
+        await this.#deps.bots.send(bot.id, { text: kickoff });
         opener = true;
       } catch (error) {
         warnings.push(`Its first message was not sent: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     return { bot: await this.#deps.bots.get(bot.id), skills: plan.skills.map((skill) => skill.name), routines: plan.routines.length, opener, warnings };
-  }
-
-  /** `GET /__hui/bots/:id/export`: the bot as a zip HUI imports again; `memory` adds its memory's view. */
-  async export(target: string, options: { memory: boolean }): Promise<{ name: string; data: Buffer }> {
-    const bot = await this.#deps.bots.get(target);
-    const [soul, tasks] = await Promise.all([this.#deps.bots.soul(bot.id), this.#deps.routines.tasks()]);
-    const files = this.#deps.skills(bot.worker?.id);
-    const skills = files ? await files.read(bot.id) : [];
-    const memory = options.memory ? await this.#memory(bot) : undefined;
-    const avatar: BotExportManifest["bot"]["avatar"] = bot.avatar && Object.keys(bot.avatar).length ? { ...bot.avatar } : undefined;
-    const manifest: BotExportManifest = {
-      format: BOT_EXPORT_FORMAT,
-      version: BOT_EXPORT_VERSION,
-      exportedAt: new Date(this.#now()).toISOString(),
-      bot: {
-        name: bot.name, handle: bot.handle,
-        ...(bot.title ? { title: bot.title } : {}),
-        ...(bot.description ? { description: bot.description } : {}),
-        ...(avatar ? { avatar } : {}),
-        ...(bot.model ? { model: bot.model } : {}),
-        ...(bot.thinking ? { thinking: bot.thinking } : {}),
-        ...(bot.memoryModel ? { memoryModel: bot.memoryModel } : {}),
-        ...(bot.memoryThinking ? { memoryThinking: bot.memoryThinking } : {}),
-        ...(bot.voice ? { voice: { ...bot.voice } } : {}),
-      },
-      routines: tasks.filter((task) => task.sessionId === bot.sessionId).map((task) => ({
-        name: task.name, ...(task.description ? { description: task.description } : {}), prompt: task.prompt, schedule: task.schedule,
-        enabled: task.enabled, timeoutSeconds: task.timeoutSeconds,
-      })),
-      disabledTools: [...bot.disabledTools ?? []],
-      disabledSkills: (bot.disabledSkills ?? []).map(({ name, path }) => ({ name, path })),
-      skills: skills.map((skill) => skill.name),
-      ...(memory ? { memory: "memory.md" as const } : {}),
-    };
-    return { name: botExportFileName(bot.handle), data: writeZip(huiExportEntries({ manifest, ...(soul ? { soul } : {}), skills, ...(memory ? { memory } : {}) }), new Date(this.#now())) };
-  }
-
-  async #memory(bot: BotView): Promise<string> {
-    const { view } = await this.#deps.bots.memory(bot.id);
-    return [
-      `# Memory of @${bot.handle} (${bot.name})`,
-      "",
-      `Its OptChat memory as HUI exported it on ${new Date(this.#now()).toISOString().slice(0, 10)}: the latest messages one line each, older ones summarized. Importing this file puts what follows the line below in the new bot's SOUL.md, under "What you already know".`,
-      "",
-      "---",
-      "",
-      view.trim(),
-    ].join("\n");
   }
 
   async #worker(value: unknown): Promise<{ id: string; name: string } | undefined> {
@@ -263,7 +252,8 @@ export class BotTemplateService {
     throw new BotInputError("source.kind must be file, files, url or text.");
   }
 
-  async #plan(template: BotTemplate, worker: { id: string; name: string } | undefined): Promise<Plan> {
+  async #plan(read: BotTemplate, worker: { id: string; name: string } | undefined): Promise<Plan> {
+    const template = withOperator(read, await this.#deps.operator().catch(() => undefined));
     const now = this.#now();
     const dropped = [...template.dropped];
     const notes = [...template.notes];
@@ -307,6 +297,7 @@ export class BotTemplateService {
     // Its own skills, named as PI wants them, and apart from the skills its directory already has.
     const skills: Plan["skills"] = [];
     const previewSkills: BotImportPreview["skills"] = [];
+    const keepsFiles = this.#deps.skills(worker?.id)?.files === true;
     if (template.skills.length) {
       if (!this.#deps.skills(worker?.id)) {
         dropped.push(`${plural(template.skills.length, "skill")}: ${worker?.name ?? "This machine"} runs an older HUI worker that can't keep a bot's own skills.`);
@@ -318,8 +309,10 @@ export class BotTemplateService {
           for (let suffix = 2; names.has(unique); suffix += 1) unique = `${wanted.slice(0, 64 - String(suffix).length - 1).replace(/-+$/u, "")}-${suffix}`;
           names.add(unique);
           if (unique !== wanted) notes.push(`Skill ${skill.name} is imported as ${unique}: a skill of its directory has the name ${wanted}.`);
-          skills.push({ name: unique, text: skillFileText({ ...skill, name: unique }) });
-          previewSkills.push({ name: unique, original: skill.name, description: skill.description, content: skill.content });
+          const files = keepsFiles ? skill.files ?? [] : [];
+          if (skill.files?.length && !keepsFiles) dropped.push(`Skill ${skill.name}: its ${plural(skill.files.length, "file")} beside SKILL.md, as ${worker?.name ?? "this machine"} runs an older HUI worker that keeps SKILL.md only.`);
+          skills.push({ name: unique, text: skillFileText({ ...skill, name: unique }), ...(files.length ? { files } : {}) });
+          previewSkills.push({ name: unique, original: skill.name, description: skill.description, content: skill.content, ...(files.length ? { files } : {}) });
         }
       }
     }
@@ -333,8 +326,17 @@ export class BotTemplateService {
       persona = template.description?.trim() || `You are ${name}${template.title ? `, ${template.title}` : ""}.`;
       notes.push("It has no instructions of its own: its description stands in as its persona, followed by what it already knows.");
     }
-    const composed = composeSoul(persona, template.memories, source);
-    if (composed.cut) notes.push(`Its persona has ${template.soul.length.toLocaleString("en-US")} characters; SOUL.md keeps the first ${BOT_LIMITS.soul.toLocaleString("en-US")}.`);
+    // A HUI template's open points close SOUL.md under "Not agreed yet". Their room comes first: the persona is cut, never
+    // the points (they take at most half of it; any beyond are listed as left out).
+    let open = persona.trim() ? template.open ?? [] : [];
+    if (template.open?.length && !open.length) dropped.push(`Its ${plural(template.open.length, "open point")}: without a persona the bot writes its own soul in its first conversation.`);
+    while (open.length > 1 && notAgreedSection(open).length > BOT_LIMITS.soul / 2) open = open.slice(0, -1);
+    if (template.open && open.length && open.length < template.open.length) dropped.push(`${plural(template.open.length - open.length, "open point")} that didn't fit in SOUL.md.`);
+    const section = open.length ? notAgreedSection(open) : "";
+    const room = section ? BOT_LIMITS.soul - section.length - 2 : BOT_LIMITS.soul;
+    const composed = composeSoul(persona, template.memories, source, room);
+    if (composed.cut) notes.push(`Its persona has ${template.soul.length.toLocaleString("en-US")} characters; SOUL.md keeps the first ${room.toLocaleString("en-US")}.`);
+    if (section) composed.soul = `${composed.soul}\n\n${section}`;
     const left = template.memories.length - composed.included;
     if (left) dropped.push(composed.soul ? `${plural(left, "memory", "memories")} that didn't fit in SOUL.md's ${BOT_LIMITS.soul.toLocaleString("en-US")} characters.` : `${plural(left, "memory", "memories")}: without a persona the bot writes its own soul in its first conversation.`);
     if (composed.soul) input["soul"] = composed.soul;
@@ -373,6 +375,9 @@ export class BotTemplateService {
       };
     });
     if (routines.length) notes.push(`${routines.length === 1 ? "Its routine starts" : `Its ${routines.length} routines start`} disabled: check ${routines.length === 1 ? "it" : "them"} in its Routines tab, then turn ${routines.length === 1 ? "it" : "them"} on.`);
+    const triggers = template.triggers ?? [];
+    if (triggers.length) notes.push(`${triggers.length === 1 ? "Its trigger starts" : `Its ${triggers.length} triggers start`} disabled: a listener you run wakes ${triggers.length === 1 ? "it" : "them"}, through a URL from New URL in its Routines tab.`);
+    if (open.length) notes.push(`It goes through ${plural(open.length, "open point")} with you in its first chat, then rewrites its SOUL.md.`);
 
     const integrations = template.integrations.map((integration) => {
       const tool = matchIntegration(integration, offer.tools);
@@ -383,6 +388,7 @@ export class BotTemplateService {
       input,
       skills,
       routines,
+      triggers,
       disabledSkills,
       preview: {
         bot: {
@@ -406,6 +412,9 @@ export class BotTemplateService {
         integrations,
         disabledTools,
         disabledSkills,
+        open,
+        needs: template.needs ?? [],
+        triggers,
         dropped,
         notes,
       },

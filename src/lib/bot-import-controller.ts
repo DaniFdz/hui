@@ -1,13 +1,14 @@
 /**
  * The import and export dialogs' state (the roster's + → Import bot…, a bot's ⋯ → Export…), as a Lit controller so
  * `hui-app.ts` only opens them, renders them (`views/bot-import.ts`) and hears about an imported bot. Every request
- * goes through `bot-templates.ts`; a refusal stays in the dialog, never as an optimistic success.
+ * goes through `bot-templates.ts`; a refusal stays in the dialog, never as an optimistic success. Export first asks the
+ * gateway to review the bot, then keeps the operator's picks until Download sends them.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotView } from "./bots.ts";
-import { downloadBotExport, importBot, importSource, pickedFile, pickedFolder, previewBotImport, type BotImportPreview, type BotImportTab, type PickedSource } from "./bot-templates.ts";
+import { BotExportError, downloadBotExport, importBot, importSource, pickedFile, pickedFolder, previewBotImport, reviewBotExport, type BotExportGroup, type BotExportReview, type BotImportPreview, type BotImportTab, type PickedSource } from "./bot-templates.ts";
 import { ensureModal } from "./modal-dialog.ts";
-import { botExportFileName } from "../../shared/bot-templates.ts";
+import { buildExport } from "../../shared/bot-export.ts";
 import type { BotExportDialogProps, BotImportDialogProps } from "../views/bot-import.ts";
 import type { BotPlace } from "../views/bots.ts";
 
@@ -23,7 +24,18 @@ type ImportState = {
   preview?: BotImportPreview | undefined;
 };
 
-type ExportState = { bot: BotView; memory: boolean; pending: boolean; error: string };
+type ExportState = {
+  bot: BotView;
+  /** The gateway's review; absent while it reviews. */
+  review?: BotExportReview | undefined;
+  /** The operator's group for each change, script or need they moved. */
+  picks: Record<string, BotExportGroup>;
+  /** Reviewing, or downloading. */
+  pending: boolean;
+  error: string;
+  /** The download was refused because the review is gone or the bot changed since: another review fixes it. */
+  stale: boolean;
+};
 
 export type BotImportOptions = {
   /** Remote workers an import may run a bot on (Settings → Workers). */
@@ -138,22 +150,41 @@ export class BotImportController implements ReactiveController {
   }
 
   openExport = (bot: BotView): void => {
-    this.#export = { bot, memory: false, pending: false, error: "" };
-    this.#host.requestUpdate();
+    this.#export = { bot, picks: {}, pending: true, error: "", stale: false };
+    void this.#review();
   };
+
+  #setExport(change: Partial<ExportState>): void {
+    if (!this.#export) return;
+    this.#export = { ...this.#export, ...change };
+    this.#host.requestUpdate();
+  }
+
+  /** Asks for a review; a dialog closed or reviewing again by the time it answers ignores it. */
+  async #review(): Promise<void> {
+    if (!this.#export) return;
+    const asked: ExportState = { ...this.#export, review: undefined, picks: {}, pending: true, error: "", stale: false };
+    this.#export = asked;
+    this.#host.requestUpdate();
+    try {
+      const review = await reviewBotExport(asked.bot.id);
+      if (this.#export === asked) this.#setExport({ review, pending: false });
+    } catch (error) {
+      if (this.#export === asked) this.#setExport({ pending: false, error: error instanceof Error ? error.message : "The bot could not be reviewed." });
+    }
+  }
 
   async #download(): Promise<void> {
     const state = this.#export;
-    if (!state || state.pending) return;
-    this.#export = { ...state, pending: true, error: "" };
-    this.#host.requestUpdate();
+    if (!state?.review || state.pending) return;
+    this.#setExport({ pending: true, error: "" });
     try {
-      await downloadBotExport(state.bot.id, { memory: state.memory, fallbackName: botExportFileName(state.bot.handle) });
+      await downloadBotExport(state.bot.id, { review: state.review.id, picks: state.picks }, { fallbackName: buildExport(state.review, state.picks).fileName });
       this.#export = undefined;
+      this.#host.requestUpdate();
     } catch (error) {
-      if (this.#export) this.#export = { ...this.#export, pending: false, error: error instanceof Error ? error.message : "The bot could not be exported." };
+      this.#setExport({ pending: false, error: error instanceof Error ? error.message : "The bot could not be exported.", stale: error instanceof BotExportError && error.status === 409 });
     }
-    this.#host.requestUpdate();
   }
 
   exportProps(): BotExportDialogProps | undefined {
@@ -161,13 +192,14 @@ export class BotImportController implements ReactiveController {
     if (!state) return undefined;
     return {
       ...state,
-      onMemory: (memory) => {
-        if (this.#export) this.#export = { ...this.#export, memory };
-        this.#host.requestUpdate();
+      onPick: (id, group) => {
+        if (this.#export && !this.#export.pending) this.#setExport({ picks: { ...this.#export.picks, [id]: group } });
       },
-      onExport: () => void this.#download(),
+      onReview: () => void this.#review(),
+      onDownload: () => void this.#download(),
       onClose: () => {
-        if (this.#export?.pending) return;
+        // A review may be cancelled; a download in flight finishes first.
+        if (this.#export?.pending && this.#export.review) return;
         this.#export = undefined;
         this.#host.requestUpdate();
       },

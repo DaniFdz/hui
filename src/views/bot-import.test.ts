@@ -36,3 +36,16 @@ test("the preview shows every imported text as plain text, says it is untrusted,
   assert.match(css, /\.bot-import__text \{[^}]*white-space: pre-wrap;[^}]*overflow-wrap: anywhere;/u, "long lines wrap instead of widening the dialog");
   assert.match(css, /@media \(max-width: 640px\) \{\n\s+\.bot-import-dialog \{ width: calc\(100vw - 24px\);/u, "a phone gets the whole width");
 });
+
+test("the export dialog shows the gateway's review and the files Download saves, and sends back only the picks", () => {
+  const source = read("./bot-import.ts");
+  const review = between(source, "function renderReview(", "export function renderBotExportDialog(");
+  assert.match(review, /const build = buildExport\(review, picks\);/u, "the files shown are the gateway's own build of the review and the picks");
+  assert.match(review, /section\("Files as they will be saved"/u);
+  assert.match(review, /textBlock\(change\.quote\)/u, "every passage as plain text");
+  const controller = read("../lib/bot-import-controller.ts");
+  assert.match(controller, /downloadBotExport\(state\.bot\.id, \{ review: state\.review\.id, picks: state\.picks \}/u, "Download sends the review's id and the picks, never text");
+  assert.match(controller, /stale: error instanceof BotExportError && error\.status === 409/u, "a refused download offers Review again");
+  assert.match(between(source, "export function renderBotExportDialog(", "\n}\n"), /props\.pending \? "Reviewing…" : "Review again"/u);
+});
+

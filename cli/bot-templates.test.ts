@@ -5,8 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
+import type { BotExportReview } from "../shared/bot-export.ts";
 import type { BotImportPreview } from "../shared/bot-templates.ts";
-import { exportCommand, formatImportPreview, importCommand, importSource } from "./bot-templates.ts";
+import { exportCommand, formatExportReview, formatImportPreview, importCommand, importSource } from "./bot-templates.ts";
 import type { BotIO } from "./bots.ts";
 import { parseCli } from "./main.ts";
 
@@ -25,10 +26,26 @@ function preview(extra: Partial<BotImportPreview> = {}): BotImportPreview {
     skills: [{ name: "weather-2", original: "weather", description: "Forecasts", content: "Use wttr.in." }],
     routines: [{ name: "Heartbeat", prompt: "Check the build.", schedule: { kind: "every", everyMs: 1_800_000 }, scheduleText: "whenever", guessed: true }],
     integrations: [{ name: "Web search", tool: { name: "browser", label: "Browser" } }, { name: "Gmail" }],
-    disabledTools: ["bash"], disabledSkills: [], dropped: ["AGENTS.md: OpenClaw's operating manual."], notes: ["Its routine starts disabled."],
+    disabledTools: ["bash"], disabledSkills: [], open: [], needs: [], triggers: [], dropped: ["AGENTS.md: OpenClaw's operating manual."], notes: ["Its routine starts disabled."],
     ...extra,
   };
 }
+
+/** A review as the gateway answers it: a removed and an asked passage, a need and what stays behind. */
+const REVIEW: BotExportReview = {
+  id: "r1", botId: "b1", name: "Nova", model: "hui-e2e/fixture",
+  parts: [
+    { id: "profile", label: "Profile", kind: "text", fields: [{ key: "name", text: "Nova" }], read: true },
+    { id: "SOUL.md", label: "SOUL.md", kind: "text", fields: [{ key: "text", text: "I watch acme/widgets with Pat Doe for {{user}}." }], read: true },
+  ],
+  cleanup: [{ part: "SOUL.md", field: "text", kind: "your name", sample: "Dani", count: 1 }],
+  changes: [
+    { id: "c1", part: "SOUL.md", quote: "Pat Doe", group: "remove", reason: "A teammate's name.", replacement: "a teammate", label: "a teammate's name", question: "" },
+    { id: "c2", part: "SOUL.md", quote: "acme/widgets", group: "ask", reason: "Their repository.", replacement: "", label: "the repositories to watch", question: "Which repositories should I watch?" },
+  ],
+  files: [], needs: [{ id: "n1", text: "The GitHub CLI signed in" }], leftOut: ["Its memory and its chat: an export never carries them."],
+  meta: { routines: [], triggers: [], disabledTools: [], disabledSkills: [], skills: [] },
+};
 
 function terminal(options: { stdin?: string; answers?: string[]; interactive?: boolean; cwd?: string } = {}) {
   let out = "";
@@ -122,22 +139,48 @@ test("a file with several agents needs --agent where nobody can be asked; a link
   await assert.rejects(importCommand(off.base, "-", { yes: true }, terminal({ stdin: "Be terse." }).io), (error: unknown) => error instanceof Error && error.message === BOTS_OFF_MESSAGE);
 });
 
-test("hui bot export saves the zip owner-only, never over a file without --yes; --memory asks for its memory", async (t) => {
+test("hui bot export prints the review and saves the template once confirmed, owner-only and never over a file without --yes", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-cli-export-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const zip = Buffer.from("PK\u0005\u0006" + "\0".repeat(18), "latin1");
-  const gateway = await fakeGateway(t, { "GET /__hui/bots/b1/export": () => ({ body: null, raw: zip, headers: { "content-disposition": "attachment; filename=\"nova.hui-bot.zip\"" } }) });
-  const saved = terminal({ cwd: dir });
-  assert.equal(await exportCommand(gateway.base, BOT, { memory: true }, saved.io), 0);
-  assert.equal(gateway.calls[0]!.path, "/__hui/bots/b1/export?memory=1");
+  const gateway = await fakeGateway(t, {
+    "POST /__hui/bots/b1/export/review": () => ({ body: REVIEW }),
+    "POST /__hui/bots/b1/export": () => ({ body: null, raw: zip, headers: { "content-disposition": "attachment; filename=\"nova.hui-bot.zip\"" } }),
+  });
+  await assert.rejects(exportCommand(gateway.base, BOT, {}, terminal({ cwd: dir }).io), /cannot ask here \(no terminal\): add --yes to save it as reviewed, or --review r1 --set <id>=<group>/u);
+  const declined = terminal({ cwd: dir, interactive: true, answers: ["n"] });
+  assert.equal(await exportCommand(gateway.base, BOT, {}, declined.io), 1);
+  assert.match(declined.out, /Nothing was saved\. Move a change with hui bot export nova --review r1 --set <id>=<group>\./u);
+  const saved = terminal({ cwd: dir, interactive: true, answers: ["y"] });
+  gateway.calls.length = 0;
+  assert.equal(await exportCommand(gateway.base, BOT, {}, saved.io), 0);
+  assert.deepEqual(gateway.calls.map((call) => [call.method, call.path, call.body]), [["POST", "/__hui/bots/b1/export/review", undefined], ["POST", "/__hui/bots/b1/export", { review: "r1", picks: {} }]]);
+  assert.match(saved.out, /^Review of @nova \(Nova\) as a template for someone else, read by hui-e2e\/fixture after HUI's cleanup\./u);
+  assert.match(saved.out, /\n  c1 remove  SOUL\.md: “Pat Doe”, becomes “a teammate”\. A teammate's name\.\n  c2 ask     SOUL\.md: “acme\/widgets”, becomes \[ask: the repositories to watch\]\. Their repository\.\n/u);
+  assert.match(saved.out, /Exported @nova as a template to .*nova\.hui-bot\.zip \(22 B\)\. Someone else imports it with hui bot import nova\.hui-bot\.zip\./u);
   const file = join(dir, "nova.hui-bot.zip");
   assert.deepEqual(await readFile(file), zip);
   assert.equal((await stat(file)).mode & 0o777, 0o600);
-  assert.match(saved.out, /^Exported @nova to .*nova\.hui-bot\.zip \(22 B\), with its memory\. Import it with hui bot import nova\.hui-bot\.zip\./u);
-  await assert.rejects(exportCommand(gateway.base, BOT, {}, terminal({ cwd: dir }).io), /exists: choose another --out, or add --yes to replace it/u);
-  assert.equal(await exportCommand(gateway.base, BOT, { yes: true, out: "copy.zip" }, terminal({ cwd: dir }).io), 0);
-  const gone = await fakeGateway(t, { "GET /__hui/bots/b1/export": () => ({ status: 409, body: { error: BOTS_OFF_MESSAGE } }) });
-  await assert.rejects(exportCommand(gone.base, BOT, {}, terminal({ cwd: dir }).io), (error: unknown) => error instanceof Error && error.message === BOTS_OFF_MESSAGE);
+  await assert.rejects(exportCommand(gateway.base, BOT, { review: "r1" }, terminal({ cwd: dir }).io), /exists: choose another --out, or add --yes to replace it/u);
+
+  gateway.calls.length = 0;
+  assert.equal(await exportCommand(gateway.base, BOT, { review: "r1", set: ["c1=keep", "n1=remove"], out: "picked.zip" }, terminal({ cwd: dir }).io), 0);
+  assert.deepEqual(gateway.calls.map((call) => [call.path, call.body]), [["/__hui/bots/b1/export", { review: "r1", picks: { c1: "keep", n1: "remove" } }]], "a printed review saves with other picks, without reviewing again");
+  const json = terminal({ cwd: dir });
+  assert.equal(await exportCommand(gateway.base, BOT, { json: true }, json.io), 0);
+  assert.deepEqual(JSON.parse(json.out), REVIEW, "--json without --yes prints the review and saves nothing");
+  await assert.rejects(exportCommand(gateway.base, BOT, { set: ["c1=keep"] }, terminal({ cwd: dir }).io), /--set needs --review <id>/u);
+  await assert.rejects(exportCommand(gateway.base, BOT, { review: "r1", set: ["c1=maybe"] }, terminal({ cwd: dir }).io), /--set takes <change>=<keep\|remove\|ask\|confirm>/u);
+  const gone = await fakeGateway(t, { "POST /__hui/bots/b1/export": () => ({ status: 409, body: { error: "Nova changed since its review: review it again before you download it." } }) });
+  await assert.rejects(exportCommand(gone.base, BOT, { review: "r1", yes: true }, terminal({ cwd: dir }).io), /changed since its review/u);
+});
+
+test("the review as text keeps what a pick moves", () => {
+  const text = formatExportReview(BOT, REVIEW, { c2: "confirm" });
+  assert.match(text, /c2 confirm SOUL\.md: “acme\/widgets”, the new owner confirms it\./u);
+  assert.match(text, /What it needs \(--set <id>=remove leaves one out\):\n  n1 keep    The GitHub CLI signed in/u);
+  assert.match(text, /Cleaned automatically, before any model read it:\n  SOUL\.md: your name \(Dani\)/u);
+  assert.match(text, /It saves as nova\.hui-bot\.zip: bot\.json, SOUL\.md\./u);
 });
 
 test("the CLI parses import and export with their own flags only", () => {
@@ -146,8 +189,9 @@ test("the CLI parses import and export with their own flags only", () => {
     return { command, values: { ...values }, operands };
   };
   assert.deepEqual(parsed(["bot", "import", "nova.zip", "--yes", "--worker", "devbox"]), { command: "bot import", values: { yes: true, worker: "devbox" }, operands: ["nova.zip"] });
-  assert.deepEqual(parsed(["bot", "export", "nova", "--out", "n.zip", "--memory"]), { command: "bot export", values: { out: "n.zip", memory: true }, operands: ["nova"] });
-  assert.throws(() => parseCli(["bot", "import", "a", "--memory"]), /--memory is not valid for bot import/u);
+  assert.deepEqual(parsed(["bot", "export", "nova", "--out", "n.zip", "--review", "r1", "--set", "c1=keep", "--set", "n1=remove"]), { command: "bot export", values: { out: "n.zip", review: "r1", set: ["c1=keep", "n1=remove"] }, operands: ["nova"] });
+  assert.throws(() => parseCli(["bot", "export", "nova", "--memory"]), /--memory is gone: hui bot export makes a template/u);
+  assert.throws(() => parseCli(["bot", "import", "a", "--review", "r1"]), /--review is not valid for bot import/u);
   assert.throws(() => parseCli(["bot", "export", "nova", "--agent", "x"]), /--agent is not valid for bot export/u);
   assert.throws(() => parseCli(["bot", "import"]), /bot import needs <source>/u);
 });

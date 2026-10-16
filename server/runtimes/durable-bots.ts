@@ -295,7 +295,7 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         const chat = options.chat(api.conversationId);
         if (!chat) throw new Error("Your chat isn't open in HUI, so who started this turn can't be told, and only the operator changes your soul. Try again in a later turn.");
         if (!operatorTurn(await botTurn(chat))) {
-          throw new Error("Only the operator changes your soul, and this turn was started by a routine, a trigger or another bot. Ask the operator instead.");
+          throw new Error("Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot or your import. Ask the operator instead.");
         }
         const souls = options.souls();
         if (!souls) throw new Error("This host cannot keep a SOUL.md yet.");
