@@ -3,12 +3,30 @@ import { readFileSync } from "node:fs";
 import { test } from "vitest";
 
 import {
+  CONTRAST_RULES,
   mapTheme,
   modeTokens,
   swatchesFor,
+  themeColor,
   THEME_COLOR_TOKENS,
   type ShadcnTheme,
+  type ThemeTokens,
 } from "./shadcn-theme.ts";
+import { contrastRatio, toOklch, worstContrast, type Rgb } from "./color-contrast.ts";
+
+/** Every rule a mode's tokens break, as "token on surfaces = ratio" lines. */
+function contrastFailures(tokens: ThemeTokens): string[] {
+  const failures: string[] = [];
+  for (const rule of CONTRAST_RULES) {
+    const color = themeColor(tokens[rule.token]);
+    const surfaces = rule.on.map((token) => themeColor(tokens[token]));
+    assert.ok(color, `${rule.token} is readable here: ${tokens[rule.token]}`);
+    assert.ok(surfaces.every(Boolean), `${rule.on.join(", ")} are readable here`);
+    const ratio = worstContrast(color, surfaces as Rgb[]);
+    if (ratio < rule.ratio) failures.push(`${rule.token} on ${rule.on.join("/")} = ${ratio.toFixed(2)} < ${rule.ratio}`);
+  }
+  return failures;
+}
 
 const OURS: ShadcnTheme = {
   name: "Example",
@@ -104,7 +122,8 @@ test("uses explicit shadcn component colors instead of collapsing everything int
         "card-foreground": "#dddddd",
         popover: "#333333",
         "popover-foreground": "#cccccc",
-        primary: "#4455aa",
+        // Readable on the background, so the contrast rules leave every explicit color in place.
+        primary: "#6677cc",
         "primary-foreground": "#ffffff",
         secondary: "#292929",
         "secondary-foreground": "#fafafa",
@@ -123,7 +142,7 @@ test("uses explicit shadcn component colors instead of collapsing everything int
   );
   assert.equal(tokens?.["--card"], "#222222");
   assert.equal(tokens?.["--popover"], "#333333");
-  assert.equal(tokens?.["--primary"], "#4455aa");
+  assert.equal(tokens?.["--primary"], "#6677cc");
   assert.equal(tokens?.["--secondary"], "#292929");
   assert.equal(tokens?.["--bg-muted"], "#252525");
   assert.equal(tokens?.["--accent"], "#aa77ee");
@@ -189,14 +208,14 @@ test("mode colors override shared registry colors while shared values remain usa
   const tokens = modeTokens(
     {
       cssVars: {
-        theme: { accent: "#8855cc", "accent-foreground": "#ffffff" },
+        theme: { accent: "#8855cc", "accent-foreground": "#111111" },
         dark: { background: "#101010", foreground: "#eeeeee", accent: "#aa77ee" },
       },
     },
     "dark",
   );
   assert.equal(tokens?.["--accent"], "#aa77ee");
-  assert.equal(tokens?.["--accent-foreground"], "#ffffff");
+  assert.equal(tokens?.["--accent-foreground"], "#111111");
 });
 
 test("pairs both modes into light-dark()", () => {
@@ -227,6 +246,83 @@ test("derives whatever a partial theme leaves out", () => {
   const tokens = modeTokens({ dark: { background: "#101010", foreground: "#eeeeee" } }, "dark");
   assert.equal(tokens?.["--card"], "color-mix(in srgb, #eeeeee 6%, #101010)");
   assert.equal(tokens?.["--ring"], "#eeeeee");
+});
+
+test("every bundled theme meets the contrast rules in each mode it carries", async () => {
+  const { readdirSync } = await import("node:fs");
+  const root = new URL("../../themes/", import.meta.url);
+  const files = readdirSync(root).filter((name) => name.endsWith(".json"));
+  assert.ok(files.length >= 6);
+  for (const file of files) {
+    const theme = JSON.parse(readFileSync(new URL(file, root), "utf8")) as ShadcnTheme;
+    for (const mode of ["light", "dark"] as const) {
+      const tokens = modeTokens(theme, mode);
+      if (tokens) assert.deepEqual(contrastFailures(tokens), [], `${file} ${mode}`);
+    }
+  }
+});
+
+test("bundled Catppuccin and Dracula keep their hues where their own colors fall short", () => {
+  const read = (name: string) => JSON.parse(readFileSync(new URL(`../../themes/${name}.json`, import.meta.url), "utf8")) as ShadcnTheme;
+  const catppuccin = read("catppuccin");
+  const dracula = read("dracula");
+  // Latte's sky accent (2.5:1 on its page) darkens; its mauve primary already reads and stays exactly as written.
+  const latte = modeTokens(catppuccin, "light")!;
+  const sky = themeColor((catppuccin.light as Record<string, string>)["accent"])!;
+  assert.ok(contrastRatio(sky, themeColor(latte["--bg"])!) < 3);
+  assert.ok(toOklch(themeColor(latte["--accent"])!).l < toOklch(sky).l);
+  assert.ok(Math.abs(toOklch(themeColor(latte["--accent"])!).h - toOklch(sky).h) < 6);
+  assert.equal(latte["--primary"], "oklch(0.5547 0.2503 297.0156)");
+  // Dracula's comment color is its muted text; it lightens to read on cards and menus.
+  const night = modeTokens(dracula, "dark")!;
+  const comment = themeColor((dracula.dark as Record<string, string>)["muted-foreground"])!;
+  assert.ok(toOklch(themeColor(night["--muted"])!).l > toOklch(comment).l);
+  assert.equal(night["--muted-foreground"], night["--muted"], "the shadcn alias follows the solved color");
+  assert.equal(night["--text"], (dracula.dark as Record<string, string>)["foreground"]);
+});
+
+test("an imported theme that fails is corrected per rule, with fills settled before the text on them", () => {
+  const tokens = modeTokens({
+    light: {
+      background: "#ffffff",
+      foreground: "#222222",
+      card: "#ffffff",
+      "muted-foreground": "#aaaaaa",
+      accent: "#f5b942",
+      "accent-foreground": "#ffffff",
+      ring: "#f5b942",
+      destructive: "#ff8080",
+    },
+  }, "light")!;
+  assert.deepEqual(contrastFailures(tokens), []);
+  assert.equal(tokens["--text"], "#222222", "a passing color is never rewritten");
+  assert.notEqual(tokens["--muted"], "#aaaaaa");
+  assert.equal(tokens["--accent-muted"], tokens["--accent"], "a derived role follows the solved accent");
+  assert.equal(tokens["--danger"], tokens["--destructive"]);
+  assert.ok(contrastRatio(themeColor(tokens["--accent-foreground"])!, themeColor(tokens["--accent"])!) >= 4.5);
+});
+
+test("a role the theme sets itself does not follow a solved color", () => {
+  const own = modeTokens({
+    dark: { background: "#101010", foreground: "#eeeeee", accent: "#3a1f8f", "accent-muted": "#5533aa" },
+  }, "dark")!;
+  assert.notEqual(own["--accent"], "#3a1f8f", "the dark violet accent lightens to read on #101010");
+  assert.equal(own["--accent-muted"], "#5533aa");
+});
+
+test("colors only the page can resolve are left as written", () => {
+  // A dark Lab color would fail on #101010, but only the browser converts Lab here, so it is not second-guessed.
+  const tokens = modeTokens({ dark: { background: "#101010", foreground: "#eeeeee", accent: "lab(20% 10 -40)" } }, "dark");
+  assert.equal(tokens?.["--accent"], "lab(20% 10 -40)");
+  assert.equal(themeColor("color-mix(in srgb, #eeeeee 60%, #101010)")?.r, Math.round(0xee * 0.6 + 0x10 * 0.4));
+  assert.equal(themeColor("color-mix(in srgb, var(--accent) 16%, transparent)"), undefined);
+});
+
+test("mapped themes expose each mode's own tokens", () => {
+  const mapped = mapTheme(OURS)!;
+  assert.equal(mapped.modes.light?.["--bg"], "#faf9f7");
+  assert.equal(mapped.modes.dark?.["--bg"], "#0e1015");
+  assert.deepEqual(Object.keys(mapTheme({ dark: OURS.dark })!.modes), ["dark"]);
 });
 
 test("a theme with no usable background or foreground is rejected", () => {

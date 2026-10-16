@@ -42,7 +42,15 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   last primary-navigation destination, not a header button.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, accent, interface-font and chat-prose-font preferences
-  persist in HUI settings. The two font selectors expose OpenClaw's ten choices
+  persist in HUI settings. A custom or imported theme's colors must read where
+  they meet: text, muted text, the accent and errors reach 4.5:1 on the page and
+  cards (and menus for text), focus rings and primary fills 3:1, and the text on
+  each fill 4.5:1. A color that falls short keeps its hue and moves only its
+  lightness, just far enough, never gaining chroma; one that passes is used as
+  written. A chosen accent is solved the same way against each mode's page and
+  card, so a bright amber darkens on a light theme and stays as chosen on a dark
+  one. The native Claw, Rose and Miami palettes are pinned to OpenClaw's
+  stylesheets and are not rewritten. The two font selectors expose OpenClaw's ten choices
   independently, while code retains its dedicated monospace stack. Choosing
   Miami does not replace a custom preference.
 - Gateway settings shows labeled green/red connection states and an amber
@@ -663,8 +671,10 @@ a width change reaches the shell, the reflowed line under the cursor (normally
 the prompt) is cleared, so the shell's redraw does not leave a broken copy.
 
 The terminal follows HUI's theme: background and text from the pane, the accent
-for the cursor and selection, and an ANSI palette readable on that background (a
-light palette on light themes). Changing the theme, mode or accent recolors open
+for the cursor and selection, and an ANSI palette solved for that background:
+the hues of Gespenst's default palette on dark themes and GitHub Light's on light
+ones, each color moved in lightness until it reaches 4.5:1 on the pane (3:1 for
+the dim neutral, while the neutral that matches the background stays as it is). Changing the theme, mode or accent recolors open
 terminals at once. Scrollback keeps 10,000 lines; a scrolled-back view keeps its
 place while output arrives and offers **Jump to bottom**, typing returns to the
 prompt, and a view at the bottom follows new output. OSC 8 hyperlinks and plain

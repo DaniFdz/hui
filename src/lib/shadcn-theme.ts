@@ -14,8 +14,13 @@
  * Nothing here touches the DOM — it is a pure transform so it can be tested
  * without a browser. Every value it emits is a bare color, because the pairing
  * step wraps them in `light-dark()`, which accepts nothing else.
+ *
+ * It also owns the contrast contract (`CONTRAST_RULES`): where a theme's colors
+ * meet, the foreground must stay readable. A theme color that falls short keeps
+ * its hue and moves only its lightness, through `color-contrast.ts`.
  */
 import type { ThemeVariant } from "./theme.ts";
+import { parseColor, mixRgb, readableOn, toHex, worstContrast, TEXT_CONTRAST, UI_CONTRAST, type Rgb } from "./color-contrast.ts";
 
 export type ThemeBlock = Record<string, string>;
 
@@ -97,6 +102,37 @@ export type MappedTheme = {
   tokens: ThemeTokens;
   /** Which modes the file actually carries. */
   variant: ThemeVariant;
+  /** Each mode's own tokens before pairing, for code that solves colors against that mode's surfaces. */
+  modes: { light?: ThemeTokens; dark?: ThemeTokens };
+};
+
+/**
+ * Every place a foreground meets a surface, and the WCAG 2 contrast it needs there: text levels for anything
+ * read as text (body, metadata, links in the accent, errors), the UI level for focus rings and filled actions
+ * against the page. Rules run in order, so a fill is settled before the text drawn on it.
+ */
+export const CONTRAST_RULES: readonly { token: ThemeColorToken; on: readonly ThemeColorToken[]; ratio: number }[] = [
+  { token: "--text", on: ["--bg", "--card", "--popover"], ratio: TEXT_CONTRAST },
+  { token: "--card-foreground", on: ["--card"], ratio: TEXT_CONTRAST },
+  { token: "--popover-foreground", on: ["--popover"], ratio: TEXT_CONTRAST },
+  { token: "--muted", on: ["--bg", "--card", "--popover"], ratio: TEXT_CONTRAST },
+  { token: "--accent", on: ["--bg", "--card"], ratio: TEXT_CONTRAST },
+  { token: "--destructive", on: ["--bg", "--card"], ratio: TEXT_CONTRAST },
+  { token: "--ring", on: ["--bg"], ratio: UI_CONTRAST },
+  { token: "--primary", on: ["--bg"], ratio: UI_CONTRAST },
+  { token: "--accent-foreground", on: ["--accent"], ratio: TEXT_CONTRAST },
+  { token: "--primary-foreground", on: ["--primary"], ratio: TEXT_CONTRAST },
+  { token: "--secondary-foreground", on: ["--secondary"], ratio: TEXT_CONTRAST },
+  { token: "--destructive-foreground", on: ["--destructive"], ratio: TEXT_CONTRAST },
+];
+
+/** Roles that default to a ruled token's value follow it when it moves, unless the theme set them itself. */
+const FOLLOWERS: Partial<Record<ThemeColorToken, readonly ThemeColorToken[]>> = {
+  "--text": ["--text-strong", "--chat-text"],
+  "--muted": ["--muted-foreground"],
+  "--accent": ["--accent-muted"],
+  "--primary": ["--accent-2"],
+  "--destructive": ["--danger"],
 };
 
 /**
@@ -149,8 +185,49 @@ function readBlock(theme: ShadcnTheme, mode: "light" | "dark"): ThemeBlock | und
   return { ...(asBlock(theme.cssVars?.theme) ?? {}), ...modeBlock };
 }
 
+const OWN_MIX = /^color-mix\(in srgb, (.+) (\d+(?:\.\d+)?)%, (.+)\)$/u;
+
+/**
+ * A theme token as sRGB when it is a concrete color or one of this module's own
+ * `mix()` derivations of concrete colors; undefined for anything only the page
+ * can resolve (`var()`, `light-dark()`, translucent mixes).
+ */
+export function themeColor(value: string | undefined): Rgb | undefined {
+  if (!value) return undefined;
+  const direct = parseColor(value);
+  if (direct) return direct;
+  const mixed = OWN_MIX.exec(value.trim());
+  if (!mixed) return undefined;
+  const top = parseColor(mixed[1]!);
+  const bottom = parseColor(mixed[3]!);
+  return top && bottom ? mixRgb(top, bottom, Number(mixed[2]) / 100) : undefined;
+}
+
+/**
+ * Applies `CONTRAST_RULES` to one mode's tokens. A rule whose colors cannot all
+ * be read here is skipped rather than guessed; one that already holds leaves the
+ * theme's value untouched.
+ */
+function withReadableContrast(tokens: ThemeTokens): ThemeTokens {
+  const result = { ...tokens };
+  for (const rule of CONTRAST_RULES) {
+    const color = themeColor(result[rule.token]);
+    const surfaces = rule.on.map((token) => themeColor(result[token]));
+    if (!color || !surfaces.every((surface): surface is Rgb => surface !== undefined)) continue;
+    if (worstContrast(color, surfaces) >= rule.ratio) continue;
+    const before = result[rule.token];
+    const after = toHex(readableOn(color, surfaces, rule.ratio));
+    result[rule.token] = after;
+    for (const follower of FOLLOWERS[rule.token] ?? []) {
+      if (result[follower] === before) result[follower] = after;
+    }
+  }
+  return result;
+}
+
 /** Resolves one mode's block into a full token set, or undefined if it carries
- * no usable background or foreground. */
+ * no usable background or foreground. Colors that fail `CONTRAST_RULES` come
+ * back moved just far enough to pass. */
 export function modeTokens(theme: ShadcnTheme, mode: "light" | "dark"): ThemeTokens | undefined {
   const block = readBlock(theme, mode);
   if (!block) {
@@ -182,7 +259,7 @@ export function modeTokens(theme: ShadcnTheme, mode: "light" | "dark"): ThemeTok
   const destructive = pick(block, "destructive") ?? (isLight ? "#b91c1c" : "#f87171");
   const destructiveForeground = pick(block, "destructive-foreground") ?? "#fafafa";
 
-  return {
+  return withReadableContrast({
     "--bg": bg,
     "--bg-accent": semantic(block, "bg-accent", "color-mix(in srgb, var(--bg) 88%, var(--card) 12%)"),
     "--bg-elevated": semantic(block, "bg-elevated", card),
@@ -232,7 +309,7 @@ export function modeTokens(theme: ShadcnTheme, mode: "light" | "dark"): ThemeTok
     "--danger-subtle": semantic(block, "danger-subtle", `color-mix(in srgb, var(--danger) ${isLight ? "8" : "12"}%, transparent)`),
     "--focus": semantic(block, "focus", `color-mix(in srgb, var(--ring) ${isLight ? "14" : "22"}%, transparent)`),
     "--grid-line": semantic(block, "grid-line", `color-mix(in srgb, var(--text) ${isLight ? "4" : "3"}%, transparent)`),
-  };
+  });
 }
 
 /**
@@ -248,17 +325,17 @@ export function mapTheme(theme: ShadcnTheme): MappedTheme | undefined {
     return undefined;
   }
   if (!light) {
-    return { tokens: dark as ThemeTokens, variant: "dark" };
+    return { tokens: dark as ThemeTokens, variant: "dark", modes: { dark } };
   }
   if (!dark) {
-    return { tokens: light, variant: "light" };
+    return { tokens: light, variant: "light", modes: { light } };
   }
 
   const paired = {} as ThemeTokens;
   for (const token of THEME_COLOR_TOKENS) {
     paired[token] = `light-dark(${light[token]}, ${dark[token]})`;
   }
-  return { tokens: paired, variant: "both" };
+  return { tokens: paired, variant: "both", modes: { light, dark } };
 }
 
 /**
