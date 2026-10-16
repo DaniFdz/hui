@@ -24,7 +24,7 @@ import { BotMemoryUnavailableError, type BotMemory } from "./bot-memory.ts";
 import type { BotOffer, BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
 import { BotConflictError, BotInputError, BotWorkerOfflineError, storedAccess } from "./bots.ts";
 import type { BotOwnSkill, BotSkillFiles } from "./bot-skills.ts";
-import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOT_SKILLS_FEATURE, BOTS_FEATURE } from "./worker/host-bots.ts";
+import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE } from "./worker/host-bots.ts";
 import { WorkerOfflineError, type WorkerService } from "./workers.ts";
 
 /** What these ports need of the worker service. */
@@ -146,6 +146,12 @@ function cleanupQueue(file: string, report: NonNullable<RemoteBotsOptions["repor
       return next;
     },
   };
+}
+
+/** The items of a list that are objects with these string fields, with only those fields. */
+function stringItems<K extends string>(value: unknown, keys: readonly K[]): Record<K, string>[] {
+  return (Array.isArray(value) ? value : []).filter((item): item is Record<K, string> => isRecord(item) && keys.every((key) => typeof item[key] === "string"))
+    .map((item) => Object.fromEntries(keys.map((key) => [key, item[key]])) as Record<K, string>);
 }
 
 /** A worker's bots' own skills (`bot-skills.ts`), in their homes there: what imports write and exports read. */
@@ -361,14 +367,21 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     skillPath: (id, path) => workers.skillPath(id, path),
 
     skills(id): BotSkillFiles {
+      // An older worker keeps SKILL.md only: an import lists the files it leaves out, and none are sent there.
+      const files = (workers.features(id) ?? []).includes(BOT_SKILL_FILES_FEATURE);
       return {
+        files,
         async write(botId, skills) {
-          await request(id, "bot.skills.write", { botId, skills }, { feature: BOT_SKILLS_FEATURE });
+          await request(id, "bot.skills.write", { botId, skills: files ? skills : skills.map(({ name, text }) => ({ name, text })) }, { feature: BOT_SKILLS_FEATURE });
         },
         async read(botId) {
           const reply = await request<{ skills?: unknown }>(id, "bot.skills.read", { botId }, { feature: BOT_SKILLS_FEATURE });
-          return (Array.isArray(reply.skills) ? reply.skills : []).filter((skill): skill is BotOwnSkill =>
-            isRecord(skill) && typeof skill["name"] === "string" && typeof skill["text"] === "string");
+          return (Array.isArray(reply.skills) ? reply.skills : []).filter((skill): skill is Record<string, unknown> =>
+            isRecord(skill) && typeof skill["name"] === "string" && typeof skill["text"] === "string").map((skill): BotOwnSkill => {
+            const own = stringItems(skill["files"], ["path", "text"]);
+            const skipped = stringItems(skill["skipped"], ["path", "reason"]);
+            return { name: skill["name"] as string, text: skill["text"] as string, ...(own.length ? { files: own } : {}), ...(skipped.length ? { skipped } : {}) };
+          });
         },
       };
     },

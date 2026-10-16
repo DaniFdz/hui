@@ -1086,6 +1086,39 @@ requests:
    `src/views/bots.test.ts` and an isolated gateway driven in a browser
    ([`e2e/bot-tagging.browser.md`](../e2e/bot-tagging.browser.md), screens in
    the pull request).
+16. **Bot exports as templates, reviewed for personal information** (implemented
+   2026-10-16; the owner's request, SPEC.md, "Bot exports are templates, reviewed
+   for personal information"): ⋯ → Export… cleans the bot (`bot-templates/cleanup.ts`),
+   has Settings' utility model sort what is left into removed, asked, confirmed
+   and kept as plain completions without tools (`bot-templates/review.ts`), keeps
+   the review per bot (`bot-export.ts`) and zips what the operator's picks make
+   of it (`buildExport`, shared with the dialog); version 2 of `bot.json` carries
+   open points, needs, triggers and the files beside each skill, never memory,
+   handle, paths or dates. Import fills `{{user}}`, closes SOUL.md with *Not agreed
+   yet*, makes triggers disabled, writes skill files (on a worker behind
+   `bot-skill-files`) and starts a first turn that is not the operator's
+   (`from: template`). Proof: `server/bot-templates/cleanup.test.ts`,
+   `server/bot-export.test.ts`, `server/bot-template-import.test.ts`,
+   `server/bot-templates/formats.test.ts`, `server/bot-skills.test.ts`,
+   `server/bot-template-routes.test.ts` (a real gateway with the fixture
+   provider as utility model: the review's requests carry no tools and none of
+   the owner's text, the zip none of it, a changed bot is 409, and the import
+   asks the new owner), `cli/bot-templates.test.ts`, `src/lib/bot-templates.test.ts`,
+   `src/views/bot-import.test.ts` and an isolated gateway driven in a browser
+   ([`e2e/bot-templates.browser.md`](../e2e/bot-templates.browser.md), screens in
+   the pull request).
+
+16. **Reply to the originating agent** (implemented and verified locally
+   2026-10-16; SPEC.md, "Bots can notify the agent that handed them work"):
+   `message_bot` accepts a reply-only `agent:<session id>` address attached by
+   the gateway to session handoffs. Received-message receipts authorize later
+   notifications without opening general cross-session sends. Bot policies,
+   budgets, attributed inputs and the hop bound remain in force through agent
+   replies. Proof: `server/bot-service.test.ts` (delivery, queues and denial
+   cases), `server/bot-workers.test.ts` (real Durable tools across the worker
+   connection in both directions), `server/runtimes/durable-bots.test.ts`, and
+   an isolated Browser-tool agent → bot → agent journey at desktop/mobile
+   ([`e2e/bot-agent-replies.browser.md`](../e2e/bot-agent-replies.browser.md)).
 
 ### HUI-19 — Agent widgets
 

@@ -1626,8 +1626,9 @@ name). Its result says how the bot now looks, and that a face waits behind an
 emoji until the emoji is cleared. It
 goes through HUI's agent-tool handler, as `message_bot` does, and is refused in a
 run that took a message from a routine, a trigger or another bot (one that
-starts with `[routine: `, `[trigger: ` or `[from @`), the one that started it or
-any since (below): only the operator names a bot or changes its look.
+starts with `[routine: `, `[trigger: ` or `[from @`), or an imported bot's first
+turn (below), the one that started it or any since: only the operator names a
+bot or changes its look.
 
 **Every input of the run.** A bot's gated tools (`set_profile`, `write_soul`
 and the `routines` tool's `add` and `update`) judge the run they are called in
@@ -1660,17 +1661,19 @@ first save (there was no SOUL.md), that this ends the first conversation, so the
 reply says the soul was saved, sums it up and says how to change it; after a
 later one, to say what changed. Its replay is safe (the same soul written again
 is the same file).
-Only the operator's turns and HUI's kickoff may write it, as with `set_profile`:
-SOUL.md steers every later turn, so text that a routine, a trigger (from outside
-HUI) or another bot brought in must never become it. The host that runs the
+Only the operator's turns and HUI's kickoff of a new bot may write it, as with
+`set_profile`: SOUL.md steers every later turn, so text that a routine, a trigger
+(from outside HUI) or another bot brought in must never become it, and neither may
+an imported bot's first turn, which its template's soul steers before the operator
+has said a word. The host that runs the
 conversation checks, where the tool runs (a worker's host for a bot there):
 `botTurnOrigin` of the message that started the run (`DurableSession.runInput`),
 of every input the run took since (`DurableSession.runOrigins`, above) and of
 the newest one the conversation took, read from its store (a follow-up joins a
 running turn, as a message to a busy bot on a worker does there). If any came
-from a routine, a trigger or another bot, it refuses:
+from a routine, a trigger, another bot, a session or an import, it refuses:
 "Only the operator changes your soul, and this turn was started by a routine, a
-trigger or another bot. Ask the operator instead." It refuses as well when no
+trigger, another bot, a session or your import. Ask the operator instead." It refuses as well when no
 live chat follows the conversation on that host, since nothing there can tell
 who started the turn.
 Refusals (empty, too long, not a bot's chat, a host without a resolver, a turn
@@ -1687,6 +1690,12 @@ HUI just created you. This note is from HUI, not the operator, who will read you
 Clients show a user message whose first line is exactly `[HUI bot created]`
 as a note (`<name> was created`), never as the operator's message; previews
 (`lastMessage`) skip it, and `hui bot chat` prints `· <name> was created`.
+An imported bot's first turn is a kickoff too (its opener, or a HUI template's open
+points: see [Importing and exporting bots](#importing-and-exporting-bots)), with
+`from: template` on the line after its name (`BOT_IMPORTED_KICKOFF_LINE`). That turn
+is not the operator's: `botTurnOrigin` reads it as `{ kind: "imported" }` (a worker's
+host sends it in `runOrigins`; an older one reads it as a kickoff), and every gated
+tool refuses in it.
 A run that fails shows in the chat like any run's error; a chat that cannot
 start is reported as the diagnostic `bot_kickoff_failed`.
 
@@ -1769,7 +1778,8 @@ Asked during the routine "Morning digest".
 ```
 
 with the options `Allow` and `Deny`. The last line appears when a routine
-(`[routine: …]`), another bot (`[from @…]`) or HUI's kickoff started the turn,
+(`[routine: …]`), another bot (`[from @…]`), HUI's kickoff or an import's first
+turn (*Asked in its first turn after it was imported, before you wrote.*) started the turn,
 read from the run's input as `set_profile` reads it (`botTurnOrigin` in
 `shared/bots.ts`). Such a turn may ask, but only the operator answers: session
 questions are answered only through `POST /__hui/sessions/:id/question` (and the
@@ -1870,7 +1880,8 @@ routines({
   any that joined it since, `runOrigins`: see **Every input of the run**), so a
   turn that took such a message is refused too, the first one naming the
   refusal; turns that only the operator, a routine or HUI's kickoff brought
-  input to may. `list` and `remove` work in any turn: they never make work.
+  input to may. An imported bot's first turn is refused too, until the operator
+  replies. `list` and `remove` work in any turn: they never make work.
 - **Limits.** Adding a routine, or resuming one, is refused while its chat has
   20 enabled routines (the operator's count too; the operator's own routes have
   no cap); `every` is at least a minute (cron fires at most once a minute
@@ -2100,8 +2111,10 @@ bots on or off offers every open session its tools again). Sessions still on
 PI's SDK worker have neither. The tool forwards to HUI's agent-tool handler as
 the calling chat's session, which decides: a non-archived bot's chat, or any
 session while bots are on (409 `BOTS_OFF_MESSAGE` otherwise). Targets resolve by
-handle (`@` optional, any case), then exact name in any case; an unknown or
-shared name, an archived target and the bot itself are refused, unknown and
+handle (`@` optional, any case), then exact name in any case. A bot may also
+reply to an `agent:<session id>` return address, subject to the receipt checks
+below. For bot targets, an unknown or shared name, an archived target and the
+bot itself are refused, unknown and
 shared names with the list of bots the caller may tag. A `nobody` bot is refused
 ("takes no tags"); a `mention` bot is refused unless the operator named
 `@handle` (`mentionsBot`: the handle whole, any case, not inside an address,
@@ -2113,15 +2126,20 @@ HUI writes itself (`[Subagent Task]`, `[Inter-session message …]` and a
 subagent's completion event) never count. A bot's subagents (sessions whose tree
 starts at a bot's chat) are refused: the bot tags, within its chain's hops. The message is delivered like an operator's message without a wait
 (prompt when idle, follow-up when busy), and the tool returns "Queued for
-@<handle>." once it is accepted: nothing comes back to the tagger, and the bot
-answers in its own chat. From a bot the delivered text is
-`[from @<sender>] <message>`, or `[from @<sender> · hop N+1] <message>` when the
-sender's current run started from `[from @x] …` (hop 1) or `[from @x · hop N] …`;
-beyond hop 3 the tool refuses. From a session it is
-`[from agent: <title>] <message>` (`agentTagPrefix`: the session's title on one
-line, at most 80 characters, without `[`, `]` or `·`); a session is never tagged,
-so its tag is always hop 1. For the bot it reaches, a session's tag is not the
-operator (`BotTurnOrigin` `{ kind: "agent", title }`): `write_soul`,
+@<handle>." once it is accepted. There is no automatic reply; the bot may
+explicitly send an update to the originating session's return address. From a
+bot the delivered text is `[from @<sender>] <message>`, or
+`[from @<sender> · hop N+1] <message>` when answering an attributed message.
+Beyond hop 3 the tool refuses. From a session it is
+`[from agent: <title> · reply-to agent:<session id>] <message>`
+(`agentTagPrefix`: the session's title on one line, at most 80 characters,
+without `[`, `]` or `·`); when the session is answering a bot message, the
+header also carries ` · hop N+1` before `]`. `hopOf` reads the hop from the
+message that started the caller's current run, from a bot or a session alike, so
+a session's tag from the turn a bot's reply started is the next hop; any later
+run (the operator's, a subagent's report, a routine, a trigger) starts at hop 1,
+with the hourly limit as the backstop. For the
+bot it reaches, a session's tag is not the operator (`BotTurnOrigin` `{ kind: "agent", title }`): `write_soul`,
 `set_profile` and the `routines` tool's add and update refuse in its turn, as for
 another bot's. The run's originating input is the session's recovery journal
 (`runPrompt`). Each bot, and each session tree (a session and its subagents),
@@ -2129,6 +2147,31 @@ may send 30 tags per hour (gateway memory, a backstop). Refusals are tool errors
 the model reads. A session on a remote worker keeps or lacks `hui-bot-tag` until
 its next start after bots are turned off or on; the gateway's refusal covers it
 meanwhile.
+
+#### Replying to a calling agent
+
+A bot uses `message_bot({ to: "agent:<session id>", message })` to notify the
+agent that handed it work, not an arbitrary session. The gateway requires a
+non-archived bot sender and an attribution header with that exact return
+address in the bot's current `runPrompt` or its own transcript's user messages.
+`agentReplyTo` reads only the first header, never forwarded body text or an
+assistant quotation. Receipts use the existing transcript, not a separate
+routing table, and remain usable in later watcher turns. Old handoffs without
+a return address confer no route. The address is generated by the gateway,
+not chosen by the handoff body; it identifies the exact originating session,
+even when two sessions share a title.
+
+The recipient must still exist as a non-bot, non-archived session; a finished
+subagent is refused too. An idle agent is prompted and a busy one gets a
+follow-up through the same delivery path as a bot. The delivered prefix is the
+sending bot's `[from @handle]`, with its chain hop when applicable, so it never
+becomes an operator instruction. The tool returns `Queued for agent:<id>.`
+and `{ to: "agent:<id>", status: "sent" | "queued" }` once accepted, not a
+promise the caller has handled it. Missing or unavailable recipients fail
+visibly and the bot reports the undelivered notification in its own chat.
+Bots-off checks, hourly budgets and the three-hop limit apply unchanged;
+`sessions_send` remains confined to its existing session tree. Bot-to-bot
+replies still use handles and existing tagging policies.
 
 #### Tagging in the composer
 
@@ -2272,18 +2315,22 @@ chats' session records exist (409, as for any session on it).
 
 ### Importing and exporting bots
 
-A bot can be made from another platform's template, and exported as a file HUI
-imports again (`server/bot-template-import.ts`; the importers are pure functions in
-`server/bot-templates/`, the shared types in `shared/bot-templates.ts`). The routes
-are under `/__hui/bots`, so they answer 409 while bots are off like every bot
-route; `import` is a reserved handle, so no bot's `/__hui/bots/:id` is ever one of
-them.
+A bot can be made from another platform's template, and exported as a template
+someone else imports, reviewed for personal information first (importing:
+`server/bot-template-import.ts`, with the importers as pure functions in
+`server/bot-templates/` and the shared types in `shared/bot-templates.ts`;
+exporting: `server/bot-export.ts`, its cleanup and reviewer in
+`server/bot-templates/cleanup.ts` and `review.ts`, and `bot.json`, the review and
+`buildExport` in `shared/bot-export.ts`). The routes are under `/__hui/bots`, so
+they answer 409 while bots are off like every bot route; `import` is a reserved
+handle, so no bot's `/__hui/bots/:id` is ever one of them.
 
 | Route | Success | Behavior |
 | --- | --- | --- |
-| `POST /__hui/bots/import/preview` | 200 `BotImportPreview` | `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `dropped` and `notes` (one line each). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created |
-| `POST /__hui/bots/import` | 201 `BotImportResult` | `{ template, worker? }`, at most 24 MB: the `template` a preview returned, checked again field by field (types, lengths, list sizes) and planned again exactly as the preview was. Creates the bot (`POST /__hui/bots`'s path: its home folder, SOUL.md, its conversation with memory, its chat), then writes its own skills, then creates its routines; a failure in either deletes the new bot again and answers the error. Then a HUI export's turned-off skills, and the opener's first turn: their failures leave the bot and come back in `warnings`. Answers `{ bot, skills, routines, opener, warnings }` |
-| `GET /__hui/bots/:id/export[?memory=1]` | 200 `application/zip` | The bot as `<handle>.hui-bot.zip` (`content-disposition: attachment`, `no-store`, `nosniff`): `bot.json` (`BotExportManifest`: `format: "hui-bot"`, `version: 1`, its name, handle, title, description, look, model, thinking, utility model and voice, its routines with their exact schedules and whether they were on, `disabledTools`, `disabledSkills` and the names of its own skills), `SOUL.md`, `skills/<name>/SKILL.md` for each of its own skills and, with `memory=1`, `memory.md` (its memory's current view). Archived bots too; a bot on an offline worker is 503 |
+| `POST /__hui/bots/import/preview` | 200 `BotImportPreview` | `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `open` (a HUI template's open points, as SOUL.md's *Not agreed yet* will list them), `needs` (what it needs to work, one line each), `triggers` (each `{ name, filter, prompt?, cooldownSeconds }`, created disabled), `dropped` and `notes` (one line each); a skill of a HUI template has its `files` (`{ path, text }`, in full). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created |
+| `POST /__hui/bots/import` | 201 `BotImportResult` | `{ template, worker? }`, at most 24 MB: the `template` a preview returned, checked again field by field (types, lengths, list sizes) and planned again exactly as the preview was. Creates the bot (`POST /__hui/bots`'s path: its home folder, SOUL.md, its conversation with memory, its chat), then writes its own skills (with their files), then creates its routines and then its triggers, all disabled; a failure in any of them deletes the new bot again (its triggers go with it) and answers the error. Then a HUI template's turned-off skills, and its first turn (its open points, or the opener): their failures leave the bot and come back in `warnings`. Answers `{ bot, skills, routines, opener, warnings }` (`opener`: a first turn started) |
+| `POST /__hui/bots/:id/export/review` | 200 `BotExportReview` | No body. Reads what of the bot would travel, cleans it and has Settings' utility model read it ([Exporting](#exporting-a-bot-as-a-template), below), then keeps the answer as the bot's latest review until the gateway restarts (a new review replaces it). Up to about six minutes. Archived bots too; a bot without SOUL.md (still in its first conversation) is 409, a bot on an offline worker 503 |
+| `POST /__hui/bots/:id/export` | 200 `application/zip` | `{ review, picks?, added? }`, at most 256 KB: the review's `id`; `added`, at most 50 passages the reviewer missed, `{ quote, group: remove \| ask \| confirm, becomes? }` (`becomes`: what a removed one becomes, or what the new owner gives for an asked one), each becoming change `a1`, `a2`… as `withAdditions` makes it (the passage must stand, four characters or more, in a text part of the review, spacing forgiven, in a part that takes its group, and not be a change already; `becomes` must hold nothing the cleanup would change; otherwise 400); and `picks`, a group for each change, script or need the operator moved (`{ "c1": "keep", "f1": "remove", "n1": "remove" }`; a change takes `keep`, `remove`, `ask` or `confirm` (one in the profile, set before the first chat, only `keep` or `remove`), a script `keep`, `remove` or `confirm`, a need `keep` or `remove`; an unknown id or group is 400). Answers `buildExport(review, picks)` as `<name>.hui-bot.zip` (`content-disposition: attachment`, `no-store`, `nosniff`): the files the dialog showed. 409 when the review is gone or replaced, or when anything the export holds changed since it (the review runs again). `GET` is 405 |
 
 `source` is one of `{ kind: "file", name, data }` (the file's bytes in base64, at
 most 8 MB decoded), `{ kind: "files", files: [{ path, data }] }` (a folder: at most
@@ -2303,7 +2350,7 @@ nothing is ever written from a source but the bot's own files below.
 | Letta agent file | JSON with `agents` (blocks and tools by id beside them), or one agent with `system` and `core_memory`/`llm_config` | The `persona` block (the soul), the system prompt under *Instructions* unless it is Letta's stock prompt, the `human` block and custom blocks (memories), tools (integrations; their code is never imported; Letta's memory and messaging tools are left out), `llm_config` (the model). The message history is skipped |
 | Character card | V2/V3 JSON (`spec`), V1 fields, or a PNG's `ccv3` (first) or `chara` text chunk | `system_prompt` (its `{{original}}` dropped), `description`, `personality` and `scenario` (the soul), `first_mes` (the opener), the character book's enabled entries (memories), `nickname` (title); `{{char}}` is the bot's name and `{{user}}` Settings' profile name (else "the operator", "you" in the opener). Example messages, alternate greetings, post-history instructions, creator notes and the image are left out |
 | CrewAI agents.yaml | a YAML mapping of agents with `role`, `goal` or `backstory` (each agent a candidate) | `role` (the title), `goal` and `backstory` (the soul), `llm` (the model), `tools` (integrations); CrewAI's `{placeholders}` are kept and noted |
-| HUI export | `bot.json` with `format: "hui-bot"` | Everything the export holds (above); its memory joins what it already knows |
+| HUI template | `bot.json` with `format: "hui-bot"` | Version 2 (below): its profile, SOUL.md, skills with their files, routines (a cron runs in this gateway's time zone), triggers, turned-off lists, open points and needs. Version 1 (an exact copy from before): the same without the last four, plus its handle and `memory.md`, which joins what it already knows |
 | Plain text | anything else | The text is the soul; a short first heading names the bot |
 
 What creating does with a template, the same plan for the preview and the create:
@@ -2323,10 +2370,15 @@ What creating does with a template, the same plan for the preview and the create
   real message of its chat, in its memory like every other; a message written into
   the chat by HUI would never reach OptChat's log. It costs one turn of its model.
 - **Skills** are written to the bot's home folder, `<bots dir>/<id>/skills/<name>/SKILL.md`
-  (front matter with `name` and `description`, then the instructions; a skill's
-  supporting files are not imported), on the machine its chat runs on (on a
-  worker, through its host's `bot.skills.*` requests; an older worker that lacks
-  them gets none, listed as left out).
+  (front matter with `name` and `description`, then the instructions), with a HUI
+  template's files beside it (other formats' supporting files are not imported;
+  never a second `SKILL.md` in another case, nor two paths that differ only by case),
+  each written atomically, owner-only (mode 0600: a script arrives without
+  permission to run), never through a link, on the machine its chat runs on (on
+  a worker, through its host's `bot.skills.*` requests, whose skills carry
+  `files` only when its `hello` lists `bot-skill-files`; an older worker gets
+  SKILL.md alone, its files listed as left out, and one without `bot-skills`
+  none).
   Only that bot's chat loads them: `DurableHost.skillDirsFor` adds its own folder
   to its directory's skills wherever skills are read (its prompt, `/skill:`,
   `load_skill`, its catalog, where they show as *Its own skills*). A name a skill
@@ -2349,6 +2401,22 @@ What creating does with a template, the same plan for the preview and the create
   and `subagents`, TodoWrite → `progress_card`) and turn the rest of the tools every
   chat has off; a HUI export turns its own list off. An import never turns on
   anything a new bot doesn't have.
+- **A HUI template's points.** `{{user}}` becomes Settings' profile name (*the
+  operator* without one) in its name, title, description, Markdown (SOUL.md, its
+  skills' Markdown and text files), routines' and triggers' prompts and open
+  points; never in a script or a trigger's filter. Its open points close SOUL.md
+  under `## Not agreed yet` (`notAgreedSection`): what to do once the operator has
+  answered, then one line per point, `- Ask (where): question` or `- Confirm
+  (where, only the operator can change it): question “excerpt”`. Their room comes
+  first: the persona is cut to fit SOUL.md's 20,000 characters, and the points take
+  at most half of it (any beyond are left out). Its first turn is a kickoff
+  (`botTemplateKickoffText`: the marker, the name, `from: template`) that asks the
+  bot to greet the operator and start on the points, without tools; like the
+  opener's, that turn is not the operator's. On a worker whose `hello` lacks
+  `bot-skill-files` (an older one, whose host would read that turn as the
+  operator's) no such turn runs: the bot goes through the points once the operator
+  writes. Its triggers are made disabled through
+  the triggers' route (`source: "listener"`), so each gets its URL from **New URL**.
 - **Model.** The template's model is kept only when this gateway resolves it:
   the exact `provider/id`, a bare id, or Claude Code's `sonnet`/`opus`/`haiku` (the
   newest such model); otherwise the bot starts on the gateway's default.
@@ -2356,6 +2424,120 @@ What creating does with a template, the same plan for the preview and the create
 Errors: 400 for a source or template HUI can't read (the message names what it
 reads), 502 when x.ai can't be reached or refuses the page (the message
 suggests pasting), and otherwise as the bot routes above.
+
+#### Exporting a bot as a template
+
+What an export reads is exactly what can travel: the bot's name, title,
+description and look; its model and utility model by bare id (`provider/` left
+out), thinking level and voice; SOUL.md; each of its own skills' folders (SKILL.md
+and the text files beside it, depth 4, at most 50 files, 256 KB each and 2 MB a
+skill; hidden files and folders, `node_modules`, `__pycache__`, logs, links and
+binaries stay behind, each listed with why, and so does a skill whose name, or a
+file whose path, holds a word of the operator's name or the machine's, which can't
+be rewritten: `personalIn`); its routines (a one-time `at` routine stays behind; a
+cron loses its time zone; their timeouts stay behind); its triggers (name, filter,
+prompt and cooldown; never the token, its hint or who made it); and the built-in
+tools and its own skills it turned off, by name (an extension's tools and its
+directory's skills stay behind, counted). Never its memory, chat, handle, home or
+working directory.
+
+**The cleanup** (`cleanText`) runs first, on every part: the operator's names
+(Settings' profile name, the account's full name, read from the directory service
+on macOS or the password entry on Linux, and a `first.last` user name when that full
+name bears it out, as `dani.fernandez` with *Daniel Fernandez*: `nameFromUsername`),
+each of two words or more whole, any case, and each word of three letters or more as
+written (one with a hyphen or an apostrophe too, a hyphenated one also by its parts),
+unless it is a common word such as Will or Mark or a generic one such as Ubuntu, become
+`{{user}}`, once for names side by side;
+home folder paths (this machine's, and any `/Users/<x>` or `/home/<x>`, where a
+path starts) become `~`; and e-mail addresses (not `git@`), trigger links (`/__hui/hooks/<token>`),
+`*.ts.net` names, IPv4 addresses other than loopback and `0.0.0.0`, Slack IDs (a
+letter, then a digit: `C0123ABCD`), private keys and text shaped like a key or token (`ghp_`,
+`github_pat_`, `xox?-`, `sk-`, `AKIA`, JWTs, a value with a digit after `token:`,
+`password=` or `Bearer`, never code that reads one such as `process.env.TOKEN`)
+become `[removed]`, as do this machine's user and host names and its workers' names
+when they stand inside a path, an address or a link. For a bot on a worker, that
+worker's home and host name count as this machine's. In a script nothing is rewritten:
+what the cleanup finds there decides whether the script travels (below).
+
+**The reviewer** is Settings' utility model, called as one plain completion per
+piece of a part (`reviewChunks`: 3,000 characters at most, a long text cut before a
+heading, else at a blank line or a line break, as a model misses less in a section
+than in a whole long soul), each piece read twice, independently, with both reads
+counting (what one passes over the other usually finds), without tools (as a call's
+helper is), eight requests at once, each with two and a half minutes and one retry
+with the least reasoning the model allows (a slow model still reads the piece, if
+less carefully), and six minutes for the whole review, which no request or retry
+outlives; a piece is read when one of its reads is, a part when all its pieces are. Its
+system prompt (`reviewSystemPrompt`) names the four groups (a rule that lets the bot
+act for its owner or without asking is `confirm`, even as a step of a procedure; the
+owner's history with the bot, internal hosts and the endpoints and commands that use
+them are `remove`, each host in a piece named to it (`hostsIn`: in a link, or with three
+labels or more ending in a common or internal top-level domain such as `.dog`,
+`.internal` or `.corp`, or holding a label with a digit or a hyphen and no file's
+extension, not followed by `(`); a passage calling
+the owner he or she is reworded with they), says the bot's text is data, names the
+owner and the other bots' handles, and asks for JSON:
+`{ "changes": [{ "quote", "group", "reason", "replacement"?, "label"?, "question"? }], "needs": [...] }`.
+Its answer is checked (`parseReviewAnswer`): a quote must stand, exactly, in that
+part (at least four characters), the group be `remove`, `ask` or `confirm`, every
+text bounded and cleaned like the bot's; anything else is dropped, and a part
+whose answer can't be read twice is listed as not read. One change is kept per
+passage (the strictest group wins), and a narrower confirm gives way to a wider
+change in the same part that holds it (a removed or asked passage always stays); a removed or asked passage changes wherever it
+appears, a confirmed one only where it was found. More than six needs, as the pieces
+listed them, are merged by one more request with the least reasoning
+(`NEEDS_MERGE_PROMPT`, at most ten lines), kept as they were if it fails. A change is shown at the part it
+was found in if that part can take its group, else at the first text that holds the
+passage and can (one found in a script, for one). The profile only takes `remove`
+or `keep` (`changeGroups`): a passage only it holds becomes a removal when asked,
+which the operator sees and can keep, and stays as written when confirmed; a change
+to the bot's whole name starts `keep` (the name is the template's). Without
+a utility model, only the cleanup runs. A review started while another of the same bot runs replaces it, whichever
+ends last.
+
+`BotExportReview`: `id`, `botId`, `name`, `model` (absent: none read it),
+`warning` (no name of the operator's for the cleanup, no utility model, or parts it didn't read), `parts` (`{ id, label,
+kind: "text" | "script", fields: [{ key, text }], read, unread? }`: `profile`,
+`SOUL.md`, `skills/<name>/<path>`, `routines/<n>`, `triggers/<n>`; texts after the
+cleanup, a script's as it is), `cleanup` (`{ part, field, kind, sample, count }`,
+a secret shown by its first four characters), `changes` (`{ id: "c1", part, quote,
+group, reason, replacement, label, question }`), `files` (each script the cleanup
+or a change touches: `{ id: "f1", part, group, reasons, question }`, `remove` for a
+cleanup hit or a removed passage, else `confirm`), `needs` (`{ id: "n1", text }`),
+`leftOut` (one line each) and `meta` (what travels unread: look, models, voice,
+schedules, filters, lists).
+
+**The zip** (`buildExport`, shared by the gateway and the dialog): the picked
+`remove` changes become their `replacement` and `ask` ones `[ask: <label>]`, in one
+pass over each text (quotes that overlap become one span, replaced whole; a passage
+taken out with nothing in its place leaves no gap: brackets or quotes it fills go
+with it when they stand alone (a call's, an index's or a link's stay), a whole
+sentence takes its full stop, a clause the space before it and an "and" or "or"
+joining it to the end of its sentence, and a list item left with its marker alone
+goes, line and all). What the reviewer (or the operator, adding) wrote travels only
+checked against the picks: a replacement or label that
+repeats a removed or asked passage gives way (to nothing, or *your own value*,
+numbered when there are several), and questions, excerpts (tidied, then shortened),
+where and needs get the picks' replacements (a passage taken out shows as
+`[removed]`), then `[removed]` for the passage in any other case or spacing. The
+build also says what each picked change comes to (`outcomes`), which the dialog
+shows. Each
+`ask` or `confirm` pick is an open point (`BotOpenPoint`: `{ kind, where, question,
+excerpt? (confirm), operator? (a trigger's) }`; moved out of the reviewer's group,
+it asks what fits the new one, never quoting an asked passage; passages asked as the
+same blank, by label in any case, are one point naming every place, a trigger's
+apart as only the operator changes it), and so is each
+script picked `confirm`. The profile, set before the first chat, never holds a mark: a passage asked elsewhere leaves it like a removed one, and a name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
+travels without `match`, with an open point for the operator. `bot.json` is
+`BotExportManifest`: `format: "hui-bot"`, `version: 2`, `bot` (name, title?,
+description?, avatar?, model?, thinking?, memoryModel?, memoryThinking?, voice?, tagging?),
+`routines` (`{ name, description?, prompt, schedule: { kind: "every", everyMs } |
+{ kind: "cron", expression } }`), `triggers`, `disabledTools`,
+`disabledSkills` (names), `skills` (names), `open` and `needs`; then `SOUL.md` and
+`skills/<name>/…`, scripts picked `remove` left out. No export date: every entry is
+dated 1980-01-01 (a local date would tell the time zone), and the file is named
+from the bot's final name (`botExportFileName`, `{{user}}` left out).
 
 ## Routes
 

@@ -221,6 +221,10 @@ export const BOT_SOUL_FILE = "SOUL.md";
  */
 export const BOT_KICKOFF_MARKER = "[HUI bot created]";
 
+/** The line after a kickoff's name that makes it an import's first turn: not the operator's, so its gated tools refuse
+ * (the template's soul and skills can't make the bot rewrite itself before the operator has said a word). */
+export const BOT_IMPORTED_KICKOFF_LINE = "from: template";
+
 /** The kickoff message: the marker, the bot's name, and what HUI asks of it. */
 export function botKickoffText(name: string): string {
   return [
@@ -372,10 +376,12 @@ export function isBotAccessQuestion(question: { method: string; title?: string; 
 
 /** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), a trigger
  * (`[trigger: name · …] …`), another bot (`[from @handle] …`), a session's agent (`[from agent: title] …`), HUI's
- * kickoff of a new bot, or else the operator. */
+ * kickoff of a new bot, an imported bot's first turn (a kickoff with `from: template`), or else the operator. */
 export type BotTurnOrigin =
-  | { kind: "operator" } | { kind: "kickoff" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string } | { kind: "bot"; handle: string }
-  | { kind: "agent"; title: string };
+  | { kind: "operator" } | { kind: "kickoff" } | { kind: "imported" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string }
+  | { kind: "bot"; handle: string } | { kind: "agent"; title: string };
+
+const AGENT_TAG = /^\[from agent: ([^\]\n]*?)(?: · reply-to (agent:[A-Za-z0-9_-]{1,94}))?(?: · hop [1-9]\d*)?\] /u;
 
 export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (!text) return { kind: "operator" };
@@ -384,15 +390,20 @@ export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (text.startsWith("[trigger: ")) return { kind: "trigger", name: /^\[trigger: ([^\]·\n]*?)(?: · |\])/u.exec(text)?.[1] ?? "" };
   const bot = /^\[from @([a-z0-9-]+)(?: · hop [1-9]\d*)?\] /u.exec(text);
   if (bot) return { kind: "bot", handle: bot[1]! };
-  const agent = /^\[from agent: ([^\]\n]*)\] /u.exec(text);
+  const agent = AGENT_TAG.exec(text);
   if (agent) return { kind: "agent", title: agent[1]! };
-  return botKickoffName(text) === undefined ? { kind: "operator" } : { kind: "kickoff" };
+  if (botKickoffName(text) === undefined) return { kind: "operator" };
+  return text.split("\n", 3).includes(BOT_IMPORTED_KICKOFF_LINE) ? { kind: "imported" } : { kind: "kickoff" };
 }
 
-/** How a session's tag starts in the bot's chat: its title on one line, at most 80 characters, without the brackets and
- * `·` the prefix's readers rely on. A session is never tagged itself, so its tags are always a chain's first hop. */
-export function agentTagPrefix(title: string): string {
-  return `[from agent: ${previewLine(title.replace(/[[\]·]/gu, " "), 80) || "Untitled session"}] `;
+/** The gateway's return address in an agent's attribution header; never one embedded in a forwarded message. */
+export function agentReplyTo(text: string | undefined): string | undefined {
+  return AGENT_TAG.exec(text ?? "")?.[2];
+}
+
+/** How a session's tag starts in the bot's chat: a sanitized title, its return address and the chain's current hop. */
+export function agentTagPrefix(title: string, sessionId: string, hop = 1): string {
+  return `[from agent: ${previewLine(title.replace(/[[\]·]/gu, " "), 80) || "Untitled session"} · reply-to agent:${sessionId}${hop === 1 ? "" : ` · hop ${hop}`}] `;
 }
 
 /**
@@ -415,7 +426,7 @@ export function parseRunOrigins(value: unknown): BotTurnOrigin[] | undefined {
   const origins: BotTurnOrigin[] = [];
   for (const item of value) {
     const { kind, name, handle, title } = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
-    if (kind === "operator" || kind === "kickoff") origins.push({ kind });
+    if (kind === "operator" || kind === "kickoff" || kind === "imported") origins.push({ kind });
     else if ((kind === "routine" || kind === "trigger") && typeof name === "string") origins.push({ kind, name });
     else if (kind === "bot" && typeof handle === "string") origins.push({ kind, handle });
     else if (kind === "agent" && typeof title === "string") origins.push({ kind, title });

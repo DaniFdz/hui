@@ -259,9 +259,9 @@ export function soulToolText(raw: string): string {
 export function huiBotsExtensions(options: BotsExtensionOptions): { section: Extension; tools: Extension; tag: Extension } {
   const messageBot: ToolRegistration = defineTool({
     name: MESSAGE_BOT_TOOL,
-    description: "Tag a bot of this HUI: send it a message, which arrives in its own chat marked as yours, and the bot answers there. Nothing comes back to you by itself.",
+    description: "Tag a bot of this HUI: send it a message, which arrives in its own chat marked as yours. Nothing comes back by itself; a bot may send a session updates later. A bot also uses it to send those updates, to the agent:<id> address a session's tag carried.",
     parameters: Type.Object({
-      to: Type.String({ minLength: 1, maxLength: 100, description: "The bot's handle (@handle) or its exact name." }),
+      to: Type.String({ minLength: 1, maxLength: 100, description: "The bot's handle (@handle) or exact name; a bot may also reply to an agent:<id> address from a received handoff." }),
       message: Type.String({ minLength: 1, maxLength: BOT_LIMITS.message }),
     }),
     // A delivered message cannot be taken back: an interrupted call is reported to the model, never sent twice.
@@ -298,7 +298,7 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
         const chat = options.chat(api.conversationId);
         if (!chat) throw new Error("Your chat isn't open in HUI, so who started this turn can't be told, and only the operator changes your soul. Try again in a later turn.");
         if (!operatorTurn(await botTurn(chat))) {
-          throw new Error("Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot or a session. Ask the operator instead.");
+          throw new Error("Only the operator changes your soul, and this turn was started by a routine, a trigger, another bot, a session or your import. Ask the operator instead.");
         }
         const souls = options.souls();
         if (!souls) throw new Error("This host cannot keep a SOUL.md yet.");

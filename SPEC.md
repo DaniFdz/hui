@@ -1763,10 +1763,12 @@ everything the Bots tab can, through the same routes.
   are on, every Durable conversation lists the bots it may tag in its system
   prompt, byte-stable while the roster is, and has a `message_bot` tool. A tag
   arrives in the bot's chat as `[from @handle] …` from a bot or
-  `[from agent: <title>] …` from a session, like a message (a prompt, or a
-  follow-up while it works), and the bot answers there: nothing comes back to
-  the tagger. Bots can tag back; sessions can't be tagged. The operator tags in
-  any composer: `@` suggests bots before files, and the message goes to the
+  `[from agent: <title> · reply-to agent:<id>] …` from a session, like a
+  message (a prompt, or a follow-up while it works). There is no automatic
+  reply, but a bot can send updates to that agent's return address through
+  the same tool. Only a bot that received the agent's handoff may use it;
+  unrelated sessions cannot be contacted. Bots can still tag each other. The
+  operator tags in any composer: `@` suggests bots before files, and the message goes to the
   chat's own agent or bot as typed, for which a tagged bot is an order to send
   it what the operator asks. Chains stop after three hops, a bot's subagents
   don't tag, and each bot, or session with its subagents, sends at most 30 tags
@@ -1875,12 +1877,154 @@ everything the Bots tab can, through the same routes.
   no audio, only the call's card in the chat.
 - **Import and export**: + → **Import bot…** makes a bot from another platform's
   template (Grok Bot, OpenClaw, Claude Code, Letta, character cards, CrewAI) or a
-  HUI export, after a preview of everything it would get; a bot's ⋯ →
-  **Export…** saves it as a zip that import reads back (decision below).
+  HUI template, after a preview of everything it would get; a bot's ⋯ →
+  **Export…** makes it a template someone else can import: an automatic cleanup
+  and Settings' utility model review it for personal information, the operator
+  checks every change, and **Download** saves the zip (decisions below).
 
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Bots can notify the agent that handed them work (2026-10-16)
+
+The owner wants a coding agent to hand a PR shepherd its PR and a compact
+record of the decisions already made. The shepherd fixes CI and conflicts,
+but sends human and code-reviewer comments back to that same agent for a
+decision. Bot-to-bot handoffs remain supported. This extends the one-way
+session tags below without opening general cross-session messaging.
+
+- A session's tag carries its gateway-generated `agent:<session id>` return
+  address in the attribution header. The title stays sanitized and bounded.
+- A bot replies with `message_bot({ to: "agent:<id>", message })`. HUI accepts
+  it only when the bot's own received-message history or current run input
+  contains a handoff with that address. Forwarded body text and assistant
+  quotes grant no route. Ordinary sessions cannot use return addresses.
+- A reply prompts an idle calling agent or queues behind a busy one, attributed
+  to the bot. It never counts as the operator. A missing or archived agent,
+  or a subagent that already finished, fails visibly rather than redirecting
+  the notification elsewhere.
+- Existing bot tagging policies, disabled-bots checks and hourly budgets stay
+  in force. The three-hop bound follows the turn a reply starts: a tag the
+  session sends from that turn is the next hop. A later turn (the operator's,
+  a subagent's report, a routine or a trigger) starts a new chain, with the
+  hourly budgets as the backstop.
+- Any turn of the bot may reply, a trigger's too: a reviewer's comment that
+  wakes the bot can reach the session that handed it the PR. The session reads
+  the reply as the bot's words, never as the operator's instructions.
+- Return addresses live in the existing transcript, so later watcher turns
+  can use them without a new routing store or a registry migration. Old tags
+  without an address remain readable; their replies stay in the bot's chat.
+
+The contract is [docs/api.md#tagging-bots](docs/api.md#tagging-bots).
+
+### Bot exports are templates, reviewed for personal information (2026-10-16)
+
+The owner wanted Export to make something another person can import: "I want a
+subagent to judge what should be removed, and what should be under the judge of
+the user importing the template. For example, if it contains the name of the
+user, it should always ask it anyways, if the template is for a pr autoapprover
+its okay to include the scripts etc, but maybe the rules of when and when not to
+approve should be disucussed with the user". Offered an exact backup beside a
+cleaned template, he chose only the template; Settings' utility model as the
+reviewer; the bot asking the new owner in its first chat; and triggers, the
+scripts beside a skill and a list of what the bot needs, all in the first
+version. This supersedes the export half of [Bots import other platforms'
+templates and export their
+own](#bots-import-other-platforms-templates-and-export-their-own-2026-10-07);
+its import half stands. The contract is
+[docs/api.md#importing-and-exporting-bots](docs/api.md#importing-and-exporting-bots).
+
+- **Every export is a template.** Nothing copies a bot exactly any more: what
+  leaves is cleaned and reviewed, and its memory never leaves (`?memory=1` and
+  `--memory` go). A bot still in its first conversation, without SOUL.md, can't
+  be exported yet. A version 1 export, memory included, still imports.
+- **Four groups.** Each passage is **kept** (it travels as it is: what the bot
+  does and how, its procedures and scripts), **removed** (it never leaves: facts
+  about the operator and the people around them, private links and
+  identifiers, secrets), **asked** (the answer is the operator's own: it becomes
+  an `[ask: …]` mark and the new owner gives theirs, as their name or the
+  repositories and channels to watch) or **confirmed** (it travels as a starting
+  point the bot agrees with the new owner before acting on it, as when to
+  approve a pull request and when never to). A removed or asked passage goes
+  wherever it appears in the bot; a kept or confirmed one only where it was
+  found.
+- **An automatic cleanup first.** Before a model reads anything, the operator's
+  names become `{{user}}` (the profile name, the account's full name, and a
+  `first.last` user name that full name bears out), and so does any word of them
+  of three letters or more as written, unless it is a common word (Will, Mark);
+  home folder paths become `~`; and e-mail addresses, the machine's user and
+  host names and worker names inside a path, address or link, `*.ts.net` names,
+  IP addresses other than loopback, Slack IDs and text shaped like a key or
+  token become `[removed]`. The cleanup is listed with the reviewer's changes but
+  can't be moved: the reviewer reads, and the export starts from, the cleaned
+  text. A replacement, question or need the reviewer writes is cleaned the same
+  way before it is shown.
+- **Then the utility model reviews it**, a part at a time (a long file in
+  chunks), as a plain model call with no tools. It quotes the exact passages it
+  would change, each with its group, its reason, a short replacement and, when
+  asked or confirmed, the question for the new owner, and lists what the bot
+  needs to work (a signed-in CLI, a listener for a trigger). HUI applies the
+  quotes itself, on the cleaned text, the longer one where two overlap among
+  the changes not kept, drops quotes it can't find or shorter than four
+  characters, and puts plain wording in place of a replacement or question that
+  repeats a removed or asked passage: the reviewer never rewrites the bot, and
+  text it reads can't make it do more. Without a utility model, or for a part where it fails, only the
+  cleanup runs, and the review says which parts the model didn't read.
+- **Scripts are kept whole or left out.** Markdown (SOUL.md, a skill's Markdown
+  and text files, prompts) changes in place; a script or other file beside a
+  skill is never rewritten, and the reviewer reads a cleaned copy of it. A
+  removed passage or a cleanup hit in it makes the file stay behind; an asked or
+  confirmed one keeps it as it is, as a confirmed file whose question asks the
+  new owner to change it. The operator can move either way. Dotfiles and
+  dot-folders, `node_modules`, caches, logs, links, binaries and oversized files
+  always stay behind, and scripts arrive without permission to run (the bot runs
+  them through `bash` or `python`).
+- **The operator decides what leaves.** ⋯ → Export… shows every change by group
+  with its reason and a group picker, what the bot needs (each line kept or
+  removed the same way), what stays behind and why, and every file as it will
+  be saved, following the picks. The gateway keeps each bot's latest review
+  until it restarts: **Download** sends only the picks, and when anything the
+  export holds changed since, or the review is gone or replaced, it is refused
+  and the review runs again. What was removed stays in the dialog, never in the
+  file. `hui bot export` prints the same review with its id and asks before
+  saving; `--review <id> --set <change>=<group>` saves that review with other
+  picks, and `--yes` saves without asking.
+- **What travels.** Name, title, description and look; model and utility model
+  by bare id, thinking level and voice; who may tag it; SOUL.md; each of its own skills'
+  folders, as above (one whose name, or a file whose path, gives the operator
+  away stays behind); routines, their times read in the importer's time zone (a
+  routine that runs once stays behind); triggers (name, filter, prompt and
+  cooldown, never their link; a filter value the cleanup or the reviewer
+  touches is left out and becomes an open point); the built-in tools and its
+  own skills it has turned off; the open points; and what it needs. Nothing
+  else: no handle (an import makes one from the name), no path, no export date,
+  a fixed date inside the zip, and a file name made from the bot's name.
+- **The new owner agrees it in the bot's first chat.** The import preview lists
+  the open points and what the bot needs, and shows every trigger and skill file
+  in full: imported text is untrusted, as all of it. `{{user}}` becomes the
+  importer's profile name ("the operator" without one) in its name, title and
+  description, its Markdown and its prompts. The open points go into SOUL.md
+  under *Not agreed yet*, each saying where it is and who settles it (a trigger
+  only the operator can, on its Routines page), with room kept for them before
+  the soul's 20,000 characters cut the persona.
+  The bot speaks first: a kickoff asks it to greet the operator and go through
+  them, a question or two at a time, then rewrite its soul without that section
+  (on an older worker it waits for the operator's first message instead).
+  An imported bot's first turn, this one or a template's first message, is not
+  the operator's: its gated tools refuse, as in a routine's turn, so it can't
+  rewrite its soul or profile before the operator has said a word. That only
+  holds the first turn back; the preview, which shows everything, is what
+  protects the new owner. Routines and triggers start disabled, as every
+  import's; a trigger gets its link from **New URL**.
+- **What the reviewer missed, the operator adds.** *Missed something?* takes a
+  passage copied from the text no change touches, with the same groups (what a
+  removed one becomes, what the new owner gives for an asked one); the gateway
+  checks it against the held review, as the dialog does, and refuses wording of
+  the operator's that the cleanup would change. `hui bot export --add` does the
+  same. The reviewer reads every part twice and both reads count.
+- **Not yet.** Editing a passage or undoing the cleanup in the review (the zip's
+  files stay plain text), and the files beside other platforms' skills.
 
 ### Agents and bots tag bots by @handle (2026-10-16)
 

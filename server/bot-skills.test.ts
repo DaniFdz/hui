@@ -43,3 +43,29 @@ test("names that aren't skill names, ids that aren't a bot's and links in the wa
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("the files beside a SKILL.md are written owner-only and read back as text; hidden files, caches, logs, links and binaries stay behind with the reason", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-bot-skills-"));
+  try {
+    const files = localBotSkills(dir);
+    await files.write(BOT, [{ name: "review", text: "R", files: [{ path: "scripts/approve.sh", text: "#!/bin/sh\necho ok\n" }, { path: "notes.md", text: "N" }] }]);
+    const script = join(dir, BOT, "skills", "review", "scripts", "approve.sh");
+    assert.equal(await readFile(script, "utf8"), "#!/bin/sh\necho ok\n");
+    assert.equal((await lstat(script)).mode & 0o777, 0o600, "a script arrives without permission to run");
+    const folder = join(dir, BOT, "skills", "review");
+    await writeFile(join(folder, ".env"), "TOKEN=x");
+    await mkdir(join(folder, "node_modules"));
+    await writeFile(join(folder, "run.log"), "log");
+    await writeFile(join(folder, "logo.png"), Buffer.from([0x89, 0x50, 0, 1]));
+    await symlink(join(folder, "notes.md"), join(folder, "linked.md"));
+    const [skill] = await files.read(BOT);
+    assert.deepEqual(skill!.files, [{ path: "notes.md", text: "N" }, { path: "scripts/approve.sh", text: "#!/bin/sh\necho ok\n" }]);
+    assert.deepEqual(skill!.skipped, [
+      { path: ".env", reason: "a hidden file or folder" }, { path: "linked.md", reason: "a link" }, { path: "logo.png", reason: "not text" },
+      { path: "node_modules", reason: "installed packages or a cache" }, { path: "run.log", reason: "a log" },
+    ]);
+    for (const path of ["../x", ".hidden/x", "SKILL.md", "/abs"]) await assert.rejects(files.write(BOT, [{ name: "review", text: "R", files: [{ path, text: "x" }] }]), /Not a file of a skill's folder/u, path);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
