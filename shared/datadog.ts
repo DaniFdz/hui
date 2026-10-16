@@ -71,8 +71,9 @@ export type DatadogConnection = {
 
 const SHARE_SEGMENT = /^[A-Za-z0-9_-]{1,64}$/u;
 const DASHBOARD_ID = /^[a-z0-9]{3}-[a-z0-9]{3}-[a-z0-9]{3}$/u;
-/** Longer ids lose precision once pup's JSON is parsed, so they could never match a widget. */
-const WIDGET_ID = /^\d{1,16}$/u;
+/** Digits only; `parseDatadogUrl` also drops ids past `Number.MAX_SAFE_INTEGER`, which lose precision once pup's JSON
+ * is parsed and so could never match a widget. */
+const WIDGET_ID = /^\d+$/u;
 const URL_IN_TEXT = /https:\/\/[a-z0-9.-]+\.(?:datadoghq\.com|datadoghq\.eu|datad0g\.com|ddog-gov\.com)\/[^\s<>"'`]+/giu;
 
 export function isDatadogHost(host: string): boolean {
@@ -112,7 +113,8 @@ export function parseDatadogUrl(raw: string): DatadogRef | undefined {
   }
   if (section === "dashboard" && DASHBOARD_ID.test(first)) {
     const widgetId = url.searchParams.get("tile_focus") ?? url.searchParams.get("fullscreen_widget") ?? "";
-    return { kind: "dashboard", url: raw, host, dashboardId: first, ...(WIDGET_ID.test(widgetId) ? { widgetId } : {}) };
+    const usable = WIDGET_ID.test(widgetId) && Number.isSafeInteger(Number(widgetId));
+    return { kind: "dashboard", url: raw, host, dashboardId: first, ...(usable ? { widgetId } : {}) };
   }
   return undefined;
 }

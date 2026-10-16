@@ -29,6 +29,8 @@ export class HuiDatadogEmbeds extends LitElement {
   #refs: DatadogRef[] = [];
   #results = new Map<string, DatadogPreviewResult>();
   #requested = "";
+  /** Each lookup's number: only the latest one may fill the cards, even when an older one answers last. */
+  #lookup = 0;
   #settle?: ReturnType<typeof setTimeout>;
   #signIn?: SignIn;
   readonly #reload = () => { this.#requested = ""; this.#unfurl(); };
@@ -67,10 +69,11 @@ export class HuiDatadogEmbeds extends LitElement {
     if (signature === this.#requested) return;
     this.#requested = signature;
     this.#refs = refs;
+    const lookup = ++this.#lookup;
     this.requestUpdate();
     if (!refs.length) return;
     void loadDatadogPreviews(refs).then((results) => {
-      if (this.#requested !== signature) return;
+      if (lookup !== this.#lookup) return;
       for (const result of results) this.#results.set(result.url, result);
       this.requestUpdate();
     });

@@ -38,7 +38,7 @@ const requireSession = () => {
   if (!current || current.status === "no token" || (current.status === "expired" && !current.has_refresh)) fail("authentication required: set DD_ACCESS_TOKEN for bearer auth, run 'pup auth login' for OAuth2, or set DD_API_KEY and DD_APP_KEY for API+APP key auth");
 };
 
-const leaked = ["DD_API_KEY", "DD_APP_KEY", "DD_ACCESS_TOKEN", "DD_ORG", "DD_OUTPUT", "PUP_OUTPUT", "PUP_FILTER"].filter((name) => process.env[name]);
+const leaked = ["DD_API_KEY", "DD_APP_KEY", "DD_ACCESS_TOKEN", "DD_ORG", "DD_OUTPUT", "PUP_OUTPUT", "PUP_FILTER", "PUP_AGENT_MODE"].filter((name) => process.env[name]);
 appendFileSync(file("calls"), `${JSON.stringify({ args, site: process.env.DD_SITE ?? null, leaked })}\n`);
 
 if (args[0] === "--version") {

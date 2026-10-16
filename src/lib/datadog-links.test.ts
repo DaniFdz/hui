@@ -14,8 +14,11 @@ test("parses share links and dashboard links, and nothing else", () => {
   assert.equal(parseDatadogUrl("https://dd.datad0g.com/dashboard/abc-123-xyz?fullscreen_widget=42")?.kind, "dashboard");
   assert.equal((parseDatadogUrl("https://dd.datad0g.com/dashboard/abc-123-xyz?fullscreen_widget=42") as { widgetId?: string }).widgetId, "42");
   assert.equal((parseDatadogUrl("https://us3.datadoghq.com/dashboard/abc-123-xyz") as { widgetId?: string }).widgetId, undefined);
-  // 17 digits would lose precision in pup's parsed JSON: such a link is a plain dashboard link.
-  assert.equal((parseDatadogUrl("https://app.datadoghq.com/dashboard/abc-123-xyz?tile_focus=12345678901234567") as { widgetId?: string }).widgetId, undefined);
+  // Ids past Number.MAX_SAFE_INTEGER lose precision in pup's parsed JSON: such a link is a plain dashboard link.
+  for (const id of ["9007199254740993", "12345678901234567"]) {
+    assert.equal((parseDatadogUrl(`https://app.datadoghq.com/dashboard/abc-123-xyz?tile_focus=${id}`) as { widgetId?: string }).widgetId, undefined, id);
+  }
+  assert.equal((parseDatadogUrl("https://app.datadoghq.com/dashboard/abc-123-xyz?tile_focus=9007199254740991") as { widgetId?: string }).widgetId, "9007199254740991");
   for (const raw of [
     "http://app.datadoghq.com/s/yB5yjZ/dgj-s33-htg", "https://app.datadoghq.com:8443/s/a/b", "https://u:p@app.datadoghq.com/s/a/b",
     "https://app.datadoghq.com/s/a", "https://app.datadoghq.com/s/a/b/c", "https://app.datadoghq.com/monitors/123",

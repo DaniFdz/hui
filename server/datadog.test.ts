@@ -29,7 +29,10 @@ async function fakePup(sessions: unknown[] = [], options: { loginTimeoutMs?: num
   await chmod(FIXTURE, 0o755);
   await writeFile(join(dir, "sessions.json"), JSON.stringify(sessions));
   // Identity the gateway may have inherited; pup must never see it.
-  const env = { ...process.env, HUI_FAKE_PUP_DIR: dir, DD_API_KEY: "key", DD_APP_KEY: "app", DD_ORG: "other", DD_SITE: "datadoghq.eu", PUP_FILTER: "length" };
+  const env = {
+    ...process.env, HUI_FAKE_PUP_DIR: dir, DD_API_KEY: "key", DD_APP_KEY: "app", DD_ACCESS_TOKEN: "token", DD_ORG: "other",
+    DD_SITE: "datadoghq.eu", DD_OUTPUT: "yaml", PUP_OUTPUT: "table", PUP_FILTER: "length", PUP_AGENT_MODE: "1",
+  };
   const changes = { count: 0 };
   const orgs = new DatadogOrgs({
     command: options.command ?? FIXTURE,
