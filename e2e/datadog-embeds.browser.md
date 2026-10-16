@@ -3,8 +3,9 @@
 Verified on 2026-10-16 with HUI's Browser tool against the real HUI gateway from
 `node e2e/visual-verification.mjs launch` (isolated HUI and PI state, fixture model).
 Two runs: one through the operator's real `pup` 1.6.4 and the public Datadog share
-page, one through the fake pup (`--datadog-fixture`, `e2e/pup-cli-fixture.mjs`).
-No operator HUI state was read or changed; the real run read Datadog only.
+page, one through the fake pup (`--datadog-fixture`, `e2e/pup-cli-fixture.mjs`). The
+real run was repeated on commit `9aabf54` with a clean tree (doctor passed before
+cleanup). No operator HUI state was read or changed; the real run read Datadog only.
 
 ## Reproduce
 
@@ -22,7 +23,8 @@ No operator HUI state was read or changed; the real run read Datadog only.
    Start a session whose message links `…/dashboard/stl-123-xyz/legacy?tile_focus=7`
    and `…/dashboard/abc-123-xyz/checkout?tile_focus=42&tpl_var_env[0]=staging`,
    press the card's **Sign in to e2e-stale** and approve again.
-3. Check 1440×900, then 390×844.
+3. Check 1440×900, then 390×844. Then turn off Settings → Appearance → Chat →
+   *Datadog link previews* and reopen the session.
 
 ## Observed
 
@@ -55,7 +57,9 @@ No operator HUI state was read or changed; the real run read Datadog only.
 - The fake's call log: lookups ran `dashboards get <id> -o json --no-agent
   --read-only --org=<name>` with `DD_SITE=datadoghq.com` and without the
   `DD_API_KEY` the gateway had, trying `e2e-prod`, `e2e-staging`, then `e2e-stale`.
-- At 390×844 the cards and graphs fit the user bubble with no horizontal overflow.
+- At 390×844 the cards and graphs fit the user bubble with no horizontal scroll.
+- Turning *Datadog link previews* off saved `chat.datadogEmbeds: false`; reopening
+  the session showed both messages with no Datadog cards.
 - Console: no errors from these views (Lit dev-mode warnings only).
 
 ## Proof gap
