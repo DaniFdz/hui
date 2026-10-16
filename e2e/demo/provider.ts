@@ -4,7 +4,8 @@
  * provider that plays a fixed script for each demo prompt, streaming text at a
  * readable pace. Like e2e/pi-provider-fixture.mjs it replaces only the model:
  * PI runs every tool call for real. Started by
- * `visual-verification.mjs launch --demo`.
+ * `visual-verification.mjs launch --demo`. It also serves the demo's pages, and
+ * the Datadog graph the recorder draws before a clip (the fake pup's snapshot).
  */
 import { appendFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -20,6 +21,13 @@ type Turn = { wait?: number; think?: string; say?: string | ((results: string[])
 type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
 
 const page = (path: string) => `http://127.0.0.1:${port}${path}`;
+/** The Datadog widget graph the recorder uploads (PUT /demo/datadog-graph.png) and HUI fetches as its snapshot. */
+let datadogGraph: Buffer | undefined;
+/** A link to Acme's signup widget over the past hour, the range its graph is drawn for. */
+function signupWidget(): string {
+  const to = Date.now();
+  return `https://app.datadoghq.com/dashboard/sgn-fnl-acm/signup-funnel?from_ts=${to - 60 * 60_000}&to_ts=${to}&live=true&tile_focus=1001`;
+}
 /** The shared terminal a terminal tool result names, latest first; none fails the turn. */
 function terminalId(results: string[]): string {
   for (const result of results) {
@@ -130,7 +138,7 @@ const scripts: Script[] = [
       { wait: 1_000, calls: (results) => [{ name: "browser", input: { action: "act", kind: "click", ref: ref(results, /button "Create account" \[ref=(e\d+)\]/u) } }] },
       { wait: 900, calls: [{ name: "browser", input: { action: "text", selector: "#result" } }] },
       { say: (results) => results[0]?.includes("Welcome aboard! We sent a link to dana@acme.dev")
-        ? "Signup works on staging: the form accepted **dana@acme.dev** and showed *Welcome aboard! We sent a link to dana@acme.dev.* That's the fix for the report in #support, which shipped here:\n\nhttps://github.com/acme/storefront/pull/482\n\nhttps://acme.slack.com/archives/C05SIGNUP/p1760351234567890"
+        ? `Signup works on staging: the form accepted **dana@acme.dev** and showed *Welcome aboard! We sent a link to dana@acme.dev.* That's the fix for the report in #support, which shipped here:\n\nhttps://github.com/acme/storefront/pull/482\n\nhttps://acme.slack.com/archives/C05SIGNUP/p1760351234567890\n\nTrial signups are back to normal since the deploy: [signup funnel](${signupWidget()}).`
         : `Signup is broken on staging; the page said: ${results[0] ?? "nothing"}` },
     ],
   },
@@ -282,6 +290,17 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
   if (request.method === "GET" && url.pathname === "/demo/signup") {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     return response.end(SIGNUP_PAGE);
+  }
+  if (url.pathname === "/demo/datadog-graph.png" && request.method === "PUT") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(chunk as Buffer);
+    datadogGraph = Buffer.concat(chunks);
+    response.writeHead(204);
+    return response.end();
+  }
+  if (url.pathname === "/demo/datadog-graph.png" && request.method === "GET" && datadogGraph) {
+    response.writeHead(200, { "content-type": "image/png" });
+    return response.end(datadogGraph);
   }
   if (request.method !== "POST" || url.pathname !== "/v1/messages") {
     response.writeHead(404);

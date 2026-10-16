@@ -52,10 +52,13 @@ License), and keep it out of Git.
 ## How it works
 
 - Each clip launches a fresh `e2e/visual-verification.mjs launch --demo`: real
-  HUI, Pi Durable and tools, isolated state, the fake GitHub CLI, and a scripted
-  model (`provider.ts`) instead of a real one. `seed.ts` creates the demo world:
-  small Git repositories under `/tmp/acme-*`, sessions across Kanban stages,
-  backlog tasks and GitHub pull requests.
+  HUI, Pi Durable and tools, isolated state, the fake GitHub and Datadog CLIs, and
+  a scripted model (`provider.ts`) instead of a real one. `seed.ts` creates the
+  demo world: small Git repositories under `/tmp/acme-*`, sessions across Kanban
+  stages, backlog tasks, GitHub pull requests and Acme's Datadog org.
+- The Rich chat clip's Datadog card needs a graph: before recording, its scene
+  draws one on the stage (Chrome renders the SVG) and uploads it to the scripted
+  model's server, which serves it as the fake pup's snapshot.
 - Headless Chrome opens `stage.html` (served by the verification server at
   `/__demo/stage`, so HUI's widgets accept their ancestors) with HUI in an
   iframe, and `record.ts` drives it with real mouse and keyboard input through

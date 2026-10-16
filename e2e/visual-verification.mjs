@@ -347,22 +347,28 @@ export async function launch(expectedBranch) {
       }));
       Object.assign(serverEnv, { HUI_GITHUB_CLI: join(repo, "e2e", "github-cli-fixture.mjs"), HUI_FAKE_GH_DIR: gh });
     }
-    if (process.argv.includes("--datadog-fixture")) {
-      // Fake pup (e2e/pup-cli-fixture.mjs): `e2e-prod` is signed in, `e2e-stale` needs a sign-in; each has one
-      // dashboard. Snapshots answer 403 (no image). Share links still read the real public Datadog page.
+    if (process.argv.includes("--datadog-fixture") || demo) {
+      // Fake pup (e2e/pup-cli-fixture.mjs). E2E: `e2e-prod` is signed in, `e2e-stale` needs a sign-in, one dashboard
+      // each, snapshots answer 403 (no image). The demo: Acme's org and its signup dashboard, whose graph the
+      // recorder draws and the demo provider serves (HUI_DATADOG_TEST_ORIGIN admits it). Share links still read the
+      // real public Datadog page.
       const pup = join(dir, "pup");
       await mkdir(pup, { recursive: true });
-      await writeFile(join(pup, "sessions.json"), JSON.stringify([
-        { org: "e2e-prod", site: "datadoghq.com", status: "valid", has_refresh: true },
-        { org: "e2e-stale", site: "datadoghq.com", status: "expired", has_refresh: false },
-      ]));
-      await writeFile(join(pup, "dashboards.json"), JSON.stringify({ "e2e-prod": { "abc-123-xyz": {
+      const session = (org, status = "valid", hasRefresh = true) => ({ org, site: "datadoghq.com", status, has_refresh: hasRefresh });
+      await writeFile(join(pup, "sessions.json"), JSON.stringify(demo ? [session("acme")] : [session("e2e-prod"), session("e2e-stale", "expired", false)]));
+      await writeFile(join(pup, "dashboards.json"), JSON.stringify(demo ? { acme: { "sgn-fnl-acm": {
+        title: "Signup funnel", widgets: [{ id: 1001, definition: { type: "timeseries", title: "Trial signups per minute" } }],
+      } } } : { "e2e-prod": { "abc-123-xyz": {
         title: "Checkout service", description: "Latency and errors of the checkout service.", template_variables: [{ name: "env", prefix: "env", defaults: ["prod"] }],
         widgets: [{ id: 42, definition: { type: "timeseries", title: "p99 latency in $env", requests: [{ queries: [{ data_source: "metrics", name: "a", query: "p99:checkout.latency{$env}" }], formulas: [{ formula: "a" }] }] } }],
       } }, "e2e-stale": { "stl-123-xyz": {
         title: "Legacy checkout", description: "Before the migration.", template_variables: [],
         widgets: [{ id: 7, definition: { type: "timeseries", title: "Legacy error rate", requests: [{ q: "sum:legacy.errors{*}" }] } }],
       } } }));
+      if (demo) {
+        await writeFile(join(pup, "snapshot.json"), JSON.stringify({ snapshot_url: `${receipt.providerUrl}/demo/datadog-graph.png` }));
+        serverEnv.HUI_DATADOG_TEST_ORIGIN = receipt.providerUrl;
+      }
       Object.assign(serverEnv, { HUI_PUP_CLI: join(repo, "e2e", "pup-cli-fixture.mjs"), HUI_FAKE_PUP_DIR: pup });
     }
     if (demo) {

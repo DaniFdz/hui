@@ -156,6 +156,12 @@ test("never follows a share page outside Datadog or trusts what is not an image"
   assert.equal((await new DatadogPreviews(orgs, { fetch: redirect.fetch }).lookup(SHARE)).error, "unavailable");
   assert.deepEqual(redirect.seen, [SHARE]);
 
+  // A local fixture origin is fetched only when it is the configured test origin.
+  const local = "http://127.0.0.1:9/demo/graph.png";
+  const fixture = fakeFetch({ [SHARE]: page(local), [local]: new Response(PNG, { status: 200 }) });
+  assert.equal((await new DatadogPreviews(orgs, { fetch: fixture.fetch }).lookup(SHARE)).preview?.image, undefined);
+  assert.equal((await new DatadogPreviews(orgs, { fetch: fixture.fetch, testOrigin: "http://127.0.0.1:9" }).lookup(SHARE)).preview?.image, PNG_DATA);
+
   const loop = fakeFetch({ [SHARE]: new Response(null, { status: 302, headers: { location: SHARE } }) });
   assert.equal((await new DatadogPreviews(orgs, { fetch: loop.fetch }).lookup(SHARE)).error, "unavailable");
   assert.equal(loop.seen.length, 3);

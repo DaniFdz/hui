@@ -1,6 +1,7 @@
 /**
  * The demo world: an isolated HUI with a few small Git repositories, sessions
- * of an imaginary team across Kanban stages, local backlog tasks and settings.
+ * of an imaginary team across Kanban stages, local backlog tasks, settings and
+ * its Datadog org.
  * Run by `visual-verification.mjs launch --demo` before the gateway starts,
  * with XDG_CONFIG_HOME, PI_CODING_AGENT_DIR, HUI_E2E_WORKSPACE and HUI_FAKE_GH_DIR.
  */
@@ -98,6 +99,8 @@ await writeFile(join(CONFIG_DIR, "backlog.json"), JSON.stringify({ version: 1, j
 await writeFile(join(CONFIG_DIR, "settings.json"), JSON.stringify({
   profileName: "Dana", models: { primary: "hui-e2e/fixture", fallback: "", utility: "hui-e2e/fixture" }, labs: { bots: true },
 }));
+// Acme's Datadog org, read through the fake pup the launcher sets up, for the Datadog card in the chat.
+await writeFile(join(CONFIG_DIR, "datadog.json"), JSON.stringify({ version: 1, orgs: [{ name: "acme", site: "app.datadoghq.com" }] }));
 // Pull requests the fake GitHub CLI describes, for link cards in the chat.
 const pull = (number: number, title: string, body: string, patch: Record<string, unknown> = {}) => ({
   number, title, body, state: "open", draft: false, merged: false, user: { login: "dana" }, additions: 86, deletions: 12, changed_files: 4, comments: 3, review_comments: 2, ...patch,

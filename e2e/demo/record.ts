@@ -332,6 +332,7 @@ async function launchHui() {
   }).catch(async (error) => { await stop(); throw error; });
   return {
     url: receipt["url"]!,
+    providerUrl: receipt["providerUrl"]!,
     stop: async () => {
       await stop();
       if (keep) return;
@@ -420,7 +421,7 @@ async function record(scene: Scene, chapter: number, out: string, voice?: Map<st
       if (!response.ok) throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`);
       return response.json() as Promise<Record<string, any>>;
     };
-    const context = { director, api };
+    const context = { director, api, providerUrl: hui.providerUrl };
     const [width, height] = phone ? [390, 844] : scene.viewport ?? [1440, 810];
     // View preferences, such as the board's grouping, go into the localStorage HUI reads when it loads: the stage shares its origin.
     await director.stage(`Object.entries(${JSON.stringify(scene.storage ?? {})}).forEach(([key, value]) => localStorage.setItem(key, value))`);

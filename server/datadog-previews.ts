@@ -6,7 +6,8 @@
  * a widget link then asks Datadog for a graph snapshot of that widget with the link's time range and template
  * variables, and waits for the image. Images reach the browser as data URLs; snapshot URLs and pup output never
  * do. Results are cached in gateway memory with result-dependent lifetimes; concurrent requests for one link share
- * a lookup, and a lookup never rejects.
+ * a lookup, and a lookup never rejects. `HUI_DATADOG_TEST_ORIGIN` admits one exact extra origin, so E2E and the demo
+ * videos can serve pages and graphs from a local fixture (as `HUI_JIRA_TEST_ORIGIN` does for Jira).
  */
 import {
   DATADOG_APP_HOSTS,
@@ -44,6 +45,8 @@ export type DatadogPreviewOptions = {
   sleep?: (ms: number) => Promise<void>;
   /** A whole lookup's budget; the browser waits 40 s for the batch. */
   deadlineMs?: number;
+  /** One exact origin fetched besides Datadog's HTTPS hosts, for local fixtures. */
+  testOrigin?: string;
 };
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -187,6 +190,7 @@ export class DatadogPreviews {
   readonly #now: () => number;
   readonly #sleep: (ms: number) => Promise<void>;
   readonly #deadlineMs: number;
+  readonly #testOrigin: string | undefined;
   readonly #cache = new Map<string, CacheEntry>();
   readonly #waiting: (() => void)[] = [];
   #running = 0;
@@ -197,6 +201,8 @@ export class DatadogPreviews {
     this.#now = options.now ?? Date.now;
     this.#sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.#deadlineMs = options.deadlineMs ?? 25_000;
+    const testOrigin = options.testOrigin ?? process.env["HUI_DATADOG_TEST_ORIGIN"];
+    this.#testOrigin = testOrigin ? new URL(testOrigin).origin : undefined;
   }
 
   /** Preview for a Datadog link. Never rejects; a link HUI does not preview is `not_found`. */
@@ -358,7 +364,8 @@ export class DatadogPreviews {
     let target = raw;
     for (let hop = 0; hop <= 2; hop += 1) {
       const url = new URL(target);
-      if (url.protocol !== "https:" || url.username || url.password || url.port || !allowed(url.hostname.toLowerCase())) {
+      const fixture = url.origin === this.#testOrigin;
+      if (!fixture && (url.protocol !== "https:" || url.username || url.password || url.port || !allowed(url.hostname.toLowerCase()))) {
         throw new Error("Datadog link points outside Datadog.");
       }
       const response = await this.#fetch(url.href, { redirect: "manual", signal: AbortSignal.timeout(10_000) });

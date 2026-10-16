@@ -4518,7 +4518,9 @@ site) and the Datadog host its links use. HUI keeps the list in
 0600, atomic rename) and owns no Datadog credential: pup keeps its tokens. A file
 HUI cannot read, or with another `version`, fails these routes with 500 (previews
 then find no org) and is never overwritten. `HUI_PUP_CLI` overrides the
-executable for E2E.
+executable for E2E, and `HUI_DATADOG_TEST_ORIGIN` admits one exact extra origin
+for share pages and images (as `HUI_JIRA_TEST_ORIGIN` does for Jira), so the demo
+videos can serve their graph locally.
 
 ```ts
 type DatadogConnection = {
