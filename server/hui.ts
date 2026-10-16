@@ -19,7 +19,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
+import { homedir, hostname, userInfo } from "node:os";
 import { basename, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +33,8 @@ import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type B
 import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
 import { isHookPath } from "./bot-triggers-listener.ts";
+import { BotExportService } from "./bot-export.ts";
+import { nameFromUsername } from "./bot-templates/cleanup.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
@@ -45,6 +47,7 @@ import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
 import { BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotReply, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
+import { lowestThinkingLevel, withUpstreamThinkingMap } from "./runtimes/thinking-level.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../shared/progress-card.ts";
 import type { SessionPullRequest } from "../shared/pull-requests.ts";
 import { isThinkingLevel } from "../shared/thinking.ts";
@@ -86,7 +89,7 @@ import {
   PiMutationService,
 } from "./pi-mutations.ts";
 import { readGatewayHealth, readWorkspaceInspection } from "./control-surfaces.ts";
-import { WorktreeService } from "./worktree-inventory.ts";
+import { runCommand, WorktreeService } from "./worktree-inventory.ts";
 import type { WorktreeRisk } from "../shared/worktrees.ts";
 import {
   liveSessions,
@@ -346,14 +349,16 @@ const botRoutes = createBotRoutes({
     }
   },
 });
-/** Bots imported from other platforms' templates, and exported (`bot-template-import.ts`): under `/__hui/bots`, so Labs →
- * Bots gates them too. */
+/** Bots imported from other platforms' templates (`bot-template-import.ts`), and exported as templates reviewed for
+ * personal information (`bot-export.ts`): under `/__hui/bots`, so Labs → Bots gates them too. */
 const localSkills = localBotSkills();
+// What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
+const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
+const botSkillFiles = (worker?: string) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills;
 const botTemplateRoutes = createBotTemplateRoutes({
   service: new BotTemplateService({
     bots,
-    // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
-    offer: (worker) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR),
+    offer: newBotOffer,
     models: async () => {
       const host = durableHost();
       await host.open();
@@ -361,7 +366,8 @@ const botTemplateRoutes = createBotTemplateRoutes({
       return (await host.models.getAvailable()).map((model) => ({ provider: model.provider, id: model.id }));
     },
     routines: { tasks: async () => (await automation.snapshot()).tasks, create: (input) => automation.create(input) },
-    skills: (worker) => worker ? (botWorkers.keepsSkills(worker) ? botWorkers.skills(worker) : undefined) : localSkills,
+    triggers: { create: (botId, input) => triggers.service.create(botId, input) },
+    skills: botSkillFiles,
     findWorker: (target) => botWorkers.find(target),
     operator: async () => soulOperatorName((await readSettings()).profileName),
     timezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -369,7 +375,40 @@ const botTemplateRoutes = createBotTemplateRoutes({
     skillsWritten: (cwd) => durableHost().prompt.reload(cwd),
     report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
   }),
+  exports: new BotExportService({
+    bots,
+    offer: newBotOffer,
+    routines: { tasks: async () => (await automation.snapshot()).tasks },
+    triggers: { list: async (botId) => (await triggers.service.list(botId)).triggers },
+    skills: botSkillFiles,
+    utilityModel: async () => (await readSettings()).models.utility || undefined,
+    // A plain completion, as a call's helper makes: the reviewer has no tools, whatever the text it reads asks for.
+    completion: (model, request) => callCompletion(model, request),
+    identity: async (worker) => {
+      const operator = soulOperatorName((await readSettings()).profileName);
+      const remote = await workers.list().catch(() => []);
+      // A bot on a worker: that machine's home and host name are its owner's too.
+      const there = remote.find((each) => each.id === worker)?.host;
+      const username = userInfo().username;
+      const fullName = await accountFullName(username);
+      const names = [fullName, nameFromUsername(username, fullName)].filter((name): name is string => Boolean(name));
+      return {
+        ...(operator ? { operator } : {}), ...(names.length ? { names } : {}), username,
+        homes: [homedir(), ...there ? [there.home] : []], hostnames: [hostname(), ...there ? [there.hostname] : []],
+        workers: remote.map((each) => each.name),
+      };
+    },
+  }),
 });
+/** This account's full name, for an export's cleanup: macOS keeps it in the directory service, Linux in the password
+ * entry's comment. Read once; none when neither answers. */
+let accountName: Promise<string | undefined> | undefined;
+function accountFullName(username: string): Promise<string | undefined> {
+  return accountName ??= (process.platform === "darwin"
+    ? runCommand("dscl", [".", "-read", `/Users/${username}`, "RealName"], { timeoutMs: 5_000 }).then((result) => result.code ? "" : result.stdout.replace(/^RealName:/u, ""))
+    : runCommand("getent", ["passwd", username], { timeoutMs: 5_000 }).then((result) => result.code ? "" : result.stdout.split(":")[4]?.split(",")[0] ?? "")
+  ).then((name) => name.replace(/\s+/gu, " ").trim() || undefined);
+}
 function automationStoreFailure(error: unknown): never {
   throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
 }
@@ -547,9 +586,10 @@ const THEME_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 
-/** One completion through the gateway's models (HUI's provider accounts included), at low thinking: the call's helper
- * and its record use the bot's utility model. */
-const callCompletion: CallCompletion = async (ref, { system, prompt, signal }) => {
+/** One completion through the gateway's models (HUI's provider accounts included), at low thinking, or with `least` at the
+ * least the model allows (a gateway model without levels of its own takes its upstream's): the call's helper and its
+ * record use the bot's utility model, the export reviewer's retry `least`. */
+const callCompletion: CallCompletion = async (ref, { system, prompt, signal, least }) => {
   const host = durableHost();
   await host.open();
   const slash = ref.indexOf("/");
@@ -559,8 +599,9 @@ const callCompletion: CallCompletion = async (ref, { system, prompt, signal }) =
     model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
   }
   if (!model) throw new Error(`Unknown model: ${ref}`);
-  const level = clampThinkingLevel(model, "low");
-  const reply = await host.models.completeSimple(model, {
+  const sent = least ? withUpstreamThinkingMap(model, (provider, id) => host.models.getModel(provider, id)) : model;
+  const level = least ? lowestThinkingLevel(sent) : clampThinkingLevel(model, "low");
+  const reply = await host.models.completeSimple(sent, {
     systemPrompt: system,
     messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
   }, { signal, ...(level === "off" ? {} : { reasoning: level }) });

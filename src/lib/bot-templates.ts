@@ -1,18 +1,23 @@
 /**
- * Client half of importing and exporting bots (`/__hui/bots/import`, `/__hui/bots/:id/export`; the contract is in
+ * Client half of importing and exporting bots (`/__hui/bots/import`, `/__hui/bots/:id/export…`; the contract is in
  * docs/api.md#importing-and-exporting-bots). The browser never reads a template itself: it sends the picked file, folder,
  * link or text to the gateway, shows the preview it answers, and sends that preview's template back to create the bot.
+ * An export asks the gateway for its review, shows it, and sends back only the operator's picks for the zip.
  */
+import type { BotExportAddition, BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportResult, type BotImportSource, type BotTemplate } from "../../shared/bot-templates.ts";
 import { parseBot } from "./bots.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { trackedFetch } from "./ui-errors.ts";
 
 export type { BotImportPreview, BotImportResult, BotImportSource } from "../../shared/bot-templates.ts";
+export type { BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 /** A preview may fetch a page or unpack an archive; creating starts a chat, its memory and maybe its first turn. */
 const IMPORT_TIMEOUT_MS = 90_000;
+/** A review has the utility model read every part of the bot (the gateway stops at six minutes). */
+const REVIEW_TIMEOUT_MS = 7 * 60_000;
 
 /** Where an import's source comes from, as the dialog's tabs name them. */
 export type BotImportTab = "file" | "link" | "paste";
@@ -60,7 +65,7 @@ export function importSource(tab: BotImportTab, state: { picked?: PickedSource |
 /** The gateway's preview, narrowed: a malformed answer is an error, never half a preview. */
 export function parseBotImportPreview(body: unknown): BotImportPreview {
   if (!isRecord(body) || !isRecord(body["template"]) || !isRecord(body["bot"]) || typeof body["soul"] !== "string") throw new Error("The import preview did not come back.");
-  const lists = ["skills", "routines", "integrations", "disabledTools", "disabledSkills", "dropped", "notes"];
+  const lists = ["skills", "routines", "integrations", "disabledTools", "disabledSkills", "open", "needs", "triggers", "dropped", "notes"];
   if (lists.some((key) => !Array.isArray(body[key])) || !isRecord(body["memories"])) throw new Error("The import preview did not come back.");
   const format = (body["template"] as { format?: unknown }).format;
   if (typeof format !== "string" || !(format in BOT_TEMPLATE_FORMATS)) throw new Error("The import preview names a format this HUI does not know.");
@@ -101,14 +106,34 @@ export function downloadName(disposition: string | null, fallback: string): stri
   return /filename="([^"]+)"/iu.exec(disposition ?? "")?.[1] ?? fallback;
 }
 
-/** `GET /__hui/bots/:id/export`, saved as a download. Resolves with the file's name. */
-export async function downloadBotExport(id: string, options: { memory: boolean; fallbackName: string }): Promise<string> {
-  const response = await trackedFetch(`/__hui/bots/${encodeURIComponent(id)}/export${options.memory ? "?memory=1" : ""}`, {
-    headers: CLIENT_HEADERS, cache: "no-store", signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
+/** The gateway's review, narrowed: a malformed answer is an error, never half a review. */
+export function parseBotExportReview(body: unknown): BotExportReview {
+  const lists = ["parts", "cleanup", "changes", "files", "needs", "leftOut"];
+  if (!isRecord(body) || typeof body["id"] !== "string" || !isRecord(body["meta"]) || lists.some((key) => !Array.isArray(body[key]))) throw new Error("The export review did not come back.");
+  return body as unknown as BotExportReview;
+}
+
+/** `POST /__hui/bots/:id/export/review`: the bot cleaned and read by Settings' utility model; nothing leaves yet. */
+export async function reviewBotExport(id: string): Promise<BotExportReview> {
+  return parseBotExportReview(await fetchJson<unknown>(`/__hui/bots/${encodeURIComponent(id)}/export/review`, { method: "POST", signal: AbortSignal.timeout(REVIEW_TIMEOUT_MS) }));
+}
+
+/** A refused download: 409 when the review is gone or the bot changed since, which another review fixes. */
+export class BotExportError extends Error {
+  override name = "BotExportError";
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
+}
+
+/** `POST /__hui/bots/:id/export` with the review's id and the operator's picks, saved as a download. Resolves with the file's name. */
+export async function downloadBotExport(id: string, request: { review: string; picks: Record<string, BotExportGroup>; added?: readonly BotExportAddition[] }, options: { fallbackName: string }): Promise<string> {
+  const response = await trackedFetch(`/__hui/bots/${encodeURIComponent(id)}/export`, {
+    method: "POST", headers: { ...CLIENT_HEADERS, ...JSON_HEADERS }, body: JSON.stringify(request), cache: "no-store", signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
   });
   if (!response.ok) {
     const detail = await response.json().catch(() => undefined) as { error?: string } | undefined;
-    throw new Error(detail?.error ?? `The export returned HTTP ${response.status}.`);
+    throw new BotExportError(detail?.error ?? `The export returned HTTP ${response.status}.`, response.status);
   }
   const name = downloadName(response.headers.get("content-disposition"), options.fallbackName);
   const url = URL.createObjectURL(await response.blob());

@@ -671,7 +671,7 @@ export class BotService {
   /**
    * `set_profile` from the bot whose chat `callerSessionId` is: its own name, title and/or look (shape, ears, color by
    * palette name or hex, emoji), under `PATCH`'s rules (`update`, so a derived handle follows the name). Only the operator decides them: a run that took any input from a
-   * routine, a trigger, another bot or a session is refused, the one that started it (its run's originating input,
+   * routine, a trigger, another bot, a session or its import is refused, the one that started it (its run's originating input,
    * `runPrompt`) or any since (`runOrigins`, as the host running the chat saw them; none from a host that can't tell).
    */
   async setProfile(callerSessionId: string, params: Record<string, unknown>, runOrigins?: readonly BotTurnOrigin[]): Promise<{ text: string; name: string; handle: string }> {
@@ -681,7 +681,7 @@ export class BotService {
     if (bot.archived) throw new BotConflictError("An archived bot cannot change its profile.");
     const origins = runTurnOrigins((await this.#deps.readSessions()).find((record) => record.id === callerSessionId)?.runPrompt, runOrigins);
     if (origins.some((origin) => origin.kind !== "operator" && origin.kind !== "kickoff")) {
-      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot or a session. Ask the operator instead.");
+      throw new BotConflictError("Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a session or your import. Ask the operator instead.");
     }
     const unknown = Object.keys(params).filter((key) => !PROFILE_KEYS.includes(key));
     if (unknown.length) throw new BotInputError(`set_profile takes ${PROFILE_KEYS.join(", ")} only, not ${unknown.join(", ")}.`);

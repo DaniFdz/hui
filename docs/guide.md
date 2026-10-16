@@ -837,7 +837,7 @@ paste text. HUI reads:
 - **Character cards** (V2 or V3, JSON or the PNG): description, personality,
   scenario and system prompt, its first message, and its lorebook.
 - **CrewAI** `agents.yaml`: each agent's role (its title), goal and backstory.
-- **HUI** exports (below). Any other text becomes the bot's persona.
+- **HUI** templates (below). Any other text becomes the bot's persona.
 
 Before anything exists you see what the bot will get: its name and handle, its
 whole SOUL.md, its first message, its skills, its routines and their schedules,
@@ -852,10 +852,37 @@ already know*: tell it what to change, or replace it with `hui bot soul`. Its sk
 live in its folder, only it loads them, and they are on like every skill (turn
 any off on its Tools & skills page). With a first message, the bot's chat opens with it.
 
-A bot's **⋯ → Export…** downloads it as `<handle>.hui-bot.zip`: `bot.json` (its
-profile, routines and what you turned off), `SOUL.md` and its own skills, plus its
-memory if you include it (that can be private). Importing the file gives the bot
-back, on this HUI or another; its chat stays where it was.
+A bot's **⋯ → Export…** makes it a template someone else can import, without
+what is yours. HUI first cleans it: your name (your profile's, your account's, and
+a `first.last` user name) becomes `{{user}}` (the new owner's name once imported),
+your home folder `~`, and e-mail addresses, keys and tokens,
+your machine's and workers' names in paths and links, tailnet names, IP addresses
+and Slack IDs `[removed]`. Then Settings' utility model reads each part and sorts
+what it finds:
+
+- **Removed**: facts about you and the people around you, private links and ids.
+  They never leave.
+- **Asked**: your own choices, such as the repositories or channels to watch.
+  They become an `[ask: …]` mark, and the new owner gives theirs.
+- **Confirmed**: rules that make a good starting point, such as when to approve
+  a pull request. They travel, and the bot agrees them with the new owner first.
+- **Kept**: everything else, how the bot works.
+
+The dialog shows every change with its reason; move any to another group, leave
+out a line of what the bot needs, and open *Files as they will be saved* to read
+exactly what the zip holds before **Download**. If the reviewer missed something,
+copy the passage from those files into *Missed something?*, pick what happens to it
+and what it becomes, and **Add** it; **Undo** takes it back. A script beside a skill is never
+edited: it travels as it is, travels for the new owner to check, or stays behind.
+Its memory never leaves, nor its handle, paths or triggers' URLs; its triggers and
+the files beside its skills do. Without a utility model only the cleanup runs, and
+the dialog says so: read the files yourself. If the bot changes before you
+download, review it again.
+
+Importing a template shows what it leaves to you under *Not agreed yet* and what it
+needs. The new bot starts by going through those points with you, a question or
+two at a time, then rewrites its soul; its routines and triggers stay off until you
+turn them on, and each trigger gets its URL from **New URL**.
 
 ```sh
 hui bot import code-reviewer.md                  # prints everything, then asks
@@ -863,7 +890,9 @@ hui bot import https://x.ai/bot/marketplace/bots/<slug> --yes
 hui bot import ./my-openclaw-workspace --worker devbox
 hui bot import agents.yaml --agent researcher
 pbpaste | hui bot import -
-hui bot export ada --out ada.zip --memory
+hui bot export ada                               # prints the review, then asks
+hui bot export ada --review <id> --set c1=keep   # saves that review with a change moved
+hui bot export ada --add 'remove:ddtool auth token => the token command'  # and a passage it missed
 ```
 
 ### Archiving and deleting

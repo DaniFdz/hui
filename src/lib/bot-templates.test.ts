@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { base64, downloadName, importSource, parseBotImportPreview, pickedFile, pickedFolder } from "./bot-templates.ts";
+import { base64, downloadName, importSource, parseBotExportReview, parseBotImportPreview, pickedFile, pickedFolder } from "./bot-templates.ts";
 
 test("a picked file or folder becomes a source, refused here when the gateway would refuse it", async () => {
   const bytes = new TextEncoder().encode("You are Nova.");
@@ -27,7 +27,12 @@ test("a download's name comes from its Content-Disposition; a malformed preview 
   assert.equal(downloadName("attachment; filename=\"nova.hui-bot.zip\"", "x.zip"), "nova.hui-bot.zip");
   assert.equal(downloadName(null, "x.zip"), "x.zip");
   assert.throws(() => parseBotImportPreview({ template: { format: "grok" } }), /did not come back/u);
-  assert.throws(() => parseBotImportPreview({ template: { format: "future" }, bot: {}, soul: "", skills: [], routines: [], integrations: [], disabledTools: [], disabledSkills: [], dropped: [], notes: [], memories: {} }), /format this HUI does not know/u);
-  const preview = { template: { format: "grok" }, bot: { name: "A", handle: "a" }, soul: "", skills: [], routines: [], integrations: [], disabledTools: [], disabledSkills: [], dropped: [], notes: [], memories: { included: 0, total: 0 } };
+  const lists = { skills: [], routines: [], integrations: [], disabledTools: [], disabledSkills: [], open: [], needs: [], triggers: [], dropped: [], notes: [] };
+  assert.throws(() => parseBotImportPreview({ template: { format: "future" }, bot: {}, soul: "", ...lists, memories: {} }), /format this HUI does not know/u);
+  const preview = { template: { format: "grok" }, bot: { name: "A", handle: "a" }, soul: "", ...lists, memories: { included: 0, total: 0 } };
   assert.equal(parseBotImportPreview(preview), preview);
+  assert.throws(() => parseBotImportPreview({ ...preview, open: undefined }), /did not come back/u, "a template's open points are part of every preview");
+  const review = { id: "r1", botId: "b1", name: "A", parts: [], cleanup: [], changes: [], files: [], needs: [], leftOut: [], meta: { routines: [], triggers: [], disabledTools: [], disabledSkills: [], skills: [] } };
+  assert.equal(parseBotExportReview(review), review);
+  assert.throws(() => parseBotExportReview({ ...review, changes: undefined }), /export review did not come back/u, "never half a review");
 });

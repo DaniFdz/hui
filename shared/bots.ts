@@ -221,6 +221,10 @@ export const BOT_SOUL_FILE = "SOUL.md";
  */
 export const BOT_KICKOFF_MARKER = "[HUI bot created]";
 
+/** The line after a kickoff's name that makes it an import's first turn: not the operator's, so its gated tools refuse
+ * (the template's soul and skills can't make the bot rewrite itself before the operator has said a word). */
+export const BOT_IMPORTED_KICKOFF_LINE = "from: template";
+
 /** The kickoff message: the marker, the bot's name, and what HUI asks of it. */
 export function botKickoffText(name: string): string {
   return [
@@ -372,10 +376,10 @@ export function isBotAccessQuestion(question: { method: string; title?: string; 
 
 /** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), a trigger
  * (`[trigger: name · …] …`), another bot (`[from @handle] …`), a session's agent (`[from agent: title] …`), HUI's
- * kickoff of a new bot, or else the operator. */
+ * kickoff of a new bot, an imported bot's first turn (a kickoff with `from: template`), or else the operator. */
 export type BotTurnOrigin =
-  | { kind: "operator" } | { kind: "kickoff" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string } | { kind: "bot"; handle: string }
-  | { kind: "agent"; title: string };
+  | { kind: "operator" } | { kind: "kickoff" } | { kind: "imported" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string }
+  | { kind: "bot"; handle: string } | { kind: "agent"; title: string };
 
 export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (!text) return { kind: "operator" };
@@ -386,7 +390,8 @@ export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
   if (bot) return { kind: "bot", handle: bot[1]! };
   const agent = /^\[from agent: ([^\]\n]*)\] /u.exec(text);
   if (agent) return { kind: "agent", title: agent[1]! };
-  return botKickoffName(text) === undefined ? { kind: "operator" } : { kind: "kickoff" };
+  if (botKickoffName(text) === undefined) return { kind: "operator" };
+  return text.split("\n", 3).includes(BOT_IMPORTED_KICKOFF_LINE) ? { kind: "imported" } : { kind: "kickoff" };
 }
 
 /** How a session's tag starts in the bot's chat: its title on one line, at most 80 characters, without the brackets and
@@ -415,7 +420,7 @@ export function parseRunOrigins(value: unknown): BotTurnOrigin[] | undefined {
   const origins: BotTurnOrigin[] = [];
   for (const item of value) {
     const { kind, name, handle, title } = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
-    if (kind === "operator" || kind === "kickoff") origins.push({ kind });
+    if (kind === "operator" || kind === "kickoff" || kind === "imported") origins.push({ kind });
     else if ((kind === "routine" || kind === "trigger") && typeof name === "string") origins.push({ kind, name });
     else if (kind === "bot" && typeof handle === "string") origins.push({ kind, handle });
     else if (kind === "agent" && typeof title === "string") origins.push({ kind, title });

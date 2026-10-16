@@ -15,7 +15,6 @@ import { flightRows, grokBotUrl, parseGrokBotPage } from "./grok.ts";
 import { identityFields, parseOpenClawWorkspace } from "./openclaw.ts";
 import { isStockLettaPrompt, parseLettaAgentFile } from "./letta.ts";
 import { parseTextTemplate } from "./text.ts";
-import { huiExportEntries } from "./hui-export.ts";
 import { writeZip } from "./zip.ts";
 
 const file = (path: string, text: string): ImportFile => ({ path, data: Buffer.from(text, "utf8") });
@@ -273,14 +272,18 @@ test("CrewAI agents.yaml: each agent a candidate, role as title, goal and backst
 
 /* ── HUI's own export ──────────────────────────────────────────────────── */
 
-test("a HUI export reads back whole: profile, soul, its own skills, exact routines, lists, and the memory after its line", () => {
+test("a version 1 HUI export reads back whole: profile, soul, its own skills, exact routines, lists, and the memory after its line", () => {
   const manifest = {
     format: "hui-bot" as const, version: 1 as const, exportedAt: "2026-10-07T10:00:00.000Z",
     bot: { name: "Ada", handle: "ada", title: "Planner", avatar: { emoji: "🦉", shape: "heart" as const, ears: "bear" as const, color: "#2fc49a" }, model: "hui-e2e/fixture", thinking: "high", memoryModel: "hui-e2e/other", voice: { language: "es" as const }, tagging: "mention" as const },
     routines: [{ name: "Digest", prompt: "Sum up the day.", schedule: { kind: "cron" as const, expression: "0 18 * * *", timezone: "Europe/Madrid" }, enabled: true }],
     disabledTools: ["bash"], disabledSkills: [{ name: "release-notes", path: "/x/release-notes/SKILL.md" }], skills: ["plans"], memory: "memory.md" as const,
   };
-  const zip = writeZip(huiExportEntries({ manifest, soul: "# Who I am\n\nAda plans.", skills: [{ name: "plans", text: "---\nname: plans\ndescription: Plan a week\n---\n\nPlan it." }], memory: "# Memory of @ada (Ada)\n\nIntro for people.\n\n---\n\n<chat>\n0+3|user: plan my week\n</chat>" }));
+  const zip = writeZip([
+    file("bot.json", JSON.stringify(manifest)), file("SOUL.md", "# Who I am\n\nAda plans.\n"),
+    file("skills/plans/SKILL.md", "---\nname: plans\ndescription: Plan a week\n---\n\nPlan it.\n"),
+    file("memory.md", "# Memory of @ada (Ada)\n\nIntro for people.\n\n---\n\n<chat>\n0+3|user: plan my week\n</chat>\n"),
+  ]);
   const [choice] = readFileTemplates("ada.hui-bot.zip", zip);
   const template = choice!.template;
   assert.deepEqual([template.format, template.name, template.title, template.emoji, template.avatar, template.model], ["hui", "Ada", "Planner", "🦉", { shape: "heart", ears: "bear", color: "#2fc49a" }, "hui-e2e/fixture"]);
@@ -289,7 +292,40 @@ test("a HUI export reads back whole: profile, soul, its own skills, exact routin
   assert.deepEqual(template.skills, [{ name: "plans", description: "Plan a week", content: "Plan it." }]);
   assert.deepEqual(template.routines, [{ name: "Digest", prompt: "Sum up the day.", automation: { kind: "cron", expression: "0 18 * * *", timezone: "Europe/Madrid" }, schedule: "cron 0 18 * * * Europe/Madrid" }]);
   assert.deepEqual(template.memories, [{ name: "Memory of @ada when it was exported", text: "<chat>\n0+3|user: plan my week\n</chat>" }], "only what follows the line");
-  assert.throws(() => readFileTemplates("future.zip", writeZip([{ path: "bot.json", data: Buffer.from(JSON.stringify({ ...manifest, version: 2 })) }])), /exported by a newer HUI/u);
+  assert.throws(() => readFileTemplates("future.zip", writeZip([{ path: "bot.json", data: Buffer.from(JSON.stringify({ ...manifest, version: 3 })) }])), /exported by a newer HUI/u);
+});
+
+test("a version 2 HUI template brings its open points, needs, triggers and the text files beside its skills; a cron runs in the importer's zone", () => {
+  const manifest = {
+    format: "hui-bot", version: 2,
+    bot: { name: "{{user}}'s reviewer", model: "claude-sonnet-4-5" },
+    routines: [{ name: "Sweep", prompt: "Review what waits.", schedule: { kind: "cron", expression: "0 9 * * 1-5" } }, { name: "Often", prompt: "Look.", schedule: { kind: "every", everyMs: 1_800_000 } }],
+    triggers: [
+      { name: "Reviews", filter: { prLinks: true, match: { field: "fields.channel", op: "equals", value: "reviews" } }, prompt: "Review it.", cooldownSeconds: 60 },
+      { name: "reviews", filter: {}, cooldownSeconds: 60 }, { name: "", filter: {} },
+    ],
+    disabledTools: ["bash"], disabledSkills: ["review"], skills: ["review"],
+    open: [{ kind: "ask", where: "SOUL.md", question: "Which repositories should I watch?" }, { kind: "confirm", where: "Trigger “Reviews”", question: "Keep it?", excerpt: "Review it.", operator: true }, { kind: "maybe", question: "x" }],
+    needs: ["The GitHub CLI signed in", "The GitHub CLI signed in", " "],
+  };
+  const zip = writeZip([
+    file("bot.json", JSON.stringify(manifest)), file("SOUL.md", "# Who I am\n\nI review [ask: the repositories to watch].\n"),
+    file("skills/review/SKILL.md", "---\nname: review\ndescription: Review a pull request\n---\n\nRun scripts/approve.sh.\n"),
+    file("skills/review/scripts/approve.sh", "#!/bin/sh\ngh pr review \"$1\" --approve\n"),
+    { path: "skills/review/logo.png", data: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1]) },
+  ]);
+  const template = readFileTemplates("reviewer.hui-bot.zip", zip)[0]!.template;
+  assert.equal(template.name, "{{user}}'s reviewer", "{{user}} stays until an import fills it in");
+  assert.equal(template.hui?.handle, undefined, "a template carries no handle");
+  assert.deepEqual(template.skills, [{ name: "review", description: "Review a pull request", content: "Run scripts/approve.sh.", files: [{ path: "scripts/approve.sh", text: "#!/bin/sh\ngh pr review \"$1\" --approve\n" }] }]);
+  assert.match(template.dropped.join("\n"), /Skill review: logo\.png \(not text\)\./u);
+  assert.deepEqual(template.routines.map((routine) => [routine.schedule, routine.automation]), [["cron 0 9 * * 1-5", undefined], ["every 30m", { kind: "every", everyMs: 1_800_000 }]]);
+  assert.deepEqual(template.triggers, [{ name: "Reviews", filter: { prLinks: true, match: { field: "fields.channel", op: "equals", value: "reviews" } }, prompt: "Review it.", cooldownSeconds: 60 }]);
+  assert.match(template.dropped.join("\n"), /Trigger reviews: another one has its name\./u);
+  assert.match(template.dropped.join("\n"), /A trigger HUI can't read\./u);
+  assert.deepEqual(template.open, [{ kind: "ask", where: "SOUL.md", question: "Which repositories should I watch?" }, { kind: "confirm", where: "Trigger “Reviews”", question: "Keep it?", excerpt: "Review it.", operator: true }]);
+  assert.deepEqual(template.needs, ["The GitHub CLI signed in"]);
+  assert.deepEqual(template.memories, []);
 });
 
 /* ── detection ────────────────────────────────────────────────────────── */

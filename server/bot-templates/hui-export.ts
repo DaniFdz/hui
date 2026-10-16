@@ -1,14 +1,17 @@
 /**
- * HUI's own bot export: a zip with `bot.json` (`BotExportManifest`), `SOUL.md`, the bot's own skills as
- * `skills/<name>/SKILL.md` and, when asked for, `memory.md` (its memory's view). Importing one gives the same profile,
- * soul, skills, routines (disabled, as every import's) and tool and skill lists; its memory joins the soul's "What you
- * already know", as every template's memories do.
+ * Reading HUI's own bot exports: a zip with `bot.json`, `SOUL.md` and the bot's own skills' folders. Version 2 is a
+ * template, reviewed for personal information before it left (`shared/bot-export.ts` makes it): its open points, what it
+ * needs, its triggers and the files beside each SKILL.md come with it. Version 1 was an exact copy: its handle and, when
+ * asked for, `memory.md` (its memory's view), which joins the soul's "What you already know" as every template's
+ * memories do. Importing either gives the profile, soul, skills, routines (disabled, as every import's) and lists back.
  */
+import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotOpenPoint, type BotTemplateTrigger } from "../../shared/bot-export.ts";
 import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../shared/bots.ts";
-import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotExportManifest, type BotTemplate } from "../../shared/bot-templates.ts";
+import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateSkillFile } from "../../shared/bot-templates.ts";
+import { BOT_TRIGGER_LIMITS } from "../../shared/bot-triggers.ts";
 import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
-import { blankTemplate, fileText, findFile, isRecord, oneLine, skillFromFile, str, TemplateFormatError, unwrapFolder, type ImportFile } from "./common.ts";
-import type { ZipEntry } from "./zip.ts";
+import { normalizeTriggerInput } from "../bot-triggers-input.ts";
+import { blankTemplate, fileText, findFile, isRecord, oneLine, skillFilePath, skillFromFile, str, TemplateFormatError, unwrapFolder, within, type ImportFile } from "./common.ts";
 
 function manifestOf(files: readonly ImportFile[]): unknown {
   const file = findFile(unwrapFolder(files).files, BOT_EXPORT_FILES.manifest);
@@ -30,11 +33,12 @@ export function isHuiExport(files: readonly ImportFile[]): boolean {
   return isHuiManifest(manifestOf(files));
 }
 
+/** A routine's schedule as an export wrote it: exact, or (a version 2 cron, which has no time zone) undefined. */
 function schedule(value: unknown): AutomationSchedule | undefined {
   if (!isRecord(value)) return undefined;
   if (value["kind"] === "at" && typeof value["at"] === "string") return { kind: "at", at: value["at"] };
   if (value["kind"] === "every" && typeof value["everyMs"] === "number") return { kind: "every", everyMs: value["everyMs"] };
-  if (value["kind"] === "cron" && typeof value["expression"] === "string") return { kind: "cron", expression: value["expression"], timezone: str(value["timezone"]) || "UTC" };
+  if (value["kind"] === "cron" && typeof value["expression"] === "string" && str(value["timezone"])) return { kind: "cron", expression: value["expression"], timezone: str(value["timezone"]) };
   return undefined;
 }
 
@@ -43,6 +47,77 @@ export function scheduleLabel(value: AutomationSchedule): string {
   if (value.kind === "at") return `at ${value.at}`;
   if (value.kind === "every") return `every ${Math.round(value.everyMs / 60_000)}m`;
   return `cron ${value.expression} ${value.timezone}`;
+}
+
+/* ── what a version 2 template adds, checked here and again when it comes back from the browser ── */
+
+/** A template's trigger, as `POST /__hui/bots/:id/triggers` would take it; undefined: not one. */
+function templateTrigger(value: unknown): BotTemplateTrigger | undefined {
+  if (!isRecord(value)) return undefined;
+  try {
+    const input = normalizeTriggerInput({
+      name: value["name"], filter: value["filter"] ?? {},
+      ...(value["prompt"] !== undefined ? { prompt: value["prompt"] } : {}),
+      ...(value["cooldownSeconds"] !== undefined ? { cooldownSeconds: value["cooldownSeconds"] } : {}),
+    });
+    return { name: input.name, filter: input.filter, ...(input.prompt ? { prompt: input.prompt } : {}), cooldownSeconds: input.cooldownSeconds ?? BOT_TRIGGER_LIMITS.cooldownDefault };
+  } catch {
+    return undefined;
+  }
+}
+
+/** A template's triggers: each one a trigger's route would take, names unique, at most a bot's 20. */
+export function templateTriggers(value: unknown, dropped: string[]): BotTemplateTrigger[] {
+  const triggers: BotTemplateTrigger[] = [];
+  for (const item of Array.isArray(value) ? value : []) {
+    const trigger = templateTrigger(item);
+    const named = isRecord(item) && typeof item["name"] === "string" ? oneLine(item["name"], 80) : "";
+    if (!trigger) dropped.push(`A trigger HUI can't read${named ? `: ${named}` : ""}.`);
+    else if (triggers.some((each) => each.name.toLowerCase() === trigger.name.toLowerCase())) dropped.push(`Trigger ${trigger.name}: another one has its name.`);
+    else if (triggers.length >= BOT_TEMPLATE_LIMITS.triggers) dropped.push(`Trigger ${trigger.name}: a bot has at most ${BOT_TEMPLATE_LIMITS.triggers}.`);
+    else triggers.push(trigger);
+  }
+  return triggers;
+}
+
+/** A template's open points, bounded. */
+export function openPoints(value: unknown): BotOpenPoint[] {
+  return (Array.isArray(value) ? value : []).flatMap((item): BotOpenPoint[] => {
+    if (!isRecord(item) || (item["kind"] !== "ask" && item["kind"] !== "confirm")) return [];
+    const question = oneLine(str(item["question"]), 300);
+    if (!question) return [];
+    const excerpt = oneLine(str(item["excerpt"]), 200);
+    return [{ kind: item["kind"], where: oneLine(str(item["where"]), 160) || "SOUL.md", question, ...(excerpt ? { excerpt } : {}), ...(item["operator"] === true ? { operator: true as const } : {}) }];
+  }).slice(0, BOT_TEMPLATE_LIMITS.open);
+}
+
+/** What a template says the bot needs, one line each, bounded. */
+export function needsList(value: unknown): string[] {
+  return [...new Set((Array.isArray(value) ? value : []).map((need) => oneLine(str(need), 200)).filter(Boolean))].slice(0, BOT_TEMPLATE_LIMITS.needs);
+}
+
+/** The files beside a skill's SKILL.md, within a skill's limits; the rest listed as left out. */
+export function skillFiles(value: unknown, skill: string, dropped: string[]): BotTemplateSkillFile[] {
+  const files: BotTemplateSkillFile[] = [];
+  let total = 0;
+  for (const item of Array.isArray(value) ? value : []) {
+    if (!isRecord(item) || typeof item["path"] !== "string" || typeof item["text"] !== "string") continue;
+    const path = skillFilePath(item["path"]);
+    const bytes = Buffer.byteLength(item["text"]);
+    const problem = !path ? "hidden, outside the skill's folder, or a second SKILL.md"
+      : files.some((file) => file.path.toLowerCase() === path.toLowerCase()) ? "another file has its path, in another case"
+      : files.length >= BOT_TEMPLATE_LIMITS.skillFiles ? `more than ${BOT_TEMPLATE_LIMITS.skillFiles} files`
+      : bytes > BOT_TEMPLATE_LIMITS.skillFileBytes ? `larger than ${BOT_TEMPLATE_LIMITS.skillFileBytes / 1024} KB`
+      : total + bytes > BOT_TEMPLATE_LIMITS.skillFilesBytes ? `past the skill's ${BOT_TEMPLATE_LIMITS.skillFilesBytes / 1024 / 1024} MB`
+      : undefined;
+    if (problem || !path) {
+      dropped.push(`Skill ${skill}: ${oneLine(item["path"], 120)} (${problem}).`);
+      continue;
+    }
+    total += bytes;
+    files.push({ path, text: item["text"] });
+  }
+  return files;
 }
 
 /** A HUI export's bot, from its manifest (parsed) and its files. */
@@ -82,24 +157,38 @@ export function parseHuiExport(all: readonly ImportFile[], origin?: string, pars
   const soul = findFile(files, BOT_EXPORT_FILES.soul);
   template.soul = (soul ? fileText(soul) ?? "" : "").trim();
   for (const skill of Array.isArray(manifest["skills"]) ? manifest["skills"].map(str).filter(Boolean) : []) {
-    const file = findFile(files, `${BOT_EXPORT_FILES.skills}/${skill}/SKILL.md`);
+    const folder = within(files, `${BOT_EXPORT_FILES.skills}/${skill}`);
+    const file = findFile(folder, "SKILL.md");
     const text = file ? fileText(file) : undefined;
     if (text === undefined) {
       template.dropped.push(`Skill ${skill}: its SKILL.md is missing from the export.`);
       continue;
     }
     const parsed = skillFromFile(text, skill, template.dropped);
-    if (parsed) template.skills.push(parsed);
+    if (!parsed) continue;
+    const beside = folder.filter((each) => each !== file).flatMap((each) => {
+      const content = fileText(each);
+      if (content === undefined) template.dropped.push(`Skill ${skill}: ${each.path} (not text).`);
+      return content === undefined ? [] : [{ path: each.path, text: content }];
+    });
+    const kept = skillFiles(beside, skill, template.dropped);
+    template.skills.push(kept.length ? { ...parsed, files: kept } : parsed);
   }
   for (const routine of Array.isArray(manifest["routines"]) ? manifest["routines"].filter(isRecord) : []) {
-    const exact = schedule(routine["schedule"]);
     const routineName = str(routine["name"]);
     const prompt = str(routine["prompt"]);
     if (!routineName || !prompt) continue;
+    const exact = schedule(routine["schedule"]);
+    const raw = isRecord(routine["schedule"]) ? routine["schedule"] : {};
+    // A version 2 cron has no time zone: read as text, it runs in the importer's.
+    const text = exact ? scheduleLabel(exact) : raw["kind"] === "cron" && typeof raw["expression"] === "string" ? `cron ${raw["expression"]}` : undefined;
     const about = str(routine["description"]);
-    template.routines.push({ name: routineName, prompt, ...(exact ? { automation: exact, schedule: scheduleLabel(exact) } : {}), ...(about ? { description: about } : {}) });
+    template.routines.push({ name: routineName, prompt, ...(exact ? { automation: exact } : {}), ...(text ? { schedule: text } : {}), ...(about ? { description: about } : {}) });
   }
-  // memory.md: a header for people, a line, then the memory's view; a file without the line is the memory whole.
+  if (manifest["triggers"] !== undefined) template.triggers = templateTriggers(manifest["triggers"], template.dropped);
+  if (manifest["open"] !== undefined) template.open = openPoints(manifest["open"]);
+  if (manifest["needs"] !== undefined) template.needs = needsList(manifest["needs"]);
+  // memory.md (version 1): a header for people, a line, then the memory's view; a file without the line is the memory whole.
   const memory = findFile(files, BOT_EXPORT_FILES.memory);
   const text = memory ? fileText(memory) ?? "" : "";
   const separator = text.search(/^---[ \t]*$/mu);
@@ -107,15 +196,4 @@ export function parseHuiExport(all: readonly ImportFile[], origin?: string, pars
   if (remembered && !/^<chat>\s*<\/chat>$/u.test(remembered)) template.memories.push({ name: `Memory of @${extras.handle ?? name} when it was exported`, text: remembered });
   else if (memory) template.notes.push("Its exported memory was empty.");
   return template;
-}
-
-/** An export's files, in the order a person opening it reads them. */
-export function huiExportEntries(input: { manifest: BotExportManifest; soul?: string; skills: readonly { name: string; text: string }[]; memory?: string }): ZipEntry[] {
-  const text = (value: string) => Buffer.from(value.endsWith("\n") ? value : `${value}\n`, "utf8");
-  return [
-    { path: BOT_EXPORT_FILES.manifest, data: text(JSON.stringify(input.manifest, null, 2)) },
-    ...(input.soul ? [{ path: BOT_EXPORT_FILES.soul, data: text(input.soul) }] : []),
-    ...input.skills.map((skill) => ({ path: `${BOT_EXPORT_FILES.skills}/${skill.name}/SKILL.md`, data: text(skill.text) })),
-    ...(input.memory ? [{ path: BOT_EXPORT_FILES.memory, data: text(input.memory) }] : []),
-  ];
 }
