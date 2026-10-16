@@ -59,14 +59,19 @@ export function reviewPrompt(part: ReviewedPart): string {
   ].join("\n");
 }
 
-/** Top-level domains a host outside a link must end in to count: `vite.config.ts` and `process.env.home` are no hosts. */
-const TOP_LEVEL = new Set(["com", "net", "org", "io", "dev", "ai", "co", "app", "cloud", "internal", "local", "lan", "corp", "info", "biz", "gov", "edu", "us", "eu", "uk", "de", "fr", "es", "it", "nl", "ch", "se", "jp", "ca", "au", "in", "br"]);
+/** Outside a link, a host ends in a common top-level domain, or has a label with a digit or a hyphen (`us1`, `logs-api`)
+ * and no file's extension: `vite.config.ts`, `bot-export.test.ts` and `process.env.home` are no hosts. */
+const TOP_LEVEL = new Set(["com", "net", "org", "io", "dev", "ai", "co", "app", "cloud", "internal", "local", "lan", "corp", "dog", "int", "xyz", "me", "test", "arpa", "info", "biz", "gov", "edu", "us", "eu", "uk", "de", "fr", "es", "it", "nl", "ch", "se", "jp", "ca", "au", "in", "br"]);
+const FILE_ENDINGS = new Set(["ts", "tsx", "js", "jsx", "mjs", "cjs", "json", "md", "yml", "yaml", "toml", "py", "sh", "txt", "lock", "html", "css", "go", "rs", "rb", "java", "kt", "swift", "log", "csv"]);
 
-/** Host names in a text, in a link or with three labels or more under a common top-level domain (`us1.example.io`), for
- * the reviewer to judge one by one: reading a long procedure, a model passes over them. A call (`os.path.join(`) isn't one. */
+/** Host names in a text, in a link or with three labels or more (`us1.example.io`), for the reviewer to judge one by one:
+ * reading a long procedure, a model passes over them. A call (`os.path.join(`) isn't one. */
 export function hostsIn(text: string): string[] {
-  const hosts = [...text.matchAll(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})|\b((?:[a-z0-9-]+\.){2,}([a-z]{2,}))\b(?!\()/giu)]
-    .flatMap((match) => match[1] ? [match[1]] : TOP_LEVEL.has(match[3]!.toLowerCase()) ? [match[2]!] : []);
+  const hosts = [...text.matchAll(/https?:\/\/([a-z0-9.-]+\.[a-z]{2,})|\b((?:[a-z0-9-]+\.){2,}([a-z]{2,}))\b(?!\()/giu)].flatMap((match) => {
+    if (match[1]) return [match[1]];
+    const ending = match[3]!.toLowerCase();
+    return TOP_LEVEL.has(ending) || !FILE_ENDINGS.has(ending) && /[\d-]/u.test(match[2]!.slice(0, -ending.length)) ? [match[2]!] : [];
+  });
   return [...new Set(hosts.map((host) => host.toLowerCase()))];
 }
 

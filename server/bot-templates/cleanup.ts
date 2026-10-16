@@ -138,7 +138,7 @@ export function personalIn(identifier: string, identity: CleanupIdentity): strin
   const hit = cleanText(identifier, identity).hits[0];
   if (hit) return hit.kind;
   const words = new Set(identifier.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean));
-  const own = ownNames(identity).join(" ").toLowerCase().split(/[\s-]+/u).filter((word) => word.length >= 3 && !COMMON_WORDS.has(word));
+  const own = ownNames(identity).join(" ").toLowerCase().split(/[\s-]+/u).filter((word) => word.length >= 3 && !COMMON_WORDS.has(word) && !GENERIC_NAMES.has(word));
   if (own.some((word) => words.has(word))) return "your name";
   return machineNames(identity).find(([, name]) => new RegExp(`(?<![A-Za-z0-9])${escape(name)}(?![A-Za-z0-9])`, "iu").test(identifier))?.[0];
 }

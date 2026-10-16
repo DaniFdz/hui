@@ -41,6 +41,7 @@ test("without a profile name the account's names go, one placeholder a mention; 
   assert.equal(cleanText("Ask García-López or López or García. Ping O'Brien, Sean.", someone(["María García-López", "Sean O'Brien"])).text,
     "Ask {{user}} or {{user}} or {{user}}. Ping {{user}}, {{user}}.", "a hyphen or an apostrophe in a name");
   assert.equal(cleanText("Ubuntu 22 runs it; Will will do.", someone(["Ubuntu"], "Will")).text, "Ubuntu 22 runs it; Will will do.", "a one-word common or generic name stays");
+  assert.equal(personalIn("ubuntu-setup", someone(["Ubuntu"])), undefined, "a skill named after a generic account name stays");
 });
 
 test("ordinary text stays: common words of a name, git's address, loopback, versions, generic machine names outside paths", () => {

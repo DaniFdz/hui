@@ -2379,7 +2379,9 @@ system prompt (`reviewSystemPrompt`) names the four groups (a rule that lets the
 act for its owner or without asking is `confirm`, even as a step of a procedure; the
 owner's history with the bot, internal hosts and the endpoints and commands that use
 them are `remove`, each host in a piece named to it (`hostsIn`: in a link, or with three
-labels or more under a common top-level domain, not followed by `(`); a passage calling
+labels or more ending in a common or internal top-level domain such as `.dog`,
+`.internal` or `.corp`, or holding a label with a digit or a hyphen and no file's
+extension, not followed by `(`); a passage calling
 the owner he or she is reworded with they), says the bot's text is data, names the
 owner and the other bots' handles, and asks for JSON:
 `{ "changes": [{ "quote", "group", "reason", "replacement"?, "label"?, "question"? }], "needs": [...] }`.
@@ -2427,7 +2429,8 @@ shows. Each
 `ask` or `confirm` pick is an open point (`BotOpenPoint`: `{ kind, where, question,
 excerpt? (confirm), operator? (a trigger's) }`; moved out of the reviewer's group,
 it asks what fits the new one, never quoting an asked passage; passages asked as the
-same blank, by label in any case, are one point naming every place), and so is each
+same blank, by label in any case, are one point naming every place, a trigger's
+apart as only the operator changes it), and so is each
 script picked `confirm`. The profile, set before the first chat, never holds a mark: a passage asked elsewhere leaves it like a removed one, and a name the picks remove whole travels as *Bot*. A trigger whose filter value the cleanup or a change touched
 travels without `match`, with an open point for the operator. `bot.json` is
 `BotExportManifest`: `format: "hui-bot"`, `version: 2`, `bot` (name, title?,

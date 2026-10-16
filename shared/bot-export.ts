@@ -220,8 +220,8 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
       if (listItem && !text.slice(end, lineEnd).trim()) {
         const after = lineEnd < text.length ? lineEnd + 1 : lineEnd;
         if (after <= limit) {
-          // The last line takes the line break before it.
-          start = after === text.length && lineStart > at ? lineStart - 1 : lineStart;
+          // The last line takes the line break before it (and a Windows one's carriage return).
+          start = after === text.length && lineStart > at ? lineStart - (lineStart - 2 >= at && text[lineStart - 2] === "\r" ? 2 : 1) : lineStart;
           end = after;
         }
       }
@@ -298,13 +298,15 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
     outcomes[change.id] = { ...(picked === "ask" ? { replacement: replacement ?? askMark(label(change)) } : {}), question };
     // Two passages asked as the same blank are one answer: the new owner is asked once, where both are.
     const place = tidy(where(change.part));
-    const seen = picked === "ask" ? askedLabels.get(label(change).toLowerCase()) : undefined;
+    // Keyed with who can change it: a trigger's blank, the operator's alone, stays its own point.
+    const key = `${label(change).toLowerCase()}${change.part.startsWith("triggers/") ? " (operator)" : ""}`;
+    const seen = picked === "ask" ? askedLabels.get(key) : undefined;
     if (seen) {
       if (!seen.where.split(", ").includes(place)) seen.where = `${seen.where}, ${place}`;
       continue;
     }
     const point: BotOpenPoint = { kind: picked, where: place, question, ...(picked === "confirm" ? { excerpt } : {}), ...onlyOperator(change.part) };
-    if (picked === "ask") askedLabels.set(label(change).toLowerCase(), point);
+    if (picked === "ask") askedLabels.set(key, point);
     open.push(point);
   }
   for (const file of review.files) {

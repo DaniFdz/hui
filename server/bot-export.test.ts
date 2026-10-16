@@ -179,6 +179,7 @@ test("host names in a link or with three labels are put to the reviewer one by o
   assert.deepEqual(hostsIn("GET `https://risk-gateway.us1.corp.io/internal/v1` with `tool token --datacenter us1.corp.io`; see https://github.com/x, SKILL.md, draft.mjs, v1.2.3 and e.g. this."),
     ["risk-gateway.us1.corp.io", "us1.corp.io", "github.com"]);
   assert.deepEqual(hostsIn("os.path.join(a), process.env.home, vite.config.ts and bot-export.test.ts"), [], "code and file names");
+  assert.deepEqual(hostsIn("logs.prod.dog and api.us1.staging.example"), ["logs.prod.dog", "api.us1.staging.example"], "an internal domain, a label with a digit");
 });
 
 test("two passages asked as the same blank are asked once", async () => {
@@ -192,6 +193,8 @@ test("two passages asked as the same blank are asked once", async () => {
   const notes = review.parts.find((part) => part.id === "skills/review/notes.md")!;
   const apart = buildExport({ ...same, changes: [same.changes[0]!, { ...same.changes[1]!, part: notes.id }] }, {});
   assert.deepEqual(apart.open.filter((point) => point.kind === "ask" && point.where.startsWith("SOUL.md")).map((point) => point.where), [`SOUL.md, ${notes.label}`], "asked once, where both are");
+  const trigger = buildExport({ ...same, changes: [same.changes[0]!, { ...same.changes[1]!, part: "triggers/0" }] }, {});
+  assert.equal(trigger.open.filter((point) => point.kind === "ask" && /repositories/u.test(point.question)).length, 2, "a trigger's blank, the operator's alone, stays its own point");
   assert.match(build.files.find((file) => file.path === "SOUL.md")!.text, /\[ask: the repositories to watch\].*\[ask: The repositories to watch\]/su, "both blanks stay");
 });
 
@@ -317,6 +320,7 @@ test("applyChanges replaces every occurrence in one pass, the longer where two o
   assert.equal(applyChanges("a b c d", [{ quote: "b", replacement: "" }, { quote: "c", replacement: "" }]), "a d", "two side by side leave one space");
   assert.equal(out("Rules:\n- Do X.\n- Do Y.\n", "Do X"), "Rules:\n- Do Y.\n", "a list item left with its marker alone goes");
   assert.equal(out("Rules:\n1. Do X.\n2. Do Y.", "Do Y."), "Rules:\n1. Do X.", "the last line takes the line break before it");
+  assert.equal(out("Rules:\r\n- Do X.\r\n- Do Y.", "Do Y."), "Rules:\r\n- Do X.", "a Windows line break too");
 });
 
 test("a passage the reviewer flags in a script changes the text where it also stands, and wording that repeats a removed one never travels", async () => {
