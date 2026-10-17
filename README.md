@@ -48,7 +48,7 @@ https://github.com/user-attachments/assets/f1f798d9-a3be-45ce-a21e-f7e359fc4ada
 
 Interactive widgets, a browser the agent drives with a live preview, and GitHub, Slack and Datadog links that unfurl.
 
-https://github.com/user-attachments/assets/282a7c75-b24b-49e5-b2d1-c79a41c04c27
+https://github.com/user-attachments/assets/35fcf436-3670-4fcf-9be6-accd7f5b8b56
 
 ### Work pane
 
