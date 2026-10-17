@@ -643,7 +643,7 @@ test("link previews and cards render on the latest user message and the latest r
   const previews = /<hui-github-embeds .*<hui-datadog-embeds /u;
   const cards = /<hui-(?:github-embeds|datadog-embeds|slack-link|tweet-embed)/u;
 
-  assert.match(message("u1"), new RegExp(`<div class="chat-text chat-text--plain">${slack}</div>`, "u"), "an older Slack link stays text");
+  assert.ok(message("u1").includes(`<div class="chat-text chat-text--plain">${slack}</div>`), "an older Slack link stays text");
   assert.match(message("a1"), /<p><a href="https:\/\/x\.com\/openai\/status\/123456789"/u, "an older X post stays a link");
   for (const old of ["u1", "a1", "u2"]) assert.doesNotMatch(message(old), cards);
   assert.match(message("u3"), previews, "the last message of its group, and the latest one sent");
