@@ -1,7 +1,8 @@
 /**
- * The chat view and the New Session form, as render functions of `HomeProps`: launch form, transcript, composer and
- * its pickers, queue, questions, session header and bot identity. All state arrives in props and changes leave
- * through callbacks; the app element owns that state, and the chat projection decides the transcript's rows.
+ * The chat view and the New Session form, as render functions of `HomeProps`: launch form, transcript (with who sent
+ * each message HUI delivered from a bot, a session, a routine or a trigger, and what the agent handed a bot),
+ * composer and its pickers, queue, questions, session header and bot identity. All state arrives in props and changes
+ * leave through callbacks; the app element owns that state, and the chat projection decides the transcript's rows.
  */
 import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/message-metadata.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
@@ -58,7 +59,7 @@ import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/slack-link.ts";
-import { activityLabel, browserPreviewRow, projectChatTranscript, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow } from "./chat/projection.ts";
+import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./chat/projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard, renderToolFileReference, toolFilePath } from "./chat/read-tool-card.ts";
@@ -73,6 +74,8 @@ import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bot-fac
 import { renderCallButton } from "./bot-voice.ts";
 import { renderCallCard } from "./chat-call.ts";
 import type { BotView } from "../lib/bots.ts";
+import { botLook, previewLine } from "../../shared/bots.ts";
+import { navigationPath } from "../lib/navigation.ts";
 import { slashCommandQuery } from "../lib/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
 import { localPathQuery, type LocalPathQuery } from "../lib/local-paths.ts";
@@ -374,6 +377,10 @@ export type HomeProps = {
   onOpenBranchPrefixSettings: () => void;
   /** Present when this pane is a bot's permanent chat in the bot view. */
   bot?: HomeBot;
+  /** The bots whose faces show on the messages they sent and on what the agent sent them; none while bots are off. */
+  bots?: readonly Pick<BotView, "id" | "handle" | "name" | "avatar">[];
+  /** Opens a bot's chat; without it a bot's name is not a link. */
+  onOpenBot?: (botId: string) => void;
   /** The bot header's Call button: present while the bot can be called; starts a call or returns to the one under way. */
   call?: { inCall: boolean; onCall: () => void };
 };
@@ -860,18 +867,20 @@ export function isLongPrompt(text: string): boolean {
   return text.length > 700 || text.split("\n").length > 10;
 }
 
-function renderUserText(props: HomeProps, item: ChatMessage) {
-  const slack = parseSlackLink(item.text.trim());
+/** A user-role message's text: the operator's own (or a routine's or trigger's) plain, a bot's or a session's (`markdown`)
+ * rendered as the agents write it. */
+function renderUserText(props: HomeProps, item: ChatMessage, text = item.text, markdown = false) {
+  const slack = parseSlackLink(text.trim());
   if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link"><hui-slack-link
     data-url=${slack.url}
     data-workspace=${slack.workspace}
     data-channel-id=${slack.channelId}
     data-kind=${slack.kind}
   ></hui-slack-link></div>`;
-  if (!isLongPrompt(item.text)) return html`<div class="chat-text chat-text--plain">${item.text}</div>`;
+  if (!isLongPrompt(text)) return markdown ? html`<div class="chat-text">${renderAgentMarkdown(text)}</div>` : html`<div class="chat-text chat-text--plain">${text}</div>`;
   const id = `${props.session?.id ?? "session"}:prompt:${item.id}`;
   const expanded = props.expandedActivityIds.has(id);
-  return html`<div class="chat-text chat-text--plain chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${item.text}</div>
+  return html`<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(text) : text}</div>
     <button type="button" class="chat-prompt-toggle" aria-expanded=${expanded ? "true" : "false"} @click=${() => props.onActivityExpanded(id, !expanded)}>
       ${expanded ? "Show less" : "Show more"}<span class="chat-prompt-toggle__icon ${expanded ? "is-open" : ""}" aria-hidden="true">${chevronDownIcon}</span>
     </button>`;
@@ -904,20 +913,23 @@ function replyToMessage(event: Event, props: HomeProps, text: string) {
   });
 }
 
-function renderMessage(props: HomeProps, item: ChatMessage): TemplateResult {
+/** `attributed`: a message HUI delivered from someone else, shown without its header. */
+function renderMessage(props: HomeProps, item: ChatMessage, attributed?: { sender: MessageSender; body: string }): TemplateResult {
+  const shown = attributed?.body ?? item.text;
   return html`<div
     class="chat-bubble ${item.attachments?.length ? "chat-bubble--with-files" : ""} ${item.pending ? "streaming" : ""} ${item.failed ? "chat-bubble--failed" : ""}"
     data-message-id=${item.id}
     tabindex="0"
-    @contextmenu=${(event: MouseEvent) => openMessageContextMenu(event, item.text, (text) => props.onCopy(text, `message-${item.id}`))}
-    @keydown=${(event: KeyboardEvent) => openMessageContextMenu(event, item.text, (text) => props.onCopy(text, `message-${item.id}`))}
+    @contextmenu=${(event: MouseEvent) => openMessageContextMenu(event, shown, (text) => props.onCopy(text, `message-${item.id}`))}
+    @keydown=${(event: KeyboardEvent) => openMessageContextMenu(event, shown, (text) => props.onCopy(text, `message-${item.id}`))}
   >
     ${item.attachments?.length
       ? html`<div class="chat-assistant-attachments" role="list" aria-label="Attachments">
           ${item.attachments.map((attachment) => renderMessageAttachment(attachment))}
         </div>`
       : nothing}
-    ${item.role === "user" ? renderUserText(props, item) : html`<div class="chat-text">${renderAgentMarkdown(item.text)}</div>`}
+    ${attributed ? renderUserText(props, item, attributed.body, attributed.sender.kind !== "routine" && attributed.sender.kind !== "trigger")
+      : item.role === "user" ? renderUserText(props, item) : html`<div class="chat-text">${renderAgentMarkdown(item.text)}</div>`}
     ${item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
     ${item.pending || item.failed || !props.chatPreferences.datadogEmbeds ? nothing : html`<hui-datadog-embeds .text=${item.text}></hui-datadog-embeds>`}
     ${renderMetrics(item)}
@@ -1055,6 +1067,88 @@ function renderWidgetRow(id: string, widget: WidgetView): TemplateResult {
   </div>`;
 }
 
+/** Who sent a message, as its row shows them: a face or an icon, a name, what the name opens and the bubble's color. */
+type SenderView = { name: string; avatar: TemplateResult; color?: string; source?: string; link?: { href: string; open: () => void } };
+
+function senderIcon(glyph: unknown): TemplateResult {
+  return html`<span class="chat-sender-icon">${glyph}</span>`;
+}
+
+function senderView(props: HomeProps, sender: MessageSender): SenderView {
+  if (sender.kind === "bot") {
+    const bot = props.bots?.find((candidate) => candidate.handle === sender.handle);
+    // Bots are off, or it was deleted: its handle, without a face to guess.
+    if (!bot) return { name: `@${sender.handle}`, avatar: senderIcon(sender.handle.charAt(0).toUpperCase()) };
+    const open = props.onOpenBot;
+    return {
+      name: bot.name, avatar: renderBotAvatar(bot, "sm"), color: botLook(bot).color,
+      ...(open ? { link: { href: navigationPath({ kind: "bot", id: bot.id }), open: () => open(bot.id) } } : {}),
+    };
+  }
+  if (sender.kind === "routine") return { name: sender.name, avatar: senderIcon(icons.calendarClock), source: "Routine" };
+  if (sender.kind === "trigger") return { name: sender.name, avatar: senderIcon(icons.radio), source: sender.summary || "Trigger" };
+  const id = sender.kind === "parent" ? props.session?.parentId : sender.id;
+  const session = id ? props.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === id) : undefined;
+  return {
+    name: session?.title ?? (sender.kind === "parent" ? "Parent session" : sender.title),
+    avatar: senderIcon(icons.messageSquare),
+    ...(session ? { link: { href: navigationPath({ kind: "session", id: session.id }), open: () => props.onSelectSubagent(session.id) } } : {}),
+  };
+}
+
+function renderSenderName(view: SenderView): TemplateResult {
+  const link = view.link;
+  const name = link
+    ? html`<a class="chat-sender-name chat-sender-link" href=${link.href} @click=${(event: MouseEvent) => {
+      if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      link.open();
+    }}>${view.name}</a>`
+    : html`<span class="chat-sender-name">${view.name}</span>`;
+  return html`${name}${view.source ? html`<span class="chat-message-source" title=${view.source}>${view.source}</span>` : nothing}`;
+}
+
+/** A `message_bot` call, kept in sight once its turn folds: to whom, and the message, unfolded on request. Until its
+ * arguments name a target it stays an ordinary tool row. */
+function handoffActivity(items: readonly ChatActivity[]) {
+  const item = items.length === 1 ? items[0] : undefined;
+  if (item?.kind !== "tool" || item.name !== "message_bot") return undefined;
+  const args = typeof item.args === "object" && item.args !== null ? item.args as Record<string, unknown> : {};
+  const to = typeof args["to"] === "string" ? args["to"].trim() : "";
+  return to ? { item, to, message: typeof args["message"] === "string" ? args["message"] : "" } : undefined;
+}
+
+function renderHandoff(props: HomeProps, rowId: string, { item, to, message }: NonNullable<ReturnType<typeof handoffActivity>>): TemplateResult {
+  // `message_bot` names a bot by handle or exact name, or a calling agent by its return address.
+  const handle = to.replace(/^@/u, "").toLowerCase();
+  const bot = props.bots?.find((candidate) => candidate.handle === handle || candidate.name.toLowerCase() === to.toLowerCase());
+  const target = senderView(props, to.startsWith("agent:")
+    ? { kind: "session", title: "the calling agent", id: to.slice("agent:".length) }
+    : { kind: "bot", handle: bot?.handle ?? handle });
+  const status = item.status ?? "running";
+  const expansionId = `${props.session?.id ?? "session"}:handoff:${props.transcript.indexOf(item)}:${item.id}`;
+  return html`<div class="chat-group tool chat-group--with-footer" data-chat-row-key=${rowId}>
+    <div class="chat-group-messages">
+      <details class="chat-tool-msg-collapse chat-handoff" data-status=${status} style=${target.color ? `--chat-sender-color: ${target.color}` : nothing}
+        .open=${props.expandedActivityIds.has(expansionId)}
+        @toggle=${(event: Event) => props.onActivityExpanded(expansionId, (event.currentTarget as HTMLDetailsElement).open)}>
+        <summary class="chat-inline-disclosure chat-tool-msg-summary">
+          <span class="chat-handoff__avatar" aria-hidden="true">${target.avatar}</span>
+          <span class="chat-tool-disclosure__content">
+            <span class="chat-tool-msg-summary__label">${status === "running" ? "Sending to" : status === "failed" ? "Not sent to" : "Sent to"} <strong>${target.name}</strong></span>
+            <span class="chat-tool-msg-summary__preview">${previewLine(message.split(/\n\s*\n/u, 1)[0] ?? "", 160)}</span>
+          </span>
+          <span class="chat-tool-row__chevron" aria-hidden="true">${chevronDownIcon}</span>
+        </summary>
+        <div class="chat-handoff__body">
+          ${status === "failed" && item.output ? html`<p class="chat-run-error" role="alert">${item.output}</p>` : nothing}
+          <div class="chat-text">${renderAgentMarkdown(message)}</div>
+        </div>
+      </details>
+    </div>
+  </div>`;
+}
+
 function renderSubagentEvent(props: HomeProps, row: Extract<ChatProjectionRow, { kind: "subagentEvent" }>): TemplateResult {
   const failed = row.items.filter((item) => item.status !== "completed").length;
   const label = row.items.length === 1 ? `Subagent finished: ${row.items[0]!.title}` : `${row.items.length} subagents finished`;
@@ -1165,6 +1259,8 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       if (widget) return renderWidgetRow(row.id, widget);
       const answers = questionnaireSummary(row.items);
       if (answers) return renderQuestionnaireSummary(row.id, answers);
+      const handoff = handoffActivity(row.items);
+      if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
@@ -1187,24 +1283,30 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       </div>`;
     }
     const last = row.messages.at(-1);
+    // A message HUI delivered from a bot, a session, a routine or a trigger: theirs, on the left, under their name.
+    const sender = row.sender ? senderView(props, row.sender) : undefined;
+    const lastText = row.sender && last ? attributedMessage(last.text)?.body ?? last.text : last?.text;
     // History refreshed from PI carries entry ids; a prompt sent this run has
     // none yet. A prompt PI refused (failed) was never persisted: no rewind.
     // A bot's chat is permanent: the gateway refuses rewinds, so none is offered.
-    const rewindTo: RewindTarget | undefined = row.role !== "user" || !last || last.failed || props.session?.bot ? undefined
+    // Someone else's message was never the operator's to edit and send again.
+    const rewindTo: RewindTarget | undefined = row.role !== "user" || sender || !last || last.failed || props.session?.bot ? undefined
       : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
           .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
     const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);
     // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
     const forkAt = props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
     const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
-    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""}" data-chat-row-key=${row.id}>
-      <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item))}</div>
+    return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
+      style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
+      ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
+      <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, row.sender ? attributedMessage(item.text) : undefined))}</div>
       ${last?.pending ? nothing : html`<div class="chat-group-footer ${row.role === "user" ? "chat-group-footer--persistent-identity" : ""}">
-        <div class="chat-group-footer__meta"><span class="chat-sender-name">${row.role === "user" ? "You" : props.session?.bot?.name ?? "pi"}</span>
+        <div class="chat-group-footer__meta">${sender ? renderSenderName(sender) : html`<span class="chat-sender-name">${row.role === "user" ? "You" : props.session?.bot?.name ?? "pi"}</span>`}
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
-        ${last?.text ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
-          <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, last.text)}>${icons.messageSquare}</button>
-        `)}${renderCopy(props, last.text, `message-${last.id}`, row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
+        ${last && lastText ? html`<div class="chat-group-footer-actions">${renderActionTooltip(sessionControlId(props, `reply-tooltip-${row.id}`), "Reply", html`
+          <button type="button" class="chat-copy-btn" aria-label="Reply to message" aria-describedby=${sessionControlId(props, `reply-tooltip-${row.id}`)} @click=${(event: Event) => replyToMessage(event, props, lastText)}>${icons.messageSquare}</button>
+        `)}${renderCopy(props, lastText, `message-${last.id}`, sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt")}</div>` : nothing}
         ${rewindTo ? html`<div class="chat-group-footer-actions">
           ${renderActionTooltip(rewindTooltipId, props.rewindPending ? "Rewinding…" : "Rewind", html`
             <button type="button" class="chat-group-rewind" aria-label=${props.rewindPending ? "Rewinding…" : "Rewind to here"} aria-describedby=${rewindTooltipId} ?disabled=${props.rewindPending} @click=${() => props.onRewind(rewindTo, last?.text ?? "", last?.attachments)}>${rewindIcon}</button>

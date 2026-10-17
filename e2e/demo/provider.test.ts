@@ -28,12 +28,13 @@ after(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-/** The streamed reply's tool calls and text. */
+/** The streamed reply's tool calls (with their input) and text. */
 async function reply(content: unknown) {
   const response = await fetch(`${url}/v1/messages`, { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content }] }) });
   const events = (await response.text()).split("\n").filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6)));
+  const inputs = events.filter((event) => event.delta?.type === "input_json_delta").map((event) => JSON.parse(event.delta.partial_json));
   return {
-    tools: events.filter((event) => event.content_block?.type === "tool_use").map((event) => ({ id: event.content_block.id, name: event.content_block.name })),
+    tools: events.filter((event) => event.content_block?.type === "tool_use").map((event, index) => ({ id: event.content_block.id, name: event.content_block.name, input: inputs[index] })),
     text: events.map((event) => event.delta?.text ?? "").join(""),
   };
 }
@@ -49,4 +50,10 @@ test("a bot's memory view does not start the scripts it mentions", async () => {
   const answer = await reply([{ type: "text", text: "<chat>\nuser: Every weekday at 9, post a digest\n</chat>" }, { type: "text", text: "Thanks!" }]);
   assert.deepEqual(answer.tools, []);
   assert.equal(answer.text, "Done.");
+});
+
+test("a bot answers the agent that tagged it at the return address its tag carries", async () => {
+  const answer = await reply([{ type: "text", text: "<chat>\nuser: Heads-up\n</chat>" }, { type: "text", text: "[from agent: Apple Pay at checkout · reply-to agent:demo-1] Please add it to Monday's rollout." }]);
+  assert.equal(answer.tools[0]?.name, "message_bot");
+  assert.equal(answer.tools[0]?.input.to, "agent:demo-1");
 });

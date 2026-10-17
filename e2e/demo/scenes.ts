@@ -301,6 +301,7 @@ export const scenes: Scene[] = [
       children: "Each subagent works in its own session, right there in the sidebar.",
       report: "As they finish, they report back, and the parent sums up what they found.",
       open: "You can open any of them to see exactly what it did.",
+      parent: "Its task shows the session that sent it. Click the name to go back.",
       watcher: "For things that take a while, like CI, the agent leaves a watcher behind. It waits in the background, and merges once the checks go green.",
     },
     async run({ director: d }) {
@@ -327,7 +328,12 @@ export const scenes: Scene[] = [
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
       await d.pause(2_200);
       await d.zoom();
-      await d.click({ label: "Open parent" });
+      await d.caption("Its task names the session that sent it");
+      await d.say("parent");
+      await d.zoom({ css: ".chat-group--peer" }, 1.5);
+      await d.pause(2_000);
+      await d.zoom();
+      await d.click({ css: ".chat-sender-link", text: "Review PR #142 in parallel" });
       await d.caption("Watchers wait on CI for you");
       await d.say("watcher");
       await send(d, "Fix the ownership check, then merge once CI is green");
@@ -361,6 +367,9 @@ export const scenes: Scene[] = [
       routine: "They schedule their own routines. Ask Scout for a weekday digest, and it sets one up.",
       run: "Run it now, and the digest already knows what you told it earlier.",
       panel: "Its panel shows what it does on its own, and expands when you need the room.",
+      handoff: "Agents hand a bot work by tagging it. You see what they sent, next to the bot's face.",
+      reply: "Scout answers right in the agent's chat, under its own face.",
+      follow: "Click a name to open that chat.",
     },
     async run({ director: d }) {
       await d.caption("Bots are agents that stay: a face, one chat and a memory");
@@ -393,6 +402,29 @@ export const scenes: Scene[] = [
       await d.pause(2_400);
       await d.zoom();
       await d.click({ label: "Show the chat beside the panel" });
+      await d.caption("Agents hand bots work with an @");
+      await d.say("handoff");
+      await d.click({ css: "#sidebar-tab-sessions" });
+      await d.click({ css: "a", contains: "Apple Pay at checkout" });
+      await d.waitFor({ contains: "merchant validation endpoint next" });
+      await send(d, "@scout make sure Apple Pay is on Monday's rollout");
+      await d.waitFor({ css: ".chat-handoff" }, 30_000);
+      await d.zoom({ css: ".chat-handoff" }, 1.6);
+      await d.pause(1_800);
+      await d.zoom();
+      await d.caption("Scout answers in the agent's chat");
+      await d.say("reply");
+      await d.waitFor({ css: ".chat-group--peer" }, 30_000);
+      await d.zoom({ css: ".chat-group--peer" }, 1.5);
+      await d.pause(2_200);
+      await d.zoom();
+      await d.caption("Click a name to open that chat");
+      await d.say("follow");
+      await d.click({ css: ".chat-sender-link", text: "Scout" });
+      await d.waitFor({ css: ".chat-sender-link", text: "Apple Pay at checkout" }, 15_000);
+      await d.zoom({ css: ".chat-group--peer", contains: "Monday" }, 1.4);
+      await d.pause(2_200);
+      await d.zoom();
       await d.caption();
     },
   },

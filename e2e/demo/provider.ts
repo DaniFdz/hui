@@ -9,14 +9,16 @@
  */
 import { appendFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { agentReplyTo } from "../../shared/bots.ts";
 
 const logFile = process.env["HUI_E2E_PROVIDER_LOG"] || (() => { throw new Error("HUI_E2E_PROVIDER_LOG is required"); })();
 let port = Number(process.env["HUI_E2E_PROVIDER_PORT"] ?? 0);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 type Call = { name: string; input: Record<string, unknown> };
-/** One model response: optional thinking, text, then tool calls. Text and calls can depend on the tool results so far, latest first. */
-type Turn = { wait?: number; think?: string; say?: string | ((results: string[]) => string); calls?: Call[] | ((results: string[]) => Call[]) };
+/** One model response: optional thinking, text, then tool calls. Text and calls can depend on the tool results so far, latest first,
+ * and a script's first calls on the message that started it. */
+type Turn = { wait?: number; think?: string; say?: string | ((results: string[]) => string); calls?: Call[] | ((results: string[], prompt: string) => Call[]) };
 /** A script starts when the latest user message contains `when`; `title` and `branch` answer HUI's naming prompts. */
 type Script = { when: string; title?: string; branch?: string; turns: Turn[] };
 
@@ -217,6 +219,29 @@ const scripts: Script[] = [
       { say: "Merchant validation is in and the unit tests pass.\n\n- **Done:** payment sheet, merchant validation\n- **Next:** the Safari e2e test\n\nWant me to open the pull request?" },
     ],
   },
+  // Bots: an agent tags Scout, and Scout answers that agent through the return address its tag carries.
+  {
+    when: "@scout make sure Apple Pay",
+    turns: [
+      { wait: 600, calls: [{ name: "message_bot", input: { to: "@scout", message: "Apple Pay ships behind the payments flag this week. Please add it to Monday's rollout, and tell me if anything clashes." } }] },
+      { say: "Asked Scout to put Apple Pay on Monday's rollout." },
+    ],
+  },
+  {
+    when: "[from agent: Apple Pay at checkout",
+    turns: [
+      // A bot takes a moment: its answer lands after the agent's handoff has had the screen.
+      { wait: 3_500, think: "Monday already has refunds at 10%; Apple Pay can follow it.", calls: (_, prompt) => [{ name: "message_bot", input: {
+        to: agentReplyTo(prompt.slice(prompt.indexOf("[from agent: "))) ?? (() => { throw new Error("The tag carries no return address."); })(),
+        message: "Apple Pay is on Monday's rollout, right after refunds reach 10%. Priya owns both rollbacks, so keep the Safari test green.",
+      } }] },
+      { say: "Added Apple Pay to Monday's rollout and told its agent." },
+    ],
+  },
+  {
+    when: "[from @scout",
+    turns: [{ wait: 600, say: "Scout put Apple Pay on Monday's rollout, right after refunds. I'll have the Safari e2e test passing before then." }],
+  },
   // Bots: a remembered note, a routine the bot schedules itself, and its run.
   {
     when: "Heads-up: refunds roll out",
@@ -255,8 +280,8 @@ async function stream(response: ServerResponse, index: number, kind: "text" | "t
   if (kind === "thinking") sse(response, { type: "content_block_delta", index, delta: { type: "signature_delta", signature: "demo" } });
   sse(response, { type: "content_block_stop", index });
 }
-async function respond(response: ServerResponse, turn: Turn, id: string, results: string[], pace = 28) {
-  const calls = typeof turn.calls === "function" ? turn.calls(results) : turn.calls ?? [];
+async function respond(response: ServerResponse, turn: Turn, id: string, results: string[], pace = 28, prompt = "") {
+  const calls = typeof turn.calls === "function" ? turn.calls(results, prompt) : turn.calls ?? [];
   const say = typeof turn.say === "function" ? turn.say(results) : turn.say;
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   sse(response, { type: "message_start", message: { id: `msg_${Date.now()}`, type: "message", role: "assistant", model: "demo", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 18_000 + Math.round(results.join("").length / 4), output_tokens: 0 } } });
@@ -340,7 +365,7 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
   if (source.includes("[HUI subagent completion event]")) return respond(response, { wait: 400, say: subagentSummary(source) }, "demo_events", []);
   const index = named ? scripts.indexOf(named) : -1;
   if (index === -1) return plain(response, "Done.");
-  return respond(response, named!.turns[0]!, `demo_${index}_0`, []);
+  return respond(response, named!.turns[0]!, `demo_${index}_0`, [], undefined, source);
 }
 
 // A script that cannot go on (a page without the element it expects) fails the run loudly instead of faking success.

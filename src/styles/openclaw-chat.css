@@ -723,6 +723,30 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .chat-subagents--event { margin: 4px 0; }
 .chat-subagents__event-title { display: grid; grid-template-columns: 16px fit-content(55%) minmax(0, 1fr); align-items: center; gap: 8px; min-height: 30px; padding: 4px 8px; color: var(--muted); }
 
+/* A message HUI delivered from a bot, a session, a routine or a trigger: OpenClaw's peer turn on the left, its sender's
+   face or icon in a leading column (direct threads and phones included), the bubble tinted with a bot's color and the
+   sender's name under it, its time and actions beside the name on phones too (HUI keeps them shown, not revealed). */
+.chat-thread .chat-group.user.chat-group--peer.chat-group--with-footer { --chat-avatar-column: 32px; --chat-avatar-gap: 10px; --chat-footer-detail-position: static; }
+.chat-thread .chat-group.user.chat-group--peer .chat-group-footer-actions { flex-basis: auto; justify-content: flex-start; }
+.chat-group--peer > .chat-sender-avatar { display: grid; grid-column: 1; grid-row: 1; align-self: end; place-items: center; width: 32px; height: 32px; }
+.chat-group.user.chat-group--peer .chat-bubble { --chat-bubble-background: color-mix(in srgb, var(--chat-sender-color, var(--muted)) 14%, var(--card)); }
+.chat-group--peer .chat-sender-name { color: color-mix(in srgb, var(--chat-sender-color, var(--muted)) 50%, var(--text-strong)); }
+.chat-group--peer .chat-message-source { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-sender-link { pointer-events: auto; text-decoration: none; }
+.chat-sender-link:hover, .chat-sender-link:focus-visible { text-decoration: underline; }
+.chat-sender-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-full); background: color-mix(in srgb, var(--muted) 16%, var(--card)); color: var(--muted); font-size: 13px; font-weight: 650; }
+.chat-sender-icon svg { width: 16px; height: 16px; }
+
+/* What the agent handed a bot (`message_bot`): a tool row with the bot's face, the message unfolded on request. */
+.chat-handoff__avatar { display: grid; flex: none; place-items: center; width: 20px; height: 20px; }
+.chat-handoff__avatar .bot-avatar--face hui-bot-face { --bot-face-size: 20px; }
+.chat-handoff .chat-handoff__avatar :is(.bot-avatar--emoji, .chat-sender-icon) { width: 20px; height: 20px; margin: 0; font-size: 11px; }
+.chat-handoff__avatar .chat-sender-icon svg { width: 12px; height: 12px; }
+.chat-handoff strong { color: var(--text); font-weight: 600; }
+.chat-handoff[data-status="failed"] .chat-tool-msg-summary__label { color: var(--danger); }
+.chat-handoff[open] .chat-tool-msg-summary__preview { display: none; }
+.chat-handoff__body { margin: 2px 0 8px 10px; padding-left: 18px; border-left: 2px solid color-mix(in srgb, var(--chat-sender-color, var(--muted)) 55%, transparent); }
+
 /* Per-message measurements use the existing muted transcript hierarchy. */
 .hui-message-metrics {
   margin-top: 10px;
