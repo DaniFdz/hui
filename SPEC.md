@@ -560,7 +560,10 @@ and restarts an idle running gateway. Failure restores the previous selection
 and gateway; `--rollback` is handled by the original installed launcher. A
 stopped gateway stays stopped. Update metadata and retained releases live under
 `$XDG_DATA_HOME/hui/updates/<installation-hash>` (default `~/.local/share`). They
-do not change the HUI registry or PI transcript/config formats. Source-linked,
+do not change the HUI registry or PI transcript/config formats. After a successful
+update or rollback, HUI keeps only the current and previous releases and deletes
+every other staged release. It logs a deletion that fails and still reports the
+update as successful. Source-linked,
 Nix-store and Homebrew installations must use their owning update workflow.
 `hui update` resolves the latest stable release in the public GitHub repository
 using GitHub's public API, downloads its bounded archive and SHA-256
