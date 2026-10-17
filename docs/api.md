@@ -1027,6 +1027,11 @@ Assistant Markdown has six bounded rich forms in addition to CommonMark/GFM:
   and never implies that the agent has read the private conversation. Labeled,
   mixed-prose, HTTP and non-canonical Slack URLs remain ordinary text or links.
 
+In the transcript, X and Slack cards, like [GitHub](#github-link-previews) and
+[Datadog](#datadog-link-previews) link previews, appear only on the latest user
+message and the latest assistant message; earlier messages, including the
+agent's messages folded into run details, and hand-offs keep the plain link.
+
 Raw author HTML, SVG, scripts and arbitrary iframes remain escaped; interactive
 HTML and SVG are [agent widgets](#agent-widgets). The runtime
 system prompt renders one compact `hui_presentation` section from the structured
@@ -4279,11 +4284,12 @@ The reference is projected from the live runtime transcript: only a tool call
 whose command runs `gh pr create` (or a tool named like `create_pull_request`)
 and whose output contains a pull request URL counts; URLs merely mentioned in
 prose or `gh pr view` output do not. `state`, `title` and `body` come from the
-shared [GitHub link previews](#github-link-previews) (`gh api` with the Settings
-→ Integrations → GitHub login), so badges and chat embeds agree. Lookups run in
-the background (two at a time) and are cached in server memory: open and draft
-PRs refresh after 60 seconds, merged or closed after 15 minutes, failures after
-5 minutes. A listing never waits for GitHub; until a lookup succeeds the
+shared [GitHub link previews](#github-link-previews) (`gh api graphql` with the
+Settings → Integrations → GitHub login), so badges and chat embeds agree. Lookups
+run in the background, every due one at once so a listing's badges batch into
+as few `gh` calls as the previews allow, and are cached in server memory: open
+and draft PRs refresh after 60 seconds, merged or closed after 15 minutes,
+failures after 5 minutes. A listing never waits for GitHub; until a lookup succeeds the
 optional fields are absent, and a failed refresh keeps the last confirmed facts.
 Nothing is written to the registry. Like progress, PRs reappear after a gateway
 restart once the session's runtime restores its transcript.
@@ -4471,9 +4477,11 @@ selection is browser-only state and does not change the API response shape.
 
 ### GitHub link previews
 
-Chat messages (user and assistant) unfurl GitHub references after the message
-text, like Slack: at most **three** per message, in reading order, deduplicated
-(`owner/repo#N` and its URL are one item). `github.com/<owner>/<repo>` (and deeper
+The latest user message (the operator's, or one HUI delivered from a bot, a
+session, a routine or a trigger) and the latest assistant message unfurl GitHub
+references after the message text; older messages keep their links and request
+nothing. Like Slack, at most **three** per message, in reading order,
+deduplicated (`owner/repo#N` and its URL are one item). `github.com/<owner>/<repo>` (and deeper
 repository pages), `…/pull/N`, `…/issues/N` and `owner/repo#N` shorthand count;
 references inside inline or fenced code, GitHub site pages (`/settings`,
 `/login`, …) and other hosts do not. A streaming message unfurls once its text has
@@ -4490,15 +4498,24 @@ type GitHubPreviewResult = { url: string; preview?: GitHubPreview; error?: "not_
 //              | issue { repository, number, title, state, stateReason?, author?, comments, labels, body? }
 ```
 
-Each lookup is one read-only `gh api` call (`repos/:o/:r`, `…/pulls/:n`, or
-`…/issues/:n` followed by `…/pulls/:n` when the issue is a pull request) with the
-gateway's GitHub CLI login, so private repositories the account can read preview
-too. `gh` output never reaches the browser; failures map to the coarse `error`.
+Lookups that arrive within 20 ms of the first waiting one, from any request or
+PR badge, share one read-only `gh api graphql --input -` call with the gateway's
+GitHub CLI login: one aliased `repository(owner:, name:)` per item, with
+`issueOrPullRequest(number:)` for numbered ones, so a pull URL that names an
+issue previews the issue and an issue URL or `owner/repo#N` that names a pull
+request previews the pull request. A call carries at most 25 items and at most
+two run at once; lookups that wait for a free call go out together in the next.
+Private repositories the account can read preview too. An item GitHub cannot
+resolve is `not_found` while the rest of its call still previews; a call that
+fails as a whole fails each of its items with the same `error`. `gh` output never
+reaches the browser; failures map to the coarse `error`. A pull request's
+`comments` counts its conversation comments and review threads.
 Results are cached in gateway memory: open PRs 60 s, open issues 2 min,
 repositories 10 min, settled items 15 min, `not_found` 5 min, `unavailable` 60 s,
-`signed_out`/`cli_missing` 15 s; concurrent requests for one item share a call
-and at most four `gh` calls run at once. A successful GitHub sign-in clears
-cached failures. The browser keeps results for 60 s (failures 30 s) per page.
+`signed_out`/`cli_missing` 15 s; every spelling of one item (`owner/repo#N`, its
+issue or pull URL) shares one lookup and its cached result. A successful GitHub
+sign-in clears cached failures. The browser keeps
+results for 60 s (failures 30 s) per page.
 Every card is a link to the item on GitHub and shows the reason when no preview
 is available. Hovering or keyboard-focusing a pull request card opens the same
 hovercard as the session PR badges, with the full Markdown description.
@@ -4510,12 +4527,14 @@ the lookup.
 
 ### Datadog link previews
 
-Chat messages (user and assistant) unfurl Datadog links after the message text,
-after the GitHub cards: at most **three** per message (their own cap), in reading
-order, one per URL. An HTTPS link without port or credentials on a host under
-`datadoghq.com`, `datadoghq.eu`, `datad0g.com` or `ddog-gov.com` counts when it is
-a share link (`/s/<a>/<b>`) or a dashboard (`/dashboard/<xxx-xxx-xxx>[/…]`);
-`tile_focus` or `fullscreen_widget` makes it a widget link. Brackets in a query
+The same two messages as [GitHub link previews](#github-link-previews) unfurl
+Datadog links after the message text, after the GitHub cards; older messages keep
+their links and request nothing. At most **three** per message (their own cap),
+in reading order, one per URL. An HTTPS link without port or credentials on a
+host under `datadoghq.com`, `datadoghq.eu`, `datad0g.com` or `ddog-gov.com`
+counts when it is a share link (`/s/<a>/<b>`) or a dashboard
+(`/dashboard/<xxx-xxx-xxx>[/…]`); `tile_focus` or `fullscreen_widget` makes it a
+widget link. Brackets in a query
 (`tpl_var_env[0]=prod`) stay part of the link. Links inside inline or fenced code
 and every other Datadog page do not count. A streaming message unfurls once its
 text has been stable for 800 ms.

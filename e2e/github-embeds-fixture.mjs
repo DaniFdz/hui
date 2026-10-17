@@ -1,8 +1,10 @@
 /** Seed a disposable PI transcript whose messages mention GitHub links and
- * whose tool call created a pull request, for GitHub embed and badge E2E.
+ * whose tool call created a pull request, for GitHub embed and badge E2E. Thirty
+ * earlier turns link more pull requests, issues and a Slack thread, a long
+ * history that stays plain links: only the latest user message and reply unfurl.
  * Usage: node e2e/github-embeds-fixture.mjs <fresh /tmp/hui-github-embeds-* root> <pi session-manager.js>
- * Pair with HUI_GITHUB_CLI=e2e/github-cli-fixture.mjs, whose canned `gh api`
- * payloads describe acme/web, acme/web#12 (open PR), #13 (merged PR) and #7 (issue). */
+ * Pair with HUI_GITHUB_CLI=e2e/github-cli-fixture.mjs, whose canned `gh api graphql`
+ * previews describe acme/web, acme/web#12 (open PR), #13 (merged PR) and #7 (issue). */
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -29,6 +31,10 @@ const assistant = (content, stopReason = "stop") => ({ role: "assistant", api: "
 
 const manager = SessionManager.create(workspace, join(root, "pi-sessions"));
 manager.appendModelChange("hui-e2e", "fixture");
+for (let turn = 1; turn <= 30; turn++) {
+  manager.appendMessage({ role: "user", content: [{ type: "text", text: `Step ${turn}: review https://github.com/acme/web/pull/${100 + turn} and acme/web#${200 + turn}.` }], timestamp: Date.now() });
+  manager.appendMessage(assistant([{ type: "text", text: `Reviewed https://github.com/acme/web/pull/${100 + turn}.\n\nhttps://acme.slack.com/archives/C01234567/p1723456789012345` }]));
+}
 manager.appendMessage({ role: "user", content: [{ type: "text", text: "Open the checkout PR on acme/web. Context: https://github.com/acme/web/issues/7" }], timestamp: Date.now() });
 manager.appendMessage(assistant([{ type: "toolCall", id: "call_pr", name: "bash", arguments: { command: "git push -u origin HEAD && gh pr create --fill" } }], "toolUse"));
 manager.appendMessage({ role: "toolResult", toolCallId: "call_pr", toolName: "bash", isError: false, timestamp: Date.now(),

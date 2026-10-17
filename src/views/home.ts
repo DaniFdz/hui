@@ -869,18 +869,18 @@ export function isLongPrompt(text: string): boolean {
 
 /** A user-role message's text: the operator's own (or a routine's or trigger's) plain, a bot's or a session's (`markdown`)
  * rendered as the agents write it. */
-function renderUserText(props: HomeProps, item: ChatMessage, text = item.text, markdown = false) {
-  const slack = parseSlackLink(text.trim());
+function renderUserText(props: HomeProps, item: ChatMessage, embeds: boolean, text = item.text, markdown = false) {
+  const slack = embeds ? parseSlackLink(text.trim()) : undefined;
   if (slack) return html`<div class="chat-text chat-text--plain chat-text--rich-link"><hui-slack-link
     data-url=${slack.url}
     data-workspace=${slack.workspace}
     data-channel-id=${slack.channelId}
     data-kind=${slack.kind}
   ></hui-slack-link></div>`;
-  if (!isLongPrompt(text)) return markdown ? html`<div class="chat-text">${renderAgentMarkdown(text)}</div>` : html`<div class="chat-text chat-text--plain">${text}</div>`;
+  if (!isLongPrompt(text)) return markdown ? html`<div class="chat-text">${renderAgentMarkdown(text, embeds)}</div>` : html`<div class="chat-text chat-text--plain">${text}</div>`;
   const id = `${props.session?.id ?? "session"}:prompt:${item.id}`;
   const expanded = props.expandedActivityIds.has(id);
-  return html`<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(text) : text}</div>
+  return html`<div class="chat-text ${markdown ? "" : "chat-text--plain"} chat-text--collapsible ${expanded ? "" : "chat-text--collapsed"}">${markdown ? renderAgentMarkdown(text, embeds) : text}</div>
     <button type="button" class="chat-prompt-toggle" aria-expanded=${expanded ? "true" : "false"} @click=${() => props.onActivityExpanded(id, !expanded)}>
       ${expanded ? "Show less" : "Show more"}<span class="chat-prompt-toggle__icon ${expanded ? "is-open" : ""}" aria-hidden="true">${chevronDownIcon}</span>
     </button>`;
@@ -913,8 +913,9 @@ function replyToMessage(event: Event, props: HomeProps, text: string) {
   });
 }
 
-/** `attributed`: a message HUI delivered from someone else, shown without its header. */
-function renderMessage(props: HomeProps, item: ChatMessage, attributed?: { sender: MessageSender; body: string }): TemplateResult {
+/** `embeds`: link previews and cards, which only the latest user message and the latest reply draw.
+ * `attributed`: a message HUI delivered from someone else, shown without its header. */
+function renderMessage(props: HomeProps, item: ChatMessage, embeds: boolean, attributed?: { sender: MessageSender; body: string }): TemplateResult {
   const shown = attributed?.body ?? item.text;
   return html`<div
     class="chat-bubble ${item.attachments?.length ? "chat-bubble--with-files" : ""} ${item.pending ? "streaming" : ""} ${item.failed ? "chat-bubble--failed" : ""}"
@@ -928,10 +929,10 @@ function renderMessage(props: HomeProps, item: ChatMessage, attributed?: { sende
           ${item.attachments.map((attachment) => renderMessageAttachment(attachment))}
         </div>`
       : nothing}
-    ${attributed ? renderUserText(props, item, attributed.body, attributed.sender.kind !== "routine" && attributed.sender.kind !== "trigger")
-      : item.role === "user" ? renderUserText(props, item) : html`<div class="chat-text">${renderAgentMarkdown(item.text)}</div>`}
-    ${item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
-    ${item.pending || item.failed || !props.chatPreferences.datadogEmbeds ? nothing : html`<hui-datadog-embeds .text=${item.text}></hui-datadog-embeds>`}
+    ${attributed ? renderUserText(props, item, embeds, attributed.body, attributed.sender.kind !== "routine" && attributed.sender.kind !== "trigger")
+      : item.role === "user" ? renderUserText(props, item, embeds) : html`<div class="chat-text">${renderAgentMarkdown(item.text, embeds)}</div>`}
+    ${!embeds || item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
+    ${!embeds || item.pending || item.failed || !props.chatPreferences.datadogEmbeds ? nothing : html`<hui-datadog-embeds .text=${item.text}></hui-datadog-embeds>`}
     ${renderMetrics(item)}
     ${item.pending ? html`<span class="chat-send-status" role="status">Sending…</span>` : nothing}
     ${item.failed ? html`<span class="chat-send-status chat-send-status--failed" role="alert">Not sent — draft recovered.</span>` : nothing}
@@ -1247,6 +1248,8 @@ function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }
 
 function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[]): TemplateResult {
   const latestAssistantRowId = rows.findLast((row) => row.kind === "messages" && row.role === "assistant")?.id;
+  const latestSent = (role: ChatMessage["role"]) => rows.flatMap((row) => row.kind === "messages" && row.role === role ? row.messages : []).findLast((item) => !item.pending && !item.failed);
+  const withEmbeds = [latestSent("user"), latestSent("assistant")];
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
   return html`${rows.map((row, rowIndex) => {
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
@@ -1308,7 +1311,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
       style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
       ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
-      <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, row.sender ? attributedMessage(item.text) : undefined))}</div>
+      <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>
       ${last?.pending ? nothing : html`<div class="chat-group-footer ${row.role === "user" ? "chat-group-footer--persistent-identity" : ""}">
         <div class="chat-group-footer__meta">${sender ? renderSenderName(sender) : html`<span class="chat-sender-name">${row.role === "user" ? "You" : props.session?.bot?.name ?? "pi"}</span>`}
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>

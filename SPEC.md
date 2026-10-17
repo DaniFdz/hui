@@ -142,7 +142,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   pointer can move from the mark onto the card and scroll a long description
   without it closing; activating the mark opens the PR on GitHub in a new tab. PRs are
   detected only from a `gh pr create` (or create-pull-request tool) result in
-  the live transcript; state and text come from the shared GitHub previews (`gh api`), cached
+  the live transcript; state and text come from the shared GitHub previews (`gh api graphql`), cached
   in memory and never persisted. Unconfirmed PRs render neutral, never guessed.
 - Sessions linked to Jira Cloud work items show a Jira mark in the leading status
   column (aligned with child status glyphs; live attention/running status wins),
@@ -261,12 +261,18 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   still on PI's worker appear once `hui doctor --fix` moves them. A rewind
   continues the session on a copy of the history before that point, so the
   time spent on the abandoned branch leaves the calendar.
+- Link previews and cards (GitHub, Datadog, Slack, X) appear on the latest user
+  message and the latest assistant message only; older messages keep their
+  links and look nothing up, so a long session does not query GitHub for its
+  whole history.
 - Chat messages unfurl GitHub repositories, pull requests and issues (URLs or
   `owner/repo#N`) as cards after the message, at most three per message like
   Slack: PRs show state, title, description snippet, author and diff stats;
   issues show state, labels and comments; repositories show description,
   language, stars and forks. Facts come from the same `gh` login as PR badges;
   without it the card still links to GitHub and says why there is no preview.
+  Lookups made together, cards and badges alike, share `gh api graphql` calls of
+  up to 25 items.
   Hovering a PR card shows its full description in the PR badge hovercard.
   Settings → Appearance → Chat → *GitHub link previews* turns embeds off.
 - Chat messages unfurl Datadog links as cards after the message (after GitHub's,

@@ -155,7 +155,7 @@ import { serveWidgetSandbox } from "./widget-sandbox.ts";
 import { WIDGET_SANDBOX_PATH } from "../shared/widgets.ts";
 import { GitHubCli, GitHubCliError } from "./github.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
-import { GitHubPreviews, ghApi, previewPullRequestFetcher } from "./github-previews.ts";
+import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./github-previews.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { MAX_DATADOG_EMBEDS, parseDatadogUrl } from "../shared/datadog.ts";
 import { DatadogError, DatadogOrgs } from "./datadog.ts";
@@ -1312,7 +1312,7 @@ const triggers = createGatewayTriggers({
   ghCommand: GH_COMMAND,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
-const githubPreviews = new GitHubPreviews(ghApi(GH_COMMAND));
+const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
 
 /* ── Datadog ── orgs, sign-in and previews run through the operator's `pup`; HUI never sees a token.
