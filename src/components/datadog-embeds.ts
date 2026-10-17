@@ -12,6 +12,7 @@ import {
   datadogPreviewMessage,
   formatDatadogRange,
   loadDatadogPreviews,
+  settledDatadogPreview,
   signInToDatadog,
 } from "../lib/datadog.ts";
 import { SETTLE_MS } from "./github-embeds.ts";
@@ -59,8 +60,11 @@ export class HuiDatadogEmbeds extends LitElement {
     // A streaming message grows a URL character by character; unfurl only once the
     // text has been stable briefly so partial links are never looked up or shown.
     if (this.#settle) clearTimeout(this.#settle);
-    const first = this.#requested === "" && this.#refs.length === 0;
-    this.#settle = setTimeout(() => { this.#settle = undefined; this.#unfurl(); }, first ? 0 : SETTLE_MS);
+    this.#settle = undefined;
+    // A message's first render shows its cards at once, already filled in when they were seen before, so a
+    // transcript that renders again does not grow card by card under the reader (as GitHub's cards do).
+    if (this.#requested === "" && this.#refs.length === 0) this.#unfurl();
+    else this.#settle = setTimeout(() => { this.#settle = undefined; this.#unfurl(); }, SETTLE_MS);
   }
 
   #unfurl() {
@@ -69,6 +73,10 @@ export class HuiDatadogEmbeds extends LitElement {
     if (signature === this.#requested) return;
     this.#requested = signature;
     this.#refs = refs;
+    for (const ref of refs) {
+      const known = settledDatadogPreview(ref);
+      if (known && !this.#results.has(ref.url)) this.#results.set(ref.url, known);
+    }
     const lookup = ++this.#lookup;
     this.requestUpdate();
     if (!refs.length) return;

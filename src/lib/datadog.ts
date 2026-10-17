@@ -56,6 +56,7 @@ export function cancelDatadogLogin(): Promise<DatadogConnection> {
  * has) and every card loads again. */
 export function notifyDatadogChanged(): void {
   cache.clear();
+  settled.clear();
   window.dispatchEvent(new Event(DATADOG_CHANGED));
 }
 
@@ -83,6 +84,12 @@ export async function signInToDatadog(org: DatadogOrg, wait = (ms: number) => ne
 
 type Entry = { at: number; result: Promise<DatadogPreviewResult> };
 const cache = new Map<string, Entry>();
+/** The latest answer per URL, kept past its TTL: a card shown again draws at once and refreshes in place. */
+const settled = new Map<string, DatadogPreviewResult>();
+
+export function settledDatadogPreview(ref: DatadogRef): DatadogPreviewResult | undefined {
+  return settled.get(ref.url);
+}
 
 function fresh(entry: Entry | undefined, now: number): entry is Entry {
   return Boolean(entry) && now - entry!.at < SUCCESS_TTL_MS;
@@ -109,6 +116,7 @@ export function loadDatadogPreviews(refs: readonly DatadogRef[], now = Date.now(
       const entry: Entry = { at: now, result: batch.then((results) => results[index] ?? { url: ref.url, error: "unavailable" }) };
       cache.set(ref.url, entry);
       entries.set(ref.url, entry);
+      void entry.result.then((result) => { if (cache.get(ref.url) === entry) settled.set(ref.url, result); });
       // Failures age out sooner so a later render retries once the cause is fixed.
       void entry.result.then((result) => { if (result.error && cache.get(ref.url) === entry) entry.at = now - SUCCESS_TTL_MS + FAILURE_RETRY_MS; });
     }
@@ -119,6 +127,7 @@ export function loadDatadogPreviews(refs: readonly DatadogRef[], now = Date.now(
 /** Test helper. */
 export function clearDatadogPreviewCache(): void {
   cache.clear();
+  settled.clear();
 }
 
 /** What a card says instead of a graph. */

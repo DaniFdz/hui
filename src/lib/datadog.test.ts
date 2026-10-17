@@ -8,6 +8,7 @@ import {
   datadogPreviewMessage,
   formatDatadogRange,
   loadDatadogPreviews,
+  settledDatadogPreview,
   signInToDatadog,
 } from "./datadog.ts";
 
@@ -28,6 +29,7 @@ test("batches one request per message, reuses results and retries failures after
   assert.equal(requests.length, 1);
   await loadDatadogPreviews(refs, 1_000, fetcher);
   assert.equal(requests.length, 1, "fresh results are not refetched");
+  assert.equal(settledDatadogPreview(refs[0]!)?.error, "signed_out", "a card shown again draws its last answer at once");
 
   // A sign-in elsewhere on the page drops remembered failures and tells cards to load again.
   const page = new EventTarget();
@@ -43,6 +45,7 @@ test("batches one request per message, reuses results and retries failures after
   await signInToDatadog(PROD, async () => {});
   assert.deepEqual(calls, ["POST /__hui/datadog/login", "GET /__hui/datadog", "GET /__hui/datadog"]);
   await reloaded;
+  assert.equal(settledDatadogPreview(refs[0]!), undefined, "a change forgets what the page remembered");
   error = undefined;
   assert.equal((await loadDatadogPreviews(refs, 2_000, fetcher))[0]?.preview?.title, "t");
   assert.equal(requests.length, 2);

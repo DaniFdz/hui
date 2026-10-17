@@ -4492,8 +4492,9 @@ type DatadogPreviewResult = {
   `not_found` 5 min, `unavailable` 60 s, `signed_out`/`no_org`/`cli_missing`
   15 s; at most 100 results and 64 MB of images; concurrent requests for one link
   share a lookup. A successful sign-in or an org change clears the cache. The
-  browser keeps at most 60 results per page for 5 min (failures 30 s) and forgets
-  them when a sign-in succeeds or an org is added or removed.
+  browser keeps at most 60 results per page for 5 min (failures 30 s), draws a
+  card it has seen before with its last answer at once and refreshes it in place,
+  and forgets them all when a sign-in succeeds or an org is added or removed.
 
 A card is an article, not a link: its title links to Datadog, its graph is a
 button that opens the [media viewer](#rich-markdown-embeds), and a `signed_out`
