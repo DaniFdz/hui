@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { once } from "node:events";
-import { cp, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, get } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -370,6 +370,10 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   await command("update", "--rollback");
   const remoteCli = JSON.parse(await command("update", "--json"));
   assert.equal(remoteCli.version, nextVersion);
+  await command("update", "--from", release);
+  const kept = JSON.parse(await readFile(join(updates, "current.json"), "utf8"));
+  assert.deepEqual((await readdir(updates)).filter((entry) => entry.startsWith("release-")).sort(), [kept.current, kept.previous].sort(),
+    "an update deletes every staged release but the current and previous ones, including the failed activation's");
 
   // hui doctor finds the PI session made above and, once the gateway is stopped, moves it to Pi Durable without
   // touching PI's transcript. The moved session reopens with its history and runs a turn on Durable.

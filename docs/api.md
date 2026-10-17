@@ -66,8 +66,11 @@ before switching a per-installation pointer under
 `~/.local/share/hui/updates`). The pointer has its own versioned lifecycle format,
 separate from all session contracts. Activation failure restores the old pointer
 and running gateway; explicit rollback can use the original installed CLI even
-if the selected release is broken. GitHub release downloads use unauthenticated,
-bounded fixed-repository API reads, stable tags and a mandatory
+if the selected release is broken. After a successful update, the updater deletes
+every staged release except the pointer's current and previous ones. It writes
+what it deletes and any failed deletion to stderr (the gateway log for browser
+updates) and still reports success. GitHub release downloads use
+unauthenticated, bounded fixed-repository API reads, stable tags and a mandatory
 SHA-256 sidecar. See README for install, trust and host-management limits.
 
 ### Browser updates
