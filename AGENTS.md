@@ -78,6 +78,12 @@ details in the owning directory guide.
   GitHub attachment delivery fails, keep the PR draft and report the proof gap
   instead of storing the images in the source tree. Report chat delivery gaps too.
   Keep unrelated changes and personal workspace files out of commits.
+- This repository is public. Keep Datadog-internal material out of commits, PRs,
+  issues and comments: internal tools and infrastructure (workspaces, ddtool, the
+  AI Gateway), internal hostnames, repositories, services, people and Slack
+  channels, and workflows that only work inside Datadog. They belong in local
+  skills or extensions. Features built on Datadog's public product and APIs, such
+  as the Datadog embeds, are fine.
 
 ## Pull requests
 
