@@ -4,7 +4,9 @@
  * sequence of plain select and input dialogs. The whole questionnaire is one
  * pending card in the session's question list, answered from the browser in
  * one go. Like secret requests it lives in gateway memory: a restart drops it,
- * and the tool call ends as interrupted.
+ * and the tool call ends as interrupted. With a question timeout set (Settings
+ * → Tools → Questions) a card nobody answers in time ends as timed out, and the
+ * agent goes on without an answer.
  */
 import { randomUUID } from "node:crypto";
 
@@ -27,8 +29,9 @@ export type QuestionnaireQuestion = { header: string; question: string; multiSel
 export type QuestionnairePrompt = { id: string; method: "questionnaire"; title: string; questions: QuestionnaireQuestion[] };
 /** One answered question: the chosen labels, then the operator's own text when they typed one. */
 export type QuestionnaireAnswer = { header: string; question: string; selected: string[]; preview?: string };
-/** The tool result. Cancelled, or answered with nothing, is a decline. */
-export type QuestionnaireResult = { cancelled: boolean; answers: QuestionnaireAnswer[] };
+/** The tool result. Cancelled, or answered with nothing, is a decline. `timedOut` (always cancelled, without
+ * answers) says nobody answered within the question timeout, `timeoutMinutes`. */
+export type QuestionnaireResult = { cancelled: boolean; answers: QuestionnaireAnswer[]; timedOut?: true; timeoutMinutes?: number };
 
 type Pending = { sessionId: string; prompt: QuestionnairePrompt; settle(result: QuestionnaireResult): void };
 
@@ -101,20 +104,26 @@ export class Questionnaires {
     return [...this.#pending.values()].filter((pending) => pending.sessionId === sessionId).map(({ prompt }) => prompt);
   }
 
-  /** The tool call: waits until the operator answers or cancels, or `signal`
-   * aborts (Stop, the caller went away or its transport gave up). */
-  async request(sessionId: string, params: Record<string, unknown>, signal?: AbortSignal): Promise<QuestionnaireResult> {
+  /** The tool call: waits until the operator answers or cancels, `signal`
+   * aborts (Stop, the caller went away or its transport gave up), or
+   * `timeoutMinutes` pass without an answer (0 waits without a limit). */
+  async request(sessionId: string, params: Record<string, unknown>, signal?: AbortSignal, timeoutMinutes = 0): Promise<QuestionnaireResult> {
     const questions = parseQuestionnaire(params);
     if (signal?.aborted) return { cancelled: true, answers: [] };
     const id = randomUUID();
     return new Promise<QuestionnaireResult>((resolve) => {
       const settle = (result: QuestionnaireResult) => {
         if (!this.#pending.delete(id)) return;
+        clearTimeout(timer);
         signal?.removeEventListener("abort", cancel);
         this.#onChange(sessionId);
         resolve(result);
       };
       const cancel = () => settle({ cancelled: true, answers: [] });
+      const timer = timeoutMinutes > 0
+        ? setTimeout(() => settle({ cancelled: true, answers: [], timedOut: true, timeoutMinutes }), timeoutMinutes * 60_000)
+        : undefined;
+      timer?.unref();
       signal?.addEventListener("abort", cancel, { once: true });
       this.#pending.set(id, { sessionId, prompt: { id, method: "questionnaire", title: questions[0]!.question, questions }, settle });
       this.#onChange(sessionId);

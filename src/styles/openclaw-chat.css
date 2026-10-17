@@ -993,6 +993,9 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   }
 }
 
+.chat-question-summary--expired { border-left-color: color-mix(in srgb, var(--warn) 70%, var(--border)); }
+.chat-question-summary__options { display: block; }
+
 /* PI's codemode tool (views/chat/codemode-tool-card.ts): the script, its calls and its output in one card. */
 .chat-tool-codemode__time {
   flex: none;

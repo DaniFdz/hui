@@ -600,6 +600,10 @@ cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 { "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna" } }
 ```
 
+The settings document also holds `questions: { timeoutMinutes }`, the question timeout of
+[Structured questions](#structured-questions), `0` (Off) unless 5, 10, 15, 30
+or 60 is saved.
+
 It also includes `calls: { voice }` (Settings → Models → Calls, HUI-18): the GPT-Live
 voice of a bot without one of its own ([GPT-Live calls](#gpt-live-calls)).
 Anything else normalizes to the default, `{ "voice": "cove" }`. A file saved while
@@ -4074,15 +4078,28 @@ A session asks the operator structured questions with the HUI
 
 | Tool | Contract |
 |---|---|
-| `ask_user_question { questions }` | 1–4 questions `{ header ≤16, question ≤500, options, multiSelect? }`, each with 2–4 options `{ label ≤60, description ≤500, preview? ≤2500 }` (so four full questions fit the PI child bridge's 64 KiB request). Text is trimmed; header, question and label are required. Question texts and option labels within a question are unique; `Other`, `Type something.` and `Next` are reserved labels; previews are for single-select questions only. A call breaking these fails with a reason and shows nothing. Waits until the operator answers or cancels, or the call is aborted (Stop, a PI child that went away, a gateway stop, a transport giving up after 24 hours). Returns `QuestionnaireResult`; the tool text reads `User has answered your questions: "<question>"="<answers>". … You can now continue with the user's answers in mind.`, with `selected preview: <markdown>` after a chosen option that has one, or `User declined to answer questions` |
+| `ask_user_question { questions }` | 1–4 questions `{ header ≤16, question ≤500, options, multiSelect? }`, each with 2–4 options `{ label ≤60, description ≤500, preview? ≤2500 }` (so four full questions fit the PI child bridge's 64 KiB request). Text is trimmed; header, question and label are required. Question texts and option labels within a question are unique; `Other`, `Type something.` and `Next` are reserved labels; previews are for single-select questions only. A call breaking these fails with a reason and shows nothing. Waits until the operator answers or cancels, the question timeout passes, or the call is aborted (Stop, a PI child that went away, a gateway stop, a transport giving up after 24 hours). Returns `QuestionnaireResult`; the tool text reads `User has answered your questions: "<question>"="<answers>". … You can now continue with the user's answers in mind.`, with `selected preview: <markdown>` after a chosen option that has one, `User declined to answer questions`, or after a timeout `No answer within <N> minutes; the operator may be away. Continue with your recommended option, keep going with the rest of the work, and in your final reply list the decisions that still need the operator.` |
 
 ```ts
 type QuestionnaireQuestion = { header: string; question: string; multiSelect: boolean; options: { label: string; description: string; preview?: string }[] };
 // One answered question: chosen labels in option order, then the typed text.
 type QuestionnaireAnswer = { header: string; question: string; selected: string[]; preview?: string };
-// cancelled: the operator declined, or answered nothing.
-type QuestionnaireResult = { cancelled: boolean; answers: QuestionnaireAnswer[] };
+// cancelled: the operator declined, or answered nothing. timedOut: nobody answered
+// within the question timeout, timeoutMinutes; such a result is also cancelled,
+// without answers, so a reader that predates it sees a decline.
+type QuestionnaireResult = { cancelled: boolean; answers: QuestionnaireAnswer[]; timedOut?: true; timeoutMinutes?: number };
 ```
+
+The question timeout is `Settings.questions.timeoutMinutes` (Settings → Tools →
+Questions → *Question timeout*): `0` (Off, the default) or 5, 10, 15, 30 or 60;
+anything else normalizes to `0`. The gateway reads it when a call arrives, so a
+change applies to questions asked after it. With a timeout, a card nobody
+answers in that many minutes leaves the session's `questions` like an answered
+one and the call returns `{ cancelled: true, answers: [], timedOut: true,
+timeoutMinutes }`. The transcript then shows the call as expired, with the
+questions and options of its own input, instead of a summary of answers. Off
+waits as before. The timeout covers every session, bots' chats and sessions on
+a remote worker included, since their questions all wait on the gateway.
 
 A pending questionnaire is gateway memory, scoped to its session, and joins
 the snapshot's `questions` as `{ id, method: "questionnaire", title, questions }`

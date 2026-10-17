@@ -83,6 +83,16 @@ test("codemode is on unless explicitly switched off", () => {
     .map((raw) => normalizeSettings(raw).codemode.enabled), [true, true, true, true, false]);
 });
 
+test("the question timeout is Off unless one of its choices is saved", () => {
+  assert.deepEqual(DEFAULT_SETTINGS.questions, { timeoutMinutes: 0 });
+  for (const questions of [undefined, null, 10, [], { timeoutMinutes: "10" }, { timeoutMinutes: 7 }, { timeoutMinutes: -5 }, { timeoutMinutes: 120 }]) {
+    assert.equal(normalizeSettings({ questions }).questions.timeoutMinutes, 0, JSON.stringify(questions));
+  }
+  for (const timeoutMinutes of [5, 10, 15, 30, 60]) {
+    assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(normalizeSettings({ questions: { timeoutMinutes } })))).questions, { timeoutMinutes }, "round-trips");
+  }
+});
+
 test("the managed browser is on and headless unless explicitly changed", () => {
   assert.deepEqual(DEFAULT_SETTINGS.browser, { enabled: true, headless: true, executablePath: "" });
   assert.deepEqual(normalizeSettings({}).browser, DEFAULT_SETTINGS.browser);

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 import { Questionnaires } from "./questionnaires.ts";
 import { directHuiBridge } from "./runtimes/bridge-client.mjs";
@@ -86,6 +86,30 @@ test("Stop, an aborted caller and a gateway stop end a questionnaire as declined
   assert.deepEqual(await Promise.all(open), [{ cancelled: true, answers: [] }, { cancelled: true, answers: [] }]);
 });
 
+test("with a question timeout an unanswered card ends as timed out; Off keeps waiting", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  const { questionnaires, changes } = store();
+  const timed = questionnaires.request("s1", ask, undefined, 10);
+  const off = questionnaires.request("s2", ask);
+  vi.advanceTimersByTime(10 * 60_000 - 1);
+  assert.equal(questionnaires.questions("s1").length, 1, "still open a moment before");
+  vi.advanceTimersByTime(1);
+  assert.deepEqual(await timed, { cancelled: true, answers: [], timedOut: true, timeoutMinutes: 10 });
+  assert.deepEqual(questionnaires.questions("s1"), [], "the card is gone and can no longer be answered");
+  assert.deepEqual(changes, ["s1", "s2", "s1"]);
+
+  vi.advanceTimersByTime(24 * 60 * 60_000);
+  assert.equal(questionnaires.questions("s2").length, 1, "Off waits as long as the call lives");
+  questionnaires.answer("s2", questionnaires.questions("s2")[0]!.id, { answers: [{ selected: ["API key"] }, { selected: [] }] });
+  assert.deepEqual(await off, { cancelled: false, answers: [{ header: "Auth", question: "Which auth method?", selected: ["API key"] }] });
+
+  const answered = questionnaires.request("s1", ask, undefined, 5);
+  questionnaires.answer("s1", questionnaires.questions("s1")[0]!.id, { cancelled: true });
+  assert.deepEqual(await answered, { cancelled: true, answers: [] }, "an answer in time is what the call returns");
+  assert.equal(vi.getTimerCount(), 0, "and its timer is gone");
+});
+
 test("a malformed call is rejected with a reason the model can fix", async () => {
   const { questionnaires } = store();
   const question = (extra: Record<string, unknown> = {}) => ({ header: "Pick", question: "Which?", options: [option("A"), option("B")], ...extra });
@@ -125,4 +149,7 @@ test("the tool tells the model what the operator chose, or that they declined", 
     "User has answered your questions: \"Which auth method?\"=\"OAuth\". selected preview: OAuth flow. \"Which features?\"=\"Search, Offline mode\". You can now continue with the user's answers in mind.");
   const declined = await run({ cancelled: true, answers: [] });
   assert.equal(declined.content[0]?.type === "text" && declined.content[0].text, "User declined to answer questions");
+  const timedOut = await run({ cancelled: true, answers: [], timedOut: true, timeoutMinutes: 10 });
+  assert.equal(timedOut.content[0]?.type === "text" && timedOut.content[0].text,
+    "No answer within 10 minutes; the operator may be away. Continue with your recommended option, keep going with the rest of the work, and in your final reply list the decisions that still need the operator.");
 });

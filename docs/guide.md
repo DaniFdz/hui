@@ -1055,6 +1055,23 @@ reopens); a script already running finishes. A bot's **Tools** tab can turn it
 off for that bot alone. **Stop** ends a script that runs too long. Sessions still on the
 older PI worker (before `hui doctor --fix` moved them) never get it.
 
+## When the agent asks you questions
+
+An agent that needs decisions from you asks them in a card above the composer:
+up to four questions, each with its options and a *Type something…* row for
+your own answer. Pick or type, then **Submit**; **Cancel** or Escape declines.
+The session shows *Waiting* until you answer, and once you do, the transcript
+keeps a short summary of your answers.
+
+By default the agent waits for you as long as it takes. If you step away, set
+**Settings → Tools → Questions → Question timeout** to 5, 10, 15, 30 or 60
+minutes. A card you have not answered by then closes and the agent carries on
+without your answer: HUI tells it to go with the option it recommended, finish
+the rest of the work and list the decisions still open for you in its final
+reply. The transcript marks the questions as expired, with their options, so
+you can see what it asked; reply in the chat to decide. The timeout applies to
+questions asked after you change it.
+
 ## Giving an agent a secret
 
 When an agent needs an API key, a token, a password or a one-time login code,

@@ -7,7 +7,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal-font.ts";
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme.ts";
-import { botsEnabled, type Settings } from "../lib/settings.ts";
+import { botsEnabled, QUESTION_TIMEOUTS, type Settings } from "../lib/settings.ts";
 import type { PowerState, PowerStatus } from "../../shared/power.ts";
 import type { ThemePreview } from "../lib/theme-store.ts";
 import type { ThemeSwatches } from "../lib/shadcn-theme.ts";
@@ -122,6 +122,7 @@ export type SettingsProps = AutomationProps & {
   /** Resolves once the settings write lands, so the VS Code section can re-read status. */
   onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
   onChangeCodemode: (next: Settings["codemode"]) => void;
+  onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
@@ -685,6 +686,13 @@ function renderToolsPage(props: SettingsProps) {
         <div class="settings-row__control">${renderSettingsToggle("Codemode tool", props.settings.codemode.enabled, (enabled) => props.onChangeCodemode({ enabled }))}</div>
       </div></div>
     </section>
+    ${renderSection("Questions", "When an agent asks you questions in a card and you are away, it can go on without your answer.", renderRow(
+      "Question timeout",
+      "How long a question card waits for you. Then the agent continues without your answer, told to take its recommended option and list the decisions still open for you in its final reply. Applies to questions asked from now on.",
+      renderSettingsPicker("Question timeout", String(props.settings.questions.timeoutMinutes),
+        QUESTION_TIMEOUTS.map((minutes) => ({ value: String(minutes), label: minutes ? `${minutes} minutes` : "Off" })),
+        (value) => props.onChangeQuestions({ timeoutMinutes: Number(value) })),
+    ))}
     <hui-vscode-settings .settings=${props.settings.vscode} .onChange=${props.onChangeVscode}></hui-vscode-settings>
     ${renderListFilter("Search tools")}
     <hui-tools-settings .sessions=${props.sessions.filter((session) => !session.bot)}></hui-tools-settings>`;
