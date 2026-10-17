@@ -41,7 +41,7 @@ export function attributedMessage(text: string): { sender: MessageSender; body: 
   const relayed = INTER_SESSION.exec(text);
   if (relayed) return { sender: { kind: "session", title: relayed[1]!, id: relayed[2]! }, body: text.slice(relayed[0].length) };
   const origin = botTurnOrigin(text);
-  if (origin.kind === "operator" || origin.kind === "kickoff") return undefined;
+  if (origin.kind === "operator" || origin.kind === "kickoff" || origin.kind === "imported") return undefined;
   // A header ends at its first `]` (handles, sanitized titles, trigger names and summaries hold none), a routine's after
   // its name, which may hold one.
   const end = text.indexOf("]", origin.kind === "routine" ? "[routine: ".length + origin.name.length : 0);
