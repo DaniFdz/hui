@@ -1254,7 +1254,8 @@ with its own PI process and transcript, plus optional parent/task metadata in
 HUI's registry. The child runs independently and its terminal result is sent
 back automatically as a marked, non-user completion event (result wrapped as
 data, trailing action instructions). Completions are batched until all active
-siblings finish and render as a system card, never as a "You" bubble. Delivery
+siblings finish and render as a system card, never as a "You" bubble. A
+child's task and `sessions_send` messages show as the sending session's. Delivery
 steers an active parent, prompts an idle one, or queues a follow-up if steering
 cannot be accepted. This does not abort the parent's current run. At most eight
 ordinary descendants may be active in one tree.
@@ -1797,7 +1798,9 @@ everything the Bots tab can, through the same routes.
   chat's own agent or bot as typed, for which a tagged bot is an order to send
   it what the operator asks. Chains stop after three hops, a bot's subagents
   don't tag, and each bot, or session with its subagents, sends at most 30 tags
-  an hour (decision below).
+  an hour (decision below). Every chat shows a tag, a reply, a routine's or a
+  trigger's message as its sender's, never as the operator's (decision below).
+  The sending agent's `message_bot` call stays in sight as *Sent to <name>*.
 - **Memory** is OptChat's ([docs/optchat.md](docs/optchat.md)): every message
   kept word for word and condensed into a summary tree a fresh turn reads, so
   the chat is never compacted. Bots reach it only through one interface, so its
@@ -1910,6 +1913,33 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Chats show who sent each message (2026-10-16)
+
+The owner found agent and bot exchanges hard to read: a bot's reply showed in
+the agent's chat as the operator's bubble, under *You*, with its raw
+`[from @grace · hop 2]` header. Every message HUI delivers on someone else's
+behalf now shows as theirs, in group-chat style:
+
+- **On the left, with the sender under it.** Only the operator's own words stay
+  on the right. A bot's message has the bot's face beside a bubble tinted with
+  its color and its name under it; a session's (a tag, `sessions_send`, or a
+  subagent's task from its parent) has a neutral chat icon and the session's
+  title; a routine's or a trigger's has their icon and name (a trigger's
+  summary beside it). The bot's or session's name opens its chat when HUI
+  knows it; a bot HUI doesn't know (bots off, deleted) shows its `@handle`.
+- **Without the header.** The bubble shows what the sender wrote, Markdown as
+  the agents write it (routine and trigger prompts stay plain); Copy and Reply
+  take that text. Rewind is not offered: the message was never the operator's
+  to edit and send again.
+- **The same senders the gateway trusts.** The chat attributes exactly the
+  headers `botTurnOrigin` reads (plus `sessions_send` and a subagent's task),
+  so a message shows as someone else's when the bot's gated tools refuse to
+  treat it as the operator's.
+- **What an agent hands a bot stays in sight.** Its `message_bot` call keeps a
+  row of its own after the turn folds: *Sent to <bot>* (or to the calling
+  agent's session) with the bot's face and the message's first paragraph, the
+  whole message one click away.
 
 ### Bots can notify the agent that handed them work (2026-10-16)
 

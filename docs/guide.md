@@ -737,6 +737,13 @@ agent's handoff can use its return address; ordinary sessions cannot message
 unrelated sessions this way. An idle agent receives a new turn, and a busy one
 receives a queued follow-up. Bots still reply to other bots by handle. Old
 handoffs without a return address can only be answered in the bot's chat.
+The chats show who wrote what. A message from a bot sits on the left with the
+bot's face and name under it, and one from a session with a chat icon and the
+session's title; a click on the name opens that bot or session. A routine's or a
+trigger's message shows its name the same way, and a subagent's task and
+`sessions_send` messages show the session that sent them. What an agent sent a
+bot stays in sight as **Sent to Ada**, the message one click away. Only your own
+messages are on the right, under *You*.
 A tag or reply never counts as you: it can't rewrite the bot's SOUL.md, profile
 or routines. To stop loops, a tag sent while answering one is marked `[from @bob · hop 2]` and HUI
 refuses to go beyond three hops; a bot's subagents don't tag (the bot does), and

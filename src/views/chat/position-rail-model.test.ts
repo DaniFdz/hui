@@ -20,6 +20,15 @@ test("indexes every visible prompt and response but not collapsed assistant acti
   assert.deepEqual(live.map((m) => m.id), ["u1", "u2", "intermediate", "final"]);
 });
 
+test("a message HUI delivered from someone else is labeled by its sender and previewed without its header", () => {
+  const markers = conversationMarkers(projectChatTranscript([
+    { kind: "message", id: "g", role: "user", text: "[from @grace · hop 2] Keep the retry limit?" },
+    { kind: "message", id: "s", role: "user", text: "[Inter-session message from Build (s-1)]\nDone." },
+    { kind: "message", id: "r", role: "user", text: "[routine: Digest] Summarize." },
+  ]));
+  assert.deepEqual(markers.map((m) => [m.label, m.preview]), [["From @grace", "Keep the retry limit?"], ["From Build", "Done."], ["From Digest", "Summarize."]]);
+});
+
 test("previews preserve attachment-only prompts, whitespace and Unicode without splitting code points", () => {
   const markers = conversationMarkers(projectChatTranscript([
     { kind: "message", id: "file", role: "user", text: "", attachments: ["Screenshot.png"] },

@@ -74,4 +74,4 @@ Edit the scene and its script, then record only that clip. A failed step saves
 `<scene>-failed.png` in the output directory; `HUI_DEMO_DEBUG=1` logs each wait
 and slow CDP call. Waits synchronize on visible text or elements; `pause` is
 pacing for the viewer and `cut` skips a wait the viewer should not sit through.
-`npm test -- e2e/demo/provider.test.ts` checks the scripted model.
+`node --test e2e/demo/provider.test.ts` checks the scripted model.
