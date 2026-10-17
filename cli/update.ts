@@ -98,8 +98,9 @@ export async function updateRelease(installation: Installation, options: { from?
 }
 
 async function removeSupersededReleases(directory: string, kept: ReleasePointer): Promise<void> {
-  const warn = (error: unknown) => console.error(`hui: could not delete a superseded release: ${error instanceof Error ? error.message : String(error)}`);
-  for (const entry of await readdir(directory).catch((error: unknown) => { warn(error); return []; })) {
-    if (entry.startsWith("release-") && entry !== kept.current && entry !== kept.previous) await rm(join(directory, entry), { recursive: true, force: true }).catch(warn);
-  }
+  const warn = (error: unknown) => console.error(`hui: could not delete superseded releases: ${error instanceof Error ? error.message : String(error)}`);
+  const superseded = (await readdir(directory).catch((error: unknown) => { warn(error); return []; }))
+    .filter((entry) => entry.startsWith("release-") && entry !== kept.current && entry !== kept.previous);
+  if (superseded.length) console.error(`hui: deleting superseded releases ${superseded.join(", ")}`);
+  for (const entry of superseded) await rm(join(directory, entry), { recursive: true, force: true }).catch(warn);
 }

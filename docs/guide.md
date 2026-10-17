@@ -128,7 +128,9 @@ including its active release selection. Closing the window or quitting Electron
 **does not stop sessions or terminals**. Reopen the app or choose **HUI → Show
 HUI** to restore the window; use `hui gateway stop` for normal gateway shutdown.
 `hui desktop` opens the registered `HUI.app` on macOS (otherwise Electron
-directly) and exits immediately. The window follows HUI's Appearance color mode; with **System** (the default)
+directly) and exits immediately. Without `HUI.app`, the window runs Electron from
+the release that was active when it opened. Updates can delete that release
+later, so restart the window after updating. The window follows HUI's Appearance color mode; with **System** (the default)
 both the page and the native title bar track the OS live.
 External web and mail links open in the default browser. The renderer is
 sandboxed without Node integration. Browser-local drafts have a separate Electron
