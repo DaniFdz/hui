@@ -45,6 +45,7 @@ import type { SplitDirection } from "../lib/session-multiplexer.ts";
 import { renderAgentMarkdown, renderMarkdown } from "../lib/markdown.ts";
 import "../components/file-link.ts";
 import "../components/github-embeds.ts";
+import "../components/datadog-embeds.ts";
 import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
@@ -231,6 +232,7 @@ export type HomeProps = {
     collapseTaskProgress: boolean;
     sendShortcut: "enter" | "modifierEnter";
     githubEmbeds: boolean;
+    datadogEmbeds: boolean;
   };
   queue: QueueSnapshot;
   thinking: string;
@@ -917,6 +919,7 @@ function renderMessage(props: HomeProps, item: ChatMessage): TemplateResult {
       : nothing}
     ${item.role === "user" ? renderUserText(props, item) : html`<div class="chat-text">${renderAgentMarkdown(item.text)}</div>`}
     ${item.pending || item.failed || !props.chatPreferences.githubEmbeds ? nothing : html`<hui-github-embeds .text=${item.text}></hui-github-embeds>`}
+    ${item.pending || item.failed || !props.chatPreferences.datadogEmbeds ? nothing : html`<hui-datadog-embeds .text=${item.text}></hui-datadog-embeds>`}
     ${renderMetrics(item)}
     ${item.pending ? html`<span class="chat-send-status" role="status">Sending…</span>` : nothing}
     ${item.failed ? html`<span class="chat-send-status chat-send-status--failed" role="alert">Not sent — draft recovered.</span>` : nothing}

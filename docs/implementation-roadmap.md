@@ -624,6 +624,14 @@ Follow-up 2026-09-30: removed the chat's changes card, its `propose_changes`
 tool and the Settings → Integrations → Git toggle; agents commit and open pull
 requests themselves when asked.
 
+Follow-up 2026-10-16: chat messages unfurl up to three Datadog share links and
+dashboard links, with widget graphs drawn by Datadog's graph snapshots, through
+several Datadog orgs: Settings → Integrations → Datadog keeps a list of `pup`
+sessions and sites, and runs `pup auth login` from Settings or a card. Proof:
+`server/datadog.test.ts`, `server/datadog-previews.test.ts`,
+`src/lib/datadog-links.test.ts`, `src/lib/datadog.test.ts`, and
+`e2e/datadog-embeds.browser.md`.
+
 ### HUI-15 — Managed browser tool
 
 Done 2026-09-28. The HUI-owned `browser` tool gives PI sessions a dedicated,

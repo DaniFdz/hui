@@ -1,7 +1,8 @@
 /** The demo clips, in overview order. Prompts match the scripted model in provider.ts. */
 import type { Director, Target } from "./record.ts";
 
-export type SceneContext = { director: Director; api: (method: string, path: string, body?: unknown) => Promise<Record<string, any>> };
+/** `providerUrl`: the scripted model's server, which also serves the demo's pages and the Datadog graph. */
+export type SceneContext = { director: Director; api: (method: string, path: string, body?: unknown) => Promise<Record<string, any>>; providerUrl: string };
 export type Scene = {
   name: string;
   /** The chapter tag under the window. */
@@ -24,10 +25,64 @@ export type Scene = {
   run: (context: SceneContext) => Promise<void>;
 };
 
+/** Acme's "Trial signups per minute" over the past hour, drawn the way a Datadog snapshot looks (a 1724×740 PNG, as
+ * base64). It runs on the stage, whose Chrome draws the SVG; the scripted model's server then serves it as the
+ * widget's graph, through the fake pup's snapshot. */
+function drawSignupGraph(now: number): Promise<string> {
+  const width = 1724, height = 740, left = 120, right = 1690, top = 40, bottom = 630, max = 40, minute = 60_000;
+  const start = now - 60 * minute;
+  // Steady trials, a dip while double submits failed, the fix's deploy, and the recovery.
+  const values = Array.from({ length: 61 }, (_, i) => {
+    const wave = Math.sin(i * 1.7) * 2.2 + Math.sin(i * 0.43) * 1.6;
+    if (i < 18) return 26 + wave;
+    if (i < 22) return 26 - (i - 17) * 4 + wave;
+    if (i < 38) return 9 + wave * 0.6;
+    if (i < 42) return 9 + (i - 37) * 4.5 + wave;
+    return 28 + wave;
+  });
+  const x = (i: number) => left + (i / 60) * (right - left);
+  const y = (value: number) => bottom - (value / max) * (bottom - top);
+  const line = values.map((value, i) => `${x(i).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
+  const grid = [0, 10, 20, 30, 40].map((value) => `<line x1="${left}" x2="${right}" y1="${y(value)}" y2="${y(value)}" stroke="${value ? "#e3e6ea" : "#5c6370"}" stroke-width="${value ? 2 : 3}"/><text x="${left - 22}" y="${y(value) + 12}" text-anchor="end">${value}</text>`).join("");
+  const ticks: string[] = [];
+  for (let t = Math.ceil(start / (15 * minute)) * 15 * minute; t <= now; t += 15 * minute) {
+    const at = x((t - start) / minute);
+    const label = new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    ticks.push(`<line x1="${at}" x2="${at}" y1="${bottom}" y2="${bottom + 16}" stroke="#5c6370" stroke-width="3"/><text x="${at}" y="${bottom + 62}" text-anchor="middle">${label}</text>`);
+  }
+  const font = "font-family=\"-apple-system, 'Helvetica Neue', Arial, sans-serif\"";
+  const deploy = x(38);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+    <rect width="${width}" height="${height}" fill="#fff"/>
+    <g ${font} font-size="36" fill="#3c4250">${grid}${ticks.join("")}</g>
+    <text ${font} font-size="30" fill="#8a909c" transform="translate(34 ${(top + bottom) / 2}) rotate(-90)" text-anchor="middle">Trials / min</text>
+    <polygon points="${x(0)},${bottom} ${line} ${x(60)},${bottom}" fill="#7d4ccf" fill-opacity="0.12"/>
+    <polyline points="${line}" fill="none" stroke="#7d4ccf" stroke-width="6" stroke-linejoin="round" stroke-linecap="round"/>
+    <line x1="${deploy}" x2="${deploy}" y1="${top}" y2="${bottom}" stroke="#e8973d" stroke-width="4" stroke-dasharray="14 10"/>
+    <text ${font} font-size="32" fill="#e8973d" x="${deploy + 16}" y="${top + 34}">deploy #482</text>
+  </svg>`;
+  const image = new Image();
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  return image.decode().then(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d")!.drawImage(image, 0, 0);
+    return canvas.toDataURL("image/png").split(",")[1]!;
+  });
+}
+
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
 const link = (text: string): Target => ({ css: "a", text });
 /** A subagent's sidebar row, whose link also shows its run time. */
 const child = (title: string): Target => ({ css: "a", contains: title });
+
+/** Brings a chat element to the middle of the view once it is there, as a reader scrolls to it before looking. */
+async function centre(d: Director, target: Target) {
+  await d.waitFor(target);
+  await d.stage("window.found?.scrollIntoView({ block: 'center', behavior: 'smooth' })");
+  await d.pause(800);
+}
 
 /** Sends a follow-up once the session is idle, whose composer reads "Send a message…" (a busy one names the steer and queue shortcuts). */
 async function send(d: Director, prompt: string) {
@@ -114,6 +169,13 @@ export const scenes: Scene[] = [
       widget: "and the agent draws an interactive widget, right in the chat, on your theme.",
       browser: "It can drive a real browser too. You watch the page live while it fills in the signup form.",
       cards: "Links unfurl into cards, like the merged pull request and the Slack thread behind it.",
+      datadog: "Datadog dashboards too: the widget's graph, read through your own orgs, as in Slack.",
+    },
+    // The widget's graph: drawn on the stage, then served by the scripted model's server as the fake pup's snapshot.
+    async setup({ director, providerUrl }) {
+      const png = await director.stage<string>(`(${drawSignupGraph.toString()})(${Date.now()})`);
+      const response = await fetch(new URL("/demo/datadog-graph.png", providerUrl), { method: "PUT", body: Buffer.from(png, "base64") });
+      if (!response.ok) throw new Error(`The Datadog graph upload failed: ${response.status}`);
     },
     async run({ director: d }) {
       await d.caption("Ask for a chart");
@@ -145,9 +207,16 @@ export const scenes: Scene[] = [
       await d.zoom();
       await d.caption("Links unfurl into cards");
       await d.say("cards");
-      await d.waitFor({ css: ".github-embed" });
+      await centre(d, { css: ".github-embed" });
       await d.zoom({ css: ".github-embed" }, 1.35);
       await d.pause(2_200);
+      await d.zoom();
+      await d.caption("Datadog graphs, from your orgs");
+      await d.say("datadog");
+      // The card lands under the others, once its graph has loaded.
+      await centre(d, { css: ".datadog-embed__image" });
+      await d.zoom({ css: ".datadog-embed" }, 1.3);
+      await d.pause(2_600);
       await d.zoom();
       await d.caption();
     },
