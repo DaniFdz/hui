@@ -76,6 +76,7 @@ export function ultraSection(delegates: boolean): string {
   return [
     delegates ? "## Proactive Sub-Agent Orchestration" : "## Ultra Execution",
     "Ultra active for this session. Plan the work, carry it through, and verify the result before replying.",
+    "Decide what you can: make easy or reversible choices yourself and list them in your reply. When a choice needs facts, find them instead of asking. Ask only before actions that are hard to undo or reach other people, or when the operator's instructions say to ask.",
     ...delegates ? [
       "Use `sessions_spawn` when independent work improves speed or quality.",
       "- Parallelize independent investigation, implementation and verification.",

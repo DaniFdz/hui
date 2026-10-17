@@ -2953,9 +2953,11 @@ model that has it uses it again.
 `ultra` is HUI's, after OpenClaw: the model is sent its highest level (PI's
 `max`, clamped), and while the session stays on it each request's system prompt
 carries a `hui_ultra` section telling the agent to plan the work, carry it
-through and verify it before replying, and, when `sessions_spawn` is offered,
-to hand independent investigation, implementation and verification to
-subagents in parallel (bounded objectives, results synthesized; simple or
+through and verify it before replying, to make easy or reversible choices itself
+and ask only before actions that are hard to undo or reach other people (or
+that the operator's instructions say to ask about), and, when `sessions_spawn`
+is offered, to hand independent investigation, implementation and verification
+to subagents in parallel (bounded objectives, results synthesized; simple or
 tightly coupled work stays local). The session's usual subagent limits apply,
 and a child it spawns without a level of its own gets `max`, not `ultra`.
 GET and `event: thinking_level` report `ultra`; PI extensions see the level the

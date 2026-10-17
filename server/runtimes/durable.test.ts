@@ -235,7 +235,7 @@ test("a switch to a model without the chosen thinking level lowers it for that m
   assert.equal(created.currentThinking(), "max");
 });
 
-test("Ultra sends the model its highest level and asks the agent to plan, delegate and verify, until it is turned off", { timeout: 45_000 }, async (t) => {
+test("Ultra sends the model its highest level and asks the agent to plan, decide, delegate and verify, until it is turned off", { timeout: 45_000 }, async (t) => {
   const max = { low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" };
   const f = await fixture(t, { models: ["claude-opus-5-5"], thinkingLevelMaps: { "claude-opus-5-5": max } });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-ultra", model: "hui-e2e/claude-opus-5-5" }, f.host());
@@ -245,7 +245,7 @@ test("Ultra sends the model its highest level and asks the agent to plan, delega
   await session.setThinking("ultra");
   assert.deepEqual([session.currentThinking(), session.modelThinking()], ["ultra", "max"]);
   await turns(session, ["hello ultra"]);
-  assert.match(await ultraPrompt(), /Proactive Sub-Agent Orchestration[^"]*Ultra active for this session[^"]*sessions_spawn/u);
+  assert.match(await ultraPrompt(), /Proactive Sub-Agent Orchestration[^"]*Ultra active for this session[^"]*Ask only before actions that are hard to undo[^"]*sessions_spawn/u);
 
   await session.setThinking("high");
   assert.deepEqual([session.currentThinking(), session.modelThinking()], ["high", "high"]);
