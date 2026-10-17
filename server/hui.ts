@@ -508,7 +508,8 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "ask_user_question") {
     if (!(await readRegistry()).some(({ id }) => id === invocation.callerSessionId)) throw new Error("Conversation no longer exists.");
-    return questionnaires.request(invocation.callerSessionId, invocation.params, invocation.signal);
+    const { timeoutMinutes } = (await readSettings()).questions;
+    return questionnaires.request(invocation.callerSessionId, invocation.params, invocation.signal, timeoutMinutes);
   }
   if (invocation.action === "watcher") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);

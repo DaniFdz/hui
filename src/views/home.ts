@@ -50,7 +50,7 @@ import "../components/datadog-embeds.ts";
 import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
-import type { QuestionnaireResult } from "../../server/questionnaires.ts";
+import type { QuestionnaireQuestion, QuestionnaireResult } from "../../server/questionnaires.ts";
 import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown-blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
@@ -1032,23 +1032,31 @@ function widgetActivity(items: readonly ChatActivity[]): WidgetView | undefined 
   return view?.state === "failed" ? undefined : view;
 }
 
-/** An answered `ask_user_question` call: what the operator chose, kept in sight
- * like the card it replaced. A running or failed one stays an ordinary tool row. */
-function questionnaireSummary(items: readonly ChatActivity[]): QuestionnaireResult | undefined {
+type QuestionnaireSummary = QuestionnaireResult & { asked: readonly QuestionnaireQuestion[] };
+
+/** An ended `ask_user_question` call, kept in sight like the card it replaced: what the operator chose, or, when
+ * nobody answered in time, what was asked. A running or failed one stays an ordinary tool row. */
+function questionnaireSummary(items: readonly ChatActivity[]): QuestionnaireSummary | undefined {
   const item = items.length === 1 ? items[0] : undefined;
   if (item?.kind !== "tool" || item.name !== "ask_user_question" || item.status !== "succeeded") return undefined;
   const details = item.details as Partial<QuestionnaireResult> | undefined;
   // Only HUI's own result: a PI extension's call of the same name (older transcripts) has another shape.
   const answers = details?.answers;
-  return Array.isArray(answers) && answers.every((answer) => typeof answer?.header === "string" && Array.isArray(answer.selected))
-    ? { cancelled: details?.cancelled === true, answers }
-    : undefined;
+  if (!Array.isArray(answers) || !answers.every((answer) => typeof answer?.header === "string" && Array.isArray(answer.selected))) return undefined;
+  if (details?.timedOut !== true) return { cancelled: details?.cancelled === true, answers, asked: [] };
+  // The call's own input as the model wrote it, before PI's argument conversion took a lone question for a list of one.
+  const raw = (item.args as { questions?: unknown } | undefined)?.questions;
+  const asked = [raw ?? []].flat().filter((question): question is QuestionnaireQuestion => Array.isArray((question as Partial<QuestionnaireQuestion> | null)?.options));
+  return { cancelled: true, answers: [], timedOut: true, timeoutMinutes: details.timeoutMinutes, asked };
 }
 
-function renderQuestionnaireSummary(id: string, result: QuestionnaireResult): TemplateResult {
+function renderQuestionnaireSummary(id: string, result: QuestionnaireSummary): TemplateResult {
   return html`<div class="chat-group tool chat-group--with-footer" data-chat-row-key=${id}>
-    <div class="chat-group-messages"><div class="chat-question-summary" role="note" aria-label="Your answers">
-      ${result.cancelled || !result.answers.length
+    <div class="chat-group-messages"><div class=${result.timedOut ? "chat-question-summary chat-question-summary--expired" : "chat-question-summary"} role="note" aria-label=${result.timedOut ? "Unanswered questions" : "Your answers"}>
+      ${result.timedOut
+        ? html`<div class="chat-question-summary__line"><strong>Expired</strong><span>No answer within ${result.timeoutMinutes} minutes. The agent continued without your answer; reply in the chat to decide.</span></div>
+          ${result.asked.map((question) => html`<div class="chat-question-summary__line"><strong>${question.header}</strong><span>${question.question} <span class="chat-question-summary__options">${question.options.map(({ label }) => label).join(", ")}</span></span></div>`)}`
+        : result.cancelled || !result.answers.length
         ? html`<div class="chat-question-summary__line"><span>You declined to answer.</span></div>`
         : result.answers.map((answer) => html`<div class="chat-question-summary__line" title=${answer.question}><strong>${answer.header}</strong><span>${answer.selected.join(", ")}</span></div>`)}
     </div></div>

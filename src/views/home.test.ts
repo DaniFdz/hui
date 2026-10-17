@@ -649,3 +649,24 @@ test("what an agent sends shows its target: a bot by handle or name, the calling
   assert.doesNotMatch(pending, /chat-handoff/u);
   assert.match(pending, /chat-activity-group/u);
 });
+
+test("an unanswered questionnaire reads as expired with what it asked, never as declined", async () => {
+  const asked = { questions: [{ header: "Auth", question: "Which auth method?", options: [{ label: "OAuth (Recommended)", description: "" }, { label: "API key", description: "" }] }] };
+  const call = (id: string, details: Record<string, unknown>, args: unknown = asked) => ({ kind: "tool", id, name: "ask_user_question", status: "succeeded", args, details });
+  const timedOut = { cancelled: true, answers: [], timedOut: true, timeoutMinutes: 10 };
+  const html = await renderWorkerSession("idle", { transcript: [
+    { kind: "message", id: "u", role: "user", text: "go" },
+    call("expired", timedOut),
+    // A lone question outside a list, which PI's argument conversion wraps before the gateway checks the call.
+    call("lone", timedOut, { questions: asked.questions[0] }),
+    call("declined", { cancelled: true, answers: [] }),
+  ] });
+  const row = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`), html.indexOf("data-chat-row-key=", html.indexOf(`data-chat-row-key=${id}`) + 1));
+  const expired = row("expired");
+  assert.match(expired, /<div class=chat-question-summary chat-question-summary--expired role="note" aria-label=Unanswered questions>/u);
+  assert.match(expired, /<strong>Expired<\/strong><span>No answer within 10 minutes\. The agent continued without your answer; reply in the chat to decide\.<\/span>/u);
+  assert.match(expired, /<strong>Auth<\/strong><span>Which auth method\? <span class="chat-question-summary__options">OAuth \(Recommended\), API key<\/span><\/span>/u);
+  assert.doesNotMatch(expired, /declined|<form|<button/u);
+  assert.match(row("lone"), /<strong>Auth<\/strong><span>Which auth method\? <span class="chat-question-summary__options">OAuth \(Recommended\), API key<\/span>/u);
+  assert.match(row("declined"), /You declined to answer\./u);
+});

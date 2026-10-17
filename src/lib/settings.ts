@@ -39,6 +39,7 @@ export type Settings = {
   browser: BrowserSettings;
   /** Settings → Tools → Codemode: offer PI's `codemode` tool in Durable sessions. On unless switched off. */
   codemode: { enabled: boolean };
+  questions: { timeoutMinutes: number };
   /** Settings → Tools → VS Code: how the Work pane's VS Code view runs VS Code on this machine. */
   vscode: VscodeSettings;
   /** Settings → Gateway → Power (macOS). Lid-close prevention is deliberately not
@@ -95,6 +96,8 @@ export type VscodeSettings = {
   licenseAcceptedAt: string;
 };
 
+export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
+
 export const DEFAULT_BRANCH_PREFIX = "feature/";
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
@@ -120,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
   branchPrefix: DEFAULT_BRANCH_PREFIX,
   browser: DEFAULT_BROWSER_SETTINGS,
   codemode: { enabled: true },
+  questions: { timeoutMinutes: 0 },
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   models: { primary: "", fallback: "", utility: "" },
@@ -154,6 +158,7 @@ export function normalizeSettings(raw: unknown): Settings {
     branchPrefix: normalizeBranchPrefix(source["branchPrefix"]),
     browser: normalizeBrowserSettings(source["browser"]),
     codemode: { enabled: !isRecord(source["codemode"]) || source["codemode"]["enabled"] !== false },
+    questions: { timeoutMinutes: QUESTION_TIMEOUTS.find((minutes) => isRecord(source["questions"]) && source["questions"]["timeoutMinutes"] === minutes) ?? 0 },
     vscode: normalizeVscodeSettings(source["vscode"]),
     power: normalizePower(source["power"]),
     // VoiceStudio's `voice` (its voice-notes switch) is not read either: the next save leaves it out.

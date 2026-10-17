@@ -6121,6 +6121,7 @@ export class HuiApp extends HuiElement {
           onChangeBrowser: (browser) => this.save({ browser }),
           onChangeVscode: (vscode) => this.save({ vscode }),
           onChangeCodemode: (codemode) => void this.save({ codemode }),
+          onChangeQuestions: (questions) => void this.save({ questions }),
           onChangeCalls: (calls) => void this.save({ calls }),
           onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
           onSetLidAwake: this.setLidAwakeFromUi,

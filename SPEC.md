@@ -1441,6 +1441,15 @@ opens. Questions from parallel calls show one after another. A reload shows a
 pending card again from its first question. Pending questionnaires live in
 gateway memory and do not survive a restart.
 
+An operator who may be away sets a question timeout in Settings → Tools →
+Questions: Off (the default, which waits as above) or 5, 10, 15, 30 or 60
+minutes, for questions asked from then on. A card nobody answers in time
+closes and the agent continues: it learns that no answer came and is told to
+go on with its recommended option, finish the rest of the work and list the
+decisions that still need the operator in its final reply. In place of the
+card the transcript shows that it expired, with its questions and options; the
+operator answers by replying in the chat.
+
 ## Kanban
 
 **Kanban** sits directly below Contributions in the sidebar (`/kanban`). It has

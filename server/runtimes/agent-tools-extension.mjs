@@ -30,6 +30,9 @@ function secretRequestText(result) {
 
 /** What the model reads back from `ask_user_question`, worded like the PI extension it replaces. */
 function questionnaireText(result) {
+  if (result?.timedOut) {
+    return `No answer within ${result.timeoutMinutes} minutes; the operator may be away. Continue with your recommended option, keep going with the rest of the work, and in your final reply list the decisions that still need the operator.`;
+  }
   const answers = Array.isArray(result?.answers) ? result.answers : [];
   if (result?.cancelled || !answers.length) return "User declined to answer questions";
   const segments = answers.map((answer) => {
@@ -58,7 +61,7 @@ export default function agentToolsExtension(pi) {
   pi.registerTool({
     name: "ask_user_question",
     label: "Ask user question",
-    description: `Ask the user one or more structured questions in a card in this HUI conversation and wait for the answers. Use it to gather preferences or requirements, clarify ambiguous instructions, get decisions on implementation choices, or offer choices of direction.
+    description: `Ask the user one or more structured questions in a card in this HUI conversation and wait for the answers, or until the operator's question timeout ends the call. Use it to gather preferences or requirements, clarify ambiguous instructions, get decisions on implementation choices, or offer choices of direction.
 
 Every question also offers a free-text answer the card adds itself, and the user can cancel the whole card. Previews are Markdown shown beside the options of a single-select question while one is focused; use them only when the user needs to compare concrete artifacts (mockups, code, diagrams, configs).`,
     promptSnippet: "Ask the user up to 4 structured questions (2-4 options each) when requirements are ambiguous",
@@ -67,6 +70,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       "Each question needs a header (≤16 characters), the full question and 2-4 options, each with a concise label and a description of what it means. The card adds a free-text answer to every question: never author \"Other\", \"Type something.\" or \"Next\" options.",
       "Set multiSelect: true when several answers can apply. If you recommend an option, put it first and end its label with \"(Recommended)\".",
       "If the user declines, do not ask the same questions again in chat; continue with sensible defaults or ask what they want.",
+      "If the call times out, the operator may be away: continue with your recommended option, finish the rest of the work, and list the decisions that still need the operator in your final reply.",
     ],
     parameters: Type.Object({
       questions: Type.Array(Type.Object({
