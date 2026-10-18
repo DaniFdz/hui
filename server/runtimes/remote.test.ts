@@ -50,6 +50,30 @@ test("a reply does not overwrite state from events that followed it on the strea
   assert.equal(session.isStreaming, false);
 });
 
+test("tracked prompt identities and receipt operations cross the worker proxy only when the host supports them", async () => {
+  const calls: Array<[string, unknown[]]> = [];
+  const session = await start(() => ({
+    started: { state: state(), seq: 1, transcript: [], methods: ["followUp", "waitForTrackedPrompt", "cancelTrackedPrompt"] },
+    call: async (method, args) => {
+      calls.push([method, args]);
+      return { state: state(), seq: 2 + calls.length, ...(method === "waitForTrackedPrompt" ? { result: { summary: "Original answer." } } : {}) };
+    },
+  }));
+  await session.prompt("routine", undefined, { requestId: "run-1" });
+  await session.followUp!("queued", undefined, { requestId: "run-2" });
+  assert.deepEqual(await session.waitForTrackedPrompt!("run-1"), { summary: "Original answer." });
+  await session.cancelTrackedPrompt!("run-2");
+  assert.deepEqual(calls, [
+    ["prompt", ["routine", [], { requestId: "run-1" }]],
+    ["followUp", ["queued", [], { requestId: "run-2" }]],
+    ["waitForTrackedPrompt", ["run-1"]],
+    ["cancelTrackedPrompt", ["run-2"]],
+  ]);
+  const legacy = await start();
+  assert.equal(legacy.waitForTrackedPrompt, undefined);
+  assert.equal(legacy.cancelTrackedPrompt, undefined);
+});
+
 test("events and a lost connection before anyone subscribed still reach the session's owner", async () => {
   const question = { id: "q1", kind: "select", title: "Pick", options: [] } as const;
   const session = await start((sink) => {

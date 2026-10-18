@@ -40,12 +40,13 @@ import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "../src/lib/subagent-completion.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
+import { AUTOMATION_SUSPENDED } from "./automation.ts";
 import {
   BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
 import { SessionBusyError, type HuiQuestion, type LiveSessions } from "./live-sessions.ts";
-import type { PromptAttachment, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
+import type { PromptAttachment, RuntimePromptOptions, RuntimePromptResult, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { rootSessionId } from "./subagents.ts";
 import { resolveWorkingDirectory } from "./working-directories.ts";
@@ -64,8 +65,11 @@ const HOP = /^\[from (?:@[a-z0-9-]+|agent: [^\]\n]*?)(?: · hop ([1-9]\d*))?\] /
 
 export type BotSessions = Pick<
   LiveSessions,
-  "ensure" | "status" | "watch" | "snapshot" | "transcript" | "isLive" | "prompt" | "followUp" | "removeFollowUp" | "abort" | "setModel" | "setThinking" | "restart"
+  "ensure" | "status" | "watch" | "snapshot" | "transcript" | "isLive" | "prompt" | "followUp" | "removeFollowUp" | "abort" | "setModel" | "setThinking" | "restart" | "supportsTrackedPrompts" | "waitForTrackedPrompt" | "cancelTrackedPrompt"
 >;
+
+/** Stored before dispatch; native identities reacquire durable receipts, older runtimes use the exact input occurrence. */
+export type BotRoutineDelivery = { text: string; before: number; requestId?: string };
 
 /** A message read from the store for a chat no session has loaded; `at` when its message carries a time. */
 export type BotStoredMessage = { role: "user" | "assistant"; text: string; at?: string };
@@ -241,6 +245,7 @@ type WaitOptions = {
   stopAtQuestion: boolean;
   /** An abort withdraws the queued message or stops the answering run (a cancelled routine), instead of only detaching. */
   cancelWork: boolean;
+  delivery?: BotRoutineDelivery;
 };
 
 type RunWatch = {
@@ -951,14 +956,225 @@ export class BotService {
    * completes when the turn answering it settles. Cancelling (by hand or the
    * task's timeout) withdraws the message or stops that turn.
    */
-  async runRoutine(bot: BotRecord, record: SessionRecord, task: Pick<AutomationTask, "name" | "prompt">, signal: AbortSignal): Promise<{ summary?: string }> {
+  async runRoutine(
+    bot: BotRecord,
+    record: SessionRecord,
+    task: Pick<AutomationTask, "name" | "prompt">,
+    signal: AbortSignal,
+    options?: { requestId: string; checkpoint: (delivery: BotRoutineDelivery) => Promise<void> },
+  ): Promise<{ summary?: string }> {
     if (bot.archived) throw new Error(`@${bot.handle} is archived. Restore it to run its routines.`);
-    const { outcome } = await this.#deliver(record, `[routine: ${task.name}] ${task.prompt}`, undefined, {
-      timeoutMs: Number.POSITIVE_INFINITY, signal, stopAtQuestion: false, cancelWork: true,
+    // Offline workers are retryable only before this boundary; once the checkpoint is flushed, acceptance may have
+    // happened even if the gateway loses its connection before the dispatch returns.
+    await this.#assertActive();
+    await this.#open(record);
+    if (signal.aborted) throw new DOMException("The wait was cancelled.", "AbortError");
+    const text = `[routine: ${task.name}] ${task.prompt}`;
+    const requestId = options && this.#sessions.supportsTrackedPrompts(record.id) ? options.requestId : undefined;
+    // A tracked routine uses the durable inbox. Older messages still in HUI's editable queue must start first, or
+    // placing this input directly into the runtime would overtake them. Waiting here precedes any dispatch checkpoint.
+    if (requestId) await this.#waitPriorFollowUps(record, signal);
+    const delivery = { text, before: this.#asked(record.id, text), ...(requestId ? { requestId } : {}) };
+    await options?.checkpoint(delivery);
+    if (signal.aborted) throw new DOMException("The wait was cancelled.", "AbortError");
+    if (requestId) {
+      return this.#waitTrackedRoutine(record.id, requestId, signal, () => this.#deliver(record, text, undefined, undefined, { requestId }));
+    }
+    const { outcome } = await this.#deliver(record, text, undefined, {
+      timeoutMs: Number.POSITIVE_INFINITY, signal, stopAtQuestion: false, cancelWork: true, delivery,
     });
     const reply = await outcome!;
     if (reply.status === "failed") throw new Error(reply.error ?? "The routine's turn failed.");
     return reply.reply ? { summary: reply.reply } : {};
+  }
+
+  #waitPriorFollowUps(record: SessionRecord, signal: AbortSignal): Promise<void> {
+    if (!this.#sessions.snapshot(record.id).queue.items?.length) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const finish = (error?: Error) => {
+        if (done) return;
+        done = true;
+        watched.unsubscribe();
+        signal.removeEventListener("abort", onAbort);
+        if (error) reject(error);
+        else resolve();
+      };
+      const inspect = () => {
+        const snapshot = this.#sessions.snapshot(record.id);
+        if (snapshot.status === "reconnecting" || snapshot.status === "disconnected") finish(new BotWorkerOfflineError("The bot's worker disconnected before the routine could be delivered. It keeps its existing work there."));
+        else if (snapshot.status === "error") finish(new BotConflictError("The bot's runtime failed before the routine could be delivered."));
+        else if (!snapshot.queue.items?.length) finish();
+      };
+      const onAbort = () => finish(new DOMException("The wait was cancelled.", "AbortError"));
+      const watched = this.#sessions.watch(record.id, (message) => {
+        if (message.kind === "closed") finish(new BotConflictError("The bot's runtime exited before the routine could be delivered."));
+        else inspect();
+      });
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+      else inspect();
+    });
+  }
+
+  /** Reattach to the original input. Recovery never manufactures another prompt or repeats external actions. */
+  async resumeRoutine(bot: BotRecord, record: SessionRecord, delivery: BotRoutineDelivery, signal: AbortSignal): Promise<RuntimePromptResult> {
+    if (bot.archived) throw new Error(`@${bot.handle} is archived. Restore it to recover its routines.`);
+    await this.#assertActive();
+    try { await this.#open(record); }
+    catch (error) {
+      if (!(error instanceof BotWorkerOfflineError) || !delivery.requestId) throw error;
+      await this.#waitRoutineReconnect(record.id, signal);
+    }
+    if (delivery.requestId) {
+      if (!this.#sessions.supportsTrackedPrompts(record.id)) throw new Error("The bot's runtime cannot recover this routine's input receipt. Check its chat before running it again.");
+      return this.#waitTrackedRoutine(record.id, delivery.requestId, signal);
+    }
+    return this.#resumeLegacyRoutine(record.id, delivery, signal);
+  }
+
+  #waitTrackedRoutine(id: string, requestId: string, signal: AbortSignal, dispatch?: () => Promise<unknown>): Promise<RuntimePromptResult> {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const finish = (error?: unknown, result?: RuntimePromptResult) => {
+        if (done) return;
+        done = true;
+        signal.removeEventListener("abort", onAbort);
+        if (error !== undefined) reject(error);
+        else resolve(result ?? {});
+      };
+      const onAbort = () => {
+        if (done) return;
+        done = true;
+        signal.removeEventListener("abort", onAbort);
+        const aborted = new DOMException("The wait was cancelled.", "AbortError");
+        if (signal.reason === AUTOMATION_SUSPENDED) reject(aborted);
+        else void this.#sessions.cancelTrackedPrompt(id, requestId).then(() => reject(aborted), (error: unknown) => reject(error));
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) return onAbort();
+      void (async () => {
+        try { await dispatch?.(); }
+        catch (error) {
+          if (!this.#routineDisconnected(id)) throw error;
+          // A lost dispatch reply is ambiguous. Reconnect and read the same identity; never dispatch it again.
+          await this.#waitRoutineReconnect(id, signal);
+        }
+        while (!done) {
+          try { finish(undefined, await this.#sessions.waitForTrackedPrompt(id, requestId)); return; }
+          catch (error) {
+            if (!this.#routineDisconnected(id)) throw error;
+            // The worker keeps answering its accepted input. Only the observer is re-established after reconnect.
+            await this.#waitRoutineReconnect(id, signal);
+          }
+        }
+      })().catch((error: unknown) => finish(error));
+    });
+  }
+
+  #routineDisconnected(id: string): boolean {
+    return ["reconnecting", "disconnected"].includes(this.#sessions.status(id));
+  }
+
+  #waitRoutineReconnect(id: string, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      const finish = (error?: Error) => {
+        if (done) return;
+        done = true;
+        watched.unsubscribe();
+        signal.removeEventListener("abort", onAbort);
+        if (error) reject(error);
+        else resolve();
+      };
+      const inspect = () => {
+        const status = this.#sessions.status(id);
+        if (status === "error") finish(new Error("The bot's runtime failed while its routine was being recovered."));
+        else if (status !== "starting" && !this.#routineDisconnected(id)) finish();
+      };
+      const onAbort = () => finish(new DOMException("The wait was cancelled while the bot's worker was unreachable. Check its chat to confirm whether the routine stopped.", "AbortError"));
+      const watched = this.#sessions.watch(id, (message) => {
+        if (message.kind === "closed") finish(new Error("The bot's chat closed while its routine was being recovered."));
+        else inspect();
+      });
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+      else inspect();
+    });
+  }
+
+  /** Legacy runtimes expose only a transcript and queue, so missing or ambiguous evidence requires intervention. */
+  #resumeLegacyRoutine(id: string, delivery: BotRoutineDelivery, signal: AbortSignal): Promise<RuntimePromptResult> {
+    return new Promise((resolve, reject) => {
+      let done = false;
+      let queuedId: string | undefined;
+      let sawQueue = false;
+      let sawInput = false;
+      let unsubscribe = () => {};
+      const wanted = delivery.text.trim();
+      const failure = () => new Error("The routine's original input or answer cannot be recovered safely. Check its chat before running it again.");
+      const match = () => {
+        const transcript = this.#sessions.transcript(id).filter((entry) => entry.kind !== "call");
+        let count = 0;
+        const at = transcript.findIndex((entry) => entry.kind === "message" && entry.role === "user" && entry.text.trim() === wanted && count++ === delivery.before);
+        const after = at < 0 ? [] : transcript.slice(at + 1);
+        const next = after.findIndex((entry) => entry.kind === "message" && entry.role === "user");
+        return { at, next, after: next < 0 ? after : after.slice(0, next) };
+      };
+      const finish = (error?: unknown, result?: RuntimePromptResult) => {
+        if (done) return;
+        done = true;
+        unsubscribe();
+        signal.removeEventListener("abort", onAbort);
+        if (error !== undefined) reject(error);
+        else resolve(result ?? {});
+      };
+      const inspect = (settled = false) => {
+        if (done) return;
+        const snapshot = this.#sessions.snapshot(id);
+        const candidates = (snapshot.queue.items ?? []).filter((item) => item.text.trim() === wanted);
+        const inRuntimeQueue = snapshot.queue.followUp.filter((text) => text.trim() === wanted).length;
+        if (candidates.length > 1 || inRuntimeQueue > 1) return finish(failure());
+        queuedId = candidates[0]?.id;
+        const queued = inRuntimeQueue > 0;
+        if (queued) sawQueue = true;
+        const input = match();
+        if (input.at >= 0) sawInput = true;
+        const busy = snapshot.status === "starting" || snapshot.status === "running" || snapshot.status === "waiting";
+        if (input.at >= 0 && (input.next >= 0 || !busy || settled)) {
+          const last = input.after.at(-1);
+          if (last?.kind === "error") return finish(new Error(last.message));
+          const answer = input.after.findLast((entry) => entry.kind === "message" && entry.role === "assistant" && entry.text.trim());
+          if (answer?.kind === "message") return finish(undefined, { summary: answer.text.trim() });
+          // A live observed settle can successfully end without text. An idle history without an answer is ambiguous.
+          if (settled && sawInput && input.next < 0) return finish(undefined, {});
+          return finish(failure());
+        }
+        if (snapshot.status === "error") return finish(failure());
+        if (input.at < 0 && !queued && (!busy || sawQueue || settled)) return finish(failure());
+      };
+      const onAbort = () => {
+        const candidates = (this.#sessions.snapshot(id).queue.items ?? []).filter((item) => item.text.trim() === wanted);
+        const item = queuedId ?? (candidates.length === 1 ? candidates[0]?.id : undefined);
+        const input = match();
+        const active = input.at >= 0 && input.next < 0 && ["running", "waiting"].includes(this.#sessions.status(id));
+        finish(new DOMException("The wait was cancelled.", "AbortError"));
+        if (signal.reason === AUTOMATION_SUSPENDED) return;
+        if (item) {
+          try { this.#sessions.removeFollowUp(id, item); } catch { /* No longer queued: never stop a different turn. */ }
+        } else if (active) void this.#sessions.abort(id).catch(() => {});
+      };
+      const watched = this.#sessions.watch(id, (message) => {
+        if (message.kind === "closed") finish(failure());
+        else if (message.kind === "event" && message.event.type === "settled") inspect(true);
+        // Local queue drain announces removal just before it projects the prompt; inspect after that synchronous step.
+        else queueMicrotask(() => inspect());
+      });
+      unsubscribe = watched.unsubscribe;
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+      else inspect();
+    });
   }
 
   /**
@@ -1241,6 +1457,7 @@ export class BotService {
     text: string,
     attachments: readonly PromptAttachment[] | undefined,
     wait?: WaitOptions,
+    promptOptions?: RuntimePromptOptions,
   ): Promise<{ status: "sent" | "queued"; outcome?: Promise<BotReply> }> {
     await this.#assertActive();
     await this.#open(record);
@@ -1248,12 +1465,12 @@ export class BotService {
     const files = attachments?.length ? attachments : undefined;
     // The run that answers this message is the one that settles with it in the transcript: a follow-up waits behind
     // the running turn, whose settle is not its answer, however the queue reports it.
-    const watch = wait ? this.#watchRun(record.id, wait, { text, before: this.#asked(record.id, text) }) : undefined;
+    const watch = wait ? this.#watchRun(record.id, wait, wait.delivery ?? { text, before: this.#asked(record.id, text) }) : undefined;
     try {
       if (this.#sessions.status(record.id) === "idle") {
         watch?.prompted();
         try {
-          await this.#sessions.prompt(record.id, text, files);
+          await this.#sessions.prompt(record.id, text, files, text, promptOptions);
           return { status: "sent", ...(watch ? { outcome: watch.outcome } : {}) };
         } catch (error) {
           // Another prompt won the idle moment: queue behind it instead.
@@ -1261,7 +1478,7 @@ export class BotService {
           watch?.queueing();
         }
       }
-      const item = await this.#sessions.followUp(record.id, text, files);
+      const item = await this.#sessions.followUp(record.id, text, files, promptOptions);
       watch?.queued(item);
       return { status: "queued", ...(watch ? { outcome: watch.outcome } : {}) };
     } catch (error) {
@@ -1299,7 +1516,7 @@ export class BotService {
     };
     /** A cancelled routine withdraws its queued message, or stops the run answering it. */
     const cancelWork = (at: typeof phase) => {
-      if (!options.cancelWork) return;
+      if (!options.cancelWork || options.signal?.reason === AUTOMATION_SUSPENDED) return;
       if (at === "queued" && item) {
         try { this.#sessions.removeFollowUp(id, item); } catch { /* drained meanwhile */ }
       } else if (at === "running") {

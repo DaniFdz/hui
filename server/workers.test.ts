@@ -425,6 +425,34 @@ test("a Durable session runs on the worker, keeps going without the gateway and 
   }
 });
 
+test("a worker's tracked routine receipt survives disconnection and reacquires its original answer without another prompt", async () => {
+  const key = "remote-tracked-routine";
+  const first = await durable.start({ cwd: project, worker: workerId, huiSessionId: key });
+  assert.equal(typeof first.waitForTrackedPrompt, "function");
+  assert.equal(typeof first.cancelTrackedPrompt, "function");
+  await first.prompt("E2E_REPLAY tracked routine", undefined, { requestId: "worker-run-1" });
+  await control("wait-replay-ready");
+  await first.followUp!("withdrawn queued routine", undefined, { requestId: "worker-run-2" });
+  await first.cancelTrackedPrompt!("worker-run-2");
+  await assert.rejects(first.waitForTrackedPrompt!("worker-run-2"), /not answered/u);
+  assert.equal(first.isStreaming, true, "withdrawing its queued receipt does not abort the preceding run");
+  workers.disconnect(workerId);
+  first.dispose();
+  await control("release-replay", { method: "POST" });
+  const second = await durable.start({ cwd: project, worker: workerId, huiSessionId: key, sessionFile: first.sessionFile! });
+  try {
+    const result = await second.waitForTrackedPrompt!("worker-run-1");
+    assert.deepEqual(result, { summary: "Replay prefix — replay suffix" });
+    await waitFor(() => !second.isStreaming || undefined, "the accepted tracked run to settle");
+    const before = second.transcript();
+    await second.prompt("E2E_REPLAY tracked routine", undefined, { requestId: "worker-run-1" });
+    assert.deepEqual(second.transcript(), before, "the same request identity is deduplicated on the worker");
+    assert.equal(second.transcript().filter((entry) => entry.kind === "message" && entry.role === "user").length, 1);
+  } finally {
+    second.dispose();
+  }
+});
+
 test("a Durable session on the worker honors HUI's settings and providers, whose keys stay on the gateway", async () => {
   const hui = join(root, "gateway", "config", "hui");
   const managedKey = "gateway-only-openai-key";

@@ -20,6 +20,7 @@ import type { WorkerState } from "../../shared/workers.ts";
 import { rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
 import "../components/bot-face.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
+import { automationRunLabel, automationRunRecoveryDetail } from "../lib/automation-recovery.ts";
 import {
   archivedBotCount,
   archivedRosterBots,
@@ -38,7 +39,7 @@ import {
 } from "../lib/bot-roster.ts";
 import { botRecentRuns, botRoutineRuns, botRoutines, routineFacts, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
 import { botToolsOffLabel } from "../lib/bot-tools.ts";
-import { describeRoutineSchedule, formatTimestamp, runIsActive } from "./settings-automation.ts";
+import { describeRoutineSchedule, formatTimestamp } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { botCallsLabel, botModelLabel, botTaggingLabel, renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";
 import { renderBotToolsTab, type BotToolsProps } from "./bot-tools.ts";
@@ -386,15 +387,6 @@ export type BotPanelProps = {
 
 const VIEW_TITLES: Record<Exclude<BotPanelView, "overview">, string> = { routines: "Routines", triggers: "Triggers", tools: "Tools & skills", settings: "Settings" };
 
-const RUN_LABELS: Record<AutomationRun["status"], string> = {
-  queued: "Queued",
-  running: "Running",
-  completed: "Completed",
-  failed: "Failed",
-  skipped: "Skipped",
-  cancelled: "Cancelled",
-};
-
 const playIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>`;
 /** Lucide maximize-2 and minimize-2, as the Work pane's. */
 const expandIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6" /><path d="m21 3-7 7" /><path d="m3 21 7-7" /><path d="M9 21H3v-6" /></svg>`;
@@ -433,9 +425,11 @@ function renderRoutineFacts(task: AutomationTask, props: BotPanelProps) {
 }
 
 function renderRun(run: AutomationRun) {
+  const recovery = automationRunRecoveryDetail(run, formatTimestamp);
   return html`<li class="bot-run" data-run=${run.id} data-status=${run.status}>
-    <div class="bot-run__head"><span class="bot-run__name">${run.taskName}</span><span class="bot-run__status">${RUN_LABELS[run.status]}</span></div>
+    <div class="bot-run__head"><span class="bot-run__name">${run.taskName}</span><span class="bot-run__status">${automationRunLabel(run)}</span></div>
     <p class="bot-run__facts">${run.source === "manual" ? "Run now" : "Scheduled"} · ${formatTimestamp(run.startedAt ?? run.createdAt)}</p>
+    ${recovery ? html`<p class="bot-run__body">${recovery}</p>` : nothing}
     ${run.summary ? html`<p class="bot-run__body">${run.summary}</p>` : nothing}
     ${run.error ? html`<p class="bot-run__body bot-run__body--error" role="alert">${run.error}</p>` : nothing}
   </li>`;
@@ -539,7 +533,7 @@ function renderRoutinesView(props: BotPanelProps) {
       ${runs.length
         ? html`<ul class="bot-runs">${runs.map(renderRun)}</ul>`
         : html`<p class="bot-panel__hint">Runs appear here with their outcome.</p>`}
-      ${runs.some(runIsActive) ? html`<p class="bot-panel__hint" role="status">A run is in progress.</p>` : nothing}
+      ${runs.some((run) => run.status === "running") ? html`<p class="bot-panel__hint" role="status">A run is in progress.</p>` : nothing}
     </section>
     ${routines.automation && routines.error ? html`<p class="bot-field__error" role="alert">Refresh failed: ${routines.error}</p>` : nothing}`;
 }
@@ -629,12 +623,13 @@ function renderActivity(props: BotPanelProps, now: number) {
     ${runs.length
       ? html`<ul class="bot-overview__list">${runs.map((entry) => {
           const routine = entry.kind === "routine";
-          const label = routine ? RUN_LABELS[entry.run.status] : TRIGGER_RUN_LABELS[entry.run.status];
+          const label = routine ? automationRunLabel(entry.run) : TRIGGER_RUN_LABELS[entry.run.status];
+          const recovery = routine ? automationRunRecoveryDetail(entry.run, formatTimestamp) : "";
           const detail = routine ? entry.run.error ?? entry.run.summary : entry.run.reason ?? entry.run.summary;
           const when = agoLabel(entry.at, now);
           return html`<li class="bot-overview__row" data-status=${entry.run.status}>
             ${overviewLink(props, routine ? "routines" : "triggers", `run-${entry.run.id}`, routine ? entry.run.taskName : entry.run.triggerName,
-              html`<span class="bot-overview__status">${label}</span> · ${when}${detail ? html` · ${detail}` : nothing}`)}
+              html`<span class="bot-overview__status">${label}</span>${recovery ? html` · ${recovery}` : nothing} · ${when}${detail ? html` · ${detail}` : nothing}`)}
           </li>`;
         })}</ul>`
       : html`<p class="bot-panel__hint">Runs of ${props.bot.name}'s routines and triggers show here.</p>`}

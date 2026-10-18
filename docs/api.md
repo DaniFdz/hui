@@ -1854,6 +1854,27 @@ chat or the task's timeout (`timeoutSeconds`, default 900) stops that turn. An
 archived bot's routine fails. Archiving disables a bot's routines; restoring
 leaves them disabled.
 
+**Recovery and retries.** Each new run keeps its original deadline (`deadlineAt`),
+an attempt count and a dispatch checkpoint before its prompt is sent. After a
+restart, a checkpointed bot routine observes that same delivery, not a new
+prompt. Durable uses a conversation-scoped request key to deduplicate the
+submission and reads its recorded outcome; cancelling targets that submission,
+including while it is queued behind another turn. Gateway shutdown detaches the
+observer without cancelling the runtime's resumable work. Older runtimes use
+conservative transcript matching; an ambiguous or missing delivery requires
+intervention rather than replay.
+
+Only an explicitly known **pre-dispatch** failure is automatically retried:
+currently a bot's worker being offline before its chat opens. There are at most
+three attempts, after 30 seconds and then two minutes, within the original
+deadline and a temporary task's end. A retry is the same run id and consumes no
+extra `runsLeft`. A pending retry survives restart and can be cancelled through
+the existing run-cancel route. A failure after dispatch is never a reason to
+send another prompt automatically. Quota/rate-limit, configuration, connection,
+transient-service, interrupted, timeout and unknown failures carry distinct
+explanations; classification alone never authorizes a retry. Bot Routines,
+Activity and Automations show the next retry or actionable *Needs attention*.
+
 **A bot's own routines.** Every bot's chat has a `routines` tool (SPEC.md,
 "Schedules are a CLI, and bots schedule their own routines"), in the
 `hui-bots-tools` extension beside `write_soul`, `set_profile` and
@@ -3299,6 +3320,13 @@ that isn't valid is left out rather than failing the store):
 - `until`: a temporary task's end, ISO.
 - `runsLeft`: a temporary task's runs left.
 
+Runs retain their existing statuses. Optional additive fields are `attempt`
+(one-based), `deadlineAt` (ISO), `retryAt` (ISO while safely waiting for another
+attempt), `failure: { kind, needsAttention }`, and `delivery: { text, before,
+requestId? }` (the persisted dispatch checkpoint, not a public mutation input).
+Old records remain readable without these fields. The store version remains 1;
+there is no separate scheduler, migration or abandoned state.
+
 ### `POST /__hui/automation/tasks`
 
 Body: `{ "name", "description"?, "sessionId", "prompt", "schedule", "enabled"?, "timeoutSeconds"? }`.
@@ -3322,8 +3350,10 @@ stored as `runsLeft`). HUI deletes it by itself after either:
   nothing more is planned, and the task goes when that run ends (whatever its
   outcome). A run by hand of a task with none left is a 409.
 - **Across a restart**: the scheduler's start deletes a task whose `until`
-  passed while the gateway was down, and one whose last run the restart cut
-  short (that run is recorded `failed` as usual).
+  passed while the gateway was down. A checkpointed last run is reconciled before
+  its task is removed; a safe pending retry keeps its run count. An older run
+  without a checkpoint cannot be reconciled and is marked `failed`, requiring
+  inspection rather than a blind replay.
 
 Deleting is one write of the store, so a temporary task never runs again once
 it is due to go. Its runs stay in the history.
@@ -3337,6 +3367,9 @@ client that doesn't know them (the enable switch, an older build) keeps a task's
 limits. `DELETE` removes it. Both respond `{ "snapshot" }`. An unknown id
 returns 404; deleting a task whose run is still in flight returns 409 (a bot
 removing its own routine from that routine's turn is the one exception, above).
+Changing an in-flight task's target, name or prompt also returns 409: stop its
+run first, so a pending retry cannot silently become a different occurrence.
+Pausing or changing future scheduling/limits remains allowed.
 
 `hui schedule` (alias `schedules`) drives these routes from a terminal for every
 task: `list [--bot <bot> | --session <session>]`, `show`, `add`, `edit` (only the

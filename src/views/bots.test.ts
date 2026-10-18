@@ -2,9 +2,52 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
 import { botCallsLabel, botModelLabel, botTaggingLabel } from "./bot-settings.ts";
+import { renderBotPanel, type BotPanelProps } from "./bots.ts";
+import type { AutomationRun } from "../lib/automation-types.ts";
+import { formatTimestamp } from "./settings-automation.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const between = (source: string, start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+
+function markup(value: unknown): string {
+  if (Array.isArray(value)) return value.map(markup).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + markup(template.values[i])).join("");
+  }
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+test("routines and overview Activity explain retries and intervention without hiding the error", () => {
+  const run: AutomationRun = {
+    id: "r1", taskId: "t1", taskName: "Digest", sessionId: "s1", status: "queued", source: "scheduled",
+    createdAt: "2026-10-18T08:00:00.000Z", attempt: 1, retryAt: "2026-10-18T08:00:30.000Z", error: "Worker is offline",
+  };
+  // Only the two pages under test read these states; the other pages' actions are not invoked.
+  const props = {
+    id: "bot-panel", view: "routines", width: 400, timezone: "UTC",
+    bot: { id: "b1", name: "Ada", handle: "ada", sessionId: "s1", cwd: "/bots/b1", status: "idle" },
+    routines: { automation: { scheduler: { enabled: true, activeRuns: 0, nextWakeAt: run.retryAt }, tasks: [], runs: [run] } },
+    triggers: { state: { list: { triggers: [], runs: [] } } },
+    settings: { models: [], call: { defaultVoice: "sol" } },
+  } as unknown as BotPanelProps;
+  for (const view of ["routines", "overview"] as const) {
+    const retryPage = markup(renderBotPanel({ ...props, view }));
+    assert.match(retryPage, /Retry scheduled/);
+    assert.match(retryPage, /Attempt 1\/3 · Next retry/);
+    assert.ok(retryPage.includes(formatTimestamp(run.retryAt)));
+    assert.match(retryPage, /Worker is offline/);
+    assert.doesNotMatch(retryPage, /A run is in progress/);
+  }
+  Object.assign(run, { status: "failed", retryAt: undefined, error: "Interrupted while running", failure: { kind: "interrupted", needsAttention: true } });
+  for (const view of ["routines", "overview"] as const) {
+    const failedPage = markup(renderBotPanel({ ...props, view }));
+    assert.match(failedPage, /Needs attention/);
+    assert.match(failedPage, /Check the chat for actions already taken before running again/);
+    assert.match(failedPage, /Interrupted while running/);
+    assert.doesNotMatch(failedPage, /Next retry/);
+  }
+});
 
 test("a bot shows its face, or its emoji while it has one, always decorative beside its name in text", () => {
   const source = read("./bots.ts");

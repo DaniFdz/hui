@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
-import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotsOffError, BotStoreError } from "./bots.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotsOffError, BotStoreError, BotWorkerOfflineError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type BotRouteRequest } from "./bot-routes.ts";
@@ -105,7 +105,9 @@ import {
   AutomationNotFoundError,
   AutomationService,
   AutomationStoreError,
+  AutomationRetryError,
   type AutomationExecution,
+  type AutomationExecutionContext,
 } from "./automation.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotRoutines } from "./bot-routines.ts";
@@ -1668,17 +1670,25 @@ export function waitForAutomationRun(
 async function executeAutomationTask(
   task: AutomationTask,
   signal: AbortSignal,
+  context: AutomationExecutionContext,
 ): Promise<AutomationExecution> {
   const record = (await readRegistry()).find((session) => session.id === task.sessionId);
   if (!record) throw new AutomationNotFoundError("The target session no longer exists.");
   // A bot's routine: marked as such, and queued behind a busy bot instead of skipped. While bots are off it is skipped
   // (409, never a failure) and kept: its next time runs once they are on, and a skipped time is not run again.
   const bot = record.bot ? await bots.botForSession(record.id) : undefined;
+  if (record.bot && !bot) throw new AutomationNotFoundError("The target bot no longer exists.");
   if (bot) {
     if (!await botsOn()) throw new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE);
-    return bots.runRoutine(bot, record, task, signal).catch((error: unknown) => {
+    const execution = context.run.delivery
+      ? bots.resumeRoutine(bot, record, context.run.delivery, signal)
+      : bots.runRoutine(bot, record, task, signal, { requestId: context.run.id, checkpoint: context.checkpoint });
+    return execution.catch((error: unknown) => {
       // Turned off as it started: skipped all the same.
-      throw error instanceof BotsOffError ? new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE) : error;
+      if (error instanceof BotsOffError) throw new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE);
+      // The scheduler permits this only before the persisted dispatch checkpoint.
+      if (error instanceof BotWorkerOfflineError) throw new AutomationRetryError(error.message, "connection");
+      throw error;
     });
   }
   if (liveSessions.status(record.id) === "running") {

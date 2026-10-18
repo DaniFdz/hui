@@ -29,6 +29,8 @@ import { durableRuntime } from "./runtimes/durable.ts";
 import type {
   AgentRuntime,
   PromptAttachment,
+  RuntimePromptOptions,
+  RuntimePromptResult,
   RuntimeEvent,
   RuntimeCommand,
   RuntimeModel,
@@ -153,6 +155,8 @@ type Live = {
   /** Prompts being handed to the runtime. Until it accepts one, the input
    * exists only in this process, so a gateway stop would lose it. */
   submissions: number;
+  /** Admission of the prompt currently crossing registry/runtime boundaries; identified followups cannot overtake it. */
+  promptAdmission?: Promise<void>;
   runtime?: RuntimeSession;
   /** Wall-clock lifecycle timing for the current runtime attempt. */
   bootStartedAt: number;
@@ -554,13 +558,14 @@ export class LiveSessions {
     text: string,
     attachments?: readonly PromptAttachment[],
     recoveryPrompt = text,
+    options?: RuntimePromptOptions,
   ): Promise<void> {
     const live = this.#live.get(id);
     if (!live?.runtime) {
       throw this.#unavailable(live);
     }
     if (this.#holdWhileCompacting(live)) {
-      await this.followUp(id, text, attachments);
+      await this.followUp(id, text, attachments, options);
       return;
     }
     if (live.promptPending || live.runtime.isStreaming) {
@@ -570,6 +575,11 @@ export class LiveSessions {
     const previousRunPrompt = live.record.runPrompt;
     const previousRecoveryAttempts = live.record.runRecoveryAttempts;
     const runStartedAt = new Date().toISOString();
+    let admit!: () => void;
+    let refuse!: (error: unknown) => void;
+    const admission = new Promise<void>((resolve, reject) => { admit = resolve; refuse = reject; });
+    admission.catch(() => {});
+    live.promptAdmission = admission;
     live.promptPending = true;
     live.lastPrompt = { text, ...(attachments?.length ? { attachments } : {}) };
     live.turnProducedOutput = false;
@@ -599,8 +609,10 @@ export class LiveSessions {
         runRecoveryAttempts: recoveryPrompt === text ? undefined : previousRecoveryAttempts,
         updatedAt: runStartedAt,
       });
-      await live.runtime.prompt(text, attachments);
+      await live.runtime.prompt(text, attachments, options);
+      admit();
     } catch (error) {
+      refuse(error);
       // A refused prompt never became unfinished work. Restore an older marker
       // when this was itself an attempt to continue an interrupted run.
       await this.#save(live, {
@@ -617,6 +629,7 @@ export class LiveSessions {
       throw error;
     } finally {
       live.submissions -= 1;
+      if (live.promptAdmission === admission) live.promptAdmission = undefined;
     }
     // Activity is what orders the sidebar, and the write is one small record on
     // a prompt rather than one per token; a failed save must not fail a prompt
@@ -903,16 +916,22 @@ export class LiveSessions {
 
   /** Queues work for after the current run. Returns the id of HUI's queue item, which leaves the queue when HUI sends
    * it; undefined when the runtime queued it itself (a worker's streaming run). */
-  async followUp(id: string, text: string, attachments?: readonly PromptAttachment[]): Promise<string | undefined> {
+  async followUp(id: string, text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<string | undefined> {
     const live = this.#ready(id);
+    // HUI removes an editable followup immediately before handing it to the runtime. Its registry write may still be
+    // pending, so a newer identified input must wait for actual runtime acceptance rather than treat queue removal as
+    // acceptance. A rejected earlier prompt rejects this admission too, without inventing a different ordering.
+    if (options && live.promptAdmission) await live.promptAdmission;
     // HUI's queue drains only while this gateway runs; a worker keeps going
     // without it, so a follow-up to a run streaming there queues in its
     // runtime and runs even if the gateway leaves. Like steering, it is then
     // shown but no longer editable. Before the run streams (the prompt is
     // still on its way, a compaction holds the session) or while earlier ones
     // wait in HUI's editable queue, it waits there too, behind them.
-    if (live.record.worker && live.runtime?.followUp && live.runtime.isStreaming && !live.followUps.length) {
-      await live.runtime.followUp(text, attachments);
+    if ((options && this.supportsTrackedPrompts(id)) || (live.record.worker && live.runtime?.followUp && live.runtime.isStreaming && !live.followUps.length)) {
+      // An identified routine belongs in the runtime's durable inbox even locally; HUI's editable queue is ephemeral.
+      if (!live.runtime?.followUp) throw new Error("The runtime cannot queue a tracked prompt.");
+      await live.runtime.followUp(text, attachments, options);
       live.queue = live.runtime.pendingQueue?.() ?? live.queue;
       this.#broadcastQueue(live);
       return undefined;
@@ -927,6 +946,23 @@ export class LiveSessions {
     this.#broadcastQueue(live);
     if (this.#reported(live) === "idle") void this.#drainFollowUp(live);
     return item;
+  }
+
+  /** Identified inputs are supported end to end, including receipt lookup and narrowly targeted cancellation. */
+  supportsTrackedPrompts(id: string): boolean {
+    const runtime = this.#live.get(id)?.runtime;
+    return typeof runtime?.waitForTrackedPrompt === "function" && typeof runtime.cancelTrackedPrompt === "function";
+  }
+
+  async waitForTrackedPrompt(id: string, requestId: string): Promise<RuntimePromptResult> {
+    const runtime = this.#ready(id).runtime;
+    if (!runtime?.waitForTrackedPrompt) throw new Error("This runtime cannot recover an identified input.");
+    return runtime.waitForTrackedPrompt(requestId);
+  }
+
+  async cancelTrackedPrompt(id: string, requestId: string): Promise<void> {
+    const runtime = this.#ready(id).runtime;
+    if (runtime?.cancelTrackedPrompt) await runtime.cancelTrackedPrompt(requestId);
   }
 
   /** PI refuses a prompt while it compacts outside a run, and a steer would wait

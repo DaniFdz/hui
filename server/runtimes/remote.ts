@@ -12,7 +12,7 @@ import { readFile } from "node:fs/promises";
 import { workers, type RemoteSessionLink, type RemoteSessionSink, type RemoteSnapshot } from "../workers.ts";
 import type { RemoteState } from "../worker/host.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
-import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeSession, RuntimeUnreachableError, StartOptions, TranscriptEntry } from "./types.ts";
+import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimePromptOptions, RuntimePromptResult, RuntimeSession, RuntimeUnreachableError, StartOptions, TranscriptEntry } from "./types.ts";
 
 type Frame = RemoteSnapshot & { event?: RuntimeEvent };
 
@@ -52,7 +52,7 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
     // Only what the remote runtime offers is exposed, so the gateway never
     // shows a control that would fail.
     const self = this as unknown as Record<string, unknown>;
-    for (const name of ["steer", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload"]) {
+    for (const name of ["steer", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "clear", "reload", "waitForTrackedPrompt", "cancelTrackedPrompt"]) {
       if (!started.methods.includes(name)) self[name] = undefined;
     }
     this.#attached();
@@ -124,9 +124,11 @@ class RemoteRuntimeSession implements RuntimeSession, RemoteSessionSink {
       : item));
   }
 
-  async prompt(text: string, attachments?: readonly PromptAttachment[]): Promise<void> { await this.#call("prompt", text, await this.#stage(attachments)); }
+  async prompt(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void> { await this.#call("prompt", text, await this.#stage(attachments), options); }
   async steer(text: string, attachments?: readonly PromptAttachment[]): Promise<void> { await this.#call("steer", text, await this.#stage(attachments)); }
-  async followUp(text: string, attachments?: readonly PromptAttachment[]): Promise<void> { await this.#call("followUp", text, await this.#stage(attachments)); }
+  async followUp(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void> { await this.#call("followUp", text, await this.#stage(attachments), options); }
+  async waitForTrackedPrompt(requestId: string): Promise<RuntimePromptResult> { return this.#call("waitForTrackedPrompt", requestId); }
+  async cancelTrackedPrompt(requestId: string): Promise<void> { await this.#call("cancelTrackedPrompt", requestId); }
   subscribe(listener: (event: RuntimeEvent) => void): () => void {
     this.#listeners.add(listener);
     // Delivered once the caller has finished subscribing, before anything newer.
