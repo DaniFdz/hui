@@ -38,7 +38,7 @@ import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeSession, Runti
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
-import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
+import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { GATEWAY_ONLY_TOOLS } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
 import { applySync, planSync, putSyncFiles, writeAtomic, type SyncCommit } from "./sync-apply.ts";
@@ -199,7 +199,7 @@ export class WorkerHost {
 
   info(): HostInfo {
     return {
-      version: PROTOCOL_VERSION, release: this.#release, features: [BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE], pid: process.pid, hostname: hostname(),
+      version: PROTOCOL_VERSION, release: this.#release, features: [BOT_FACTS_FEATURE, BOTS_FEATURE, BOT_ACCESS_FEATURE, BOT_SKILLS_FEATURE, BOT_SKILL_FILES_FEATURE], pid: process.pid, hostname: hostname(),
       platform: process.platform, arch: process.arch, node: process.version, home: this.paths.home,
       dataDir: this.paths.dataDir, mirrorDir: this.paths.mirrorDir, agentDir: this.paths.agentDir,
       providersDir: this.paths.providersDir, releaseDir: this.releaseDir,

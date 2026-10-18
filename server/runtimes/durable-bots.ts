@@ -24,6 +24,7 @@
  * bot, the one that started it or any since, which the host running the
  * conversation reads from its live chat.
  */
+import { botFactsSection } from "../bot-facts.ts";
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -356,6 +357,11 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
           return await options.section(bot, input.conversationId).catch(() => undefined);
         }),
         ...options.sections ?? [],
+        section("knowledge", async (input, context) => {
+          const host = options.souls();
+          const bot = host ? await conversationBot(input.read, input.conversationId, context) : undefined;
+          return host && bot ? botFactsSection(host.home(bot)) : undefined;
+        }),
         // Last, where the persona went before: OptChat's prompt points to the instructions at its end.
         section("soul", async (input, context) => {
           const souls = options.souls();
