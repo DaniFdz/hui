@@ -28,3 +28,18 @@ test("an in-flight read or write cannot put one bot's memories in another bot's 
   controller.reset("three"); finish([fact]); assert.equal(await save, false);
   assert.equal(controller.state.botId, "three"); assert.deepEqual(controller.state.facts, []);
 });
+
+test("pinning or deleting another memory preserves the current editor and its unsaved draft identity", async () => {
+  const other = { ...fact, id: "f-2", text: "Another memory" };
+  const controller = new BotFactsController({ requestUpdate() {} }, async (_bot, method) => {
+    if (method === "DELETE") return [fact];
+    if (method === "PATCH") return [fact, { ...other, pinned: true, revision: 2 }];
+    return [fact, other];
+  });
+  await controller.load("one"); controller.edit(fact);
+  await controller.pin(other);
+  assert.equal(controller.state.editing, fact, "same keyed form and original property values keep its DOM draft");
+  controller.remove(other); await controller.confirmDelete();
+  assert.equal(controller.state.editing, fact);
+  assert.equal(controller.state.removing, undefined);
+});

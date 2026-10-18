@@ -831,5 +831,9 @@ test("explicit memories stay on the worker and its next request reads edits and 
   assert.doesNotMatch(JSON.stringify(request?.system), /WORKER_EXPLICIT_ORIGINAL/u);
   assert.equal((await call(`${path}/${fact.id}?revision=2`, "DELETE")).status, 200);
   assert.deepEqual((await call(path)).body["facts"], []);
-  await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE");
+  const saves = Array.from({ length: 10 }, (_, index) => call(path, "POST", { kind: "fact", text: `Pending worker deletion ${index}` }));
+  assert.equal((await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE")).status, 200);
+  const results = await Promise.all(saves);
+  assert.ok(results.every((reply) => reply.status === 201 || reply.status === 404), JSON.stringify(results.map((reply) => reply.status)));
+  assert.ok(!existsSync(join(remoteData, "bots", bot.id)), "late writes never recreate a deleted worker bot's home");
 });

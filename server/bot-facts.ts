@@ -7,6 +7,8 @@ import { BotConflictError, BotInputError, BotNotFoundError } from "./bots.ts";
 
 export interface BotFacts {
   list(botId: string): Promise<BotFact[]>;
+  /** Stops all writes before deletion and rejects queued or late saves for this id. */
+  retire(botId: string): Promise<void>;
   create(botId: string, raw: unknown): Promise<BotFact[]>;
   update(botId: string, id: string, raw: unknown): Promise<BotFact[]>;
   delete(botId: string, id: string, revision: number): Promise<BotFact[]>;
@@ -43,7 +45,7 @@ function input(raw: unknown, patch: boolean): BotFactInput | BotFactPatch {
 /** Strictly read: corrupt state is an error, never an empty list that a subsequent save would overwrite. */
 async function readFacts(file: string): Promise<BotFact[]> {
   let raw: unknown;
-  try { if ((await stat(file)).size > 128 * 1024) throw new Error("Bot facts store is too large."); raw = JSON.parse(await readFile(file, "utf8")); }
+  try { if ((await stat(file)).size > 256 * 1024) throw new Error("Bot facts store is too large."); raw = JSON.parse(await readFile(file, "utf8")); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
   if (!record(raw) || raw["version"] !== 1 || !Array.isArray(raw["facts"]) || raw["facts"].length > BOT_FACT_LIMITS.count) throw new Error("Bot facts store is invalid.");
   const seen = new Set<string>();
@@ -61,12 +63,16 @@ export async function readBotFacts(file: string): Promise<BotFact[]> {
 }
 export function localBotFacts(botsDir: string): BotFacts {
   const pending = new Map<string, Promise<unknown>>();
+  const retired = new Set<string>();
+  const active = (id: string) => { if (retired.has(id)) throw new BotNotFoundError("This bot was deleted; its memories can no longer be saved."); };
   const file = (id: string): string => { if (!ID.test(id)) throw new BotInputError("Invalid bot id."); return join(botsDir, id, BOT_FACTS_FILE); };
   const list = async (id: string) => readBotFacts(file(id));
   const change = (id: string, mutate: (before: BotFact[]) => BotFact[]): Promise<BotFact[]> => {
     const next = (pending.get(id) ?? Promise.resolve()).catch(() => {}).then(async () => {
+      active(id);
       const path = file(id);
       const facts = orderedBotFacts(mutate(await list(id)));
+      active(id);
       const temporary = `${path}.${randomUUID()}.tmp`;
       try { await mkdir(dirname(path), { recursive: true, mode: 0o700 }); await writeFile(temporary, `${JSON.stringify({ version: 1, facts }, null, 2)}\n`, { mode: 0o600 }); await rename(temporary, path); }
       catch (error) { throw new BotFactsStoreError(`Could not save explicit memories: ${error instanceof Error ? error.message : String(error)}`); }
@@ -85,6 +91,7 @@ export function localBotFacts(botsDir: string): BotFacts {
   };
   return {
     list,
+    async retire(id) { file(id); retired.add(id); await pending.get(id)?.catch(() => {}); },
     create: (id, raw) => change(id, (facts) => {
       const value = input(raw, false) as BotFactInput;
       if (facts.length >= BOT_FACT_LIMITS.count) throw new BotInputError(`Keep at most ${BOT_FACT_LIMITS.count} memories; edit or remove one first.`);

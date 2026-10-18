@@ -250,3 +250,20 @@ test("the call helper reads explicit operator knowledge separately from conversa
   assert.match(prompt, /Planning/u);
   assert.match(system, /takes precedence over older conversation summaries/u);
 });
+
+test("unavailable explicit knowledge never becomes an empty list and a stale call answer", async () => {
+  let modelCalls = 0;
+  let handoffs = 0;
+  const delegate = createCallDelegate({
+    view: async () => "Old address: 17 Elm Street.",
+    facts: async () => { throw new Error("The worker holding the corrected address is offline."); },
+    settings: async () => ({ utility: "fx/utility", operator: "the user" }),
+    completion: async () => { modelCalls++; return "17 Elm Street."; },
+    handOff: async () => { handoffs++; return { status: "answered", reply: "17 Elm Street." }; },
+  });
+  const result = await delegate({ bot: bot(), call: activeCall(), request: "What is my address?" });
+  assert.equal(result.status, "failed");
+  assert.match(result.speak, /cannot read Juno's current saved knowledge/u);
+  assert.equal(modelCalls, 0);
+  assert.equal(handoffs, 0);
+});

@@ -411,6 +411,7 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
       };
       return {
         list: (botId) => call("list", { botId }),
+        retire: async (botId) => { await call("retire", { botId }); },
         create: (botId, input) => call("create", { botId, input }),
         update: (botId, factId, input) => call("update", { botId, factId, input }),
         delete: (botId, factId, revision) => call("delete", { botId, factId, revision }),

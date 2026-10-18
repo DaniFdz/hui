@@ -798,6 +798,7 @@ export class BotService {
    */
   async delete(target: string): Promise<{ queued: boolean }> {
     const bot = await this.resolve(target);
+    if (!bot.worker) await this.#factsOf(bot).retire(bot.id);
     await this.#quiet(bot, "bot_delete_stop_failed");
     const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
     let queued = false;
@@ -826,16 +827,22 @@ export class BotService {
   async facts(target: string, action: "list" | "create" | "update" | "delete" = "list", raw?: unknown, factId = "", revision = 0) {
     const bot = await this.resolve(target);
     if (action !== "list" && bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before editing memories.`);
-    const store = bot.worker ? this.#remote().facts?.(bot.worker) : localBotFacts(this.#deps.botsDir ?? BOTS_DIR);
-    if (!store) throw new BotMemoryUnavailableError("Update this bot's worker to use explicit memories.");
-    // Keep a single store per service for serialized writes (the cache is host-independent).
-    const key = bot.worker ?? "local";
-    if (!this.#factStores.has(key)) this.#factStores.set(key, store);
-    const facts = this.#factStores.get(key)!;
+    const facts = this.#factsOf(bot);
     if (action === "list") return facts.list(bot.id);
     if (action === "create") return facts.create(bot.id, raw);
     if (action === "update") return facts.update(bot.id, factId, raw);
     return facts.delete(bot.id, factId, revision);
+  }
+
+  /** One serialized store per execution host, shared by writes and the deletion barrier. */
+  #factsOf(bot: BotRecord): BotFacts {
+    const key = bot.worker ? `worker:${bot.worker}` : "gateway";
+    const existing = this.#factStores.get(key);
+    if (existing) return existing;
+    const store = bot.worker ? this.#remote().facts?.(bot.worker) : localBotFacts(this.#botsDir);
+    if (!store) throw new BotMemoryUnavailableError("Update this bot's worker to use explicit memories.");
+    this.#factStores.set(key, store);
+    return store;
   }
 
   /** SOUL.md's text; null while the bot has none (before or during its first conversation). */

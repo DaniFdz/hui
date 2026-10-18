@@ -903,5 +903,10 @@ test("explicit memories are guarded, revisioned and freshly included without cha
   assert.doesNotMatch(JSON.stringify(after?.system), /EXPLICIT_CORRECTED/u);
   await call(`/__hui/bots/${bot.id}`, "DELETE");
   assert.equal((await call(path, "POST", { kind: "fact", text: "archived" })).status, 409);
-  await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE");
+  await call(`/__hui/bots/${bot.id}/restore`, "POST");
+  const saves = Array.from({ length: 10 }, (_, index) => call(path, "POST", { kind: "fact", text: `Pending delete ${index}` }));
+  assert.equal((await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE")).status, 200);
+  const results = await Promise.all(saves);
+  assert.ok(results.every((reply) => reply.status === 201 || reply.status === 404), JSON.stringify(results.map((reply) => reply.status)));
+  await assert.rejects(stat(join(process.env["XDG_CONFIG_HOME"]!, "hui", "bots", bot.id)), { code: "ENOENT" });
 });

@@ -19,12 +19,13 @@ export function renderBotFacts(controller: BotFactsController) {
     ${state.loading ? html`<p role="status">Loading memories…</p>` : nothing}
     ${state.error ? html`<p class="is-error" role="alert">${state.error}</p>` : nothing}
     ${state.loaded && !state.facts.length ? html`<p class="muted">No explicit memories yet. Save only what you want this bot to keep.</p>` : nothing}
+    ${editing ? html`<p class="muted">Finish or cancel your edit before editing another memory.</p>` : nothing}
     <ul class="bot-facts__list">${state.facts.map((fact) => html`<li class="bot-facts__card">
       <div class="bot-facts__meta"><strong>${fact.kind[0]!.toUpperCase() + fact.kind.slice(1)}</strong>${fact.pinned ? html`<span>Pinned</span>` : nothing}</div>
       <p class="bot-facts__text">${fact.text}</p>
       <p class="bot-facts__source">Manually saved · ${fact.source}<br>Created ${new Date(fact.createdAt).toLocaleString()}${fact.revision > 1 ? html`<br>Updated ${new Date(fact.updatedAt).toLocaleString()} · revision ${fact.revision}` : nothing}</p>
       <div class="bot-facts__actions">
-        <button type="button" class="btn btn--sm" ?disabled=${disabled} @click=${() => controller.edit(fact)}>Edit memory</button>
+        <button type="button" class="btn btn--sm" ?disabled=${disabled || Boolean(editing)} @click=${() => controller.edit(fact)}>Edit memory</button>
         <button type="button" class="btn btn--sm" aria-pressed=${String(fact.pinned)} ?disabled=${disabled} @click=${() => controller.pin(fact)}>${fact.pinned ? "Unpin memory" : "Pin memory"}</button>
         <button type="button" class="btn btn--sm danger" ?disabled=${disabled} @click=${() => controller.remove(fact)}>Delete memory</button>
       </div>

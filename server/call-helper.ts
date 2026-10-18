@@ -183,7 +183,15 @@ export function createCallDelegate(deps: CallDelegateDeps) {
     const { bot, call, request } = input;
     if (call.questions >= CALL_LIMITS.helperQuestions) return handOff(bot, call, request);
     call.questions += 1;
-    const [view, soul, facts, settings] = await Promise.all([deps.view(bot.id).catch(() => undefined), deps.soul?.(bot.id).catch(() => undefined), deps.facts?.(bot.id).catch(() => undefined), deps.settings()]);
+    // Missing current knowledge is not an empty memory: an older chat summary may contain a corrected fact.
+    let facts: BotFact[] | undefined;
+    try { facts = await deps.facts?.(bot.id); }
+    catch (error) {
+      if (signal?.aborted) throw new DOMException("The wait was cancelled.", "AbortError");
+      deps.report?.("A call's explicit knowledge could not be read", error instanceof Error ? error.message : String(error));
+      return { status: "failed", speak: `I cannot read ${bot.name}'s current saved knowledge, so I cannot answer reliably from older conversation memory. Please try again once it is available.` };
+    }
+    const [view, soul, settings] = await Promise.all([deps.view(bot.id).catch(() => undefined), deps.soul?.(bot.id).catch(() => undefined), deps.settings()]);
     const { system, prompt } = helperPrompt({ bot, operator: settings.operator, ...(soul ? { soul } : {}), ...(view ? { view } : {}), ...(facts ? { facts } : {}), lines: call.lines, request });
     const budget = deadline(deps.budgetMs ?? CALL_LIMITS.helperSeconds * 1000);
     try {

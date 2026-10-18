@@ -264,6 +264,7 @@ export function hostBots(options: HostBotsOptions) {
         await souls.prepare(botId(params["botId"]));
         return {};
       },
+      "bot.facts.retire": async (params) => factsReply(async () => { await facts.retire(botId(params["botId"])); return []; }),
       "bot.facts.list": async (params) => factsReply(() => facts.list(botId(params["botId"]))),
       "bot.facts.create": async (params) => factsReply(() => facts.create(botId(params["botId"]), params["input"])),
       "bot.facts.update": async (params) => factsReply(() => facts.update(botId(params["botId"]), botId(params["factId"]), params["input"])),
@@ -301,6 +302,7 @@ export function hostBots(options: HostBotsOptions) {
        */
       "bot.remove-home": async (params) => {
         const id = botId(params["botId"]);
+        await facts.retire(id);
         if (await chosenInsideHome(id, params["cwd"])) {
           await souls.write(id, undefined);
           await rm(join(home(id), BOT_FACTS_FILE), { force: true });

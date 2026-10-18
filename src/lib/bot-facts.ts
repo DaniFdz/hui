@@ -31,11 +31,11 @@ export class BotFactsController {
   remove(fact?: BotFact) { this.#set({ removing: fact, error: "" }); }
   async save(input: BotFactInput): Promise<boolean> {
     const editing = this.state.editing;
-    return this.#mutate(editing ? "PATCH" : "POST", editing?.id, editing ? { kind: input.kind, text: input.text, pinned: input.pinned ?? editing.pinned, revision: editing.revision } : input);
+    return this.#mutate(editing ? "PATCH" : "POST", editing?.id, editing ? { kind: input.kind, text: input.text, pinned: input.pinned ?? editing.pinned, revision: editing.revision } : input, true);
   }
   pin(fact: BotFact) { return this.#mutate("PATCH", fact.id, { pinned: !fact.pinned, revision: fact.revision }); }
   confirmDelete() { const fact = this.state.removing; return fact ? this.#mutate("DELETE", fact.id, fact.revision) : Promise.resolve(false); }
-  async #mutate(method: string, id?: string, value?: BotFactInput | BotFactPatch | number): Promise<boolean> {
+  async #mutate(method: string, id?: string, value?: BotFactInput | BotFactPatch | number, clearEditing = false): Promise<boolean> {
     if (this.state.pending || this.state.loading || !this.state.loaded) return false;
     const request = ++this.#request;
     const botId = this.state.botId;
@@ -43,7 +43,13 @@ export class BotFactsController {
     try {
       const facts = await this.#api(botId, method, id, value);
       if (request !== this.#request) return false;
-      this.#set({ facts, editing: undefined, removing: undefined });
+      let editing = this.state.editing;
+      if (clearEditing || (method === "DELETE" && editing?.id === id)) editing = undefined;
+      else if (editing && editing.id === id) {
+        const saved = facts.find((fact) => fact.id === id);
+        if (saved) editing = { ...editing, revision: saved.revision, pinned: saved.pinned, updatedAt: saved.updatedAt };
+      }
+      this.#set({ facts, editing, ...(method === "DELETE" ? { removing: undefined } : {}) });
       return true;
     } catch (error) { if (request === this.#request) this.#set({ error: error instanceof Error ? error.message : "Could not save memory." }); return false; }
     finally { if (request === this.#request) this.#set({ pending: false }); }

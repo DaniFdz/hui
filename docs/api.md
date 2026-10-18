@@ -1461,13 +1461,16 @@ Every route retains `x-hui: 1`, the Bots Labs gate and bounded JSON bodies.
 Malformed input is 400, missing bot/entry 404, an archived bot write or stale
 revision 409, unreadable stored state 500. Corrupt state is never silently
 replaced with an empty list. Writes serialize per bot and replace the file
-atomically with owner-only permissions. Bot deletion removes explicit knowledge,
+atomically with owner-only permissions. Bot deletion first retires its host's
+knowledge store, drains in-flight writes and rejects queued/late saves, so a
+save cannot recreate a deleted home. Bot deletion removes explicit knowledge,
 including when a chosen workspace inside its home must otherwise be preserved.
 
 Each model request reads current entries into a separate `knowledge` section,
 pinned first. It identifies them as operator-saved reference data and gives
 current corrections precedence over earlier chat summaries. The existing call
-helper receives the same current entries. The Memory page exposes add, edit,
+helper receives the same current entries. If that read fails it returns an
+explicit failure, never answers from potentially stale conversation summaries. The Memory page exposes add, edit,
 pin/unpin, refresh and confirmed delete; it never claims a failed save succeeded.
 Only manual saves are supported; there is no agent write tool or automatic
 extraction. Template exports never include these entries.

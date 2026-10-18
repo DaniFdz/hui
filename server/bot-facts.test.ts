@@ -46,12 +46,30 @@ test("invalid input, a full store and corrupt persisted state never replace vali
     const facts = localBotFacts(root);
     for (const input of [null, { kind: "guess", text: "x" }, { kind: "fact", text: " " }, { kind: "fact", text: "x".repeat(501) }, { kind: "fact", text: "x", pinned: "yes" }, { kind: "fact", text: "x", author: "bot" }]) await assert.rejects(facts.create("one", input), BotInputError);
     await assert.rejects(facts.list("../outside"), BotInputError);
-    for (let index = 0; index < 40; index++) await facts.create("one", { kind: "decision", text: `Decision ${index}` });
+    for (let index = 0; index < 40; index++) await facts.create("one", { kind: "decision", text: "\u0001".repeat(500), source: "\u0001".repeat(200) });
+    assert.equal((await facts.list("one")).length, 40, "all accepted maximum-size entries remain readable even after JSON escaping");
+    assert.ok((await stat(join(root, "one", "facts.json"))).size > 128 * 1024);
     await assert.rejects(facts.create("one", { kind: "fact", text: "Too many" }), BotInputError);
     const path = join(root, "one", "facts.json");
     await writeFile(path, "broken");
     await assert.rejects(facts.create("one", { kind: "fact", text: "Must not erase" }));
     assert.equal(await readFile(path, "utf8"), "broken");
     await assert.rejects(readBotFacts(path));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("deletion drains queued writes and late saves cannot recreate a retired bot's home", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hui-facts-retire-"));
+  try {
+    const facts = localBotFacts(root);
+    await facts.create("one", { kind: "fact", text: "Existing" });
+    const pending = Array.from({ length: 10 }, (_, index) => facts.create("one", { kind: "fact", text: `Pending ${index}` }));
+    const all = Promise.allSettled(pending);
+    await facts.retire("one");
+    await rm(join(root, "one"), { recursive: true, force: true });
+    await all;
+    await assert.rejects(facts.create("one", { kind: "fact", text: "Too late" }), BotNotFoundError);
+    await assert.rejects(stat(join(root, "one")), { code: "ENOENT" });
+    assert.deepEqual(await localBotFacts(root).list("two"), []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
