@@ -17,14 +17,16 @@
  * what can be turned off (skills by the paths it finds them at), and pass on the
  * grants it reports (`onAccessRecorded`).
  */
+import { BotFactsStoreError, type BotFacts } from "./bot-facts.ts";
+import type { BotFact } from "../shared/bot-facts.ts";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { BotAccess, BotMemoryStatus, BotToolGroup } from "../shared/bots.ts";
 import { BotMemoryUnavailableError, type BotMemory } from "./bot-memory.ts";
 import type { BotOffer, BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
-import { BotConflictError, BotInputError, BotWorkerOfflineError, storedAccess } from "./bots.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, storedAccess } from "./bots.ts";
 import type { BotOwnSkill, BotSkillFiles } from "./bot-skills.ts";
-import { BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE } from "./worker/host-bots.ts";
+import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE } from "./worker/host-bots.ts";
 import { WorkerOfflineError, type WorkerService } from "./workers.ts";
 
 /** What these ports need of the worker service. */
@@ -391,6 +393,28 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     onAccessRecorded(listener) {
       accessListeners.add(listener);
       return () => accessListeners.delete(listener);
+    },
+
+    facts(id): BotFacts {
+      const call = async (action: string, params: Record<string, unknown>): Promise<BotFact[]> => {
+        if (!workers.features(id)) throw offline(id, false);
+        if (!workers.features(id)?.includes(BOT_FACTS_FEATURE)) throw new BotMemoryUnavailableError("Update this bot's worker to use explicit memories.");
+        const reply = await request<{ facts?: BotFact[]; error?: string; code?: string }>(id, `bot.facts.${action}`, params);
+        if (reply.error) {
+          if (reply.code === "conflict") throw new BotConflictError(reply.error);
+          if (reply.code === "not-found") throw new BotNotFoundError(reply.error);
+          if (reply.code === "input") throw new BotInputError(reply.error);
+          throw new BotFactsStoreError(reply.error);
+        }
+        if (!Array.isArray(reply.facts)) throw new BotMemoryUnavailableError("The worker did not return its explicit memories.");
+        return reply.facts;
+      };
+      return {
+        list: (botId) => call("list", { botId }),
+        create: (botId, input) => call("create", { botId, input }),
+        update: (botId, factId, input) => call("update", { botId, factId, input }),
+        delete: (botId, factId, revision) => call("delete", { botId, factId, revision }),
+      };
     },
 
     souls(id): BotSouls {

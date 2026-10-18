@@ -35,6 +35,7 @@ export const BOTS_ROUTE = "/__hui/bots";
 export const BOTS_EVENTS_ROUTE = "/__hui/bots/events";
 /** The memory page, which a link opens: `hui.ts` also accepts a same-origin page load there (docs/api.md#bots). */
 export const BOT_MEMORY_PAGE = /^\/__hui\/bots\/[A-Za-z0-9_-]{1,100}\/memory\/html$/u;
+const FACTS_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/facts(?:\/([A-Za-z0-9_-]{1,100}))?$/u;
 const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul|catalog))?)?$/u;
 /** SOUL.md reaches 20,000 characters, up to four bytes each, and JSON may escape them. */
 const BOT_BODY_BYTES = 256 * 1024;
@@ -121,6 +122,21 @@ export function createBotRoutes(deps: Deps) {
 
   async function handle(request: BotRouteRequest): Promise<BotRouteResult | undefined> {
     const match = ROUTE.exec(request.path);
+    const factMatch = FACTS_ROUTE.exec(request.path);
+    if (factMatch) {
+      const [, botId, factId] = factMatch;
+      try {
+        let facts;
+        if (!factId && request.method === "GET") facts = await service.facts(botId!);
+        else if (!factId && request.method === "POST") facts = await service.facts(botId!, "create", await json(request, BOT_BODY_BYTES));
+        else if (factId && request.method === "PATCH") facts = await service.facts(botId!, "update", await json(request, BOT_BODY_BYTES), factId);
+        else if (factId && request.method === "DELETE") facts = await service.facts(botId!, "delete", undefined, factId, Number(request.query.get("revision")));
+        else return { status: 405, body: { error: "method not allowed" } };
+        return { status: request.method === "POST" ? 201 : 200, body: { facts } };
+      } catch (error) {
+        return { status: botErrorStatus(error), body: { error: error instanceof Error ? error.message : "The memory request failed." } };
+      }
+    }
     if (!match) return undefined;
     const [, id, action] = match;
     const { method } = request;

@@ -278,3 +278,15 @@ test("clean-ups for a worker that no longer exists are dropped when the gateway 
   });
   assert.deepEqual(JSON.parse(await readFile(cleanupFile, "utf8")).cleanups.map((entry: { botId: string }) => entry.botId), ["a"], "an invalid entry goes too");
 });
+
+test("explicit memories require a capable connected worker and never fall back to this gateway", async () => {
+  const fake = link(); const { bots } = portsOf(fake); const facts = bots.facts!("w-1");
+  await assert.rejects(facts.list("one"), BotMemoryUnavailableError);
+  assert.equal(fake.requests.length, 0);
+  fake.state.features.push("bot-facts");
+  fake.state.replies.set("bot.facts.list", () => ({ facts: [] }));
+  assert.deepEqual(await facts.list("one"), []);
+  assert.equal(fake.requests[0]!.op, "bot.facts.list");
+  fake.close();
+  await assert.rejects(facts.list("one"), BotWorkerOfflineError);
+});

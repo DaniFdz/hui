@@ -94,6 +94,7 @@ import {
   type BotView,
 } from "./lib/bots.ts";
 import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "./lib/bot-roster.ts";
+import { BotFactsController } from "./lib/bot-facts.ts";
 import { BotToolsController } from "./lib/bot-tools.ts";
 import { BotTriggersController } from "./lib/bot-triggers.ts";
 import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder } from "./views/bots.ts";
@@ -613,6 +614,7 @@ export class HuiApp extends HuiElement {
   private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   /** The panel's Tools page: what the operator can turn off in the bot's chat, kept in its own controller. */
   private botTools = new BotToolsController(this);
+  private botFacts = new BotFactsController(this);
   /** The bot's triggers, read while its overview or Triggers page shows. */
   private botTriggers = new BotTriggersController(this, { visible: () => this.botTriggersVisible() });
   private botRosterTick = 0;
@@ -1346,6 +1348,7 @@ export class HuiApp extends HuiElement {
         this.botPanelExpanded = false;
         this.botTools.reset(target.id);
         this.botTriggers.reset(target.id);
+        this.botFacts.reset(target.id);
       }
       this.activeBotId = target.id;
       this.view = "bot";
@@ -4583,6 +4586,8 @@ export class HuiApp extends HuiElement {
       this.stopAutomationPolling();
     }
     this.botTriggers.sync(this.botTriggersVisible() ? this.activeBot() : undefined);
+    const factsBot = this.botPanelShows("facts") ? this.activeBot() : undefined;
+    if (factsBot) void this.botFacts.load(factsBot.id);
     const toolsBot = this.botPanelShows("tools") ? this.activeBot() : undefined;
     if (toolsBot) void this.botTools.refresh(toolsBot);
     // The overview names the bot's model and Settings picks it from PI's catalog, as New Session does.
@@ -4768,6 +4773,7 @@ export class HuiApp extends HuiElement {
           onRetry: this.loadAutomationData,
         },
         tools: this.botTools.props(bot),
+        facts: this.botFacts,
         triggers: this.botTriggers.props(bot),
         settings: {
           models: this.pi?.model.catalog ?? [],

@@ -881,3 +881,27 @@ test("a bot's chat asks for a secret as a session does: on in its Tools catalog 
   assert.ok(later && !offered(later).includes("secret_request") && offered(later).includes("request_access"), JSON.stringify(offered(later)));
   await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE");
 });
+
+test("explicit memories are guarded, revisioned and freshly included without changing OptChat", { timeout: 120_000 }, async () => {
+  const bot = botOf(await call("/__hui/bots", "POST", { name: "Remember", soul: "A helpful assistant." }));
+  const path = `/__hui/bots/${bot.id}/facts`;
+  assert.equal((await call(path, "GET", undefined, false)).status, 403);
+  const before = (await call(`/__hui/bots/${bot.id}/memory`)).body;
+  const added = await call(path, "POST", { kind: "preference", text: "EXPLICIT_SHORT_ANSWERS", source: "Our planning chat", pinned: true });
+  assert.equal(added.status, 201, JSON.stringify(added.body));
+  const fact = (added.body["facts"] as Array<{ id: string; revision: number }>)[0]!;
+  assert.deepEqual((await call(`/__hui/bots/${bot.id}/memory`)).body, before, "saving memory neither runs a model nor mutates OptChat");
+  assert.equal((await call(`${path}/${fact.id}`, "PATCH", { text: "EXPLICIT_CORRECTED", revision: 1 })).status, 200);
+  assert.equal((await call(`${path}/${fact.id}`, "PATCH", { text: "STALE", revision: 1 })).status, 409);
+  await call(`/__hui/bots/${bot.id}/messages`, "POST", { text: "FACTS_REQUEST_ONE", wait: true });
+  const request = (await providerRequests()).findLast((entry) => JSON.stringify(entry.messages).includes("FACTS_REQUEST_ONE"));
+  assert.match(JSON.stringify(request?.system), /EXPLICIT_CORRECTED/u);
+  assert.doesNotMatch(JSON.stringify(request?.system), /EXPLICIT_SHORT_ANSWERS/u);
+  assert.equal((await call(`${path}/${fact.id}?revision=2`, "DELETE")).status, 200);
+  await call(`/__hui/bots/${bot.id}/messages`, "POST", { text: "FACTS_REQUEST_TWO", wait: true });
+  const after = (await providerRequests()).findLast((entry) => JSON.stringify(entry.messages).includes("FACTS_REQUEST_TWO"));
+  assert.doesNotMatch(JSON.stringify(after?.system), /EXPLICIT_CORRECTED/u);
+  await call(`/__hui/bots/${bot.id}`, "DELETE");
+  assert.equal((await call(path, "POST", { kind: "fact", text: "archived" })).status, 409);
+  await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE");
+});

@@ -811,3 +811,25 @@ test("a disconnected worker: creating there, its bot's memory and messages fail 
   await waitFor(() => !existsSync(crow.cwd) || undefined, "the worker to remove its home");
   await waitFor(async () => (JSON.parse(await readFile(queueFile, "utf8")) as { cleanups: unknown[] }).cleanups.length === 0 || undefined, "the note to go");
 });
+
+test("explicit memories stay on the worker and its next request reads edits and deletes", { timeout: 180_000 }, async () => {
+  const created = await call("/__hui/bots", "POST", { name: "FactsWorker", worker: "devbox", soul: "I keep explicit knowledge." });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const bot = botOf(created);
+  const path = `/__hui/bots/${bot.id}/facts`;
+  const added = await call(path, "POST", { kind: "decision", text: "WORKER_EXPLICIT_ORIGINAL" });
+  assert.equal(added.status, 201, JSON.stringify(added.body));
+  const fact = (added.body["facts"] as Array<{ id: string; revision: number }>)[0]!;
+  assert.match(await readFile(join(bot.cwd, "facts.json"), "utf8"), /WORKER_EXPLICIT_ORIGINAL/u);
+  assert.ok(!existsSync(join(root, "gateway", "config", "hui", "bots", bot.id, "facts.json")));
+  const edited = await call(`${path}/${fact.id}`, "PATCH", { revision: 1, text: "WORKER_EXPLICIT_CORRECTED", pinned: true });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  assert.equal((await call(`${path}/${fact.id}`, "PATCH", { revision: 1, text: "STALE" })).status, 409);
+  await call(`/__hui/bots/${bot.id}/messages`, "POST", { text: "WORKER_FACTS_REQUEST", wait: true });
+  const request = await chatRequest("WORKER_FACTS_REQUEST");
+  assert.match(JSON.stringify(request?.system), /WORKER_EXPLICIT_CORRECTED/u);
+  assert.doesNotMatch(JSON.stringify(request?.system), /WORKER_EXPLICIT_ORIGINAL/u);
+  assert.equal((await call(`${path}/${fact.id}?revision=2`, "DELETE")).status, 200);
+  assert.deepEqual((await call(path)).body["facts"], []);
+  await call(`/__hui/bots/${bot.id}?permanent=1`, "DELETE");
+});

@@ -1,0 +1,51 @@
+/** The explicit-memory page's confirmed server state; no extraction, optimistic saves or cross-bot leakage. */
+import type { ReactiveControllerHost } from "lit";
+import type { BotFact, BotFactInput, BotFactPatch } from "../../shared/bot-facts.ts";
+import { fetchJson } from "./settings-store.ts";
+export type BotFactsState = { botId: string; facts: BotFact[]; loading: boolean; loaded: boolean; pending: boolean; error: string; editing?: BotFact; removing?: BotFact };
+export type BotFactsApi = (botId: string, method?: string, id?: string, value?: BotFactInput | BotFactPatch | number) => Promise<BotFact[]>;
+const api: BotFactsApi = async (botId, method = "GET", id = "", value) => {
+  const url = `/__hui/bots/${encodeURIComponent(botId)}/facts${id ? `/${encodeURIComponent(id)}` : ""}${method === "DELETE" ? `?revision=${value}` : ""}`;
+  const result = await fetchJson<{ facts: BotFact[] }>(url, { method, ...(value !== undefined && method !== "DELETE" ? { body: JSON.stringify(value), headers: { "content-type": "application/json" } } : {}) });
+  if (!Array.isArray(result.facts)) throw new Error("The bot's memories did not come back.");
+  return result.facts;
+};
+export class BotFactsController {
+  state: BotFactsState = { botId: "", facts: [], loading: false, loaded: false, pending: false, error: "" };
+  #host: Pick<ReactiveControllerHost, "requestUpdate">;
+  #api: BotFactsApi;
+  #request = 0;
+  constructor(host: Pick<ReactiveControllerHost, "requestUpdate">, client: BotFactsApi = api) { this.#host = host; this.#api = client; }
+  #set(change: Partial<BotFactsState>) { this.state = { ...this.state, ...change }; this.#host.requestUpdate(); }
+  reset(botId: string) { this.#request++; this.state = { botId, facts: [], loading: false, loaded: false, pending: false, error: "" }; this.#host.requestUpdate(); }
+  async load(botId: string, force = false): Promise<void> {
+    if (this.state.botId !== botId) this.reset(botId);
+    if (this.state.loading || this.state.pending || (this.state.loaded && !force)) return;
+    const request = ++this.#request;
+    this.#set({ loading: true, error: "" });
+    try { const facts = await this.#api(botId, "GET"); if (request === this.#request) this.#set({ facts, loaded: true }); }
+    catch (error) { if (request === this.#request) this.#set({ error: error instanceof Error ? error.message : "Could not load memories." }); }
+    finally { if (request === this.#request) this.#set({ loading: false }); }
+  }
+  edit(fact?: BotFact) { this.#set({ editing: fact, error: "" }); }
+  remove(fact?: BotFact) { this.#set({ removing: fact, error: "" }); }
+  async save(input: BotFactInput): Promise<boolean> {
+    const editing = this.state.editing;
+    return this.#mutate(editing ? "PATCH" : "POST", editing?.id, editing ? { kind: input.kind, text: input.text, pinned: input.pinned ?? editing.pinned, revision: editing.revision } : input);
+  }
+  pin(fact: BotFact) { return this.#mutate("PATCH", fact.id, { pinned: !fact.pinned, revision: fact.revision }); }
+  confirmDelete() { const fact = this.state.removing; return fact ? this.#mutate("DELETE", fact.id, fact.revision) : Promise.resolve(false); }
+  async #mutate(method: string, id?: string, value?: BotFactInput | BotFactPatch | number): Promise<boolean> {
+    if (this.state.pending || this.state.loading || !this.state.loaded) return false;
+    const request = ++this.#request;
+    const botId = this.state.botId;
+    this.#set({ pending: true, error: "" });
+    try {
+      const facts = await this.#api(botId, method, id, value);
+      if (request !== this.#request) return false;
+      this.#set({ facts, editing: undefined, removing: undefined });
+      return true;
+    } catch (error) { if (request === this.#request) this.#set({ error: error instanceof Error ? error.message : "Could not save memory." }); return false; }
+    finally { if (request === this.#request) this.#set({ pending: false }); }
+  }
+}

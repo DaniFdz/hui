@@ -2137,6 +2137,25 @@ tag a bot. The contract is [docs/api.md#tagging-bots](docs/api.md#tagging-bots).
   tags. Sessions still on PI's SDK worker don't tag, and their composers
   suggest no bots.
 
+### Explicit bot knowledge (2026-10-18)
+
+The operator can manually save facts, preferences and decisions in the bot
+panel's **Setup → Memory** page. Each entry keeps its manual source label,
+creation/update time and revision. Edit corrects the current knowledge;
+pin moves it before ordinary entries; Delete asks for confirmation and removes
+it from future requests. Earlier conversation messages and OptChat summaries
+remain intact, so this is not an erase-from-history operation.
+
+This is a separate additive `facts.json` in each bot's private home, on its
+worker when it runs there, never a replacement for OptChat or SOUL.md. Every
+chat request reads the current entries; the existing call helper also reads
+them, preferring explicit knowledge over older summaries. All entries are
+included (at most 40, each 500 characters), pinned first. Only the operator's
+manual UI/API saves change them: no extraction, background inference or new
+model calls. An older or offline worker reports explicit unavailability,
+never reads a different memory on the gateway. Template exports exclude this
+personal knowledge. Concurrent edits require the current per-entry revision.
+
 ### The bot panel is a profile you can resize and expand (2026-10-16)
 
 The owner: "the sidebar they have needs to be improved. Right now it cannot be
@@ -2168,7 +2187,7 @@ Soul and Memory leaving the panel rather than shrinking to a row each.
   Expand, never remembered, which keeps the chat mounted underneath, hidden, so
   a reply streaming in, a draft and the scroll are there when it comes back.
   Escape brings the chat back before it could reach the chat and stop a turn.
-- **Soul and Memory leave the panel; neither changes.** The bot still writes
+- **Soul and OptChat internals leave the panel; neither changes.** The bot still writes
   SOUL.md in its first conversation and follows it, and OptChat still keeps
   every message. `hui bot soul` replaces SOUL.md, `hui bot memory` reads the
   memory (`--zoom`, `--html` for its browse page), the roster still warns while

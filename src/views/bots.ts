@@ -8,6 +8,8 @@
  * bot's chat is the ordinary session pane (`renderHome`) with a bot header, not
  * a fork.
  */
+import { renderBotFacts } from "./bot-facts.ts";
+import type { BotFactsController } from "../lib/bot-facts.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { icons } from "../lib/icons.ts";
@@ -378,13 +380,14 @@ export type BotPanelProps = {
   };
   /** The Tools page's state and actions (`BotToolsController.props`). */
   tools: Omit<BotToolsProps, "bot">;
+  facts?: BotFactsController;
   /** The triggers, on the overview and their page (`BotTriggersController.props`). */
   triggers: Omit<BotTriggersProps, "bot" | "now">;
   /** The Settings page: everything but the bot, the ids and its face, which the panel supplies. */
   settings: Omit<BotSettingsProps, "bot" | "id" | "face">;
 };
 
-const VIEW_TITLES: Record<Exclude<BotPanelView, "overview">, string> = { routines: "Routines", triggers: "Triggers", tools: "Tools & skills", settings: "Settings" };
+const VIEW_TITLES: Record<Exclude<BotPanelView, "overview">, string> = { routines: "Routines", triggers: "Triggers", tools: "Tools & skills", settings: "Settings", facts: "Memory" };
 
 const RUN_LABELS: Record<AutomationRun["status"], string> = {
   queued: "Queued",
@@ -663,6 +666,7 @@ function renderSetup(props: BotPanelProps) {
       ${row("settings-tagging", "settings", "Tagging", botTaggingLabel(bot), bot.description ?? botTaggingLabel(bot))}
       ${row("settings-model", "settings", "Model", botModelLabel(bot, props.settings.models))}
       ${row("tools", "tools", "Tools & skills", botToolsOffLabel(bot))}
+      ${row("facts", "facts", "Memory", "Facts, preferences & decisions")}
       ${row("settings-calls", "settings", "Calls", botCallsLabel(bot, props.settings.call))}
       ${row("settings-workspace", "settings", "Workspace", `${workspaceLabel(bot)}${where}`, `${bot.cwd}${where}`)}
     </div>
@@ -687,6 +691,7 @@ function renderOverview(props: BotPanelProps) {
 function renderPanelView(props: BotPanelProps) {
   switch (props.view) {
     case "overview": return renderOverview(props);
+    case "facts": return props.facts ? renderBotFacts(props.facts) : nothing;
     case "routines": return renderRoutinesView(props);
     case "triggers": return renderBotTriggers({ bot: props.bot, now: Date.now(), ...props.triggers, adding: props.openedFrom === "triggers-add" });
     // Keyed, as Settings: another bot's switches and skill search start afresh.

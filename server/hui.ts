@@ -643,6 +643,7 @@ const callRoutes = createCallRoutes({
   delegate: createCallDelegate({
     view: async (botId) => (await bots.callContext(botId)).view,
     soul: async (botId) => (await bots.soul(botId)) ?? undefined,
+    facts: async (botId) => bots.facts(botId),
     settings: callSettings,
     completion: callCompletion,
     // Real work goes to the bot's own chat, as any message: a prompt, or a follow-up behind its running turn.
