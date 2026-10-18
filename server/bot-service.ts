@@ -25,8 +25,9 @@
  * waits on a worker: its memory status comes from what the worker last
  * reported, its newest message from the live chat or one read per connection.
  */
+import { BOT_FACTS_FILE, localBotFacts, type BotFacts } from "./bot-facts.ts";
 import { randomUUID } from "node:crypto";
-import { mkdir, realpath, rmdir, stat } from "node:fs/promises";
+import { mkdir, realpath, rm, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import {
@@ -147,6 +148,8 @@ export type BotWorkers = {
   memory(id: string): BotMemory;
   /** Its bots' SOUL.md, each in the bot's home folder there. */
   souls(id: string): BotSouls;
+  /** Explicit memories on this worker; absent on older hosts. */
+  facts?(id: string): BotFacts;
   /**
    * What deleting a bot leaves on its worker: its conversation forgotten (`BotConversations.forget`) and its home folder
    * there removed with everything in it (only SOUL.md when its working directory lies inside it). At once while HUI is
@@ -260,6 +263,7 @@ type RunWatch = {
 const PROFILE_KEYS = ["name", "title", "shape", "ears", "color", "emoji"];
 
 export class BotService {
+  #factStores = new Map<string, BotFacts>();
   readonly #registry: BotRegistry;
   readonly #sessions: BotSessions;
   readonly #deps: BotServiceDeps;
@@ -799,6 +803,7 @@ export class BotService {
    */
   async delete(target: string): Promise<{ queued: boolean }> {
     const bot = await this.resolve(target);
+    if (!bot.worker) await this.#factsOf(bot).retire(bot.id);
     await this.#quiet(bot, "bot_delete_stop_failed");
     const record = (await this.#deps.readSessions()).find((candidate) => candidate.id === bot.sessionId);
     let queued = false;
@@ -811,13 +816,38 @@ export class BotService {
     }
     if (record) await this.#deps.removeSession(bot.sessionId);
     if (!bot.worker) {
-      if (await this.#chosenInsideHome(bot)) await this.#deps.souls.write(bot.id, undefined);
+      if (await this.#chosenInsideHome(bot)) {
+        await this.#deps.souls.write(bot.id, undefined);
+        await rm(join(this.#botsDir, bot.id, BOT_FACTS_FILE), { force: true });
+      }
       else await this.#deps.souls.remove(bot.id);
     }
     await this.#registry.update((bots) => ({ bots: bots.filter((candidate) => candidate.id !== bot.id), result: undefined }));
     this.#souls.delete(bot.id);
     this.#lastMessages.delete(bot.id);
     return { queued };
+  }
+
+  /** Explicit operator-owned knowledge, stored on the same host as the bot. */
+  async facts(target: string, action: "list" | "create" | "update" | "delete" = "list", raw?: unknown, factId = "", revision = 0) {
+    const bot = await this.resolve(target);
+    if (action !== "list" && bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before editing memories.`);
+    const facts = this.#factsOf(bot);
+    if (action === "list") return facts.list(bot.id);
+    if (action === "create") return facts.create(bot.id, raw);
+    if (action === "update") return facts.update(bot.id, factId, raw);
+    return facts.delete(bot.id, factId, revision);
+  }
+
+  /** One serialized store per execution host, shared by writes and the deletion barrier. */
+  #factsOf(bot: BotRecord): BotFacts {
+    const key = bot.worker ? `worker:${bot.worker}` : "gateway";
+    const existing = this.#factStores.get(key);
+    if (existing) return existing;
+    const store = bot.worker ? this.#remote().facts?.(bot.worker) : localBotFacts(this.#botsDir);
+    if (!store) throw new BotMemoryUnavailableError("Update this bot's worker to use explicit memories.");
+    this.#factStores.set(key, store);
+    return store;
   }
 
   /** SOUL.md's text; null while the bot has none (before or during its first conversation). */

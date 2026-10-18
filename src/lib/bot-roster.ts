@@ -42,7 +42,7 @@ export function tabAfterKey<Tab extends string>(tabs: readonly Tab[], current: T
 /* ── side panel ───────────────────────────────────────────────────────────── */
 
 /** The panel opens on the bot's overview; the others are the pages its rows open, each with a way back. */
-export type BotPanelView = "overview" | "routines" | "triggers" | "tools" | "settings";
+export type BotPanelView = "overview" | "routines" | "triggers" | "tools" | "settings" | "facts";
 /** Open or closed and its width are remembered; the page it shows and whether it is expanded are not. */
 export type BotPanelState = { open: boolean; width: number };
 export const BOT_PANEL_KEY = "hui.bot-panel";

@@ -18,7 +18,8 @@
  * this host's loader finds them at, the mirrored ones included), and hears of a
  * grant made here in a `bot.access` frame.
  */
-import { realpath, stat } from "node:fs/promises";
+import { BOT_FACTS_FILE, localBotFacts } from "../bot-facts.ts";
+import { realpath, rm, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../../shared/bots.ts";
 import { parseCallRecord } from "../../shared/calls.ts";
@@ -28,7 +29,7 @@ import { BOT_TEMPLATE_LIMITS } from "../../shared/bot-templates.ts";
 import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bot-skills.ts";
 import { caseClash, skillFilePath } from "../bot-templates/common.ts";
 import { localBotSouls } from "../bot-souls.ts";
-import { accessField, normalizeSoul } from "../bots.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, accessField, normalizeSoul } from "../bots.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId } from "../runtimes/durable.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";
@@ -36,6 +37,8 @@ import { isRecord, type Frame, type Peer } from "./protocol.ts";
 
 /** What `hello` lists when the host can run bots, so a gateway tells an older host from this one. */
 export const BOTS_FEATURE = "bots";
+/** Manual knowledge lives beside each bot on its execution host. */
+export const BOT_FACTS_FEATURE = "bot-facts";
 /** The frame a watched memory's status arrives in. */
 export const BOT_MEMORY_STATUS_FRAME = "bot.memory.status";
 /** What `hello` lists when the host keeps bots' tool and skill lists (`bot.access.*`, `bot.offer`) and reports grants. */
@@ -139,6 +142,14 @@ export function hostBots(options: HostBotsOptions) {
   /** SOUL.md in those homes, with the gateway's guard: a deleted bot's home goes only when it really is that folder of
    * this bots directory, and a link in its place is removed, never followed. */
   const souls = localBotSouls(options.botsDir);
+  const facts = localBotFacts(options.botsDir);
+  // The worker wire otherwise transports only Error.message; preserve the facts API's status categories explicitly.
+  const factsReply = async (read: () => Promise<unknown>) => {
+    try { return { facts: await read() }; }
+    catch (error) {
+      return { error: error instanceof Error ? error.message : String(error), code: error instanceof BotConflictError ? "conflict" : error instanceof BotNotFoundError ? "not-found" : error instanceof BotInputError ? "input" : "store" };
+    }
+  };
   /** Each bot's own skills, in its home here: what an import brought. */
   const ownSkills = localBotSkills(options.botsDir);
   /** Each bot's name as its gateway last gave it (the create, then every `bots` section): a bot still called "New Bot"
@@ -253,6 +264,11 @@ export function hostBots(options: HostBotsOptions) {
         await souls.prepare(botId(params["botId"]));
         return {};
       },
+      "bot.facts.retire": async (params) => factsReply(async () => { await facts.retire(botId(params["botId"])); return []; }),
+      "bot.facts.list": async (params) => factsReply(() => facts.list(botId(params["botId"]))),
+      "bot.facts.create": async (params) => factsReply(() => facts.create(botId(params["botId"]), params["input"])),
+      "bot.facts.update": async (params) => factsReply(() => facts.update(botId(params["botId"]), botId(params["factId"]), params["input"])),
+      "bot.facts.delete": async (params) => factsReply(() => facts.delete(botId(params["botId"]), botId(params["factId"]), params["revision"] as number)),
       "bot.soul.read": async (params) => ({ soul: (await souls.read(botId(params["botId"]))) ?? null }),
       /** Writes a bot's own skills into its home here (an import's), each `{ name, text, files? }`: its folder's name, SKILL.md
        * and the files beside it. */
@@ -286,7 +302,11 @@ export function hostBots(options: HostBotsOptions) {
        */
       "bot.remove-home": async (params) => {
         const id = botId(params["botId"]);
-        if (await chosenInsideHome(id, params["cwd"])) await souls.write(id, undefined);
+        await facts.retire(id);
+        if (await chosenInsideHome(id, params["cwd"])) {
+          await souls.write(id, undefined);
+          await rm(join(home(id), BOT_FACTS_FILE), { force: true });
+        }
         else await souls.remove(id);
         names.delete(id);
         return {};

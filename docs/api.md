@@ -1421,12 +1421,59 @@ type BotCatalogTool = {
 };
 ```
 
-A bot's memory is [OptChat](optchat.md): its chat's conversation enables it in
+A bot's conversation memory is [OptChat](optchat.md): its chat's conversation enables it in
 its creating commit, every turn starts fresh from the memory's view, and
 Durable's compactions are declined. The gateway reads it through
 `DurableHost.optchat` (`optChatBotMemory` in `server/bot-memory.ts`); a chat
 whose conversation has no OptChat, or a store this process does not own, has no
 memory to read.
+
+### Explicit knowledge
+
+`facts.json` in the bot's HUI-owned home stores manually entered facts,
+preferences and decisions separately from OptChat and SOUL.md. For a worker
+bot the file and writes stay on that worker (`bot-facts` capability); an
+offline host or an older host without the capability returns 503. No gateway
+fallback, extraction or model call occurs. Existing bots without the file
+start with an empty list; no existing state is migrated.
+
+```ts
+type BotFact = {
+  id: string;
+  kind: "fact" | "preference" | "decision";
+  text: string;                 // 1–500 characters, trimmed
+  pinned: boolean;
+  source: string;               // immutable manual label, 1–200 characters
+  createdAt: string;
+  updatedAt: string;
+  revision: number;             // starts at 1, increments on every edit
+};
+```
+
+| Route | Result | Input and behavior |
+| --- | --- | --- |
+| `GET /__hui/bots/:id/facts` | 200 `{ facts: BotFact[] }` | Pinned first, then newest created |
+| `POST /__hui/bots/:id/facts` | 201 `{ facts }` | `{ kind, text, source?, pinned? }`; source defaults to `Saved by you`, pinned to false; at most 40 entries |
+| `PATCH /__hui/bots/:id/facts/:factId` | 200 `{ facts }` | `{ revision, kind?, text?, pinned? }`; preserves source and creation time |
+| `DELETE /__hui/bots/:id/facts/:factId?revision=N` | 200 `{ facts }` | Deletes the saved entry, not raw conversation history or OptChat summaries |
+
+Every route retains `x-hui: 1`, the Bots Labs gate and bounded JSON bodies.
+Malformed input is 400, missing bot/entry 404, an archived bot write or stale
+revision 409, unreadable stored state 500. Corrupt state is never silently
+replaced with an empty list. Writes serialize per bot and replace the file
+atomically with owner-only permissions. Bot deletion first retires its host's
+knowledge store, drains in-flight writes and rejects queued/late saves, so a
+save cannot recreate a deleted home. Bot deletion removes explicit knowledge,
+including when a chosen workspace inside its home must otherwise be preserved.
+
+Each model request reads current entries into a separate `knowledge` section,
+pinned first. It identifies them as operator-saved reference data and gives
+current corrections precedence over earlier chat summaries. The existing call
+helper receives the same current entries. If that read fails it returns an
+explicit failure, never answers from potentially stale conversation summaries. The Memory page exposes add, edit,
+pin/unpin, refresh and confirmed delete; it never claims a failed save succeeded.
+Only manual saves are supported; there is no agent write tool or automatic
+extraction. Template exports never include these entries.
 
 **The look.** A bot shows an animated face (a plush `shape` in a `color`, two
 dot eyes, optionally `ears` on top, after OpenAI's Dots) or, while it has one,

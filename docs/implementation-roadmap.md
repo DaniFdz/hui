@@ -1138,6 +1138,17 @@ requests:
    an isolated Browser-tool agent → bot → agent journey at desktop/mobile
    ([`e2e/bot-agent-replies.browser.md`](../e2e/bot-agent-replies.browser.md)).
 
+17. **Explicit bot knowledge** (implemented 2026-10-18; SPEC.md,
+   "Explicit bot knowledge"): Setup → Memory keeps manual facts, preferences
+   and decisions with provenance, edit/delete/pin and revision conflicts,
+   separate from OptChat. `facts.json` stays on the bot's execution host and
+   each chat request and the call helper read current knowledge. No automatic
+   extraction or additional model calls. Proof: `server/bot-facts.test.ts`,
+   `server/bot-routes.test.ts`, `server/bot-workers.test.ts`,
+   `server/bot-remote.test.ts`, `server/call-helper.test.ts`,
+   `src/lib/bot-facts.test.ts` and the isolated Browser journey
+   [`e2e/bot-facts.browser.md`](../e2e/bot-facts.browser.md).
+
 ### HUI-19 — Agent widgets
 
 Done 2026-10-06. Agents and bots show interactive HTML/SVG widgets inline in the

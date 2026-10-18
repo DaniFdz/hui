@@ -272,7 +272,7 @@ test("the panel opens on the bot's overview, whose rows open its pages with a wa
   const order = ["renderProfile(props)", "renderRoutinesSummary(props)", "renderTriggersSummary(props, now)", "renderActivity(props, now)", "renderSetup(props)"].map((part) => overview.indexOf(part));
   assert.ok(order.every((at, index) => at > (order[index - 1] ?? -1)), "who it is, what it does on its own, then how it is set up");
   assert.match(between(source, "function renderPanelHeader(", "/** The panel beside the bot's chat"), /bot-panel__back" aria-label=\$\{`Back to \$\{props\.bot\.name\}`\}/u, "every page has a way back");
-  assert.doesNotMatch(between(source, "/* ── side panel", "/* ── archive confirmation"), /role="tab"|SOUL\.md|memory/iu, "no tabs, and neither Soul nor Memory");
+  assert.doesNotMatch(between(source, "/* ── side panel", "/* ── archive confirmation"), /role="tab"|SOUL\.md/iu, "no tabs or Soul editor");
   const app = read("../hui-app.ts");
   assert.match(app, /if \(isBotSettingsShortcut\(event\)\) \{\n\s+if \(this\.view !== "bot" \|\| this\.settingsOpen \|\| this\.commandPaletteOpen \|\| document\.querySelector\("dialog\[open\]"\)\) return;/u);
   assert.match(between(app, "private toggleBotSettings(", "private utilityModelName("), /if \(this\.botPanelVisible\(\) && this\.botPanelView === "settings"\) this\.closeBotPanel\(\);\n\s+else this\.showBotSettings\(bot\.id\);/u);
