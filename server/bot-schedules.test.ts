@@ -179,3 +179,27 @@ test("with bots off, hui schedule lists sessions' schedules, leaves routines out
     await call("/__hui/settings", "PUT", { ...settings, labs: { ...settings.labs, bots: true } });
   }
 });
+
+test("an accepted routine reconciles across backend restart without re-sending its input", { timeout: 60_000 }, async () => {
+  const recovery = (await call("/__hui/bots", "POST", { name: "Recovery", soul: "You are Recovery." })).body["bot"] as BotView;
+  const task = (await call("/__hui/automation/tasks", "POST", {
+    name: "Restart check", sessionId: recovery.sessionId, prompt: "E2E_COMMAND_RUNNING hold this isolated command",
+    schedule: { kind: "every", everyMs: 3_600_000 }, runs: 1,
+  })).body["task"] as AutomationTask;
+  const runId = ((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).body["run"] as { id: string }).id;
+  await fetch(`${providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(15_000) });
+  const accepted = ((await call("/__hui/automation")).body as unknown as AutomationSnapshot).runs.find((run) => run.id === runId)!;
+  assert.equal(accepted.status, "running");
+  assert.equal(accepted.delivery?.requestId, runId, "receipt identity was flushed before admission");
+  await stopBackend();
+  await startBackend();
+  await fetch(`${providerUrl}/control/release-replay`, { method: "POST" });
+  const settled = await settledRun(runId);
+  assert.equal(settled.status, "completed", JSON.stringify(settled));
+  const transcript = await settledWith(recovery.sessionId, (entries) => said("assistant", /Tool complete/u)(entries));
+  assert.equal(transcript.filter((entry) => entry.kind === "message" && entry.role === "user" && entry.text.startsWith("[routine: Restart check]")).length, 1);
+  const snapshot = (await call("/__hui/automation")).body as unknown as AutomationSnapshot;
+  assert.equal(snapshot.runs.filter((run) => run.id === runId).length, 1);
+  assert.equal(snapshot.runs.find((run) => run.id === runId)?.attempt, 1);
+  assert.equal(snapshot.tasks.some((each) => each.id === task.id), false, "one completed temporary occurrence, not a new run");
+});

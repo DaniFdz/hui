@@ -288,6 +288,80 @@ test("Durable runs a real tool turn and reopens the conversation from its store"
   assert.deepEqual(withoutMetrics(reopened.transcript()), withoutMetrics(live), "the reopened transcript is the stored one");
 });
 
+test("tracked inputs deduplicate handlers and inbox admission, then recover their own answer after reattach and reopen", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, { extensions: { "tracked.js": `
+    import { appendFileSync } from 'node:fs';
+    import { join } from 'node:path';
+    export default function (pi) {
+      pi.on('input', (event, ctx) => { appendFileSync(join(ctx.cwd, 'tracked-inputs.log'), event.text + '\\n'); });
+    }
+  ` } });
+  const host = f.host();
+  const first = await startDurable({ cwd: f.cwd, huiSessionId: "tracked-routine" }, host);
+  const input = "E2E_COMMAND_RUNNING tracked routine";
+  const request = { requestId: "automation-run-1" };
+  await Promise.all([first.prompt(input, undefined, request), first.prompt(input, undefined, request)]);
+  assert.equal((await f.control("/control/wait-replay-ready")).status, 200);
+  const queueUpdate = nextEvent(first, (event) => event.type === "queue_update" && event.queue.followUp.length === 1);
+  await Promise.all([
+    first.followUp("queued routine", undefined, { requestId: "automation-run-2" }),
+    first.followUp("queued routine", undefined, { requestId: "automation-run-2" }),
+  ]);
+  const queued = await queueUpdate;
+  assert(queued.type === "queue_update");
+  assert.deepEqual(queued.queue.followUp, ["queued routine"], "the duplicate identity admitted one durable inbox item");
+  await first.cancelTrackedPrompt("automation-run-2");
+  await assert.rejects(first.waitForTrackedPrompt("automation-run-2"), /not answered/u);
+  assert.equal(first.isStreaming, true, "withdrawing a queued receipt leaves the active unrelated routine running");
+  assert.deepEqual((await readFile(join(f.cwd, "tracked-inputs.log"), "utf8")).trim().split("\n"), [input, "queued routine"], "deduplication happens before input handlers too");
+
+  const reference = first.sessionFile;
+  first.dispose();
+  const reattached = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "tracked-routine" }, host);
+  const recovering = reattached.waitForTrackedPrompt(request.requestId);
+  await f.control("/control/release-replay", "POST");
+  const original = await recovering;
+  assert.match(original.summary ?? "", /Tool complete/u);
+  await transcriptWhere(reattached, (entries) => answered("Tool complete")(entries) && !reattached.isStreaming);
+  await turns(reattached, ["An unrelated later question"]);
+  assert.deepEqual(await reattached.waitForTrackedPrompt(request.requestId), original, "a later reply cannot replace the receipt's answer");
+  const before = await readFile(join(f.cwd, "tracked-inputs.log"), "utf8");
+  const requestsBeforeRetry = await readFile(f.log, "utf8");
+  await reattached.prompt(input, undefined, request);
+  assert.equal(await readFile(join(f.cwd, "tracked-inputs.log"), "utf8"), before, "a completed retry does not run hooks");
+  reattached.dispose();
+  await host.close();
+  const reopened = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "tracked-routine" }, f.host());
+  assert.deepEqual(await reopened.waitForTrackedPrompt(request.requestId), original);
+  await reopened.prompt(input, undefined, request);
+  assert.equal(reopened.transcript().filter((entry) => entry.kind === "message" && entry.role === "user" && entry.text === input).length, 1);
+  assert.equal(await readFile(f.log, "utf8"), requestsBeforeRetry, "reacquiring and retrying the same receipt sends no new model requests");
+  assert.equal(reopened.transcript().filter((entry) => entry.kind === "tool" && entry.name === "bash").length, 1, "the original command is the only bash invocation");
+  await assert.rejects(reopened.waitForTrackedPrompt("not-admitted"), /could not be found/u);
+});
+
+test("cancelling a placed tracked input aborts its task, and cancelling it again cannot stop a later turn", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "tracked-cancel" }, f.host());
+  await session.prompt("E2E_COMMAND_RUNNING tracked cancellation", undefined, { requestId: "cancel-me" });
+  assert.equal((await f.control("/control/wait-replay-ready")).status, 200);
+  await session.cancelTrackedPrompt("cancel-me");
+  await assert.rejects(session.waitForTrackedPrompt("cancel-me"), /not answered/u);
+  await transcriptWhere(session, () => !session.isStreaming);
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("Later unrelated question", undefined, { requestId: "keep-running" });
+  await session.cancelTrackedPrompt("cancel-me");
+  assert.match((await session.waitForTrackedPrompt("keep-running")).summary ?? "", /Fixture response/u);
+  await settled;
+});
+
+test("a tracked provider failure retains its original diagnostic for routine failure classification", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { settings: { retry: { enabled: false } } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "tracked-model-error" }, f.host());
+  await session.prompt("E2E_ERROR tracked failure", undefined, { requestId: "failed-model-request" });
+  await assert.rejects(session.waitForTrackedPrompt("failed-model-request"), /model_error: .*fixture provider error/u);
+});
+
 test("a gateway killed mid-tool resumes the run without replaying bash", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   const hostUrl = new URL("./durable-host.ts", import.meta.url).href;
@@ -302,7 +376,7 @@ test("a gateway killed mid-tool resumes the run without replaying bash", { timeo
       readSettings: async () => normalizeSettings(undefined), invokeTool: async () => ({}), lookupCaller: async () => undefined });
     const session = await startDurable({ cwd: ${JSON.stringify(f.cwd)}, huiSessionId: "crash" }, host);
     process.stdout.write("REF " + session.sessionFile + "\\n");
-    await session.prompt("E2E_COMMAND_RUNNING hold the command");
+    await session.prompt("E2E_COMMAND_RUNNING hold the command", undefined, { requestId: "routine-crash" });
   `], { stdio: ["ignore", "pipe", "pipe"], env: process.env });
   f.children.push(child);
   let stderr = "";
@@ -318,6 +392,7 @@ test("a gateway killed mid-tool resumes the run without replaying bash", { timeo
 
   // A new gateway opens the same store; the harness resumes the run by itself.
   const session = await startDurable({ cwd: f.cwd, sessionFile: reference }, f.host());
+  assert.match((await session.waitForTrackedPrompt("routine-crash")).summary ?? "", /Tool complete/u, "the same accepted input's receipt survives SIGKILL");
   const entries = await transcriptWhere(session, answered("Tool complete"));
   const tool = entries.find((entry) => entry.kind === "tool");
   assert(tool && tool.kind === "tool" && tool.name === "bash", JSON.stringify(entries));
@@ -988,6 +1063,23 @@ test("Stop while an input handler asks leaves the prompt unsent", { timeout: 45_
   assert.deepEqual(session.transcript(), [], "nothing was sent");
   assert.deepEqual(session.pendingQuestions(), []);
   assert.equal(await readFile(f.log, "utf8").catch(() => ""), "", "the model was never asked");
+});
+
+test("tracked acceptance waits through an input-handler question and targeted cancellation keeps its prompt unsent", { timeout: 45_000 }, async (t) => {
+  const f = await extensionFixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "tracked-stop-input" }, f.host());
+  const asked = nextEvent(session, (event) => event.type === "question");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  const dispatch = session.prompt("FIXTURE_ASK_FIRST E2E_EXTENSION_TOOL", undefined, { requestId: "waiting-input" });
+  await asked;
+  assert.equal(session.isStreaming, false);
+  await session.cancelTrackedPrompt("waiting-input");
+  await dispatch;
+  await settled;
+  assert.deepEqual(session.transcript(), []);
+  assert.deepEqual(session.pendingQuestions(), []);
+  await assert.rejects(session.waitForTrackedPrompt("waiting-input"), /could not be found/u);
+  assert.equal(await readFile(f.log, "utf8").catch(() => ""), "", "cancelling pre-admission asks never reaches the model");
 });
 
 test("end-of-run handlers see a Stop in ctx.signal and hold the settle, not the extensions' idle view", { timeout: 45_000 }, async (t) => {

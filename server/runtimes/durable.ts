@@ -10,9 +10,9 @@
 import { createHash } from "node:crypto";
 import type { ImageContent, Message, ModelThinkingLevel, TextContent } from "@earendil-works/pi-ai";
 import {
-  CompactionEntry, InboxDoc, ResetEntry, SystemEntry, UserEntry, watchEvents,
+  CompactionEntry, InboxDoc, LiveDoc, ResetEntry, SystemEntry, UserEntry, watchEvents,
   type AgentEvent, type AgentState, type CompactionResult, type Conversation, type ConversationId, type Cursor,
-  type EntryId, type EntryRecord, type Harness, type TaskId, type ToolRegistration,
+  type EntryId, type EntryRecord, type Harness, type SubmissionRecord, type TaskId, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { CODEMODE_TOOL_NAME, type CodemodeNestedCall } from "@earendil-works/pi-durable/codemode";
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
@@ -34,7 +34,7 @@ import {
 import { RuntimeTimings } from "./transcript-metrics.ts";
 import type {
   AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
-  RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
+  RuntimePromptOptions, RuntimePromptResult, RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
   TranscriptEntry,
 } from "./types.ts";
 import { RuntimeUnreachableError } from "./types.ts";
@@ -60,7 +60,7 @@ type CompactionStart = Extract<RuntimeEvent, { type: "compaction_start" }>;
 type Compaction = { readonly reason: CompactionReason; readonly blocking: boolean; readonly background: boolean };
 /** How input reaches the conversation: `reject` starts a run, the others queue into one. */
 type Delivery = "reject" | "steer" | "followUp";
-type Sending = { readonly attachments?: readonly PromptAttachment[]; readonly images?: readonly ImageContent[]; readonly source: "rpc" | "extension"; readonly expand: boolean };
+type Sending = { readonly attachments?: readonly PromptAttachment[]; readonly images?: readonly ImageContent[]; readonly source: "rpc" | "extension"; readonly expand: boolean; readonly requestId?: string };
 /** One call of a running codemode script, as `@earendil-works/pi-durable/codemode` lists it in its result's
  * `details.calls` once the script ends: `models.*` calls by that name, arguments and errors cut for display. */
 type CodemodeCall = Omit<CodemodeNestedCall, "id">;
@@ -274,6 +274,10 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #botChat = false;
   /** The message that started the latest run this view started; who started the turn (`runInput`). */
   #runInput: string | undefined;
+  /** Concurrent retries of one tracked input share its extension handlers as well as its admission. */
+  #trackedStarts = new Map<string, Promise<void>>();
+  #trackedStarting = new Set<string>();
+  #cancelledTracked = new Set<string>();
   /** Every input of the run going now (`runOrigins`); unset until this view follows the conversation. */
   #run: RunFollow | undefined;
   readonly resumesInterruptedRuns = true;
@@ -984,17 +988,18 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     if (extensions?.startAborted) return false;
     // The message names every attachment; the images themselves are the ones the handlers left.
     const payload = promptPayload(text, attachments);
-    await this.#submit([{ type: "text", text: payload.message }, ...images], whenBusy);
+    await this.#submit([{ type: "text", text: payload.message }, ...images], whenBusy, sending.requestId);
     return true;
   }
 
   /** A run is going from the moment its input is submitted. */
-  async #submit(content: readonly (TextContent | ImageContent)[], whenBusy: Delivery): Promise<void> {
+  async #submit(content: readonly (TextContent | ImageContent)[], whenBusy: Delivery, requestId?: string): Promise<void> {
     // Durable submission resumes the whole store, not just this conversation.
     await this.#host.resumed;
+    if (requestId && this.#cancelledTracked.has(requestId)) throw new DOMException("The tracked input was cancelled before admission.", "AbortError");
     if (whenBusy === "reject") this.#streaming = true;
     try {
-      await this.#conversation.submit({ type: "input", whenBusy, content: [...content] }, context);
+      await this.#conversation.submit({ type: "input", whenBusy, content: [...content], ...(requestId === undefined ? {} : { requestId }) }, context);
     } catch (error) {
       if (whenBusy === "reject") this.#streaming = false;
       throw error;
@@ -1008,16 +1013,24 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
    */
   async #start(text: string, sending: Sending): Promise<void> {
     this.#starting += 1;
+    if (sending.requestId) this.#trackedStarting.add(sending.requestId);
     // As HUI records a run's prompt: a routine's or another bot's marker leads it.
     this.#runInput = text;
     const start = () => this.#send(text, "reject", sending).then((sent) => {
       if (!sent && !this.#streaming && this.#starting === 1) this.#emit({ type: "settled" });
     }).finally(() => {
       this.#starting -= 1;
+      if (sending.requestId) this.#trackedStarting.delete(sending.requestId);
       this.#notifyQuiet();
     });
     if (!this.#extensions) return start();
     const { done, released } = this.#extensions.whileAsking(start);
+    // Tracked callers wait for a durable admission, not merely for a question that released the ordinary composer.
+    // BotService observes cancellation before dispatch, so a question cannot prevent cancelling this start.
+    if (sending.requestId) {
+      void released.catch(() => {});
+      return done;
+    }
     await released;
     // Before release a failure rejects the prompt; after a question releases it, report the failure as an event.
     void done.catch((error: unknown) => {
@@ -1026,13 +1039,80 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     });
   }
 
-  async prompt(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
-    text = await this.#alias(text);
-    if (this.#extensions?.isCommand(text)) {
-      await this.#command(text);
+  async prompt(text: string, attachments: readonly PromptAttachment[] = [], options?: RuntimePromptOptions): Promise<void> {
+    await this.#trackedStart(options, async () => {
+      text = await this.#alias(text);
+      if (this.#extensions?.isCommand(text)) {
+        await this.#command(text);
+        return;
+      }
+      await this.#start(text, { attachments, source: "rpc", expand: true, ...options });
+    });
+  }
+
+  /** Look up the caller's exact admission, including after the host and this view were reopened. */
+  #trackedSubmission(requestId: string): Promise<SubmissionRecord | undefined> {
+    return this.#harness.commit((tx) => tx.submissionByRequest(this.#conversation.id, requestId), context);
+  }
+
+  async #trackedStart(options: RuntimePromptOptions | undefined, send: () => Promise<void>): Promise<void> {
+    if (!options) return send();
+    const pending = this.#trackedStarts.get(options.requestId);
+    if (pending) return pending;
+    const started = (async () => {
+      // Checking before aliases and extension handlers prevents a duplicate request from replaying their side effects.
+      if (await this.#trackedSubmission(options.requestId)) return;
+      if (this.#cancelledTracked.has(options.requestId)) throw new DOMException("The tracked input was cancelled before admission.", "AbortError");
+      await send();
+    })();
+    this.#trackedStarts.set(options.requestId, started);
+    try { await started; }
+    finally { if (this.#trackedStarts.get(options.requestId) === started) this.#trackedStarts.delete(options.requestId); }
+  }
+
+  async waitForTrackedPrompt(requestId: string): Promise<RuntimePromptResult> {
+    const record = await this.#trackedSubmission(requestId);
+    if (!record || record.type !== "input") throw new Error("The routine's accepted input could not be found. Check its chat before running it again.");
+    const submission = await this.#harness.submission(record.id, context);
+    if (!submission) throw new Error("The routine's input receipt is unavailable. Check its chat before running it again.");
+    const settled = await submission.wait(context);
+    if (settled.status !== "done" || settled.type !== "input") {
+      const detail = settled.status === "unanswered" ? [settled.reason, typeof settled.detail === "string" ? settled.detail : undefined].filter(Boolean).join(": ") : "no answer was recorded";
+      throw new Error(`The routine's input was not answered: ${detail}. Check its chat before running it again.`);
+    }
+    const answer = await this.#harness.commit((tx) => tx.entry(settled.answer), context);
+    const summary = answer?.model?.filter((message) => message.role === "assistant").map(textOf).join("\n").trim();
+    return summary ? { summary } : {};
+  }
+
+  async cancelTrackedPrompt(requestId: string): Promise<void> {
+    const record = await this.#trackedSubmission(requestId);
+    if (!record) {
+      this.#cancelledTracked.add(requestId);
+      if (this.#trackedStarting.has(requestId)) {
+        this.#extensions?.abortStart();
+        this.#extensions?.aborted();
+      }
       return;
     }
-    await this.#start(text, { attachments, source: "rpc", expand: true });
+    if (record.type !== "input") return;
+    for (;;) {
+      const withdrawn = await this.#harness.abortSubmission(record.id, context, this.#conversation.id);
+      if (withdrawn !== "already_placed") return;
+      // Capture only the task owning this exact input. If it settles before abortTask, aborting that terminal task is
+      // a no-op; Conversation.abort could instead stop an unrelated turn that started in the meantime.
+      const task = await this.#harness.commit(async (tx) => {
+        const live = await tx.doc(LiveDoc, this.#conversation.id);
+        return live.run?.inputs.includes(record.id) ? live.run.taskId : undefined;
+      }, context);
+      if (task === undefined) return;
+      await this.#harness.abortTask(task, context);
+      await this.#harness.waitForTask(task, context);
+      // A tool round may have transferred this input to its next generation before the abort was admitted. Recheck
+      // the same receipt and target that task, not whichever unrelated run the conversation may now be answering.
+      const current = await this.#trackedSubmission(requestId);
+      if (current?.status !== "placed") return;
+    }
   }
 
   /** An extension command runs in the gateway; one that starts no run settles once it ends. A prompt it sent settles
@@ -1042,20 +1122,20 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     void finished.then(() => { if (!this.#streaming && this.#starting === 0 && !this.#disposed) this.#emit({ type: "settled" }); });
   }
 
-  async #queueInput(text: string, attachments: readonly PromptAttachment[], whenBusy: "steer" | "followUp"): Promise<void> {
+  async #queueInput(text: string, attachments: readonly PromptAttachment[], whenBusy: "steer" | "followUp", options?: RuntimePromptOptions): Promise<void> {
     text = await this.#alias(text);
     if (this.#extensions?.isCommand(text)) throw new Error(`Extension command "${text.split(/\s/u)[0]}" cannot be queued. Send it when the session is idle.`);
     // Steering a run that is still starting (an extension's custom message) waits until there is a run to steer.
     while (this.starting) await this.whenStarted();
-    await this.#send(text, whenBusy, { attachments, source: "rpc", expand: true });
+    await this.#send(text, whenBusy, { attachments, source: "rpc", expand: true, ...options });
   }
 
   async steer(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
     await this.#queueInput(text, attachments, "steer");
   }
 
-  async followUp(text: string, attachments: readonly PromptAttachment[] = []): Promise<void> {
-    await this.#queueInput(text, attachments, "followUp");
+  async followUp(text: string, attachments: readonly PromptAttachment[] = [], options?: RuntimePromptOptions): Promise<void> {
+    await this.#trackedStart(options, () => this.#queueInput(text, attachments, "followUp", options));
   }
 
   /** `pi.sendUserMessage`: input from an extension, with no command or template expansion, as in PI. */

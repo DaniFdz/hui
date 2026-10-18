@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
+import { html } from "lit";
 
 import {
   AutomationFormError,
@@ -10,6 +11,8 @@ import {
   formatTimestamp,
   listedAutomation,
   runIsActive,
+  renderAutomationPage,
+  type AutomationProps,
   scheduleFromForm,
   taskInputFromForm,
 } from "./settings-automation.ts";
@@ -100,6 +103,32 @@ test("only queued and running runs can be cancelled", () => {
   for (const status of ["completed", "failed", "skipped", "cancelled"] as const) {
     assert.equal(runIsActive(run(status)), false);
   }
+});
+
+/** Nested templates expose the same recorded state, without a browser or CSS. */
+function markup(value: unknown): string {
+  if (Array.isArray(value)) return value.map(markup).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + markup(template.values[i])).join("");
+  }
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+test("automation renders recovery details and retains cancellation for a queued retry", () => {
+  const retry = { ...run("queued"), attempt: 1, retryAt: "2026-10-18T08:00:30.000Z", error: "Worker is offline" };
+  const attention = { ...run("failed"), id: "r2", error: "Missing credential", failure: { kind: "configuration" as const, needsAttention: true } };
+  const page = markup(renderAutomationPage({
+    automation: { ...READY, runs: [retry, attention] }, sessions: [], automationEditingId: "",
+  } as unknown as AutomationProps, (heading, description, body) => html`<section>${heading}${description}${body}</section>`));
+  assert.match(page, /Retry scheduled/);
+  assert.match(page, /Attempt 1\/3 · Next retry/);
+  assert.ok(page.includes(formatTimestamp(retry.retryAt)));
+  assert.match(page, /Needs attention/);
+  assert.match(page, /Check the target session, model and credentials/);
+  assert.match(page, /Worker is offline/);
+  assert.match(page, /Missing credential/);
+  assert.equal(page.match(/>Cancel<\/button>/g)?.length, 1, "only the queued retry has a Cancel action");
 });
 
 test("the form builds each schedule kind in the shape the server accepts", () => {

@@ -23,6 +23,16 @@ Settings follow the same rule: keep Appearance; adapt Connection, Sessions,
 Models, Tools, Skills, Automation, Plugins, Memory, Security and Diagnostics;
 remove Channels and Nodes / Devices.
 
+## Bot reliability follow-up
+
+- Routine delivery recovery and visible failure state: persisted dispatch
+  checkpoints, Durable request deduplication and submission outcomes, safe
+  pre-dispatch worker retries (three attempts within one deadline), exact
+  cancellation and shutdown detachment. Temporary run counts survive retries.
+  Browser proof and final validation are tracked in
+  `e2e/bot-routine-recovery.browser.md`; not considered complete until that
+  journey and the boundary checks pass.
+
 ## Session architecture: HUI ↔ PI
 
 The browser never talks to PI directly:
@@ -1257,4 +1267,3 @@ Verified desktop/mobile behavior and checks are recorded in
   the Settings → Workers, Run on and reattach journeys in the browser.
 - Not yet remote: terminals, the managed browser, worktrees/branch checkout,
   multi-account quota rotation and usage totals.
-

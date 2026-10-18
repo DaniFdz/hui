@@ -424,7 +424,9 @@ class WorkerConnection {
       const started = await this.#peer.request<RemoteSessionLink["started"]>("session.start", { key, tool, launch }, 300_000);
       return {
         started,
-        call: (method, args) => this.#peer.request("session.call", { key, method, args }, CALL_TIMEOUT_MS),
+        // A tracked receipt waits for the original routine, whose configured timeout can be a full day. It is not an
+        // acceptance RPC: the normal ten-minute transport deadline must not mark healthy long work as failed.
+        call: (method, args) => this.#peer.request("session.call", { key, method, args }, method === "waitForTrackedPrompt" ? 25 * 60 * 60_000 : CALL_TIMEOUT_MS),
         transcript: async (seq) => {
           const transcript: TranscriptEntry[] = [];
           for (;;) {

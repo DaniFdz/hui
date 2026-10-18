@@ -304,8 +304,18 @@ test("the same for another bot's message steered into the operator's turn, and a
     await call(`/__hui/automation/tasks/${task.id}`, "DELETE");
   });
   await holdOperatorTurn();
-  assert.equal((await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {})).status, 202);
-  await steerQueued("[routine: Tidy] ");
+  const started = await call(`/__hui/automation/tasks/${task.id}/run`, "POST", {});
+  assert.equal(started.status, 202);
+  const run = started.body["run"] as { id: string };
+  // Identified routines now wait durably in the runtime's inbox, not HUI's editable queue. Withdraw that exact
+  // occurrence before steering its original marked input into this same operator turn: it must retain its origin
+  // restrictions, and neither cancellation nor the test may dispatch the routine a second time later.
+  const queued = await until("the routine in the durable inbox", async () => liveSessions.snapshot(ada.sessionId).queue.followUp.find((text) => text.startsWith("[routine: Tidy] ")));
+  assert.equal(liveSessions.snapshot(ada.sessionId).queue.items?.some((item) => item.text === queued) ?? false, false);
+  assert.equal((await call(`/__hui/automation/runs/${run.id}/cancel`, "POST", {})).status, 200);
+  await until("the exact routine input to be withdrawn", async () => !liveSessions.snapshot(ada.sessionId).queue.followUp.includes(queued) || undefined);
+  assert.equal(liveSessions.status(ada.sessionId), "running", "withdrawing the queued receipt leaves the operator's turn running");
+  assert.equal((await call(`/__hui/sessions/${ada.sessionId}/steer`, "POST", { text: queued })).status, 200);
   await control("release-replay", { method: "POST" });
   const routine = await answerTo("[routine: Tidy] ");
   assert.match(routine, /Only the operator changes your name, title or look/u, "a routine's message can't retitle her");

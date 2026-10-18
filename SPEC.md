@@ -1775,6 +1775,17 @@ everything the Bots tab can, through the same routes.
   schedules its own with a `routines` tool, temporary ones included, which end
   by themselves at a time or after a number of runs; `hui schedule` manages
   every scheduled task from a terminal (decision below).
+  Routine runs reconcile saved deliveries after gateway restarts instead of
+  re-sending their prompts. Durable submissions use a stable request key and
+  preserve their recorded outcome. Only a known failure before dispatch (a
+  disconnected worker before the chat opens) retries automatically: at most
+  three attempts, after 30 seconds and two minutes, within the original run
+  deadline. Retries keep one run id and consume a temporary run only once.
+  Routines, Activity and Automations show the next retry or *Needs attention*
+  with an explanation for quota, configuration, connection, transient,
+  interrupted, timeout or unknown errors. Shutdown detaches observers; Cancel
+  cancels the exact accepted submission. Ambiguous legacy deliveries need
+  inspection, never a fresh prompt issued as recovery.
 - **Tools and skills.** A bot has every tool and skill a session in its
   directory has, new ones included, until the operator turns some off in its
   panel's Tools page or with `hui bot tools` / `hui bot skills`. The host that

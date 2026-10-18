@@ -56,7 +56,18 @@ export type AutomationRun = {
   finishedAt?: string;
   summary?: string;
   error?: string;
+  /** Attempts belong to the same scheduled occurrence, not new temporary-task runs. */
+  attempt?: number;
+  /** A safe pre-delivery retry; absent once an attempt is underway. */
+  retryAt?: string;
+  /** The original deadline survives retries and gateway restarts. */
+  deadlineAt?: string;
+  /** Persisted before dispatch, so recovery observes this delivery rather than sending a new prompt. */
+  delivery?: { text: string; before: number; requestId?: string };
+  failure?: { kind: AutomationFailureKind; needsAttention: boolean };
 };
+
+export type AutomationFailureKind = "connection" | "rate-limit" | "configuration" | "transient" | "interrupted" | "timeout" | "unknown";
 
 export type AutomationSnapshot = {
   scheduler: { enabled: true; activeRuns: number; nextWakeAt: string | null };

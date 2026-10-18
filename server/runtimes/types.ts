@@ -173,6 +173,11 @@ export type StartOptions = {
   worker?: string;
 };
 
+/** A caller-owned input identity, deduplicated by runtimes that expose tracked prompt receipts. */
+export type RuntimePromptOptions = { requestId: string };
+/** The answer recorded for one tracked input, independent of later turns in its conversation. */
+export type RuntimePromptResult = { summary?: string };
+
 export type RuntimeSession = {
   /** Root process owned by this runtime, when the adapter launches one. HUI
    * uses it only for ephemeral resource telemetry; it is never persisted. */
@@ -187,11 +192,15 @@ export type RuntimeSession = {
   /** The runtime itself continues runs interrupted by a gateway restart, so
    * HUI must never replay them with a recovery prompt. */
   readonly resumesInterruptedRuns?: boolean;
-  prompt(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;
+  prompt(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void>;
   /** Queue an instruction before the next model call while the agent is busy. */
   steer?(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;
   /** Queue work to begin only after the current agent run has settled. */
-  followUp?(text: string, attachments?: readonly PromptAttachment[]): Promise<void>;
+  followUp?(text: string, attachments?: readonly PromptAttachment[], options?: RuntimePromptOptions): Promise<void>;
+  /** Reacquire and await an already-admitted input by its caller-owned identity. Never sends new input. */
+  waitForTrackedPrompt?(requestId: string): Promise<RuntimePromptResult>;
+  /** Withdraw that queued input or abort only the active task that owns it, never a later, unrelated run. */
+  cancelTrackedPrompt?(requestId: string): Promise<void>;
   /** Returns an unsubscribe function. */
   subscribe(listener: (event: RuntimeEvent) => void): () => void;
   /*

@@ -22,6 +22,7 @@ const { LiveSessions } = await import("./live-sessions.ts");
 const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } = await import("./bots.ts");
 const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess, sessionBotsSection } = await import("./bot-service.ts");
 const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
+const { AUTOMATION_SUSPENDED } = await import("./automation.ts");
 const { localBotSouls } = await import("./bot-souls.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type BotConversationInput = import("./bot-service.ts").BotConversationInput;
@@ -1131,6 +1132,258 @@ test("a routine is marked as one, queues behind a busy bot and completes with th
 
   await h.service.archive(bot.id);
   await assert.rejects(h.service.runRoutine((await h.registry.list())[0]!, record, routine, new AbortController().signal), /archived/u);
+});
+
+test("routine dispatch waits for its durable checkpoint and a failed checkpoint sends nothing", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  let checkpointed!: (delivery: { text: string; before: number; requestId?: string }) => void;
+  const checkpoint = new Promise<{ text: string; before: number; requestId?: string }>((resolve) => { checkpointed = resolve; });
+  const prompt = chat.nextPrompt();
+  const running = h.service.runRoutine((await h.registry.list())[0]!, record, { name: "Morning", prompt: "check" }, new AbortController().signal, {
+    requestId: "routine-1",
+    checkpoint: async (delivery) => { checkpointed(delivery); await blocked; },
+  });
+  assert.deepEqual(await checkpoint, { text: "[routine: Morning] check", before: 0 }, "legacy runtimes do not claim native deduplication");
+  assert.deepEqual(chat.prompts, [], "acceptance cannot race ahead of the persisted checkpoint");
+  release();
+  await prompt;
+  chat.answer("Done.");
+  assert.deepEqual(await running, { summary: "Done." });
+  await assert.rejects(h.service.runRoutine((await h.registry.list())[0]!, record, { name: "Morning", prompt: "check" }, new AbortController().signal, {
+    requestId: "routine-2", checkpoint: async () => { throw new Error("disk full"); },
+  }), /disk full/u);
+  assert.equal(chat.prompts.length, 1, "a failed checkpoint has no agent-side effects");
+  h.sessions.ensure = () => { throw new BotWorkerOfflineError("worker disconnected"); };
+  let checkpointCalls = 0;
+  await assert.rejects(h.service.runRoutine((await h.registry.list())[0]!, record, { name: "Morning", prompt: "check" }, new AbortController().signal, {
+    requestId: "routine-3", checkpoint: async () => { checkpointCalls += 1; },
+  }), BotWorkerOfflineError);
+  assert.equal(checkpointCalls, 0, "pre-open disconnection is distinguishable from an ambiguous post-checkpoint dispatch");
+});
+
+test("resumed legacy routines select their exact input occurrence and never use a later turn's answer", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  const delivery = { text: "[routine: Morning] check", before: 1 };
+  await h.service.send(bot.id, { text: delivery.text }); chat.answer("Yesterday's answer.");
+  await h.service.send(bot.id, { text: delivery.text }); chat.answer("Today's answer.");
+  await h.service.send(bot.id, { text: "another question" }); chat.answer("Unrelated answer.");
+  const resumed = await h.service.resumeRoutine((await h.registry.list())[0]!, record, delivery, new AbortController().signal);
+  assert.deepEqual(resumed, { summary: "Today's answer." });
+  assert.equal(chat.prompts.length, 3, "recovery does not dispatch any input");
+  await assert.rejects(h.service.resumeRoutine((await h.registry.list())[0]!, record, { ...delivery, before: 2 }, new AbortController().signal), /cannot be recovered safely/u);
+  assert.equal(chat.prompts.length, 3);
+});
+
+test("resumed legacy routines attach to running or queued input and cancelled queued input never stops unrelated work", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  const stored = (await h.registry.list())[0]!;
+  const delivery = { text: "[routine: Morning] check", before: 0 };
+  await h.service.send(bot.id, { text: "operator work" });
+  await h.sessions.followUp(bot.sessionId, delivery.text);
+  const resumed = h.service.resumeRoutine(stored, record, delivery, new AbortController().signal);
+  const prompt = chat.nextPrompt();
+  chat.answer("Operator work finished.");
+  assert.equal(await prompt, delivery.text);
+  chat.answer("Recovered answer.");
+  assert.deepEqual(await resumed, { summary: "Recovered answer." });
+  assert.deepEqual(chat.prompts, ["operator work", delivery.text]);
+
+  await h.service.send(bot.id, { text: delivery.text });
+  const running = h.service.resumeRoutine(stored, record, { ...delivery, before: 1 }, new AbortController().signal);
+  chat.fail("provider unavailable");
+  await assert.rejects(running, /provider unavailable/u);
+
+  await h.service.send(bot.id, { text: "other operator work" });
+  const queueId = await h.sessions.followUp(bot.sessionId, delivery.text);
+  assert(queueId);
+  const stop = new AbortController();
+  stop.abort();
+  await assert.rejects(h.service.resumeRoutine(stored, record, { ...delivery, before: 2 }, stop.signal), /cancelled/u);
+  assert.deepEqual(h.sessions.snapshot(bot.sessionId).queue.items ?? [], [], "only the matching queued input was withdrawn");
+  assert.equal(chat.aborts, 0);
+  chat.answer("Other work done.");
+});
+
+test("a removed legacy queue item requires intervention and a missing input cannot claim an unrelated settle", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  const stored = (await h.registry.list())[0]!;
+  const delivery = { text: "[routine: Morning] check", before: 0 };
+  await h.service.send(bot.id, { text: "operator work" });
+  const item = await h.sessions.followUp(bot.sessionId, delivery.text);
+  assert(item);
+  const watch = h.sessions.watch.bind(h.sessions);
+  let installed!: () => void;
+  let count = 0;
+  const observing = new Promise<void>((resolve) => { installed = resolve; });
+  h.sessions.watch = (...args) => {
+    const watched = watch(...args);
+    // #open's readiness observation, then the recovery watcher itself.
+    if (++count === 2) installed();
+    return watched;
+  };
+  const resumed = h.service.resumeRoutine(stored, record, delivery, new AbortController().signal);
+  const failure = assert.rejects(resumed, /cannot be recovered safely/u);
+  await observing;
+  h.sessions.removeFollowUp(bot.sessionId, item);
+  await failure;
+  assert.equal(chat.aborts, 0);
+  const missing = h.service.resumeRoutine(stored, record, delivery, new AbortController().signal);
+  const missingFailure = assert.rejects(missing, /cannot be recovered safely/u);
+  chat.answer("Unrelated answer.");
+  await missingFailure;
+  assert.deepEqual(chat.prompts, ["operator work"]);
+});
+
+test("routine shutdown detaches without withdrawing queued input or aborting its accepted turn", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  const stored = (await h.registry.list())[0]!;
+  await h.service.send(bot.id, { text: "operator work" });
+  const suspend = new AbortController();
+  const running = h.service.runRoutine(stored, record, { name: "Morning", prompt: "check" }, suspend.signal);
+  await queueHolds(h, bot.sessionId, 1);
+  suspend.abort(AUTOMATION_SUSPENDED);
+  await assert.rejects(running, /cancelled/u);
+  assert.equal(h.sessions.snapshot(bot.sessionId).queue.items?.length, 1, "shutdown keeps accepted queued work");
+  assert.equal(chat.aborts, 0);
+  const prompt = chat.nextPrompt();
+  chat.answer("Operator work finished."); await prompt;
+  const resume = h.service.resumeRoutine(stored, record, { text: "[routine: Morning] check", before: 0 }, new AbortController().signal);
+  chat.answer("Completed without another dispatch.");
+  assert.deepEqual(await resume, { summary: "Completed without another dispatch." });
+  assert.equal(chat.prompts.length, 2);
+});
+
+test("native routine receipts are checkpointed, forwarded and recovered independently of transcript contents", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  const stored = (await h.registry.list())[0]!;
+  const waits: string[] = [];
+  const cancellations: string[] = [];
+  const identities: string[] = [];
+  h.sessions.supportsTrackedPrompts = () => true;
+  h.sessions.waitForTrackedPrompt = async (_id, requestId) => { waits.push(requestId); return { summary: "Receipt's original answer." }; };
+  h.sessions.cancelTrackedPrompt = async (_id, requestId) => { cancellations.push(requestId); };
+  const original = chat.prompt.bind(chat);
+  chat.prompt = async (text, attachments, options?: { requestId: string }) => {
+    identities.push(options?.requestId ?? "missing");
+    await original(text, attachments);
+  };
+  let saved: unknown;
+  assert.deepEqual(await h.service.runRoutine(stored, record, { name: "Morning", prompt: "check" }, new AbortController().signal, {
+    requestId: "run-1", checkpoint: async (delivery) => { saved = delivery; assert.deepEqual(chat.prompts, []); },
+  }), { summary: "Receipt's original answer." });
+  assert.deepEqual(saved, { text: "[routine: Morning] check", before: 0, requestId: "run-1" });
+  assert.deepEqual(identities, ["run-1"]);
+  chat.answer("Other visible answer.");
+  assert.deepEqual(await h.service.resumeRoutine(stored, record, { text: "not in transcript", before: 99, requestId: "run-1" }, new AbortController().signal), { summary: "Receipt's original answer." });
+  assert.deepEqual(waits, ["run-1", "run-1"]);
+  assert.equal(chat.prompts.length, 1);
+
+  let cancellationEntered!: () => void;
+  const cancelling = new Promise<void>((resolve) => { cancellationEntered = resolve; });
+  let cancelComplete!: () => void;
+  const cancelled = new Promise<void>((resolve) => { cancelComplete = resolve; });
+  h.sessions.cancelTrackedPrompt = async (_id, requestId) => { cancellations.push(requestId); cancellationEntered(); await cancelled; };
+  const stop = new AbortController(); stop.abort();
+  const stopping = h.service.resumeRoutine(stored, record, { text: "check", before: 0, requestId: "run-2" }, stop.signal);
+  let cancellationReported = false;
+  void stopping.catch(() => { cancellationReported = true; });
+  await cancelling;
+  assert.equal(cancellationReported, false, "the routine does not report cancellation ahead of the host's acknowledgement");
+  cancelComplete();
+  await assert.rejects(stopping, /cancelled/u);
+  assert.deepEqual(cancellations, ["run-2"]);
+  const suspend = new AbortController(); suspend.abort(AUTOMATION_SUSPENDED);
+  await assert.rejects(h.service.resumeRoutine(stored, record, { text: "check", before: 0, requestId: "run-3" }, suspend.signal), /cancelled/u);
+  assert.deepEqual(cancellations, ["run-2"], "scheduler suspension does not cancel the host's work");
+});
+
+test("a native routine does not overtake older followups still owned by HUI's editable queue", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  await h.service.send(bot.id, { text: "operator work" });
+  await h.service.send(bot.id, { text: "older pending message" });
+  await queueHolds(h, bot.sessionId, 1);
+  const runtime: RuntimeSession = chat;
+  let admit!: () => void;
+  const admitted = new Promise<void>((resolve) => { admit = resolve; });
+  const received: string[] = [];
+  runtime.followUp = async (text, _attachments, options) => { received.push(text); assert.equal(options?.requestId, "routine-after-older"); assert.deepEqual(chat.prompts, ["operator work", "older pending message"]); admit(); };
+  runtime.waitForTrackedPrompt = async () => ({ summary: "Routine finished." });
+  runtime.cancelTrackedPrompt = async () => {};
+  let checkpoint!: () => void;
+  const checkpointed = new Promise<void>((resolve) => { checkpoint = resolve; });
+  const watch = h.sessions.watch.bind(h.sessions);
+  let installed!: () => void;
+  const observing = new Promise<void>((resolve) => { installed = resolve; });
+  let watchers = 0;
+  h.sessions.watch = (...args) => { const result = watch(...args); if (++watchers === 2) installed(); return result; };
+  const routine = h.service.runRoutine((await h.registry.list())[0]!, record, { name: "Morning", prompt: "check" }, new AbortController().signal, {
+    requestId: "routine-after-older", checkpoint: async () => { checkpoint(); },
+  });
+  await observing;
+  assert.deepEqual(received, [], "the runtime inbox cannot jump ahead of the older editable message");
+  const older = chat.nextPrompt();
+  chat.answer("Operator work done.");
+  assert.equal(await older, "older pending message");
+  await checkpointed;
+  await admitted;
+  assert.deepEqual(received, ["[routine: Morning] check"]);
+  assert.deepEqual(await routine, { summary: "Routine finished." });
+  chat.answer("Older message done.");
+});
+
+test("an accepted native routine waits through worker disconnection and reacquires its receipt without dispatch", async (t) => {
+  const h = await harness(t);
+  const bot = await h.service.create({ soul: SOUL, name: "Ada" });
+  const chat = await h.chat(bot.sessionId);
+  const record = h.record(bot.sessionId)!;
+  const stored = (await h.registry.list())[0]!;
+  const status = h.sessions.status.bind(h.sessions);
+  let disconnected = false;
+  let reads = 0;
+  h.sessions.status = (id) => disconnected ? "reconnecting" : status(id);
+  h.sessions.supportsTrackedPrompts = () => true;
+  h.sessions.waitForTrackedPrompt = async (_id, requestId) => {
+    assert.equal(requestId, "accepted-before-disconnect");
+    if (++reads === 1) { disconnected = true; throw new Error("worker connection lost"); }
+    return { summary: "Finished on its worker." };
+  };
+  const watch = h.sessions.watch.bind(h.sessions);
+  let installed!: () => void;
+  const observing = new Promise<void>((resolve) => { installed = resolve; });
+  let watchers = 0;
+  h.sessions.watch = (...args) => { const result = watch(...args); if (++watchers === 2) installed(); return result; };
+  const recovering = h.service.resumeRoutine(stored, record, { text: "original input", before: 0, requestId: "accepted-before-disconnect" }, new AbortController().signal);
+  await observing;
+  assert.equal(reads, 1);
+  assert.deepEqual(chat.prompts, []);
+  disconnected = false;
+  h.sessions.notifySnapshot(bot.sessionId);
+  assert.deepEqual(await recovering, { summary: "Finished on its worker." });
+  assert.equal(reads, 2);
+  assert.deepEqual(chat.prompts, [], "only receipt observation is retried");
 });
 
 test("message_bot delivers to a handle or a name, guards hops, refuses itself and strangers, and rate-limits", async (t) => {
