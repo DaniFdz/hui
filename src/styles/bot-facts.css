@@ -12,3 +12,5 @@
 .bot-facts__form { display: grid; gap: 12px; border-top: 1px solid var(--border); padding-top: 16px; }
 .bot-facts__form label { display: grid; gap: 6px; font-size: 13px; }
 .bot-facts__form input, .bot-facts__form select, .bot-facts__form textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+
+.bot-facts__form textarea.settings-input { font-family: inherit; }

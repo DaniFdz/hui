@@ -36,9 +36,9 @@ export function renderBotFacts(controller: BotFactsController) {
       if (saved) form.reset();
     }}>
       <h3 class="bot-panel__heading">${editing ? "Edit memory" : "Add memory"}</h3>
-      <label>Kind<select name="kind" ?disabled=${disabled}>${BOT_FACT_KINDS.map((kind) => html`<option value=${kind} ?selected=${kind === (editing?.kind ?? "fact")}>${kind[0]!.toUpperCase() + kind.slice(1)}</option>`)}</select></label>
-      <label>Memory<textarea name="text" rows="3" required maxlength=${BOT_FACT_LIMITS.text} .value=${editing?.text ?? ""} ?disabled=${disabled}></textarea></label>
-      ${editing ? html`<p class="muted">Original source is kept: ${editing.source}</p>` : html`<label>Source (optional)<input name="source" maxlength=${BOT_FACT_LIMITS.source} placeholder="For example: our planning conversation" ?disabled=${disabled}></label>`}
+      <label>Kind<select class="settings-select" name="kind" ?disabled=${disabled}>${BOT_FACT_KINDS.map((kind) => html`<option value=${kind} ?selected=${kind === (editing?.kind ?? "fact")}>${kind[0]!.toUpperCase() + kind.slice(1)}</option>`)}</select></label>
+      <label>Memory<textarea class="settings-input" name="text" rows="3" required maxlength=${BOT_FACT_LIMITS.text} .value=${editing?.text ?? ""} ?disabled=${disabled}></textarea></label>
+      ${editing ? html`<p class="muted">Original source is kept: ${editing.source}</p>` : html`<label>Source (optional)<input class="settings-input" name="source" maxlength=${BOT_FACT_LIMITS.source} placeholder="For example: our planning conversation" ?disabled=${disabled}></label>`}
       <div class="bot-facts__actions"><button type="submit" class="btn primary" ?disabled=${disabled}>${state.pending ? "Saving…" : editing ? "Save changes" : "Save memory"}</button>
         ${editing ? html`<button type="button" class="btn" ?disabled=${state.pending} @click=${() => controller.edit()}>Cancel edit</button>` : nothing}</div>
     </form>`)}
