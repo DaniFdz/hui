@@ -7,11 +7,15 @@ import type { BotService } from "../bot-service.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, type GitHubContributionsReader, latestYear } from "../github-contributions.ts";
 import type { GitHubPreviews } from "../github-previews.ts";
 import { type GitHubCli, GitHubCliError } from "../github.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
+import { GitHubConnection, GitHubContributions, GitHubError, GitHubPreviewsResponse, SessionActivity, routeSchemas as githubRouteSchemas } from "../api/github.ts";
 import { botsOn } from "../hui-settings.ts";
 import { activityRange, readSessionActivity } from "../session-activity.ts";
 import { readRegistry } from "../sessions.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../integrations/github-links.ts";
+
+export const routeSchemas: RouteSchema[] = githubRouteSchemas;
 
 const GITHUB_ROUTE = "/__hui/github";
 const GITHUB_LOGIN_ROUTE = `${GITHUB_ROUTE}/login`;
@@ -30,55 +34,55 @@ export function createGitHubRoutes(deps: {
     const { githubCli, githubPreviews, githubContributions, bots } = deps;
 
     if (path === GITHUB_ROUTE) {
-      if (method !== "GET") return { status: 405, body: { error: "method not allowed" } };
-      return { status: 200, body: await githubCli.connection() };
+      if (method !== "GET") return reply(GitHubError, { error: "method not allowed" }, 405);
+      return reply(GitHubConnection, await githubCli.connection());
     }
 
     if (path === GITHUB_PREVIEWS_ROUTE) {
-      if (method !== "GET") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "GET") return reply(GitHubError, { error: "method not allowed" }, 405);
       const urls = request.query.getAll("url");
       if (urls.length === 0 || urls.length > MAX_GITHUB_EMBEDS || urls.some((url) => url.length > 500 || !parseGitHubUrl(url))) {
-        return { status: 400, body: { error: `Pass 1-${MAX_GITHUB_EMBEDS} github.com repository, pull request or issue URLs.` } };
+        return reply(GitHubError, { error: `Pass 1-${MAX_GITHUB_EMBEDS} github.com repository, pull request or issue URLs.` }, 400);
       }
-      return { status: 200, body: { previews: await Promise.all(urls.map((url) => githubPreviews.lookup(url))) } };
+      return reply(GitHubPreviewsResponse, { previews: await Promise.all(urls.map((url) => githubPreviews.lookup(url))) });
     }
 
     if (path === SESSION_ACTIVITY_ROUTE) {
-      if (method !== "GET") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "GET") return reply(GitHubError, { error: "method not allowed" }, 405);
       const range = activityRange(request.query);
-      if (!range) return { status: 400, body: { error: "from and to must be epoch milliseconds, to after from and at most 31 days apart." } };
+      if (!range) return reply(GitHubError, { error: "from and to must be epoch milliseconds, to after from and at most 31 days apart." }, 400);
       try {
         // Bots off: their chats' activity stays out of the calendar too (a record whose bot is gone is a session).
         const records = await readRegistry();
         const listed = await botsOn() ? records : records.filter((record) => !record.bot || !bots.identity(record.bot));
-        return { status: 200, body: await readSessionActivity(listed, range.from, range.to) };
+        return reply(SessionActivity, await readSessionActivity(listed, range.from, range.to));
       } catch (error) {
-        return { status: 500, body: { error: error instanceof Error ? error.message : "Session activity could not be read." } };
+        return reply(GitHubError, { error: error instanceof Error ? error.message : "Session activity could not be read." }, 500);
       }
     }
 
     if (path === GITHUB_CONTRIBUTIONS_ROUTE) {
-      if (method !== "GET") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "GET") return reply(GitHubError, { error: "method not allowed" }, 405);
       const params = request.query;
       const year = params.has("year") ? Number(params.get("year")) : undefined;
       if (year !== undefined && !(Number.isInteger(year) && year >= GITHUB_FIRST_YEAR && year <= latestYear())) {
-        return { status: 400, body: { error: `year must be ${GITHUB_FIRST_YEAR}-${latestYear()}.` } };
+        return reply(GitHubError, { error: `year must be ${GITHUB_FIRST_YEAR}-${latestYear()}.` }, 400);
       }
       try {
-        return { status: 200, body: await githubContributions.read(year, params.get("refresh") === "1") };
+        return reply(GitHubContributions, await githubContributions.read(year, params.get("refresh") === "1"));
       } catch (error) {
-        return { status: 502, body: { error: error instanceof Error ? error.message : "GitHub activity could not be read." } };
+        return reply(GitHubError, { error: error instanceof Error ? error.message : "GitHub activity could not be read." }, 502);
       }
     }
 
     if (path === GITHUB_LOGIN_ROUTE) {
-      if (method !== "POST" && method !== "DELETE") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "POST" && method !== "DELETE") return reply(GitHubError, { error: "method not allowed" }, 405);
       try {
         const result = method === "POST" ? await githubCli.startLogin() : await githubCli.cancelLogin();
         if (result.status === "connected") githubPreviews.clearFailures();
-        return { status: 200, body: result };
+        return reply(GitHubConnection, result);
       } catch (error) {
-        return { status: error instanceof GitHubCliError ? error.status : 500, body: { error: error instanceof Error ? error.message : "Could not sign in to GitHub." } };
+        return reply(GitHubError, { error: error instanceof Error ? error.message : "Could not sign in to GitHub." }, error instanceof GitHubCliError ? error.status : 500);
       }
     }
 

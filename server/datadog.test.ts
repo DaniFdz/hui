@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { DatadogConnection } from "./api/datadog.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
 import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -159,6 +161,7 @@ test("adds orgs, reports their status and signs in to one pup does not have", as
   await writeFile(join(dir, "approve"), "");
   await orgs.whenLoginSettled();
   const connected = await orgs.connection();
+  expectSchema(DatadogConnection, connected);
   assert.deepEqual(connected.login, { phase: "idle" });
   assert.deepEqual(connected.orgs.map((org) => org.status), ["connected", "connected"]);
   assert.equal(changes.count, before + 1);
@@ -171,6 +174,7 @@ test("adds orgs, reports their status and signs in to one pup does not have", as
   await writeFile(join(dir, "deny"), "");
   await orgs.whenLoginSettled();
   const denied = await orgs.connection();
+  expectSchema(DatadogConnection, denied);
   assert.deepEqual(denied.login, { phase: "failed", org: PROD, message: "Error: OAuth error: access_denied: The user denied the request" });
   assert.equal(denied.orgs[0]?.status, "signed_out");
   assert.deepEqual((await orgs.cancelLogin()).login, { phase: "idle" });

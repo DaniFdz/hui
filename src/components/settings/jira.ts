@@ -3,7 +3,8 @@
  * returned by the server. Connecting and disconnecting go through the gateway, which also lists the projects to pick.
  */
 import { LitElement, html, nothing } from "lit";
-import { JIRA_API_TOKEN_URL, type JiraConnection, type JiraProject } from "../../../shared/jira.ts";
+import { JIRA_API_TOKEN_URL } from "../../lib/jira.ts";
+import type { JiraConnection, JiraProject } from "../../api/schema/jira.ts";
 import { icons } from "../../lib/icons.ts";
 import { mergeJiraProjects } from "../../lib/jira.ts";
 import { connectJira, disconnectJira, jiraProjectSearch, loadJiraConnection, loadJiraProjects, setJiraDefaultProject } from "../../api/jira.ts";

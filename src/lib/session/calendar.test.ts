@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { ActivityBlock, ActivitySession } from "../../../shared/session-activity.ts";
+import type { ActivityBlock, ActivitySession } from "../../api/schema/github.ts";
 import { addDays, calendarPeriod, dayStart, formatDuration, weekStart } from "./calendar.ts";
 
 const MONDAY = new Date(2026, 8, 28, 5);

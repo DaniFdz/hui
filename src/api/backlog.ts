@@ -1,7 +1,7 @@
 /** Browser half of the Kanban backlog. The server owns `backlog.json` and the
  * Jira credential; this module only moves views and explicit operator input. */
 import { parseBacklogView, type BacklogStartInput, type BacklogView } from "../../shared/backlog.ts";
-import type { JiraDraft } from "../../shared/jira.ts";
+import type { JiraDraft } from "./schema/jira.ts";
 import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
 import type { SessionView } from "./sessions.ts";
 import { fetchJson } from "./request.ts";

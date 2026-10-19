@@ -7,12 +7,12 @@ import { LitElement, html, nothing, svg, type TemplateResult } from "lit";
 import { githubRefKey, githubRefsInText } from "../lib/github-links.ts";
 import type { GitHubPreview, GitHubPreviewResult } from "../api/schema/github.ts";
 import type { GitHubRef } from "../lib/github-links.ts";
-import { pullRequestStateLabel } from "../../shared/pull-requests.ts";
+import { pullRequestStateLabel } from "../lib/pull-requests.ts";
 import { compactCount, previewErrorLabel } from "../lib/github-previews.ts";
 import { loadGitHubPreviews, settledGitHubPreview } from "../lib/github-previews-store.ts";
 import { pullRequestStateIcon, renderPullRequestCard } from "./pull-request-hovercard.ts";
 import { BadgeHovercardController } from "./badge-hovercard.ts";
-import type { SessionPullRequest } from "../../shared/pull-requests.ts";
+import type { SessionPullRequest } from "../api/schema/github.ts";
 import { icons } from "./openclaw/icons.ts";
 
 /** Octicons mark-github (MIT). */

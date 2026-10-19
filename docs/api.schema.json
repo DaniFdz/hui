@@ -1,6 +1,60 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "ActivityBlock": {
+      "type": "object",
+      "required": [
+        "start",
+        "end"
+      ],
+      "properties": {
+        "start": {
+          "type": "number"
+        },
+        "end": {
+          "type": "number"
+        },
+        "model": {
+          "type": "string"
+        },
+        "firstMessage": {
+          "type": "string"
+        }
+      }
+    },
+    "ActivitySession": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "group",
+        "project",
+        "blocks"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActivityBlock"
+          }
+        }
+      }
+    },
     "ApiSchemaDocument": {
       "type": "object",
       "required": [
@@ -148,6 +202,17 @@
         }
       }
     },
+    "DatadogError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
     "DatadogLoginState": {
       "anyOf": [
         {
@@ -213,6 +278,17 @@
         "name",
         "site"
       ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "site": {
+          "type": "string"
+        }
+      }
+    },
+    "DatadogOrgRequest": {
+      "type": "object",
       "properties": {
         "name": {
           "type": "string"
@@ -345,6 +421,20 @@
         },
         "signIn": {
           "$ref": "#/$defs/DatadogOrg"
+        }
+      }
+    },
+    "DatadogPreviewsResponse": {
+      "type": "object",
+      "required": [
+        "previews"
+      ],
+      "properties": {
+        "previews": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DatadogPreviewResult"
+          }
         }
       }
     },
@@ -486,6 +576,17 @@
           "items": {
             "$ref": "#/$defs/GitHubContributionAccount"
           }
+        }
+      }
+    },
+    "GitHubError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
         }
       }
     },
@@ -755,6 +856,379 @@
         }
       }
     },
+    "GitHubPreviewsResponse": {
+      "type": "object",
+      "required": [
+        "previews"
+      ],
+      "properties": {
+        "previews": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GitHubPreviewResult"
+          }
+        }
+      }
+    },
+    "JiraConnection": {
+      "type": "object",
+      "required": [
+        "configured",
+        "site",
+        "email",
+        "tokenSet",
+        "defaultProject"
+      ],
+      "properties": {
+        "configured": {
+          "type": "boolean"
+        },
+        "site": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "tokenSet": {
+          "type": "boolean"
+        },
+        "defaultProject": {
+          "type": "string"
+        },
+        "accountName": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraConnectRequest": {
+      "type": "object",
+      "required": [
+        "site",
+        "email",
+        "token",
+        "defaultProject"
+      ],
+      "properties": {
+        "site": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "token": {
+          "type": "string"
+        },
+        "defaultProject": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraCreateRequest": {
+      "type": "object",
+      "required": [
+        "project",
+        "parent",
+        "summary",
+        "description"
+      ],
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "parent": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "assignToMe": {
+          "type": "boolean"
+        },
+        "suggestionId": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraCreateResponse": {
+      "type": "object",
+      "required": [
+        "issue"
+      ],
+      "properties": {
+        "issue": {
+          "$ref": "#/$defs/JiraIssueRef"
+        },
+        "session": {},
+        "warning": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraDefaultProjectRequest": {
+      "type": "object",
+      "required": [
+        "defaultProject"
+      ],
+      "properties": {
+        "defaultProject": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraDraft": {
+      "type": "object",
+      "required": [
+        "project",
+        "parents",
+        "parent",
+        "summary",
+        "description"
+      ],
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "parents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JiraParentCandidate"
+          }
+        },
+        "parent": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "parentChoice": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "suggested"
+            },
+            {
+              "type": "string",
+              "const": "unmatched"
+            },
+            {
+              "type": "string",
+              "const": "none-available"
+            },
+            {
+              "type": "string",
+              "const": "not-drafted"
+            },
+            {
+              "type": "string",
+              "const": "omitted"
+            }
+          ]
+        },
+        "rejectedParent": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraDraftRequest": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "suggestionId": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraDraftResponse": {
+      "type": "object",
+      "required": [
+        "draft"
+      ],
+      "properties": {
+        "draft": {
+          "$ref": "#/$defs/JiraDraft"
+        }
+      }
+    },
+    "JiraError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraIssueMatch": {
+      "type": "object",
+      "required": [
+        "key",
+        "url",
+        "summary"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "statusCategory": {
+          "$ref": "#/$defs/JiraStatusCategory"
+        },
+        "issueType": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraIssueRef": {
+      "type": "object",
+      "required": [
+        "key",
+        "url"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraIssuesResponse": {
+      "type": "object",
+      "required": [
+        "issues"
+      ],
+      "properties": {
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JiraIssueMatch"
+          }
+        }
+      }
+    },
+    "JiraLinkRequest": {
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraLinkResponse": {
+      "type": "object",
+      "required": [
+        "issue"
+      ],
+      "properties": {
+        "issue": {
+          "$ref": "#/$defs/JiraIssueRef"
+        },
+        "session": {}
+      }
+    },
+    "JiraParentCandidate": {
+      "type": "object",
+      "required": [
+        "key",
+        "summary",
+        "issueType",
+        "hierarchyLevel"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "issueType": {
+          "type": "string"
+        },
+        "hierarchyLevel": {
+          "type": "number"
+        },
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraProject": {
+      "type": "object",
+      "required": [
+        "key",
+        "name"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "JiraProjectsResponse": {
+      "type": "object",
+      "required": [
+        "projects",
+        "total"
+      ],
+      "properties": {
+        "projects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/JiraProject"
+          }
+        },
+        "total": {
+          "type": "number"
+        }
+      }
+    },
+    "JiraStatusCategory": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "new"
+        },
+        {
+          "type": "string",
+          "const": "indeterminate"
+        },
+        {
+          "type": "string",
+          "const": "done"
+        }
+      ]
+    },
     "PowerError": {
       "type": "object",
       "required": [
@@ -865,6 +1339,78 @@
           "const": "closed"
         }
       ]
+    },
+    "SessionActivity": {
+      "type": "object",
+      "required": [
+        "sessions"
+      ],
+      "properties": {
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ActivitySession"
+          }
+        }
+      }
+    },
+    "SessionJiraIssue": {
+      "type": "object",
+      "required": [
+        "key",
+        "url"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "statusCategory": {
+          "$ref": "#/$defs/JiraStatusCategory"
+        },
+        "issueType": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "SessionPullRequest": {
+      "type": "object",
+      "required": [
+        "repository",
+        "number",
+        "url"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "number": {
+          "type": "number"
+        },
+        "url": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/PullRequestState"
+        },
+        "title": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        }
+      }
     }
   },
   "x-hui-api-version": "0.1.4",
@@ -883,24 +1429,54 @@
       "PowerStatus"
     ],
     "github": [
+      "ActivityBlock",
+      "ActivitySession",
       "GitHubAccount",
       "GitHubConnection",
       "GitHubContributionAccount",
       "GitHubContributions",
+      "GitHubError",
       "GitHubLoginState",
       "GitHubPreview",
       "GitHubPreviewError",
       "GitHubPreviewResult",
-      "PullRequestState"
+      "GitHubPreviewsResponse",
+      "PullRequestState",
+      "SessionActivity",
+      "SessionPullRequest"
     ],
     "datadog": [
       "DatadogConnection",
+      "DatadogError",
       "DatadogLoginState",
       "DatadogOrg",
+      "DatadogOrgRequest",
       "DatadogOrgStatus",
       "DatadogPreview",
       "DatadogPreviewError",
-      "DatadogPreviewResult"
+      "DatadogPreviewResult",
+      "DatadogPreviewsResponse"
+    ],
+    "jira": [
+      "JiraConnectRequest",
+      "JiraConnection",
+      "JiraCreateRequest",
+      "JiraCreateResponse",
+      "JiraDefaultProjectRequest",
+      "JiraDraft",
+      "JiraDraftRequest",
+      "JiraDraftResponse",
+      "JiraError",
+      "JiraIssueMatch",
+      "JiraIssueRef",
+      "JiraIssuesResponse",
+      "JiraLinkRequest",
+      "JiraLinkResponse",
+      "JiraParentCandidate",
+      "JiraProject",
+      "JiraProjectsResponse",
+      "JiraStatusCategory",
+      "SessionJiraIssue"
     ]
   },
   "x-hui-routes": [
@@ -909,6 +1485,137 @@
       "path": "/__hui/api-schema",
       "response": {
         "$ref": "#/$defs/ApiSchemaDocument"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/datadog",
+      "response": {
+        "$ref": "#/$defs/DatadogConnection"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/datadog/login",
+      "response": {
+        "$ref": "#/$defs/DatadogConnection"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/datadog/login",
+      "request": {
+        "$ref": "#/$defs/DatadogOrg"
+      },
+      "response": {
+        "$ref": "#/$defs/DatadogConnection"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/datadog/orgs",
+      "response": {
+        "$ref": "#/$defs/DatadogConnection"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/datadog/orgs",
+      "request": {
+        "$ref": "#/$defs/DatadogOrgRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/DatadogConnection"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/datadog/previews",
+      "response": {
+        "$ref": "#/$defs/DatadogPreviewsResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/github",
+      "response": {
+        "$ref": "#/$defs/GitHubConnection"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/github/contributions",
+      "response": {
+        "$ref": "#/$defs/GitHubContributions"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/github/login",
+      "response": {
+        "$ref": "#/$defs/GitHubConnection"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/github/login",
+      "response": {
+        "$ref": "#/$defs/GitHubConnection"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/github/previews",
+      "response": {
+        "$ref": "#/$defs/GitHubPreviewsResponse"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/jira",
+      "response": {
+        "$ref": "#/$defs/JiraConnection"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/jira",
+      "response": {
+        "$ref": "#/$defs/JiraConnection"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/__hui/jira",
+      "request": {
+        "$ref": "#/$defs/JiraDefaultProjectRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/JiraConnection"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/jira",
+      "request": {
+        "$ref": "#/$defs/JiraConnectRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/JiraConnection"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/jira/issues",
+      "response": {
+        "$ref": "#/$defs/JiraIssuesResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/jira/projects",
+      "response": {
+        "$ref": "#/$defs/JiraProjectsResponse"
       }
     },
     {
@@ -926,6 +1633,43 @@
       },
       "response": {
         "$ref": "#/$defs/PowerResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/session-activity",
+      "response": {
+        "$ref": "#/$defs/SessionActivity"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/jira",
+      "request": {
+        "$ref": "#/$defs/JiraCreateRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/JiraCreateResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/jira/draft",
+      "request": {
+        "$ref": "#/$defs/JiraDraftRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/JiraDraftResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/jira/link",
+      "request": {
+        "$ref": "#/$defs/JiraLinkRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/JiraLinkResponse"
       }
     }
   ]

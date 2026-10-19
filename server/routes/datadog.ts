@@ -4,8 +4,12 @@
  */
 import { DatadogError, type DatadogOrgs } from "../datadog.ts";
 import type { DatadogPreviews } from "../datadog-previews.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
+import { DatadogConnection, DatadogError as DatadogErrorResponse, DatadogPreviewsResponse, routeSchemas as datadogRouteSchemas } from "../api/datadog.ts";
 import { MAX_DATADOG_EMBEDS, parseDatadogUrl } from "../integrations/datadog-links.ts";
+
+export const routeSchemas: RouteSchema[] = datadogRouteSchemas;
 
 const DATADOG_ROUTE = "/__hui/datadog";
 const DATADOG_ORGS_ROUTE = `${DATADOG_ROUTE}/orgs`;
@@ -14,9 +18,9 @@ const DATADOG_PREVIEWS_ROUTE = `${DATADOG_ROUTE}/previews`;
 
 /** A Datadog route failure: the operator's input (400/404/409) or HUI's own (500), never pup's output. */
 function datadogError(error: unknown): JsonResult {
-  if (error instanceof DatadogError) return { status: error.status, body: { error: error.message } };
-  if (error instanceof SyntaxError) return { status: 400, body: { error: "Send a JSON body." } };
-  return { status: 500, body: { error: error instanceof Error ? error.message : "Datadog request failed." } };
+  if (error instanceof DatadogError) return reply(DatadogErrorResponse, { error: error.message }, error.status);
+  if (error instanceof SyntaxError) return reply(DatadogErrorResponse, { error: "Send a JSON body." }, 400);
+  return reply(DatadogErrorResponse, { error: error instanceof Error ? error.message : "Datadog request failed." }, 500);
 }
 
 export function createDatadogRoutes(deps: { datadogOrgs: DatadogOrgs; datadogPreviews: DatadogPreviews }) {
@@ -25,45 +29,42 @@ export function createDatadogRoutes(deps: { datadogOrgs: DatadogOrgs; datadogPre
     const { datadogOrgs, datadogPreviews } = deps;
 
     if (path === DATADOG_ROUTE) {
-      if (method !== "GET") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "GET") return reply(DatadogErrorResponse, { error: "method not allowed" }, 405);
       try {
-        return { status: 200, body: await datadogOrgs.connection() };
+        return reply(DatadogConnection, await datadogOrgs.connection());
       } catch (error) {
         return datadogError(error);
       }
     }
 
     if (path === DATADOG_ORGS_ROUTE) {
-      if (method !== "POST" && method !== "DELETE") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "POST" && method !== "DELETE") return reply(DatadogErrorResponse, { error: "method not allowed" }, 405);
       try {
         const params = request.query;
-        return {
-          status: 200,
-          body: method === "POST"
-            ? await datadogOrgs.add(await request.json())
-            : await datadogOrgs.remove({ name: params.get("name") ?? "", site: params.get("site") ?? "" }),
-        };
+        return reply(DatadogConnection, method === "POST"
+          ? await datadogOrgs.add(await request.json())
+          : await datadogOrgs.remove({ name: params.get("name") ?? "", site: params.get("site") ?? "" }));
       } catch (error) {
         return datadogError(error);
       }
     }
 
     if (path === DATADOG_LOGIN_ROUTE) {
-      if (method !== "POST" && method !== "DELETE") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "POST" && method !== "DELETE") return reply(DatadogErrorResponse, { error: "method not allowed" }, 405);
       try {
-        return { status: 200, body: method === "POST" ? await datadogOrgs.startLogin(await request.json()) : await datadogOrgs.cancelLogin() };
+        return reply(DatadogConnection, method === "POST" ? await datadogOrgs.startLogin(await request.json()) : await datadogOrgs.cancelLogin());
       } catch (error) {
         return datadogError(error);
       }
     }
 
     if (path === DATADOG_PREVIEWS_ROUTE) {
-      if (method !== "GET") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "GET") return reply(DatadogErrorResponse, { error: "method not allowed" }, 405);
       const urls = request.query.getAll("url");
       if (urls.length === 0 || urls.length > MAX_DATADOG_EMBEDS || urls.some((url) => url.length > 4_000 || !parseDatadogUrl(url))) {
-        return { status: 400, body: { error: `Pass 1-${MAX_DATADOG_EMBEDS} Datadog share or dashboard URLs.` } };
+        return reply(DatadogErrorResponse, { error: `Pass 1-${MAX_DATADOG_EMBEDS} Datadog share or dashboard URLs.` }, 400);
       }
-      return { status: 200, body: { previews: await Promise.all(urls.map((url) => datadogPreviews.lookup(url))) } };
+      return reply(DatadogPreviewsResponse, { previews: await Promise.all(urls.map((url) => datadogPreviews.lookup(url))) });
     }
 
     return undefined;

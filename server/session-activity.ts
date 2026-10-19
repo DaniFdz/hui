@@ -11,7 +11,7 @@ import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { AssistantEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
-import type { ActivityBlock, ActivitySession, SessionActivity } from "../shared/session-activity.ts";
+import type { ActivityBlock, ActivitySession, SessionActivity } from "./api/github.ts";
 import { durableContext, durableHost, type DurableHost } from "./runtimes/durable-host.ts";
 import { textOf } from "./runtimes/durable.ts";
 import { WORKTREES_DIR } from "./paths.ts";

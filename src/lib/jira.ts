@@ -1,6 +1,26 @@
 /** Browser half of the Jira integration: merging project search results and the draft form's parent hint and
  * edits. Its requests live in src/api/jira.ts. */
-import type { JiraDraft, JiraProject } from "../../shared/jira.ts";
+import type { JiraDraft, JiraProject, SessionJiraIssue } from "../api/schema/jira.ts";
+
+export const JIRA_API_TOKEN_URL = "https://id.atlassian.com/manage-profile/security/api-tokens";
+
+export function jiraStatusLabel(issue: Pick<SessionJiraIssue, "status">): string {
+  return issue.status || "Status unavailable";
+}
+
+export function jiraIssueAccessibleLabel(issue: SessionJiraIssue, total = 1): string {
+  const summary = issue.summary ? `: ${issue.summary}` : "";
+  const more = total > 1 ? `, ${total - 1} more linked` : "";
+  return `Jira ${issue.key}, ${jiraStatusLabel(issue).toLocaleLowerCase()}${summary}${more}`;
+}
+
+/** The newest linked item owns the row mark; older ones are listed in its card. */
+export function primaryJiraIssue(
+  issues: readonly SessionJiraIssue[] | undefined,
+): { issue: SessionJiraIssue; others: SessionJiraIssue[] } | undefined {
+  if (!issues?.length) return undefined;
+  return { issue: issues.at(-1)!, others: issues.slice(0, -1) };
+}
 
 /** Adds search results to the known projects without dropping the selection. */
 export function mergeJiraProjects(known: readonly JiraProject[], found: readonly JiraProject[]): JiraProject[] {

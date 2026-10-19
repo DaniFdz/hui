@@ -4363,17 +4363,51 @@ URLs on the connected site, cached in memory (60 seconds, 15 minutes when done,
 
 Connection routes (all require `x-hui`):
 
-| Route | Result |
-| --- | --- |
-| `GET /__hui/jira` | `JiraConnection` `{ configured, site, email, tokenSet, defaultProject, accountName? }`; never the token |
-| `PUT /__hui/jira` `{ site, email, token, defaultProject }` | Verifies with `GET /rest/api/3/myself`, then stores. An empty `token` keeps the stored one for the same site and email. 400 for invalid input, 502 when Jira rejects or is unreachable |
-| `PATCH /__hui/jira` `{ defaultProject }` | Changes the default project |
-| `DELETE /__hui/jira` | Removes the connection file |
-| `GET /__hui/jira/projects?query=` | `{ projects: { key, name }[], total }`. Without `query`, the first 100 projects by name; with `query` (≤100 chars), Jira's own key/name search (50 results). Pickers load the first page, the saved default, and search remotely as the operator types, so sites with thousands of projects stay reachable |
-| `GET /__hui/jira/issues?query=` | `{ issues: JiraIssueMatch[] }` (`{ key, url, summary, status?, statusCategory?, issueType? }`). Empty query: recently viewed (`issue in issueHistory()`). A key or `/browse/KEY-N` URL resolves that item exactly (missing → empty). Other text uses `text ~ "…*"` with the literal escaped; Jira 400s become an empty list. ≤200 chars, 20 results |
-| `POST /__hui/sessions/:id/jira/link` `{ key }` | Verifies the item with Jira, appends `{ key, url }` to the record (moving an existing link to newest) and returns `{ issue, session }` |
-| `POST /__hui/sessions/:id/jira/draft` `{ project?, suggestionId? }` | `{ draft: JiraDraft }`: parent candidates (open items one hierarchy level above the project's Task type), agent-chosen `parent`, `summary`, Markdown `description`, `model?`, `note?`, and `parentChoice?` (`suggested` when the model chose the parent or deliberately none, `unmatched` with `rejectedParent` when it named a key outside the candidates, `none-available` when the project has no candidates, `not-drafted` for a local draft, `omitted` when the answer had no parent field; such an answer is retried once). The transcript context is a bounded digest anchored on the session goal: the first operator request, later user messages, files changed by successful edit/write tools and the most recent conversation, with HUI's Continue, resume and subagent-event prompts removed. Utility calls use the cheapest reasoning level the model is actually sent: `off` where PI sends an explicit disabled value, otherwise the lowest level in the model's `thinkingLevelMap` (a gateway entry named `<provider>/<model>` without a map borrows that catalog model's map). Each draft makes at most two 25 s attempts: an attempt that ends without text, stalls or returns malformed JSON is retried once, while a provider-reported error is final. A failed model call returns the provider's error in `note` with a local draft built from the goal. With `suggestionId` the draft context is that pending suggestion's problem and fix instead of the transcript; 404 when it is no longer pending |
-| `POST /__hui/sessions/:id/jira` `{ project, parent, summary, description, assignToMe?, suggestionId? }` | Creates the work item (Task, or the first standard type), assigns it to the connected account unless `assignToMe: false` (`PUT …/assignee` with the `accountId` from `/myself`, stored server-side), appends it to the record and returns `{ issue, session, warning? }`. An assignment refusal keeps the created item and returns `warning`. With `suggestionId`, a successful create also removes that suggestion card (already gone is not an error) |
+### `GET /__hui/jira`
+
+`JiraConnection` `{ configured, site, email, tokenSet, defaultProject, accountName? }`; never the token
+
+### `PUT /__hui/jira`
+
+Request `{ site, email, token, defaultProject }`.
+
+Verifies with `GET /rest/api/3/myself`, then stores. An empty `token` keeps the stored one for the same site and email. 400 for invalid input, 502 when Jira rejects or is unreachable
+
+### `PATCH /__hui/jira`
+
+Request `{ defaultProject }`.
+
+Changes the default project
+
+### `DELETE /__hui/jira`
+
+Removes the connection file
+
+### `GET /__hui/jira/projects`
+
+`{ projects: { key, name }[], total }`. Without `query`, the first 100 projects by name; with `query` (≤100 chars), Jira's own key/name search (50 results). Pickers load the first page, the saved default, and search remotely as the operator types, so sites with thousands of projects stay reachable
+
+### `GET /__hui/jira/issues`
+
+`{ issues: JiraIssueMatch[] }` (`{ key, url, summary, status?, statusCategory?, issueType? }`). Empty query: recently viewed (`issue in issueHistory()`). A key or `/browse/KEY-N` URL resolves that item exactly (missing → empty). Other text uses `text ~ "…*"` with the literal escaped; Jira 400s become an empty list. ≤200 chars, 20 results
+
+### `POST /__hui/sessions/:id/jira/link`
+
+Request `{ key }`.
+
+Verifies the item with Jira, appends `{ key, url }` to the record (moving an existing link to newest) and returns `{ issue, session }`
+
+### `POST /__hui/sessions/:id/jira/draft`
+
+Request `{ project?, suggestionId? }`.
+
+`{ draft: JiraDraft }`: parent candidates (open items one hierarchy level above the project's Task type), agent-chosen `parent`, `summary`, Markdown `description`, `model?`, `note?`, and `parentChoice?` (`suggested` when the model chose the parent or deliberately none, `unmatched` with `rejectedParent` when it named a key outside the candidates, `none-available` when the project has no candidates, `not-drafted` for a local draft, `omitted` when the answer had no parent field; such an answer is retried once). The transcript context is a bounded digest anchored on the session goal: the first operator request, later user messages, files changed by successful edit/write tools and the most recent conversation, with HUI's Continue, resume and subagent-event prompts removed. Utility calls use the cheapest reasoning level the model is actually sent: `off` where PI sends an explicit disabled value, otherwise the lowest level in the model's `thinkingLevelMap` (a gateway entry named `<provider>/<model>` without a map borrows that catalog model's map). Each draft makes at most two 25 s attempts: an attempt that ends without text, stalls or returns malformed JSON is retried once, while a provider-reported error is final. A failed model call returns the provider's error in `note` with a local draft built from the goal. With `suggestionId` the draft context is that pending suggestion's problem and fix instead of the transcript; 404 when it is no longer pending
+
+### `POST /__hui/sessions/:id/jira`
+
+Request `{ project, parent, summary, description, assignToMe?, suggestionId? }`.
+
+Creates the work item (Task, or the first standard type), assigns it to the connected account unless `assignToMe: false` (`PUT …/assignee` with the `accountId` from `/myself`, stored server-side), appends it to the record and returns `{ issue, session, warning? }`. An assignment refusal keeps the created item and returns `warning`. With `suggestionId`, a successful create also removes that suggestion card (already gone is not an error)
 
 The connection lives in `~/.config/hui/jira.json` (mode 0600) and accepts only
 `https://<name>.atlassian.net` or `.jira.com` sites. Credentials are sent with
@@ -4406,11 +4440,17 @@ type GitHubConnection = {
 };
 ```
 
-| Route | Behaviour |
-| --- | --- |
-| `GET /__hui/github` | Runs `gh --version` and `gh auth status --hostname github.com --json hosts` (the active account). While a login is pending, the last probe is reused so polling stays local |
-| `POST /__hui/github/login` | 409 with the "GitHub CLI (gh) is required" message when `gh` is missing, or when `GH_TOKEN`/`GITHUB_TOKEN` in the gateway environment would shadow a login. Otherwise spawns `gh auth login --hostname github.com --web --skip-ssh-key` (plus `--git-protocol` set to the value of `gh config get git_protocol`, so an existing ssh choice survives) and returns once the one-time code is parsed (`phase: "pending"`, `verificationUri` fixed to `https://github.com/login/device`). A second POST while pending returns the same login |
-| `DELETE /__hui/github/login` | Stops a pending login (SIGTERM) and returns to `idle`; also dismisses a `failed` result |
+### `GET /__hui/github`
+
+Runs `gh --version` and `gh auth status --hostname github.com --json hosts` (the active account). While a login is pending, the last probe is reused so polling stays local
+
+### `POST /__hui/github/login`
+
+409 with the "GitHub CLI (gh) is required" message when `gh` is missing, or when `GH_TOKEN`/`GITHUB_TOKEN` in the gateway environment would shadow a login. Otherwise spawns `gh auth login --hostname github.com --web --skip-ssh-key` (plus `--git-protocol` set to the value of `gh config get git_protocol`, so an existing ssh choice survives) and returns once the one-time code is parsed (`phase: "pending"`, `verificationUri` fixed to `https://github.com/login/device`). A second POST while pending returns the same login
+
+### `DELETE /__hui/github/login`
+
+Stops a pending login (SIGTERM) and returns to `idle`; also dismisses a `failed` result
 
 At most one login runs per gateway. When `gh` exits 0 the status is re-probed
 and the login returns to `idle` with `status: "connected"`; a non-zero exit
@@ -4425,9 +4465,11 @@ called without `--show-token` and only `login`, `host`, `scopes` and
 The Contributions page (`/contributions`) charts a year of commits and pull
 requests of every account `gh auth status` lists for github.com.
 
-| Route | Behaviour |
-| --- | --- |
-| `GET /__hui/github/contributions[?year=YYYY][&refresh=1]` | `GitHubContributions`; 400 for a year outside 2008 to the current year at UTC+14 (the latest any browser can be in); 502 with `gh`'s message when the account list cannot be read (for example "GitHub CLI (gh) is required") |
+### `GET /__hui/github/contributions`
+
+Optional query parameters are `year=YYYY` and `refresh=1`.
+
+`GitHubContributions`; 400 for a year outside 2008 to the current year at UTC+14 (the latest any browser can be in); 502 with `gh`'s message when the account list cannot be read (for example "GitHub CLI (gh) is required")
 
 ```ts
 type GitHubContributions = {
@@ -4469,9 +4511,11 @@ Week requests seven local activity days and Day requests one, each starting at
 5 AM and ending at 5 AM after the last date. Date arithmetic uses local calendar
 days, not fixed 24-hour offsets, to retain those boundaries across clock changes.
 
-| Route | Behaviour |
-| --- | --- |
-| `GET /__hui/session-activity?from=<ms>&to=<ms>` | `SessionActivity` for `[from, to)`, epoch milliseconds; 400 unless both are decimal digit strings (at most 15) with `to` after `from` and at most 31 days apart |
+### `GET /__hui/session-activity`
+
+Query parameters are `from=<ms>` and `to=<ms>`.
+
+`SessionActivity` for `[from, to)`, epoch milliseconds; 400 unless both are decimal digit strings (at most 15) with `to` after `from` and at most 31 days apart
 
 ```ts
 type SessionActivity = {
@@ -4529,9 +4573,11 @@ references inside inline or fenced code, GitHub site pages (`/settings`,
 `/login`, …) and other hosts do not. A streaming message unfurls once its text has
 been stable for 800 ms.
 
-| Route | Behaviour |
-| --- | --- |
-| `GET /__hui/github/previews?url=…` (1–3 `url`) | `{ previews: GitHubPreviewResult[] }` in request order; 400 for more URLs or a non-GitHub URL |
+### `GET /__hui/github/previews`
+
+Request (1–3 `url`).
+
+`{ previews: GitHubPreviewResult[] }` in request order; 400 for more URLs or a non-GitHub URL
 
 ```ts
 type GitHubPreviewResult = { url: string; preview?: GitHubPreview; error?: "not_found" | "signed_out" | "cli_missing" | "unavailable" };
@@ -4589,9 +4635,11 @@ widget link. Brackets in a query
 and every other Datadog page do not count. A streaming message unfurls once its
 text has been stable for 800 ms.
 
-| Route | Behaviour |
-| --- | --- |
-| `GET /__hui/datadog/previews?url=…` (1–3 `url`, ≤ 4,000 characters each) | `{ previews: DatadogPreviewResult[] }` in request order; 400 for more URLs or a link that is not a share or dashboard link |
+### `GET /__hui/datadog/previews`
+
+Request (1–3 `url`, ≤ 4,000 characters each).
+
+`{ previews: DatadogPreviewResult[] }` in request order; 400 for more URLs or a link that is not a share or dashboard link
 
 ```ts
 type DatadogPreviewResult = {
@@ -4706,13 +4754,31 @@ type DatadogConnection = {
 };
 ```
 
-| Route | Behaviour |
-| --- | --- |
-| `GET /__hui/datadog` | Runs `pup --version` (remembered once pup answers) and `pup auth list`. An org is `connected` when pup has its session (same name, `null` for the default one, and site) with status `valid`, or `expired` with a refresh token pup renews on its next call; otherwise `signed_out`. `unknown` when pup is missing or its list fails. A lookup that ended signed out keeps the org `signed_out` until a sign-in or a lookup through it succeeds |
-| `POST /__hui/datadog/orgs` `{ name?, site? }` | Adds an org: `name` trimmed, ≤ 100 characters, no control characters; `site` a host or HTTPS URL under a Datadog domain without port (default `app.datadoghq.com`; a bare `datadoghq.com` means `app.datadoghq.com`). 400 invalid, 409 duplicate name and site. When the new org is `signed_out` and no sign-in runs, starts its sign-in |
-| `DELETE /__hui/datadog/orgs?name=&site=` | Removes an org from HUI; pup keeps its session. 404 when unknown |
-| `POST /__hui/datadog/login` `{ name, site }` | Runs `pup auth login [--org=<name>] --site=<pup site> --no-agent` for a configured org (404 otherwise) and returns at once with `phase: "pending"`; `url` appears once pup prints its sign-in page (`If the browser doesn't open, visit: …`, a Datadog URL). pup opens the browser on the gateway's machine and waits for its localhost callback, so a browser elsewhere cannot finish it. 409 while another sign-in runs, 400 without pup |
-| `DELETE /__hui/datadog/login` | Stops a pending sign-in (SIGTERM) and returns to `idle`; also dismisses a `failed` one |
+### `GET /__hui/datadog`
+
+Runs `pup --version` (remembered once pup answers) and `pup auth list`. An org is `connected` when pup has its session (same name, `null` for the default one, and site) with status `valid`, or `expired` with a refresh token pup renews on its next call; otherwise `signed_out`. `unknown` when pup is missing or its list fails. A lookup that ended signed out keeps the org `signed_out` until a sign-in or a lookup through it succeeds
+
+### `POST /__hui/datadog/orgs`
+
+Request `{ name?, site? }`.
+
+Adds an org: `name` trimmed, ≤ 100 characters, no control characters; `site` a host or HTTPS URL under a Datadog domain without port (default `app.datadoghq.com`; a bare `datadoghq.com` means `app.datadoghq.com`). 400 invalid, 409 duplicate name and site. When the new org is `signed_out` and no sign-in runs, starts its sign-in
+
+### `DELETE /__hui/datadog/orgs`
+
+Query parameters are `name=…` and `site=…`.
+
+Removes an org from HUI; pup keeps its session. 404 when unknown
+
+### `POST /__hui/datadog/login`
+
+Request `{ name, site }`.
+
+Runs `pup auth login [--org=<name>] --site=<pup site> --no-agent` for a configured org (404 otherwise) and returns at once with `phase: "pending"`; `url` appears once pup prints its sign-in page (`If the browser doesn't open, visit: …`, a Datadog URL). pup opens the browser on the gateway's machine and waits for its localhost callback, so a browser elsewhere cannot finish it. 409 while another sign-in runs, 400 without pup
+
+### `DELETE /__hui/datadog/login`
+
+Stops a pending sign-in (SIGTERM) and returns to `idle`; also dismisses a `failed` one
 
 One sign-in runs per gateway, without `--read-only` (that would narrow the scopes
 of the operator's own session). Exit 0 returns to `idle` and clears the org's

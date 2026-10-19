@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { GitHubConnection } from "./api/github.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,6 +63,7 @@ test("maps gh auth status JSON without exposing tokens", () => {
 test("reports a missing gh as required and refuses to start a login", async () => {
   const cli = new GitHubCli({ command: join(tmpdir(), "hui-no-such-gh", "gh") });
   const connection = await cli.connection();
+  expectSchema(GitHubConnection, connection);
   assert.deepEqual(connection.cli, { installed: false });
   assert.equal(connection.message, GITHUB_CLI_REQUIRED);
   await assert.rejects(cli.startLogin(), (error: unknown) => error instanceof GitHubCliError && error.status === 409 && error.message === GITHUB_CLI_REQUIRED);
@@ -70,10 +73,12 @@ test("reports a missing gh as required and refuses to start a login", async () =
 test("device login shows the one-time code and becomes connected after approval", async () => {
   const { dir, cli } = await fakeGh({ HUI_FAKE_GH_CODE: "WXYZ-9876", HUI_FAKE_GH_PROTOCOL: "ssh" });
   const before = await cli.connection();
+  expectSchema(GitHubConnection, before);
   assert.deepEqual(before.cli, { installed: true, version: "9.9.9" });
   assert.equal(before.status, "disconnected");
 
   const started = await cli.startLogin();
+  expectSchema(GitHubConnection, started);
   assert.equal(started.login.phase, "pending");
   assert.ok(started.login.phase === "pending");
   assert.equal(started.login.userCode, "WXYZ-9876");
@@ -87,6 +92,7 @@ test("device login shows the one-time code and becomes connected after approval"
   await writeFile(join(dir, "approve"), "");
   await cli.whenLoginSettled();
   const after = await cli.connection();
+  expectSchema(GitHubConnection, after);
   assert.equal(after.status, "connected");
   assert.equal(after.account?.login, "hui-e2e");
   assert.deepEqual(after.login, { phase: "idle" });
@@ -100,6 +106,7 @@ test("a denied login fails with gh's reason and can be dismissed", async () => {
   await writeFile(join(dir, "deny"), "");
   await cli.whenLoginSettled();
   const failed = await cli.connection();
+  expectSchema(GitHubConnection, failed);
   assert.deepEqual(failed.login, { phase: "failed", message: "failed to authenticate via web browser: the user denied the request" });
   assert.equal(failed.status, "disconnected");
   assert.deepEqual((await cli.cancelLogin()).login, { phase: "idle" });
@@ -109,6 +116,7 @@ test("cancel stops the pending gh process and returns to idle", async () => {
   const { cli } = await fakeGh();
   assert.equal((await cli.startLogin()).login.phase, "pending");
   const cancelled = await cli.cancelLogin();
+  expectSchema(GitHubConnection, cancelled);
   assert.deepEqual(cancelled.login, { phase: "idle" });
   assert.equal(cancelled.status, "disconnected");
 });
@@ -125,6 +133,7 @@ test("an unapproved code expires and a gh without a code times out", async () =>
   await chmod(silent, 0o755);
   const quiet = new GitHubCli({ command: silent, startTimeoutMs: 50 });
   const result = await quiet.startLogin();
+  expectSchema(GitHubConnection, result);
   assert.deepEqual(result.login, { phase: "failed", message: "gh did not print a one-time code. Run `gh auth login --web` in a terminal to see why." });
 });
 

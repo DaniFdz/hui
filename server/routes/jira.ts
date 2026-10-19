@@ -4,7 +4,12 @@
  * `hui.ts` owns the connection state, passes it in and applies the `x-hui` guard before dispatching here.
  */
 import { homedir } from "node:os";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
+import {
+  JiraConnection, JiraCreateResponse, JiraDraftResponse, JiraError, JiraIssuesResponse, JiraLinkResponse,
+  JiraProjectsResponse, routeSchemas as jiraRouteSchemas,
+} from "../api/jira.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import {
   draftJiraWorkItem,
@@ -30,6 +35,8 @@ import { readRegistry, type SessionRecord, updateRegistry } from "../sessions.ts
 import type { SessionView } from "../sessions/views.ts";
 import { TaskSuggestionNotFoundError, type TaskSuggestionStore } from "../task-suggestions.ts";
 import { taskSuggestionJiraDescription } from "../../shared/task-suggestions.ts";
+
+export const routeSchemas: RouteSchema[] = jiraRouteSchemas;
 
 const JIRA_ROUTE = "/__hui/jira";
 const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
@@ -60,7 +67,7 @@ export function createJiraRoutes(deps: {
 
     if (path === JIRA_ROUTE) {
       await jiraConfigReady;
-      if (method === "GET") return { status: 200, body: jiraConnectionView(jiraConfig()) };
+      if (method === "GET") return reply(JiraConnection, jiraConnectionView(jiraConfig()));
       if (method === "PUT") {
         try {
           const body = (await request.json()) as Record<string, unknown>;
@@ -84,9 +91,9 @@ export function createJiraRoutes(deps: {
           await jiraStore.write(next);
           if (jiraConfig()?.site !== site || jiraConfig()?.email !== email) jiraStatuses.clear();
           setJiraConfig(next);
-          return { status: 200, body: jiraConnectionView(next) };
+          return reply(JiraConnection, jiraConnectionView(next));
         } catch (error) {
-          return { status: jiraErrorStatus(error), body: { error: error instanceof Error ? error.message : "Could not connect Jira." } };
+          return reply(JiraError, { error: error instanceof Error ? error.message : "Could not connect Jira." }, jiraErrorStatus(error));
         }
       }
       if (method === "PATCH") {
@@ -96,52 +103,52 @@ export function createJiraRoutes(deps: {
           const next = { ...jiraConfig()!, defaultProject: normalizeProjectKey(body["defaultProject"]) };
           await jiraStore.write(next);
           setJiraConfig(next);
-          return { status: 200, body: jiraConnectionView(next) };
+          return reply(JiraConnection, jiraConnectionView(next));
         } catch (error) {
-          return { status: jiraErrorStatus(error), body: { error: error instanceof Error ? error.message : "Could not save the default project." } };
+          return reply(JiraError, { error: error instanceof Error ? error.message : "Could not save the default project." }, jiraErrorStatus(error));
         }
       }
       if (method === "DELETE") {
         await jiraStore.remove();
         setJiraConfig(undefined);
         jiraStatuses.clear();
-        return { status: 200, body: jiraConnectionView(undefined) };
+        return reply(JiraConnection, jiraConnectionView(undefined));
       }
-      return { status: 405, body: { error: "method not allowed" } };
+      return reply(JiraError, { error: "method not allowed" }, 405);
     }
 
     if (path === JIRA_PROJECTS_ROUTE) {
       await jiraConfigReady;
-      if (method !== "GET") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "GET") return reply(JiraError, { error: "method not allowed" }, 405);
       try {
         const query = request.query.get("query") ?? "";
         if (query.length > 100) throw new JiraInputError("A project search must be at most 100 characters.");
-        return { status: 200, body: await jiraClient().projects(query) };
+        return reply(JiraProjectsResponse, await jiraClient().projects(query));
       } catch (error) {
-        return { status: jiraErrorStatus(error), body: { error: error instanceof Error ? error.message : "Could not list Jira projects." } };
+        return reply(JiraError, { error: error instanceof Error ? error.message : "Could not list Jira projects." }, jiraErrorStatus(error));
       }
     }
 
     if (path === JIRA_ISSUES_ROUTE) {
       await jiraConfigReady;
-      if (method !== "GET") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "GET") return reply(JiraError, { error: "method not allowed" }, 405);
       try {
         const query = request.query.get("query") ?? "";
         if (query.length > 200) throw new JiraInputError("A work item search must be at most 200 characters.");
         const client = jiraClient();
-        return { status: 200, body: { issues: await findJiraIssues(client, jiraConfig()!.site, query) } };
+        return reply(JiraIssuesResponse, { issues: await findJiraIssues(client, jiraConfig()!.site, query) });
       } catch (error) {
-        return { status: jiraErrorStatus(error), body: { error: error instanceof Error ? error.message : "Could not search Jira." } };
+        return reply(JiraError, { error: error instanceof Error ? error.message : "Could not search Jira." }, jiraErrorStatus(error));
       }
     }
 
     const jiraSession = path.match(SESSION_JIRA);
     if (jiraSession) {
       await jiraConfigReady;
-      if (method !== "POST") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "POST") return reply(JiraError, { error: "method not allowed" }, 405);
       const id = decodeURIComponent(jiraSession[1] ?? "");
       const record = (await readRegistry()).find((session) => session.id === id);
-      if (!record) return { status: 404, body: { error: `unknown session: ${id}` } };
+      if (!record) return reply(JiraError, { error: `unknown session: ${id}` }, 404);
       try {
         const body = (await request.json()) as Record<string, unknown>;
         const client = jiraClient();
@@ -156,7 +163,7 @@ export function createJiraRoutes(deps: {
             : session));
           jiraStatuses.remember(ref, details);
           const next = records.find((session) => session.id === id);
-          return { status: 200, body: { issue: ref, ...(next ? { session: toView(next, liveSessions.status(id)) } : {}) } };
+          return reply(JiraLinkResponse, { issue: ref, ...(next ? { session: toView(next, liveSessions.status(id)) } : {}) });
         }
         if (jiraSession[2] === "draft") {
           const project = normalizeProjectKey(body["project"]) || jiraConfig()!.defaultProject;
@@ -179,7 +186,7 @@ export function createJiraRoutes(deps: {
             model: (await readHuiSettings()).models.utility,
             run: runPiUtilityPrompt,
           });
-          return { status: 200, body: { draft } };
+          return reply(JiraDraftResponse, { draft });
         }
         const { ref, warning: assignWarning } = await createAssignedJiraIssue(client, body);
         // Filing a suggestion resolves its card; it may already have been dismissed.
@@ -190,17 +197,14 @@ export function createJiraRoutes(deps: {
           ? { ...session, jiraIssues: mergeJiraRefs(session.jiraIssues ?? [], [ref]) }
           : session));
         const next = records.find((session) => session.id === id);
-        return {
-          status: 200,
-          body: {
-            issue: ref,
-            ...(next ? { session: toView(next, liveSessions.status(id)) } : {}),
-            ...(assignWarning ? { warning: assignWarning } : {}),
-          },
-        };
+        return reply(JiraCreateResponse, {
+          issue: ref,
+          ...(next ? { session: toView(next, liveSessions.status(id)) } : {}),
+          ...(assignWarning ? { warning: assignWarning } : {}),
+        });
       } catch (error) {
-        if (error instanceof TaskSuggestionNotFoundError) return { status: 404, body: { error: error.message } };
-        return { status: jiraErrorStatus(error), body: { error: error instanceof Error ? error.message : "Could not create the Jira work item." } };
+        if (error instanceof TaskSuggestionNotFoundError) return reply(JiraError, { error: error.message }, 404);
+        return reply(JiraError, { error: error instanceof Error ? error.message : "Could not create the Jira work item." }, jiraErrorStatus(error));
       }
     }
 

@@ -63,4 +63,37 @@ export const GitHubPreviewResult = Type.Object({
 }, { $id: "GitHubPreviewResult" });
 export type GitHubPreviewResult = Static<typeof GitHubPreviewResult>;
 
-export const routeSchemas = [];
+export const SessionPullRequest = Type.Object({
+  repository: Type.String(), number: Type.Number(), url: Type.String(), state: Type.Optional(PullRequestState),
+  title: Type.Optional(Type.String()), body: Type.Optional(Type.String()),
+}, { $id: "SessionPullRequest" });
+export type SessionPullRequest = Static<typeof SessionPullRequest>;
+
+export const ActivityBlock = Type.Object({
+  start: Type.Number(), end: Type.Number(), model: Type.Optional(Type.String()), firstMessage: Type.Optional(Type.String()),
+}, { $id: "ActivityBlock" });
+export type ActivityBlock = Static<typeof ActivityBlock>;
+
+export const ActivitySession = Type.Object({
+  id: Type.String(), title: Type.String(), group: Type.String(), project: Type.String(),
+  archived: Type.Optional(Type.Boolean()), blocks: Type.Array(ActivityBlock),
+}, { $id: "ActivitySession" });
+export type ActivitySession = Static<typeof ActivitySession>;
+
+export const SessionActivity = Type.Object({ sessions: Type.Array(ActivitySession) }, { $id: "SessionActivity" });
+export type SessionActivity = Static<typeof SessionActivity>;
+
+export const GitHubPreviewsResponse = Type.Object({ previews: Type.Array(GitHubPreviewResult) }, { $id: "GitHubPreviewsResponse" });
+export type GitHubPreviewsResponse = Static<typeof GitHubPreviewsResponse>;
+
+export const GitHubError = Type.Object({ error: Type.String() }, { $id: "GitHubError" });
+export type GitHubError = Static<typeof GitHubError>;
+
+export const routeSchemas = [
+  { method: "GET", path: "/__hui/github", response: GitHubConnection },
+  { method: "POST", path: "/__hui/github/login", response: GitHubConnection },
+  { method: "DELETE", path: "/__hui/github/login", response: GitHubConnection },
+  { method: "GET", path: "/__hui/github/previews", response: GitHubPreviewsResponse },
+  { method: "GET", path: "/__hui/github/contributions", response: GitHubContributions },
+  { method: "GET", path: "/__hui/session-activity", response: SessionActivity },
+];

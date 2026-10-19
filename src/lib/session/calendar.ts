@@ -1,7 +1,7 @@
 /** Browser half of the Calendar tab: lays out a day or week of activity.
  * Weeks start Monday; days run from 5 AM to 5 AM, so late-night work stays
  * on the day it began. */
-import type { ActivityBlock, ActivitySession, SessionActivity } from "../../../shared/session-activity.ts";
+import type { ActivityBlock, ActivitySession, SessionActivity } from "../../api/schema/github.ts";
 
 const MINUTE = 60_000;
 const DAY_START_HOUR = 5;

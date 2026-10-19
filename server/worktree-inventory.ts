@@ -19,7 +19,7 @@ import { readdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import type { PullRequestState, SessionPullRequest } from "../shared/pull-requests.ts";
+import type { PullRequestState, SessionPullRequest } from "./api/github.ts";
 import {
   isMergedCleanupCandidate,
   riskAcknowledged,

@@ -1,7 +1,10 @@
 /** Browser client for the Jira integration: the connection, project and issue search, and drafting, creating and
  * linking work items. The server owns the credential; these requests only move credential-free views and explicit
  * user input. */
-import type { JiraConnection, JiraDraft, JiraIssueMatch, JiraProject } from "../../shared/jira.ts";
+import type {
+  JiraConnection, JiraConnectRequest, JiraCreateRequest, JiraCreateResponse, JiraDraft, JiraDraftResponse,
+  JiraIssueMatch, JiraIssuesResponse, JiraLinkResponse, JiraProject, JiraProjectsResponse,
+} from "./schema/jira.ts";
 import type { SessionView } from "./sessions.ts";
 import { fetchJson } from "./request.ts";
 
@@ -13,7 +16,7 @@ export function loadJiraConnection(): Promise<JiraConnection> {
   return fetchJson<JiraConnection>(JIRA_URL);
 }
 
-export function connectJira(input: { site: string; email: string; token: string; defaultProject: string }): Promise<JiraConnection> {
+export function connectJira(input: JiraConnectRequest): Promise<JiraConnection> {
   return fetchJson<JiraConnection>(JIRA_URL, {
     method: "PUT",
     headers: JSON_HEADERS,
@@ -31,7 +34,7 @@ export function disconnectJira(): Promise<JiraConnection> {
 }
 
 /** First page of projects, or Jira's own search when `query` is set. */
-export function loadJiraProjects(query = ""): Promise<{ projects: JiraProject[]; total: number }> {
+export function loadJiraProjects(query = ""): Promise<JiraProjectsResponse> {
   const search = query.trim() ? `?query=${encodeURIComponent(query.trim())}` : "";
   return fetchJson(`${JIRA_URL}/projects${search}`, { signal: AbortSignal.timeout(30_000) });
 }
@@ -57,7 +60,7 @@ export function jiraProjectSearch(onResult: (projects: JiraProject[]) => void, o
 /** Parents plus an agent-written summary, description and parent default.
  * The utility model can take a while, so the timeout is generous. */
 export async function draftJiraWorkItem(sessionId: string, project: string, suggestionId = ""): Promise<JiraDraft> {
-  return (await fetchJson<{ draft: JiraDraft }>(`/__hui/sessions/${encodeURIComponent(sessionId)}/jira/draft`, {
+  return (await fetchJson<JiraDraftResponse>(`/__hui/sessions/${encodeURIComponent(sessionId)}/jira/draft`, {
     method: "POST",
     headers: JSON_HEADERS,
     body: JSON.stringify({ project, ...(suggestionId ? { suggestionId } : {}) }),
@@ -67,8 +70,8 @@ export async function draftJiraWorkItem(sessionId: string, project: string, sugg
 
 export async function createJiraWorkItem(
   sessionId: string,
-  input: { project: string; parent: string; summary: string; description: string; assignToMe: boolean; suggestionId?: string },
-): Promise<{ issue: { key: string; url: string }; session?: SessionView; warning?: string }> {
+  input: JiraCreateRequest,
+): Promise<JiraCreateResponse & { session?: SessionView }> {
   return fetchJson(`/__hui/sessions/${encodeURIComponent(sessionId)}/jira`, {
     method: "POST",
     headers: JSON_HEADERS,
@@ -81,10 +84,10 @@ export async function createJiraWorkItem(
 /** Recently viewed items for an empty query; a key, URL or text otherwise. */
 export async function searchJiraIssues(query: string, signal?: AbortSignal): Promise<JiraIssueMatch[]> {
   const search = query.trim() ? `?query=${encodeURIComponent(query.trim())}` : "";
-  return (await fetchJson<{ issues: JiraIssueMatch[] }>(`${JIRA_URL}/issues${search}`, { signal: signal ?? AbortSignal.timeout(30_000) })).issues;
+  return (await fetchJson<JiraIssuesResponse>(`${JIRA_URL}/issues${search}`, { signal: signal ?? AbortSignal.timeout(30_000) })).issues;
 }
 
-export async function linkJiraWorkItem(sessionId: string, key: string): Promise<{ issue: { key: string; url: string }; session?: SessionView }> {
+export async function linkJiraWorkItem(sessionId: string, key: string): Promise<JiraLinkResponse & { session?: SessionView }> {
   return fetchJson(`/__hui/sessions/${encodeURIComponent(sessionId)}/jira/link`, {
     method: "POST",
     headers: JSON_HEADERS,

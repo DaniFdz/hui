@@ -13,9 +13,9 @@ import { groupSessions, readSessionRegistry, updateRegistry, type SessionRecord 
 import type { WatcherService } from "../watchers.ts";
 import { workers } from "../workers.ts";
 import type { WorktreeProgress } from "../worktrees.ts";
-import type { SessionJiraIssue } from "../../shared/jira.ts";
+import type { SessionJiraIssue } from "../api/jira.ts";
 import { progressCardFromTranscript, type ProgressCard } from "../../shared/progress-card.ts";
-import type { SessionPullRequest } from "../../shared/pull-requests.ts";
+import type { SessionPullRequest } from "../api/github.ts";
 import { effectiveSessionStage, stageRank, type SessionStage, type SessionStageOrigin } from "../../shared/session-stages.ts";
 
 /** The wire shape; `status` is HUI's own and never comes from a record. */

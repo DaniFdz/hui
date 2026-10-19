@@ -6,7 +6,7 @@
  * preferences, like the sidebar's.
  */
 import type { BacklogItem } from "../../shared/backlog.ts";
-import type { SessionPullRequest } from "../../shared/pull-requests.ts";
+import type { SessionPullRequest } from "../api/schema/github.ts";
 import {
   DEFAULT_SESSION_STAGE,
   isSessionStage,

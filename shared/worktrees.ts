@@ -4,7 +4,7 @@
  * local changes, disk usage and GitHub pull requests — are computed in the
  * background and stay absent until confirmed, so the page never waits on a
  * large checkout or the network and never invents a state. */
-import type { SessionPullRequest } from "./pull-requests.ts";
+import type { SessionPullRequest } from "../server/api/github.ts";
 
 export type WorktreeSessionRef = {
   id: string;

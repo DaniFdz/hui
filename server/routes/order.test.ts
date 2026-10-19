@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { GitHubError } from "../api/github.ts";
+import { DatadogError } from "../api/datadog.ts";
+import { JiraError } from "../api/jira.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -129,6 +133,11 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
   const text = await response.text();
   let body: unknown;
   try { body = JSON.parse(text); } catch { body = undefined; }
+  if (response.status >= 400) {
+    if (path.startsWith("/__hui/github") || path.startsWith("/__hui/session-activity")) expectSchema(GitHubError, body);
+    if (path.startsWith("/__hui/datadog")) expectSchema(DatadogError, body);
+    if (path.startsWith("/__hui/jira") || /\/jira(?:\/|$)/u.test(path)) expectSchema(JiraError, body);
+  }
   return [response.status, body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).sort() : null];
 }
 

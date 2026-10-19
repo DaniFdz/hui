@@ -8,7 +8,8 @@ import { html, nothing } from "lit";
 import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { BadgeHovercardController } from "./badge-hovercard.ts";
-import { jiraStatusLabel, type SessionJiraIssue } from "../../shared/jira.ts";
+import { jiraStatusLabel } from "../lib/jira.ts";
+import type { SessionJiraIssue } from "../api/schema/jira.ts";
 
 export const JIRA_BADGE_SELECTOR = ".session-jira-badge";
 

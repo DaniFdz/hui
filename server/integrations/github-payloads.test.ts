@@ -75,7 +75,19 @@ type LegacyGitHubPreview =
 type LegacyGitHubPreviewError = "not_found" | "signed_out" | "cli_missing" | "unavailable";
 type LegacyGitHubPreviewResult = { url: string; preview?: LegacyGitHubPreview; error?: LegacyGitHubPreviewError };
 
+
+type LegacySessionPullRequest = {
+  repository: string;
+  number: number;
+  url: string;
+  state?: LegacyPullRequestState;
+  title?: string;
+  body?: string;
+};
+
 test("the schemas preserve the existing github payload types", () => {
+  expectTypeOf<LegacySessionPullRequest>().toMatchTypeOf<Api.SessionPullRequest>();
+  expectTypeOf<Api.SessionPullRequest>().toMatchTypeOf<LegacySessionPullRequest>();
   expectTypeOf<LegacyPullRequestState>().toMatchTypeOf<Api.PullRequestState>();
   expectTypeOf<Api.PullRequestState>().toMatchTypeOf<LegacyPullRequestState>();
   expectTypeOf<LegacyGitHubAccount>().toMatchTypeOf<Api.GitHubAccount>();

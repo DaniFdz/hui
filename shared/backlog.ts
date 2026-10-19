@@ -8,7 +8,7 @@
  * saved from a `suggest_task` card. A local task that gains a Jira key keeps
  * one card: the key is attached to the task and the Jira feed skips it.
  */
-import type { SessionJiraIssue } from "./jira.ts";
+import type { SessionJiraIssue } from "../server/api/jira.ts";
 import type { SessionStage } from "./session-stages.ts";
 
 export type BacklogItemKind = "jira" | "local";

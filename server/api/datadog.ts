@@ -40,4 +40,22 @@ export const DatadogPreviewResult = Type.Object({
 }, { $id: "DatadogPreviewResult" });
 export type DatadogPreviewResult = Static<typeof DatadogPreviewResult>;
 
-export const routeSchemas = [];
+export const DatadogOrgRequest = Type.Object({
+  name: Type.Optional(Type.String()), site: Type.Optional(Type.String()),
+}, { $id: "DatadogOrgRequest" });
+export type DatadogOrgRequest = Static<typeof DatadogOrgRequest>;
+
+export const DatadogPreviewsResponse = Type.Object({ previews: Type.Array(DatadogPreviewResult) }, { $id: "DatadogPreviewsResponse" });
+export type DatadogPreviewsResponse = Static<typeof DatadogPreviewsResponse>;
+
+export const DatadogError = Type.Object({ error: Type.String() }, { $id: "DatadogError" });
+export type DatadogError = Static<typeof DatadogError>;
+
+export const routeSchemas = [
+  { method: "GET", path: "/__hui/datadog", response: DatadogConnection },
+  { method: "POST", path: "/__hui/datadog/orgs", request: DatadogOrgRequest, response: DatadogConnection },
+  { method: "DELETE", path: "/__hui/datadog/orgs", response: DatadogConnection },
+  { method: "POST", path: "/__hui/datadog/login", request: DatadogOrg, response: DatadogConnection },
+  { method: "DELETE", path: "/__hui/datadog/login", response: DatadogConnection },
+  { method: "GET", path: "/__hui/datadog/previews", response: DatadogPreviewsResponse },
+];

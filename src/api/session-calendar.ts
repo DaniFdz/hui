@@ -1,5 +1,5 @@
 /** Browser client for the session calendar: the gateway's session activity between two times. */
-import type { SessionActivity } from "../../shared/session-activity.ts";
+import type { SessionActivity } from "./schema/github.ts";
 import { fetchJson } from "./request.ts";
 
 export function loadSessionActivity(start: Date, end: Date): Promise<SessionActivity> {

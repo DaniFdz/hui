@@ -1,6 +1,6 @@
 /** Browser client for the Datadog routes: the org list, pup's sign-in and chat previews (`/__hui/datadog`). `pup` on
  * the gateway owns every credential; these requests only move credential-free views. */
-import type { DatadogConnection, DatadogOrg, DatadogPreviewResult } from "./schema/datadog.ts";
+import type { DatadogPreviewsResponse, DatadogConnection, DatadogOrg, DatadogPreviewResult } from "./schema/datadog.ts";
 import type { DatadogRef } from "../lib/datadog-links.ts";
 import { fetchJson } from "./request.ts";
 
@@ -37,5 +37,5 @@ export function cancelDatadogLogin(): Promise<DatadogConnection> {
 
 export async function fetchDatadogPreviews(refs: readonly DatadogRef[]): Promise<DatadogPreviewResult[]> {
   const query = refs.map((ref) => `url=${encodeURIComponent(ref.url)}`).join("&");
-  return (await fetchJson<{ previews: DatadogPreviewResult[] }>(`${DATADOG_URL}/previews?${query}`, { signal: AbortSignal.timeout(40_000) })).previews;
+  return (await fetchJson<DatadogPreviewsResponse>(`${DATADOG_URL}/previews?${query}`, { signal: AbortSignal.timeout(40_000) })).previews;
 }

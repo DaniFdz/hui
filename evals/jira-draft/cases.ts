@@ -1,4 +1,4 @@
-import type { JiraParentCandidate } from "../../shared/jira.ts";
+import type { JiraParentCandidate } from "../../server/api/jira.ts";
 import type { TranscriptEntry } from "../../server/runtimes/types.ts";
 import { interruptedRunPrompt } from "../../server/interrupted-run.ts";
 import { CONTINUE_PROMPT } from "../../server/agent-tools/subagent-completion.ts";

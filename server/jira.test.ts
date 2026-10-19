@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import * as Schema from "./api/jira.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -52,6 +54,7 @@ test("stores the connection privately and never exposes the token in its view", 
   assert.deepEqual(await store.read(), config);
   assert.equal((await stat(store.path)).mode & 0o777, 0o600);
   const view = jiraConnectionView(config);
+  expectSchema(Schema.JiraConnection, view);
   assert.equal(JSON.stringify(view).includes("secret-token"), false);
   assert.deepEqual(view, { configured: true, site: config.site, email: config.email, tokenSet: true, defaultProject: "CI" }, "the account id stays server-side");
   assert.match(await readFile(store.path, "utf8"), /secret-token/u);
@@ -160,7 +163,9 @@ test("projects load one page and search Jira by key or name", async () => {
     "GET /rest/api/3/project/search": () => ({ body: { values: [{ key: "CIAPP", name: "CI App" }, { bogus: true }], total: 1740 } }),
   });
   const client = new JiraClient({ site: "https://acme.atlassian.net", email: "dev@acme.test", token: "***" }, async (url, init) => { seen.push(url); return fetchImpl(url, init); });
-  assert.deepEqual(await client.projects(), { projects: [{ key: "CIAPP", name: "CI App" }], total: 1740 });
+  const projects = await client.projects();
+  expectSchema(Schema.JiraProjectsResponse, projects);
+  assert.deepEqual(projects, { projects: [{ key: "CIAPP", name: "CI App" }], total: 1740 });
   await client.projects("  ci app ");
   assert.match(seen[0]!, /maxResults=100$/u);
   assert.match(seen[1]!, /maxResults=50&query=ci%20app$/u);
@@ -258,6 +263,7 @@ test("the drafting agent picks a known parent and falls back without a model or 
       return "```json\n{\"summary\":\"Stabilize retry\",\"description\":\"## Context\\n\\nFlaky.\",\"parent\":\"ci-1\"}\n```";
     },
   });
+  expectSchema(Schema.JiraDraftResponse, { draft });
   assert.deepEqual({ summary: draft.summary, parent: draft.parent, model: draft.model }, { summary: "Stabilize retry", parent: "CI-1", model: "anthropic/haiku" });
   assert.match(prompts[0]!, /CI-1 \| Epic \| CI reliability/u);
   assert.match(prompts[0]!, /user: make retries stable/u);
@@ -271,6 +277,7 @@ test("the drafting agent picks a known parent and falls back without a model or 
   assert.equal(normalizeDraftAnswer("{\"summary\":\"x\",\"parent\":\"\"}", [], { summary: "f", description: "" })?.parentChoice, "none-available");
   assert.equal(draft.parentChoice, "suggested");
   const noModel = await draftJiraWorkItem({ project: "CI", parents, title: "Fix flaky retry", cwd: "/tmp", context: "user: make retries stable", model: "", run: async () => assert.fail("no model call") });
+  expectSchema(Schema.JiraDraftResponse, { draft: noModel });
   assert.equal(noModel.summary, "Fix flaky retry");
   assert.equal(noModel.description, "## Context\n\nmake retries stable");
   assert.match(noModel.note ?? "", /utility model/u);

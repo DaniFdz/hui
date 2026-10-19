@@ -8,7 +8,7 @@
  * session's pull requests can each move it, with a fixed precedence: an operator placement wins until the operator clears it,
  * and pull-request evidence only ever advances an agent-reported stage.
  */
-import type { SessionPullRequest } from "./pull-requests.ts";
+import type { SessionPullRequest } from "../server/api/github.ts";
 
 /** Board columns, left to right. */
 export const KANBAN_COLUMNS = ["backlog", "investigation", "implementation", "testing", "done"] as const;

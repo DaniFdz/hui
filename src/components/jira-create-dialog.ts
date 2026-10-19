@@ -7,7 +7,7 @@
  * are never overwritten by a later draft. Nothing is created until Create.
  */
 import { LitElement, html, nothing } from "lit";
-import type { JiraConnection, JiraDraft, JiraProject } from "../../shared/jira.ts";
+import type { JiraConnection, JiraDraft, JiraProject } from "../api/schema/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { applyJiraDraft, jiraParentHint, mergeJiraProjects, type JiraDraftFields } from "../lib/jira.ts";
 import { createJiraWorkItem, draftJiraWorkItem, loadJiraConnection, jiraProjectSearch, loadJiraProjects } from "../api/jira.ts";

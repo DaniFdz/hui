@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
 
-import { jiraIssueAccessibleLabel, primaryJiraIssue, type SessionJiraIssue } from "../../shared/jira.ts";
+import { jiraIssueAccessibleLabel, primaryJiraIssue } from "./jira.ts";
+import type { SessionJiraIssue } from "../api/schema/jira.ts";
 import { applyJiraDraft, jiraParentHint } from "./jira.ts";
 
 const issue = (key: string, patch: Partial<SessionJiraIssue> = {}): SessionJiraIssue => ({

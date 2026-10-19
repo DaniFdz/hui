@@ -9,7 +9,7 @@
  * in memory, and refreshed in the background so that listing sessions never
  * waits on the network. Until GitHub answers, a pull request carries only its reference.
  */
-import type { PullRequestState, SessionPullRequest } from "../shared/pull-requests.ts";
+import type { PullRequestState, SessionPullRequest } from "./api/github.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 
 export type PullRequestRef = Pick<SessionPullRequest, "repository" | "number" | "url">;

@@ -16,7 +16,7 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
-import type { JiraDraft } from "../../shared/jira.ts";
+import type { JiraDraft } from "../../server/api/jira.ts";
 import { draftJiraWorkItem } from "../../server/jira.ts";
 import { visibleContext } from "../../server/model-routing.ts";
 import { runPiUtilityPrompt } from "../../server/runtimes/pi.ts";

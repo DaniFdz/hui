@@ -18,7 +18,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 
 import { BACKLOG_LIMITS, backlogItemId, backlogItemPrompt, type BacklogItem, type BacklogView } from "../shared/backlog.ts";
-import type { SessionJiraIssue } from "../shared/jira.ts";
+import type { SessionJiraIssue } from "./api/jira.ts";
 import { isSessionStage, SESSION_STAGES } from "../shared/session-stages.ts";
 import { taskSuggestionPrompt, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
 import {

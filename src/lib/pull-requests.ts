@@ -1,19 +1,5 @@
-/** Pull requests a session created, as reported to the browser. The reference
- * (repository, number, url) comes from the session transcript; the remaining
- * fields are GitHub facts and stay absent until GitHub has confirmed them. */
-export type PullRequestState = "open" | "draft" | "merged" | "closed";
-
-export type SessionPullRequest = {
-  /** `owner/repo`, as written in the pull request URL. */
-  repository: string;
-  number: number;
-  /** Canonical `https://github.com/<owner>/<repo>/pull/<number>`. */
-  url: string;
-  state?: PullRequestState;
-  title?: string;
-  /** Bounded Markdown description with HTML comments removed. */
-  body?: string;
-};
+/** Formats pull-request references, states and accessible labels in the browser. */
+import type { PullRequestState, SessionPullRequest } from "../api/schema/github.ts";
 
 export function pullRequestReference(pullRequest: Pick<SessionPullRequest, "repository" | "number">): string {
   return `${pullRequest.repository}#${pullRequest.number}`;
