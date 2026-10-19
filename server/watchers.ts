@@ -8,7 +8,7 @@
  * running, done, failed, stopped or dead. State is derived on every refresh: a
  * recorded PID only counts as running when it is the same process HUI started
  * (a reboot reuses PIDs), or, once that shell was killed (`pkill -f` matches
- * the script's path), while a process it started with it still runs in its
+ * the script's path), while a process that started with it still runs in its
  * process group. A watcher started with `keepRunning` that HUI finds dead
  * starts again. */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
@@ -162,8 +162,9 @@ async function ownsProcess(pid: number, startedAtMs: number): Promise<boolean | 
       const age = etimeSeconds((await execFileAsync("ps", ["-o", "etime=", "-p", String(pid)], { timeout: 5_000 })).stdout);
       return age === undefined ? undefined : startedWith(age);
     }
-    // The shell is gone; what it started with it may still run in its group.
-    const { stdout } = await execFileAsync("ps", ["-axo", "pgid=,etime="], { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 });
+    // The shell is gone; what started with it may still run in its group.
+    if (!signalGroupAlive(pid)) return false;
+    const { stdout } = await execFileAsync("ps", ["-A", "-o", "pgid=,etime="], { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 });
     return stdout.split("\n").some((line) => {
       const [group, etime = ""] = line.trim().split(/\s+/u);
       return Number(group) === pid && startedWith(etimeSeconds(etime));

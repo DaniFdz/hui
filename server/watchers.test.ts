@@ -28,7 +28,7 @@ async function waitFor(check: () => boolean, timeoutMs = 8_000): Promise<void> {
 
 /** The processes of one group, with the command each runs. */
 function groupMembers(pgid: number): Array<{ pid: number; command: string }> {
-  return execFileSync("ps", ["-axo", "pid=,pgid=,command="], { encoding: "utf8" }).split("\n").flatMap((line) => {
+  return execFileSync("ps", ["-A", "-o", "pid=,pgid=,command="], { encoding: "utf8" }).split("\n").flatMap((line) => {
     const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(line);
     return match && Number(match[2]) === pgid ? [{ pid: Number(match[1]), command: match[3]! }] : [];
   });
