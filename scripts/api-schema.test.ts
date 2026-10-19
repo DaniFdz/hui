@@ -121,6 +121,7 @@ const ALLOWED = [
   "missing: PUT /__hui/session-groups",
   "module: attachments",
   "module: automation",
+  "module: backlog",
   "module: bot-templates",
   "module: bot-triggers",
   "module: bots",

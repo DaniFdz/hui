@@ -1,3 +1,4 @@
+/** Backlog HTTP dispatch, local/Jira merging and suggestion-to-backlog integration. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createServer, type IncomingMessage } from "node:http";
@@ -48,8 +49,8 @@ test("backlog routes merge Jira and local items, regroup, link and save suggesti
   ], groups: [] }));
   await writeFile(join(dir, "hui", "jira.json"), JSON.stringify({ site: jiraOrigin, email: "dev@acme.test", token: "tok", defaultProject: "CI", accountId: "acc-1" }));
 
-  const { middleware, stopBackend } = await import("./hui.ts");
-  const { agentToolEnvironment } = await import("./agent-tools-bridge.ts");
+  const { middleware, stopBackend } = await import("../hui.ts");
+  const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

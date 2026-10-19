@@ -50,7 +50,7 @@ import { PullRequestStatuses } from "./pull-requests.ts";
 
 
 import { botsOn, readHuiSettings, writeHuiSettings } from "./hui-settings.ts";
-import { CONFIG_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeService } from "./vscode.ts";
 import { VscodeInstaller } from "./vscode-install.ts";
 import { verifyVscodeServer } from "./vscode-providers.ts";
@@ -75,17 +75,13 @@ import {
 } from "./automation.ts";
 import { BotRoutines } from "./bot-routines.ts";
 import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
-import { existingDirectory, resolveWorkingDirectory } from "./working-directories.ts";
+import { resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { createDurableBots } from "./runtimes/durable-bot-access.ts";
-import { suggestWorktreeName } from "./model-routing.ts";
-import { runPiUtilityPrompt } from "./runtimes/pi.ts";
 import type { SessionJiraIssue } from "../shared/jira.ts";
 import {
-  draftJiraWorkItem,
   JiraClient,
-  jiraKeyFromInput,
   JiraConfigStore,
   JiraInputError,
   jiraIssuesFromTranscript,
@@ -93,7 +89,6 @@ import {
   jiraIssueUrl,
   JiraRequestError,
   mergeJiraRefs,
-  normalizeProjectKey,
   parentCandidates,
   validateCreateInput,
   type JiraConfig,
@@ -116,13 +111,9 @@ import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherS
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
 import { Questionnaires } from "./questionnaires.ts";
 import {
-  BacklogInputError,
   BacklogJiraFeed,
-  BacklogNotFoundError,
   BacklogStore,
-  BacklogStoreError,
   createBacklogLifecycle,
-  splitItemId,
 } from "./backlog.ts";
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
 import { WATCHER_LIMITS } from "../shared/watchers.ts";
@@ -136,6 +127,7 @@ import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.t
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
 import { createLocalPathRoutes } from "./routes/local-paths.ts";
 import { createAutomationRoutes, AUTOMATION_ROUTE } from "./routes/automation.ts";
+import { backlogErrorStatus, createBacklogRoutes } from "./routes/backlog.ts";
 import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
 import { handleApiSchemaRoute } from "./routes/api-schema.ts";
@@ -157,7 +149,6 @@ import { AttachmentInputError, readAttachments } from "./sessions/attachments.ts
 import {
   readRegistry,
   SessionNotFoundError,
-  SessionRegistryError,
   updateRegistry,
   type SessionRecord,
 } from "./sessions.ts";
@@ -179,11 +170,6 @@ const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?
  * (POST …/restart), read a bounded log tail (GET …/log) or dismiss one that
  * is not running (DELETE). */
 const SESSION_WATCHER = /^\/__hui\/sessions\/([^/]+)\/watchers\/([^/]+?)(?:\/(stop|restart|log))?$/;
-const BACKLOG_ROUTE = `${PREFIX}backlog`;
-/** One backlog item: PATCH group, DELETE (local), POST …/start, POST
- * …/branch-name (suggested worktree name), and for local tasks POST …/jira
- * (create), …/jira/draft (parents) and …/jira/link. */
-const BACKLOG_ITEM = /^\/__hui\/backlog\/items\/([^/]+?)(?:\/(start|branch-name|jira|jira\/draft|jira\/link))?$/;
 const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 
 const piMutations = new PiMutationService();
@@ -741,14 +727,19 @@ const { startTaskSuggestion, saveSuggestionToBacklog, listBacklog, findBacklogIt
   SessionNotFoundError,
 });
 
-function backlogErrorStatus(error: unknown): number {
-  if (error instanceof BacklogNotFoundError || error instanceof TaskSuggestionNotFoundError) return 404;
-  if (error instanceof BacklogInputError || error instanceof TaskSuggestionInputError || error instanceof JiraInputError) return 400;
-  if (error instanceof SessionBusyError) return 409;
-  if (error instanceof JiraRequestError) return 502;
-  if (error instanceof BacklogStoreError || error instanceof SessionRegistryError) return 500;
-  return error instanceof Error ? 400 : 500;
-}
+const backlogRoutes = createBacklogRoutes({
+  listBacklog,
+  findBacklogItem,
+  startBacklogItem,
+  backlogStore,
+  backlogFeed,
+  jiraConfigReady,
+  jiraConfig: () => jiraConfig,
+  jiraClient,
+  jiraStatuses,
+  createAssignedJiraIssue,
+  taskSuggestionJiraDescription,
+});
 
 /** The SSE form of a session's events, for scripts and other HTTP clients.
  * The heartbeat keeps a proxy from dropping an idle stream, and is unref'd so
@@ -1057,109 +1048,7 @@ async function handleRequest(
 
   if (answered(response, path, await sessionRoutes.handle(routed))) return;
 
-  if (path === BACKLOG_ROUTE) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      const force = new URL(request.url ?? "/", "http://localhost").searchParams.get("refresh") === "1";
-      sendJson(response, 200, await listBacklog(force));
-    } catch (error) {
-      sendJson(response, backlogErrorStatus(error), { error: error instanceof Error ? error.message : "Could not read the backlog." });
-    }
-    return;
-  }
-
-  const backlogItem = path.match(BACKLOG_ITEM);
-  if (backlogItem) {
-    const itemId = decodeURIComponent(backlogItem[1] ?? "");
-    const action = backlogItem[2] ?? "";
-    const [kind, key] = splitItemId(itemId);
-    const allowed = action ? "POST" : request.method === "PATCH" || (request.method === "DELETE" && kind === "local") ? request.method : "";
-    if (!kind || !key) {
-      sendJson(response, 404, { error: "That item is no longer in the backlog." });
-      return;
-    }
-    if (request.method !== allowed) {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      if (!action && request.method === "PATCH") {
-        const body = (await readBody(request)) as Record<string, unknown>;
-        // A Jira item must still be in the backlog; its metadata is keyed by it.
-        await findBacklogItem(itemId);
-        await backlogStore.setGroup(itemId, body["group"]);
-        sendJson(response, 200, await listBacklog());
-        return;
-      }
-      if (!action) {
-        await backlogStore.removeTask(key);
-        sendJson(response, 200, await listBacklog());
-        return;
-      }
-      if (action === "start") {
-        const body = (await readBody(request)) as Record<string, unknown>;
-        const session = await startBacklogItem(itemId, body);
-        sendJson(response, 200, { session, backlog: await listBacklog() });
-        return;
-      }
-      if (action === "branch-name") {
-        const body = (await readBody(request)) as Record<string, unknown>;
-        const item = await findBacklogItem(itemId);
-        const cwd = await existingDirectory(body["cwd"]);
-        sendJson(response, 200, await suggestWorktreeName({ cwd, item, settings: await readHuiSettings() }));
-        return;
-      }
-      // Jira actions only apply to local tasks without a key yet.
-      await jiraConfigReady;
-      if (kind !== "local") throw new BacklogInputError("Only local tasks can be filed in or linked to Jira.");
-      const task = (await backlogStore.read()).tasks.find((candidate) => candidate.id === key);
-      if (!task) throw new BacklogNotFoundError("That task is no longer in the backlog.");
-      if (task.jira) throw new BacklogInputError(`That task is already linked to ${task.jira.key}.`);
-      const body = (await readBody(request)) as Record<string, unknown>;
-      const client = jiraClient();
-      if (action === "jira/draft") {
-        const project = normalizeProjectKey(body["project"]) || jiraConfig!.defaultProject;
-        if (!project) throw new JiraInputError("Choose a Jira project.");
-        const { parents } = await parentCandidates(client, project);
-        const draft = await draftJiraWorkItem({
-          project,
-          parents,
-          title: task.title,
-          cwd: task.cwd ?? CONFIG_DIR,
-          context: taskSuggestionJiraDescription(task),
-          model: (await readHuiSettings()).models.utility,
-          run: runPiUtilityPrompt,
-        });
-        sendJson(response, 200, { draft });
-        return;
-      }
-      if (action === "jira/link") {
-        const linkKey = typeof body["key"] === "string" ? jiraKeyFromInput(body["key"]) : undefined;
-        if (!linkKey) throw new JiraInputError("Enter a Jira work item key such as CI-123.");
-        const details = await client.issue(linkKey);
-        const ref = { key: linkKey, url: jiraIssueUrl(jiraConfig!.site, linkKey) };
-        await backlogStore.attachJira(key, ref);
-        jiraStatuses.remember(ref, details);
-        sendJson(response, 200, { issue: ref, backlog: await listBacklog() });
-        return;
-      }
-      const { ref, warning } = await createAssignedJiraIssue(client, body);
-      try {
-        await backlogStore.attachJira(key, ref);
-      } catch (error) {
-        // The work item exists; report where it went instead of hiding it.
-        throw new BacklogInputError(`${ref.key} was created but could not be attached to the task: ${error instanceof Error ? error.message : "unknown error"}`);
-      }
-      backlogFeed.invalidate();
-      sendJson(response, 200, { issue: ref, backlog: await listBacklog(), ...(warning ? { warning } : {}) });
-    } catch (error) {
-      sendJson(response, backlogErrorStatus(error), { error: error instanceof Error ? error.message : "Could not update the backlog." });
-    }
-    return;
-  }
+  if (answered(response, path, await backlogRoutes.handle(routed))) return;
 
   const suggestionRoute = path.match(SESSION_SUGGESTION);
   if (suggestionRoute) {
