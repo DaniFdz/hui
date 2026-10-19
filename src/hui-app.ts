@@ -132,32 +132,11 @@ import {
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
 import { botsEnabled, type Settings } from "./lib/settings.ts";
-import { currentSettings, patchSettings, refreshSettings, settingsWritten } from "./lib/settings/settings-store.ts";
-import type { ThemeMode, ThemeVariant } from "./lib/theme.ts";
-import {
-  applyAccent,
-  applyMode,
-  applyTheme,
-  importTheme,
-  loadThemePreviews,
-  selectedThemeId,
-  selectedThemeVariant,
-} from "./lib/theme/theme-store.ts";
-import type { ThemePreview } from "./lib/theme/theme-store.ts";
-import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "./lib/pi.ts";
-import { installPiPackage, installPiSkill, loadPiConfig, loadPiResource, removePiPackage } from "./api/pi.ts";
+import { refreshSettings, settingsWritten } from "./lib/settings/settings-store.ts";
+import type { PiSnapshot } from "./lib/pi.ts";
 import { loadWorkingDirectorySuggestions } from "./api/working-directories.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
-import {
-  loadGatewayHealth,
-  loadPower,
-  loadWorkspaceInspection,
-  setLidAwake,
-  type GatewayHealth,
-  type WorkspaceInspection,
-} from "./api/control-surfaces.ts";
-import type { PowerStatus } from "../shared/power.ts";
-import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./api/observability.ts";
+import { SettingsController } from "./controllers/settings-controller.ts";
 import { renderHome, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
@@ -195,7 +174,7 @@ import {
   type CommandPaletteAction,
 } from "./views/command-palette.ts";
 import { isPiSurface, renderPiSurface } from "./views/pi-surfaces.ts";
-import { renderPiResourceReader, type PiResourceReaderState } from "./views/pi-resource-reader.ts";
+import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
@@ -421,36 +400,19 @@ export class HuiApp extends HuiElement {
   private directorySuggestionRequest = 0;
   private gitCheckoutRequest = 0;
   private inspectedCheckoutDirectory = "";
-  private launchPiRequest: Promise<void> | undefined;
   private readonly automation = new AutomationController(this);
+  private readonly control = new SettingsController(this, {
+    piLoaded: (snapshot) => this.seedLaunchPreferences(snapshot),
+    copyFailed: (message) => {
+      this.note = message;
+      this.noteLevel = "error";
+    },
+  });
+  private renderedSettings: Settings | undefined;
   private groupActionReturnFocus: HTMLElement | undefined;
 
-  @state() private settings: Settings = currentSettings();
-  @state() private themeId: string = selectedThemeId();
-  @state() private variant: ThemeVariant = selectedThemeVariant();
-  @state() private previews: readonly ThemePreview[] = [];
   @state() private settingsOpen = false;
   @state() private settingsPage: SettingsPage = "appearance";
-  /** `undefined` until the backend answers, so an empty list never reads as "none". */
-  @state() private pi: PiSnapshot | undefined;
-  @state() private piLoading = false;
-  @state() private piError = "";
-  @state() private piOperation: PiMutationState | undefined;
-  @state() private piRemoveCandidate = "";
-  @state() private piResourceReader: PiResourceReaderState | undefined;
-  @state() private health: GatewayHealth | undefined;
-  @state() private healthError = "";
-  /** macOS sleep prevention; `null` when the gateway is not on macOS. */
-  @state() private power: PowerStatus | null | undefined;
-  @state() private powerNoticeDismissed = false;
-  @state() private workspaceInspection: WorkspaceInspection | undefined;
-  @state() private workspaceError = "";
-  @state() private controlLoading = false;
-  @state() private observability: ObservabilitySnapshot | undefined;
-  @state() private observabilityLoading = false;
-  @state() private observabilityError = "";
-  @state() private saveFailed = false;
-  private settingsSaveRevision = 0;
   /** Session-scoped editor state: a late selection can never retarget an action. */
   @state() private renamingFor = "";
   @state() private deletingFor = "";
@@ -499,8 +461,6 @@ export class HuiApp extends HuiElement {
   @state() private attachments: readonly Attachment[] = [];
   /** Which sidebar row menu is open. Only one at a time. */
   @state() private menuFor = "";
-  @state() private themeImportNote = "";
-  @state() private themeImportFailed = false;
   @state() private commandPaletteOpen = false;
   @state() private commandPaletteQuery = "";
   @state() private commandPaletteActiveIndex = 0;
@@ -677,9 +637,6 @@ export class HuiApp extends HuiElement {
   private pendingLaunchPrompt = "";
   private pendingLaunchAttachments: readonly Attachment[] = [];
   private commandPaletteReturnFocus: HTMLElement | undefined;
-  private piResourceReaderReturnFocus: HTMLElement | undefined;
-  private piResourceReaderRequest = 0;
-  private piResourceCopyTimer: number | undefined;
   private composerDraftKey = NEW_SESSION_DRAFT_KEY;
   private composerDraftLoad = 0;
   private composerDraftEdit = 0;
@@ -846,8 +803,6 @@ export class HuiApp extends HuiElement {
     this.followed = undefined;
     if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
     clearTimeout(this.actionToastTimer);
-    if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
-    this.piResourceCopyTimer = undefined;
     if (this.updatePollTimer !== undefined) window.clearTimeout(this.updatePollTimer);
     this.statusStreamStop?.();
     this.statusStreamStop = undefined;
@@ -857,50 +812,17 @@ export class HuiApp extends HuiElement {
   }
 
   private sessionProgressPoll?: number;
-  private gatewayHealthPending = false;
-
-  private async refreshGatewayHealth() {
-    if (this.gatewayHealthPending || this.controlLoading) return;
-    this.gatewayHealthPending = true;
-    try {
-      this.health = await loadGatewayHealth();
-      this.healthError = "";
-    } catch (error) {
-      this.healthError = error instanceof Error ? error.message : "Could not read gateway health.";
-    } finally {
-      this.gatewayHealthPending = false;
-    }
-  }
-
-  private powerRequest = 0;
-
-  /** The newest request wins, so an older poll never undoes a click. */
-  private async refreshPower(next?: Promise<PowerStatus | null>) {
-    const request = ++this.powerRequest;
-    let power: PowerStatus | null | undefined;
-    try {
-      power = await (next ?? loadPower());
-    } catch {
-      // Unknown rather than stale: no banner or switches until the gateway answers.
-    }
-    if (request !== this.powerRequest) return;
-    this.power = power;
-    if (!power?.lidOn) this.powerNoticeDismissed = false;
-  }
-
-  private setLidAwakeFromUi = (on: boolean) => void this.refreshPower(setLidAwake(on));
-
   override firstUpdated() {
-    if (!this.embeddedPane) void this.refreshPower();
+    if (!this.embeddedPane) void this.control.refreshPower();
     this.sessionProgressPoll = window.setInterval(() => {
       // Not on macOS stays not on macOS; otherwise the banner follows the gateway.
-      if (!this.embeddedPane && !document.hidden && this.power !== null) void this.refreshPower();
+      if (!this.embeddedPane && !document.hidden && this.control.power !== null) void this.control.refreshPower();
       if (!document.hidden && this.transcript.length) this.requestUpdate();
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
-        void this.refreshGatewayHealth();
+        void this.control.refreshGatewayHealth();
       }
       // Roster times ("2m") age while nothing else re-renders the sidebar.
-      if (!this.embeddedPane && !document.hidden && botsEnabled(this.settings) && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
+      if (!this.embeddedPane && !document.hidden && botsEnabled(this.control.settings) && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
         this.requestUpdate();
       }
     }, 3000);
@@ -911,9 +833,7 @@ export class HuiApp extends HuiElement {
       this.loadLaunchPreferences();
       // The home page shows the launch form too, without a page navigation.
       this.loadLaunchWorkers();
-      void loadThemePreviews().then((previews) => {
-        this.previews = previews;
-      });
+      this.control.loadPreviews();
     }
   }
 
@@ -1110,9 +1030,10 @@ export class HuiApp extends HuiElement {
       this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
     }
     // Bots turned on or off, here or (through the bot stream) on another screen.
-    if (changed.has("settings")) {
-      const before = changed.get("settings") as Settings | undefined;
-      if (before && botsEnabled(before) !== botsEnabled(this.settings)) this.followBotsSetting();
+    if (this.renderedSettings !== this.control.settings) {
+      const before = this.renderedSettings;
+      this.renderedSettings = this.control.settings;
+      if (before && botsEnabled(before) !== botsEnabled(this.control.settings)) this.followBotsSetting();
     }
     // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
     if (!this.embeddedPane && this.view === "bot" && !this.callsStatus) void this.loadCallsStatus();
@@ -1168,7 +1089,7 @@ export class HuiApp extends HuiElement {
     const updateDialog = this.updateOpen ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
     if (updateDialog instanceof HTMLDialogElement) ensureModal(updateDialog);
     if (groupDialog instanceof HTMLDialogElement) ensureModal(groupDialog);
-    const resourceReader = this.piResourceReader ? this.renderRoot.querySelector?.(".pi-resource-reader-modal") : null;
+    const resourceReader = this.control.piResourceReader ? this.renderRoot.querySelector?.(".pi-resource-reader-modal") : null;
     if (resourceReader instanceof HTMLDialogElement) ensureModal(resourceReader);
     const commandPalette = this.commandPaletteOpen ? this.renderRoot.querySelector?.(".command-palette-dialog") : null;
     if (commandPalette instanceof HTMLDialogElement) {
@@ -1280,7 +1201,7 @@ export class HuiApp extends HuiElement {
     this.automation.stopPolling();
     if (target.kind === "bot") {
       // Bots exist in the UI only while Settings → Labs → Bots is on; a bot's address lands on the normal home otherwise.
-      if (this.embeddedPane || !botsEnabled(this.settings)) {
+      if (this.embeddedPane || !botsEnabled(this.control.settings)) {
         this.navigate({ kind: "home" }, true);
         return;
       }
@@ -1326,7 +1247,7 @@ export class HuiApp extends HuiElement {
       this.pendingSessionId = "";
       this.activePage = target.page;
       this.view = "surface";
-      if (isPiSurface(target.page)) this.loadControlSurfaceData();
+      if (isPiSurface(target.page)) this.control.loadControlSurfaceData();
       if (isObservabilitySurface(target.page) || isOwnedSurface(target.page)) this.loadOperationalData();
       if (target.page.id === "cron" || target.page.id === "tasks") {
         this.automation.load();
@@ -1366,7 +1287,7 @@ export class HuiApp extends HuiElement {
     if (session) {
       this.pendingSessionId = "";
       // While bots are off a bot's chat opens nowhere, like a session that is gone (the gateway refuses it too).
-      if (session.bot && !botsEnabled(this.settings)) {
+      if (session.bot && !botsEnabled(this.control.settings)) {
         this.navigate({ kind: "home" }, true);
         return;
       }
@@ -1785,7 +1706,7 @@ export class HuiApp extends HuiElement {
     return html`<hui-backlog-start-dialog
       .item=${this.backlogStart.item}
       .target=${this.backlogStart.target}
-      .branchPrefix=${this.settings.branchPrefix}
+      .branchPrefix=${this.control.settings.branchPrefix}
       .onClose=${() => { this.backlogStart = undefined; }}
       .onStarted=${this.backlogStarted}
     ></hui-backlog-start-dialog>`;
@@ -1987,12 +1908,12 @@ export class HuiApp extends HuiElement {
   /** Registers the built-in Work view kinds, reads the browser-local record and follows the narrow breakpoint. */
   private setupWorkPane() {
     registerWorkViewKind(terminalWorkViewKind({
-      fontFamily: () => this.settings.fontTerminal,
+      fontFamily: () => this.control.settings.fontTerminal,
       unavailable: (sessionId) => sessionId && this.listedSession(sessionId)?.worker
         ? "Terminals run on this gateway's machine; this conversation runs on a remote worker."
         : undefined,
     }));
-    registerWorkViewKind(browserWorkViewKind({ enabled: () => this.settings.browser.enabled }));
+    registerWorkViewKind(browserWorkViewKind({ enabled: () => this.control.settings.browser.enabled }));
     registerWorkViewKind(filesWorkViewKind);
     registerWorkViewKind(vscodeWorkViewKind);
     registerWorkViewKind(diffWorkViewKind);
@@ -2842,7 +2763,7 @@ export class HuiApp extends HuiElement {
   /** A draft has no runtime yet: offer the local PI skills it will start with. */
   private runtimeCommands(): readonly RuntimeCommand[] {
     if (this.composerSession()) return this.commands;
-    return this.launchWorker ? [] : skillCommands(this.pi?.skills ?? [], this.settings.disabledSkills);
+    return this.launchWorker ? [] : skillCommands(this.control.pi?.skills ?? [], this.control.settings.disabledSkills);
   }
 
   private menuCommands(): ComposerCommand[] {
@@ -2947,7 +2868,7 @@ export class HuiApp extends HuiElement {
   };
 
   /** The shell's roster while bots are on (Labs → Bots): what an `@` in this composer suggests and whose faces its chat shows. */
-  private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneBots ?? [] : botsEnabled(this.settings) ? this.bots : [];
+  private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneBots ?? [] : botsEnabled(this.control.settings) ? this.bots : [];
 
   private retryLocalPaths = () => {
     const query = this.localPathQuery;
@@ -3390,7 +3311,7 @@ export class HuiApp extends HuiElement {
     if (!this.forkTarget) return null;
     return html`<hui-fork-dialog
       .target=${this.forkTarget}
-      .branchPrefix=${this.settings.branchPrefix}
+      .branchPrefix=${this.control.settings.branchPrefix}
       .onClose=${() => { this.forkTarget = undefined; }}
       .onForked=${this.forked}
     ></hui-fork-dialog>`;
@@ -4030,7 +3951,7 @@ export class HuiApp extends HuiElement {
    * reading the list whenever a bot's session changes status. */
   private syncBotsStream() {
     if (this.embeddedPane) return;
-    const wanted = botsEnabled(this.settings) && !this.botsStreamUnsupported;
+    const wanted = botsEnabled(this.control.settings) && !this.botsStreamUnsupported;
     if (wanted && !this.botsStreamStop) {
       this.botsStreamStop = subscribeBots({
         onUpdate: (update, first) => {
@@ -4059,7 +3980,7 @@ export class HuiApp extends HuiElement {
             const retry = !this.botsStreamRetried;
             void settingsWritten().then(refreshSettings).then((settings) => {
               if (!settings) return;
-              this.settings = settings;
+              this.control.adoptSettings(settings);
               if (retry && botsEnabled(settings)) {
                 this.botsStreamRetried = true;
                 this.syncBotsStream();
@@ -4150,7 +4071,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) return;
     // The gateway refuses the bot stream until it has the setting too: with bots on, the stream starts once this
     // screen's own write has landed; with them off, it stops at once.
-    if (botsEnabled(this.settings)) {
+    if (botsEnabled(this.control.settings)) {
       void settingsWritten().then(() => this.syncBotsStream());
       return;
     }
@@ -4166,7 +4087,7 @@ export class HuiApp extends HuiElement {
   /** The Agents | Bots switch shows exactly while Settings → Labs → Bots is on. Without it the sidebar is the one it
    * was before bots, and a remembered Bots choice shows Agents until the switch is back. */
   private shellBotsProps(): ShellBotsProps | undefined {
-    if (!botsEnabled(this.settings)) return undefined;
+    if (!botsEnabled(this.control.settings)) return undefined;
     return {
       tab: this.sidebarTab,
       onTab: this.setSidebarTab,
@@ -4272,15 +4193,15 @@ export class HuiApp extends HuiElement {
 
   /** Settings' utility model by its catalog name, the default of a bot's utility model. */
   private utilityModelName(): string | undefined {
-    const ref = this.settings.models.utility;
+    const ref = this.control.settings.models.utility;
     if (!ref) return undefined;
-    return this.pi?.model.catalog.find((entry) => `${entry.provider}/${entry.id}` === ref)?.name ?? ref;
+    return this.control.pi?.model.catalog.find((entry) => `${entry.provider}/${entry.id}` === ref)?.name ?? ref;
   }
 
   /** The Calls section: GPT-Live's default voice, which a bot's "Default" follows, and whether a ChatGPT login lets
    * calls run. That is left out until the gateway has said, so a signed-in operator never sees the hint flash. */
   private botSettingsCall(): BotSettingsProps["call"] {
-    return { defaultVoice: this.settings.calls.voice, ...(this.callsStatus ? { ready: callsReady(this.callsStatus) } : {}) };
+    return { defaultVoice: this.control.settings.calls.voice, ...(this.callsStatus ? { ready: callsReady(this.callsStatus) } : {}) };
   }
 
   private botSettingsSavesOf(botId: string): BotSettingsSaves {
@@ -4719,7 +4640,7 @@ export class HuiApp extends HuiElement {
         facts: this.botFacts,
         triggers: this.botTriggers.props(bot),
         settings: {
-          models: this.pi?.model.catalog ?? [],
+          models: this.control.pi?.model.catalog ?? [],
           ...(utilityDefault ? { utilityDefault } : {}),
           saves: this.botSettingsSavesOf(bot.id),
           onChange: (key, value) => this.changeBotSetting(bot.id, key, value),
@@ -4830,59 +4751,6 @@ export class HuiApp extends HuiElement {
 
   /* ── settings ─────────────────────────────────────────────────────────── */
 
-  private async save(patch: Partial<Settings>) {
-    const revision = ++this.settingsSaveRevision;
-    const pending = patchSettings(patch);
-    // Render the store's optimistic snapshot before another control builds a
-    // nested patch. Waiting for disk here reintroduced stale Labs/Chat values.
-    this.settings = currentSettings();
-    const saved = await pending;
-    if (revision !== this.settingsSaveRevision) return;
-    this.saveFailed = !saved;
-    this.settings = currentSettings();
-  }
-
-  private chooseMode = (mode: ThemeMode) => {
-    applyMode(mode);
-    void this.save({ themeMode: mode });
-  };
-
-  private chooseTheme = (id: string) => {
-    void this.applyTheme(id);
-  };
-
-  private chooseAccent = (accent: string) => {
-    applyAccent(accent);
-    void this.save({ accent });
-  };
-
-  private async applyTheme(id: string) {
-    // Read the selection back rather than assuming it: a theme whose file fails
-    // to load is not applied, and the picker has to snap back to the old one.
-    const variant = await applyTheme(id);
-    this.themeId = selectedThemeId();
-    this.variant = variant ?? this.variant;
-    if (variant) {
-      await this.save({ theme: selectedThemeId() });
-    }
-  }
-
-  private importTheme = (url: string) => {
-    this.themeImportNote = "Importing…";
-    this.themeImportFailed = false;
-    void importTheme(url)
-      .then(async (id) => {
-        this.previews = await loadThemePreviews();
-        this.themeImportNote = `Imported ${id}.`;
-        this.themeImportFailed = false;
-        await this.applyTheme(id);
-      })
-      .catch((error: unknown) => {
-        this.themeImportNote = error instanceof Error ? error.message : "Import failed.";
-        this.themeImportFailed = true;
-      });
-  };
-
   private closeSettings = () => {
     const exit = settingsCloseNavigation(this.settingsReturnTarget);
     this.navigate(exit.target, exit.replace);
@@ -4899,44 +4767,13 @@ export class HuiApp extends HuiElement {
   };
 
   private loadSettingsData = () => {
-    const stale = Boolean(this.piError || this.healthError || this.workspaceError);
-    if (stale || !this.pi || !this.health || !this.workspaceInspection) {
-      this.loadControlSurfaceData(stale);
-    }
+    this.control.loadStale();
     this.automation.load();
-  };
-
-  private loadControlSurfaceData = (force = false) => {
-    if (this.controlLoading) return;
-    if (!force && this.pi && this.health && this.workspaceInspection) return;
-    this.controlLoading = true;
-    this.piLoading = true;
-    this.piError = "";
-    this.healthError = "";
-    this.workspaceError = "";
-    void Promise.allSettled([loadPiConfig(), loadGatewayHealth(), loadWorkspaceInspection()])
-      .then(([pi, health, workspaces]) => {
-        const message = (reason: unknown, fallback: string) =>
-          reason instanceof Error ? reason.message : fallback;
-        if (pi.status === "fulfilled") {
-          this.pi = pi.value;
-          this.seedLaunchPreferences(pi.value);
-        }
-        else this.piError = message(pi.reason, "Could not read PI configuration.");
-        if (health.status === "fulfilled") this.health = health.value;
-        else this.healthError = message(health.reason, "Could not read gateway health.");
-        if (workspaces.status === "fulfilled") this.workspaceInspection = workspaces.value;
-        else this.workspaceError = message(workspaces.reason, "Could not inspect workspaces.");
-      })
-      .finally(() => {
-        this.controlLoading = false;
-        this.piLoading = false;
-      });
   };
 
   private seedLaunchPreferences(snapshot: PiSnapshot) {
     if (!this.launchModel) {
-      this.launchModel = this.settings.models.primary || (
+      this.launchModel = this.control.settings.models.primary || (
         snapshot.model.defaultProvider && snapshot.model.defaultModel
           ? `${snapshot.model.defaultProvider}/${snapshot.model.defaultModel}`
           : ""
@@ -4953,154 +4790,18 @@ export class HuiApp extends HuiElement {
   }
 
   private loadLaunchPreferences() {
-    if (this.pi) {
-      this.seedLaunchPreferences(this.pi);
+    if (this.control.pi) {
+      this.seedLaunchPreferences(this.control.pi);
       return;
     }
-    if (this.launchPiRequest) return;
-    this.piLoading = true;
-    this.launchPiRequest = loadPiConfig()
-      .then((snapshot) => {
-        this.pi = snapshot;
-        this.piError = "";
-        this.seedLaunchPreferences(snapshot);
-      })
-      .catch((error: unknown) => {
-        this.piError = error instanceof Error ? error.message : "Could not read PI configuration.";
-      })
-      .finally(() => {
-        this.piLoading = false;
-        this.launchPiRequest = undefined;
-      });
+    this.control.loadPi();
   }
-
-  private runPiMutation(
-    kind: PiMutationKind,
-    target: string,
-    operation: () => Promise<PiMutationResult>,
-  ) {
-    if (this.piOperation?.status === "running") return;
-    this.piOperation = { kind, target, status: "running", message: kind === "skill-install" ? "The installer agent is inspecting the skill source." : "PI is updating its package configuration." };
-    void operation()
-      .then((result) => {
-        this.pi = result.snapshot;
-        this.piOperation = { kind, target: result.target, status: "ok", message: result.message };
-        this.piRemoveCandidate = "";
-      })
-      .catch((error: unknown) => {
-        this.piOperation = {
-          kind,
-          target,
-          status: "error",
-          message: error instanceof Error ? error.message : "PI operation failed.",
-        };
-      });
-  }
-
-  private installPiPackage = (url: string) => {
-    this.runPiMutation("package-install", url, () => installPiPackage(url));
-  };
-
-  private requestPiPackageRemoval = (source: string) => {
-    this.piRemoveCandidate = source;
-  };
-
-  private cancelPiPackageRemoval = () => {
-    this.piRemoveCandidate = "";
-  };
-
-  private removePiPackage = (source: string) => {
-    this.runPiMutation("package-remove", source, () => removePiPackage(source));
-  };
-
-  private installPiSkill = (url: string) => {
-    this.runPiMutation("skill-install", url, () => installPiSkill(url));
-  };
-
-  private setPiSkillEnabled = (skill: PiSnapshot["skills"][number], enabled: boolean) => {
-    const disabledSkills = this.settings.disabledSkills.filter((entry) => entry.path !== skillPreferencePath(skill) && entry.path !== skill.path);
-    if (!enabled) disabledSkills.push({ name: skill.name, path: skillPreferencePath(skill) });
-    void this.save({ disabledSkills });
-  };
-
-  private setPiPluginEnabled = (resource: PiSnapshot["settings"]["resources"][number], enabled: boolean) => {
-    const disabledPlugins = this.settings.disabledPlugins.filter((entry) => entry.id !== resource.id);
-    if (!enabled) disabledPlugins.push({ id: resource.id, name: resource.label, kind: resource.kind });
-    void this.save({ disabledPlugins });
-  };
-
-  private readPiResource = (kind: "skill" | "plugin", resource: { id: string; name?: string; label?: string }) => {
-    const title = resource.name ?? resource.label ?? "PI resource";
-    const request = ++this.piResourceReaderRequest;
-    if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
-    this.piResourceCopyTimer = undefined;
-    this.piResourceReaderReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-    this.piResourceReader = { title, status: "loading" };
-    void loadPiResource(kind, resource.id).then(
-      (document) => {
-        if (request === this.piResourceReaderRequest) this.piResourceReader = { title, status: "ready", document };
-      },
-      (error: unknown) => {
-        if (request === this.piResourceReaderRequest) {
-          this.piResourceReader = { title, status: "error", error: error instanceof Error ? error.message : "Could not read this resource." };
-        }
-      },
-    );
-  };
-
-  private copyPiResource = () => {
-    const reader = this.piResourceReader;
-    if (!reader?.document) return;
-    const resourceId = reader.document.id;
-    void writeClipboardText(reader.document.content).then((copied) => {
-      if (!copied) throw new Error("Clipboard write failed");
-      if (this.piResourceReader !== reader) return;
-      this.piResourceReader = { ...reader, copied: true };
-      if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
-      this.piResourceCopyTimer = window.setTimeout(() => {
-        const current = this.piResourceReader;
-        if (current && current.document?.id === resourceId) {
-          this.piResourceReader = { ...current, copied: false };
-        }
-      }, 1_500);
-    }).catch(() => {
-      this.note = "Could not copy the resource to the clipboard.";
-      this.noteLevel = "error";
-    });
-  };
-
-  private closePiResourceReader = () => {
-    this.piResourceReaderRequest += 1;
-    if (this.piResourceCopyTimer !== undefined) window.clearTimeout(this.piResourceCopyTimer);
-    this.piResourceCopyTimer = undefined;
-    closeModal(this.renderRoot.querySelector<HTMLDialogElement>(".pi-resource-reader-modal") ?? undefined);
-    this.piResourceReader = undefined;
-    const target = this.piResourceReaderReturnFocus;
-    this.piResourceReaderReturnFocus = undefined;
-    target?.focus();
-  };
 
   private loadOperationalData = (force = false) => {
-    if (this.observabilityLoading) return;
-    this.loadControlSurfaceData(force);
+    if (this.control.observabilityLoading) return;
+    this.control.loadControlSurfaceData(force);
     this.automation.load();
-    if (!force && this.observability) return;
-    this.observabilityLoading = true;
-    this.observabilityError = "";
-    void loadObservability()
-      .then((snapshot) => { this.observability = snapshot; })
-      .catch((error: unknown) => { this.observabilityError = error instanceof Error ? error.message : "Could not read observability state."; })
-      .finally(() => { this.observabilityLoading = false; });
-  };
-
-  private exportDiagnostics = () => {
-    void downloadDiagnostics().catch((error: unknown) => {
-      this.observabilityError = error instanceof Error ? error.message : "Could not export diagnostics.";
-    });
-  };
-
-  private patchOwnedSettings = (patch: Partial<Settings>) => {
-    void this.save(patch);
+    this.control.loadObservability(force);
   };
 
   /** A component inside the app (a Work pane launcher's or the VS Code view's Settings link) asks for a Settings page,
@@ -5124,12 +4825,6 @@ export class HuiApp extends HuiElement {
     const current = resolveNavigation(window.location.pathname).target;
     this.settingsReturnTarget = settingsReturnTarget(current);
     this.navigate({ kind: "settings", page });
-  };
-
-  private controlSurfaceError = (page: HuiPage): string => {
-    if (page.id === "connection") return [this.piError, this.healthError].filter(Boolean).join(" ");
-    if (page.id === "memory-import") return this.workspaceError;
-    return this.piError;
   };
 
   private selectSettingsPage = (page: SettingsPage) => {
@@ -5473,11 +5168,11 @@ export class HuiApp extends HuiElement {
   }
 
   private homeProps(): HomeProps {
-    const launchModels = this.pi?.model.catalog ?? [];
+    const launchModels = this.control.pi?.model.catalog ?? [];
     const launchModel = resolveLaunchModel(
       launchModels,
       this.launchModel,
-      `${this.pi?.model.defaultProvider}/${this.pi?.model.defaultModel}`,
+      `${this.control.pi?.model.defaultProvider}/${this.control.pi?.model.defaultModel}`,
     );
     return {
       session: this.selected,
@@ -5505,7 +5200,7 @@ export class HuiApp extends HuiElement {
       rewindPending: this.rewindPending,
       forkPending: Boolean(this.forkTarget),
       draft: this.draft,
-      chatPreferences: this.settings.chat,
+      chatPreferences: this.control.settings.chat,
       queue: this.queue,
       thinking: this.thinking,
       ...(this.fast === undefined ? {} : { fast: this.fast }),
@@ -5531,10 +5226,10 @@ export class HuiApp extends HuiElement {
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
       onSplitPane: this.paneNarrow ? undefined : this.onPaneSplit,
       onOpenTerminal: this.onPaneTerminal ? this.openTerminal : undefined,
-      onOpenBrowser: this.onPaneBrowser && this.settings.browser.enabled && this.transcript.some((item) => item.kind === "tool" && item.name === "browser")
+      onOpenBrowser: this.onPaneBrowser && this.control.settings.browser.enabled && this.transcript.some((item) => item.kind === "tool" && item.name === "browser")
         ? () => this.onPaneBrowser?.()
         : undefined,
-      browserPreview: this.settings.browser.enabled
+      browserPreview: this.control.settings.browser.enabled
         ? { visible: this.paneVisible, ...(this.onPaneBrowser ? { onExpand: () => this.onPaneBrowser?.() } : {}) }
         : undefined,
       terminalOpening: this.terminalOpening,
@@ -5681,7 +5376,7 @@ export class HuiApp extends HuiElement {
       directorySuggestions: this.directorySuggestions,
       // Git inspection reads this machine's disk; folder suggestions come from the worker.
       onDirectoryInput: this.launchWorker ? (input) => this.loadDirectorySuggestions(input, this.launchWorker) : this.requestDirectorySuggestions,
-      branchPrefix: this.settings.branchPrefix,
+      branchPrefix: this.control.settings.branchPrefix,
       gitCheckout: this.gitCheckout,
       gitCheckoutLoading: this.gitCheckoutLoading,
       workspaceWorktree: this.workspaceWorktree,
@@ -5705,7 +5400,7 @@ export class HuiApp extends HuiElement {
     return {
       ...this.automation.props(),
       sessions: this.groups.flatMap((group) => group.sessions),
-      bots: botsEnabled(this.settings),
+      bots: botsEnabled(this.control.settings),
     };
   }
 
@@ -5722,11 +5417,11 @@ export class HuiApp extends HuiElement {
         },
       })}
       ${this.embeddedPane ? null : renderPowerNotice({
-        power: this.power,
-        dismissed: this.powerNoticeDismissed,
+        power: this.control.power,
+        dismissed: this.control.powerNoticeDismissed,
         inert: noticesInert,
-        onTurnOff: () => { this.setLidAwakeFromUi(false); this.composerTextarea?.focus(); },
-        onDismiss: () => { this.powerNoticeDismissed = true; this.composerTextarea?.focus(); },
+        onTurnOff: () => { this.control.setLidAwake(false); this.composerTextarea?.focus(); },
+        onDismiss: () => { this.control.dismissPowerNotice(); this.composerTextarea?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
       ${this.actionToast ? html`<div class="app-toast action-toast" data-level=${this.actionToast.failed ? "error" : "info"}>
@@ -5950,63 +5645,20 @@ export class HuiApp extends HuiElement {
             onConfirmRemove: (path, acknowledged) => this.removeWorktreePaths([path], "single", acknowledged),
             onConfirmCleanup: (paths) => this.removeWorktreePaths(paths, "merged"),
           },
-          pi: this.pi,
-          piLoading: this.piLoading,
-          piError: this.piError,
-          health: this.health,
-          healthError: this.healthError,
-          power: this.power,
-          workspaces: this.workspaceInspection,
-          workspaceError: this.workspaceError,
-          observability: this.observability,
-          observabilityError: this.observabilityError,
+          ...this.control.props(),
           onRefreshObservability: () => this.loadOperationalData(true),
-          onExportDiagnostics: this.exportDiagnostics,
-          onRetryPi: () => this.loadControlSurfaceData(true),
           onSelectPage: this.selectSettingsPage,
-          previews: this.previews,
-          settings: this.settings,
-          themeId: this.themeId,
-          variant: this.variant,
-          saveFailed: this.saveFailed,
-          importNote: this.themeImportNote,
-          importFailed: this.themeImportFailed,
-          onSelectTheme: this.chooseTheme,
-          onSelectMode: this.chooseMode,
-          onSelectAccent: this.chooseAccent,
-          onChangeBranchPrefix: (branchPrefix) => void this.save({ branchPrefix }),
-          onChangeAppearance: (next) => void this.save(next),
-          onChangeChat: (chat) => void this.save({ chat }),
-          onChangeBrowser: (browser) => this.save({ browser }),
-          onChangeVscode: (vscode) => this.save({ vscode }),
-          onChangeCodemode: (codemode) => void this.save({ codemode }),
-          onChangeQuestions: (questions) => void this.save({ questions }),
-          onChangeCalls: (calls) => void this.save({ calls }),
-          onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),
-          onSetLidAwake: this.setLidAwakeFromUi,
           onChangeModels: (models) => {
             this.launchModel = models.primary;
-            void this.save({ models });
+            void this.control.save({ models });
           },
-          onImportTheme: this.importTheme,
           onClose: this.closeSettings,
-          piOperation: this.piOperation,
-          piRemoveCandidate: this.piRemoveCandidate,
-          onInstallPackage: this.installPiPackage,
-          onRequestRemovePackage: this.requestPiPackageRemoval,
-          onCancelRemovePackage: this.cancelPiPackageRemoval,
-          onConfirmRemovePackage: this.removePiPackage,
-          onInstallSkill: this.installPiSkill,
-          onSetSkillEnabled: this.setPiSkillEnabled,
-          onSetPluginEnabled: this.setPiPluginEnabled,
-          onReadSkill: (skill) => this.readPiResource("skill", skill),
-          onReadPlugin: (resource) => this.readPiResource("plugin", resource),
           ...this.automationProps(),
         })}
         ${this.renderFloatingCallBar()}
         ${this.commandPalette()}
         ${this.updateDialog()}
-        ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}
+        ${renderPiResourceReader(this.control.piResourceReader, this.control.closePiResourceReader, this.control.copyPiResource)}
       </div>`;
     }
 
@@ -6118,7 +5770,7 @@ export class HuiApp extends HuiElement {
       ${this.renderFloatingCallBar()}
       ${this.commandPalette()}
       ${this.updateDialog()}
-      ${renderPiResourceReader(this.piResourceReader, this.closePiResourceReader, this.copyPiResource)}
+      ${renderPiResourceReader(this.control.piResourceReader, this.control.closePiResourceReader, this.control.copyPiResource)}
       ${renderMain(
         props,
         this.view === "home"
@@ -6158,46 +5810,46 @@ export class HuiApp extends HuiElement {
                   isPiSurface(this.activePage)
                     ? renderPiSurface({
                         page: this.activePage,
-                        pi: this.pi,
-                        health: this.health,
-                        workspaces: this.workspaceInspection,
-                        loading: this.controlLoading,
-                        error: this.controlSurfaceError(this.activePage),
-                        onRefresh: () => this.loadControlSurfaceData(true),
+                        pi: this.control.pi,
+                        health: this.control.health,
+                        workspaces: this.control.workspaceInspection,
+                        loading: this.control.controlLoading,
+                        error: this.control.controlSurfaceError(this.activePage),
+                        onRefresh: () => this.control.loadControlSurfaceData(true),
                         onOpenSettings: this.openSurfaceSettings,
                         onSessions: () => this.openPageById("sessions"),
-                        operation: this.piOperation,
-                        removeCandidate: this.piRemoveCandidate,
-                        onInstallPackage: this.installPiPackage,
-                        onRequestRemovePackage: this.requestPiPackageRemoval,
-                        onCancelRemovePackage: this.cancelPiPackageRemoval,
-                        onConfirmRemovePackage: this.removePiPackage,
-                        onInstallSkill: this.installPiSkill,
-                        disabledSkills: this.settings.disabledSkills,
-                        onSetSkillEnabled: this.setPiSkillEnabled,
-                        disabledPlugins: this.settings.disabledPlugins,
-                        onSetPluginEnabled: this.setPiPluginEnabled,
-                        onReadSkill: (skill) => this.readPiResource("skill", skill),
-                        onReadPlugin: (resource) => this.readPiResource("plugin", resource),
+                        operation: this.control.piOperation,
+                        removeCandidate: this.control.piRemoveCandidate,
+                        onInstallPackage: this.control.installPiPackage,
+                        onRequestRemovePackage: this.control.requestPiPackageRemoval,
+                        onCancelRemovePackage: this.control.cancelPiPackageRemoval,
+                        onConfirmRemovePackage: this.control.removePiPackage,
+                        onInstallSkill: this.control.installPiSkill,
+                        disabledSkills: this.control.settings.disabledSkills,
+                        onSetSkillEnabled: this.control.setPiSkillEnabled,
+                        disabledPlugins: this.control.settings.disabledPlugins,
+                        onSetPluginEnabled: this.control.setPiPluginEnabled,
+                        onReadSkill: (skill) => this.control.readPiResource("skill", skill),
+                        onReadPlugin: (resource) => this.control.readPiResource("plugin", resource),
                       })
                     : isObservabilitySurface(this.activePage)
                       ? renderObservabilitySurface({
                           page: this.activePage,
-                          snapshot: this.observability,
-                          health: this.health,
-                          loading: this.observabilityLoading,
-                          error: this.observabilityError,
-                          dense: this.settings.labs.denseObservability,
-                          detailedDebug: this.settings.labs.detailedDebug,
+                          snapshot: this.control.observability,
+                          health: this.control.health,
+                          loading: this.control.observabilityLoading,
+                          error: this.control.observabilityError,
+                          dense: this.control.settings.labs.denseObservability,
+                          detailedDebug: this.control.settings.labs.detailedDebug,
                           onRefresh: () => this.loadOperationalData(true),
-                          onExport: this.exportDiagnostics,
+                          onExport: this.control.exportDiagnostics,
                         })
                       : isOwnedSurface(this.activePage)
                         ? renderOwnedSurface({
                             page: this.activePage,
-                            settings: this.settings,
-                            health: this.health,
-                            onSettings: this.patchOwnedSettings,
+                            settings: this.control.settings,
+                            health: this.control.health,
+                            onSettings: this.control.patchOwnedSettings,
                           })
                     : html``)
             : html``,

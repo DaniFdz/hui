@@ -13,7 +13,7 @@ test("+ → Import bot… opens the import dialog and a bot's ⋯ → Export… 
   assert.match(read("./shell.ts"), /onImport: botsTab\.onImport,/u);
   const app = read("../hui-app.ts");
   const shell = between(app, "private shellBotsProps(", "private createNewBot");
-  assert.match(shell, /^private shellBotsProps\(\): ShellBotsProps \| undefined \{\n\s+if \(!botsEnabled\(this\.settings\)\) return undefined;/u, "no + and no ⋯ while bots are off");
+  assert.match(shell, /^private shellBotsProps\(\): ShellBotsProps \| undefined \{\n\s+if \(!botsEnabled\(this\.control\.settings\)\) return undefined;/u, "no + and no ⋯ while bots are off");
   assert.match(shell, /onImport: this\.botImports\.openImport,/u);
   assert.match(shell, /onExport: \(bot\) => \{ this\.botMenuFor = ""; this\.botImports\.openExport\(bot\); \},/u);
   assert.match(between(app, "private followBotsSetting(", "private shellBotsProps("), /this\.botImports\.close\(\);/u, "turning bots off closes both dialogs");

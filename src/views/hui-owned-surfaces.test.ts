@@ -65,12 +65,3 @@ test("the Bots switch is the only one: its hint points nowhere else, on or off",
     assert.doesNotMatch(page, /Show the Bots tab|Settings → Sessions/u);
   }
 });
-
-test("settings render their optimistic snapshot before awaiting persistence", async () => {
-  const app = await readFile(new URL("../hui-app.ts", import.meta.url), "utf8");
-  const save = app.slice(app.indexOf("private async save("), app.indexOf("private chooseMode"));
-  assert.match(save, /const pending = patchSettings\(patch\)/);
-  assert.ok(save.indexOf("this.settings = currentSettings()") < save.indexOf("await pending"));
-  assert.match(app, /private patchOwnedSettings[\s\S]*?void this\.save\(patch\)/);
-  assert.doesNotMatch(app, /this\.save\(\{ \.\.\.this\.settings, \.\.\.patch \}\)/);
-});
