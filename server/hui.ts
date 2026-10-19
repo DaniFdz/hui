@@ -141,7 +141,7 @@ import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
-import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
+import { attachTerminalTransport } from "./terminal-transport.ts";
 import { createFileRoutes, FILES_ROUTE } from "./routes/files.ts";
 import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.ts";
@@ -153,6 +153,7 @@ import { createProviderRoutes } from "./routes/providers.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createWorktreeRoutes } from "./routes/worktrees.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
+import { createTerminalRoutes } from "./routes/terminals.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
@@ -228,6 +229,7 @@ const piMutations = new PiMutationService();
 const piRoutes = createPiRoutes({ piMutations });
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 const localPathRoutes = createLocalPathRoutes({ workers });
+const terminalRoutes = createTerminalRoutes({ readRegistry });
 const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const themeRoutes = createThemeRoutes();
@@ -1059,35 +1061,9 @@ async function handleRequest(
     return;
   }
 
-  const terminalRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/terminals(?:\/([^/]+))?(?:\/(connect))?$/u);
-  if (terminalRoute) {
-    try {
-      const owner = terminalRoute[1]!;
-      const id = terminalRoute[2];
-      const session = (await readRegistry()).find((record) => record.id === owner);
-      if (!session) throw new TerminalError("Conversation not found.", 404);
-      if (session.worker) throw new TerminalError("Terminals are not available for sessions on a remote worker yet.", 409);
-      if (request.method === "GET") {
-        if (terminalRoute[3]) throw new TerminalError("Method not allowed.", 405);
-        sendJson(response, 200, id ? terminals.read(owner, id) : { terminals: terminals.list(owner) });
-      } else if (request.method === "POST") {
-        if (terminalRoute[3] && id) {
-          sendJson(response, 200, { url: terminalTicket(owner, id) });
-        } else {
-          let body: unknown;
-          try { body = await readBody(request, 128 * 1024); } catch { throw new TerminalError("Invalid terminal request body."); }
-          if (!body || typeof body !== "object" || Array.isArray(body)) throw new TerminalError("Terminal request must be an object.");
-          const params = body as Record<string, unknown>;
-          sendJson(response, id ? 200 : 201, id
-            ? terminals.tool(owner, { ...params, sessionId: id })
-            : { terminal: terminals.create(owner, session.cwd, params) });
-        }
-      } else throw new TerminalError("Method not allowed.", 405);
-    } catch (error) {
-      sendJson(response, error instanceof TerminalError ? error.status : 500, { error: error instanceof Error ? error.message : "Terminal request failed." });
-    }
-    return;
-  }
+  const routed = routeRequest(request, response, path);
+
+  if (answered(response, path, await terminalRoutes.handle(routed))) return;
 
   // The Files view: the conversation's working directory, never another path (`routes/files.ts`).
   if (FILES_ROUTE.test(path)) {
@@ -1186,7 +1162,6 @@ async function handleRequest(
       detail: responseFailures.get(response),
     });
   });
-  const routed = routeRequest(request, response, path);
 
   if (answered(response, path, await updateRoutes.handle(routed))) return;
 
