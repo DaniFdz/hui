@@ -1,11 +1,16 @@
 /**
  * The request and result shape every route module (`server/routes/`) speaks. `hui.ts` turns an incoming message
  * into a `RouteRequest` (`routeRequest`) and writes the module's `RouteResult` back, so a module reads its body and
- * headers and answers JSON, HTML or a file without touching Node's HTTP objects. Also owns reading request bodies.
+ * headers and answers JSON, HTML or a file without touching Node's HTTP objects. Also owns reading request bodies and
+ * the `x-hui` header name every guard checks.
  */
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
 
 const MAX_BODY_BYTES = 64 * 1024;
+
+/** Refuse cross-origin callers. A page on any site can reach localhost, but it
+ * cannot set a custom header without a preflight, and we answer none. */
+export const CLIENT_HEADER = "x-hui";
 
 export type RouteRequest = {
   method: string;

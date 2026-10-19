@@ -14,7 +14,7 @@ test("attachment image route is guarded, typed and never resolves unknown sessio
   await writeFile(join(dir, "hui", "sessions.json"), JSON.stringify({ version: 1, sessions: [
     { id: "alpha", title: "Alpha", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
   ], groups: [] }));
-  const { middleware, stopBackend } = await import("./hui.ts");
+  const { middleware, stopBackend } = await import("../hui.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -40,7 +40,7 @@ test("stored attachment files are only read from inside the attachment store", a
   const dir = await mkdtemp(join(tmpdir(), "hui-attachment-store-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const store = join(dir, "store");
-  const { readStoredAttachment, storeAttachmentFile } = await import("./hui.ts");
+  const { readStoredAttachment, storeAttachmentFile } = await import("../sessions/attachments.ts");
   const stored = await storeAttachmentFile("alpha", "notes.md", Buffer.from("notes").toString("base64"), store);
   assert.equal((await readStoredAttachment(stored.path, store))?.toString(), "notes");
 
@@ -55,7 +55,7 @@ test("stored attachment files are only read from inside the attachment store", a
 });
 
 test("public transcript replaces runtime attachment locations with opaque URLs", async () => {
-  const { publicTranscript } = await import("./live-sessions.ts");
+  const { publicTranscript } = await import("../live-sessions.ts");
   assert.deepEqual(publicTranscript("a b", [{ kind: "message", role: "user", text: "", attachments: [
     { name: "s.png", kind: "image", mimeType: "image/png", source: { message: 3, image: 1 } },
     { name: "n.txt", kind: "file", source: { message: 3, file: 0 } },

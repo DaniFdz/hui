@@ -16,11 +16,11 @@
  * manifest to keep in step.
  */
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, realpath, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { homedir, hostname, userInfo } from "node:os";
-import { join, sep } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
@@ -37,7 +37,7 @@ import { BotExportService } from "./bot-export.ts";
 import { nameFromUsername } from "./bot-templates/cleanup.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes } from "./routes/bot-templates.ts";
-import { readBody, routeRequest, sendFile, type RouteResult } from "./http/route.ts";
+import { CLIENT_HEADER, readBody, routeRequest, sendFile, type RouteResult } from "./http/route.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
 import { localBotSkills } from "./bot-skills.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
@@ -54,7 +54,7 @@ import { PullRequestStatuses } from "./pull-requests.ts";
 
 
 import { readHuiSettings, writeHuiSettings } from "./hui-settings.ts";
-import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
+import { CONFIG_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeError, VscodeService } from "./vscode.ts";
 import { VscodeInstaller } from "./vscode-install.ts";
 import { verifyVscodeServer } from "./vscode-providers.ts";
@@ -83,7 +83,7 @@ import { readGatewayHealth, readWorkspaceInspection } from "./control-surfaces.t
 import { runCommand, WorktreeService } from "./worktree-inventory.ts";
 import type { WorktreeRisk } from "../shared/worktrees.ts";
 import { liveSessions, SessionBusyError } from "./live-sessions.ts";
-import type { PromptAttachment, TranscriptEntry } from "./runtimes/types.ts";
+import type { TranscriptEntry } from "./runtimes/types.ts";
 import {
   AutomationConflictError,
   AutomationInputError,
@@ -161,6 +161,8 @@ import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-c
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import { createFileRoutes, FILES_ROUTE } from "./routes/files.ts";
 import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
+import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.ts";
+import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
 import {
   createSessionGroup,
   deleteSessionGroup,
@@ -256,6 +258,7 @@ const piMutations = new PiMutationService();
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
+const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
 function forWorkerSessions(workerId: string, act: (record: SessionRecord) => void): void {
@@ -548,31 +551,8 @@ function initializeWatchers(): void {
     });
 }
 
-/** Refuse cross-origin callers. A page on any site can reach localhost, but it
- * cannot set a custom header without a preflight, and we answer none. */
-const CLIENT_HEADER = "x-hui";
-
 /** Prompts may carry images inline, so they get their own, larger ceiling. */
 const MAX_PROMPT_BYTES = 24 * 1024 * 1024;
-const MAX_ATTACHMENT_COUNT = 8;
-const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
-const MAX_ATTACHMENTS_TOTAL_BYTES = 16 * 1024 * 1024;
-const IMAGE_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-/** Browser names remain display metadata; the stored path uses this narrower
- * ASCII form independently. */
-const STORAGE_FILENAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-function isSafeAttachmentName(name: string): boolean {
-  const characters = [...name];
-  return (
-    characters.length > 0 &&
-    characters.length <= 128 &&
-    name.trim().length > 0 &&
-    name !== "." &&
-    name !== ".." &&
-    !/[\\/\p{Cc}]/u.test(name)
-  );
-}
 
 /** Import is the one thing here that reaches the network, so it is tightly
  * bounded: one host, one shape, a size cap and a timeout. */
@@ -962,140 +942,6 @@ function sendRouteResult(response: ServerResponse, path: string, result: RouteRe
     if (result.etag) response.setHeader("etag", `"${result.etag}"`);
     sendJson(response, result.status, result.body);
   }
-}
-
-/** Writes an uploaded file under the config dir and returns its absolute path. */
-export async function storeAttachmentFile(
-  sessionId: string,
-  name: string,
-  dataBase64: string,
-  root = ATTACHMENTS_DIR,
-): Promise<{ path: string; name: string }> {
-  const storedName = STORAGE_FILENAME.test(name) ? name : `attachment-${randomUUID().slice(0, 8)}`;
-  const dir = join(root, sessionId.replace(/[^A-Za-z0-9_-]/g, "_"));
-  await mkdir(dir, { recursive: true });
-  // The UUID makes the path immutable across repeated uploads with the same
-  // browser filename. PI may read it after the HTTP request has returned, so a
-  // later prompt must never overwrite its bytes.
-  const path = join(dir, `${randomUUID()}-${storedName}`);
-  await writeFile(path, Buffer.from(dataBase64, "base64"), { flag: "wx" });
-  return { path, name };
-}
-
-/** Reads a file `storeAttachmentFile` wrote; any other path, including one
- * a symlink leads out of the store, is refused. */
-export async function readStoredAttachment(path: string, root = ATTACHMENTS_DIR): Promise<Buffer | undefined> {
-  try {
-    const [file, store] = await Promise.all([realpath(path), realpath(root)]);
-    if (!file.startsWith(store + sep)) return undefined;
-    const info = await stat(file);
-    return info.isFile() && info.size <= MAX_ATTACHMENT_BYTES ? await readFile(file) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export class AttachmentInputError extends Error {
-  override name = "AttachmentInputError";
-}
-
-function decodeAttachment(data: unknown): { encoded: string; bytes: Buffer } {
-  if (
-    typeof data !== "string" ||
-    data.length === 0 ||
-    data.length % 4 !== 0
-  ) {
-    throw new AttachmentInputError("Attachment data must be canonical base64.");
-  }
-  const bytes = Buffer.from(data, "base64");
-  // A decode/re-encode check rejects stray characters and non-canonical
-  // padding without running one giant regular expression over a 12 MB file.
-  if (bytes.toString("base64") !== data) {
-    throw new AttachmentInputError("Attachment data must be canonical base64.");
-  }
-  if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
-    throw new AttachmentInputError("Each attachment must be 12 MB or smaller.");
-  }
-  return { encoded: data, bytes };
-}
-
-export type PreparedAttachments = {
-  attachments: PromptAttachment[];
-  /** Removes only files written for this rejected request. Accepted prompts
-   * retain their immutable paths because PI can read them asynchronously. */
-  cleanupRejected(): Promise<void>;
-};
-
-/**
- * Attachments arrive as base64 because the client already holds the bytes.
- * Images stay in memory and go to the model natively; files are written down
- * and referenced by path, which is what pi's own `read` tool expects. Invalid
- * shapes fail the whole request before any bytes are handed to PI.
- */
-export async function readAttachments(
-  sessionId: string,
-  raw: unknown,
-  store: typeof storeAttachmentFile = storeAttachmentFile,
-): Promise<PreparedAttachments> {
-  if (raw === undefined) return { attachments: [], cleanupRejected: async () => {} };
-  if (!Array.isArray(raw)) throw new AttachmentInputError("Attachments must be a list.");
-  if (raw.length > MAX_ATTACHMENT_COUNT) {
-    throw new AttachmentInputError(`At most ${MAX_ATTACHMENT_COUNT} attachments may be sent at once.`);
-  }
-
-  const staged: Array<{
-    kind: "image" | "file";
-    name: string;
-    mimeType: string;
-    encoded: string;
-    bytes: Buffer;
-  }> = [];
-  let total = 0;
-  for (const entry of raw) {
-    if (typeof entry !== "object" || entry === null) {
-      throw new AttachmentInputError("Every attachment must be an object.");
-    }
-    const item = entry as Record<string, unknown>;
-    if (item["kind"] !== "image" && item["kind"] !== "file") {
-      throw new AttachmentInputError("Attachment kind must be image or file.");
-    }
-    if (typeof item["name"] !== "string" || !isSafeAttachmentName(item["name"])) {
-      throw new AttachmentInputError(
-        "Attachment names must be 1–128 characters without path separators or controls.",
-      );
-    }
-    const decoded = decodeAttachment(item["dataBase64"]);
-    total += decoded.bytes.byteLength;
-    if (total > MAX_ATTACHMENTS_TOTAL_BYTES) {
-      throw new AttachmentInputError("Attachments may total at most 16 MB per prompt.");
-    }
-    const mimeType = typeof item["mimeType"] === "string" ? item["mimeType"] : "application/octet-stream";
-    if (item["kind"] === "image" && !IMAGE_MIME_TYPES.has(mimeType)) {
-      throw new AttachmentInputError("Images must be PNG, JPEG, GIF, or WebP.");
-    }
-    staged.push({ kind: item["kind"], name: item["name"], mimeType, ...decoded });
-  }
-
-  const attachments: PromptAttachment[] = [];
-  const written: string[] = [];
-  const cleanupRejected = async () => {
-    await Promise.all(written.map((path) => unlink(path).catch(() => {})));
-  };
-  try {
-    for (const item of staged) {
-      if (item.kind === "image") {
-        attachments.push({ kind: "image", mimeType: item.mimeType, dataBase64: item.encoded, name: item.name });
-      } else {
-        const stored = await store(sessionId, item.name, item.encoded);
-        written.push(stored.path);
-        attachments.push({ kind: "file", ...stored });
-      }
-    }
-  } catch (error) {
-    await cleanupRejected();
-    throw error;
-  }
-  return { attachments, cleanupRejected };
 }
 
 /* ── sessions ────────────────────────────────────────────────────────────── */
@@ -1567,44 +1413,9 @@ async function handleRequest(
     }
     return;
   }
-  const attachmentRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/attachments\/(\d{1,9})\/(files\/)?(\d{1,4})$/u);
-  if (attachmentRoute) {
-    // <img> cannot send x-hui; accept it or a browser-attested same-origin
-    // fetch, and refuse everything cross-site.
-    const site = request.headers["sec-fetch-site"];
-    if (request.headers[CLIENT_HEADER] !== "1" && site !== "same-origin") {
-      sendJson(response, 403, { error: `missing ${CLIENT_HEADER} header` });
-      return;
-    }
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const id = decodeURIComponent(attachmentRoute[1] ?? "");
-    const record = (await readRegistry()).find((session) => session.id === id);
-    if (!record) {
-      sendJson(response, 404, { error: `unknown session: ${id}` });
-      return;
-    }
-    const message = Number(attachmentRoute[2]);
-    const index = Number(attachmentRoute[4]);
-    const filePath = attachmentRoute[3] ? liveSessions.attachmentFile(id, message, index) : undefined;
-    const fileData = filePath ? await readStoredAttachment(filePath) : undefined;
-    const attachment = attachmentRoute[3]
-      ? fileData && { mimeType: "application/octet-stream", data: fileData }
-      : await liveSessions.attachmentImage(id, message, index);
-    if (!attachment) {
-      sendJson(response, 404, { error: "attachment not found" });
-      return;
-    }
-    response.statusCode = 200;
-    response.setHeader("content-type", attachment.mimeType);
-    response.setHeader("content-length", String(attachment.data.length));
-    // The URL names a position in the history, which a rewind hands to the next message.
-    response.setHeader("cache-control", "no-store");
-    response.setHeader("x-content-type-options", "nosniff");
-    response.setHeader("cross-origin-resource-policy", "same-origin");
-    response.end(attachment.data);
+  // <img> cannot send x-hui; the route accepts it or a browser-attested same-origin fetch (`routes/attachments.ts`).
+  if (ATTACHMENT_ROUTE.test(path)) {
+    sendRouteResult(response, path, await attachmentRoutes.handle(routeRequest(request, response, path)));
     return;
   }
 
