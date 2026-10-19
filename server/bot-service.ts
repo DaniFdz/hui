@@ -49,7 +49,7 @@ import {
 import { SessionBusyError, type HuiQuestion, type LiveSessions } from "./live-sessions.ts";
 import type { PromptAttachment, RuntimePromptOptions, RuntimePromptResult, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
 import type { SessionRecord } from "./sessions.ts";
-import { rootSessionId } from "./subagents.ts";
+import { rootSessionId } from "./sessions/session-tree.ts";
 import { resolveWorkingDirectory } from "./working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 
