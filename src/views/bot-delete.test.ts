@@ -22,7 +22,7 @@ test("the bot's chat header has a ⋯ menu: Edit bot…, Archive… and Delete�
   assert.match(home, /\$\{props\.bot\?\.onAction \? renderBotHeaderMenu\(props\.bot\) : nothing\}/u);
   const app = read("../hui-app.ts");
   assert.match(app, /if \(action === "edit"\) this\.openEditBot\(bot\);\n\s+else if \(action === "archive"\) this\.requestArchiveBot\(bot\);\n\s+else this\.requestDeleteBot\(bot\);/u);
-  assert.match(app, /if \(this\.view === "bot" && this\.activeBotId === bot\.id\) this\.navigate\(\{ kind: "home" \}, true\);\n\s+void this\.refreshBots\(\);\n\s+void this\.refreshSessions\(true\);/u, "deleting the open bot returns home");
+  assert.match(app, /if \(this\.view === "bot" && this\.activeBotId === bot\.id\) this\.navigate\(\{ kind: "home" \}, true\);\n\s+void this\.bots\.refresh\(\);\n\s+void this\.refreshSessions\(true\);/u, "deleting the open bot returns home");
 });
 
 test("the delete confirmation says what goes and what stays", () => {

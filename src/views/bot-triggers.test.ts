@@ -17,7 +17,7 @@ test("triggers show on the overview and have a page of their own, self-contained
   assert.match(app, /this\.botTools\.reset\(target\.id\);\n\s+this\.botTriggers\.reset\(target\.id\);/u, "another bot starts clean");
   assert.match(app, /this\.botTriggers\.sync\(this\.botTriggersVisible\(\) \? this\.activeBot\(\) : undefined\);/u);
   assert.match(app, /triggers: this\.botTriggers\.props\(bot\),/u);
-  assert.match(app, /this\.followBotTools\(\);\n\s+this\.followBotTriggers\(\);/u, "on every bots frame: a bot loaded after the page opened, or woken");
+  assert.match(app, /onFrame: \(\) => \{\n\s+this\.followBotTools\(\);\n\s+this\.followBotTriggers\(\);/u, "on every bots frame: a bot loaded after the page opened, or woken");
   assert.match(read("./bot-triggers.ts"), /loadViewAssets\(\(\) => import\("\.\.\/styles\/bot-triggers\.css"\)\);/u);
 });
 

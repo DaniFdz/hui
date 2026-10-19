@@ -176,19 +176,14 @@ test("Labs → Bots is the one switch: off, the sidebar has no Agents | Bots swi
   // /bots and /bots/:id land on the normal home; a bot's chat opens nowhere, even through a session address.
   assert.match(between(app, "private applyNavigation(", "private openPendingSession("), /if \(target\.kind === "bot"\) \{[\s\S]*?if \(this\.embeddedPane \|\| !botsEnabled\(this\.control\.settings\)\) \{\n\s+this\.navigate\(\{ kind: "home" \}, true\);/u);
   assert.match(between(app, "private openPendingSession(", "private selectView"), /if \(session\.bot && !botsEnabled\(this\.control\.settings\)\) \{\n\s+this\.navigate\(\{ kind: "home" \}, true\);\n\s+return;\n\s+\}\n\s+\/\/ A bot's chat opens as the bot \(with its panel\) wherever it is linked from\.\n\s+if \(!this\.embeddedPane && session\.bot\) \{/u);
-  assert.match(app, /const wanted = botsEnabled\(this\.control\.settings\) && !this\.botsStreamUnsupported;/u, "no bot stream while off");
   // Bot chats stay out of the Agents list on or off: it filters by the session's bot, not by a setting.
   assert.match(between(app, "private get listedGroups(", "private activeBot("), /if \(this\.listedGroupsSource !== this\.groups\) \{\n\s+this\.listedGroupsSource = this\.groups;\n\s+this\.listedGroupsCache = withoutBotSessions\(this\.groups\);/u);
   // Either way it applies at once: the setting's change follows here, and another screen's through the stream's 409.
   assert.match(app, /if \(this\.renderedSettings !== this\.control\.settings\) \{\n\s+const before = this\.renderedSettings;\n\s+this\.renderedSettings = this\.control\.settings;\n\s+if \(before && botsEnabled\(before\) !== botsEnabled\(this\.control\.settings\)\) this\.followBotsSetting\(\);/u);
   const follow = between(app, "private followBotsSetting(", "private shellBotsProps(");
-  assert.match(follow, /if \(botsEnabled\(this\.control\.settings\)\) \{\n\s+void settingsWritten\(\)\.then\(\(\) => this\.syncBotsStream\(\)\);\n\s+return;\n\s+\}\n\s+this\.syncBotsStream\(\);/u, "the stream starts once the gateway has the setting, and stops at once");
+  assert.match(follow, /if \(botsEnabled\(this\.control\.settings\)\) \{\n\s+void settingsWritten\(\)\.then\(\(\) => this\.bots\.sync\(\)\);\n\s+return;\n\s+\}\n\s+this\.bots\.sync\(\);/u, "the stream starts once the gateway has the setting, and stops at once");
   assert.match(follow, /if \(this\.voice\.call\) this\.voice\.hangUp\(\);/u, "a call ends with bots");
   assert.match(follow, /if \(this\.view === "bot" \|\| \(this\.view === "home" && this\.selected\?\.bot\)\) this\.navigate\(\{ kind: "home" \}, true\);/u, "a bot's page goes home, and so does its chat open as a session");
-  const off = between(app, "if (state === \"off\") {", "} else if (!wanted && this.botsStreamStop)");
-  assert.match(off, /void settingsWritten\(\)\.then\(refreshSettings\)\.then\(\(settings\) => \{\n\s+if \(!settings\) return;\n\s+this\.control\.adoptSettings\(settings\);/u, "a 409 reads the settings again once this screen's writes landed");
-  assert.match(off, /if \(retry && botsEnabled\(settings\)\) \{\n\s+this\.botsStreamRetried = true;\n\s+this\.syncBotsStream\(\);/u, "still on: asked once more, never in a loop");
-  assert.match(app, /if \(state === "live"\) this\.botsStreamRetried = false;/u);
   // Bot-only settings go too: Sessions → Bots, Models → Calls, and Automations' routines; the old tab switch is gone.
   const settings = read("./settings.ts");
   assert.match(between(settings, "function renderCallsSection(", "function renderModelsPage("), /if \(!botsEnabled\(props\.settings\)\) return nothing;/u);

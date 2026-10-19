@@ -77,9 +77,10 @@ import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
-import { applyBotsUpdate, withLiveChats, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
-import { archiveBot, deleteBot, createBot, loadBots, restoreBot, subscribeBots, updateBot } from "./api/bots.ts";
+import { withLiveChats, botChangePatch, botSettingChange, upsertBot, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
+import { archiveBot, deleteBot, createBot, restoreBot, updateBot } from "./api/bots.ts";
 import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
+import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
 import { BotToolsController } from "./controllers/bot-tools-controller.ts";
 import { BotTriggersController } from "./controllers/bot-triggers-controller.ts";
@@ -129,7 +130,7 @@ import {
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
 import { botsEnabled, type Settings } from "./lib/settings.ts";
-import { refreshSettings, settingsWritten } from "./lib/settings/settings-store.ts";
+import { settingsWritten } from "./lib/settings/settings-store.ts";
 import type { PiSnapshot } from "./lib/pi.ts";
 import { loadWorkingDirectorySuggestions } from "./api/working-directories.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
@@ -452,19 +453,14 @@ export class HuiApp extends HuiElement {
   @state() private commandPaletteActiveIndex = 0;
   @state() private mobileNavLayout = false;
   /* ── bots (top-level app only; panes never read bots) ── */
-  @state() private bots: readonly BotView[] = [];
-  @state() private botsLoading = false;
-  @state() private botsLoaded = false;
-  @state() private botsError = "";
-  private botsInFlight: Promise<void> | undefined;
-  private botsAgain = false;
-  /** The gateway pushes the bot list; reads by GET are only its fallback. */
-  private botsStreamStop: (() => void) | undefined;
-  private botsStreamLive = false;
-  private botsStreamUnsupported = false;
-  /** The stream was asked again after a 409 whose settings still said bots are on; once is enough. */
-  private botsStreamRetried = false;
-  private botsRevision = 0;
+  private readonly bots = new BotsController(this, {
+    control: this.control,
+    live: (bots) => this.withLiveBotState(bots),
+    onFrame: () => {
+      this.followBotTools();
+      this.followBotTriggers();
+    },
+  });
   @state() private botSearch = "";
   /** The sidebar's Agents | Bots choice, remembered by the browser. */
   @state() private sidebarTab: SidebarTab = readSidebarTab();
@@ -504,9 +500,9 @@ export class HuiApp extends HuiElement {
   private botImports = new BotImportController(this, {
     workers: () => this.launchWorkers,
     imported: (bot, warnings) => {
-      this.bots = upsertBot(this.bots, bot);
+      this.bots.adopt(upsertBot(this.bots.list, bot));
       if (warnings.length) this.notify(`Imported ${bot.name}. ${warnings.join(" ")}`, true);
-      void this.refreshBots();
+      void this.bots.refresh();
       void this.refreshSessions(true);
       this.navigate({ kind: "bot", id: bot.id });
     },
@@ -739,7 +735,7 @@ export class HuiApp extends HuiElement {
         onStatus: this.applySessionStatusUpdate,
         onSessions: this.applySessionListChange,
       });
-      this.syncBotsStream();
+      this.bots.sync();
       this.updates.watch();
     }
   }
@@ -775,9 +771,6 @@ export class HuiApp extends HuiElement {
     clearTimeout(this.actionToastTimer);
     this.statusStreamStop?.();
     this.statusStreamStop = undefined;
-    this.botsStreamStop?.();
-    this.botsStreamStop = undefined;
-    this.botsStreamLive = false;
   }
 
   private sessionProgressPoll?: number;
@@ -830,7 +823,7 @@ export class HuiApp extends HuiElement {
       }),
     }));
     // Bot chats are sessions too: their roster rows follow the same stream.
-    if (this.bots.length) this.bots = this.withLiveBotState(this.bots);
+    if (this.bots.list.length) this.bots.adopt(this.withLiveBotState(this.bots.list));
   };
 
   private applySessionStatusUpdate = ({ id, status, unread, creating, creationError, title }: SessionStatusUpdate) => {
@@ -855,12 +848,12 @@ export class HuiApp extends HuiElement {
         : session),
     }));
     if (created) void this.refreshSessions(true);
-    const bot = this.bots.find((candidate) => candidate.sessionId === id);
+    const bot = this.bots.list.find((candidate) => candidate.sessionId === id);
     if (bot) {
-      this.bots = this.withLiveBotState(this.bots);
+      this.bots.adopt(this.withLiveBotState(this.bots.list));
       // A turn started or settled: its latest message moved. The bot stream
       // pushes that itself; without it (an older gateway) read the list again.
-      if (bot.status !== status && !this.botsStreamLive) void this.refreshBots();
+      if (bot.status !== status && !this.bots.streamLive) void this.bots.refresh();
     }
     if (!this.embeddedPane && this.selected?.id === id) {
       this.reopenIfRestarted(id, status);
@@ -1006,7 +999,7 @@ export class HuiApp extends HuiElement {
     }
     // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
     if (!this.embeddedPane && this.view === "bot" && !this.callsStatus) void this.loadCallsStatus();
-    if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || changed.has("bots")) {
+    if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || this.view === "bot") {
       const activeSessionTitle = this.settingsOpen ? undefined
         : this.view === "home" ? this.selected?.title
           : this.view === "bot" ? this.activeBot()?.name
@@ -2763,7 +2756,7 @@ export class HuiApp extends HuiElement {
   };
 
   /** The shell's roster while bots are on (Labs → Bots): what an `@` in this composer suggests and whose faces its chat shows. */
-  private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneBots ?? [] : botsEnabled(this.control.settings) ? this.bots : [];
+  private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneBots ?? [] : botsEnabled(this.control.settings) ? this.bots.list : [];
 
   private retryLocalPaths = () => {
     const query = this.localPathQuery;
@@ -3830,7 +3823,7 @@ export class HuiApp extends HuiElement {
   }
 
   private activeBot(): BotView | undefined {
-    return this.bots.find((bot) => bot.id === this.activeBotId);
+    return this.bots.list.find((bot) => bot.id === this.activeBotId);
   }
 
   private botPaneApp(): HuiApp | undefined {
@@ -3841,105 +3834,10 @@ export class HuiApp extends HuiElement {
     return withLiveChats(bots, { statuses: this.sessionStatuses, unread: this.sessionUnread, presented: (id) => this.isSessionPresented(id) });
   }
 
-  /** The gateway's bot stream while the Bots tab is enabled. It starts with the
-   * whole list, then sends what changed; a gateway without it falls back to
-   * reading the list whenever a bot's session changes status. */
-  private syncBotsStream() {
-    if (this.embeddedPane) return;
-    const wanted = botsEnabled(this.control.settings) && !this.botsStreamUnsupported;
-    if (wanted && !this.botsStreamStop) {
-      this.botsStreamStop = subscribeBots({
-        onUpdate: (update, first) => {
-          if (!isNewBotsFrame(update.revision, first, this.botsRevision)) return;
-          this.botsRevision = update.revision;
-          this.bots = this.withLiveBotState(applyBotsUpdate(this.bots, update));
-          this.botsLoaded = true;
-          this.botsError = "";
-          this.followBotTools();
-          this.followBotTriggers();
-        },
-        onConnection: (state) => {
-          this.botsStreamLive = state === "live";
-          if (state === "live") this.botsStreamRetried = false;
-          if (state === "reconnecting" && !this.botsLoaded) this.botsError = "Could not reach the gateway for the bot list. Retrying…";
-          if (state === "unsupported") {
-            this.botsStreamUnsupported = true;
-            this.botsStreamStop = undefined;
-            void this.refreshBots();
-          }
-          // A 409: bots are off on the gateway, turned off on another screen (which ends this stream) or not on there
-          // yet. Once this screen's own writes have landed the settings are read again and followed; if they still say
-          // bots are on, the stream is asked once more.
-          if (state === "off") {
-            this.botsStreamStop = undefined;
-            const retry = !this.botsStreamRetried;
-            void settingsWritten().then(refreshSettings).then((settings) => {
-              if (!settings) return;
-              this.control.adoptSettings(settings);
-              if (retry && botsEnabled(settings)) {
-                this.botsStreamRetried = true;
-                this.syncBotsStream();
-              }
-            });
-          }
-        },
-      });
-    } else if (!wanted && this.botsStreamStop) {
-      this.botsStreamStop();
-      this.botsStreamStop = undefined;
-      this.botsStreamLive = false;
-    }
-  }
-
-  /** The list is current when the stream runs; otherwise it is read now. */
   private ensureBots() {
-    if (this.botsStreamUnsupported) void this.refreshBots();
-    else this.syncBotsStream();
+    this.bots.ensure();
     // The roster's + offers the workers a new bot can run on.
     this.loadLaunchWorkers();
-  }
-
-  /** Retry from an error state: restart a stopped stream or read the list. */
-  private retryBots = () => {
-    this.botsError = "";
-    if (this.botsStreamUnsupported || this.botsStreamLive) {
-      void this.refreshBots();
-      return;
-    }
-    this.botsStreamStop?.();
-    this.botsStreamStop = undefined;
-    this.syncBotsStream();
-  };
-
-  /** One read at a time; a change that lands meanwhile reads once more after it.
-   * Only used without a live stream, whose newer frames a read could overwrite. */
-  private refreshBots(): Promise<void> {
-    if (this.embeddedPane || this.botsStreamLive) return Promise.resolve();
-    if (this.botsInFlight) {
-      this.botsAgain = true;
-      return this.botsInFlight;
-    }
-    this.botsLoading = true;
-    this.botsInFlight = (async () => {
-      try {
-        do {
-          this.botsAgain = false;
-          try {
-            const bots = await loadBots();
-            // A stream that went live meanwhile is newer than this read.
-            if (!this.botsStreamLive) this.bots = this.withLiveBotState(bots);
-            this.botsLoaded = true;
-            this.botsError = "";
-          } catch (error) {
-            this.botsError = error instanceof Error ? error.message : "Could not read bots.";
-          }
-        } while (this.botsAgain);
-      } finally {
-        this.botsLoading = false;
-        this.botsInFlight = undefined;
-      }
-    })();
-    return this.botsInFlight;
   }
 
   private setSidebarTab = (tab: SidebarTab) => {
@@ -3967,10 +3865,10 @@ export class HuiApp extends HuiElement {
     // The gateway refuses the bot stream until it has the setting too: with bots on, the stream starts once this
     // screen's own write has landed; with them off, it stops at once.
     if (botsEnabled(this.control.settings)) {
-      void settingsWritten().then(() => this.syncBotsStream());
+      void settingsWritten().then(() => this.bots.sync());
       return;
     }
-    this.syncBotsStream();
+    this.bots.sync();
     this.botMenuFor = "";
     this.botSheetOpen = false;
     this.botImports.close();
@@ -3994,11 +3892,11 @@ export class HuiApp extends HuiElement {
       onImport: this.botImports.openImport,
       onWorkersMenu: () => this.loadLaunchWorkers(),
       creating: this.botCreating,
-      unread: this.bots.some((bot) => bot.unread && !bot.archived && !bot.hidden),
+      unread: this.bots.list.some((bot) => bot.unread && !bot.archived && !bot.hidden),
       roster: {
-        bots: this.bots,
-        loading: this.botsLoading || !this.botsLoaded,
-        error: this.botsError,
+        bots: this.bots.list,
+        loading: this.bots.loading || !this.bots.loaded,
+        error: this.bots.error,
         query: this.botSearch,
         showHidden: this.showHiddenBots,
         showArchived: this.showArchivedBots,
@@ -4018,7 +3916,7 @@ export class HuiApp extends HuiElement {
         onDelete: this.requestDeleteBot,
         onExport: (bot) => { this.botMenuFor = ""; this.botImports.openExport(bot); },
         onImport: this.botImports.openImport,
-        onRetry: this.retryBots,
+        onRetry: this.bots.retry,
         onToggleMenu: (id) => { this.botMenuFor = this.botMenuFor === id ? "" : id; },
         onCloseMenu: () => { this.botMenuFor = ""; },
       },
@@ -4042,9 +3940,9 @@ export class HuiApp extends HuiElement {
     }
     void createBot(worker ? { worker } : {})
       .then((bot) => {
-        this.bots = upsertBot(this.bots, bot);
+        this.bots.adopt(upsertBot(this.bots.list, bot));
         this.notify("");
-        void this.refreshBots();
+        void this.bots.refresh();
         // The new chat is a new session; open the bot once the list has it.
         void this.refreshSessions(true);
         this.navigate({ kind: "bot", id: bot.id });
@@ -4123,7 +4021,7 @@ export class HuiApp extends HuiElement {
       pending: withoutSetting(saves.pending, key),
       errors: error ? { ...saves.errors, [key]: error } : withoutSetting(saves.errors, key),
     });
-    const bot = this.bots.find((candidate) => candidate.id === botId);
+    const bot = this.bots.list.find((candidate) => candidate.id === botId);
     if (!bot) {
       settle("This bot is gone.");
       return;
@@ -4134,7 +4032,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     try {
-      this.bots = upsertBot(this.bots, await updateBot(botId, patch));
+      this.bots.adopt(upsertBot(this.bots.list, await updateBot(botId, patch)));
       settle();
     } catch (error) {
       settle(error instanceof Error ? error.message : "Could not save that change.");
@@ -4152,9 +4050,9 @@ export class HuiApp extends HuiElement {
     this.botPendingId = bot.id;
     void updateBot(bot.id, { hidden })
       .then((updated) => {
-        this.bots = upsertBot(this.bots, updated);
+        this.bots.adopt(upsertBot(this.bots.list, updated));
         // With nothing hidden any more, the next hidden bot starts out of sight again.
-        if (!hiddenBotCount(this.bots)) this.showHiddenBots = false;
+        if (!hiddenBotCount(this.bots.list)) this.showHiddenBots = false;
         this.notify(hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`);
       })
       .catch((error: unknown) => {
@@ -4186,12 +4084,12 @@ export class HuiApp extends HuiElement {
     void archiveBot(bot.id)
       .then((archived) => {
         this.closeBotArchive();
-        this.bots = upsertBot(this.bots, archived);
+        this.bots.adopt(upsertBot(this.bots.list, archived));
         this.notify("");
         this.botArchiveToast = { bot: archived, restoring: false };
         this.scheduleBotArchiveToast();
         if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
-        void this.refreshBots();
+        void this.bots.refresh();
         void this.refreshSessions(true);
       })
       .catch((error: unknown) => {
@@ -4226,13 +4124,13 @@ export class HuiApp extends HuiElement {
     void deleteBot(bot.id)
       .then(() => {
         this.closeBotDelete();
-        this.bots = this.bots.filter((each) => each.id !== bot.id);
-        if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
+        this.bots.adopt(this.bots.list.filter((each) => each.id !== bot.id));
+        if (!archivedBotCount(this.bots.list)) this.showArchivedBots = false;
         if (this.botArchiveToast?.bot.id === bot.id) this.dismissBotArchiveToast();
         this.notify(`Deleted ${bot.name}.`);
         // Its chat is gone: the open bot view goes with it, as after archiving.
         if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
-        void this.refreshBots();
+        void this.bots.refresh();
         void this.refreshSessions(true);
       })
       .catch((error: unknown) => {
@@ -4250,12 +4148,12 @@ export class HuiApp extends HuiElement {
     this.botPendingId = bot.id;
     void restoreBot(bot.id)
       .then((restored) => {
-        this.bots = upsertBot(this.bots, restored);
+        this.bots.adopt(upsertBot(this.bots.list, restored));
         // With nothing archived any more, the next archived bot starts out of sight again.
-        if (!archivedBotCount(this.bots)) this.showArchivedBots = false;
+        if (!archivedBotCount(this.bots.list)) this.showArchivedBots = false;
         if (this.botArchiveToast?.bot.id === restored.id) this.dismissBotArchiveToast();
         this.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
-        void this.refreshBots();
+        void this.bots.refresh();
       })
       .catch((error: unknown) => {
         this.notify(error instanceof Error ? error.message : "Could not restore that bot.", true);
@@ -4291,10 +4189,10 @@ export class HuiApp extends HuiElement {
     this.botArchiveToast = { bot: toast.bot, restoring: true };
     try {
       const restored = await restoreBot(toast.bot.id);
-      this.bots = upsertBot(this.bots, restored);
+      this.bots.adopt(upsertBot(this.bots.list, restored));
       if (this.botArchiveToast?.bot.id === toast.bot.id) this.dismissBotArchiveToast();
       this.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
-      void this.refreshBots();
+      void this.bots.refresh();
       void this.refreshSessions(true);
     } catch (error) {
       if (this.botArchiveToast?.bot.id === toast.bot.id) {
@@ -4433,9 +4331,9 @@ export class HuiApp extends HuiElement {
       title, message, tone, mobileNav: this.mobileNavLayout, onToggleNavigation: toggleNavigationDrawer, ...(onRetry ? { onRetry } : {}), ...(actionLabel ? { actionLabel } : {}),
     });
     if (!bot) {
-      if (!this.botsLoaded) {
-        return this.botsError
-          ? placeholder("Bot", this.botsError, "alert", this.retryBots)
+      if (!this.bots.loaded) {
+        return this.bots.error
+          ? placeholder("Bot", this.bots.error, "alert", this.bots.retry)
           : placeholder("Bot", "Loading bot…", "status");
       }
       return placeholder("Bot not found", "This bot does not exist or has been archived.", "alert");
@@ -4571,7 +4469,7 @@ export class HuiApp extends HuiElement {
   private paneCallAction(bot: BotView): () => void {
     const botId = bot.id;
     return () => {
-      const current = this.bots.find((candidate) => candidate.id === botId);
+      const current = this.bots.list.find((candidate) => candidate.id === botId);
       if (current) this.openCall(current);
     };
   }
@@ -4640,7 +4538,7 @@ export class HuiApp extends HuiElement {
   private renderFloatingCallBar() {
     const call = this.floatingCall();
     if (!call) return nothing;
-    const bot = this.bots.find((candidate) => candidate.id === call.bot.id) ?? { id: call.bot.id, name: call.bot.name, sessionId: call.bot.sessionId };
+    const bot = this.bots.list.find((candidate) => candidate.id === call.bot.id) ?? { id: call.bot.id, name: call.bot.name, sessionId: call.bot.sessionId };
     return renderCallBar({ ...this.callViewProps(bot, call), floating: true });
   }
 
