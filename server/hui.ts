@@ -29,14 +29,15 @@ import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
 import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotsOffError, BotStoreError, BotWorkerOfflineError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
-import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes, type BotRouteRequest } from "./bot-routes.ts";
+import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
 import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
 import { isHookPath } from "./bot-triggers-listener.ts";
 import { BotExportService } from "./bot-export.ts";
 import { nameFromUsername } from "./bot-templates/cleanup.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
-import { createBotTemplateRoutes, sendDownload } from "./bot-template-routes.ts";
+import { createBotTemplateRoutes } from "./bot-template-routes.ts";
+import { readBody, routeRequest, sendFile, type RouteResult } from "./http/route.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
 import { localBotSkills } from "./bot-skills.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
@@ -184,7 +185,7 @@ import { attachSessionTransport, sessionStreamTicket } from "./session-transport
 import { createSessionListHub } from "./session-list.ts";
 import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
-import { createFileRoutes, FILES_ROUTE, parseIfMatch } from "./file-routes.ts";
+import { createFileRoutes, FILES_ROUTE } from "./file-routes.ts";
 import { createDiffRoutes, DIFF_ROUTE } from "./diff-routes.ts";
 import {
   createSessionGroup,
@@ -564,7 +565,6 @@ function initializeWatchers(): void {
  * cannot set a custom header without a preflight, and we answer none. */
 const CLIENT_HEADER = "x-hui";
 
-const MAX_BODY_BYTES = 64 * 1024;
 /** Prompts may carry images inline, so they get their own, larger ceiling. */
 const MAX_PROMPT_BYTES = 24 * 1024 * 1024;
 const MAX_ATTACHMENT_COUNT = 8;
@@ -967,34 +967,15 @@ function sendHtml(response: ServerResponse, status: number, html: string): void 
   response.end(html);
 }
 
-async function readBody(
-  request: Connect.IncomingMessage,
-  maxBytes = MAX_BODY_BYTES,
-): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const buffer = chunk as Buffer;
-    size += buffer.length;
-    if (size > maxBytes) {
-      throw new Error("request body too large");
-    }
-    chunks.push(buffer);
+/** A route module's answer, or its 404 when no route of the module matched. */
+function sendRouteResult(response: ServerResponse, path: string, result: RouteResult | undefined): void {
+  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
+  else if ("file" in result) sendFile(response, result.status, result.file);
+  else if ("html" in result) sendHtml(response, result.status, result.html);
+  else {
+    if (result.etag) response.setHeader("etag", `"${result.etag}"`);
+    sendJson(response, result.status, result.body);
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-}
-
-/** A request body as bytes (an upload), refusing anything past `maxBytes`. */
-async function readBytes(request: Connect.IncomingMessage, maxBytes: number): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const buffer = chunk as Buffer;
-    size += buffer.length;
-    if (size > maxBytes) throw new Error("request body too large");
-    chunks.push(buffer);
-  }
-  return Buffer.concat(chunks);
 }
 
 /** Writes an uploaded file under the config dir and returns its absolute path. */
@@ -2625,39 +2606,19 @@ async function isDormantBotChat(record: SessionRecord): Promise<boolean> {
 
 /** `/__hui/calls` and `/__hui/bots/:id/calls…` (`call-routes.ts`). */
 async function serveCallRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
-  // A browser that leaves abandons a call being set up, and ends a task's wait (never the bot's turn).
-  const gone = new AbortController();
-  response.once("close", () => gone.abort());
-  const result = await callRoutes.handle({ method: request.method ?? "GET", path, body: (maxBytes) => readBody(request, maxBytes), signal: gone.signal });
-  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
-  else sendJson(response, result.status, result.body);
+  sendRouteResult(response, path, await callRoutes.handle(routeRequest(request, response, path)));
 }
 
 /** `/__hui/bots` and everything under it but the events stream (`bot-routes.ts`). */
 async function serveBotRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
-  // A client that leaves ends its wait for a reply, never the bot's turn.
-  const gone = new AbortController();
-  response.once("close", () => gone.abort());
-  const routed: BotRouteRequest = {
-    method: request.method ?? "GET",
-    path,
-    query: new URL(request.url ?? "/", "http://localhost").searchParams,
-    body: (maxBytes) => readBody(request, maxBytes),
-    signal: gone.signal,
-  };
+  const routed = routeRequest(request, response, path);
   // Importing and exporting first: `import` is a reserved handle, and `export` no bot route's action.
-  const result = await botTemplateRoutes.handle(routed) ?? await botRoutes.handle(routed);
-  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
-  else if ("file" in result) sendDownload(response, result.status, result.file);
-  else if ("html" in result) sendHtml(response, result.status, result.html);
-  else sendJson(response, result.status, result.body);
+  sendRouteResult(response, path, await botTemplateRoutes.handle(routed) ?? await botRoutes.handle(routed));
 }
 
 /** `/__hui/bots/:id/triggers…` (`bot-trigger-routes.ts`). */
 async function serveTriggerRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
-  const result = await triggers.routes.handle({ method: request.method ?? "GET", path, body: (maxBytes) => readBody(request, maxBytes) });
-  if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
-  else sendJson(response, result.status, result.body);
+  sendRouteResult(response, path, await triggers.routes.handle(routeRequest(request, response, path)));
 }
 
 async function handleRequest(
@@ -2793,41 +2754,13 @@ async function handleRequest(
 
   // The Files view: the conversation's working directory, never another path (`file-routes.ts`).
   if (FILES_ROUTE.test(path)) {
-    const result = await fileRoutes.handle({
-      method: request.method ?? "GET",
-      path,
-      query: new URL(request.url ?? "/", "http://localhost").searchParams,
-      ifMatch: parseIfMatch(request.headers["if-match"]),
-      json: (maxBytes) => readBody(request, maxBytes),
-      bytes: (maxBytes) => readBytes(request, maxBytes),
-    });
-    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
-    else if ("file" in result) {
-      response.statusCode = result.status;
-      response.setHeader("content-type", result.file.mimeType);
-      response.setHeader("content-length", String(result.file.data.length));
-      response.setHeader("cache-control", "no-store");
-      response.setHeader("x-content-type-options", "nosniff");
-      response.setHeader("cross-origin-resource-policy", "same-origin");
-      response.setHeader("content-security-policy", "default-src 'none'; sandbox");
-      if (result.file.download) response.setHeader("content-disposition", `attachment; filename*=UTF-8''${encodeURIComponent(result.file.name)}`);
-      response.end(result.file.data);
-    } else {
-      if (result.etag) response.setHeader("etag", `"${result.etag}"`);
-      sendJson(response, result.status, result.body);
-    }
+    sendRouteResult(response, path, await fileRoutes.handle(routeRequest(request, response, path)));
     return;
   }
 
   // The Diff view: Git comparisons of the conversation's working directory, read-only (`diff-routes.ts`).
   if (DIFF_ROUTE.test(path)) {
-    const result = await diffRoutes.handle({
-      method: request.method ?? "GET",
-      path,
-      query: new URL(request.url ?? "/", "http://localhost").searchParams,
-    });
-    if (!result) sendJson(response, 404, { error: `unknown route: ${path}` });
-    else sendJson(response, result.status, result.body);
+    sendRouteResult(response, path, await diffRoutes.handle(routeRequest(request, response, path)));
     return;
   }
 
@@ -3092,8 +3025,8 @@ async function handleRequest(
   }
 
   if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
-    const result = await workerRoutes.handle(request.method ?? "GET", path, () => readBody(request));
-    if (result) sendJson(response, result.status, result.body);
+    const result = await workerRoutes.handle(routeRequest(request, response, path));
+    if (result) sendRouteResult(response, path, result);
     else sendJson(response, 404, { error: "not found" });
     return;
   }

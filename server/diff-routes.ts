@@ -8,6 +8,7 @@
 import { displayPath } from "./working-directories.ts";
 import { FilesError, FilesRoot } from "./files.ts";
 import { diffChanges, diffFile, diffInfo, DiffError, runGit, type DiffRequest, type GitRunner } from "./git-diff.ts";
+import type { JsonResult, RouteRequest } from "./http/route.ts";
 import { isDiffComparison, type DiffFileChanges, type DiffInfo } from "../shared/diff.ts";
 
 export const DIFF_ROUTE = /^\/__hui\/sessions\/([^/]+)\/diff(?:\/(changes|file))?$/u;
@@ -15,9 +16,6 @@ export const DIFF_ROUTE = /^\/__hui\/sessions\/([^/]+)\/diff(?:\/(changes|file))
 export const REMOTE_DIFF_REASON = "Diffs are not available for conversations on a remote worker yet: their files live on that machine.";
 
 const MAX_QUERY_VALUE = 1024;
-
-export type DiffRouteRequest = { method: string; path: string; query: URLSearchParams };
-export type DiffRouteResult = { status: number; body: unknown };
 
 type SessionLocation = { cwd: string; worker?: string | undefined };
 
@@ -41,7 +39,7 @@ export function parseDiffRequest(query: URLSearchParams): DiffRequest {
 export function createDiffRoutes(deps: { session(id: string): Promise<SessionLocation | undefined>; git?: GitRunner }) {
   const git = deps.git ?? runGit;
 
-  async function handle(request: DiffRouteRequest): Promise<DiffRouteResult | undefined> {
+  async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const match = DIFF_ROUTE.exec(request.path);
     if (!match) return undefined;
     const id = decodeURIComponent(match[1] ?? "");

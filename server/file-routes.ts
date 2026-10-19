@@ -5,27 +5,13 @@
  */
 import { displayPath } from "./working-directories.ts";
 import { FilesError, FilesRoot, parseIfMatch } from "./files.ts";
+import type { RouteRequest, RouteResult } from "./http/route.ts";
 import { MAX_EDITABLE_FILE_BYTES, MAX_RAW_FILE_BYTES, MAX_RESOLVE_PATH_LENGTH, MAX_RESOLVE_PATHS, type FilesInfo, type FilesResolve } from "../shared/files.ts";
 import { basename } from "node:path";
 
 export const FILES_ROUTE = /^\/__hui\/sessions\/([^/]+)\/files(?:\/(list|search|file|raw|entry|upload|resolve))?$/u;
 
 export const REMOTE_FILES_REASON = "Files are not available for conversations on a remote worker yet: their files live on that machine.";
-
-export type FilesRouteRequest = {
-  method: string;
-  path: string;
-  query: URLSearchParams;
-  ifMatch: string | undefined;
-  /** The parsed JSON body, limited to `maxBytes`. */
-  json(maxBytes: number): Promise<unknown>;
-  /** The raw body, limited to `maxBytes`. */
-  bytes(maxBytes: number): Promise<Buffer>;
-};
-
-export type FilesRouteResult =
-  | { status: number; body: unknown; etag?: string }
-  | { status: number; file: { name: string; mimeType: string; data: Buffer; download: boolean } };
 
 type SessionLocation = { cwd: string; worker?: string | undefined };
 
@@ -49,7 +35,7 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
     }
   }
 
-  async function handle(request: FilesRouteRequest): Promise<FilesRouteResult | undefined> {
+  async function handle(request: RouteRequest): Promise<RouteResult | undefined> {
     const match = FILES_ROUTE.exec(request.path);
     if (!match) return undefined;
     const id = decodeURIComponent(match[1] ?? "");
@@ -78,13 +64,15 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
         if (typeof fields["content"] !== "string" || Object.keys(fields).some((key) => key !== "content")) {
           throw new FilesError("Send only the file's text: { \"content\": \"…\" }.", 400);
         }
-        const saved = await root.write(path, fields["content"], request.ifMatch);
+        const saved = await root.write(path, fields["content"], parseIfMatch(request.headers["if-match"]));
         return { status: 200, body: saved, etag: saved.etag };
       }
       if (action === "raw" && method === "GET") {
         const raw = await root.raw(path);
         const preview = raw.mimeType.startsWith("image/") || raw.mimeType === "application/pdf";
-        return { status: 200, file: { ...raw, download: !preview } };
+        const headers: Record<string, string> = { "cross-origin-resource-policy": "same-origin", "content-security-policy": "default-src 'none'; sandbox" };
+        if (!preview) headers["content-disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(raw.name)}`;
+        return { status: 200, file: { mimeType: raw.mimeType, data: raw.data, headers } };
       }
       if (action === "entry" && method === "POST") {
         let body: unknown;
@@ -133,4 +121,3 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
   return { handle };
 }
 
-export { parseIfMatch };

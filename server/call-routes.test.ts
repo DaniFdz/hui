@@ -5,7 +5,8 @@ import type { BotRecord, BotReply } from "../shared/bots.ts";
 import { CALL_LIMITS, type CallDelegationResult } from "../shared/calls.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../src/lib/settings.ts";
 import { BotConflictError, BotNotFoundError } from "./bots.ts";
-import { checkLines, createCallRoutes, type CallRouteRequest } from "./call-routes.ts";
+import { checkLines, createCallRoutes } from "./call-routes.ts";
+import type { RouteRequest } from "./http/route.ts";
 import { CallBroker, type ActiveCall, type CallAccounts } from "./calls.ts";
 
 const TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyb3V0ZXMifQ.c2lnbmF0dXJl";
@@ -52,13 +53,14 @@ function fixture(options: { settings?: Settings; voice?: Settings["calls"]["voic
   const settings: Settings = options.settings ?? { ...DEFAULT_SETTINGS, profileName: "Dani", calls: { voice: options.voice ?? "vale" } };
   const routes = createCallRoutes({ broker, bots: bots as never, delegate, settings: async () => settings, timeZone: () => "Europe/Madrid" });
   const call = (method: string, path: string, body?: unknown, raw?: string) => routes.handle({
-    method, path,
-    body: async (maxBytes: number) => {
+    method, path, query: new URLSearchParams(), headers: {},
+    bytes: () => Promise.reject(new Error("no bytes")),
+    json: async (maxBytes = 64 * 1024) => {
       const text = raw ?? (body === undefined ? "" : JSON.stringify(body));
       if (Buffer.byteLength(text, "utf8") > maxBytes) throw new Error("request body too large");
       return JSON.parse(text || "null");
     },
-  } satisfies CallRouteRequest);
+  } satisfies RouteRequest);
   return {
     call, broker, sessions, tasks, ended,
     setReply: (next: CallDelegationResult, task?: Promise<BotReply>) => { reply = next; handedOff = task; },

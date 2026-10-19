@@ -5,7 +5,8 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
-import { createFileRoutes, REMOTE_FILES_REASON, type FilesRouteRequest } from "./file-routes.ts";
+import { createFileRoutes, REMOTE_FILES_REASON } from "./file-routes.ts";
+import type { RouteRequest } from "./http/route.ts";
 import { MAX_RESOLVE_PATHS, type FileRead } from "../shared/files.ts";
 
 async function workspace() {
@@ -17,12 +18,12 @@ async function workspace() {
   return { dir, cwd };
 }
 
-function request(method: string, path: string, options: { query?: Record<string, string>; ifMatch?: string; body?: unknown; bytes?: Buffer } = {}): FilesRouteRequest {
+function request(method: string, path: string, options: { query?: Record<string, string>; ifMatch?: string; body?: unknown; bytes?: Buffer } = {}): RouteRequest {
   return {
     method,
     path,
     query: new URLSearchParams(options.query ?? {}),
-    ifMatch: options.ifMatch,
+    headers: options.ifMatch ? { "if-match": `"${options.ifMatch}"` } : {},
     json: async () => options.body,
     bytes: async () => options.bytes ?? Buffer.alloc(0),
   };

@@ -17,16 +17,10 @@ import type { BotTriggerService } from "./bot-triggers.ts";
 import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./bot-triggers-input.ts";
 import { TriggerStoreError } from "./bot-triggers-store.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotStoreError } from "./bots.ts";
+import type { JsonResult, RouteRequest } from "./http/route.ts";
 
 export const BOT_TRIGGERS_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/triggers(?:\/([^/]{1,400})(?:\/(test|token))?)?$/u;
 const BODY_BYTES = 64 * 1024;
-
-export type TriggerRouteRequest = {
-  method: string;
-  path: string;
-  /** The JSON body, at most `maxBytes`. */
-  body(maxBytes: number): Promise<unknown>;
-};
 
 /** 400 for input, 404 for an unknown bot or trigger, 409 for a state that refuses it (bots off included), 500 for storage. */
 export function triggerErrorStatus(error: unknown): number {
@@ -40,15 +34,15 @@ export function triggerErrorStatus(error: unknown): number {
 export function createBotTriggerRoutes(deps: { service: Pick<BotTriggerService, "list" | "create" | "update" | "remove" | "test" | "rotate"> }) {
   const { service } = deps;
 
-  async function json(request: TriggerRouteRequest): Promise<unknown> {
+  async function json(request: RouteRequest): Promise<unknown> {
     try {
-      return await request.body(BODY_BYTES);
+      return await request.json(BODY_BYTES);
     } catch (error) {
       throw new TriggerInputError(error instanceof SyntaxError ? "The request body must be JSON." : `The request body is larger than ${BODY_BYTES / 1024} KiB.`);
     }
   }
 
-  async function handle(request: TriggerRouteRequest): Promise<{ status: number; body: unknown } | undefined> {
+  async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const match = BOT_TRIGGERS_ROUTE.exec(request.path);
     if (!match) return undefined;
     const [, bot, encoded, action] = match;

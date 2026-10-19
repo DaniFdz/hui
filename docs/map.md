@@ -81,7 +81,7 @@ R13 and R16 are not checked yet.
 
 | Area | Start here |
 |---|---|
-| HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `server/routes/` (`order.test.ts`: which handler answers each route family, in dispatch order), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
+| HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `server/routes/` (`order.test.ts`: which handler answers each route family, in dispatch order), `server/http/` (`route.ts`: the request and result every `*-routes.ts` module speaks, and request body reading), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
 | Session registry and lifecycle | `sessions.ts` (HUI registry), `server/sessions/` (`session-tree.ts`: a session's tree root), `live-sessions.ts` (running sessions), `session-list.ts`, `session-transport.ts` |
 | Runtimes | `runtimes/types.ts` (contract), `runtimes/durable*.ts` (Pi Durable: host, adapter, prompt, tools, PI extensions, questions), `runtimes/pi*.ts` (PI SDK worker and CLI fallback), `runtimes/pi-import.ts` (moves PI sessions to Durable for `hui doctor --fix`), `runtimes/model-controls.ts` (a model's reasoning levels, fast mode and the level HUI's Ultra is sent) |
 | HUI agent tools | `runtimes/hui-tools.ts` (definitions), `agent-tools-bridge.ts` (loopback bridge for PI workers), `subagents.ts`, `watchers.ts`, `task-suggestions.ts`, `secret-requests.ts` |

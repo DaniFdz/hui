@@ -19,6 +19,7 @@ import { BotMemoryUnavailableError } from "./bot-memory.ts";
 import type { BotRecord } from "../shared/bots.ts";
 import type { BotService } from "./bot-service.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError } from "./bots.ts";
+import type { JsonResult, RouteRequest } from "./http/route.ts";
 import {
   buildCallInstructions, buildCallSession, CallInputError, CallLimitError, CallNotFoundError, CallUnavailableError, CallUpstreamError,
   checkOffer, checkRequest, sessionVoice, taskResult, type ActiveCall, type CallBroker,
@@ -32,17 +33,6 @@ const OFFER_BODY_BYTES = CALL_LIMITS.sdp + 4 * 1024;
 const LINES_BODY_BYTES = CALL_LIMITS.lines * CALL_LIMITS.line * 4 + 16 * 1024;
 const DELEGATION_BODY_BYTES = CALL_LIMITS.request * 4 + 4 * 1024;
 const DELEGATION_ID = /^[\w-]{1,200}$/u;
-
-export type CallRouteResult = { status: number; body: unknown };
-
-export type CallRouteRequest = {
-  method: string;
-  path: string;
-  /** The JSON body, at most `maxBytes`. */
-  body(maxBytes: number): Promise<unknown>;
-  /** Aborts when the client goes away: a call being set up is abandoned, a task's wait ends (never its turn). */
-  signal?: AbortSignal;
-};
 
 /**
  * The one seam where a question GPT-Live delegates is answered: for a bot, its call and the request GPT-Live wrote, it
@@ -104,9 +94,9 @@ export function createCallRoutes(deps: CallRouteDeps) {
   const { broker, bots } = deps;
   const now = () => (deps.now ?? Date.now)();
 
-  async function json(request: CallRouteRequest, maxBytes: number): Promise<unknown> {
+  async function json(request: RouteRequest, maxBytes: number): Promise<unknown> {
     try {
-      return await request.body(maxBytes);
+      return await request.json(maxBytes);
     } catch (error) {
       throw new CallInputError(error instanceof SyntaxError ? "The request body must be JSON." : "The request body is too large.");
     }
@@ -116,7 +106,7 @@ export function createCallRoutes(deps: CallRouteDeps) {
     return { model: GPT_LIVE_MODEL, voices: GPT_LIVE_VOICES, chatgpt: await broker.status(), active: broker.active, limit: broker.limit };
   }
 
-  async function start(id: string, request: CallRouteRequest): Promise<CallRouteResult> {
+  async function start(id: string, request: RouteRequest): Promise<JsonResult> {
     const body = fields(await json(request, OFFER_BODY_BYTES), ["sdp"], "A call");
     const settings = await deps.settings();
     const sdp = checkOffer(body["sdp"]);
@@ -132,7 +122,7 @@ export function createCallRoutes(deps: CallRouteDeps) {
     return { status: 201, body: result };
   }
 
-  async function handle(request: CallRouteRequest): Promise<CallRouteResult | undefined> {
+  async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const { method } = request;
     const notAllowed = { status: 405, body: { error: "method not allowed" } };
     try {

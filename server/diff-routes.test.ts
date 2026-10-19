@@ -6,6 +6,12 @@ import { join } from "node:path";
 import { test } from "vitest";
 import { createDiffRoutes, parseDiffRequest, REMOTE_DIFF_REASON } from "./diff-routes.ts";
 import type { GitRunner } from "./git-diff.ts";
+import type { RouteRequest } from "./http/route.ts";
+
+function request(path: string, query: URLSearchParams, method = "GET"): RouteRequest {
+  const noBody = () => Promise.reject(new Error("no body"));
+  return { method, path, query, headers: {}, json: noBody, bytes: noBody };
+}
 
 const isolated = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid" };
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, env: { ...process.env, ...isolated }, encoding: "utf8" });
@@ -51,12 +57,12 @@ test("diff routes stay inside the conversation's directory and explain remote an
   };
   const routes = createDiffRoutes({ session: async (id) => sessions[id], git: recording });
   const call = async (path: string, query: Record<string, string> = {}, method = "GET") => {
-    const result = await routes.handle({ method, path, query: new URLSearchParams(query) });
+    const result = await routes.handle(request(path, new URLSearchParams(query), method));
     assert(result, "expected a result");
     return result as { status: number; body: Record<string, unknown> };
   };
 
-  assert.equal(await routes.handle({ method: "GET", path: "/__hui/sessions/local/other", query: new URLSearchParams() }), undefined);
+  assert.equal(await routes.handle(request("/__hui/sessions/local/other", new URLSearchParams())), undefined);
   assert.equal((await call("/__hui/sessions/nobody/diff")).status, 404);
   assert.equal((await call("/__hui/sessions/local/diff", {}, "POST")).status, 405);
   assert.deepEqual((await call("/__hui/sessions/remote/diff")).body, { available: false, reason: REMOTE_DIFF_REASON, code: "remote" });
@@ -114,9 +120,9 @@ test("a same-size edit made in the second of the last index write still shows", 
     git: (where, args, options) => runGit(where, args, { ...options, env: { ...options?.env, GIT_CEILING_DIRECTORIES: dir } }),
   });
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const changes = await routes.handle({ method: "GET", path: "/__hui/sessions/s/diff/changes", query: new URLSearchParams({ compare: "uncommitted" }) });
+    const changes = await routes.handle(request("/__hui/sessions/s/diff/changes", new URLSearchParams({ compare: "uncommitted" })));
     assert.deepEqual(((changes as { body: { files: { path: string }[] } }).body.files).map((file) => file.path), ["a.txt"]);
-    const one = await routes.handle({ method: "GET", path: "/__hui/sessions/s/diff/file", query: new URLSearchParams({ compare: "uncommitted", path: "a.txt" }) });
+    const one = await routes.handle(request("/__hui/sessions/s/diff/file", new URLSearchParams({ compare: "uncommitted", path: "a.txt" })));
     assert.match(String(((one as { body: { file: { patch: string } | null } }).body.file)?.patch), /^\+two$/mu);
   }
 });

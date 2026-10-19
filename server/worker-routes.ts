@@ -9,13 +9,12 @@
  *   POST   /__hui/workers/:id/sync              re-sync in the background
  *   POST   /__hui/workers/:id/disconnect
  */
+import type { JsonResult, RouteRequest } from "./http/route.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { WorkerInputError, WorkerNotFoundError, type WorkerService } from "./workers.ts";
 
 export const WORKERS_ROUTE = "/__hui/workers";
 const ROUTE = /^\/__hui\/workers(?:\/([0-9a-f-]{36})(?:\/(connect|sync|disconnect))?)?$/u;
-
-export type RouteResult = { status: number; body: unknown };
 
 type Deps = {
   service: WorkerService;
@@ -30,18 +29,19 @@ export function createWorkerRoutes(deps: Deps) {
     void (sync ? service.sync(id) : service.connect(id)).catch(() => undefined);
   };
 
-  async function handle(method: string, path: string, body: () => Promise<unknown>): Promise<RouteResult | undefined> {
-    const match = ROUTE.exec(path);
+  async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
+    const { method } = request;
+    const match = ROUTE.exec(request.path);
     if (!match) return undefined;
     const [, id, action] = match;
     try {
       if (!id) {
         if (method === "GET") return { status: 200, body: { workers: await service.list() } };
-        if (method === "POST") return { status: 201, body: { worker: await service.create(await body() as never) } };
+        if (method === "POST") return { status: 201, body: { worker: await service.create(await request.json() as never) } };
         return { status: 405, body: { error: "method not allowed" } };
       }
       if (!action) {
-        if (method === "PATCH") return { status: 200, body: { worker: await service.update(id, await body() as never) } };
+        if (method === "PATCH") return { status: 200, body: { worker: await service.update(id, await request.json() as never) } };
         if (method === "DELETE") {
           const used = (await deps.readRegistry()).filter((record) => record.worker === id).length;
           if (used) return { status: 409, body: { error: `${used} session${used === 1 ? "" : "s"} still run${used === 1 ? "s" : ""} on this worker. Delete them first.` } };

@@ -28,6 +28,7 @@ import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdate
 import { BotMemoryUnavailableError } from "./bot-memory.ts";
 import type { BotService } from "./bot-service.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } from "./bots.ts";
+import type { RouteRequest, RouteResult } from "./http/route.ts";
 import { SessionBusyError } from "./live-sessions.ts";
 import type { PromptAttachment } from "./runtimes/types.ts";
 
@@ -43,20 +44,6 @@ const BOT_BODY_BYTES = 256 * 1024;
 const MESSAGE_BODY_BYTES = 24 * 1024 * 1024;
 const DEFAULT_WAIT_SECONDS = 300;
 const MAX_WAIT_SECONDS = 3_600;
-
-export type BotRouteResult =
-  | { status: number; body: unknown }
-  | { status: number; html: string };
-
-export type BotRouteRequest = {
-  method: string;
-  path: string;
-  query: URLSearchParams;
-  /** The JSON body, at most `maxBytes`. */
-  body(maxBytes: number): Promise<unknown>;
-  /** Aborts when the client goes away, which ends a wait (never the bot's turn). */
-  signal?: AbortSignal;
-};
 
 type Deps = {
   service: BotService;
@@ -78,15 +65,15 @@ export function botErrorStatus(error: unknown): number {
 export function createBotRoutes(deps: Deps) {
   const { service } = deps;
 
-  async function json(request: BotRouteRequest, maxBytes: number): Promise<unknown> {
+  async function json(request: RouteRequest, maxBytes: number): Promise<unknown> {
     try {
-      return await request.body(maxBytes);
+      return await request.json(maxBytes);
     } catch (error) {
       throw new BotInputError(error instanceof SyntaxError ? "The request body must be JSON." : "The request body is too large.");
     }
   }
 
-  async function message(id: string, request: BotRouteRequest): Promise<BotRouteResult> {
+  async function message(id: string, request: RouteRequest): Promise<RouteResult> {
     const body = await json(request, MESSAGE_BODY_BYTES);
     if (typeof body !== "object" || body === null || Array.isArray(body)) throw new BotInputError("A message must be an object.");
     const input = body as Record<string, unknown>;
@@ -120,7 +107,7 @@ export function createBotRoutes(deps: Deps) {
     }
   }
 
-  async function handle(request: BotRouteRequest): Promise<BotRouteResult | undefined> {
+  async function handle(request: RouteRequest): Promise<RouteResult | undefined> {
     const match = ROUTE.exec(request.path);
     const factMatch = FACTS_ROUTE.exec(request.path);
     if (factMatch) {
