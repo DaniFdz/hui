@@ -87,9 +87,6 @@ import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBo
 import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
 import { BotImportController } from "./controllers/bot-import-controller.ts";
 import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "./views/bot-settings.ts";
-import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./api/update.ts";
-import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
-import type { UpdateSnapshot } from "./lib/update-types.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
@@ -137,6 +134,7 @@ import type { PiSnapshot } from "./lib/pi.ts";
 import { loadWorkingDirectorySuggestions } from "./api/working-directories.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
+import { UpdateController } from "./controllers/update-controller.ts";
 import { renderHome, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
@@ -433,20 +431,8 @@ export class HuiApp extends HuiElement {
   private localPathsRequest = 0;
   private localPathCwd = "";
   private pendingCommandBrowse = false;
-  @state() private updateOpen = false;
-  @state() private updateChecking = false;
-  @state() private updateStarting = false;
-  @state() private updateReadOnly = false;
-  @state() private updateError = "";
-  @state() private updateReconnecting = false;
-  @state() private updateSnapshot: UpdateSnapshot | null = null;
-  @state() private dismissedUpdateVersion = "";
   @state() private updateSessionCreating = false;
-  private updateMonitor: ReturnType<typeof watchUpdateAvailability> | undefined;
-  private updateReturnFocus: HTMLElement | null = null;
-  private readonly onUpdateVisibility = () => this.updateMonitor?.refresh();
-  private updatePollTimer: number | undefined;
-  private updatePollDeadline = 0;
+  private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
   @state() private currentModel: RuntimeModel | undefined;
   @state() private usage: RuntimeUsage | undefined;
   @state() private compaction: RuntimeCompaction | undefined;
@@ -754,17 +740,7 @@ export class HuiApp extends HuiElement {
         onSessions: this.applySessionListChange,
       });
       this.syncBotsStream();
-      this.updateMonitor = watchUpdateAvailability({
-        check: checkUpdateInBackground,
-        receive: (snapshot) => {
-          if (!this.updateOpen && !this.updateStarting) this.updateSnapshot = snapshot;
-        },
-        enabled: () => document.visibilityState === "visible" && navigator.onLine && !this.updateOpen && !this.updateStarting,
-      });
-      document.addEventListener("visibilitychange", this.onUpdateVisibility);
-      window.addEventListener("online", this.onUpdateVisibility);
-      window.addEventListener("offline", this.onUpdateVisibility);
-      window.addEventListener("focus", this.onUpdateVisibility);
+      this.updates.watch();
     }
   }
 
@@ -788,12 +764,6 @@ export class HuiApp extends HuiElement {
     this.workMedia = undefined;
     for (const stop of this.stopWorkAvailability) stop();
     this.stopWorkAvailability = [];
-    document.removeEventListener("visibilitychange", this.onUpdateVisibility);
-    window.removeEventListener("online", this.onUpdateVisibility);
-    window.removeEventListener("offline", this.onUpdateVisibility);
-    window.removeEventListener("focus", this.onUpdateVisibility);
-    this.updateMonitor?.stop();
-    this.updateMonitor = undefined;
     if (!this.embeddedPane) this.voice.dispose();
     this.streamStop?.();
     this.streamStop = undefined;
@@ -803,7 +773,6 @@ export class HuiApp extends HuiElement {
     this.followed = undefined;
     if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
     clearTimeout(this.actionToastTimer);
-    if (this.updatePollTimer !== undefined) window.clearTimeout(this.updatePollTimer);
     this.statusStreamStop?.();
     this.statusStreamStop = undefined;
     this.botsStreamStop?.();
@@ -1086,7 +1055,7 @@ export class HuiApp extends HuiElement {
       else focus();
     }
     const groupDialog = this.groupAction ? this.renderRoot.querySelector?.(".group-action-dialog") : null;
-    const updateDialog = this.updateOpen ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
+    const updateDialog = this.updates.open ? this.renderRoot.querySelector?.(".hui-update-dialog") : null;
     if (updateDialog instanceof HTMLDialogElement) ensureModal(updateDialog);
     if (groupDialog instanceof HTMLDialogElement) ensureModal(groupDialog);
     const resourceReader = this.control.piResourceReader ? this.renderRoot.querySelector?.(".pi-resource-reader-modal") : null;
@@ -2623,87 +2592,13 @@ export class HuiApp extends HuiElement {
     this.note = "";
     this.noteLevel = "info";
     this.slashQuery = null;
-    this.updateReturnFocus = this.composerTextarea;
-    this.updateReadOnly = command === "check";
-    void this.openUpdateSession(command).then((opened) => {
-      if (!opened) return;
-      this.updateOpen = true;
-      void this.checkForUpdates();
-    });
+    this.updates.review(this.composerTextarea, command === "check", () => this.openUpdateSession(command));
     return true;
   }
 
   private reviewUpdate = () => {
-    this.updateReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    this.updateReadOnly = false;
-    void this.openUpdateSession("update").then((opened) => {
-      if (!opened) return;
-      this.updateOpen = true;
-      void this.checkForUpdates();
-    });
+    this.updates.review(document.activeElement instanceof HTMLElement ? document.activeElement : null, false, () => this.openUpdateSession("update"));
   };
-
-  private checkForUpdates = async () => {
-    if (this.updateChecking || this.updateStarting) return;
-    this.updateChecking = true;
-    this.updateError = "";
-    this.updateReconnecting = false;
-    try {
-      this.updateSnapshot = await loadUpdate();
-      if (this.updateSnapshot.job?.status === "running") this.beginUpdatePolling();
-      else this.updateSnapshot = await checkUpdate();
-    } catch (error) { this.updateError = error instanceof Error ? error.message : "Could not check for updates."; }
-    finally { this.updateChecking = false; }
-  };
-
-  private installHuiUpdate = async () => {
-    const version = this.updateSnapshot?.check?.latest?.version;
-    if (!version || !this.updateSnapshot?.check?.canInstall || this.updateReadOnly || this.updateStarting) return;
-    this.updateStarting = true;
-    this.updateError = "";
-    try {
-      this.updateSnapshot = await installUpdate(version);
-      this.beginUpdatePolling();
-    } catch (error) { this.updateError = error instanceof Error ? error.message : "Could not start the update."; }
-    finally { this.updateStarting = false; }
-  };
-
-  private beginUpdatePolling() {
-    if (this.updatePollTimer !== undefined) window.clearTimeout(this.updatePollTimer);
-    this.updatePollDeadline = Date.now() + 10 * 60_000;
-    if (this.updateOpen) this.updatePollTimer = window.setTimeout(() => void this.pollUpdate(), 1000);
-  }
-
-  private async pollUpdate() {
-    if (!this.updateOpen) return;
-    try {
-      this.updateSnapshot = await loadUpdate();
-      this.updateReconnecting = false;
-      if (this.updateSnapshot.job?.status !== "running") return;
-    } catch { this.updateReconnecting = true; }
-    if (Date.now() >= this.updatePollDeadline) {
-      this.updateError = "The update has not reported completion. Check hui gateway status and logs, then reopen /update.";
-      return;
-    }
-    if (this.updateOpen) this.updatePollTimer = window.setTimeout(() => void this.pollUpdate(), 1000);
-  }
-
-  private closeUpdate = () => {
-    closeModal(this.renderRoot.querySelector<HTMLDialogElement>(".hui-update-dialog") ?? undefined);
-    this.updateOpen = false;
-    if (this.updatePollTimer !== undefined) window.clearTimeout(this.updatePollTimer);
-    if (this.updateReturnFocus?.isConnected) this.updateReturnFocus.focus();
-    else this.composerTextarea?.focus();
-    this.updateReturnFocus = null;
-    this.updateMonitor?.refresh();
-  };
-
-  private updateDialog() {
-    return renderUpdateDialog({ open: this.updateOpen, checking: this.updateChecking, starting: this.updateStarting,
-      readOnly: this.updateReadOnly, error: this.updateError, reconnecting: this.updateReconnecting, snapshot: this.updateSnapshot,
-      onCheck: () => void this.checkForUpdates(), onInstall: () => void this.installHuiUpdate(), onClose: this.closeUpdate,
-      onReload: () => window.location.reload() });
-  }
 
   private resetCommands() {
     this.commandsRequest += 1;
@@ -5408,11 +5303,11 @@ export class HuiApp extends HuiElement {
     const noticesInert = this.mobileNavLayout && Boolean(this.renderRoot.querySelector('.sidebar[data-open="true"], .settings-sidebar[data-open="true"]'));
     return html`<div class="hui-application">
       ${this.embeddedPane ? null : renderUpdateNotice({
-        release: availableUpdate(this.updateSnapshot, this.dismissedUpdateVersion),
+        release: this.updates.release(),
         inert: noticesInert,
         onReview: this.reviewUpdate,
         onDismiss: () => {
-          this.dismissedUpdateVersion = this.updateSnapshot?.check?.latest?.version ?? "";
+          this.updates.dismiss();
           this.composerTextarea?.focus();
         },
       })}
@@ -5657,7 +5552,7 @@ export class HuiApp extends HuiElement {
         })}
         ${this.renderFloatingCallBar()}
         ${this.commandPalette()}
-        ${this.updateDialog()}
+        ${renderUpdateDialog(this.updates.dialogProps())}
         ${renderPiResourceReader(this.control.piResourceReader, this.control.closePiResourceReader, this.control.copyPiResource)}
       </div>`;
     }
@@ -5769,7 +5664,7 @@ export class HuiApp extends HuiElement {
       ${this.renderBotDialogs()}
       ${this.renderFloatingCallBar()}
       ${this.commandPalette()}
-      ${this.updateDialog()}
+      ${renderUpdateDialog(this.updates.dialogProps())}
       ${renderPiResourceReader(this.control.piResourceReader, this.control.closePiResourceReader, this.control.copyPiResource)}
       ${renderMain(
         props,
