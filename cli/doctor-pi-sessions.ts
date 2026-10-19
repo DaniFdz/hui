@@ -5,7 +5,7 @@
  */
 import { readFile, stat } from "node:fs/promises";
 import { backupRegistry, readRegistry, updateRegistry, type SessionRecord } from "../server/sessions.ts";
-import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor.ts";
+import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
 
 const ID = "pi-sessions";
 const TITLE = "PI sessions";

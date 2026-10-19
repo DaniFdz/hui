@@ -9,7 +9,7 @@ import { basename, join } from "node:path";
 import { TRIGGERS_FILE, triggerStore } from "../server/bot-triggers-store.ts";
 import { BotRegistry } from "../server/bots.ts";
 import { CONFIG_DIR } from "../server/paths.ts";
-import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor.ts";
+import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
 
 const ID = "triggers";
 const TITLE = "Triggers";
