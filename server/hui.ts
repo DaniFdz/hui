@@ -35,7 +35,7 @@ import { accountFullName, BotExportService } from "./bot-export.ts";
 import { nameFromUsername } from "./bot-templates/cleanup.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes } from "./routes/bot-templates.ts";
-import { CLIENT_HEADER, readBody, responseFailures, routeRequest, sendFile, sendJson, type RouteResult } from "./http/route.ts";
+import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, type RouteResult } from "./http/route.ts";
 import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
 import { localBotSkills } from "./bot-skills.ts";
@@ -66,7 +66,7 @@ import { ProviderService } from "./providers.ts";
 import { invalidateModelCatalog } from "./pi-config.ts";
 import { PiMutationService } from "./pi-mutations.ts";
 import { WorktreeService } from "./worktree-inventory.ts";
-import { liveSessions, SessionBusyError } from "./live-sessions.ts";
+import { liveSessions } from "./live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import {
   AutomationService,
@@ -106,7 +106,7 @@ import { GitHubContributionsReader } from "./github-contributions.ts";
 import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./github-previews.ts";
 import { DatadogOrgs } from "./datadog.ts";
 import { DatadogPreviews } from "./datadog-previews.ts";
-import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
+import { TaskSuggestionInputError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
 import { Questionnaires } from "./questionnaires.ts";
@@ -115,7 +115,7 @@ import {
   BacklogStore,
   createBacklogLifecycle,
 } from "./backlog.ts";
-import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
+import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription } from "../shared/task-suggestions.ts";
 import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport } from "./session-transport.ts";
@@ -127,7 +127,8 @@ import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.t
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
 import { createLocalPathRoutes } from "./routes/local-paths.ts";
 import { createAutomationRoutes, AUTOMATION_ROUTE } from "./routes/automation.ts";
-import { backlogErrorStatus, createBacklogRoutes } from "./routes/backlog.ts";
+import { createBacklogRoutes } from "./routes/backlog.ts";
+import { createTaskSuggestionRoutes } from "./routes/task-suggestions.ts";
 import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
 import { handleApiSchemaRoute } from "./routes/api-schema.ts";
@@ -163,9 +164,6 @@ import { createSessionViews, pendingSessions, pendingStatus, pendingStatusSubscr
 const PREFIX = "/__hui/";
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
-/** Dismiss (DELETE), start (POST …/start) or save to the backlog (POST
- * …/backlog) one pending `suggest_task` card. */
-const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;
 /** A conversation's background watchers: stop (POST …/stop), restart
  * (POST …/restart), read a bounded log tail (GET …/log) or dismiss one that
  * is not running (DELETE). */
@@ -727,6 +725,14 @@ const { startTaskSuggestion, saveSuggestionToBacklog, listBacklog, findBacklogIt
   SessionNotFoundError,
 });
 
+const taskSuggestionRoutes = createTaskSuggestionRoutes({
+  taskSuggestions,
+  readRegistry,
+  startTaskSuggestion,
+  saveSuggestionToBacklog,
+  sessionMutationErrorStatus,
+  TASK_SUGGESTION_START_MODES,
+});
 const backlogRoutes = createBacklogRoutes({
   listBacklog,
   findBacklogItem,
@@ -1050,58 +1056,7 @@ async function handleRequest(
 
   if (answered(response, path, await backlogRoutes.handle(routed))) return;
 
-  const suggestionRoute = path.match(SESSION_SUGGESTION);
-  if (suggestionRoute) {
-    const starting = suggestionRoute[3] === "start";
-    const saving = suggestionRoute[3] === "backlog";
-    if (request.method !== (starting || saving ? "POST" : "DELETE")) {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const id = decodeURIComponent(suggestionRoute[1] ?? "");
-    const suggestionId = decodeURIComponent(suggestionRoute[2] ?? "");
-    const source = (await readRegistry()).find((session) => session.id === id);
-    if (!source) {
-      sendJson(response, 404, { error: `unknown session: ${id}` });
-      return;
-    }
-    if (saving) {
-      try {
-        const task = await saveSuggestionToBacklog(id, suggestionId);
-        sendJson(response, 200, { taskId: `local:${task.id}`, suggestions: taskSuggestions.list(id) });
-      } catch (error) {
-        sendJson(response, backlogErrorStatus(error), {
-          error: error instanceof Error ? error.message : "Could not add that suggestion to the backlog.",
-        });
-      }
-      return;
-    }
-    if (starting) {
-      try {
-        const body = (await readBody(request)) as Record<string, unknown>;
-        const mode = body["mode"] ?? "session";
-        if (typeof mode !== "string" || !TASK_SUGGESTION_START_MODES.includes(mode as TaskSuggestionStartMode)) {
-          throw new TaskSuggestionInputError("mode must be session, worktree or current.");
-        }
-        const session = await startTaskSuggestion(source, suggestionId, mode as TaskSuggestionStartMode);
-        sendJson(response, 200, { session, suggestions: taskSuggestions.list(id) });
-      } catch (error) {
-        sendJson(response, error instanceof TaskSuggestionNotFoundError ? 404 : error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error), {
-          error: error instanceof Error ? error.message : "Could not start that suggestion.",
-        });
-      }
-      return;
-    }
-    try {
-      taskSuggestions.remove(id, suggestionId);
-      sendJson(response, 200, { suggestions: taskSuggestions.list(id) });
-    } catch (error) {
-      sendJson(response, error instanceof TaskSuggestionNotFoundError ? 404 : 400, {
-        error: error instanceof Error ? error.message : "Could not dismiss that suggestion.",
-      });
-    }
-    return;
-  }
+  if (answered(response, path, await taskSuggestionRoutes.handle(routed))) return;
 
   const watcherRoute = path.match(SESSION_WATCHER);
   if (watcherRoute) {

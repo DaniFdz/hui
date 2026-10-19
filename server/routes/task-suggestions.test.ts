@@ -1,3 +1,4 @@
+/** Task-suggestion tool integration, session scoping and guarded HTTP dismiss/start actions. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createServer } from "node:http";
@@ -15,8 +16,8 @@ test("suggest_task bridge calls feed guarded dismiss and start routes", async (t
     { id: "alpha", title: "Alpha", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
     { id: "beta", title: "Beta", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
   ], groups: [] }));
-  const { middleware, stopBackend } = await import("./hui.ts");
-  const { agentToolEnvironment } = await import("./agent-tools-bridge.ts");
+  const { middleware, stopBackend } = await import("../hui.ts");
+  const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
