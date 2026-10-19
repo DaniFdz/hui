@@ -57,7 +57,7 @@ export function renderSlashMenu(props: SlashMenuProps) {
                   @pointerdown=${(event: PointerEvent) => event.preventDefault()}
                   @click=${() => props.onSelect(command)}>
                   <span class="slash-menu-icon" aria-hidden="true">${source === "extension" ? icons.terminal : source === "skill" ? icons.book : icons.fileText}</span>
-                  <span class="slash-menu-copy"><span class="slash-menu-name">${props.browseSession && command.source === "skill" ? `/${command.name}` : commandReference(command, props.catalog ?? props.commands)}</span><span class="slash-menu-desc">${command.description}</span></span>
+                  <span class="slash-menu-copy"><span class="slash-menu-name">${commandReference(command, props.catalog ?? props.commands)}</span><span class="slash-menu-desc">${command.description}</span></span>
                 </button>`)}
             </div>`;
           })}

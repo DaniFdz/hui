@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { botChatCommandRefusal, completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 
 test("slash suggestions follow the command word at the caret", () => {
@@ -61,10 +61,11 @@ test("search accepts skill names without their prefix and matches descriptions a
   assert.deepEqual(filterSlashCommands(commands, "absent"), []);
 });
 
-test("completion inserts PI's exact invocation and preserves arguments without submitting", () => {
-  assert.deepEqual(completeSlashCommand("/test", "skill:testing"), { text: "/skill:testing ", caret: 15 });
-  assert.deepEqual(completeSlashCommand("/r existing args", "ext:review"), { text: "/ext:review existing args", caret: 12 });
-  assert.deepEqual(completeSlashCommand("/r\nnext line", "review"), { text: "/review\nnext line", caret: 7 });
+test("completion preserves arguments without submitting", () => {
+  const catalog: RuntimeCommand[] = [{ name: "skill:testing", source: "skill", description: "" }, { name: "review", source: "prompt", description: "" }];
+  assert.deepEqual(completeCommandReference("/test", catalog[0]!, catalog), { text: "$testing ", caret: 9 });
+  assert.deepEqual(completeCommandReference("/r existing args", catalog[1]!, catalog), { text: "/review existing args", caret: 8 });
+  assert.deepEqual(completeCommandReference("/r\nnext line", catalog[1]!, catalog), { text: "/review\nnext line", caret: 7 });
 });
 
 test("HUI update is available without a runtime and wins command-name collisions", () => {

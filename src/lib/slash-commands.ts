@@ -82,14 +82,6 @@ export function filterSlashCommands(commands: readonly ComposerCommand[], query:
   ).sort((a, b) => order[a.source] - order[b.source] || a.name.localeCompare(b.name));
 }
 
-/** Preserve existing arguments when completing a command edited in place. */
-export function completeSlashCommand(text: string, name: string): { text: string; caret: number } {
-  const rest = text.replace(/^\/[^\s]*/u, "");
-  const suffix = rest || " ";
-  const command = `/${name}`;
-  return { text: command + suffix, caret: command.length + (suffix.startsWith(" ") ? 1 : 0) };
-}
-
 /** Both discovery menus insert the same stable alias in place of the word at `start`; templates keep their slash syntax. */
 export function completeCommandReference(text: string, command: ComposerCommand, catalog: readonly ComposerCommand[], start = 0): { text: string; caret: number } {
   const rest = text.slice(start).replace(/^[/$][^\s]*/u, "") || " ";

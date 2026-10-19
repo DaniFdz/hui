@@ -75,7 +75,7 @@ import {
 } from "./lib/sessions-store.ts";
 import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, completeSlashCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./views/list-filter.ts";
 import {
   applyBotsUpdate,
@@ -2917,11 +2917,7 @@ export class HuiApp extends HuiElement {
   };
 
   private selectSlashCommand = (command: ComposerCommand) => {
-    // A draft's catalog lacks the extension commands a short `$name` could later collide with: insert `/skill:name`.
-    const start = this.slashQuery?.start ?? 0;
-    const completed = this.composerSession() || command.source !== "skill" || start > 0
-      ? completeCommandReference(this.draft, command, this.runtimeCommands(), start)
-      : completeSlashCommand(this.draft.replace(/^\$/u, "/"), command.name);
+    const completed = completeCommandReference(this.draft, command, this.runtimeCommands(), this.slashQuery?.start ?? 0);
     this.updateDraft(completed.text);
     this.resetLocalPaths();
     this.slashQuery = null;
