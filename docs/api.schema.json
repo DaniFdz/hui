@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "PowerError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "PowerRequest": {
+      "type": "object",
+      "required": [
+        "lidAwake"
+      ],
+      "properties": {
+        "lidAwake": {
+          "type": "boolean"
+        }
+      }
+    },
+    "PowerResponse": {
+      "type": "object",
+      "required": [
+        "power"
+      ],
+      "properties": {
+        "power": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PowerStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "PowerState": {
+      "type": "object",
+      "required": [
+        "state",
+        "detail"
+      ],
+      "properties": {
+        "state": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "off"
+            },
+            {
+              "type": "string",
+              "const": "pending"
+            },
+            {
+              "type": "string",
+              "const": "active"
+            },
+            {
+              "type": "string",
+              "const": "error"
+            }
+          ]
+        },
+        "detail": {
+          "type": "string"
+        }
+      }
+    },
+    "PowerStatus": {
+      "type": "object",
+      "required": [
+        "keepAwake",
+        "lidAwake",
+        "lidOn"
+      ],
+      "properties": {
+        "keepAwake": {
+          "$ref": "#/$defs/PowerState"
+        },
+        "lidAwake": {
+          "$ref": "#/$defs/PowerState"
+        },
+        "lidOn": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "x-hui-api-version": "0.1.4",
+  "x-hui-areas": {
+    "power": [
+      "PowerError",
+      "PowerRequest",
+      "PowerResponse",
+      "PowerState",
+      "PowerStatus"
+    ]
+  },
+  "x-hui-routes": [
+    {
+      "method": "GET",
+      "path": "/__hui/power",
+      "response": {
+        "$ref": "#/$defs/PowerResponse"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/power",
+      "request": {
+        "$ref": "#/$defs/PowerRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/PowerResponse"
+      }
+    }
+  ]
+}

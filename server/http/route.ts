@@ -6,6 +6,7 @@
  * `x-hui` header name every guard checks.
  */
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
+import type { Static, TSchema } from "typebox";
 import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "../http-compression.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -35,6 +36,10 @@ export type RouteResult =
   | JsonResult
   | { status: number; html: string }
   | { status: number; file: RouteFile };
+
+export function reply<S extends TSchema>(_schema: S, body: Static<S>, status = 200): JsonResult {
+  return { status, body };
+}
 
 /** A request body as bytes, refusing anything past `maxBytes`. */
 export async function readBytes(request: IncomingMessage, maxBytes: number): Promise<Buffer> {

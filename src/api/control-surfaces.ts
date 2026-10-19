@@ -3,7 +3,7 @@
  * inspection of context files, memory and worktrees. The gateway gathers all of it; this module only fetches
  * and types the results.
  */
-import type { PowerStatus } from "../../shared/power.ts";
+import type { PowerResponse, PowerStatus } from "./schema/power.ts";
 import { fetchJson } from "./request.ts";
 
 export type GatewayHealth = {
@@ -56,11 +56,11 @@ export function loadGatewayHealth(): Promise<GatewayHealth> {
 
 /** `null` when the gateway does not run on macOS. */
 export async function loadPower(): Promise<PowerStatus | null> {
-  return (await fetchJson<{ power: PowerStatus | null }>("/__hui/power")).power;
+  return (await fetchJson<PowerResponse>("/__hui/power")).power;
 }
 
 export async function setLidAwake(lidAwake: boolean): Promise<PowerStatus | null> {
-  return (await fetchJson<{ power: PowerStatus | null }>("/__hui/power", {
+  return (await fetchJson<PowerResponse>("/__hui/power", {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ lidAwake }),

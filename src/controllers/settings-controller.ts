@@ -35,7 +35,7 @@ import {
 import type { PiResourceReaderState } from "../views/pi-resource-reader.ts";
 import type { AutomationProps } from "../views/settings-automation.ts";
 import type { SettingsProps } from "../views/settings.ts";
-import type { PowerStatus } from "../../shared/power.ts";
+import type { PowerStatus } from "../api/schema/power.ts";
 
 type SettingsHost = ReactiveControllerHost & { renderRoot: ParentNode };
 

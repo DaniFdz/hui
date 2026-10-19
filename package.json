@@ -24,6 +24,7 @@
     "dev": "node bin/hui-dev.mjs gateway",
     "desktop": "npm run build && node bin/hui.mjs desktop",
     "build": "node scripts/build.mjs",
+    "api:schema": "node scripts/api-schema.ts",
     "prepack": "npm run build",
     "preview": "vite preview",
     "test": "vitest run",

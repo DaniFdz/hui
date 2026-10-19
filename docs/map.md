@@ -49,12 +49,14 @@ rename an entry; a commit never adds a new kind of violation.
 - R14. The remote worker release ships every module that
   `server/worker/main.ts`, `server/worker/host.ts` and `server/runtimes/` load.
 - R15. `server/api/` imports only `typebox` and itself.
+- R16. `src/api/schema/` matches the types generated from `docs/api.schema.json`,
+  checked by `scripts/api-schema.test.ts`.
 - R17. Installed entry points keep their paths: `bin/hui.mjs`, `cli/launch.ts`,
   `cli/main.ts`, `cli/gateway-run.ts`, `server/runtimes/pi-sdk-worker.ts`,
   `server/worker/main.ts` and `index.html`. An installed CLI checks their built
   files before switching to a new release.
 
-R13 and R16 are not checked yet.
+R13 is not checked yet.
 
 ## A message, start to finish
 
@@ -83,6 +85,7 @@ R13 and R16 are not checked yet.
 | Area | Start here |
 |---|---|
 | HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `server/routes/` (the route modules; `order.test.ts`: which handler answers each route family, in dispatch order), `server/http/` (`route.ts`: the request and result every route module speaks, request body reading and JSON answers; `events.ts`: server-sent events and the session event feed), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
+| Published API schema | `server/api/` (TypeBox payloads and route metadata; `index.ts`: area catalog and JSON Schema document), `docs/api.schema.json` (generated contract), `scripts/api-schema.ts` (publication and browser type generation), `server/test-support/api-schema.ts` (test-only conformance checks) |
 | Session registry and lifecycle | `sessions.ts` (HUI registry), `server/sessions/` (`session-tree.ts`: a session's tree root; `lifecycle.ts`: create, fork, worktree launch, update and delete; `views.ts`: the `SessionView` wire shape and the session list; `attachments.ts`: prompt attachment limits, decoding and the attachment store; `stages.ts`: an agent's `set_stage`), `live-sessions.ts` (running sessions), `session-list.ts`, `session-transport.ts`, `routes/attachments.ts` (`GET /__hui/sessions/:id/attachments/…`), `routes/sessions.ts` (the session list and groups, `POST /__hui/sessions`, `PATCH/DELETE /__hui/sessions/:id`), `routes/session-actions.ts` (`/__hui/sessions/:id/<action>`: open, prompt, queue, model, fork and the rest) |
 | Runtimes | `runtimes/types.ts` (contract), `runtimes/durable*.ts` (Pi Durable: host, adapter, prompt, tools, PI extensions, questions; `durable-offer.ts`: the tool offer every conversation shares), `runtimes/turn-origins.ts` (history entries every conversation may hold), `runtimes/pi*.ts` (PI SDK worker and CLI fallback), `runtimes/pi-import.ts` (moves PI sessions to Durable for `hui doctor --fix`), `runtimes/model-controls.ts` (a model's reasoning levels, fast mode and the level HUI's Ultra is sent) |
 | HUI agent tools | `runtimes/hui-tools.ts` (definitions), `agent-tools-bridge.ts` (loopback bridge for PI workers), `subagents.ts`, `watchers.ts`, `task-suggestions.ts`, `secret-requests.ts` |
@@ -104,6 +107,7 @@ R13 and R16 are not checked yet.
 |---|---|
 | App shell | `main.ts` (styles, boot, mount), `lib/boot-screen.ts` (index.html's boot screen), `lib/view-assets.ts` (view stylesheets loaded together before the first paint), `hui-app.ts` (navigation and cross-view state), `src/lit/hui-element.ts` |
 | Client stores and API | `src/api/` (requests to `/__hui/`: `request.ts` (fetch boundary, `x-hui` header, response deadline), `settings.ts`, `ui-errors.ts` (browser errors batched to the gateway), `sessions.ts` (session API), `terminals.ts`, `browser.ts`, `files.ts`, `diff.ts`, and one client per area: `automation.ts`, `backlog.ts`, `bots.ts`, `bot-facts.ts`, `bot-templates.ts`, `bot-tools.ts`, `bot-triggers.ts`, `calls.ts`, `datadog.ts`, `jira.ts`, `github.ts`, `github-previews.ts`, `pi.ts`, `providers.ts`, `themes.ts`, `vscode.ts`, `workers.ts`, …), `src/lib/settings/settings-store.ts` (settings cache and write queue), other `lib/*-store.ts` |
+| Generated API types | `src/api/schema/`, generated only from `docs/api.schema.json` by `npm run api:schema` |
 | Controllers | `src/controllers/` (Lit controllers holding a page's state and calling `src/api/`: automation (snapshot, polling, task actions), settings (HUI settings, theme, PI and the control surfaces), HUI update checks, the Kanban board, its Jira dialogs and task suggestions, the Work pane, bot import and export, a bot's tools, triggers and memories, calls, the browser live view) |
 | Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file) |
 | Chat | `views/chat/` (projection, tool cards, position rail), `src/lib/markdown/`, `src/lib/composer/` (drafts, state, textarea, send requests); file references that open in the Files view: `lib/files/references.ts` (which text is a path), `lib/files/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
