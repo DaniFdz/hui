@@ -64,16 +64,9 @@ import type { EventEmitter } from "node:events";
 import type { BrowserStatus } from "../shared/browser.ts";
 import { botsEnabled, type Settings } from "../src/lib/settings.ts";
 import { ProviderService } from "./providers.ts";
-import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
-import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-reader.ts";
-import { readToolsCatalog } from "./tools.ts";
+import { invalidateModelCatalog } from "./pi-config.ts";
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
-import {
-  PiMutationBusyError,
-  PiMutationCommandError,
-  PiMutationInputError,
-  PiMutationService,
-} from "./pi-mutations.ts";
+import { PiMutationService } from "./pi-mutations.ts";
 import { readWorkspaceInspection } from "./control-surfaces.ts";
 import { WorktreeService } from "./worktree-inventory.ts";
 import type { WorktreeRisk } from "../shared/worktrees.ts";
@@ -156,6 +149,7 @@ import { createFileRoutes, FILES_ROUTE } from "./routes/files.ts";
 import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.ts";
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
+import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
 import { createProviderRoutes } from "./routes/providers.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
@@ -188,11 +182,6 @@ const PREFIX = "/__hui/";
 const BROWSER_ROUTE = `${PREFIX}browser`;
 /** An operator preview of one managed-browser tab, as a data URL. */
 const BROWSER_TAB_PREVIEW = /^\/__hui\/browser\/tabs\/(t\d{1,6})\/preview$/u;
-const PI_ROUTE = `${PREFIX}pi`;
-const PI_PACKAGE_INSTALL_ROUTE = `${PI_ROUTE}/packages/install`;
-const PI_PACKAGE_REMOVE_ROUTE = `${PI_ROUTE}/packages/remove`;
-const PI_SKILL_INSTALL_ROUTE = `${PI_ROUTE}/skills/install`;
-const PI_RESOURCE_READ_ROUTE = /^\/__hui\/pi\/resources\/(skill|plugin)\/([a-f0-9]{24})$/;
 const WORKSPACES_ROUTE = `${PREFIX}workspaces`;
 const WORKTREES_ROUTE = `${PREFIX}worktrees`;
 const WORKTREES_REMOVE_ROUTE = `${PREFIX}worktrees/remove`;
@@ -243,6 +232,7 @@ const SESSION_GROUP_ONE = /^\/__hui\/session-groups\/([^/]+)$/;
 const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 
 const piMutations = new PiMutationService();
+const piRoutes = createPiRoutes({ piMutations });
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
@@ -1313,62 +1303,7 @@ async function handleRequest(
 
   if (answered(response, path, await settingsRoutes.handle(routed))) return;
 
-  if (
-    path === PI_PACKAGE_INSTALL_ROUTE ||
-    path === PI_PACKAGE_REMOVE_ROUTE ||
-    path === PI_SKILL_INSTALL_ROUTE
-  ) {
-    if (request.method !== "POST") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      const body = (await readBody(request)) as Record<string, unknown>;
-      const result = path === PI_PACKAGE_INSTALL_ROUTE
-        ? await piMutations.installPackage(typeof body["url"] === "string" ? body["url"] : "")
-        : path === PI_PACKAGE_REMOVE_ROUTE
-          ? await piMutations.removePackage(typeof body["source"] === "string" ? body["source"] : "")
-          : await piMutations.installSkill(typeof body["url"] === "string" ? body["url"] : "");
-      sendJson(response, 200, result);
-    } catch (error) {
-      const status = error instanceof PiMutationBusyError
-        ? 409
-        : error instanceof PiMutationInputError
-          ? 400
-          : error instanceof PiMutationCommandError
-            ? 502
-            : 500;
-      sendJson(response, status, {
-        error: error instanceof Error ? error.message : "PI operation failed.",
-      });
-    }
-    return;
-  }
-
-  if (path === `${PREFIX}tools`) {
-    if (request.method === "GET") sendJson(response, 200, await readToolsCatalog());
-    else sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
-
-  const resourceRead = path.match(PI_RESOURCE_READ_ROUTE);
-  if (resourceRead) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      sendJson(response, 200, await readPiResourceDocument(
-        resourceRead[1] as "skill" | "plugin",
-        resourceRead[2] ?? "",
-      ));
-    } catch (error) {
-      sendJson(response, error instanceof PiResourceNotFoundError ? 404 : 500, {
-        error: error instanceof Error ? error.message : "Could not read the resource.",
-      });
-    }
-    return;
-  }
+  if (answered(response, path, await piRoutes.handle(routed))) return;
 
   if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
     const result = await workerRoutes.handle(routeRequest(request, response, path));
@@ -1395,17 +1330,6 @@ async function handleRequest(
   }
 
   if (answered(response, path, await providerRoutes.handle(routed))) return;
-
-  // PI remains the writer: mutations above delegate to PI's own CLI or a
-  // short-lived PI installer agent, then this route reports the refreshed view.
-  if (path === PI_ROUTE) {
-    if (request.method === "GET") {
-      sendJson(response, 200, await readPiConfig());
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
 
   if (answered(response, path, await powerRoutes.handle(routed))) return;
 
