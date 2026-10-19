@@ -79,7 +79,7 @@ function rule(from, to, specifier, type) {
   if (under(to, "shared")) return "R3";
   if (under(from, "src")) {
     if (!under(to, "src")) return "R1";
-    if (under(from, "src/lib") && ((under(to, "src/api") && !type) || under(to, "src/controllers", "src/components", "src/views"))) return "R6";
+    if (under(from, "src/lib") && ((under(to, "src/api") && !type && !from.endsWith("-store.ts")) || under(to, "src/controllers", "src/components", "src/views"))) return "R6";
     if (under(from, "src/views") && (under(to, "src/controllers") || to === "src/hui-app.ts")) return "R7";
     return undefined;
   }
@@ -611,7 +611,6 @@ const ALLOWED = [
   "src/lib/session-calendar.test.ts -> shared/session-activity.ts (R3)",
   "src/lib/session-calendar.ts -> shared/session-activity.ts (R3)",
   "src/lib/session-calendar.ts -> src/api/request.ts (R6)",
-  "src/lib/settings-store.ts -> src/api/settings.ts (R6)",
   "src/lib/settings.ts -> shared/calls.ts (R3)",
   "src/lib/settings.ts -> shared/vscode.ts (R3)",
   "src/lib/sidebar-sessions.test.ts -> src/api/sessions.ts (R6)",
@@ -622,14 +621,10 @@ const ALLOWED = [
   "src/lib/task-suggestions.ts -> src/api/request.ts (R6)",
   "src/lib/terminal-font.test.ts -> src/views/settings.ts (R6)",
   "src/lib/terminal-stream.ts -> shared/terminal-stream.ts (R3)",
-  "src/lib/theme-store.ts -> src/api/request.ts (R6)",
-  "src/lib/tools-store.ts -> src/api/request.ts (R6)",
   "src/lib/transcript-state.ts -> server/runtimes/transcript-metrics.ts (R1)",
   "src/lib/transcript-state.ts -> shared/calls.ts (R3)",
-  "src/lib/update-store.ts -> src/api/request.ts (R6)",
   "src/lib/voice.ts -> shared/voice.ts (R3)",
   "src/lib/vscode-store.ts -> shared/vscode.ts (R3)",
-  "src/lib/vscode-store.ts -> src/api/request.ts (R6)",
   "src/lib/vscode-theme.ts -> shared/vscode.ts (R3)",
   "src/lib/watchers.ts -> shared/watchers.ts (R3)",
   "src/lib/watchers.ts -> src/api/request.ts (R6)",

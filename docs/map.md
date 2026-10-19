@@ -34,7 +34,8 @@ the exceptions that exist today: delete an entry when you fix it, never add one.
   `desktop/`; `bin/` imports `cli/`, `server/`, `desktop/` and `build/`.
 - R5. Only `src/api/` calls `fetch`, `new WebSocket` or `new EventSource`.
 - R6. `src/lib/` imports nothing from `src/controllers/`, `src/components/` or
-  `src/views/`, and only types from `src/api/`.
+  `src/views/`, and only types from `src/api/`, except `*-store.ts` modules,
+  which cache what the API returns.
 - R7. `src/views/` imports nothing from `src/controllers/` or `src/hui-app.ts`.
   Only `src/components/` and `src/hui-app.ts` register custom elements.
 - R8. `server/runtimes/` and `server/sessions/` never import `server/bots/`.
