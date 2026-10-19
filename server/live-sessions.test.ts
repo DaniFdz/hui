@@ -28,17 +28,19 @@ process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-live-"));
 
 const { LiveSessions, SessionBusyError } = await import("./live-sessions.ts");
 const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");
+const cleanedUp = { subagents: [] as string[], taskSuggestions: [] as string[], watchers: [] as string[], managedBrowser: [] as string[] };
 const { deleteSession } = createSessionLifecycle({
   views: { pendingView: () => { throw new Error("No pending sessions here."); } },
   readAttachments: async () => ({ attachments: [], cleanupRejected: async () => undefined }),
-  subagents: () => ({ forgetSessions: () => undefined }),
-  taskSuggestions: () => ({ forget: () => undefined }),
-  watchers: () => ({ forget: async () => undefined }),
-  managedBrowser: () => ({ closeOwner: () => undefined }),
+  subagents: () => ({ forgetSessions: (ids) => { cleanedUp.subagents.push(...ids); } }),
+  taskSuggestions: () => ({ forget: (ids) => { cleanedUp.taskSuggestions.push(...ids); } }),
+  watchers: () => ({ forget: async (ids) => { cleanedUp.watchers.push(...ids); } }),
+  managedBrowser: () => ({ closeOwner: (owner) => { cleanedUp.managedBrowser.push(owner); } }),
 });
 const { readRegistry, SessionRegistryError, updateRegistry } = await import("./sessions.ts");
 const { readObservability } = await import("./observability.ts");
 const { workers } = await import("./workers.ts");
+const { terminals } = await import("./terminals.ts");
 type SessionRecord = import("./sessions.ts").SessionRecord;
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
@@ -2479,9 +2481,14 @@ test("deleting a parent closes descendant runtimes and blocks stale child opens"
   const records = [parent, child, grandchild, outside];
   for (const row of records) { manager.ensure(row); await waitForBoot(manager, row.id); }
   let stored = records;
+  for (const calls of Object.values(cleanedUp)) calls.length = 0;
+  const closedTerminals = vi.spyOn(terminals, "closeOwner");
   await deleteSession(parent.id, manager, async (mutate) => { stored = [...mutate(stored)]; return stored; });
   assert.deepEqual(stored.map((r) => r.id), [outside.id]);
   assert.deepEqual(started.map((runtime) => runtime.disposed), [true, true, true, false]);
   for (const row of [parent, child, grandchild]) assert.equal(manager.ensure(row), false);
+  const tree = [parent.id, child.id, grandchild.id].sort();
+  for (const calls of [...Object.values(cleanedUp), closedTerminals.mock.calls.map(([owner]) => owner)]) assert.deepEqual([...calls].sort(), tree);
+  closedTerminals.mockRestore();
   manager.disposeAll();
 });
