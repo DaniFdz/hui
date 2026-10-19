@@ -211,8 +211,8 @@ test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bo
 
 test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {
   const app = read("../hui-app.ts");
-  assert.match(between(app, "private callsAvailable(", "private isUpdateSession("), /return callsReady\(this\.callsStatus\);/u);
-  assert.match(app, /if \(!this\.embeddedPane && this\.view === "bot" && !this\.callsStatus\) void this\.loadCallsStatus\(\);/u, "read on every bot page, whatever settings.json holds");
+  assert.match(app, /call \|\| this\.bots\.callsAvailable\(\) \?/u, "with a ChatGPT login (bots-controller.test.ts)");
+  assert.match(app, /if \(!this\.embeddedPane && this\.view === "bot" && !this\.bots\.callsStatus\) void this\.bots\.loadCallsStatus\(\);/u, "read on every bot page, whatever settings.json holds");
   assert.doesNotMatch(app, /VoiceStudio|voiceNotes|readAloud|paneVoice|VOICE_CONNECTION_EVENT|calls\.engine/u);
   const home = read("./home.ts");
   assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall \}\)/u, "the phone button");
@@ -262,9 +262,8 @@ test("the Settings page: Profile, Tagging, Model, Calls and Workspace, each chan
   assert.doesNotMatch(source, /type="submit"|>Save</u, "no Save button");
   const app = read("../hui-app.ts");
   assert.match(app, /onChange: \(key, value\) => this\.bots\.changeSetting\(bot\.id, key, value\),/u, "one PATCH per change, in order, through PATCH /__hui/bots/:id (bots-controller.test.ts)");
-  assert.match(between(app, "private botSettingsCall(", "private botSettingsSavesOf("),
-    /return \{ defaultVoice: this\.control\.settings\.calls\.voice, \.\.\.\(this\.callsStatus \? \{ ready: callsReady\(this\.callsStatus\) \} : \{\}\) \};/u,
-    "Settings' voice, and whether calls can run once the gateway has said (callsReady, as Call uses)");
+  assert.match(app, /const settingsCall = this\.bots\.settingsCall\(\);/u,
+    "Settings' voice, and whether calls can run once the gateway has said, as Call uses (bots-controller.test.ts)");
   assert.match(app, /\n\s+call: settingsCall,\n/u, "the page always gets its Calls section");
 });
 

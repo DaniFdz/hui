@@ -86,7 +86,6 @@ import { BotTriggersController } from "./controllers/bot-triggers-controller.ts"
 import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder } from "./views/bots.ts";
 import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
 import { BotImportController } from "./controllers/bot-import-controller.ts";
-import type { BotSettingsProps } from "./views/bot-settings.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
@@ -154,8 +153,7 @@ import { loadJiraConnection } from "./api/jira.ts";
 import { VoiceController } from "./controllers/voice-controller.ts";
 import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { liveCallPlatform } from "./lib/voice/live-call-platform.ts";
-import { deleteCall, loadCallsStatus, postCallDelegation, postCallHeartbeat, postCallLines, postCallTask, startBotCall } from "./api/calls.ts";
-import { callsReady, type CallsStatus } from "../shared/calls.ts";
+import { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postCallTask, startBotCall } from "./api/calls.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./api/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
@@ -462,9 +460,6 @@ export class HuiApp extends HuiElement {
   @state() private botMenuFor = "";
   /** The bot whose chat the bot route shows. */
   @state() private activeBotId = "";
-  /** The ChatGPT login GPT-Live calls use (`/__hui/calls`), read on a bot's page. */
-  @state() private callsStatus: CallsStatus | undefined;
-  private callsStatusLoading: Promise<void> | undefined;
   /** Import bot… (+) and Export… (a bot's ⋯): their dialogs' state. An imported bot opens like a new one. */
   private botImports = new BotImportController(this, {
     workers: () => this.launchWorkers,
@@ -959,7 +954,7 @@ export class HuiApp extends HuiElement {
       if (before && botsEnabled(before) !== botsEnabled(this.control.settings)) this.followBotsSetting();
     }
     // A bot's chat offers GPT-Live calls once the gateway says a ChatGPT login is there.
-    if (!this.embeddedPane && this.view === "bot" && !this.callsStatus) void this.loadCallsStatus();
+    if (!this.embeddedPane && this.view === "bot" && !this.bots.callsStatus) void this.bots.loadCallsStatus();
     if (changed.has("selected") || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || this.view === "bot") {
       const activeSessionTitle = this.settingsOpen ? undefined
         : this.view === "home" ? this.selected?.title
@@ -2454,20 +2449,6 @@ export class HuiApp extends HuiElement {
     void this.persistComposerDraft();
   };
 
-  /** The ChatGPT login GPT-Live calls use; a read under way is shared. A failed read leaves Call hidden. */
-  private loadCallsStatus(): Promise<void> {
-    this.callsStatusLoading ??= loadCallsStatus().then(
-      (status) => { this.callsStatus = status; },
-      () => { this.callsStatus = undefined; },
-    ).finally(() => { this.callsStatusLoading = undefined; });
-    return this.callsStatusLoading;
-  }
-
-  /** Call shows whenever GPT-Live can run: with a ChatGPT login. */
-  private callsAvailable(): boolean {
-    return callsReady(this.callsStatus);
-  }
-
   private isUpdateSession(session: SessionView | undefined): boolean {
     return session?.title === HUI_UPDATE_SESSION_TITLE && session.group === "";
   }
@@ -3906,12 +3887,6 @@ export class HuiApp extends HuiElement {
     return this.control.pi?.model.catalog.find((entry) => `${entry.provider}/${entry.id}` === ref)?.name ?? ref;
   }
 
-  /** The Calls section: GPT-Live's default voice, which a bot's "Default" follows, and whether a ChatGPT login lets
-   * calls run. That is left out until the gateway has said, so a signed-in operator never sees the hint flash. */
-  private botSettingsCall(): BotSettingsProps["call"] {
-    return { defaultVoice: this.control.settings.calls.voice, ...(this.callsStatus ? { ready: callsReady(this.callsStatus) } : {}) };
-  }
-
   private setBotHidden = (bot: BotView, hidden: boolean) => {
     this.botMenuFor = "";
     this.bots.setHidden(bot, hidden);
@@ -4066,10 +4041,10 @@ export class HuiApp extends HuiElement {
       panelId,
     };
     const call = this.voice.call?.bot.id === bot.id ? this.voice.call : undefined;
-    const settingsCall = this.botSettingsCall();
+    const settingsCall = this.bots.settingsCall();
     const utilityDefault = this.utilityModelName();
     // A call under way stays reachable even if the ChatGPT login went meanwhile.
-    const paneCall: PaneCall | undefined = call || this.callsAvailable() ? { botId: bot.id, inCall: Boolean(call) } : undefined;
+    const paneCall: PaneCall | undefined = call || this.bots.callsAvailable() ? { botId: bot.id, inCall: Boolean(call) } : undefined;
     const expanded = !call && this.botPanelShownExpanded();
     return html`<div class="bot-workspace ${panelOpen && !sheet ? "bot-workspace--panel" : ""} ${expanded ? "bot-workspace--expanded" : ""}" data-bot-id=${bot.id}>
       <div class="bot-workspace__chat">

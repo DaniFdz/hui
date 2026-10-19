@@ -36,6 +36,9 @@ vi.mock("../api/bots.ts", () => ({
   deleteBot: (id: string) => pending(`delete ${id}`),
   restoreBot: (id: string) => pending(`restore ${id}`),
 }));
+vi.mock("../api/calls.ts", () => ({
+  loadCallsStatus: () => pending("calls status"),
+}));
 vi.mock("../lib/modal-dialog.ts", () => ({
   ensureModal: (dialog: { open: boolean; selector: string }) => { dialog.open = true; fake.modal.push(`open ${dialog.selector}`); },
   closeModal: (dialog: { selector: string }) => { fake.modal.push(`close ${dialog.selector}`); },
@@ -468,4 +471,30 @@ test("hiding and restoring from the roster wait on one row at a time; with none 
   await settle();
   assert.equal(controller.showHidden, false);
   assert.equal(notes.at(-1), "Ada is back in the roster.");
+});
+
+test("Call and the Settings page's Calls section follow one read of the ChatGPT login; a failed read leaves Call hidden", async () => {
+  const { controller, host } = setup({ ...ON, calls: { voice: "maple" } });
+  assert.equal(controller.callsAvailable(), false);
+  assert.deepEqual(controller.settingsCall(), { defaultVoice: "maple" }, "nothing about a login until the gateway has said");
+  const first = controller.loadCallsStatus();
+  assert.equal(controller.loadCallsStatus(), first, "a read under way is shared");
+  const updates = host.updates;
+  fake.calls[0]!.answer(new Error("offline"));
+  await first;
+  assert.equal(controller.callsAvailable(), false);
+  assert.equal(host.updates, updates, "nothing to render, so a bot page does not read again at once");
+  void controller.loadCallsStatus();
+  assert.equal(fake.calls.length, 2, "read again once the first ended");
+  fake.calls[1]!.answer({ chatgpt: { signedIn: false } });
+  await settle();
+  assert.equal(controller.callsAvailable(), false);
+  assert.deepEqual(controller.settingsCall(), { defaultVoice: "maple", ready: false });
+  assert.ok(host.updates > updates);
+  controller.callsStatus = undefined;
+  void controller.loadCallsStatus();
+  fake.calls[2]!.answer({ chatgpt: { signedIn: true } });
+  await settle();
+  assert.equal(controller.callsAvailable(), true);
+  assert.deepEqual(controller.settingsCall(), { defaultVoice: "maple", ready: true });
 });

@@ -3,18 +3,21 @@
  * bot stream that pushes it while Settings → Labs → Bots is on, with reads by GET as the fallback for a gateway without
  * the stream. It also owns the sidebar's Agents | Bots choice, the bot panel's state with the browser-remembered open
  * state and width, the Settings page's saves, and the roster's actions: creating a bot, hiding, archiving (with its
- * confirmation and its Restore toast), restoring and deleting one. A top-level app only: an embedded pane never reads bots.
+ * confirmation and its Restore toast), restoring and deleting one, and whether GPT-Live calls can run. A top-level app
+ * only: an embedded pane never reads bots.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { archiveBot, createBot, deleteBot, loadBots, restoreBot, subscribeBots, updateBot } from "../api/bots.ts";
+import { loadCallsStatus } from "../api/calls.ts";
 import type { WorkerView } from "../api/workers.ts";
+import { callsReady, type CallsStatus } from "../../shared/calls.ts";
 import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
 import type { NavigationTarget } from "../lib/navigation.ts";
 import { applyBotsUpdate, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, type BotView } from "../lib/bots/bots.ts";
 import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "../lib/bots/roster.ts";
 import { botsEnabled } from "../lib/settings.ts";
 import { refreshSettings, settingsWritten } from "../lib/settings/settings-store.ts";
-import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsSaves, type BotSettingValue } from "../views/bot-settings.ts";
+import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "../views/bot-settings.ts";
 import type { SettingsController } from "./settings-controller.ts";
 
 type BotsHost = ReactiveControllerHost & { embeddedPane: boolean; renderRoot: ParentNode };
@@ -79,6 +82,9 @@ export class BotsController implements ReactiveController {
   deleteError = "";
   archiveToast: BotArchiveToast | undefined;
   #archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The ChatGPT login GPT-Live calls use (`/__hui/calls`), read on a bot's page. */
+  callsStatus: CallsStatus | undefined;
+  #callsStatusLoading: Promise<void> | undefined;
   readonly #host: BotsHost;
   readonly #deps: BotsDeps;
   #inFlight: Promise<void> | undefined;
@@ -326,6 +332,29 @@ export class BotsController implements ReactiveController {
   dismissSetting(botId: string, key: BotSettingKey): void {
     if (!this.savesOf(botId).errors[key]) return;
     this.#updateSaves(botId, (saves) => ({ ...saves, errors: withoutSetting(saves.errors, key) }));
+  }
+
+  /** The ChatGPT login GPT-Live calls use; a read under way is shared. A failed read leaves Call hidden. */
+  loadCallsStatus(): Promise<void> {
+    this.#callsStatusLoading ??= loadCallsStatus().then(
+      (status) => {
+        this.callsStatus = status;
+        this.#host.requestUpdate();
+      },
+      () => { this.callsStatus = undefined; },
+    ).finally(() => { this.#callsStatusLoading = undefined; });
+    return this.#callsStatusLoading;
+  }
+
+  /** Call shows whenever GPT-Live can run: with a ChatGPT login. */
+  callsAvailable(): boolean {
+    return callsReady(this.callsStatus);
+  }
+
+  /** The Calls section: GPT-Live's default voice, which a bot's "Default" follows, and whether a ChatGPT login lets
+   * calls run. That is left out until the gateway has said, so a signed-in operator never sees the hint flash. */
+  settingsCall(): BotSettingsProps["call"] {
+    return { defaultVoice: this.#deps.control.settings.calls.voice, ...(this.callsStatus ? { ready: callsReady(this.callsStatus) } : {}) };
   }
 
   /** Opens the archive and delete confirmations once they render, focus on Cancel. */
