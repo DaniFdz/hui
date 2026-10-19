@@ -29,7 +29,7 @@ import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-
 import { type BotReply, type BotView } from "../shared/bots.ts";
 import { PullRequestStatuses } from "./pull-requests.ts";
 
-import { botsOn, readHuiSettings, writeHuiSettings } from "./hui-settings.ts";
+import { botsEnabled, botsOn, readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
 import { AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeService } from "./vscode.ts";
 import { VscodeInstaller } from "./vscode-install.ts";
@@ -37,7 +37,6 @@ import { verifyVscodeServer } from "./vscode-providers.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
 import type { BrowserStatus } from "../shared/browser.ts";
-import { botsEnabled, type Settings } from "../src/lib/settings.ts";
 import { ProviderService } from "./providers.ts";
 import { invalidateModelCatalog } from "./pi-config.ts";
 import { PiMutationService } from "./pi-mutations.ts";

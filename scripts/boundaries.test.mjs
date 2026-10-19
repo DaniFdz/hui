@@ -384,7 +384,6 @@ const ALLOWED = [
   "server/services.ts -> shared/bots.ts (R3)",
   "server/services.ts -> shared/browser.ts (R3)",
   "server/services.ts -> shared/task-suggestions.ts (R3)",
-  "server/services.ts -> src/lib/settings.ts (R2)",
   "server/session-list.test.ts -> shared/session-list.ts (R3)",
   "server/session-list.ts -> shared/session-list.ts (R3)",
   "server/session-stages.test.ts -> shared/session-stages.ts (R3)",
