@@ -67,3 +67,28 @@ No operator configuration, transcript, credential or account is involved.
     deletes them and their runs; the listener trigger stays, and `hui doctor`
     then reports nothing left and exits 0.
 11. Page errors: none.
+
+## A listener that goes quiet (2026-10-19)
+
+Run against `dani.fernandez/listener-silence-alert` the same way, with bots
+turned on through `PUT /__hui/settings` as setup and the bot and its trigger
+made through the panel.
+
+1. **The form and the URL box** say a listener reports at least every five
+   minutes and that, after five quiet minutes, HUI tells the bot its listener
+   went quiet.
+2. **One check-in** (`{"events":[]}`) answers 202 `ignored`; the card says
+   *Listener reported just now*.
+3. **Five minutes later**, with no other report, the bot's chat shows one
+   message from *PR changes · its listener went quiet*: "From HUI, not the
+   listener: nothing has reported to this trigger for 5 min (the last report
+   came at …)", then the fixture's reply. The card says *No report from the
+   listener for 6 min.*; Activity shows *Fired · its listener went quiet*.
+   The trigger's routes report that run, `lastFiredAt` unset and no delivery
+   counted against the hour's cap.
+4. **Ten minutes after the check-in** the chat still holds one notice.
+5. **390×844**: the notice wraps inside the chat without overflow. Page errors:
+   none (Lit's development-mode warnings only).
+
+Waking only once per silence, the next silence, sleep, refused reports and
+failed checks are proved by `server/bot-triggers.test.ts`.

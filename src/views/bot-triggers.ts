@@ -74,7 +74,7 @@ function renderWatch(trigger: BotTrigger, now: number) {
 function renderRevealed(revealed: RevealedHook, props: BotTriggersProps) {
   return html`<div class="bot-trigger-url" role="status" aria-live="polite">
     <p class="bot-trigger-url__title">${revealed.name}: its URL</p>
-    <p class="bot-panel__hint">Copy it now: HUI keeps only a fingerprint of it and can't show it again. Give it to your listener: after every check it POSTs <code>{ "events": [...] }</code> to it from this machine or your tailnet, the list empty when nothing happened, at least every five minutes: after five quiet minutes, HUI tells ${props.bot.name} its listener went quiet.</p>
+    <p class="bot-panel__hint">Copy it now: HUI keeps only a fingerprint of it and can't show it again. Give it to your listener: after every check it POSTs <code>{ "events": [...] }</code> to it from this machine or your tailnet, the list empty when nothing happened. It reports at least every five minutes: after five quiet minutes, HUI tells ${props.bot.name} its listener went quiet.</p>
     <code class="bot-trigger-url__value" aria-label=${`URL of ${revealed.name}`}>${revealed.url}</code>
     <div class="bot-trigger-url__actions">
       <button type="button" class="btn btn--sm bot-trigger-url__copy" @click=${props.onCopy}>${revealed.copied ? icons.check : icons.copy}<span>${revealed.copied ? "Copied" : "Copy"}</span></button>
@@ -131,7 +131,7 @@ function renderForm(props: BotTriggersProps, open: boolean) {
     <form class="bot-trigger-form__body" novalidate @submit=${(event: SubmitEvent) => submitTrigger(event, props)}>
       <label class="bot-field"><span class="bot-field__label">Name</span>
         <input class="settings-input" name="name" type="text" maxlength=${BOT_TRIGGER_LIMITS.name} placeholder="Reviews" autocomplete="off" /></label>
-      <p class="bot-field__hint">A program you run, a listener, watches something HUI doesn't read itself and, after every check, POSTs what it found to a URL HUI makes and shows once. Each event wakes ${name} once, events from before the trigger never do, and an empty report only says the listener is alive. Five minutes without one, and ${name} hears that its listener went quiet.</p>
+      <p class="bot-field__hint">A program you run, a listener, watches something HUI doesn't read itself and, after every check, POSTs what it found to a URL HUI makes and shows once. Each event wakes ${name} once, events from before the trigger never do, and an empty report only says the listener is alive. After five minutes without one, ${name} hears that its listener went quiet.</p>
       <fieldset class="bot-field">
         <legend class="bot-field__label">Only events where (optional)</legend>
         <div class="bot-trigger-form__match">
