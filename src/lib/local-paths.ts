@@ -2,7 +2,7 @@
  * Completion of the composer's `@` mentions and paths: finding the path or `@` mention at the caret, the bots a
  * mention suggests and splicing a chosen suggestion back in. The gateway lists matching paths (src/api/local-paths.ts).
  */
-import type { BotView } from "../../shared/bots.ts";
+import type { BotView } from "../api/schema/bots.ts";
 
 export type LocalPathSuggestion =
   | { path: string; kind: "directory" | "file" }

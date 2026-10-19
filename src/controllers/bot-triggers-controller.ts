@@ -6,7 +6,7 @@
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotTrigger, BotTriggerCreated, BotTriggerInput, BotTriggerPatch, BotTriggerRun, BotTriggersList } from "../api/schema/bot-triggers.ts";
-import type { BotView } from "../../shared/bots.ts";
+import type { BotView } from "../api/schema/bots.ts";
 import { botTriggersApi } from "../api/bot-triggers.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { TRIGGERS_POLL_MS, type BotTriggersActions, type BotTriggersState } from "../lib/bots/triggers.ts";

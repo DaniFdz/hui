@@ -1674,23 +1674,65 @@ bot, 409 when the bot's state refuses the request, 503 when the gateway cannot
 read the chat's memory or the bot's worker is offline, 500 for storage
 failures; other methods answer 405.
 
-| Route | Success | Behavior |
-| --- | --- | --- |
-| `GET /__hui/bots[?archived=1]` | 200 `{ bots: BotView[] }` | Active bots, or with `archived=1` only archived ones, sorted by name |
-| `POST /__hui/bots` | 201 `{ bot }` | `BotInput`: the record fields, all optional (`{}` is enough), `handle`, `disabledTools` and `disabledSkills` (below; tools checked against those every chat has, before an extension's, and skills against its directory's, on the machine it runs on), `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker), with its home folder and SOUL.md) and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409 |
-| `GET /__hui/bots/:id` | 200 `{ bot }` | |
-| `PATCH /__hui/bots/:id` | 200 `{ bot }` | Only what changes (`worker` is 400: a bot stays on the machine it was created on); `tagging: "anyone"` goes back to the default (another value is 400); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks, `ears: ""` takes them off), `avatar: null` clears them all (an unknown `shape` or `ears` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409 |
-| `DELETE /__hui/bots/:id` | 200 `{ bot }` | Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent |
-| `DELETE /__hui/bots/:id?permanent=1` | 200 `{ ok: true }`, plus `queued: true` for a bot whose worker is offline ([then](#bots-on-a-worker) its memory and home there go at the worker's next connection) | Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404 |
-| `POST /__hui/bots/:id/restore` | 200 `{ bot }` | Unarchives the bot and its session record; routines stay disabled |
-| `POST /__hui/bots/:id/messages` | 202 or 200 | See below |
-| `POST /__hui/bots/:id/stop` | 200 `{ bot }` | Aborts the chat's running turn; an idle bot is unchanged; 409 while its chat starts |
-| `GET /__hui/bots/:id/memory` | 200 `{ status: BotMemoryStatus, view: string }` | The rendered current view (`<chat>`, one `id+n\|text` line per part, `</chat>`), read once the memory has caught up with the chat; the status counts the same messages |
-| `GET /__hui/bots/:id/memory/zoom?id=&n=` | 200 `{ text }` | OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400) |
-| `GET /__hui/bots/:id/catalog` | 200 `BotCatalog` | What the operator can turn off in the bot's chat and what is off, read from its `hui.bot` document; a roster copy that differs is repaired. It opens the chat (as a message would), so an extension's tools are listed; an archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). An access request the chat waits on comes along as `request`. Archived bots too |
-| `GET /__hui/bots/:id/soul` | 200 `BotSoul` | SOUL.md's text, trimmed (at most 256 KiB is read), or `null` while the bot has none. Archived bots too |
-| `PUT /__hui/bots/:id/soul` | 200 `BotSoul` | `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409 |
-| `GET /__hui/bots/:id/memory/html` | 200 `text/html` | OptChat's self-contained browse page (the view, every message, each tree level; everything escaped). A link opens it, so like an attachment it takes `x-hui: 1` or a browser-attested `sec-fetch-site: same-origin` page load; any other request is 403 (cross-site, same-site, `none`, none at all). Served with `content-security-policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (inline styles only, never framed), `nosniff`, `cache-control: no-store` and `cross-origin-resource-policy: same-origin` |
+### `GET /__hui/bots`
+
+Optional query parameter `archived=1`.
+
+200 `{ bots: BotView[] }`. Active bots, or with `archived=1` only archived ones, sorted by name
+
+### `POST /__hui/bots`
+
+201 `{ bot }`. `BotInput`: the record fields, all optional (`{}` is enough), `handle`, `disabledTools` and `disabledSkills` (below; tools checked against those every chat has, before an extension's, and skills against its directory's, on the machine it runs on), `worker` (a worker's id or name: [the bot runs there](#bots-on-a-worker), with its home folder and SOUL.md) and `soul` (SOUL.md's text, ≤ 20,000 characters after trimming; given, the bot skips its first conversation and no kickoff runs). Without `name` the bot is `New Bot` (`NEW_BOT_NAME`), which its first conversation replaces (`set_profile`). Without `handle` one is derived from the name (`-2`, `-3`… on collision); an explicit handle that is taken is 409
+
+### `GET /__hui/bots/:id`
+
+200 `{ bot }`
+
+### `PATCH /__hui/bots/:id`
+
+200 `{ bot }`. Only what changes (`worker` is 400: a bot stays on the machine it was created on); `tagging: "anyone"` goes back to the default (another value is 400); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks, `ears: ""` takes them off), `avatar: null` clears them all (an unknown `shape` or `ears` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409
+
+### `DELETE /__hui/bots/:id`
+
+200 `{ bot }`. Archives, deleting nothing: marks the bot, disables every Automation task aimed at its chat, withdraws messages still in HUI's follow-up queue for it, stops a running turn and archives the chat's session record. Idempotent
+
+With `?permanent=1`: 200 `{ ok: true }`, plus `queued: true` for a bot whose worker is offline ([then](#bots-on-a-worker) its memory and home there go at the worker's next connection). Deletes a bot for good, active or archived: withdraws messages still in HUI's follow-up queue for it and stops a running turn; its conversation stops being a bot's chat and its memory goes, in one commit (the `hui.bot` document cleared, OptChat turned off) and then OptChat's files; then every Automation task aimed at its chat, the chat's session record as `DELETE /__hui/sessions/:id` does (its runtime stops), its home folder `CONFIG_DIR/bots/<id>` with everything in it (SOUL.md and every file HUI or the bot put there; only `<BOTS_DIR>/<id>` itself, resolved, never following a link out), then the bot. A working directory the operator chose is never touched (when it lies inside the home folder, only SOUL.md goes). pi-durable cannot delete a conversation yet, so its raw log stays in the Durable store, where nothing reads it back. Each step can run again, so deleting again finishes an interrupted attempt; afterwards the bot is 404
+
+### `POST /__hui/bots/:id/restore`
+
+200 `{ bot }`. Unarchives the bot and its session record; routines stay disabled
+
+### `POST /__hui/bots/:id/messages`
+
+202 or 200. See below
+
+### `POST /__hui/bots/:id/stop`
+
+200 `{ bot }`. Aborts the chat's running turn; an idle bot is unchanged; 409 while its chat starts
+
+### `GET /__hui/bots/:id/memory`
+
+200 `{ status: BotMemoryStatus, view: string }`. The rendered current view (`<chat>`, one `id+n\|text` line per part, `</chat>`), read once the memory has caught up with the chat; the status counts the same messages
+
+### `GET /__hui/bots/:id/memory/zoom`
+
+Query `id=&n=`.
+
+200 `{ text }`. OptChat's `zoom(id, n)` output: the two lines under line `id+n`, `n = 1` the whole message (`id+0\|kind: text`), or its own "No line id+n."; `id`/`n` must be whole numbers (400)
+
+### `GET /__hui/bots/:id/catalog`
+
+200 `BotCatalog`. What the operator can turn off in the bot's chat and what is off, read from its `hui.bot` document; a roster copy that differs is repaired. It opens the chat (as a message would), so an extension's tools are listed; an archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). An access request the chat waits on comes along as `request`. Archived bots too
+
+### `GET /__hui/bots/:id/soul`
+
+200 `BotSoul`. SOUL.md's text, trimmed (at most 256 KiB is read), or `null` while the bot has none. Archived bots too
+
+### `PUT /__hui/bots/:id/soul`
+
+200 `BotSoul`. `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409
+
+`GET /__hui/bots/:id/memory/html` answers 200 `text/html`: OptChat's self-contained browse page (the view, every message, each tree level; everything escaped). A link opens it, so like an attachment it takes `x-hui: 1` or a browser-attested `sec-fetch-site: same-origin` page load; any other request is 403 (cross-site, same-site, `none`, none at all). Served with `content-security-policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (inline styles only, never framed), `nosniff`, `cache-control: no-store` and `cross-origin-resource-policy: same-origin`
 
 `POST /__hui/bots/:id/messages` takes `{ text, attachments?, wait?: boolean,
 timeoutSeconds? }`. `attachments` follow the prompt route's rules; an image

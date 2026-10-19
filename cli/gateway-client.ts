@@ -3,7 +3,7 @@
  * the bot lookup by id, handle or name, the flags and terminal every `hui bot`
  * and `hui schedule` command takes, and a routine's schedule from those flags.
  */
-import type { BotView } from "../shared/bots.ts";
+import type { BotView } from "../server/api/bots.ts";
 import type { AutomationSchedule } from "../server/automation.ts";
 
 export type BotFlags = {

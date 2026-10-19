@@ -4,7 +4,7 @@
  * the URL its listener reports to, this once.
  */
 import { BOT_TRIGGER_SOURCE_LABELS, botTriggerFilterSummary, cooldownLabel, type BotTrigger, type BotTriggerCreated, type BotTriggerRun, type BotTriggersList } from "../server/bot-triggers-format.ts";
-import type { BotView } from "../shared/bots.ts";
+import type { BotView } from "../server/api/bots.ts";
 import type { BotIO } from "./gateway-client.ts";
 
 export type TriggerFlags = {

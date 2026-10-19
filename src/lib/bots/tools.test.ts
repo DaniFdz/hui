@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { BotCatalog, BotCatalogTool } from "../../../shared/bots.ts";
+import type { BotCatalog, BotCatalogTool } from "../../api/schema/bots.ts";
 import { botToolsOffLabel, botToolsSummary, groupBotTools, matchingSkills, parseBotCatalog, skillsAfter, toolsAfter } from "./tools.ts";
 import { parseBot } from "./bots.ts";
 

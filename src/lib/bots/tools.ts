@@ -9,10 +9,8 @@
  * This module narrows the catalog and holds what the page shows; the page's
  * state lives in `controllers/bot-tools-controller.ts`.
  */
-import {
-  BOT_ACCESS_ANSWERS,
-  type BotAccessRequest, type BotCatalog, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup, type BotView,
-} from "../../../shared/bots.ts";
+import { BOT_ACCESS_ANSWERS } from "../../../shared/bots.ts";
+import type { BotAccessRequest, BotCatalog, BotCatalogSkill, BotCatalogTool, BotSkillRef, BotToolGroup, BotView } from "../../api/schema/bots.ts";
 
 /** Skills a tab shows before it offers a search. */
 export const SKILL_SEARCH_MIN = 8;

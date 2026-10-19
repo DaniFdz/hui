@@ -4,7 +4,7 @@
  * it follow the stream, and passes `props(bot)` to the view.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
-import type { BotCatalog, BotSkillRef, BotView } from "../../shared/bots.ts";
+import type { BotCatalog, BotSkillRef, BotView } from "../api/schema/bots.ts";
 import { loadBotCatalog } from "../api/bot-tools.ts";
 import { updateBot } from "../api/bots.ts";
 import { answerQuestion } from "../api/sessions.ts";

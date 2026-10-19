@@ -14,7 +14,8 @@
  */
 import { html, nothing, svg, type PropertyValues } from "lit";
 import { HuiElement } from "../lit/hui-element.ts";
-import { isBotFaceEars, isBotFaceShape, type BotFaceEars, type BotFaceShape } from "../../shared/bots.ts";
+import { isBotFaceEars, isBotFaceShape } from "../../shared/bots.ts";
+import type { BotFaceEars, BotFaceShape } from "../api/schema/bots.ts";
 import {
   FACE_EYES,
   FACE_EYE_POSITION,

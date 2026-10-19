@@ -622,6 +622,269 @@
         }
       }
     },
+    "BotAccessRequest": {
+      "type": "object",
+      "required": [
+        "id",
+        "sessionId",
+        "title",
+        "message"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "BotAvatar": {
+      "type": "object",
+      "properties": {
+        "emoji": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "shape": {
+          "$ref": "#/$defs/BotFaceShape"
+        },
+        "ears": {
+          "$ref": "#/$defs/BotFaceEars"
+        }
+      }
+    },
+    "BotAvatarPatch": {
+      "type": "object",
+      "properties": {
+        "emoji": {
+          "type": "string"
+        },
+        "color": {
+          "type": "string"
+        },
+        "shape": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BotFaceShape"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "ears": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BotFaceEars"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        }
+      }
+    },
+    "BotCatalog": {
+      "type": "object",
+      "required": [
+        "tools",
+        "skills",
+        "alwaysOn",
+        "disabledTools",
+        "disabledSkills",
+        "live"
+      ],
+      "properties": {
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotCatalogTool"
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotCatalogSkill"
+          }
+        },
+        "alwaysOn": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "description"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "disabledTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabledSkills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotSkillRef"
+          }
+        },
+        "live": {
+          "type": "boolean"
+        },
+        "request": {
+          "$ref": "#/$defs/BotAccessRequest"
+        }
+      }
+    },
+    "BotCatalogSkill": {
+      "type": "object",
+      "required": [
+        "name",
+        "path",
+        "description",
+        "source",
+        "enabled"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "BotCatalogTool": {
+      "type": "object",
+      "required": [
+        "name",
+        "label",
+        "description",
+        "group",
+        "source",
+        "powerful",
+        "enabled"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "group": {
+          "$ref": "#/$defs/BotToolGroup"
+        },
+        "source": {
+          "type": "string"
+        },
+        "powerful": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "BotDeleted": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "queued": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "BotDeleteResponse": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BotResponse"
+        },
+        {
+          "$ref": "#/$defs/BotDeleted"
+        }
+      ]
+    },
+    "BotDelivery": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "sent",
+            "queued"
+          ]
+        }
+      }
+    },
+    "BotFaceEars": {
+      "enum": [
+        "cat",
+        "bear",
+        "bunny",
+        "antenna",
+        "sprout",
+        "horns"
+      ]
+    },
+    "BotFaceShape": {
+      "enum": [
+        "blob",
+        "round",
+        "triangle",
+        "heart",
+        "cookie",
+        "star",
+        "flower",
+        "cloud",
+        "drop",
+        "ghost",
+        "pill",
+        "block",
+        "hexagon"
+      ]
+    },
     "BotFact": {
       "type": "object",
       "required": [
@@ -731,6 +994,506 @@
           }
         }
       }
+    },
+    "BotInput": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tagging": {
+          "$ref": "#/$defs/BotTagging"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "memoryModel": {
+          "type": "string"
+        },
+        "memoryThinking": {
+          "type": "string"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "disabledTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabledSkills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotSkillSelector"
+          }
+        },
+        "soul": {
+          "type": "string"
+        },
+        "worker": {
+          "type": "string"
+        },
+        "avatar": {
+          "$ref": "#/$defs/BotAvatar"
+        },
+        "voice": {
+          "$ref": "#/$defs/BotVoice"
+        }
+      }
+    },
+    "BotLastMessage": {
+      "type": "object",
+      "required": [
+        "role",
+        "text",
+        "at"
+      ],
+      "properties": {
+        "role": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "user"
+            },
+            {
+              "type": "string",
+              "const": "assistant"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        }
+      }
+    },
+    "BotMemoryResponse": {
+      "type": "object",
+      "required": [
+        "status",
+        "view"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/BotMemoryStatus"
+        },
+        "view": {
+          "type": "string"
+        }
+      }
+    },
+    "BotMemoryStatus": {
+      "type": "object",
+      "required": [
+        "messages",
+        "built",
+        "pending",
+        "viewBytes",
+        "viewLines",
+        "usage"
+      ],
+      "properties": {
+        "messages": {
+          "type": "number"
+        },
+        "built": {
+          "type": "number"
+        },
+        "pending": {
+          "type": "number"
+        },
+        "viewBytes": {
+          "type": "number"
+        },
+        "viewLines": {
+          "type": "number"
+        },
+        "waiting": {
+          "type": "boolean"
+        },
+        "failing": {
+          "type": "object",
+          "required": [
+            "node",
+            "error",
+            "since"
+          ],
+          "properties": {
+            "node": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "since": {
+              "type": "string"
+            }
+          }
+        },
+        "usage": {
+          "$ref": "#/$defs/BotMemoryUsage"
+        }
+      }
+    },
+    "BotMemoryUsage": {
+      "type": "object",
+      "required": [
+        "calls",
+        "input",
+        "output",
+        "cacheRead",
+        "cacheWrite",
+        "cost"
+      ],
+      "properties": {
+        "calls": {
+          "type": "number"
+        },
+        "input": {
+          "type": "number"
+        },
+        "output": {
+          "type": "number"
+        },
+        "cacheRead": {
+          "type": "number"
+        },
+        "cacheWrite": {
+          "type": "number"
+        },
+        "cost": {
+          "type": "number"
+        }
+      }
+    },
+    "BotMemoryZoom": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "BotMessageRequest": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "attachments": {
+          "type": "array",
+          "items": {}
+        },
+        "wait": {
+          "type": "boolean"
+        },
+        "timeoutSeconds": {
+          "type": "number"
+        }
+      }
+    },
+    "BotMessageResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/BotDelivery"
+        },
+        {
+          "$ref": "#/$defs/BotReply"
+        }
+      ]
+    },
+    "BotPatch": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tagging": {
+          "$ref": "#/$defs/BotTagging"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "memoryModel": {
+          "type": "string"
+        },
+        "memoryThinking": {
+          "type": "string"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "disabledTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabledSkills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotSkillSelector"
+          }
+        },
+        "avatar": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BotAvatarPatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "voice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BotVoicePatch"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "BotQuestion": {
+      "type": "object",
+      "required": [
+        "id",
+        "method",
+        "title"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "method": {
+          "enum": [
+            "select",
+            "confirm",
+            "input",
+            "editor",
+            "secret",
+            "questionnaire"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "placeholder": {
+          "type": "string"
+        },
+        "prefill": {
+          "type": "string"
+        }
+      }
+    },
+    "BotReply": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "answered",
+            "failed",
+            "needs-input",
+            "timeout"
+          ]
+        },
+        "reply": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotQuestion"
+          }
+        }
+      }
+    },
+    "BotResponse": {
+      "type": "object",
+      "required": [
+        "bot"
+      ],
+      "properties": {
+        "bot": {
+          "$ref": "#/$defs/BotView"
+        }
+      }
+    },
+    "BotSessionStatus": {
+      "enum": [
+        "idle",
+        "running",
+        "waiting",
+        "starting",
+        "error",
+        "reconnecting",
+        "disconnected"
+      ]
+    },
+    "BotSkillRef": {
+      "type": "object",
+      "required": [
+        "name",
+        "path"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "BotSkillSelector": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/BotSkillRef"
+        }
+      ]
+    },
+    "BotSoul": {
+      "type": "object",
+      "required": [
+        "soul"
+      ],
+      "properties": {
+        "soul": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "BotSoulRequest": {
+      "type": "object",
+      "required": [
+        "soul"
+      ],
+      "properties": {
+        "soul": {
+          "type": "string"
+        }
+      }
+    },
+    "BotsResponse": {
+      "type": "object",
+      "required": [
+        "bots"
+      ],
+      "properties": {
+        "bots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotView"
+          }
+        }
+      }
+    },
+    "BotsUpdate": {
+      "type": "object",
+      "required": [
+        "revision",
+        "upserts"
+      ],
+      "properties": {
+        "revision": {
+          "type": "number"
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "upserts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotView"
+          }
+        }
+      }
+    },
+    "BotTagging": {
+      "enum": [
+        "anyone",
+        "mention",
+        "nobody"
+      ]
+    },
+    "BotToolGroup": {
+      "enum": [
+        "files",
+        "shell",
+        "hui",
+        "extension",
+        "bots"
+      ]
     },
     "BotTrigger": {
       "type": "object",
@@ -1097,6 +1860,164 @@
     "BotTriggerSource": {
       "type": "string",
       "const": "listener"
+    },
+    "BotView": {
+      "type": "object",
+      "required": [
+        "id",
+        "handle",
+        "name",
+        "cwd",
+        "sessionId",
+        "createdAt",
+        "updatedAt",
+        "status",
+        "soul",
+        "unread",
+        "routines"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "handle": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tagging": {
+          "enum": [
+            "mention",
+            "nobody"
+          ]
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "memoryModel": {
+          "type": "string"
+        },
+        "memoryThinking": {
+          "type": "string"
+        },
+        "avatar": {
+          "$ref": "#/$defs/BotAvatar"
+        },
+        "voice": {
+          "$ref": "#/$defs/BotVoice"
+        },
+        "hidden": {
+          "type": "boolean"
+        },
+        "archived": {
+          "type": "boolean"
+        },
+        "disabledTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabledSkills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotSkillRef"
+          }
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "worker": {
+          "type": "object",
+          "required": [
+            "id",
+            "name"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/BotSessionStatus"
+        },
+        "soul": {
+          "type": "boolean"
+        },
+        "lastMessage": {
+          "$ref": "#/$defs/BotLastMessage"
+        },
+        "unread": {
+          "type": "boolean"
+        },
+        "memory": {
+          "$ref": "#/$defs/BotMemoryStatus"
+        },
+        "routines": {
+          "type": "number"
+        }
+      }
+    },
+    "BotVoice": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "$ref": "#/$defs/VoiceLanguage"
+        },
+        "live": {
+          "$ref": "#/$defs/GptLiveVoice"
+        }
+      }
+    },
+    "BotVoicePatch": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VoiceLanguage"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        },
+        "live": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GptLiveVoice"
+            },
+            {
+              "type": "string",
+              "const": ""
+            }
+          ]
+        }
+      }
     },
     "BrowserControl": {
       "type": "object",
@@ -3048,6 +3969,19 @@
           }
         }
       }
+    },
+    "GptLiveVoice": {
+      "enum": [
+        "cove",
+        "arbor",
+        "breeze",
+        "ember",
+        "juniper",
+        "maple",
+        "sol",
+        "spruce",
+        "vale"
+      ]
     },
     "JiraConnection": {
       "type": "object",
@@ -6248,6 +7182,110 @@
         }
       }
     },
+    "VoiceLanguage": {
+      "enum": [
+        "en",
+        "zh",
+        "de",
+        "es",
+        "ru",
+        "ko",
+        "fr",
+        "ja",
+        "pt",
+        "tr",
+        "pl",
+        "ca",
+        "nl",
+        "ar",
+        "sv",
+        "it",
+        "id",
+        "hi",
+        "fi",
+        "vi",
+        "he",
+        "uk",
+        "el",
+        "ms",
+        "cs",
+        "ro",
+        "da",
+        "hu",
+        "ta",
+        "no",
+        "th",
+        "ur",
+        "hr",
+        "bg",
+        "lt",
+        "la",
+        "mi",
+        "ml",
+        "cy",
+        "sk",
+        "te",
+        "fa",
+        "lv",
+        "bn",
+        "sr",
+        "az",
+        "sl",
+        "kn",
+        "et",
+        "mk",
+        "br",
+        "eu",
+        "is",
+        "hy",
+        "ne",
+        "mn",
+        "bs",
+        "kk",
+        "sq",
+        "sw",
+        "gl",
+        "mr",
+        "pa",
+        "si",
+        "km",
+        "sn",
+        "yo",
+        "so",
+        "af",
+        "oc",
+        "ka",
+        "be",
+        "tg",
+        "sd",
+        "gu",
+        "am",
+        "yi",
+        "lo",
+        "uz",
+        "fo",
+        "ht",
+        "ps",
+        "tk",
+        "nn",
+        "mt",
+        "sa",
+        "lb",
+        "my",
+        "bo",
+        "tl",
+        "mg",
+        "as",
+        "tt",
+        "haw",
+        "ln",
+        "ha",
+        "ba",
+        "jw",
+        "su",
+        "yue"
+      ]
+    },
     "VscodeProviderPreference": {
       "anyOf": [
         {
@@ -6783,11 +7821,48 @@
       "BrowserViewTab"
     ],
     "bots": [
+      "BotAccessRequest",
+      "BotAvatar",
+      "BotAvatarPatch",
+      "BotCatalog",
+      "BotCatalogSkill",
+      "BotCatalogTool",
+      "BotDeleteResponse",
+      "BotDeleted",
+      "BotDelivery",
+      "BotFaceEars",
+      "BotFaceShape",
       "BotFact",
       "BotFactInput",
       "BotFactKind",
       "BotFactPatch",
-      "BotFactsResponse"
+      "BotFactsResponse",
+      "BotInput",
+      "BotLastMessage",
+      "BotMemoryResponse",
+      "BotMemoryStatus",
+      "BotMemoryUsage",
+      "BotMemoryZoom",
+      "BotMessageRequest",
+      "BotMessageResult",
+      "BotPatch",
+      "BotQuestion",
+      "BotReply",
+      "BotResponse",
+      "BotSessionStatus",
+      "BotSkillRef",
+      "BotSkillSelector",
+      "BotSoul",
+      "BotSoulRequest",
+      "BotTagging",
+      "BotToolGroup",
+      "BotView",
+      "BotVoice",
+      "BotVoicePatch",
+      "BotsResponse",
+      "BotsUpdate",
+      "GptLiveVoice",
+      "VoiceLanguage"
     ],
     "bot-triggers": [
       "BotTrigger",
@@ -6863,6 +7938,54 @@
     },
     {
       "method": "GET",
+      "path": "/__hui/bots",
+      "response": {
+        "$ref": "#/$defs/BotsResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots",
+      "request": {
+        "$ref": "#/$defs/BotInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BotResponse"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/bots/:id",
+      "response": {
+        "$ref": "#/$defs/BotDeleteResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id",
+      "response": {
+        "$ref": "#/$defs/BotResponse"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/__hui/bots/:id",
+      "request": {
+        "$ref": "#/$defs/BotPatch"
+      },
+      "response": {
+        "$ref": "#/$defs/BotResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/catalog",
+      "response": {
+        "$ref": "#/$defs/BotCatalog"
+      }
+    },
+    {
+      "method": "GET",
       "path": "/__hui/bots/:id/facts",
       "response": {
         "$ref": "#/$defs/BotFactsResponse"
@@ -6893,6 +8016,61 @@
       },
       "response": {
         "$ref": "#/$defs/BotFactsResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/memory",
+      "response": {
+        "$ref": "#/$defs/BotMemoryResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/memory/zoom",
+      "response": {
+        "$ref": "#/$defs/BotMemoryZoom"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/messages",
+      "request": {
+        "$ref": "#/$defs/BotMessageRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BotMessageResult"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/restore",
+      "response": {
+        "$ref": "#/$defs/BotResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/soul",
+      "response": {
+        "$ref": "#/$defs/BotSoul"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/bots/:id/soul",
+      "request": {
+        "$ref": "#/$defs/BotSoulRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BotSoul"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/stop",
+      "response": {
+        "$ref": "#/$defs/BotResponse"
       }
     },
     {

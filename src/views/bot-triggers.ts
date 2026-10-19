@@ -6,7 +6,7 @@
  */
 import { html, nothing } from "lit";
 import type { BotTrigger, BotTriggerRun } from "../api/schema/bot-triggers.ts";
-import type { BotView } from "../../shared/bots.ts";
+import type { BotView } from "../api/schema/bots.ts";
 import { icons } from "../lib/icons.ts";
 import { BOT_TRIGGER_LIMITS, botTriggerFilterSummary, cooldownLabel, TriggerFormError, triggerFormInput, type BotTriggersActions, type BotTriggersState, type RevealedHook } from "../lib/bots/triggers.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";

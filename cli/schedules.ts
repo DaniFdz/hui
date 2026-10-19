@@ -9,7 +9,7 @@
  * prints the gateway's refusal (its `/__hui/bots` answer), and `list` leaves bots' routines out, as Automations
  * does. Sessions' schedules work regardless.
  */
-import type { BotView } from "../shared/bots.ts";
+import type { BotView } from "../server/api/bots.ts";
 import type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask } from "../server/automation.ts";
 import { findBot, GatewayError, request, routineSchedule, type BotFlags, type BotIO } from "./gateway-client.ts";
 

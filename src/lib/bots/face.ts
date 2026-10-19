@@ -6,7 +6,7 @@
  * ears, antenna, sprout or horns that may sit on top, placed for each shape.
  * `<hui-bot-face>` (src/components/bot-face.ts) draws it.
  */
-import type { BotFaceEars, BotFaceShape } from "../../../shared/bots.ts";
+import type { BotFaceEars, BotFaceShape } from "../../api/schema/bots.ts";
 import type { BotView } from "./bots.ts";
 import { botActivity } from "./roster.ts";
 import type { CallView } from "../voice/live-call.ts";

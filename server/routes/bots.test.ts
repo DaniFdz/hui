@@ -11,6 +11,8 @@ import { botKickoffName, BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotCat
 import type { BotIO } from "../../cli/gateway-client.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
+import { BotCatalog as BotCatalogSchema, BotResponse, BotsResponse } from "../api/bots.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory and a deterministic provider, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-routes-"));
@@ -148,6 +150,7 @@ test("bots are created, read, edited, archived and restored through the guarded 
   // These bots get a soul at creation, so no first-conversation turn runs beside the turns these tests start.
   const created = await call("/__hui/bots", "POST", { name: "Ada", title: "Researcher", soul: "# Who I am\nYou are Ada." });
   assert.equal(created.status, 201);
+  expectSchema(BotResponse, created.body);
   const ada = botOf(created);
   assert.equal(ada.handle, "ada");
   assert.equal(ada.cwd, join(dir, "config", "hui", "bots", ada.id));
@@ -156,7 +159,9 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal(ada.routines, 0);
   assert.deepEqual(ada.memory, EMPTY_MEMORY, "its chat has OptChat memory from the start");
   assert.equal(botOf(await call("/__hui/bots", "POST", { name: "Bob", avatar: { emoji: "🐻" }, soul: "You are Bob." })).handle, "bob");
-  assert.deepEqual(((await call("/__hui/bots")).body["bots"] as BotView[]).map((bot) => bot.handle), ["ada", "bob"]);
+  const listed = (await call("/__hui/bots")).body;
+  expectSchema(BotsResponse, listed);
+  assert.deepEqual(listed.bots.map((bot) => bot.handle), ["ada", "bob"]);
   assert.equal(botOf(await call(`/__hui/bots/${ada.id}`)).handle, "ada");
   assert.equal(botOf(await call("/__hui/bots/bob")).avatar?.emoji, "🐻", "a handle addresses a bot too");
   assert.equal((await call("/__hui/bots/nobody")).status, 404);
@@ -795,6 +800,7 @@ test("a bot's tools and skills through the routes: what is off leaves its reques
   assert.deepEqual([tooly.disabledTools, tooly.disabledSkills], [["bash"], [{ name: "tools-beta", path: betaPath }]]);
 
   const catalog = (await call(`/__hui/bots/${tooly.id}/catalog`)).body as unknown as BotCatalog;
+  expectSchema(BotCatalogSchema, catalog);
   assert.equal(catalog.live, true, "reading the catalog opens the chat, so its extensions' tools are listed");
   assert.deepEqual(catalog.tools.filter((tool) => !tool.enabled).map((tool) => tool.name), ["bash"]);
   assert.equal(catalog.tools.find((tool) => tool.name === "bash")?.powerful, true);

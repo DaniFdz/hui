@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotTriggerCreated, BotTriggersList } from "../api/schema/bot-triggers.ts";
-import type { BotView } from "../../shared/bots.ts";
+import type { BotView } from "../api/schema/bots.ts";
 import { parseTrigger } from "../lib/bots/triggers.ts";
 import { BotTriggersController, type BotTriggersApi } from "./bot-triggers-controller.ts";
 

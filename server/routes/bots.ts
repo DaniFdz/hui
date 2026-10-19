@@ -28,9 +28,16 @@ import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdate
 import { BotMemoryUnavailableError } from "../bot-memory.ts";
 import type { BotService } from "../bot-service.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } from "../bots.ts";
-import type { RouteRequest, RouteResult } from "../http/route.ts";
+import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
+import {
+  BotCatalog, BotDeleted, BotFactsResponse, BotMemoryResponse, BotMemoryZoom, BotMessageResult, BotResponse, BotSoul, BotsResponse,
+  routeSchemas as botRouteSchemas,
+} from "../api/bots.ts";
 import { SessionBusyError } from "../live-sessions.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
+
+export const routeSchemas: RouteSchema[] = botRouteSchemas;
 
 export const BOTS_ROUTE = "/__hui/bots";
 export const BOTS_EVENTS_ROUTE = "/__hui/bots/events";
@@ -99,7 +106,7 @@ export function createBotRoutes(deps: Deps) {
         ? { timeoutMs: ((timeout as number | undefined) ?? DEFAULT_WAIT_SECONDS) * 1000, signal: request.signal }
         : undefined;
       const result = await service.send(bot.id, { text, attachments: prepared.attachments }, wait);
-      return { status: wait ? 200 : 202, body: result };
+      return reply(BotMessageResult, result, wait ? 200 : 202);
     } catch (error) {
       // Files of a message that never reached the chat go; an accepted one keeps them.
       if (!(error instanceof DOMException && error.name === "AbortError")) await prepared.cleanupRejected();
@@ -119,7 +126,7 @@ export function createBotRoutes(deps: Deps) {
         else if (factId && request.method === "PATCH") facts = await service.facts(botId!, "update", await json(request, BOT_BODY_BYTES), factId);
         else if (factId && request.method === "DELETE") facts = await service.facts(botId!, "delete", undefined, factId, Number(request.query.get("revision")));
         else return { status: 405, body: { error: "method not allowed" } };
-        return { status: request.method === "POST" ? 201 : 200, body: { facts } };
+        return reply(BotFactsResponse, { facts }, request.method === "POST" ? 201 : 200);
       } catch (error) {
         return { status: botErrorStatus(error), body: { error: error instanceof Error ? error.message : "The memory request failed." } };
       }
@@ -132,52 +139,52 @@ export function createBotRoutes(deps: Deps) {
       if (!id) {
         if (method === "GET") {
           const archived = request.query.get("archived");
-          return { status: 200, body: { bots: await service.list({ archived: archived === "1" || archived === "true" }) } };
+          return reply(BotsResponse, { bots: await service.list({ archived: archived === "1" || archived === "true" }) });
         }
-        if (method === "POST") return { status: 201, body: { bot: await service.create(await json(request, BOT_BODY_BYTES)) } };
+        if (method === "POST") return reply(BotResponse, { bot: await service.create(await json(request, BOT_BODY_BYTES)) }, 201);
         return notAllowed;
       }
       if (!action) {
-        if (method === "GET") return { status: 200, body: { bot: await service.get(id) } };
-        if (method === "PATCH") return { status: 200, body: { bot: await service.update(id, await json(request, BOT_BODY_BYTES)) } };
+        if (method === "GET") return reply(BotResponse, { bot: await service.get(id) });
+        if (method === "PATCH") return reply(BotResponse, { bot: await service.update(id, await json(request, BOT_BODY_BYTES)) });
         if (method === "DELETE") {
           // Without permanent=1 a DELETE archives, the step that can be undone.
           const permanent = request.query.get("permanent");
           if (permanent === "1" || permanent === "true") {
             // A bot on an offline worker goes at once; what it left there goes at the worker's next connection.
             const { queued } = await service.delete(id);
-            return { status: 200, body: { ok: true, ...(queued ? { queued: true } : {}) } };
+            return reply(BotDeleted, { ok: true, ...(queued ? { queued: true } : {}) });
           }
-          return { status: 200, body: { bot: await service.archive(id) } };
+          return reply(BotResponse, { bot: await service.archive(id) });
         }
         return notAllowed;
       }
       if (action === "catalog") {
         if (method !== "GET") return notAllowed;
-        return { status: 200, body: await service.catalog(id) };
+        return reply(BotCatalog, await service.catalog(id));
       }
       if (action === "soul") {
-        if (method === "GET") return { status: 200, body: { soul: await service.soul(id) } };
+        if (method === "GET") return reply(BotSoul, { soul: await service.soul(id) });
         if (method !== "PUT") return notAllowed;
         const body = await json(request, BOT_BODY_BYTES);
         if (typeof body !== "object" || body === null || Array.isArray(body)) throw new BotInputError("A soul must be an object: { soul }.");
         const unknown = Object.keys(body).filter((key) => key !== "soul");
         if (unknown.length) throw new BotInputError(`Unknown soul field: ${unknown.join(", ")}.`);
         if (!("soul" in body)) throw new BotInputError("soul is required: SOUL.md's text, or \"\" to remove it.");
-        return { status: 200, body: { soul: await service.setSoul(id, (body as { soul: unknown }).soul) } };
+        return reply(BotSoul, { soul: await service.setSoul(id, (body as { soul: unknown }).soul) });
       }
       if (action === "restore" || action === "stop" || action === "messages") {
         if (method !== "POST") return notAllowed;
         if (action === "messages") return await message(id, request);
-        return { status: 200, body: { bot: action === "restore" ? await service.restore(id) : await service.stop(id) } };
+        return reply(BotResponse, { bot: action === "restore" ? await service.restore(id) : await service.stop(id) });
       }
       if (method !== "GET") return notAllowed;
-      if (action === "memory") return { status: 200, body: await service.memory(id) };
+      if (action === "memory") return reply(BotMemoryResponse, await service.memory(id));
       if (action === "memory/html") return { status: 200, html: await service.memoryHtml(id) };
       const zoomId = request.query.get("id") ?? "";
       const span = request.query.get("n") ?? "";
       if (!/^\d{1,15}$/u.test(zoomId) || !/^\d{1,15}$/u.test(span)) throw new BotInputError("Zoom needs id and n as whole numbers, as in id=12&n=4.");
-      return { status: 200, body: { text: await service.zoom(id, Number(zoomId), Number(span)) } };
+      return reply(BotMemoryZoom, { text: await service.zoom(id, Number(zoomId), Number(span)) });
     } catch (error) {
       return { status: botErrorStatus(error), body: { error: error instanceof Error ? error.message : "The bot request failed." } };
     }
