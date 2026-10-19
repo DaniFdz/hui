@@ -67,7 +67,6 @@ import { ProviderService, ProviderInputError } from "./providers.ts";
 import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-reader.ts";
 import { readToolsCatalog } from "./tools.ts";
-import { updates, UpdateConflict } from "./updates.ts";
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import {
   PiMutationBusyError,
@@ -159,6 +158,7 @@ import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.ts";
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
 import { createPowerRoutes } from "./routes/power.ts";
+import { createUpdateRoutes } from "./routes/updates.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
 import {
@@ -250,6 +250,7 @@ const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const themeRoutes = createThemeRoutes();
+const updateRoutes = createUpdateRoutes();
 const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
@@ -1222,25 +1223,7 @@ async function handleRequest(
   });
   const routed = routeRequest(request, response, path);
 
-  if (path === `${PREFIX}update` || path === `${PREFIX}update/check`) {
-    try {
-      if (request.method === "GET" && path === `${PREFIX}update`) {
-        sendJson(response, 200, await updates.status());
-      } else if ((request.method === "GET" || request.method === "POST") && path === `${PREFIX}update/check`) {
-        sendJson(response, 200, await updates.check(request.method === "GET"));
-      } else if (request.method === "POST" && path === `${PREFIX}update`) {
-        let body: { version?: unknown } | null;
-        try { body = await readBody(request) as { version?: unknown } | null; }
-        catch { sendJson(response, 400, { error: "Invalid update request body." }); return; }
-        if (!body || typeof body.version !== "string" || !/^\d+\.\d+\.\d+$/u.test(body.version) || Object.keys(body).some((key) => key !== "version")) {
-          sendJson(response, 400, { error: "Provide only the stable version returned by the update check." });
-        } else sendJson(response, 202, await updates.start(body.version));
-      } else sendJson(response, 405, { error: "method not allowed" });
-    } catch (error) {
-      sendJson(response, error instanceof UpdateConflict ? 409 : 500, { error: error instanceof UpdateConflict ? error.message : "Update request failed. Check the gateway log and retry." });
-    }
-    return;
-  }
+  if (answered(response, path, await updateRoutes.handle(routed))) return;
 
   if (path === DIRECTORIES_ROUTE) {
     if (request.method === "GET") {
