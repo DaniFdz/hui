@@ -11,7 +11,7 @@
  */
 import type { BotView } from "../shared/bots.ts";
 import type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask } from "../src/lib/automation-types.ts";
-import { findBot, GatewayError, request, routineSchedule, type BotFlags, type BotIO } from "./bots.ts";
+import { findBot, GatewayError, request, routineSchedule, type BotFlags, type BotIO } from "./gateway-client.ts";
 
 export type ScheduleFlags = BotFlags & {
   /** `add` and `edit`: the bot whose chat it targets; `list`: only that bot's routines. */

@@ -12,7 +12,8 @@ import { BOT_EXPORT_GROUPS, buildExport, withAdditions, type BotExportAddition, 
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportResult, type BotImportSource } from "../shared/bot-templates.ts";
 import { botTriggerFilterSummary, cooldownLabel } from "../shared/bot-triggers.ts";
 import type { BotView } from "../shared/bots.ts";
-import { formatSchedule, GatewayError, request, type BotFlags, type BotIO } from "./bots.ts";
+import { GatewayError, request, type BotFlags, type BotIO } from "./gateway-client.ts";
+import { scheduleText } from "./schedules.ts";
 
 /** Folders a workspace may hold that never belong to a bot. */
 const SKIPPED = new Set([".git", "node_modules", ".DS_Store", "__MACOSX"]);
@@ -89,7 +90,7 @@ export function formatImportPreview(preview: BotImportPreview): string {
   if (preview.routines.length) {
     lines.push("", `Routines, created disabled:`);
     for (const routine of preview.routines) {
-      lines.push(`  ${routine.name} · ${formatSchedule(routine.schedule)}${routine.guessed ? ` (assumed${routine.scheduleText ? ` from "${routine.scheduleText}"` : ""}: check it)` : ""}`, indent(routine.prompt, "    "));
+      lines.push(`  ${routine.name} · ${scheduleText(routine.schedule)}${routine.guessed ? ` (assumed${routine.scheduleText ? ` from "${routine.scheduleText}"` : ""}: check it)` : ""}`, indent(routine.prompt, "    "));
     }
   }
   if (preview.triggers.length) {

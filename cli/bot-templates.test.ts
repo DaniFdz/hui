@@ -8,7 +8,7 @@ import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
 import type { BotExportReview } from "../shared/bot-export.ts";
 import type { BotImportPreview } from "../shared/bot-templates.ts";
 import { exportAdditions, exportCommand, formatExportReview, formatImportPreview, importCommand, importSource } from "./bot-templates.ts";
-import type { BotIO } from "./bots.ts";
+import type { BotIO } from "./gateway-client.ts";
 import { parseCli } from "./main.ts";
 
 const BOT: BotView = {

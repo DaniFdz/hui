@@ -116,7 +116,7 @@ R13 and R16 are not checked yet.
 
 | Path | Owns |
 |---|---|
-| `cli/` | The `hui` command: gateway lifecycle (`gateway*.ts`, `state.ts`), installed releases and updates (`releases.ts`, `update*.ts`, `installation.ts`), `hui doctor` (`doctor*.ts`) |
+| `cli/` | The `hui` command: gateway lifecycle (`gateway*.ts`, `state.ts`), installed releases and updates (`releases.ts`, `update*.ts`, `installation.ts`), `hui doctor` (`doctor*.ts`), the `/__hui/` client of `hui bot` and `hui schedule` (`gateway-client.ts`) |
 | `shared/` | Types and pure helpers imported by both browser and gateway; no Node or DOM APIs |
 | `desktop/` | Electron wrapper (`main.cjs`, `policy.cjs`) and macOS app registration (`install.mjs`) |
 | `bin/` | Entry points: `hui.mjs` (installed CLI), `hui-dev.mjs` (`npm run dev`) |

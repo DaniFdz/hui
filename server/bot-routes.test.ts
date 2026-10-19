@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
 import { botKickoffName, BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../shared/bots.ts";
-import type { BotIO } from "../cli/bots.ts";
+import type { BotIO } from "../cli/gateway-client.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { completeLines } from "./test-support/json-lines.ts";
 
