@@ -1,6 +1,6 @@
-/** Browser client for the Datadog routes: the org list and pup's sign-in (`/__hui/datadog`). `pup` on the gateway owns
- * every credential; these requests only move credential-free views. */
-import type { DatadogConnection, DatadogOrg } from "../../shared/datadog.ts";
+/** Browser client for the Datadog routes: the org list, pup's sign-in and chat previews (`/__hui/datadog`). `pup` on
+ * the gateway owns every credential; these requests only move credential-free views. */
+import type { DatadogConnection, DatadogOrg, DatadogPreviewResult, DatadogRef } from "../../shared/datadog.ts";
 import { fetchJson } from "./request.ts";
 
 const DATADOG_URL = "/__hui/datadog";
@@ -32,4 +32,9 @@ export function startDatadogLogin(org: DatadogOrg): Promise<DatadogConnection> {
 
 export function cancelDatadogLogin(): Promise<DatadogConnection> {
   return fetchJson<DatadogConnection>(`${DATADOG_URL}/login`, { method: "DELETE", signal: AbortSignal.timeout(25_000) });
+}
+
+export async function fetchDatadogPreviews(refs: readonly DatadogRef[]): Promise<DatadogPreviewResult[]> {
+  const query = refs.map((ref) => `url=${encodeURIComponent(ref.url)}`).join("&");
+  return (await fetchJson<{ previews: DatadogPreviewResult[] }>(`${DATADOG_URL}/previews?${query}`, { signal: AbortSignal.timeout(40_000) })).previews;
 }

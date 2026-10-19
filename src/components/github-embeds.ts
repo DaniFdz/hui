@@ -12,7 +12,8 @@ import {
   type GitHubRef,
 } from "../../shared/github-links.ts";
 import { pullRequestStateLabel } from "../../shared/pull-requests.ts";
-import { compactCount, loadGitHubPreviews, previewErrorLabel, settledGitHubPreview } from "../lib/github-previews.ts";
+import { compactCount, previewErrorLabel } from "../lib/github-previews.ts";
+import { loadGitHubPreviews, settledGitHubPreview } from "../lib/github-previews-store.ts";
 import { pullRequestStateIcon, renderPullRequestCard } from "./pull-request-hovercard.ts";
 import { BadgeHovercardController } from "./badge-hovercard.ts";
 import type { SessionPullRequest } from "../../shared/pull-requests.ts";

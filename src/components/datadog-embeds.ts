@@ -6,15 +6,8 @@
 import { LitElement, html, nothing } from "lit";
 import { datadogRefsInText, type DatadogOrg, type DatadogPreviewResult, type DatadogRef } from "../../shared/datadog.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
-import {
-  DATADOG_CHANGED,
-  datadogOrgLabel,
-  datadogPreviewMessage,
-  formatDatadogRange,
-  loadDatadogPreviews,
-  settledDatadogPreview,
-  signInToDatadog,
-} from "../lib/datadog.ts";
+import { datadogOrgLabel, datadogPreviewMessage, formatDatadogRange } from "../lib/datadog.ts";
+import { DATADOG_CHANGED, loadDatadogPreviews, settledDatadogPreview, signInToDatadog } from "../lib/datadog-store.ts";
 import { SETTLE_MS } from "./github-embeds.ts";
 
 function refLabel(ref: DatadogRef): string {
