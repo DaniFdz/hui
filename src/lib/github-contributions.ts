@@ -1,7 +1,7 @@
 /** Browser half of the Contributions page: loads the gateway's GitHub activity
  * and buckets its timestamps into local-time days and Sunday-first weeks. */
 import type { GitHubContributions } from "../../shared/github.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 export type ContributionMetric = "commits" | "pullRequests";
 export type ContributionDay = { date: Date; count: number };

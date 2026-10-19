@@ -8,7 +8,7 @@ import type {
   AutomationTask,
   AutomationTaskInput,
 } from "./automation-types.ts";
-import { trackedFetch } from "./ui-errors.ts";
+import { trackedFetch } from "../api/request.ts";
 
 const AUTOMATION_URL = "/__hui/automation";
 const HEADERS = { "x-hui": "1" } as const;

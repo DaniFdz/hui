@@ -5,12 +5,12 @@ import {
   installUiErrorReporting,
   resetUiErrorReporting,
   sendUiErrorReports,
-  trackedFetch,
   UiErrorReporter,
   type ReporterTimers,
   type SendOutcome,
   type UiErrorReport,
 } from "./ui-errors.ts";
+import { trackedFetch } from "./request.ts";
 
 /** Deterministic clock and timers: time moves only through advance(). */
 function fakeTimers() {

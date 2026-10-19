@@ -12,7 +12,7 @@ import {
 } from "../../shared/bot-triggers.ts";
 import type { BotView } from "../../shared/bots.ts";
 import { writeClipboardText } from "./clipboard.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 /** How often the open section reads the triggers again: they fire on their own. */
 export const TRIGGERS_POLL_MS = 5_000;

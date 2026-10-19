@@ -2,7 +2,7 @@
  * module only moves credential-free views and explicit user input. */
 import type { JiraConnection, JiraDraft, JiraIssueMatch, JiraProject } from "../../shared/jira.ts";
 import type { SessionView } from "./sessions-store.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 const JIRA_URL = "/__hui/jira";
 const JSON_HEADERS = { "content-type": "application/json" } as const;

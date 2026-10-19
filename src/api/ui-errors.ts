@@ -1,7 +1,7 @@
 /**
  * Browser-side failures never reach the gateway by themselves: an uncaught
  * error, an unhandled promise rejection or a request that could not connect
- * (`Failed to fetch`). They are batched, deduplicated, to
+ * (`Failed to fetch`, reported by `trackedFetch` in `request.ts`). They are batched, deduplicated, to
  * `POST /__hui/diagnostics/ui-errors` so Logs and gateway.log show them. While
  * the gateway is unreachable, reports wait in memory (bounded) and are sent once
  * a HUI request succeeds again; a page reload discards them.
@@ -197,44 +197,21 @@ function describe(value: unknown): string {
   }
 }
 
-function huiRequest(input: RequestInfo | URL, init?: RequestInit): { method: string; path: string } | undefined {
-  let url: URL;
-  try {
-    url = new URL(input instanceof Request ? input.url : String(input), typeof location === "undefined" ? "http://localhost/" : location.href);
-  } catch {
-    return undefined;
-  }
-  if (typeof location !== "undefined" && url.origin !== location.origin) return undefined;
-  if (!url.pathname.startsWith("/__hui/")) return undefined;
-  return { method: (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase(), path: url.pathname };
+/** A HUI request just succeeded. */
+export function reportReachable(): void {
+  reporter?.reachable();
 }
 
-/** fetch rejects with a TypeError when it cannot connect and a TimeoutError
- * when its signal expires; an AbortError is a deliberate cancellation. */
-function isConnectionFailure(error: unknown): boolean {
-  return error instanceof TypeError || (error instanceof DOMException && error.name === "TimeoutError");
-}
-
-/** `fetch` for HUI's own API. A request that cannot reach the gateway is
- * reported once a later request succeeds; otherwise it is plain fetch. */
-export async function trackedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const target = huiRequest(input, init);
-  try {
-    const response = await fetch(input, init);
-    if (target) reporter?.reachable();
-    return response;
-  } catch (error) {
-    if (target && reporter && isConnectionFailure(error)) {
-      if (typeof error === "object" && error !== null) reportedFailures.add(error);
-      reporter.record({
-        kind: "request_failed",
-        message: error instanceof Error ? error.message || error.name : String(error),
-        request: target,
-        ...currentPage(),
-      });
-    }
-    throw error;
-  }
+/** A HUI request could not reach the gateway. */
+export function reportRequestFailure(error: unknown, request: { method: string; path: string }): void {
+  if (!reporter) return;
+  if (typeof error === "object" && error !== null) reportedFailures.add(error);
+  reporter.record({
+    kind: "request_failed",
+    message: error instanceof Error ? error.message || error.name : String(error),
+    request,
+    ...currentPage(),
+  });
 }
 
 /** Installs the page-wide handlers once and returns the active reporter. */

@@ -2,7 +2,7 @@
  * Browser client for remote workers: listing, adding, editing and removing them and requesting connect, sync or
  * disconnect. Those operations run in the gateway; the UI polls the list for progress.
  */
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 import type { WorkerInput, WorkerView } from "../../shared/workers.ts";
 
 export type { WorkerInput, WorkerView };

@@ -8,8 +8,7 @@
 import type { CallDelegationResult, CallLine, CallStarted, CallsStatus, CallTaskResult } from "../../shared/calls.ts";
 import type { LiveCallPlatform, LiveConnection, LiveMicrophone } from "./live-call.ts";
 import { subscribeSession } from "./sessions-store.ts";
-import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
-import { trackedFetch } from "./ui-errors.ts";
+import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
 import { frameLevel } from "./voice-level.ts";
 import { microphoneContext, microphoneErrorMessage } from "./voice.ts";
 

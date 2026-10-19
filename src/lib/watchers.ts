@@ -3,7 +3,7 @@
  * gateway runs the watchers; the shared parser keeps both sides on one shape.
  */
 import { parseWatchers, type Watcher } from "../../shared/watchers.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 export { parseWatchers, watcherStateLabel, watcherStateNote, type Watcher, type WatcherState } from "../../shared/watchers.ts";
 

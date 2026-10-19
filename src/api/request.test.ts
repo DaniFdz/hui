@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { fetchWithResponseDeadline, gatewayRequestError } from "./gateway-request.ts";
+import { fetchWithResponseDeadline, gatewayRequestError } from "./request.ts";
 
 /** Answers after `headersMs`; its body then streams for `bodyMs` more. */
 function slowGateway(headersMs: number, bodyMs: number) {

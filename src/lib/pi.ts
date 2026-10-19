@@ -5,7 +5,7 @@
  * here rather than imported so the browser bundle never reaches into `server/`,
  * which imports `node:fs`. The HTTP payload is the contract between them.
  */
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 import type { RuntimeModel } from "./sessions-store.ts";
 
 export type PiTool = {

@@ -4,7 +4,8 @@
  * modes, so there is nothing to pair here. A user accent is applied over the
  * active theme, its lightness solved per mode so it reads on that theme's page.
  */
-import { currentSettings, fetchJson } from "./settings-store.ts";
+import { currentSettings } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 import { applyThemeMode, type ThemeMode, type ThemeVariant } from "./theme.ts";
 import { mapTheme, swatchesFor, themeColor, type ShadcnTheme, type ThemeSwatches, type ThemeTokens } from "./shadcn-theme.ts";
 import { controlUiAccentInk } from "./accent-contrast.ts";

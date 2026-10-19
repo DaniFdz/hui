@@ -1,7 +1,7 @@
 /** Browser half of the GitHub integration. `gh` on the gateway owns the
  * credential; this module only moves credential-free status and login state. */
 import type { GitHubConnection } from "../../shared/github.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 const GITHUB_URL = "/__hui/github";
 

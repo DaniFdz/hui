@@ -2,7 +2,7 @@
  * Weeks start Monday; days run from 5 AM to 5 AM, so late-night work stays
  * on the day it began. */
 import type { ActivityBlock, ActivitySession, SessionActivity } from "../../shared/session-activity.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 const MINUTE = 60_000;
 const DAY_START_HOUR = 5;

@@ -2,7 +2,7 @@
  * Browser client for HUI's self-update: reading the current state, checking for a release and starting an
  * install. Downloading and activating releases happen in the gateway.
  */
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 import type { UpdateSnapshot } from "./update-types.ts";
 
 export const loadUpdate = () => fetchJson<UpdateSnapshot>("/__hui/update");

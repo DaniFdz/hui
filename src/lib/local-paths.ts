@@ -4,7 +4,7 @@
  * reads the filesystem itself.
  */
 import type { BotView } from "../../shared/bots.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 export type LocalPathSuggestion =
   | { path: string; kind: "directory" | "file" }

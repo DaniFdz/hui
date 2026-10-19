@@ -4,7 +4,7 @@ import { parseBacklogView, type BacklogStartInput, type BacklogView } from "../.
 import type { JiraDraft } from "../../shared/jira.ts";
 import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
 import type { SessionView } from "./sessions-store.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 export { backlogItemMarkdown, backlogItemPrompt, parseBacklogView, type BacklogItem, type BacklogJiraState, type BacklogView } from "../../shared/backlog.ts";
 

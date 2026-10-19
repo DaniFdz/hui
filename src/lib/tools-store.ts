@@ -2,7 +2,7 @@
  * Browser client for the tools catalog and the tools available to one session. The gateway and PI decide
  * what is available; this module only reads it.
  */
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 import type { SessionTools, ToolsCatalog } from "./tools-types.ts";
 
 export function loadToolsCatalog(): Promise<ToolsCatalog> {

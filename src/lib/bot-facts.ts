@@ -1,7 +1,7 @@
 /** The explicit-memory page's confirmed server state; no extraction, optimistic saves or cross-bot leakage. */
 import type { ReactiveControllerHost } from "lit";
 import type { BotFact, BotFactInput, BotFactPatch } from "../../shared/bot-facts.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 export type BotFactsState = { botId: string; facts: BotFact[]; loading: boolean; loaded: boolean; pending: boolean; error: string; editing?: BotFact; removing?: BotFact };
 export type BotFactsApi = (botId: string, method?: string, id?: string, value?: BotFactInput | BotFactPatch | number) => Promise<BotFact[]>;
 const api: BotFactsApi = async (botId, method = "GET", id = "", value) => {

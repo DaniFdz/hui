@@ -6,7 +6,7 @@
 import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../../shared/providers.ts";
-import { fetchJson } from "../lib/settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { connectionMethods, connectionName, providerBrand, providerBrands } from "../lib/provider-choices.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";

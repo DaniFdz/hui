@@ -4,9 +4,8 @@
  * openvscode-server, stop) and the one-use frame URL for a conversation's folder; HUI's colors for it come from
  * vscode-theme.ts. The gateway runs and guards the server (server/vscode.ts).
  */
-import { CLIENT_HEADERS, fetchJson, refreshSettings } from "./settings-store.ts";
-import { fetchWithResponseDeadline } from "./gateway-request.ts";
-import { trackedFetch } from "./ui-errors.ts";
+import { refreshSettings } from "./settings-store.ts";
+import { CLIENT_HEADERS, fetchJson, fetchWithResponseDeadline, trackedFetch } from "../api/request.ts";
 import {
   VSCODE_STATUS_ROUTE,
   type VscodeAction, type VscodeConnection, type VscodeErrorCode, type VscodeStatus, type VscodeTheme,

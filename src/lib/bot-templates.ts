@@ -7,8 +7,7 @@
 import type { BotExportAddition, BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportResult, type BotImportSource, type BotTemplate } from "../../shared/bot-templates.ts";
 import { parseBot } from "./bots.ts";
-import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
-import { trackedFetch } from "./ui-errors.ts";
+import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
 
 export type { BotImportPreview, BotImportResult, BotImportSource } from "../../shared/bot-templates.ts";
 export type { BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";

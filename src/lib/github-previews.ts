@@ -3,7 +3,7 @@
  * re-renders and streaming updates do not refetch. */
 import type { GitHubPreviewResult, GitHubRef } from "../../shared/github-links.ts";
 import { MAX_GITHUB_EMBEDS } from "../../shared/github-links.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 const PREVIEWS_URL = "/__hui/github/previews";
 /** Page-lifetime cache: settled results stay; failures retry after this long. */

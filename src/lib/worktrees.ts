@@ -3,7 +3,7 @@
  * risks, and helpers for sizes and for worktrees only the given sessions use. Git work happens in the gateway.
  */
 import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../../shared/worktrees.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 export type { WorktreeInventory, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../../shared/worktrees.ts";
 export { isMergedCleanupCandidate } from "../../shared/worktrees.ts";

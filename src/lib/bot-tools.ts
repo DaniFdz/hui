@@ -17,7 +17,7 @@ import {
 } from "../../shared/bots.ts";
 import { updateBot } from "./bots.ts";
 import { answerQuestion } from "./sessions-store.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 /** Skills a tab shows before it offers a search. */
 export const SKILL_SEARCH_MIN = 8;

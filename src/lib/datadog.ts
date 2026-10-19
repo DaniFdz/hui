@@ -9,7 +9,7 @@ import {
   type DatadogPreviewResult,
   type DatadogRef,
 } from "../../shared/datadog.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 const DATADOG_URL = "/__hui/datadog";
 /** Fired on `window` after a Datadog sign-in succeeds or the org list changes; cards listen and load again. */

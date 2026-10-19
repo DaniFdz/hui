@@ -101,7 +101,7 @@ R13 and R16 are not checked yet.
 | Area | Start here |
 |---|---|
 | App shell | `main.ts` (styles, boot, mount), `lib/boot-screen.ts` (index.html's boot screen), `lib/view-assets.ts` (view stylesheets loaded together before the first paint), `hui-app.ts` (navigation and cross-view state), `src/lit/hui-element.ts` |
-| Client stores and API | `lib/sessions-store.ts` (session API), `lib/settings-store.ts` (fetch boundary, `x-hui` header), `lib/gateway-request.ts` (response deadline), other `lib/*-store.ts` |
+| Client stores and API | `src/api/` (requests to `/__hui/`: `request.ts` (fetch boundary, `x-hui` header, response deadline), `settings.ts`, `ui-errors.ts` (browser errors batched to the gateway)), `lib/sessions-store.ts` (session API), `lib/settings-store.ts` (settings cache and write queue), other `lib/*-store.ts` |
 | Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file) |
 | Chat | `views/chat/` (projection, tool cards, position rail), `lib/markdown*.ts`, `lib/composer-*.ts`; file references that open in the Files view: `lib/file-references.ts` (which text is a path), `lib/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
 | Sidebar and sessions | `lib/sidebar-sessions.ts`, `lib/session-tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |

@@ -10,10 +10,9 @@
 import { botLook, isBotFaceEars, isBotFaceShape, isBotTagging, storedTagging, type BotAvatar, type BotAvatarPatch, type BotFaceEars, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage } from "../../shared/voice.ts";
-import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
+import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
 import { sessionTreeIds } from "./session-tree.ts";
-import { trackedFetch } from "./ui-errors.ts";
 
 export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../shared/bots.ts";
 

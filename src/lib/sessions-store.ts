@@ -14,8 +14,7 @@ import type { SessionPullRequest } from "../../shared/pull-requests.ts";
 import type { SessionJiraIssue } from "../../shared/jira.ts";
 import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
 import type { Watcher } from "../../shared/watchers.ts";
-import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
-import { trackedFetch } from "./ui-errors.ts";
+import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
 import type { SessionStage, SessionStageOrigin } from "../../shared/session-stages.ts";
 import type { SessionListUpdate } from "../../shared/session-list.ts";
 

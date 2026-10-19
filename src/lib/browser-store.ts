@@ -4,7 +4,7 @@
  * `/__hui/` routes to reach it.
  */
 import { normalizeBrowserStatus, type BrowserStatus } from "../../shared/browser.ts";
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 
 const BROWSER_URL = "/__hui/browser";
 

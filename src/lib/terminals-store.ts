@@ -2,7 +2,7 @@
  * Browser client for a session's terminals: listing, opening and closing them, and connecting to one over a
  * WebSocket. The gateway owns the PTYs; the browser only holds the socket.
  */
-import { fetchJson } from "./settings-store.ts";
+import { fetchJson } from "../api/request.ts";
 import type { TerminalView } from "./terminal-types.ts";
 
 const url = (owner: string, id?: string) => `/__hui/sessions/${encodeURIComponent(owner)}/terminals${id ? `/${encodeURIComponent(id)}` : ""}`;
