@@ -67,9 +67,7 @@ import { ProviderService } from "./providers.ts";
 import { invalidateModelCatalog } from "./pi-config.ts";
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import { PiMutationService } from "./pi-mutations.ts";
-import { readWorkspaceInspection } from "./control-surfaces.ts";
 import { WorktreeService } from "./worktree-inventory.ts";
-import type { WorktreeRisk } from "../shared/worktrees.ts";
 import { liveSessions, SessionBusyError } from "./live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import {
@@ -82,10 +80,9 @@ import {
 } from "./automation.ts";
 import { BotRoutines } from "./bot-routines.ts";
 import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
-import { completeLocalPaths, completeWorkingDirectories, existingDirectory, resolveWorkingDirectory } from "./working-directories.ts";
+import { existingDirectory, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
-import { inspectGitCheckout } from "./worktrees.ts";
 import { answerSideQuestion, suggestWorktreeName } from "./model-routing.ts";
 import { sessionDigest } from "./session-digest.ts";
 import { activityRange, readSessionActivity } from "./session-activity.ts";
@@ -149,10 +146,12 @@ import { createFileRoutes, FILES_ROUTE } from "./routes/files.ts";
 import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.ts";
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
+import { createLocalPathRoutes } from "./routes/local-paths.ts";
 import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
 import { createProviderRoutes } from "./routes/providers.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
+import { createWorktreeRoutes } from "./routes/worktrees.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
@@ -182,13 +181,7 @@ const PREFIX = "/__hui/";
 const BROWSER_ROUTE = `${PREFIX}browser`;
 /** An operator preview of one managed-browser tab, as a data URL. */
 const BROWSER_TAB_PREVIEW = /^\/__hui\/browser\/tabs\/(t\d{1,6})\/preview$/u;
-const WORKSPACES_ROUTE = `${PREFIX}workspaces`;
-const WORKTREES_ROUTE = `${PREFIX}worktrees`;
-const WORKTREES_REMOVE_ROUTE = `${PREFIX}worktrees/remove`;
 const AUTOMATION_ROUTE = `${PREFIX}automation`;
-const DIRECTORIES_ROUTE = `${PREFIX}directories`;
-const LOCAL_PATHS_ROUTE = `${PREFIX}local-paths`;
-const GIT_CHECKOUT_ROUTE = `${PREFIX}git-checkout`;
 const AUTOMATION_TASKS_ROUTE = `${AUTOMATION_ROUTE}/tasks`;
 const AUTOMATION_TASK_ONE = /^\/__hui\/automation\/tasks\/([^/]+)$/;
 const AUTOMATION_TASK_RUN = /^\/__hui\/automation\/tasks\/([^/]+)\/run$/;
@@ -234,6 +227,7 @@ const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 const piMutations = new PiMutationService();
 const piRoutes = createPiRoutes({ piMutations });
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
+const localPathRoutes = createLocalPathRoutes({ workers });
 const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const themeRoutes = createThemeRoutes();
@@ -747,28 +741,7 @@ const worktreeService = new WorktreeService({
   isRunning: (id) => liveSessions.hasRuntime(id),
   stopSession: (id) => liveSessions.close(id),
 });
-
-const WORKTREE_RISKS = new Set(["dirty", "unknown", "locked", "running", "missing", "external"]);
-
-/** Validates `{ paths, mode, acknowledged? }` for worktree removal. */
-export function parseWorktreeRemoval(body: unknown): { paths: string[]; mode: "single" | "merged"; acknowledged: WorktreeRisk[] } {
-  if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Removal request must be an object.");
-  const record = body as Record<string, unknown>;
-  const mode = record["mode"];
-  if (mode !== "single" && mode !== "merged") throw new Error("mode must be single or merged.");
-  const paths = record["paths"];
-  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 200
-    || paths.some((path) => typeof path !== "string" || !path.startsWith("/") || path.length > 4096 || path.includes("\0"))) {
-    throw new Error("paths must be 1-200 absolute paths.");
-  }
-  if (mode === "single" && paths.length !== 1) throw new Error("single removal takes exactly one path.");
-  const acknowledged = record["acknowledged"] ?? [];
-  if (!Array.isArray(acknowledged) || acknowledged.some((risk) => typeof risk !== "string" || !WORKTREE_RISKS.has(risk))) {
-    throw new Error("acknowledged must list known worktree risks.");
-  }
-  if (mode === "merged" && acknowledged.length) throw new Error("merged cleanup never overrides risks.");
-  return { paths: [...new Set(paths as string[])], mode, acknowledged: acknowledged as WorktreeRisk[] };
-}
+const worktreeRoutes = createWorktreeRoutes({ worktreeService, readRegistry });
 
 /* ── Jira ── the connection is read once and replaced on every write, so the
  * synchronous session view can decide whether Jira lookups are possible. */
@@ -1217,47 +1190,7 @@ async function handleRequest(
 
   if (answered(response, path, await updateRoutes.handle(routed))) return;
 
-  if (path === DIRECTORIES_ROUTE) {
-    if (request.method === "GET") {
-      const params = new URL(request.url ?? "/", "http://localhost").searchParams;
-      const query = params.get("q") ?? "~/";
-      const worker = params.get("worker");
-      // An unreachable worker just offers no suggestions; launching reports why.
-      const directories = worker ? await workers.directories(worker, query).catch(() => []) : await completeWorkingDirectories(query);
-      sendJson(response, 200, { directories });
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
-
-  if (path === LOCAL_PATHS_ROUTE) {
-    if (request.method === "GET") {
-      const query = new URL(request.url ?? "/", "http://localhost").searchParams;
-      const input = query.get("q") ?? "";
-      const cwd = query.get("cwd") ?? "~/";
-      if (input.length > 4_096 || cwd.length > 4_096) {
-        sendJson(response, 400, { error: "path query is too long" });
-        return;
-      }
-      sendJson(response, 200, {
-        paths: await completeLocalPaths(input, resolveWorkingDirectory(cwd)),
-      });
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
-
-  if (path === GIT_CHECKOUT_ROUTE) {
-    if (request.method === "GET") {
-      const query = new URL(request.url ?? "/", "http://localhost").searchParams.get("cwd") ?? "~/";
-      sendJson(response, 200, { checkout: await inspectGitCheckout(resolveWorkingDirectory(query)) });
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
+  if (answered(response, path, await localPathRoutes.handle(routed))) return;
 
   if (path === BROWSER_ROUTE) {
     try {
@@ -1335,40 +1268,7 @@ async function handleRequest(
 
   if (answered(response, path, await diagnosticsRoutes.handle(routed, response))) return;
 
-  if (path === WORKTREES_ROUTE) {
-    if (request.method === "GET") {
-      sendJson(response, 200, await worktreeService.inventory(await readRegistry()));
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
-
-  if (path === WORKTREES_REMOVE_ROUTE) {
-    if (request.method !== "POST") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    let removal: ReturnType<typeof parseWorktreeRemoval>;
-    try {
-      removal = parseWorktreeRemoval(await readBody(request));
-    } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid removal request." });
-      return;
-    }
-    const results = await worktreeService.remove(await readRegistry(), removal.paths, removal.mode, removal.acknowledged);
-    sendJson(response, 200, { results, inventory: await worktreeService.inventory(await readRegistry()) });
-    return;
-  }
-
-  if (path === WORKSPACES_ROUTE) {
-    if (request.method === "GET") {
-      sendJson(response, 200, await readWorkspaceInspection());
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
+  if (answered(response, path, await worktreeRoutes.handle(routed))) return;
 
   if (path === AUTOMATION_ROUTE && request.method === "GET") {
     try {
