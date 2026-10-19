@@ -46,7 +46,6 @@ import { buildCallRecord, callCompletion, callSettings, createCallDelegate, repo
 import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
 import { BOTS_OFF_MESSAGE, type BotReply, type BotsUpdate, type BotView } from "../shared/bots.ts";
-import { isThinkingLevel } from "../shared/thinking.ts";
 import { PullRequestStatuses } from "./pull-requests.ts";
 
 
@@ -65,7 +64,6 @@ import type { BrowserStatus } from "../shared/browser.ts";
 import { botsEnabled, type Settings } from "../src/lib/settings.ts";
 import { ProviderService } from "./providers.ts";
 import { invalidateModelCatalog } from "./pi-config.ts";
-import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../src/lib/slash-commands.ts";
 import { PiMutationService } from "./pi-mutations.ts";
 import { WorktreeService } from "./worktree-inventory.ts";
 import { liveSessions, SessionBusyError } from "./live-sessions.ts";
@@ -83,7 +81,7 @@ import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
 import { existingDirectory, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
-import { answerSideQuestion, suggestWorktreeName } from "./model-routing.ts";
+import { suggestWorktreeName } from "./model-routing.ts";
 import { runPiUtilityPrompt } from "./runtimes/pi.ts";
 import type { SessionJiraIssue } from "../shared/jira.ts";
 import {
@@ -118,7 +116,6 @@ import { DatadogPreviews } from "./datadog-previews.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
-import { REQUEST_ID, RecentRequests } from "./recent-requests.ts";
 import { Questionnaires } from "./questionnaires.ts";
 import {
   BacklogInputError,
@@ -132,7 +129,7 @@ import {
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
 import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
-import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
+import { attachSessionTransport } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
 import { attachTerminalTransport } from "./terminal-transport.ts";
 import { createFileRoutes, FILES_ROUTE } from "./routes/files.ts";
@@ -152,10 +149,11 @@ import { createVscodeRoutes } from "./routes/vscode.ts";
 import { createGitHubRoutes } from "./routes/github.ts";
 import { createDatadogRoutes } from "./routes/datadog.ts";
 import { createJiraRoutes } from "./routes/jira.ts";
-import { createSessionRoutes, foreverChatRefusal, MAX_PROMPT_BYTES, sessionMutationErrorStatus } from "./routes/sessions.ts";
+import { createSessionRoutes, sessionMutationErrorStatus } from "./routes/sessions.ts";
+import { createSessionActionRoutes } from "./routes/session-actions.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
-import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
+import { AttachmentInputError, readAttachments } from "./sessions/attachments.ts";
 import {
   readRegistry,
   SessionNotFoundError,
@@ -179,9 +177,6 @@ const AUTOMATION_TASK_RUN = /^\/__hui\/automation\/tasks\/([^/]+)\/run$/;
 const AUTOMATION_RUN_CANCEL = /^\/__hui\/automation\/runs\/([^/]+)\/cancel$/;
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
-/** Session actions and live catalogs, all addressed by HUI's own session id. */
-const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork)$/;
 /** Dismiss (DELETE), start (POST …/start) or save to the backlog (POST
  * …/backlog) one pending `suggest_task` card. */
 const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;
@@ -369,8 +364,6 @@ durableHost().botAccessRecorded = (botId, access) => bots.accessRecorded(botId, 
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);
-/** Prompts, steers and follow-ups by their client request id, so a resend never runs twice. */
-const recentRequests = new RecentRequests();
 const taskSuggestions = new TaskSuggestionStore({ onChange: (id) => liveSessions.notifySnapshot(id) });
 const watchers = new WatcherService({
   file: WATCHERS_FILE,
@@ -710,6 +703,15 @@ const sessionRoutes = createSessionRoutes({
   views: sessionViews,
   bots,
   isDormantBotChat,
+});
+const sessionActionRoutes = createSessionActionRoutes({
+  lifecycle: { updateSession, forkRequest, forkFromSession },
+  views: sessionViews,
+  bots,
+  isDormantBotChat,
+  subagents,
+  secretRequests,
+  questionnaires,
 });
 
 function automationErrorStatus(error: unknown): 400 | 404 | 409 | 500 {
@@ -1320,437 +1322,12 @@ async function handleRequest(
     return;
   }
 
-  const action = path.match(SESSION_ACTION);
-  if (action) {
-    const id = decodeURIComponent(action[1] ?? "");
-    const record = (await readRegistry()).find((session) => session.id === id);
-    if (!record) {
-      const pending = pendingSessions.get(id);
-      sendJson(response, pending ? 409 : 404, {
-        error: pending ? pending.error ?? "The Git worktree is still being created." : `unknown session: ${id}`,
-      });
-      return;
-    }
-    // Bots off: nothing reaches a bot's chat this way, so nothing resumes it.
-    if (await isDormantBotChat(record)) {
-      sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
-      return;
-    }
-    // A bot's chat never ends: what would reset, shorten or fork it is refused here; the model stays switchable.
-    if (record.bot && request.method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind" || action[2] === "fork")) {
-      // The bot registry decides; one that cannot be read refuses rather than risk the chat.
-      const owner = await bots.botForSession(record.id).then((bot) => bot ? { handle: bot.handle } : undefined, () => ({ handle: undefined }));
-      if (owner) {
-        sendJson(response, 409, { error: foreverChatRefusal(owner.handle, action[2]) });
-        return;
-      }
-    }
-    if (action[2] === "open" && request.method === "POST") {
-      if (!liveSessions.ensure(record)) {
-        sendJson(response, 404, { error: `unknown session: ${id}` });
-        return;
-      }
-      const openedRecord = await liveSessions.markRead(id);
-      sendJson(response, 200, {
-        session: toView(openedRecord, liveSessions.status(id)),
-        transcript: liveSessions.transcript(id),
-        snapshot: liveSessions.snapshot(id),
-      });
-      return;
-    }
-    if (
-      (action[2] === "prompt" || action[2] === "steer" || action[2] === "follow-up") &&
-      request.method === "POST"
-    ) {
-      let body: Record<string, unknown>;
-      try {
-        body = (await readBody(request, MAX_PROMPT_BYTES)) as Record<string, unknown>;
-      } catch (error) {
-        sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid prompt body." });
-        return;
-      }
-      const text = typeof body["text"] === "string" ? body["text"] : "";
-      const requestId = body["requestId"];
-      if (requestId !== undefined && (typeof requestId !== "string" || !REQUEST_ID.test(requestId))) {
-        sendJson(response, 400, { error: "A request id is 1 to 100 letters, digits or . : _ -" });
-        return;
-      }
-      if (parseUpdateCommand(text)) {
-        sendJson(response, 400, { error: "/update is a HUI command. Use the update dialog, not the model prompt or queue." });
-        return;
-      }
-      if (parseClearCommand(text)) {
-        sendJson(response, 400, { error: "/clear is a HUI command. Use the clear endpoint, not the model prompt or queue." });
-        return;
-      }
-      if (parseReloadCommand(text)) {
-        sendJson(response, 400, { error: "/reload is a HUI command. Use the reload endpoint, not the model prompt or queue." });
-        return;
-      }
-      if (parseCompactCommand(text)) {
-        sendJson(response, 400, { error: "/compact is a HUI command. Use the compact endpoint, not the model prompt or queue." });
-        return;
-      }
-      const send = async () => {
-        let prepared: PreparedAttachments | undefined;
-        try {
-          prepared = await readAttachments(id, body["attachments"]);
-          const attachments = prepared.attachments;
-          // An image on its own is a valid prompt; a file on its own is not,
-          // because the agent needs to be told what to do with it.
-          if (!text.trim() && !attachments.some((item) => item.kind === "image")) {
-            throw new AttachmentInputError("A prompt is required.");
-          }
-          if (!liveSessions.ensure(record)) throw new SessionNotFoundError(`unknown session: ${id}`);
-          if (action[2] === "prompt") await liveSessions.prompt(id, text, attachments);
-          else if (action[2] === "steer") await liveSessions.steer(id, text, attachments);
-          else await liveSessions.followUp(id, text, attachments);
-        } catch (error) {
-          await prepared?.cleanupRejected();
-          throw error;
-        }
-        // Writing to an archived conversation restores it, subagents included. A bot's chat is restored with its bot.
-        if (record.archived && !record.bot) {
-          // The message is in: a failed restore must not report it refused, or its resend would run it twice.
-          await updateSession(id, { archived: false }).catch((error: unknown) => recordDiagnosticEvent({
-            area: "session",
-            level: "error",
-            action: "restore_on_send_failed",
-            sessionId: id,
-            summary: error instanceof Error ? error.message : "Could not restore an archived conversation.",
-          }));
-        }
-      };
-      try {
-        // A resend of a send the gateway already took (the browser stopped waiting) answers with its outcome,
-        // whichever of the three routes it comes back through, and the composer drops its copy.
-        const { duplicate } = await recentRequests.run(id, typeof requestId === "string" ? requestId : undefined, send);
-        sendJson(response, 200, { ok: true, ...(duplicate ? { duplicate: true } : {}) });
-      } catch (error) {
-        sendJson(response, error instanceof SessionNotFoundError ? 404 : error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "pi refused the message.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "continue" && request.method === "POST") {
-      try {
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          return;
-        }
-        await liveSessions.continueInterrupted(id);
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "Could not continue that run.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "clear" && request.method === "POST") {
-      try {
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          return;
-        }
-        const snapshot = await liveSessions.clear(id);
-        sendJson(response, 200, { snapshot });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : error instanceof SessionRegistryError ? 500 : 400, {
-          error: error instanceof Error ? error.message : "Could not clear that session.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "compact" && request.method === "POST") {
-      try {
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          return;
-        }
-        const body = (await readBody(request)) as Record<string, unknown> | null;
-        const raw = body?.["instructions"];
-        if (raw !== undefined && typeof raw !== "string") throw new Error("Compaction focus must be text.");
-        const instructions = raw?.trim();
-        if (instructions && instructions.length > 2_000) throw new Error("Keep the compaction focus under 2,000 characters.");
-        await liveSessions.compact(id, instructions || undefined);
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "Could not compact that session.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "compact" && request.method === "DELETE") {
-      try {
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          return;
-        }
-        await liveSessions.cancelCompaction(id);
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "Could not cancel that compaction.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "reload" && request.method === "POST") {
-      try {
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          return;
-        }
-        await liveSessions.reload(id);
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "Could not reload that session.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "btw" && request.method === "POST") {
-      try {
-        const body = (await readBody(request, MAX_PROMPT_BYTES)) as Record<string, unknown>;
-        const question = typeof body["question"] === "string" ? body["question"].trim() : "";
-        if (!question) throw new Error("A side question is required.");
-        const result = await answerSideQuestion({
-          cwd: record.worker ? homedir() : record.cwd,
-          question,
-          transcript: liveSessions.transcript(id),
-          settings: await readHuiSettings(),
-        });
-        sendJson(response, 200, { question, ...result });
-      } catch (error) {
-        sendJson(response, 502, {
-          error: error instanceof Error ? error.message : "The side question failed.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "queue" && request.method === "POST") {
-      try {
-        const body = (await readBody(request, MAX_PROMPT_BYTES)) as Record<string, unknown>;
-        const itemId = typeof body["itemId"] === "string" ? body["itemId"] : "";
-        if (!itemId) throw new Error("A queued message id is required.");
-        if (body["operation"] === "edit") {
-          const text = typeof body["text"] === "string" ? body["text"].trim() : "";
-          if (!text) throw new Error("A queued message cannot be empty.");
-          liveSessions.editFollowUp(id, itemId, text);
-        } else if (body["operation"] === "remove") {
-          liveSessions.removeFollowUp(id, itemId);
-        } else if (body["operation"] === "move") {
-          if (!Number.isInteger(body["toIndex"])) throw new Error("A queue position is required.");
-          liveSessions.moveFollowUp(id, itemId, Number(body["toIndex"]));
-        } else if (body["operation"] === "steer") {
-          await liveSessions.steerFollowUp(id, itemId);
-        } else {
-          throw new Error("Unknown queue operation.");
-        }
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "Could not update the queue.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "tools" && request.method === "GET") {
-      try {
-        sendJson(response, 200, await liveSessions.inspect(id));
-      } catch (error) {
-        sendJson(response, 502, { error: error instanceof Error ? error.message : "Runtime inspection failed." });
-      }
-      return;
-    }
-    if ((action[2] === "models" || action[2] === "commands") && request.method === "GET") {
-      try {
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          return;
-        }
-        sendJson(response, 200, action[2] === "commands"
-          ? { commands: await liveSessions.commands(id) }
-          : { models: await liveSessions.models(id) });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : `The runtime could not list its ${action[2]}.`,
-        });
-      }
-      return;
-    }
-    if (action[2] === "model" && request.method === "POST") {
-      const body = (await readBody(request)) as Record<string, unknown>;
-      const provider = typeof body["provider"] === "string" ? body["provider"] : "";
-      const modelId = typeof body["modelId"] === "string" ? body["modelId"] : "";
-      if (!modelId) {
-        sendJson(response, 400, { error: "A model id is required." });
-        return;
-      }
-      try {
-        const model = await liveSessions.setModel(id, provider, modelId);
-        sendJson(response, 200, { model: model ?? null });
-      } catch (error) {
-        sendJson(
-          response,
-          error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error),
-          {
-            error: error instanceof Error ? error.message : "pi refused that model.",
-          },
-        );
-      }
-      return;
-    }
-    if (action[2] === "abort" && request.method === "POST") {
-      try {
-        // Stop also stops the helpers this conversation collects (Swarm), even when the turn itself refuses to stop.
-        const helpers = subagents.cancelCollected(id).catch((error: unknown) => recordDiagnosticEvent({
-          area: "session", level: "warning", action: "subagent_cancel_failed", sessionId: id,
-          summary: error instanceof Error ? error.message : "Could not stop this conversation's collected subagents.",
-        }));
-        await liveSessions.abort(id);
-        await helpers;
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "pi refused to stop.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "rewind" && request.method === "POST") {
-      try {
-        const body = (await readBody(request)) as Record<string, unknown>;
-        const entryId = typeof body["entryId"] === "string" ? body["entryId"].trim() : "";
-        const userFromEnd = body["userFromEnd"];
-        const excludeUserMessage = body["excludeUserMessage"] === true;
-        const target = entryId || (Number.isSafeInteger(userFromEnd) && (userFromEnd as number) >= 0 ? { userFromEnd: userFromEnd as number } : undefined);
-        if (!target) throw new Error("A rewind point is required.");
-        await liveSessions.rewind(id, target, { excludeUserMessage });
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "PI could not rewind that session.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "fork" && request.method === "POST") {
-      try {
-        const fork = forkRequest((await readBody(request)) as Record<string, unknown>);
-        if (!liveSessions.ensure(record)) {
-          sendJson(response, 404, { error: `unknown session: ${id}` });
-          return;
-        }
-        await liveSessions.booted(id);
-        const forked = await forkFromSession(record, fork, (entryId, options) => liveSessions.fork(id, entryId, options));
-        sendJson(response, 201, { session: toView(forked, liveSessions.status(forked.id)) });
-      } catch (error) {
-        sendJson(response, 400, { error: error instanceof Error ? error.message : "Could not fork that session." });
-      }
-      return;
-    }
-    if (action[2] === "resume" && request.method === "POST") {
-      try {
-        await liveSessions.continueRun(id);
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "PI could not continue that session.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "thinking" && request.method === "GET") {
-      sendJson(response, 200, { level: liveSessions.currentThinking(id) ?? null });
-      return;
-    }
-    if (action[2] === "thinking" && request.method === "POST") {
-      const body = (await readBody(request)) as Record<string, unknown>;
-      const level = typeof body["level"] === "string" ? body["level"].trim() : "";
-      if (!isThinkingLevel(level)) {
-        sendJson(response, 400, { error: "Unknown thinking level." });
-        return;
-      }
-      try {
-        await liveSessions.setThinking(id, level);
-        sendJson(response, 200, { level: liveSessions.currentThinking(id) ?? level });
-      } catch (error) {
-        sendJson(
-          response,
-          error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error),
-          {
-            error: error instanceof Error ? error.message : "pi refused that thinking level.",
-          },
-        );
-      }
-      return;
-    }
-    if (action[2] === "fast" && request.method === "POST") {
-      const body = (await readBody(request)) as Record<string, unknown>;
-      if (typeof body["fast"] !== "boolean") {
-        sendJson(response, 400, { error: "Fast mode must be true or false." });
-        return;
-      }
-      try {
-        sendJson(response, 200, { fast: await liveSessions.setFast(id, body["fast"]) });
-      } catch (error) {
-        sendJson(response, sessionMutationErrorStatus(error), {
-          error: error instanceof Error ? error.message : "Could not change the speed.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "question" && request.method === "POST") {
-      let body: Record<string, unknown>;
-      // A parse error quotes the body, which may hold a secret; keep it out of diagnostics.
-      try { body = (await readBody(request)) as Record<string, unknown>; }
-      catch { sendJson(response, 400, { error: "Invalid question response." }); return; }
-      const questionId = typeof body?.["id"] === "string" ? body["id"].trim() : "";
-      if (!questionId) {
-        sendJson(response, 400, { error: "A question id is required." });
-        return;
-      }
-      try {
-        // A secret goes to the gateway's own request, never to the runtime.
-        if (secretRequests.answer(id, questionId, body) || questionnaires.answer(id, questionId, body)) {
-          sendJson(response, 200, { ok: true });
-          return;
-        }
-        if (body["cancelled"] === true) {
-          await liveSessions.cancelQuestion(id, questionId);
-        } else if (typeof body["value"] === "string") {
-          await liveSessions.respondQuestion(id, questionId, { value: body["value"] });
-        } else if (typeof body["confirmed"] === "boolean") {
-          await liveSessions.respondQuestion(id, questionId, { confirmed: body["confirmed"] });
-        } else {
-          sendJson(response, 400, { error: "A question response or cancellation is required." });
-          return;
-        }
-        sendJson(response, 200, { ok: true });
-      } catch (error) {
-        sendJson(response, error instanceof SessionBusyError ? 409 : 400, {
-          error: error instanceof Error ? error.message : "pi refused that question response.",
-        });
-      }
-      return;
-    }
-    if (action[2] === "events" && request.method === "GET") {
-      streamSession(response, record);
-      return;
-    }
-    if (action[2] === "connect" && request.method === "POST") {
-      const url = sessionStreamTicket(id);
-      sendJson(response, url ? 200 : 429, url ? { url } : { error: "Too many pending session connections." });
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
+  const sessionAction = await sessionActionRoutes.handle(routed);
+  if (sessionAction && "stream" in sessionAction) {
+    streamSession(response, sessionAction.stream);
     return;
   }
+  if (answered(response, path, sessionAction)) return;
 
   if (path.startsWith(THEME_FILE_ROUTE) && request.method === "GET") {
     const key = decodeURIComponent(path.slice(THEME_FILE_ROUTE.length));

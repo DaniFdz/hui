@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
-import { waitFor } from "./test-support/wait-for.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 // One isolated gateway on Pi Durable: its home, HUI's directory, PI's agent directory and a deterministic provider,
 // all temporary.
@@ -21,7 +21,7 @@ process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
 // No gh: startup would run the operator's in the background, writing into this home while afterAll() removes it.
 process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
-const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
   stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: join(dir, "requests.jsonl") },
 });
@@ -36,8 +36,8 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 } } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
 
-const { middleware, startBackend, stopBackend } = await import("./hui.ts");
-const { liveSessions } = await import("./live-sessions.ts");
+const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+const { liveSessions } = await import("../live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
@@ -127,7 +127,7 @@ test("a resent request id is answered with the first send's outcome and never ru
 });
 
 test("writing to an archived conversation restores it", { timeout: 60_000 }, async () => {
-  const { readRegistry } = await import("./sessions.ts");
+  const { readRegistry } = await import("../sessions.ts");
   const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Archived" });
   assert.equal(created.status, 200, JSON.stringify(created.body));
   const id = (created.body["session"] as { id: string }).id;

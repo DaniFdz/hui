@@ -5,13 +5,13 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { waitFor } from "./test-support/wait-for.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 test("a failed worktree launch stays listed with its prompt until dismissed", { timeout: 20_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-worktree-routes-"));
   const notRepository = await mkdtemp(join(tmpdir(), "hui-not-a-repo-"));
   process.env["XDG_CONFIG_HOME"] = dir;
-  const { middleware, stopBackend } = await import("./hui.ts");
+  const { middleware, stopBackend } = await import("../hui.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
