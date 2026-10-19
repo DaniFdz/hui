@@ -199,13 +199,7 @@ export function transcriptUsage(record: unknown): { input: number; output: numbe
 
 type DurableUsage = (conversationId: number) => Promise<{ models?: Record<string, Record<string, unknown>> } | undefined>;
 
-/** Loaded on use: the Durable host itself reports through this module. */
-const gatewayDurableUsage: DurableUsage = async (conversationId) => {
-  const { durableHost } = await import("./runtimes/durable-host.ts");
-  return durableHost().conversationUsage(conversationId as never);
-};
-
-export async function aggregateUsage(sessions: readonly SessionRecord[], durableUsage: DurableUsage = gatewayDurableUsage): Promise<UsageTotals> {
+export async function aggregateUsage(sessions: readonly SessionRecord[], durableUsage?: DurableUsage): Promise<UsageTotals> {
   const totals: UsageTotals = {
     sessions: sessions.length, filesRead: 0, records: 0, inputTokens: 0, outputTokens: 0,
     cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, costUsd: null, models: [], unavailable: [],
@@ -221,7 +215,7 @@ export async function aggregateUsage(sessions: readonly SessionRecord[], durable
     if (durable) {
       // Durable keeps spend per conversation and model, including prompt-cache
       // refreshes and nested tool calls, outside the transcript.
-      const usage = await durableUsage(Number(durable[1])).catch(() => undefined);
+      const usage = await durableUsage?.(Number(durable[1])).catch(() => undefined);
       if (!usage) {
         totals.unavailable = [...totals.unavailable, `${session.id}: Durable store unavailable`];
         continue;
@@ -282,7 +276,7 @@ export async function aggregateUsage(sessions: readonly SessionRecord[], durable
   return totals;
 }
 
-export async function readObservability(sessions: readonly SessionRecord[]): Promise<ObservabilitySnapshot> {
+export async function readObservability(sessions: readonly SessionRecord[], durableUsage?: DurableUsage): Promise<ObservabilitySnapshot> {
   const memory = process.memoryUsage();
   const activity = [...events];
   return {
@@ -290,7 +284,7 @@ export async function readObservability(sessions: readonly SessionRecord[]): Pro
     retention: { kind: "memory", maximum: MAX_EVENTS, since: startedAt },
     activity,
     logs: activity.filter(isLogEntry),
-    usage: await aggregateUsage(sessions),
+    usage: await aggregateUsage(sessions, durableUsage),
     debug: {
       node: process.version,
       platform: `${platform()} ${release()}`,

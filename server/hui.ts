@@ -3249,7 +3249,7 @@ async function handleRequest(
 
   if (path === OBSERVABILITY_ROUTE || path === DIAGNOSTICS_EXPORT_ROUTE) {
     if (request.method === "GET") {
-      const snapshot = await readObservability(await readRegistry());
+      const snapshot = await readObservability(await readRegistry(), async (conversationId) => durableHost().conversationUsage(conversationId as never));
       if (path === DIAGNOSTICS_EXPORT_ROUTE) {
         response.setHeader("content-disposition", `attachment; filename="hui-diagnostics-${new Date().toISOString().slice(0, 10)}.json"`);
       }
