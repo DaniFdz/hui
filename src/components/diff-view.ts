@@ -3,12 +3,12 @@
  * chooses the comparison (uncommitted changes, the last commit, the previous branch with a branch picker, the default
  * branch, the last two with "Include uncommitted"), the layout (unified, or side by side when the pane is wide) and
  * refreshes; a filterable list of changed files (status, +/- counts, totals) sits beside the selected file's diff,
- * syntax-coloured by `diff-highlight.ts`. Large or binary files open collapsed with a notice, renames show as renames,
- * and the file name opens the file in a Files view (the chat's file-link event, `OPEN_FILE_EVENT`). It refreshes when
- * the conversation's agent turn ends and when it becomes visible again. On narrow screens the list and the diff take
- * turns, with Back.
+ * syntax-coloured by `lib/diff/highlight.ts`. Large or binary files open collapsed with a notice, renames show as
+ * renames, and the file name opens the file in a Files view (the chat's file-link event, `OPEN_FILE_EVENT`). It
+ * refreshes when the conversation's agent turn ends and when it becomes visible again. On narrow screens the list and
+ * the diff take turns, with Back.
  *
- * It owns presentation and per-view state (`diff-view-state.ts`); the gateway runs Git (`server/git-diff.ts`). No
+ * It owns presentation and per-view state (`lib/diff/view-state.ts`); the gateway runs Git (`server/git-diff.ts`). No
  * decorators: the Work pane's view registry, which imports this lazily, also loads in Node tests.
  */
 import { html, nothing, svg, type PropertyValues, type SVGTemplateResult, type TemplateResult } from "lit";

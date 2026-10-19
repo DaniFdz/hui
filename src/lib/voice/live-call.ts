@@ -125,7 +125,7 @@ export function sessionAppends(channel: "speakable" | "commentary", note: string
 /* ── audio activity ───────────────────────────────────────────────────── */
 
 /**
- * Whether a source is active from its level (0–1, see voice-level.ts), with hysteresis: on at `on`, off only after
+ * Whether a source is active from its level (0–1, see level.ts), with hysteresis: on at `on`, off only after
  * staying under `off` for `holdMs`. `update` returns the new state when it changes.
  */
 export class ActivityGate {

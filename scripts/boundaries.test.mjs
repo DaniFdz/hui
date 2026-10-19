@@ -1,7 +1,8 @@
 /**
  * Enforces the dependency rules listed in docs/map.md: which areas may import which, where network calls and
  * custom elements live, no cycles, a worker release that ships what it imports, and installed entry paths that
- * never move. ALLOWED holds today's violations; it may only shrink, so a fixed one must leave the list.
+ * never move. ALLOWED holds today's violations: a fixed one must leave the list, a move may rename an entry, and a
+ * commit never adds a new kind of violation.
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";

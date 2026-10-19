@@ -9,5 +9,4 @@ test("one request carries every reference of the message", async () => {
   const results = await fetchGitHubPreviews([parseGitHubUrl("https://github.com/a/b")!, parseGitHubUrl("https://github.com/a/b/pull/2")!]);
   assert.deepEqual(results, [{ url: "https://github.com/a/b", error: "not_found" }]);
   assert.deepEqual(urls.map((url) => new URL(url, "http://hui").searchParams.getAll("url")), [["https://github.com/a/b", "https://github.com/a/b/pull/2"]]);
-  vi.unstubAllGlobals();
 });

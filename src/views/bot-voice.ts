@@ -1,7 +1,7 @@
 /**
  * Calls with bots (HUI-18), rendering only: the bot header's Call button, the
  * call view and its minimized bar. State and actions come from props owned by
- * `hui-app.ts` (src/lib/voice/live-call.ts and voice-controller.ts hold the logic).
+ * `hui-app.ts` (src/lib/voice/live-call.ts and src/controllers/voice-controller.ts hold the logic).
  */
 import { html, nothing, svg, type SVGTemplateResult, type TemplateResult } from "lit";
 import type { BotView } from "../lib/bots/bots.ts";

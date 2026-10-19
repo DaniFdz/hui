@@ -4,10 +4,11 @@
  * selected file: text in CodeMirror with autosave, Markdown as Source or Rendered, images and PDFs as previews and
  * anything else as metadata with a download.
  *
- * It owns presentation and per-view state (`files-view-state.ts`); the File draft (`file-draft.ts`) owns unsaved text
- * and saves, shared with other views of the same file; the gateway owns the disk. The editor itself loads on demand
- * (`file-editor.ts`). It refreshes when the conversation's agent turn ends and when it becomes visible again. A reveal
- * request (a file reference clicked in the chat, `files-view-state.ts`) opens a file at a line or a folder in the tree.
+ * It owns presentation and per-view state (`lib/files/view-state.ts`); the File draft (`lib/files/draft.ts`) owns
+ * unsaved text and saves, shared with other views of the same file; the gateway owns the disk. The editor itself loads
+ * on demand (`lib/files/editor.ts`). It refreshes when the conversation's agent turn ends and when it becomes visible
+ * again. A reveal request (a file reference clicked in the chat, `lib/files/view-state.ts`) opens a file at a line or a
+ * folder in the tree.
  *
  * Behaviour follows AgentsInTheCloud's Files view (packages/files, MIT, see THIRD_PARTY_NOTICES.md); the markup is HUI's.
  * No decorators: the Work pane's view registry, which imports this lazily, also loads in Node tests.

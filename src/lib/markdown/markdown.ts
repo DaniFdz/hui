@@ -5,7 +5,7 @@
  * re-renders the whole transcript on every update.
  *
  * The agent's own replies render through a second instance (`renderAgentMarkdown`) that also wraps file references
- * — inline code spans and link targets shaped like paths (`file-references.ts`) — in `<hui-file-ref>`, which
+ * — inline code spans and link targets shaped like paths (`../files/references.ts`) — in `<hui-file-ref>`, which
  * becomes a link to the Files view once the gateway confirms the path (`components/file-link.ts`). Fenced code,
  * prose and other Markdown (hovercards, the Files view's preview, user messages) are never wrapped. It draws Slack
  * and X links as cards only when asked: the chat does so on its latest messages and leaves older ones plain links.
