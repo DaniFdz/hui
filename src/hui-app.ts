@@ -147,18 +147,7 @@ import type { ThemePreview } from "./lib/theme/theme-store.ts";
 import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "./lib/pi.ts";
 import { installPiPackage, installPiSkill, loadPiConfig, loadPiResource, removePiPackage } from "./api/pi.ts";
 import { loadWorkingDirectorySuggestions } from "./api/working-directories.ts";
-import {
-  cancelAutomationRun,
-  createAutomationTask,
-  deleteAutomationTask,
-  loadAutomation,
-  runAutomationTask,
-  updateAutomationTask,
-  type AutomationRun,
-  type AutomationSnapshot,
-  type AutomationTask,
-  type AutomationTaskInput,
-} from "./api/automation.ts";
+import { AutomationController } from "./controllers/automation-controller.ts";
 import {
   loadGatewayHealth,
   loadPower,
@@ -245,9 +234,6 @@ import {
 
 const COLLAPSED_KEY = "hui.collapsed-groups";
 const HUI_UPDATE_SESSION_TITLE = "HUI update";
-
-/** Matches the scheduler's own cadence closely enough to show settling runs. */
-const AUTOMATION_POLL_MS = 3000;
 
 /** Collapsed groups are a reading preference, so they stay in the browser. */
 function readCollapsed(): Set<string> {
@@ -436,13 +422,7 @@ export class HuiApp extends HuiElement {
   private gitCheckoutRequest = 0;
   private inspectedCheckoutDirectory = "";
   private launchPiRequest: Promise<void> | undefined;
-  private automationPoll: number | undefined;
-  @state() private automation: AutomationSnapshot | undefined;
-  @state() private automationError = "";
-  @state() private automationPending = false;
-  @state() private automationFormError = "";
-  @state() private automationActionError = "";
-  @state() private automationEditingId = "";
+  private readonly automation = new AutomationController(this);
   private groupActionReturnFocus: HTMLElement | undefined;
 
   @state() private settings: Settings = currentSettings();
@@ -862,7 +842,6 @@ export class HuiApp extends HuiElement {
     this.streamStop = undefined;
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
-    this.stopAutomationPolling();
     this.followResize?.disconnect();
     this.followed = undefined;
     if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
@@ -1292,13 +1271,13 @@ export class HuiApp extends HuiElement {
         this.worktreeResults = [];
         this.loadWorktreeInventory();
       }
-      if (target.page === "automation") this.startAutomationPolling();
-      else this.stopAutomationPolling();
+      if (target.page === "automation") this.automation.startPolling();
+      else this.automation.stopPolling();
       return;
     }
 
     this.settingsOpen = false;
-    this.stopAutomationPolling();
+    this.automation.stopPolling();
     if (target.kind === "bot") {
       // Bots exist in the UI only while Settings → Labs → Bots is on; a bot's address lands on the normal home otherwise.
       if (this.embeddedPane || !botsEnabled(this.settings)) {
@@ -1350,8 +1329,8 @@ export class HuiApp extends HuiElement {
       if (isPiSurface(target.page)) this.loadControlSurfaceData();
       if (isObservabilitySurface(target.page) || isOwnedSurface(target.page)) this.loadOperationalData();
       if (target.page.id === "cron" || target.page.id === "tasks") {
-        this.loadAutomationData();
-        this.startAutomationPolling();
+        this.automation.load();
+        this.automation.startPolling();
       }
       return;
     }
@@ -4279,8 +4258,7 @@ export class HuiApp extends HuiElement {
       this.botPanel = { ...this.botPanel, open: true };
       writeBotPanel(this.botPanel);
     }
-    this.automationFormError = "";
-    this.automationActionError = "";
+    this.automation.clearErrors();
     this.selectBotPanelView("settings");
   }
 
@@ -4546,10 +4524,10 @@ export class HuiApp extends HuiElement {
   private syncBotPanelData() {
     if (this.embeddedPane) return;
     if (this.botPanelShows("overview", "routines")) {
-      this.loadAutomationData();
-      this.startAutomationPolling();
+      this.automation.load();
+      this.automation.startPolling();
     } else if (this.view === "bot") {
-      this.stopAutomationPolling();
+      this.automation.stopPolling();
     }
     this.botTriggers.sync(this.botTriggersVisible() ? this.activeBot() : undefined);
     const factsBot = this.botPanelShows("facts") ? this.activeBot() : undefined;
@@ -4594,8 +4572,7 @@ export class HuiApp extends HuiElement {
       writeBotPanel(this.botPanel);
       if (!this.botPanel.open) this.botPanelExpanded = false;
     }
-    this.automationFormError = "";
-    this.automationActionError = "";
+    this.automation.clearErrors();
     this.syncBotPanelData();
     if (this.botPanelVisible()) this.focusBotPanel();
   };
@@ -4726,17 +4703,17 @@ export class HuiApp extends HuiElement {
         onExpand: this.expandBotPanel,
         onResize: this.resizeBotPanel,
         routines: {
-          automation: this.automation,
-          error: this.automationError,
-          pending: this.automationPending,
-          formError: this.automationFormError,
-          actionError: this.automationActionError,
-          onCreate: this.createAutomationTask,
-          onFormError: this.reportAutomationFormError,
-          onSetEnabled: this.setAutomationEnabled,
-          onRun: this.runAutomationTaskNow,
-          onDelete: this.deleteAutomationTask,
-          onRetry: this.loadAutomationData,
+          automation: this.automation.snapshot,
+          error: this.automation.error,
+          pending: this.automation.pending,
+          formError: this.automation.formError,
+          actionError: this.automation.actionError,
+          onCreate: this.automation.create,
+          onFormError: this.automation.reportFormError,
+          onSetEnabled: this.automation.setEnabled,
+          onRun: this.automation.run,
+          onDelete: this.automation.delete,
+          onRetry: this.automation.load,
         },
         tools: this.botTools.props(bot),
         facts: this.botFacts,
@@ -4926,117 +4903,7 @@ export class HuiApp extends HuiElement {
     if (stale || !this.pi || !this.health || !this.workspaceInspection) {
       this.loadControlSurfaceData(stale);
     }
-    this.loadAutomationData();
-  };
-
-  private loadAutomationData = () => {
-    this.automationError = "";
-    void loadAutomation()
-      .then((snapshot) => {
-        this.automation = snapshot;
-      })
-      .catch((error: unknown) => {
-        this.automationError = error instanceof Error ? error.message : "Could not read automation state.";
-      });
-  };
-
-  /**
-   * Run status settles in the scheduler, not in the browser, so the open page
-   * re-reads it instead of trusting the snapshot it already has.
-   */
-  private startAutomationPolling() {
-    if (this.automationPoll !== undefined) return;
-    this.automationPoll = window.setInterval(() => {
-      if (!this.automationPending) this.loadAutomationData();
-    }, AUTOMATION_POLL_MS);
-  }
-
-  private stopAutomationPolling() {
-    if (this.automationPoll === undefined) return;
-    window.clearInterval(this.automationPoll);
-    this.automationPoll = undefined;
-  }
-
-  /**
-   * Every automation mutation resolves to a fresh snapshot, so the surface never
-   * guesses at scheduler state it does not own.
-   */
-  private runAutomationMutation = (
-    mutate: () => Promise<AutomationSnapshot | void>,
-    /** Where a rejection belongs: the create form, or the list that was acted on. */
-    surface: "form" | "action",
-  ): Promise<boolean> => {
-    if (this.automationPending) return Promise.resolve(false);
-    this.automationPending = true;
-    this.automationFormError = "";
-    this.automationActionError = "";
-    return mutate()
-      .then((snapshot) => {
-        if (snapshot) this.automation = snapshot;
-        else this.loadAutomationData();
-        return true;
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : "The automation request failed.";
-        if (surface === "form") this.automationFormError = message;
-        else this.automationActionError = message;
-        return false;
-      })
-      .finally(() => {
-        this.automationPending = false;
-      });
-  };
-
-  private createAutomationTask = (input: AutomationTaskInput) =>
-    this.runAutomationMutation(() => createAutomationTask(input), "form");
-
-  private editAutomationTask = (task: AutomationTask) => {
-    this.automationEditingId = task.id;
-    this.automationFormError = "";
-    queueMicrotask(() => this.renderRoot.querySelector<HTMLFormElement>("#automation-task-form")?.scrollIntoView({ block: "start" }));
-  };
-
-  private cancelAutomationEdit = () => {
-    this.automationEditingId = "";
-    this.automationFormError = "";
-  };
-
-  private updateAutomationTask = (task: AutomationTask, input: AutomationTaskInput) =>
-    this.runAutomationMutation(() => updateAutomationTask(task.id, input), "form");
-
-  private setAutomationEnabled = (task: AutomationTask, enabled: boolean) => {
-    this.runAutomationMutation(() =>
-      updateAutomationTask(task.id, {
-        name: task.name,
-        description: task.description,
-        sessionId: task.sessionId,
-        prompt: task.prompt,
-        schedule: task.schedule,
-        enabled,
-        timeoutSeconds: task.timeoutSeconds,
-      }),
-      "action",
-    );
-  };
-
-  private deleteAutomationTask = (task: AutomationTask) => {
-    this.runAutomationMutation(() => deleteAutomationTask(task.id), "action");
-  };
-
-  private runAutomationTaskNow = (task: AutomationTask) => {
-    this.runAutomationMutation(async () => {
-      await runAutomationTask(task.id);
-    }, "action");
-  };
-
-  private cancelAutomationRun = (run: AutomationRun) => {
-    this.runAutomationMutation(async () => {
-      await cancelAutomationRun(run.id);
-    }, "action");
-  };
-
-  private reportAutomationFormError = (message: string) => {
-    this.automationFormError = message;
+    this.automation.load();
   };
 
   private loadControlSurfaceData = (force = false) => {
@@ -5216,7 +5083,7 @@ export class HuiApp extends HuiElement {
   private loadOperationalData = (force = false) => {
     if (this.observabilityLoading) return;
     this.loadControlSurfaceData(force);
-    this.loadAutomationData();
+    this.automation.load();
     if (!force && this.observability) return;
     this.observabilityLoading = true;
     this.observabilityError = "";
@@ -5836,24 +5703,9 @@ export class HuiApp extends HuiElement {
 
   private automationProps(): AutomationProps {
     return {
-      automation: this.automation,
-      automationError: this.automationError,
-      automationPending: this.automationPending,
-      automationFormError: this.automationFormError,
-      automationActionError: this.automationActionError,
+      ...this.automation.props(),
       sessions: this.groups.flatMap((group) => group.sessions),
       bots: botsEnabled(this.settings),
-      onRetryAutomation: this.loadAutomationData,
-      onCreateAutomationTask: this.createAutomationTask,
-      automationEditingId: this.automationEditingId,
-      onEditAutomationTask: this.editAutomationTask,
-      onCancelAutomationEdit: this.cancelAutomationEdit,
-      onUpdateAutomationTask: this.updateAutomationTask,
-      onAutomationFormError: this.reportAutomationFormError,
-      onSetAutomationEnabled: this.setAutomationEnabled,
-      onDeleteAutomationTask: this.deleteAutomationTask,
-      onRunAutomationTask: this.runAutomationTaskNow,
-      onCancelAutomationRun: this.cancelAutomationRun,
     };
   }
 

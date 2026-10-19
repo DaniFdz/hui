@@ -238,30 +238,15 @@ test("the create form shows only the selected schedule kind", () => {
   }
 });
 
-test("automation mutations always adopt a server snapshot", () => {
+test("the automation page lists every session and reads its state from the controller", () => {
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
-  assert.match(app, /if \(snapshot\) this\.automation = snapshot;\s*\n\s*else this\.loadAutomationData\(\);/);
-  assert.match(app, /onRetryAutomation: this\.loadAutomationData/);
-  assert.match(app, /sessions: this\.groups\.flatMap\(\(group\) => group\.sessions\)/);
+  assert.match(app, /\.\.\.this\.automation\.props\(\),\s*\n\s*sessions: this\.groups\.flatMap\(\(group\) => group\.sessions\)/);
 });
 
 test("a refused task action is reported next to the list, not inside the create form", () => {
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   const source = readFileSync(new URL("./settings-automation.ts", import.meta.url), "utf8");
 
-  // Only creation belongs to the form; every task and run action reports above
-  // the task list, where the button that was refused actually lives.
-  assert.match(app, /createAutomationTask\(input\), "form"\)/);
-  for (const mutation of [
-    /deleteAutomationTask\(task\.id\), "action"\)/,
-    /await runAutomationTask\(task\.id\);\s*\n\s*\}, "action"\)/,
-    /await cancelAutomationRun\(run\.id\);\s*\n\s*\}, "action"\)/,
-  ]) {
-    assert.match(app, mutation);
-  }
-  assert.match(app, /updateAutomationTask\(task\.id, input\), "form"\)/);
-  assert.match(app, /if \(surface === "form"\) this\.automationFormError = message;\s*\n\s*else this\.automationActionError = message;/);
   assert.match(source, /data-automation-action-error/);
   // A refusal has to look like one, not like the muted notes around it.
   const css = readFileSync(new URL("../styles/app.css", import.meta.url), "utf8");
@@ -272,40 +257,28 @@ test("a refused task action is reported next to the list, not inside the create 
 test("the open automation page re-reads scheduler state and stops when it closes", () => {
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
-  // Run status settles in the scheduler after the mutation response, so a single
-  // snapshot goes stale; the page polls while it is open and never while busy.
-  assert.match(app, /if \(target\.page === "automation"\) this\.startAutomationPolling\(\);\s*\n\s*else this\.stopAutomationPolling\(\);/);
-  assert.match(app, /this\.settingsOpen = false;\s*\n\s*this\.stopAutomationPolling\(\);/);
-  assert.match(app, /if \(!this\.automationPending\) this\.loadAutomationData\(\);/);
-  assert.match(app, /if \(this\.automationPoll !== undefined\) return;/);
-  // Leaving the element behind must not leave a timer behind.
-  assert.match(app, /this\.streamStop = undefined;\s*\n\s*if \(this\.subagentExpiryTimer !== undefined\) window\.clearTimeout\(this\.subagentExpiryTimer\);\s*\n\s*this\.subagentExpiryTimer = undefined;\s*\n\s*this\.stopAutomationPolling\(\);/);
+  assert.match(app, /if \(target\.page === "automation"\) this\.automation\.startPolling\(\);\s*\n\s*else this\.automation\.stopPolling\(\);/);
+  assert.match(app, /this\.settingsOpen = false;\s*\n\s*this\.automation\.stopPolling\(\);/);
 });
 
 test("the create form only clears once the scheduler accepted the task", () => {
   const source = readFileSync(new URL("./settings-automation.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
   assert.match(source, /if \(!created\) return;[\s\S]*?form\.reset\(\);/);
   assert.match(source, /timezone\.value = localTimezone\(\)/);
   assert.match(source, /timeout\.value = "900"/);
   assert.match(source, /schedule\.value = "cron"/);
   assert.match(source, /form\.setAttribute\("data-schedule", "cron"\)/);
-  // A rejected mutation must resolve false rather than clearing the form.
-  assert.match(app, /if \(this\.automationPending\) return Promise\.resolve\(false\);/);
-  assert.match(app, /else this\.automationActionError = message;\s*\n\s*return false;/);
 });
 
 test("tasks can be edited without losing their enabled state", () => {
   const source = readFileSync(new URL("./settings-automation.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
   assert.match(source, /<wa-dropdown-item value="edit"[^>]*>Edit<\/wa-dropdown-item>/);
   assert.match(source, /editing \? "Update task" : "Create task"/);
   assert.match(source, /\{ \.\.\.input, enabled: editing\.enabled \}/);
   assert.match(source, /editing\?\.name \?\? ""/);
   assert.match(source, /editing\?\.prompt \?\? ""/);
-  assert.match(app, /updateAutomationTask\(task\.id, input\), "form"/);
 });
 
 test("automation validation is owned by HUI instead of native required bubbles", () => {
