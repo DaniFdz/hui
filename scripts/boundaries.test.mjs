@@ -550,6 +550,7 @@ const ALLOWED = [
   "src/components/terminal-pane.ts -> shared/terminal-stream.ts (R3)",
   "src/components/vscode-view.ts -> shared/vscode.ts (R3)",
   "src/components/widget-card.ts -> shared/widgets.ts (R3)",
+  "src/controllers/backlog-controller.ts -> shared/session-stages.ts (R3)",
   "src/controllers/bot-facts-controller.test.ts -> shared/bot-facts.ts (R3)",
   "src/controllers/bot-facts-controller.ts -> shared/bot-facts.ts (R3)",
   "src/controllers/bot-import-controller.ts -> shared/bot-export.ts (R3)",

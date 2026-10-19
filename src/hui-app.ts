@@ -79,6 +79,7 @@ import { botChatCommandRefusal, completeCommandReference, composerCommands, filt
 import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
+import { BacklogController } from "./controllers/backlog-controller.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
 import { BotToolsController } from "./controllers/bot-tools-controller.ts";
@@ -146,9 +147,8 @@ import { renderKanbanPage } from "./views/kanban.ts";
 import { readKanbanOptions, writeKanbanOptions, type KanbanMove, type KanbanOptions } from "./lib/kanban.ts";
 import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS, type SessionStage } from "../shared/session-stages.ts";
 import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
-import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import type { ForkTarget } from "./components/fork-dialog.ts";
-import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./api/backlog.ts";
+import { addSuggestionToBacklog, backlogItemMarkdown, type BacklogItem } from "./api/backlog.ts";
 import { loadJiraConnection } from "./api/jira.ts";
 import { VoiceController } from "./controllers/voice-controller.ts";
 import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
@@ -290,17 +290,10 @@ export class HuiApp extends HuiElement {
   /** Local backlog task whose Jira create/link dialog is open. */
   @state() private jiraCreateBacklogItem: BacklogItem | undefined;
   @state() private jiraLinkBacklogItem: BacklogItem | undefined;
-  /** Kanban backlog: items, loading/error state and the Jira feed state. */
-  @state() private backlog: readonly BacklogItem[] = [];
-  @state() private backlogLoading = false;
-  @state() private backlogError = "";
-  @state() private backlogJira: BacklogJiraState = { status: "unconfigured" };
-  @state() private backlogPendingId = "";
-  private backlogRequest = 0;
-  /** Backlog item whose start dialog is open, with the drop target. */
-  @state() private backlogStart: { item: BacklogItem; target: BacklogStartTarget } | undefined;
-  /** Local task awaiting removal confirmation. */
-  @state() private backlogRemove: BacklogItem | undefined;
+  private readonly backlog = new BacklogController(this, {
+    notify: (message, failed) => this.notify(message, failed),
+    refreshSessions: () => void this.refreshSessions(true),
+  });
   /** Whether Jira is connected, for the suggestion card's actions; unknown until loaded. */
   @state() private jiraConfigured: boolean | undefined;
   private archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -973,7 +966,7 @@ export class HuiApp extends HuiElement {
     }
     const sessionsDeleteDialog = this.sessionsDeleteConfirm ? this.renderRoot.querySelector?.(".sessions-delete-dialog") : null;
     if (sessionsDeleteDialog instanceof HTMLDialogElement) ensureModal(sessionsDeleteDialog);
-    const backlogRemoveDialog = this.backlogRemove ? this.renderRoot.querySelector?.(".backlog-remove-dialog") : null;
+    const backlogRemoveDialog = this.backlog.removing ? this.renderRoot.querySelector?.(".backlog-remove-dialog") : null;
     if (backlogRemoveDialog instanceof HTMLDialogElement) ensureModal(backlogRemoveDialog);
     const deleteDialog = this.deletingFor ? this.renderRoot.querySelector?.(".delete-session-dialog") : null;
     if (deleteDialog instanceof HTMLDialogElement) {
@@ -1138,7 +1131,7 @@ export class HuiApp extends HuiElement {
       this.activePage = undefined;
       this.view = "kanban";
       void this.refreshSessions(true);
-      void this.refreshBacklog();
+      void this.backlog.refresh();
       return;
     }
     if (target.kind === "page") {
@@ -1444,7 +1437,7 @@ export class HuiApp extends HuiElement {
     if (detail.backlogItemId) {
       this.jiraCreateBacklogItem = undefined;
       this.notify(detail.warning ?? `Created Jira work item ${detail.key} for the backlog task.`, Boolean(detail.warning));
-      void this.refreshBacklog();
+      void this.backlog.refresh();
       return;
     }
     if (detail.suggestionId) {
@@ -1472,12 +1465,12 @@ export class HuiApp extends HuiElement {
     if (detail.backlogItemId) {
       this.jiraLinkBacklogItem = undefined;
       this.notify(`Linked Jira work item ${detail.key} to the backlog task.`);
-      void this.refreshBacklog();
+      void this.backlog.refresh();
       return;
     }
     if (this.view === "kanban") {
       this.notify(`Linked Jira work item ${detail.key}.`);
-      void this.refreshBacklog();
+      void this.backlog.refresh();
     }
     this.notify(`Linked Jira work item ${detail.key}.`);
     void this.refreshSessions(true);
@@ -1559,62 +1552,14 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  /* ── Kanban backlog ── the server's merged view is the only source of the
-   * Backlog column; nothing moves optimistically. */
-  private async refreshBacklog(refresh = false) {
-    const request = ++this.backlogRequest;
-    this.backlogLoading = true;
-    try {
-      const view = await loadBacklog(refresh);
-      if (request !== this.backlogRequest) return;
-      this.backlog = view.items;
-      this.backlogJira = view.jira;
-      this.backlogError = "";
-    } catch (error) {
-      if (request === this.backlogRequest) this.backlogError = error instanceof Error ? error.message : "The backlog could not be loaded.";
-    } finally {
-      if (request === this.backlogRequest) this.backlogLoading = false;
-    }
-  }
-
-  private setBacklogGroup = (item: BacklogItem, group: string) => {
-    const current = !item.group || item.group === "ungrouped" ? "" : item.group;
-    if (this.backlogPendingId || current === group) return;
-    this.backlogPendingId = item.id;
-    this.notify(`Moving ${item.title} to ${sessionGroupLabel(group)}…`);
-    void setBacklogItemGroup(item.id, group)
-      .then((view) => {
-        this.backlog = view.items;
-        this.backlogJira = view.jira;
-        this.notify(`Moved ${item.title} to ${sessionGroupLabel(group)}.`);
-      })
-      .catch((error: unknown) => {
-        this.notify(error instanceof Error ? error.message : "Could not move that backlog item.", true);
-      })
-      .finally(() => { this.backlogPendingId = ""; });
-  };
-
-  private openBacklogStart = (item: BacklogItem, target: BacklogStartTarget) => {
-    if (this.backlogPendingId) return;
-    void import("./components/backlog-start-dialog.ts").then(() => { this.backlogStart = { item, target }; });
-  };
-
-  private backlogStarted = (session: SessionView, item: BacklogItem) => {
-    this.backlogStart = undefined;
-    this.notify(`Started “${session.title}” from the backlog in ${SESSION_STAGE_LABELS[session.stage ?? DEFAULT_SESSION_STAGE]}.`);
-    this.backlog = this.backlog.filter(({ id }) => id !== item.id);
-    void this.refreshSessions(true);
-    void this.refreshBacklog();
-  };
-
   private renderBacklogStartDialog() {
-    if (!this.backlogStart) return null;
+    if (!this.backlog.starting) return null;
     return html`<hui-backlog-start-dialog
-      .item=${this.backlogStart.item}
-      .target=${this.backlogStart.target}
+      .item=${this.backlog.starting.item}
+      .target=${this.backlog.starting.target}
       .branchPrefix=${this.control.settings.branchPrefix}
-      .onClose=${() => { this.backlogStart = undefined; }}
-      .onStarted=${this.backlogStarted}
+      .onClose=${this.backlog.closeStart}
+      .onStarted=${this.backlog.started}
     ></hui-backlog-start-dialog>`;
   }
 
@@ -1626,7 +1571,7 @@ export class HuiApp extends HuiElement {
         this.notify(copied ? `Copied “${item.title}”.` : "Could not copy to the clipboard.", !copied);
       });
     } else if (action === "remove") {
-      this.backlogRemove = item;
+      this.backlog.askRemove(item);
     } else if (action === "jira:create") {
       void import("./components/jira-create-dialog.ts").then(() => { this.jiraCreateBacklogItem = item; });
     } else if (action === "jira:link") {
@@ -1634,36 +1579,17 @@ export class HuiApp extends HuiElement {
     }
   };
 
-  private confirmBacklogRemove = (event: Event) => {
-    event.preventDefault();
-    const item = this.backlogRemove;
-    if (!item || this.backlogPendingId) return;
-    this.backlogPendingId = item.id;
-    void removeBacklogItem(item.id)
-      .then((view) => {
-        this.backlog = view.items;
-        this.backlogJira = view.jira;
-        this.notify(`Removed “${item.title}” from the backlog.`);
-        this.backlogRemove = undefined;
-      })
-      .catch((error: unknown) => {
-        this.notify(error instanceof Error ? error.message : "Could not remove that task.", true);
-        this.backlogRemove = undefined;
-      })
-      .finally(() => { this.backlogPendingId = ""; });
-  };
-
   private renderBacklogRemoveDialog() {
-    const item = this.backlogRemove;
+    const item = this.backlog.removing;
     if (!item) return null;
-    const close = () => { if (!this.backlogPendingId) this.backlogRemove = undefined; };
+    const close = this.backlog.cancelRemove;
     return html`<dialog class="hui-modal-dialog group-action-dialog backlog-remove-dialog" aria-labelledby="backlog-remove-title"
       @cancel=${(event: Event) => { event.preventDefault(); close(); }}>
-      <form class="exec-approval-card" method="dialog" @submit=${this.confirmBacklogRemove}>
+      <form class="exec-approval-card" method="dialog" @submit=${this.backlog.confirmRemove}>
         <div class="exec-approval-title" id="backlog-remove-title">Remove “${item.title}” from the backlog?</div>
         <div class="exec-approval-sub">The local task and its problem and fix notes are deleted. ${item.jira ? `The linked Jira work item ${item.jira.key} is not changed.` : ""}</div>
         <div class="exec-approval-actions">
-          <button type="submit" class="btn danger" ?disabled=${Boolean(this.backlogPendingId)}>${this.backlogPendingId ? "Removing…" : "Remove"}</button>
+          <button type="submit" class="btn danger" ?disabled=${Boolean(this.backlog.pendingId)}>${this.backlog.pendingId ? "Removing…" : "Remove"}</button>
           <button type="button" class="btn" @click=${close}>Cancel</button>
         </div>
       </form>
@@ -5268,14 +5194,14 @@ export class HuiApp extends HuiElement {
                 onDragStart: (id) => { this.kanbanDraggingId = id; this.kanbanDropTarget = ""; },
                 onDragEnd: () => { this.kanbanDraggingId = ""; this.kanbanDropTarget = ""; },
                 onDragOver: (cell) => { this.kanbanDropTarget = cell; },
-                onRefresh: () => { void this.refreshSessions(); void this.refreshBacklog(true); },
-                backlog: this.backlog,
-                backlogLoading: this.backlogLoading,
-                backlogError: this.backlogError,
-                backlogJira: this.backlogJira,
-                backlogPendingId: this.backlogPendingId,
-                onBacklogGroup: this.setBacklogGroup,
-                onBacklogStart: this.openBacklogStart,
+                onRefresh: () => { void this.refreshSessions(); void this.backlog.refresh(true); },
+                backlog: this.backlog.items,
+                backlogLoading: this.backlog.loading,
+                backlogError: this.backlog.error,
+                backlogJira: this.backlog.jira,
+                backlogPendingId: this.backlog.pendingId,
+                onBacklogGroup: this.backlog.setGroup,
+                onBacklogStart: this.backlog.openStart,
                 onBacklogAction: this.backlogCardAction,
                 onSessionAction: this.kanbanSessionAction,
               })
