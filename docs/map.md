@@ -81,20 +81,20 @@ R13 and R16 are not checked yet.
 
 | Area | Start here |
 |---|---|
-| HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `server/routes/` (`order.test.ts`: which handler answers each route family, in dispatch order), `server/http/` (`route.ts`: the request and result every `*-routes.ts` module speaks, and request body reading), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
+| HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `server/routes/` (the route modules; `order.test.ts`: which handler answers each route family, in dispatch order), `server/http/` (`route.ts`: the request and result every route module speaks, and request body reading), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
 | Session registry and lifecycle | `sessions.ts` (HUI registry), `server/sessions/` (`session-tree.ts`: a session's tree root), `live-sessions.ts` (running sessions), `session-list.ts`, `session-transport.ts` |
 | Runtimes | `runtimes/types.ts` (contract), `runtimes/durable*.ts` (Pi Durable: host, adapter, prompt, tools, PI extensions, questions), `runtimes/pi*.ts` (PI SDK worker and CLI fallback), `runtimes/pi-import.ts` (moves PI sessions to Durable for `hui doctor --fix`), `runtimes/model-controls.ts` (a model's reasoning levels, fast mode and the level HUI's Ultra is sent) |
 | HUI agent tools | `runtimes/hui-tools.ts` (definitions), `agent-tools-bridge.ts` (loopback bridge for PI workers), `subagents.ts`, `watchers.ts`, `task-suggestions.ts`, `secret-requests.ts` |
 | PI configuration | `pi-config.ts` (read-only view), `pi-mutations.ts`, `pi-paths.ts`, `providers.ts`, `provider-accounts.ts`, `model-routing.ts` |
 | Git and GitHub | `worktrees.ts`, `worktree-inventory.ts`, `github*.ts`, `pull-requests.ts` |
-| Diff view | `git-diff.ts` (read-only Git comparisons: previous and default branch detection, patches with caps, untracked files through a temporary index), `diff-routes.ts` (`/__hui/sessions/:id/diff…`); contract in `shared/diff.ts` |
+| Diff view | `git-diff.ts` (read-only Git comparisons: previous and default branch detection, patches with caps, untracked files through a temporary index), `routes/diff.ts` (`/__hui/sessions/:id/diff…`); contract in `shared/diff.ts` |
 | Integrations | `jira*.ts`, `backlog.ts` (Kanban), `automation.ts`, `datadog.ts` (Datadog orgs through `pup`) and `datadog-previews.ts` (chat cards for Datadog links); contract in `shared/datadog.ts` |
 | Terminals and browser | `terminals.ts`, `terminal-replay.ts` (bounded replay bytes), `terminal-transport.ts` (wire format in `shared/terminal-stream.ts`), `server/browser/` (managed Chromium over a CDP pipe), `browser-transport.ts` |
-| Files view | `files.ts` (list, search, read, save, upload, delete inside a working directory; which chat paths exist there), `file-routes.ts` (`/__hui/sessions/:id/files…`) |
+| Files view | `files.ts` (list, search, read, save, upload, delete inside a working directory; which chat paths exist there), `routes/files.ts` (`/__hui/sessions/:id/files…`) |
 | VS Code view | `vscode.ts` (running the shared VS Code server, license consent, tickets and cookie secrets), `vscode-providers.ts` (finding VS Code desktop's `code serve-web`, servers on PATH or a configured path; launch flags), `vscode-install.ts` (the pinned, checksum-verified openvscode-server install on Linux), `vscode-proxy.ts` (the cookie-guarded HTTP and WebSocket proxy under `/__hui/vscode/`); contract in `shared/vscode.ts` |
 | Bots and calls (Labs) | `bots.ts`, `bot-*.ts` (`bot-facts.ts`: explicit operator knowledge on the bot's host; `bot-export.ts`: a bot as a template, reviewed for personal information), `server/bot-templates/` (other platforms' bot templates, read for import, and the export's cleanup and reviewer), `calls.ts`, `call-*.ts`, `runtimes/durable-bots.ts` |
 | OptChat memory | `optchat/` (engine, no HUI imports), `runtimes/durable-optchat.ts` (Durable glue); see `docs/optchat.md` |
-| Remote workers | `workers.ts`, `worker-routes.ts` (gateway side), `worker/` (host daemon, protocol, bootstrap, config sync) |
+| Remote workers | `workers.ts`, `routes/workers.ts` (gateway side), `worker/` (host daemon, protocol, bootstrap, config sync) |
 | Settings, paths, updates | `hui-settings.ts`, `paths.ts`, `updates.ts`, `power.ts` |
 
 ## src/ — the browser app

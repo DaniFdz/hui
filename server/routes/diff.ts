@@ -1,15 +1,15 @@
 /**
- * `/__hui/sessions/:id/diff…`: the Diff view's routes. Like the Files routes (`file-routes.ts`) it finds the
+ * `/__hui/sessions/:id/diff…`: the Diff view's routes. Like the Files routes (`routes/files.ts`) it finds the
  * conversation's working directory in the registry, opens it through `FilesRoot` (realpath, must be a folder) and
  * refuses conversations on a remote worker; `git-diff.ts` runs Git there. Query values are validated here: the
  * comparison against its fixed list, paths with the Files path rules, and a picked branch against the branches the
  * gateway itself offers. `hui.ts` applies the `x-hui` guard before dispatching here.
  */
-import { displayPath } from "./working-directories.ts";
-import { FilesError, FilesRoot } from "./files.ts";
-import { diffChanges, diffFile, diffInfo, DiffError, runGit, type DiffRequest, type GitRunner } from "./git-diff.ts";
-import type { JsonResult, RouteRequest } from "./http/route.ts";
-import { isDiffComparison, type DiffFileChanges, type DiffInfo } from "../shared/diff.ts";
+import { displayPath } from "../working-directories.ts";
+import { FilesError, FilesRoot } from "../files.ts";
+import { diffChanges, diffFile, diffInfo, DiffError, runGit, type DiffRequest, type GitRunner } from "../git-diff.ts";
+import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { isDiffComparison, type DiffFileChanges, type DiffInfo } from "../../shared/diff.ts";
 
 export const DIFF_ROUTE = /^\/__hui\/sessions\/([^/]+)\/diff(?:\/(changes|file))?$/u;
 

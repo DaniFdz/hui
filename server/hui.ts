@@ -25,24 +25,24 @@ import { fileURLToPath } from "node:url";
 
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
-import { createWorkerRoutes, WORKERS_ROUTE } from "./worker-routes.ts";
+import { createWorkerRoutes, WORKERS_ROUTE } from "./routes/workers.ts";
 import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotsOffError, BotStoreError, BotWorkerOfflineError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
-import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./bot-routes.ts";
-import { BOT_TRIGGERS_ROUTE } from "./bot-trigger-routes.ts";
+import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./routes/bots.ts";
+import { BOT_TRIGGERS_ROUTE } from "./routes/bot-triggers.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
 import { isHookPath } from "./bot-triggers-listener.ts";
 import { BotExportService } from "./bot-export.ts";
 import { nameFromUsername } from "./bot-templates/cleanup.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
-import { createBotTemplateRoutes } from "./bot-template-routes.ts";
+import { createBotTemplateRoutes } from "./routes/bot-templates.ts";
 import { readBody, routeRequest, sendFile, type RouteResult } from "./http/route.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
 import { localBotSkills } from "./bot-skills.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
 import { CallBroker, providerCallAccounts } from "./calls.ts";
-import { CALLS_ROUTE, createCallRoutes } from "./call-routes.ts";
+import { CALLS_ROUTE, createCallRoutes } from "./routes/calls.ts";
 import { buildCallRecord, createCallDelegate, operatorName, type CallCompletion } from "./call-helper.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
@@ -185,8 +185,8 @@ import { attachSessionTransport, sessionStreamTicket } from "./session-transport
 import { createSessionListHub } from "./session-list.ts";
 import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
-import { createFileRoutes, FILES_ROUTE } from "./file-routes.ts";
-import { createDiffRoutes, DIFF_ROUTE } from "./diff-routes.ts";
+import { createFileRoutes, FILES_ROUTE } from "./routes/files.ts";
+import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
 import {
   createSessionGroup,
   deleteSessionGroup,
@@ -2604,19 +2604,19 @@ async function isDormantBotChat(record: SessionRecord): Promise<boolean> {
   return bots.botForSession(record.id).then((bot) => Boolean(bot), () => true);
 }
 
-/** `/__hui/calls` and `/__hui/bots/:id/calls…` (`call-routes.ts`). */
+/** `/__hui/calls` and `/__hui/bots/:id/calls…` (`routes/calls.ts`). */
 async function serveCallRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
   sendRouteResult(response, path, await callRoutes.handle(routeRequest(request, response, path)));
 }
 
-/** `/__hui/bots` and everything under it but the events stream (`bot-routes.ts`). */
+/** `/__hui/bots` and everything under it but the events stream (`routes/bots.ts`). */
 async function serveBotRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
   const routed = routeRequest(request, response, path);
   // Importing and exporting first: `import` is a reserved handle, and `export` no bot route's action.
   sendRouteResult(response, path, await botTemplateRoutes.handle(routed) ?? await botRoutes.handle(routed));
 }
 
-/** `/__hui/bots/:id/triggers…` (`bot-trigger-routes.ts`). */
+/** `/__hui/bots/:id/triggers…` (`routes/bot-triggers.ts`). */
 async function serveTriggerRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
   sendRouteResult(response, path, await triggers.routes.handle(routeRequest(request, response, path)));
 }
@@ -2752,13 +2752,13 @@ async function handleRequest(
     return;
   }
 
-  // The Files view: the conversation's working directory, never another path (`file-routes.ts`).
+  // The Files view: the conversation's working directory, never another path (`routes/files.ts`).
   if (FILES_ROUTE.test(path)) {
     sendRouteResult(response, path, await fileRoutes.handle(routeRequest(request, response, path)));
     return;
   }
 
-  // The Diff view: Git comparisons of the conversation's working directory, read-only (`diff-routes.ts`).
+  // The Diff view: Git comparisons of the conversation's working directory, read-only (`routes/diff.ts`).
   if (DIFF_ROUTE.test(path)) {
     sendRouteResult(response, path, await diffRoutes.handle(routeRequest(request, response, path)));
     return;

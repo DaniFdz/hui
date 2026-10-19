@@ -12,12 +12,12 @@
  * They live under `/__hui/bots`, so the `x-hui` guard and the 409 while bots are off apply as to every bot route.
  * The route its listener reports to, `POST /__hui/hooks/<token>`, is `bot-triggers-gateway.ts`'s.
  */
-import { BOT_TRIGGER_LIMITS } from "../shared/bot-triggers.ts";
-import type { BotTriggerService } from "./bot-triggers.ts";
-import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./bot-triggers-input.ts";
-import { TriggerStoreError } from "./bot-triggers-store.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotStoreError } from "./bots.ts";
-import type { JsonResult, RouteRequest } from "./http/route.ts";
+import { BOT_TRIGGER_LIMITS } from "../../shared/bot-triggers.ts";
+import type { BotTriggerService } from "../bot-triggers.ts";
+import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "../bot-triggers-input.ts";
+import { TriggerStoreError } from "../bot-triggers-store.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotStoreError } from "../bots.ts";
+import type { JsonResult, RouteRequest } from "../http/route.ts";
 
 export const BOT_TRIGGERS_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/triggers(?:\/([^/]{1,400})(?:\/(test|token))?)?$/u;
 const BODY_BYTES = 64 * 1024;

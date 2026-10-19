@@ -7,9 +7,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test, type TestContext } from "vitest";
-import type { BotTriggerCreated, BotTriggersList } from "../shared/bot-triggers.ts";
-import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
-import type { BotIO } from "../cli/gateway-client.ts";
+import type { BotTriggerCreated, BotTriggersList } from "../../shared/bot-triggers.ts";
+import { BOTS_OFF_MESSAGE, type BotView } from "../../shared/bots.ts";
+import type { BotIO } from "../../cli/gateway-client.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory, a deterministic provider and a fake GitHub
 // behind a fake gh, which reads the pull requests deliveries link to, all temporary.
@@ -23,10 +23,10 @@ await mkdir(ghDir);
 process.env["HOME"] = dir;
 process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
-process.env["HUI_GITHUB_CLI"] = fileURLToPath(new URL("../e2e/github-triggers-fixture.mjs", import.meta.url));
+process.env["HUI_GITHUB_CLI"] = fileURLToPath(new URL("../../e2e/github-triggers-fixture.mjs", import.meta.url));
 process.env["HUI_FAKE_GH_DIR"] = ghDir;
 const log = join(dir, "requests.jsonl");
-const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
   stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: log },
 });
@@ -47,9 +47,9 @@ const pull = (number: number, author: string, created: string) => ({
 const github = { login: "operator", repos: { "acme/widgets": { pulls: [pull(1, "alice", PAST)] } } };
 await writeFile(join(ghDir, "github.json"), JSON.stringify(github));
 
-const { middleware, startBackend, stopBackend } = await import("./hui.ts");
-const { triggerCommand } = await import("../cli/bot-triggers.ts");
-const { liveSessions } = await import("./live-sessions.ts");
+const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+const { triggerCommand } = await import("../../cli/bot-triggers.ts");
+const { liveSessions } = await import("../live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 

@@ -6,7 +6,7 @@
 import type { IncomingMessage } from "node:http";
 
 import type { BotRecord } from "../shared/bots.ts";
-import { createBotTriggerRoutes } from "./bot-trigger-routes.ts";
+import { createBotTriggerRoutes } from "./routes/bot-triggers.ts";
 import { BotTriggerService } from "./bot-triggers.ts";
 import { HOOK_ROUTE, isTailnetOrLoopback, readHookBody } from "./bot-triggers-listener.ts";
 import { ghRaw, pullRequestReader, type GhRaw } from "./bot-triggers-prs.ts";

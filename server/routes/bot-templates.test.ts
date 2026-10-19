@@ -11,12 +11,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
-import { botKickoffName, type BotCatalog, type BotView } from "../shared/bots.ts";
-import type { BotExportManifest, BotExportReview } from "../shared/bot-export.ts";
-import type { BotImportPreview, BotImportResult } from "../shared/bot-templates.ts";
-import type { AutomationTask } from "../src/lib/automation-types.ts";
-import type { TranscriptEntry } from "./runtimes/types.ts";
-import { readZip, writeZip } from "./bot-templates/zip.ts";
+import { botKickoffName, type BotCatalog, type BotView } from "../../shared/bots.ts";
+import type { BotExportManifest, BotExportReview } from "../../shared/bot-export.ts";
+import type { BotImportPreview, BotImportResult } from "../../shared/bot-templates.ts";
+import type { AutomationTask } from "../../src/lib/automation-types.ts";
+import type { TranscriptEntry } from "../runtimes/types.ts";
+import { readZip, writeZip } from "../bot-templates/zip.ts";
 
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-templates-"));
 const agentDir = join(dir, "agent");
@@ -28,7 +28,7 @@ process.env["XDG_CONFIG_HOME"] = join(dir, "config");
 process.env["PI_CODING_AGENT_DIR"] = agentDir;
 // No gh: startup would run the operator's in the background, writing into this home while afterAll() removes it.
 process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
-const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
   stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: join(dir, "requests.jsonl") },
 });
@@ -44,8 +44,8 @@ await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvide
 await mkdir(join(dir, "config", "hui"), { recursive: true });
 await writeFile(join(dir, "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 
-const { middleware, startBackend, stopBackend } = await import("./hui.ts");
-const { liveSessions } = await import("./live-sessions.ts");
+const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+const { liveSessions } = await import("../live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 

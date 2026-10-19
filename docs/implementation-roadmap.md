@@ -752,7 +752,7 @@ requests:
    memory from its creating commit, and the memory routes and `hui bot memory`
    read its status (with view lines and the compactor's usage), view, zoom and
    browse page, which a same-origin link opens. Proof: `server/bots.test.ts`,
-   `server/bot-service.test.ts`, `server/bot-routes.test.ts` (a real gateway
+   `server/bot-service.test.ts`, `server/routes/bots.test.ts` (a real gateway
    with a deterministic provider: routes, guards, a waited reply, a bot-to-bot
    message, a routine, the events stream, real OptChat memory with built
    summaries, the view, zoom down to a whole message and the page under its
@@ -784,7 +784,7 @@ requests:
    Proof: `server/bots.test.ts`, `server/bot-service.test.ts` (kickoff,
    soul routes, cache, migration, delete), `server/runtimes/durable-bots.test.ts`
    (the section in real requests, the first conversation's text, truncation, a
-   host without a resolver), `server/bot-routes.test.ts` (a real gateway: the
+   host without a resolver), `server/routes/bots.test.ts` (a real gateway: the
    first turn starts by itself, the bot writes SOUL.md with its write tool and
    the next request carries it, the routes and guards), `cli/*.test.ts`.
 3. **Bots tab** (UI; done 2026-10-05): Settings → Sessions → *Show the Bots
@@ -829,7 +829,7 @@ requests:
    Calls (the default voice, the ChatGPT login calls use) and a per-bot call
    voice and language (`voice.live` and `voice.language`, `--call-voice` and
    `--language`). The gateway's broker
-   (`server/calls.ts`, `server/call-routes.ts`) sets each WebRTC call up over
+   (`server/calls.ts`, `server/routes/calls.ts`) sets each WebRTC call up over
    the ChatGPT login without the browser seeing a token, picking accounts as
    model turns do. The browser's `LiveCall` (`src/lib/live-call.ts`) carries
    the audio and data channel. OpenDots-style: GPT-Live's one tool asks the bot's
@@ -840,7 +840,7 @@ requests:
    Utility model, defaulting to Settings' utility model. Settings and `bots.json`
    saved while VoiceStudio was there keep loading, and the next write leaves its
    fields out. Proof: `server/call*.test.ts`, `server/calls.test.ts`,
-   `server/bot-service.test.ts`, `server/bot-routes.test.ts`, `server/bots.test.ts`,
+   `server/bot-service.test.ts`, `server/routes/bots.test.ts`, `server/bots.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
    `src/lib/live-call.test.ts`, `src/lib/voice*.test.ts`, `src/lib/settings.test.ts`,
    `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `src/views/settings-calls.test.ts`,
@@ -868,7 +868,7 @@ requests:
    browser or watcher tools, no worktrees. Proof: `server/worker/host.test.ts`
    (the host's bot operations on a real host), `server/bot-remote.test.ts`,
    `server/bot-service.test.ts` (fake remote ports: routing, offline paths, a
-   list that never waits), `server/bots.test.ts`, `server/bot-routes.test.ts`,
+   list that never waits), `server/bots.test.ts`, `server/routes/bots.test.ts`,
    `server/bot-workers.test.ts` (a real local worker with the fixture provider:
    the remote store, a reply with the bots section, the utility-model compactor,
    `message_bot` both ways, a routine, a queued message, steering, a question,
@@ -889,7 +889,7 @@ requests:
    does Ctrl+Shift+,; the panel's tabs moved to a row of their own under a
    header with the bot's name, with room for five. No API or CLI change. Proof:
    `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts`,
-   `src/views/bots.test.ts`, `server/bot-routes.test.ts` (a New Bot's
+   `src/views/bots.test.ts`, `server/routes/bots.test.ts` (a New Bot's
    opener) and the Browser journey `e2e/bot-setup.browser.md` (built gateway,
    fixture provider, a local worker, 1440×900, 1280×720 and 390×844, dark).
 8. **Tools and skills per bot** (implemented 2026-10-07; SPEC.md, "A bot has
@@ -920,7 +920,7 @@ requests:
    bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
    and one at a time, the port, documents from before the lists),
    `server/runtimes/question-box.test.ts`, `server/bot-service.test.ts`,
-   `server/bot-routes.test.ts` (a real gateway: what is off leaves the
+   `server/routes/bots.test.ts` (a real gateway: what is off leaves the
    provider's request, a granted tool is on the next one, a skill that is off
    is not in the prompt, the roster follows), `server/bots.test.ts`,
    `src/lib/bot-tools.test.ts`, `src/views/bot-tools.test.ts`,
@@ -948,7 +948,7 @@ requests:
    behind Labs until HUI-18 is done**: the flag (and this
    item's refusals) go only once the owner calls bots finished, in their own
    change. Proof: `src/lib/settings.test.ts`, `server/bot-service.test.ts`,
-   `server/bot-routes.test.ts` (a real gateway: every refusal while off, toggled
+   `server/routes/bots.test.ts` (a real gateway: every refusal while off, toggled
    live through `PUT /__hui/settings`, a routine skipped then run, a bot stream
    ended), `src/views/hui-owned-surfaces.test.ts`, `src/views/bots.test.ts`,
    `src/views/settings-automation.test.ts`, `src/lib/bots.test.ts`,
@@ -1011,7 +1011,7 @@ requests:
    than Socket Mode. Proof: `server/bot-triggers*.test.ts` (a fake gh for the pollers,
    ETag/304 accounting, cursors across a restart, coalescing, the hourly cap,
    catch-up, the tool's origin checks, the webhook token, filter and size cap,
-   bots off), `server/bot-trigger-routes.test.ts` (a real gateway: a webhook and
+   bots off), `server/routes/bot-triggers.test.ts` (a real gateway: a webhook and
    a fake GitHub's pull request reaching the bot through the fixture provider,
    the bot's tool, the CLI, bots off), `server/bot-workers.test.ts` (a real local
    worker: a webhook's delivery runs on the worker, and the bot's tool there
@@ -1064,7 +1064,7 @@ requests:
    `hui slack` and the `triggers` tool's `add` and `update`; `hui doctor --fix`
    deletes what they left (`cli/doctor-triggers.ts`). Proof:
    `server/bot-triggers-listener.test.ts`, `server/bot-triggers.test.ts`,
-   `server/bot-trigger-routes.test.ts` (a real gateway: reports, the URL's
+   `server/routes/bot-triggers.test.ts` (a real gateway: reports, the URL's
    checks, the linked pull request read through a fake gh, the gated tools on a
    trigger's turn, bots off), `server/bot-workers.test.ts` (the same on a
    worker), `cli/doctor-triggers.test.ts`, `cli/bot-triggers.test.ts`,
@@ -1127,7 +1127,7 @@ requests:
    (`from: template`). Proof: `server/bot-templates/cleanup.test.ts`,
    `server/bot-export.test.ts`, `server/bot-template-import.test.ts`,
    `server/bot-templates/formats.test.ts`, `server/bot-skills.test.ts`,
-   `server/bot-template-routes.test.ts` (a real gateway with the fixture
+   `server/routes/bot-templates.test.ts` (a real gateway with the fixture
    provider as utility model: the review's requests carry no tools and none of
    the owner's text, the zip none of it, a changed bot is 409, and the import
    asks the new owner), `cli/bot-templates.test.ts`, `src/lib/bot-templates.test.ts`,
@@ -1153,7 +1153,7 @@ requests:
    separate from OptChat. `facts.json` stays on the bot's execution host and
    each chat request and the call helper read current knowledge. No automatic
    extraction or additional model calls. Proof: `server/bot-facts.test.ts`,
-   `server/bot-routes.test.ts`, `server/bot-workers.test.ts`,
+   `server/routes/bots.test.ts`, `server/bot-workers.test.ts`,
    `server/bot-remote.test.ts`, `server/call-helper.test.ts`,
    `src/lib/bot-facts.test.ts` and the isolated Browser journey
    [`e2e/bot-facts.browser.md`](../e2e/bot-facts.browser.md).

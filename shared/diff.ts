@@ -1,6 +1,6 @@
 /**
  * The Diff view's wire shapes: what `/__hui/sessions/:id/diff…` answers. The gateway (`server/git-diff.ts`,
- * `server/diff-routes.ts`) produces them; the browser (`src/api/diff.ts`) consumes them. Every `path` is
+ * `server/routes/diff.ts`) produces them; the browser (`src/api/diff.ts`) consumes them. Every `path` is
  * relative to the conversation's working directory (the Files view's root), `/`-separated.
  */
 

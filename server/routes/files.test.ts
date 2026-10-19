@@ -5,9 +5,9 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
-import { createFileRoutes, REMOTE_FILES_REASON } from "./file-routes.ts";
-import type { RouteRequest } from "./http/route.ts";
-import { MAX_RESOLVE_PATHS, type FileRead } from "../shared/files.ts";
+import { createFileRoutes, REMOTE_FILES_REASON } from "./files.ts";
+import type { RouteRequest } from "../http/route.ts";
+import { MAX_RESOLVE_PATHS, type FileRead } from "../../shared/files.ts";
 
 async function workspace() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "hui-file-routes-")));
@@ -147,7 +147,7 @@ test("the gateway guards file routes with x-hui and serves previews as inert byt
   ], groups: [] }));
   await writeFile(join(cwd, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   await writeFile(join(cwd, "blob.bin"), Buffer.from([1, 0, 2]));
-  const { middleware, stopBackend } = await import("./hui.ts");
+  const { middleware, stopBackend } = await import("../hui.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

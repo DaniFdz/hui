@@ -1,5 +1,5 @@
 /**
- * The request and result shape every route module (`server/*-routes.ts`) speaks. `hui.ts` turns an incoming message
+ * The request and result shape every route module (`server/routes/`) speaks. `hui.ts` turns an incoming message
  * into a `RouteRequest` (`routeRequest`) and writes the module's `RouteResult` back, so a module reads its body and
  * headers and answers JSON, HTML or a file without touching Node's HTTP objects. Also owns reading request bodies.
  */

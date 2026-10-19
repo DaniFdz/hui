@@ -9,14 +9,14 @@
  *
  * `import` is a reserved handle, so no bot's `/__hui/bots/:id` is ever this route.
  */
-import { AutomationConflictError, AutomationInputError } from "./automation.ts";
-import type { BotExportService } from "./bot-export.ts";
-import type { BotTemplateService } from "./bot-template-import.ts";
-import { botErrorStatus } from "./bot-routes.ts";
-import type { RouteRequest, RouteResult } from "./http/route.ts";
-import { BotInputError } from "./bots.ts";
-import { TemplateFormatError } from "./bot-templates/common.ts";
-import { TemplateFetchError } from "./bot-templates/fetch.ts";
+import { AutomationConflictError, AutomationInputError } from "../automation.ts";
+import type { BotExportService } from "../bot-export.ts";
+import type { BotTemplateService } from "../bot-template-import.ts";
+import { botErrorStatus } from "./bots.ts";
+import type { RouteRequest, RouteResult } from "../http/route.ts";
+import { BotInputError } from "../bots.ts";
+import { TemplateFormatError } from "../bot-templates/common.ts";
+import { TemplateFetchError } from "../bot-templates/fetch.ts";
 
 export const BOT_IMPORT_ROUTE = "/__hui/bots/import";
 export const BOT_IMPORT_PREVIEW_ROUTE = "/__hui/bots/import/preview";

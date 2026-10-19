@@ -7,10 +7,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
-import { botKickoffName, BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../shared/bots.ts";
-import type { BotIO } from "../cli/gateway-client.ts";
-import type { TranscriptEntry } from "./runtimes/types.ts";
-import { completeLines } from "./test-support/json-lines.ts";
+import { botKickoffName, BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotCatalog, type BotMemoryStatus, type BotQuestion, type BotsUpdate, type BotView } from "../../shared/bots.ts";
+import type { BotIO } from "../../cli/gateway-client.ts";
+import type { TranscriptEntry } from "../runtimes/types.ts";
+import { completeLines } from "../test-support/json-lines.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory and a deterministic provider, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-routes-"));
@@ -24,7 +24,7 @@ process.env["PI_CODING_AGENT_DIR"] = agentDir;
 // No gh: startup would run the operator's in the background, writing into this home while afterAll() removes it.
 process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
 const log = join(dir, "requests.jsonl");
-const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
   stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: log },
 });
@@ -43,16 +43,16 @@ const BOTS_ON = JSON.stringify({ labs: { bots: true } });
 await mkdir(join(dir, "config", "hui"), { recursive: true });
 await writeFile(join(dir, "config", "hui", "settings.json"), BOTS_ON);
 
-const { middleware, startBackend, stopBackend } = await import("./hui.ts");
-const { liveSessions } = await import("./live-sessions.ts");
-const { readRegistry } = await import("./sessions.ts");
-const { durableHost } = await import("./runtimes/durable-host.ts");
-const { optChatBotMemory } = await import("./bot-memory.ts");
-const { botChat } = await import("../cli/bots.ts");
-const { HUI_SETTINGS_FILE } = await import("./hui-settings.ts");
-const { BotDoc } = await import("./runtimes/durable-bots.ts");
-const { OptChatDoc } = await import("./runtimes/durable-optchat.ts");
-const { durableContext } = await import("./runtimes/durable-host.ts");
+const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+const { liveSessions } = await import("../live-sessions.ts");
+const { readRegistry } = await import("../sessions.ts");
+const { durableHost } = await import("../runtimes/durable-host.ts");
+const { optChatBotMemory } = await import("../bot-memory.ts");
+const { botChat } = await import("../../cli/bots.ts");
+const { HUI_SETTINGS_FILE } = await import("../hui-settings.ts");
+const { BotDoc } = await import("../runtimes/durable-bots.ts");
+const { OptChatDoc } = await import("../runtimes/durable-optchat.ts");
+const { durableContext } = await import("../runtimes/durable-host.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
@@ -660,9 +660,9 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
 });
 
 test("a bot whose worker is offline answers 503, like a memory HUI cannot read", async () => {
-  const { botErrorStatus } = await import("./bot-routes.ts");
-  const { BotWorkerOfflineError } = await import("./bots.ts");
-  const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
+  const { botErrorStatus } = await import("./bots.ts");
+  const { BotWorkerOfflineError } = await import("../bots.ts");
+  const { BotMemoryUnavailableError } = await import("../bot-memory.ts");
   assert.equal(botErrorStatus(new BotWorkerOfflineError("devbox, where this bot runs, is offline.")), 503);
   assert.equal(botErrorStatus(new BotMemoryUnavailableError()), 503);
 });

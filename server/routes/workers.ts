@@ -9,9 +9,9 @@
  *   POST   /__hui/workers/:id/sync              re-sync in the background
  *   POST   /__hui/workers/:id/disconnect
  */
-import type { JsonResult, RouteRequest } from "./http/route.ts";
-import type { SessionRecord } from "./sessions.ts";
-import { WorkerInputError, WorkerNotFoundError, type WorkerService } from "./workers.ts";
+import type { JsonResult, RouteRequest } from "../http/route.ts";
+import type { SessionRecord } from "../sessions.ts";
+import { WorkerInputError, WorkerNotFoundError, type WorkerService } from "../workers.ts";
 
 export const WORKERS_ROUTE = "/__hui/workers";
 const ROUTE = /^\/__hui\/workers(?:\/([0-9a-f-]{36})(?:\/(connect|sync|disconnect))?)?$/u;

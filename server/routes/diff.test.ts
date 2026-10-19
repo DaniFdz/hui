@@ -4,9 +4,9 @@ import { mkdir, mkdtemp, realpath, rm, stat, symlink, utimes, writeFile } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
-import { createDiffRoutes, parseDiffRequest, REMOTE_DIFF_REASON } from "./diff-routes.ts";
-import type { GitRunner } from "./git-diff.ts";
-import type { RouteRequest } from "./http/route.ts";
+import { createDiffRoutes, parseDiffRequest, REMOTE_DIFF_REASON } from "./diff.ts";
+import type { GitRunner } from "../git-diff.ts";
+import type { RouteRequest } from "../http/route.ts";
 
 function request(path: string, query: URLSearchParams, method = "GET"): RouteRequest {
   const noBody = () => Promise.reject(new Error("no body"));
@@ -52,7 +52,7 @@ test("diff routes stay inside the conversation's directory and explain remote an
   const seen: string[][] = [];
   const recording: GitRunner = async (where, args, options) => {
     seen.push([...args]);
-    const { runGit } = await import("./git-diff.ts");
+    const { runGit } = await import("../git-diff.ts");
     return runGit(where, args, { ...options, env: { ...options?.env, GIT_CEILING_DIRECTORIES: dir } });
   };
   const routes = createDiffRoutes({ session: async (id) => sessions[id], git: recording });
@@ -114,7 +114,7 @@ test("a same-size edit made in the second of the last index write still shows", 
   const committed = new Date(Math.floor(recorded.mtimeMs / 1000) * 1000);
   await utimes(join(cwd, "a.txt"), committed, committed);
   await utimes(join(cwd, ".git", "index"), committed, committed);
-  const { runGit } = await import("./git-diff.ts");
+  const { runGit } = await import("../git-diff.ts");
   const routes = createDiffRoutes({
     session: async () => ({ cwd }),
     git: (where, args, options) => runGit(where, args, { ...options, env: { ...options?.env, GIT_CEILING_DIRECTORIES: dir } }),

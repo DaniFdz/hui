@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { BotRecord, BotReply } from "../shared/bots.ts";
-import { CALL_LIMITS, type CallDelegationResult } from "../shared/calls.ts";
-import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../src/lib/settings.ts";
-import { BotConflictError, BotNotFoundError } from "./bots.ts";
-import { checkLines, createCallRoutes } from "./call-routes.ts";
-import type { RouteRequest } from "./http/route.ts";
-import { CallBroker, type ActiveCall, type CallAccounts } from "./calls.ts";
+import type { BotRecord, BotReply } from "../../shared/bots.ts";
+import { CALL_LIMITS, type CallDelegationResult } from "../../shared/calls.ts";
+import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../../src/lib/settings.ts";
+import { BotConflictError, BotNotFoundError } from "../bots.ts";
+import { checkLines, createCallRoutes } from "./calls.ts";
+import type { RouteRequest } from "../http/route.ts";
+import { CallBroker, type ActiveCall, type CallAccounts } from "../calls.ts";
 
 const TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyb3V0ZXMifQ.c2lnbmF0dXJl";
 const ACCOUNT_ID = "acct-routes-1";

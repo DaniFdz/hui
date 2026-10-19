@@ -1,6 +1,6 @@
 /**
  * Bots on a remote worker end to end on one machine (HUI-18). The gateway runs
- * in this process with its routes, as in bot-routes.test.ts; the "remote" is a
+ * in this process with its routes, as in routes/bots.test.ts; the "remote" is a
  * separate home reached through `env … sh -s`, as in workers.test.ts, with this
  * checkout pre-installed as its release, so nothing is shared with the gateway
  * except what the worker protocol carries. A deterministic Anthropic-compatible

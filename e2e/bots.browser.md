@@ -230,7 +230,7 @@ outside the repository and are not committed.
 - A view keeps one line per message until it outgrows its 128 KB budget, so the
   browser zoomed a message line straight to its message. Opening a summary of
   several messages into its two halves is covered by
-  `src/lib/bot-memory.test.ts` (parsing) and `server/bot-routes.test.ts` (the
+  `src/lib/bot-memory.test.ts` (parsing) and `server/routes/bots.test.ts` (the
   route), not by this journey.
 - The fixture reports one token each way and no cost, so the cost the panel
   shows once a provider reports one is unit-tested only.
