@@ -28,7 +28,6 @@ import {
   deleteSessionGroup,
   followUpSession,
   loadGitCheckout,
-  loadModels,
   loadCommands,
   mutateQueuedMessage,
   openSession,
@@ -40,17 +39,12 @@ import {
   cancelCompaction,
   compactSession,
   sendPrompt,
-  setSessionThinking,
-  setSessionFast,
   steerSession,
-  setSessionModel,
   subscribeSession,
   updateSessionGroup,
   type Attachment,
   type RuntimeEvent,
-  type RuntimeModel,
   type RuntimeCommand,
-  type RuntimeUsage,
   type RuntimeCompaction,
   type RuntimeQuestion,
   type QuestionResponse,
@@ -78,6 +72,7 @@ import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib
 import { BacklogController } from "./controllers/backlog-controller.ts";
 import { LaunchController } from "./controllers/launch-controller.ts";
 import { SessionsController } from "./controllers/sessions-controller.ts";
+import { ConversationController } from "./controllers/conversation-controller.ts";
 import { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
@@ -116,9 +111,7 @@ import {
   emptySessionPresentation,
   isCurrentSessionRequest,
   isSelectedSession,
-  modelRequestMarkerAfterFailure,
   noteAfterRunOutcome,
-  shouldRequestModels,
   shouldFlushLaunchPrompt,
   streamingAfterEvent,
   streamingForStatus,
@@ -229,6 +222,15 @@ export class HuiApp extends HuiElement {
     sessionsDeleted: (ids) => { if (this.selected && ids.has(this.selected.id)) this.clearSessionState(); },
     worktreesShown: () => this.settingsOpen && this.settingsPage === "worktrees",
   });
+  private readonly conversation = new ConversationController(this, {
+    selected: () => this.selected,
+    streaming: () => this.streaming,
+    showError: (message) => {
+      this.note = message;
+      this.noteLevel = "error";
+    },
+    refreshSessions: () => this.refreshSessions(),
+  });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
   @state() private kanbanMovePendingId = "";
   @state() private draggingSessionId = "";
@@ -274,9 +276,6 @@ export class HuiApp extends HuiElement {
   @state() private queue: QueueSnapshot = EMPTY_QUEUE;
   @state() private queueEditingId = "";
   @state() private queueEditingText = "";
-  @state() private thinking = "medium";
-  /** Fast mode; undefined while the runtime cannot change speed. */
-  @state() private fast: boolean | undefined;
   @state() private question: RuntimeQuestion | undefined;
   @state() private connection: SessionConnection = "live";
   @state() private copiedId = "";
@@ -319,8 +318,6 @@ export class HuiApp extends HuiElement {
   /** Session-scoped editor state: a late selection can never retarget an action. */
   @state() private renamingFor = "";
   @state() private deletingFor = "";
-  /** Models the open session can switch to, and the one it is running on. */
-  @state() private models: readonly RuntimeModel[] = [];
   @state() private commands: readonly RuntimeCommand[] = [];
   @state() private commandsLoading = false;
   @state() private commandsError = "";
@@ -338,8 +335,6 @@ export class HuiApp extends HuiElement {
   private pendingCommandBrowse = false;
   @state() private updateSessionCreating = false;
   private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
-  @state() private currentModel: RuntimeModel | undefined;
-  @state() private usage: RuntimeUsage | undefined;
   @state() private compaction: RuntimeCompaction | undefined;
   @state() private draftSessionIds: ReadonlySet<string> = new Set();
   /** Picked but not yet sent; cleared on send and on switching session. */
@@ -448,8 +443,6 @@ export class HuiApp extends HuiElement {
 
   /** Ends the current event stream; replaced on every session switch. */
   private streamStop: (() => void) | undefined;
-  /** Session whose model list has already been requested for this selection. */
-  private modelsRequestedFor = "";
   /** Direct session route waiting for the registry to finish loading. */
   private pendingSessionId = "";
   /** Route that opened Settings. Direct Settings URLs deliberately fall home. */
@@ -1470,11 +1463,8 @@ export class HuiApp extends HuiElement {
     this.note = "";
     this.noteLevel = "info";
     this.connectionNote = "";
-    this.models = [];
-    this.currentModel = undefined;
-    this.usage = undefined;
+    this.conversation.resetModels();
     this.compaction = undefined;
-    this.modelsRequestedFor = "";
     this.resetCommands();
     // Nothing to open until the gateway has created the worktree session.
     if (this.paneCreating || this.paneCreationError) {
@@ -1496,11 +1486,11 @@ export class HuiApp extends HuiElement {
         questions: [],
         subagents: [],
       });
-      this.thinking = opened.snapshot?.thinking ?? opened.session.thinking ?? "medium";
+      this.conversation.thinking = opened.snapshot?.thinking ?? opened.session.thinking ?? "medium";
       this.streaming = streamingForStatus(opened.session.status);
       this.connection = "live";
       this.startStream(id);
-      this.requestModelsWhenReady(id, opened.session.status);
+      this.conversation.requestModelsWhenReady(id, opened.session.status);
     } catch (error) {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.openRequestToken)) {
         // In place of the conversation, which never arrived: an empty transcript
@@ -1541,14 +1531,21 @@ export class HuiApp extends HuiElement {
       },
       onModel: (model) => {
         if (current()) {
-          this.currentModel = model;
+          this.conversation.currentModel = model;
+          this.requestUpdate();
         }
       },
       onThinking: (level) => {
-        if (current()) this.thinking = level;
+        if (current()) {
+          this.conversation.thinking = level;
+          this.requestUpdate();
+        }
       },
       onFast: (fast) => {
-        if (current()) this.fast = fast;
+        if (current()) {
+          this.conversation.fast = fast;
+          this.requestUpdate();
+        }
       },
       onConnection: (state, detail) => {
         if (!current()) {
@@ -1586,11 +1583,8 @@ export class HuiApp extends HuiElement {
       this.question = undefined;
       this.restoreQuestionFocus();
     }
-    if (snapshot.model) this.currentModel = snapshot.model;
-    this.usage = snapshot.usage;
+    this.conversation.adoptSnapshot(snapshot);
     this.compaction = snapshot.compaction;
-    if (snapshot.thinking) this.thinking = snapshot.thinking;
-    this.fast = snapshot.fast;
     this.setStatus(snapshot.status);
   }
 
@@ -1624,7 +1618,8 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (event.type === "thinking_level") {
-      this.thinking = event.level;
+      this.conversation.thinking = event.level;
+      this.requestUpdate();
       return;
     }
     if (event.type === "notice") {
@@ -1691,7 +1686,7 @@ export class HuiApp extends HuiElement {
     // so the composer lock follows the status rather than only turn events.
     this.streaming = streamingForStatus(status);
     if (status !== "running" && status !== "waiting") this.stopping = false;
-    this.requestModelsWhenReady(id, status);
+    this.conversation.requestModelsWhenReady(id, status);
     if (status === "idle") {
       this.flushPendingLaunchPrompt();
     } else if ((status === "error" || status === "reconnecting" || status === "disconnected") && this.pendingLaunchPrompt) {
@@ -2502,38 +2497,6 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  private selectThinking = (level: string) => {
-    const session = this.selected;
-    if (!session || this.streaming) return;
-    void setSessionThinking(session.id, level)
-      .then((authoritative) => {
-        if (isSelectedSession(session.id, this.selected?.id)) this.thinking = authoritative;
-      })
-      .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.selected?.id)) return;
-        // The backend broadcasts either the compensated level or the live
-        // divergent level. Never overwrite that authoritative SSE state with
-        // this request's stale optimistic value.
-        this.note = error instanceof Error ? error.message : "Could not switch thinking level.";
-        this.noteLevel = "error";
-      });
-  };
-
-  private selectFast = (fast: boolean) => {
-    const session = this.selected;
-    if (!session || this.streaming) return;
-    void setSessionFast(session.id, fast)
-      .then((authoritative) => {
-        if (isSelectedSession(session.id, this.selected?.id)) this.fast = authoritative;
-      })
-      .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.selected?.id)) return;
-        // The gateway broadcasts the speed the session kept.
-        this.note = error instanceof Error ? error.message : "Could not change the speed.";
-        this.noteLevel = "error";
-      });
-  };
-
   private answerQuestion = (answer: QuestionResponse) => {
     const session = this.selected;
     const question = this.question;
@@ -2640,59 +2603,6 @@ export class HuiApp extends HuiElement {
       }
     });
   };
-
-  private selectModel = (provider: string, modelId: string) => {
-    const session = this.selected;
-    if (!session) {
-      return;
-    }
-    void setSessionModel(session.id, provider, modelId)
-      .then((model) => {
-        if (!isSelectedSession(session.id, this.selected?.id)) {
-          return;
-        }
-        if (model) {
-          this.currentModel = model;
-        }
-        // The record now carries the choice, so the sidebar reflects it too.
-        return this.refreshSessions();
-      })
-      .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.selected?.id)) {
-          return;
-        }
-        this.note = error instanceof Error ? error.message : "Could not switch model.";
-        this.noteLevel = "error";
-      });
-  };
-
-  /**
-   * Models are listed only for the session on screen, and only once it has a
-   * runtime: asking a tool that has not booted returns nothing useful.
-   */
-  private requestModelsWhenReady(id: string, status: SessionStatus) {
-    if (!shouldRequestModels(id, status, this.modelsRequestedFor)) {
-      return;
-    }
-    // Claim this session before the request starts. Repeated idle frames are
-    // common during reconnects and must not fan out duplicate requests.
-    this.modelsRequestedFor = id;
-    void loadModels(id)
-      .then((models) => {
-        if (this.selected?.id === id) {
-          this.models = models;
-        }
-      })
-      .catch(() => {
-        // A transient failure can retry on a later ready status/reconnect, but
-        // a late failure from a deselected session cannot touch the new gate.
-        this.modelsRequestedFor = modelRequestMarkerAfterFailure(
-          this.modelsRequestedFor,
-          id,
-          this.selected?.id,
-        );
-      });
-  }
 
   private cancelRename = () => {
     this.renamingFor = "";
@@ -2869,9 +2779,7 @@ export class HuiApp extends HuiElement {
     this.note = empty.note;
     this.noteLevel = empty.noteLevel;
     this.connectionNote = empty.connectionNote;
-    this.models = empty.models;
-    this.currentModel = empty.currentModel;
-    this.usage = empty.usage;
+    this.conversation.resetModels();
     this.compaction = undefined;
     this.sending = false;
     this.stopping = false;
@@ -2883,7 +2791,6 @@ export class HuiApp extends HuiElement {
     this.connection = "live";
     this.showScrollToBottom = false;
     this.autoFollow = true;
-    this.modelsRequestedFor = "";
     this.resetSessionEphemeral();
   }
 
@@ -3696,17 +3603,13 @@ export class HuiApp extends HuiElement {
       draft: this.draft,
       chatPreferences: this.control.settings.chat,
       queue: this.queue,
-      thinking: this.thinking,
-      ...(this.fast === undefined ? {} : { fast: this.fast }),
       question: this.question,
       connection: this.connection,
       copiedId: this.copiedId,
       ...(this.paneCall && this.onPaneCall ? { call: { inCall: this.paneCall.inCall, onCall: this.onPaneCall } } : {}),
       expandedActivityIds: this.expandedActivityIds,
       showScrollToBottom: this.showScrollToBottom,
-      models: this.models,
-      currentModel: this.currentModel,
-      usage: this.usage,
+      ...this.conversation.props(),
       compaction: this.compaction,
       attachments: this.attachments,
       launching: this.launching,
@@ -3825,9 +3728,6 @@ export class HuiApp extends HuiElement {
       onQueueRemove: (itemId) => this.queueMutation({ operation: "remove", itemId }),
       onQueueMove: (itemId, toIndex) => this.queueMutation({ operation: "move", itemId, toIndex }),
       onQueueSteer: (itemId) => this.queueMutation({ operation: "steer", itemId }),
-      onSelectModel: this.selectModel,
-      onSelectThinking: this.selectThinking,
-      onSelectFast: this.selectFast,
       onAbort: this.abort,
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
