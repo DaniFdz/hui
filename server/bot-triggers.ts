@@ -566,7 +566,7 @@ export class BotTriggerService {
       if (now - due >= SLEPT_MS) return this.#checkSilenceAt(id, now + LISTENER_SILENT_MS);
       void this.#work.track(this.#tellSilence(id, now).catch((error: unknown) => {
         this.#deps.report?.("warning", "trigger_silence_unsent", "A bot could not be told that its listener went quiet", error instanceof Error ? error.message : String(error));
-        this.#checkSilenceAt(id, now + LISTENER_SILENT_MS);
+        if (!this.#silences.has(id)) this.#checkSilenceAt(id, now + LISTENER_SILENT_MS);
       }));
     }, due - this.#now()));
   }

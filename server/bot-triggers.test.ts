@@ -466,6 +466,21 @@ test("a listener that goes quiet: its bot hears it once from HUI, outside the co
   assert.equal(notices().length, 4, "nothing more: once per silence");
 });
 
+test("a silence check that can't read the triggers checks again five minutes later", async (t) => {
+  const f = await fixture(t);
+  await f.service.start();
+  const { hook } = await f.service.create("ada", { name: "Pings", source: "listener" });
+  await f.send(hook.token, []);
+  const saved = await readFile(f.file, "utf8");
+  await writeFile(f.file, "not JSON");
+  await f.advance(5 * MINUTE);
+  const again = f.clock.now + 5 * MINUTE;
+  await waitFor(() => f.scheduled.some((entry) => !entry.cancelled && entry.at === again), "the check after the failed one");
+  await writeFile(f.file, saved);
+  await f.advance(5 * MINUTE);
+  await waitFor(() => f.delivered.some(({ text }) => text.startsWith("[trigger: Pings · its listener went quiet]\n")), "the notice");
+});
+
 test("a listener's filter: a field it reports, PR links, and events it marks as from bots or outsiders only when allowed; a catch-up goes as one delivery", async (t) => {
   const f = await fixture(t);
   await f.service.start();
