@@ -1,14 +1,14 @@
 /**
  * The import and export dialogs' state (the roster's + → Import bot…, a bot's ⋯ → Export…), as a Lit controller so
  * `hui-app.ts` only opens them, renders them (`views/bot-import.ts`) and hears about an imported bot. Every request
- * goes through `bot-templates.ts`; a refusal stays in the dialog, never as an optimistic success. Export first asks the
+ * goes through `api/bot-templates.ts`; a refusal stays in the dialog, never as an optimistic success. Export first asks the
  * gateway to review the bot, then keeps the operator's picks until Download sends them.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
-import type { BotView } from "./bots.ts";
-import { importSource, pickedFile, pickedFolder, type BotExportGroup, type BotExportReview, type BotImportPreview, type BotImportTab, type PickedSource } from "./bot-templates.ts";
+import type { BotView } from "../lib/bots.ts";
+import { importSource, pickedFile, pickedFolder, type BotExportGroup, type BotExportReview, type BotImportPreview, type BotImportTab, type PickedSource } from "../lib/bot-templates.ts";
 import { BotExportError, downloadBotExport, importBot, previewBotImport, reviewBotExport } from "../api/bot-templates.ts";
-import { ensureModal } from "./modal-dialog.ts";
+import { ensureModal } from "../lib/modal-dialog.ts";
 import { additionChange, buildExport, picksWithoutAddition, withAdditions, type BotExportAddition } from "../../shared/bot-export.ts";
 import type { BotExportDialogProps, BotExportDraft, BotImportDialogProps } from "../views/bot-import.ts";
 

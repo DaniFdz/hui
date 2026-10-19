@@ -133,7 +133,7 @@ test("a call shows the bot's face listening to the microphone and speaking with 
   assert.match(bar, /class="bot-call-bar__pulse"/u, "the bar keeps its live dot");
   const app = read("../hui-app.ts");
   assert.match(app, /this\.voice\.call\?\.state\.phase === "speaking" \? this\.voice\.voiceLevel\(\) : this\.voice\.micLevel\(\)/u);
-  assert.match(read("../lib/voice-controller.ts"), /return this\.call \? this\.#session\?\.voiceLevel : 0;/u, "the bot's voice is GPT-Live's stream, as it plays");
+  assert.match(read("../controllers/voice-controller.ts"), /return this\.call \? this\.#session\?\.voiceLevel : 0;/u, "the bot's voice is GPT-Live's stream, as it plays");
 });
 
 test("faces are decorative, pause when unseen and keep still under reduced motion", () => {

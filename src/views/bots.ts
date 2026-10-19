@@ -9,7 +9,7 @@
  * a fork.
  */
 import { renderBotFacts } from "./bot-facts.ts";
-import type { BotFactsController } from "../lib/bot-facts.ts";
+import type { BotFactsActions, BotFactsState } from "../lib/bot-facts.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
@@ -382,7 +382,7 @@ export type BotPanelProps = {
   };
   /** The Tools page's state and actions (`BotToolsController.props`). */
   tools: Omit<BotToolsProps, "bot">;
-  facts?: BotFactsController;
+  facts?: { state: BotFactsState } & BotFactsActions;
   /** The triggers, on the overview and their page (`BotTriggersController.props`). */
   triggers: Omit<BotTriggersProps, "bot" | "now">;
   /** The Settings page: everything but the bot, the ids and its face, which the panel supplies. */

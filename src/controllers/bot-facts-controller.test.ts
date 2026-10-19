@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { BotFact } from "../../shared/bot-facts.ts";
-import { BotFactsController } from "./bot-facts.ts";
+import { BotFactsController } from "./bot-facts-controller.ts";
 const fact: BotFact = { id: "f-1", kind: "fact", text: "Useful fact", source: "Saved by you", pinned: false, revision: 1, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" };
 test("a failed save preserves editing state and never presents the change as saved", async () => {
   const controller = new BotFactsController({ requestUpdate() {} }, async (_bot, method) => {

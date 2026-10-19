@@ -7,7 +7,7 @@ import { keyed } from "lit/directives/keyed.js";
 import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
 import { connectBrowserView } from "../api/browser.ts";
-import { BrowserViewController } from "../lib/browser-view-controller.ts";
+import { BrowserViewController } from "../controllers/browser-view-controller.ts";
 import { browserPreviewDisplay, relativeTime } from "../lib/browser-view.ts";
 
 const CHIP_TEXT = { live: "Live", connecting: "Connecting…", closed: "Closed" } as const;

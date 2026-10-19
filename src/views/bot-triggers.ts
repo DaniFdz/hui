@@ -2,7 +2,7 @@
  * The Triggers page of a bot's panel (HUI-18): its triggers with what they let through, when they last fired, their
  * cooldown, what their listener last reported, an on/off switch, Test, New URL and Delete; the latest runs; and the add
  * form. A trigger's URL shows once, right after it was made or replaced. Rendering only: `BotTriggersController`
- * (`src/lib/bot-triggers.ts`) owns the state and every request.
+ * (`src/controllers/bot-triggers-controller.ts`) owns the state and every request.
  */
 import { html, nothing } from "lit";
 import { BOT_TRIGGER_LIMITS, botTriggerFilterSummary, cooldownLabel, type BotTrigger, type BotTriggerRun } from "../../shared/bot-triggers.ts";

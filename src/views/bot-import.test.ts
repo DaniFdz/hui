@@ -53,7 +53,7 @@ test("the export dialog shows the gateway's review and the files Download saves,
   assert.match(review, /const build = buildExport\(review, picks\);/u, "the files shown are the gateway's own build of the review and the picks");
   assert.match(review, /section\("Files as they will be saved"/u);
   assert.match(review, /textBlock\(change\.quote\)/u, "every passage as plain text");
-  const controller = read("../lib/bot-import-controller.ts");
+  const controller = read("../controllers/bot-import-controller.ts");
   assert.match(controller, /downloadBotExport\(state\.bot\.id, \{ review: state\.review\.id, picks: state\.picks, added: state\.added \}/u, "Download sends the review's id, the picks and the passages added, which the gateway checks against its review");
   assert.match(controller, /stale: error instanceof BotExportError && error\.status === 409/u, "a refused download offers Review again");
   assert.match(between(source, "export function renderBotExportDialog(", "\n}\n"), /props\.pending \? "Reviewing…" : "Review again"/u);

@@ -3,8 +3,8 @@
  * operator turns it off, grouped as Files, Shell, HUI, each extension by its
  * source, and Bots; then its skills, searchable once there are many; an access
  * request waiting in its chat, answerable here as in the chat; and what is
- * always on. Rendering only: `BotToolsController` (`lib/bot-tools.ts`) owns the
- * state and the requests.
+ * always on. Rendering only: `BotToolsController`
+ * (`controllers/bot-tools-controller.ts`) owns the state and the requests.
  */
 import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
