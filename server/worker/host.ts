@@ -34,10 +34,10 @@ import { agentsWaitTransportMs } from "../runtimes/agent-tools-extension.mjs";
 import { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
-import type { RuntimeModel, RuntimeQueue, RuntimeQuestion, RuntimeSession, RuntimeUsage, TranscriptEntry } from "../runtimes/types.ts";
+import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
-import { attachPeer, isRecord, PROTOCOL_VERSION, type Peer } from "./protocol.ts";
+import { attachPeer, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
 import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { GATEWAY_ONLY_TOOLS } from "./gateway-tools.ts";
 import { PACKAGE_ROOT } from "./release.ts";
@@ -58,31 +58,6 @@ const TRANSCRIPT_PAGE_BYTES = 8 * 1024 * 1024;
 /** How long a bot chat's model request waits for its `bots` section from the gateway before going without it. */
 const BOT_SECTION_TIMEOUT_MS = 10_000;
 
-export type HostInfo = {
-  version: number;
-  release: string;
-  /** What this host offers beyond sessions (`bots`); absent from an older host. */
-  features?: string[];
-  pid: number;
-  hostname: string;
-  platform: string;
-  arch: string;
-  node: string;
-  home: string;
-  dataDir: string;
-  mirrorDir: string;
-  agentDir: string;
-  providersDir: string;
-  releaseDir: string;
-};
-
-/** What a gateway hands over to start a PI worker; paths are already remote. */
-export type RemoteLaunch = Record<string, unknown> & {
-  cwd: string;
-  sessionFile?: string;
-  disabledSkills?: { name: string; path: string }[];
-};
-
 /** The runtime methods a gateway may call; anything else is refused. */
 const CALLS = new Set(["prompt", "steer", "followUp", "abort", "setModel", "setThinking", "setFast", "respondQuestion", "cancelQuestion",
   "clear", "reload", "compact", "cancelCompaction", "rewind", "fork", "continueRun", "listModels", "listCommands", "inspect", "attachmentImage", "waitForTrackedPrompt", "cancelTrackedPrompt"]);
@@ -92,21 +67,6 @@ const RUN_CALLS = new Set(["prompt", "continueRun"]);
 const TRANSCRIPT_CALLS = new Set(["clear", "rewind", "reload", "abort", "continueRun"]);
 /** Events after which the gateway re-reads the whole transcript. */
 const TRANSCRIPT_EVENTS = new Set(["settled", "compaction_end"]);
-
-/** Everything a gateway reads synchronously from a runtime, sent with each
- * reply and event, so its copy is never behind the event it is handling. */
-export type RemoteState = {
-  sessionId: string;
-  sessionFile?: string;
-  isStreaming: boolean;
-  resumesInterruptedRuns: boolean;
-  model?: RuntimeModel;
-  usage?: RuntimeUsage;
-  thinking?: string;
-  fast?: true;
-  queue?: RuntimeQueue;
-  questions?: readonly RuntimeQuestion[];
-};
 
 type Hosted = {
   key: string;

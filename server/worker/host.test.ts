@@ -23,7 +23,7 @@ const { GATEWAY_ONLY_TOOLS } = await import("./gateway-tools.ts");
 const { invokeAgentTool } = await import("../agent-tools-bridge.ts");
 type Store = ReturnType<typeof brokeredStore>;
 type Frame = import("./protocol.ts").Frame;
-type HostInfo = import("./host.ts").HostInfo;
+type HostInfo = import("./protocol.ts").HostInfo;
 
 const host = new WorkerHost(workerPaths());
 await host.listen();

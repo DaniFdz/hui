@@ -31,7 +31,7 @@ import { BootstrapError, connectScript, markers, nodeInstallScript, probeScript,
 import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/release.ts";
 import { brokeredModels, buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
 import type { Settings } from "../src/lib/settings.ts";
-import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/host.ts";
+import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/protocol.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";
 import { parseRunOrigins } from "../shared/bots.ts";
