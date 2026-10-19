@@ -80,6 +80,7 @@ import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BacklogController } from "./controllers/backlog-controller.ts";
+import { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
 import { BotToolsController } from "./controllers/bot-tools-controller.ts";
@@ -170,26 +171,17 @@ import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, SESSION_SPLIT_MEDIA, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
+import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
-  activateWorkView, closeWorkView, closingLastWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
-  retainWorkSessions, serializeWorkPaneStore, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, setWorkPaneWidth, workPaneMaximized, workViewKey, workViewKind, workViewKinds,
-  WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_KEY, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
+  activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
+  retainWorkSessions, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, workPaneMaximized, workViewKey, workViewKind,
+  WORK_PANE_CHAT_MIN_WIDTH, type WorkViewRef,
 } from "./lib/work-pane.ts";
 import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
-import { terminalWorkViewKind } from "./views/work/terminal.ts";
-import { browserWorkViewKind } from "./views/work/browser.ts";
-import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "./views/work/files.ts";
-import { diffWorkViewKind } from "./views/work/diff.ts";
-import { requestFilesViewReveal } from "./lib/files/view-state.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
-import { vscodeWorkViewKind } from "./views/work/vscode.ts";
 import { OPEN_SETTINGS_EVENT, type OpenSettingsDetail } from "./lib/open-settings.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
-import { matchesShortcut } from "./lib/shortcut-binding.ts";
 import "./components/work-pane.ts";
-import type { WorkPane } from "./components/work-pane.ts";
-import { createTerminal, listTerminals } from "./api/terminals.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
 import { announceTurnEnd } from "./lib/session/turn-end.ts";
@@ -449,19 +441,16 @@ export class HuiApp extends HuiElement {
   @property(paneCallback) onPaneBotAction: ((action: BotHeaderAction) => void) | undefined;
   /** Browser-owned presentation state; each pane still owns its own runtime state. */
   @state() private sessionLayout: SessionLayout | undefined;
-  /** Browser-local Work pane record per conversation (`lib/work-pane.ts`); top-level app only. */
-  @state() private workPanes: WorkPaneStore = {};
-  /** Below 1100px the Work pane is a full-screen destination instead of a side pane. */
-  @state() private workNarrow = false;
-  @state() private workNarrowShown = false;
-  @state() private workLaunching = "";
-  @state() private workError = "";
-  /** The view the operator launched last; it may take focus once it opens. */
-  private workLaunchedKey = "";
-  /** Conversations whose Work views stay mounted, most recently focused first. */
-  private workRetained: string[] = [];
-  private workMedia: MediaQueryList | undefined;
-  private readonly onWorkMediaChange = (event: MediaQueryListEvent) => { this.workNarrow = event.matches; };
+  private readonly work = new WorkLayoutController(this, {
+    followedSession: () => this.workSessionId(),
+    layout: () => this.sessionLayout,
+    commitLayout: (layout) => this.commitSessionLayout(layout),
+    focusComposer: () => this.focusActiveComposer(),
+    paletteOpen: () => this.commandPaletteOpen,
+    terminalFont: () => this.control.settings.fontTerminal,
+    browserEnabled: () => this.control.settings.browser.enabled,
+    remoteSession: (sessionId) => Boolean(this.listedSession(sessionId)?.worker),
+  });
   @property({ type: Boolean, attribute: "embedded-pane" }) embeddedPane = false;
   @property({ attribute: "pane-session-id" }) paneSessionId = "";
   /** The shell's registry entry, so a pane opens without waiting for (or
@@ -624,8 +613,7 @@ export class HuiApp extends HuiElement {
     }
     if (!this.embeddedPane && this.view === "home" && this.selected) {
       // A maximized Work pane hides the chat: Escape never stops a turn the operator cannot see.
-      const workSessionId = this.workSessionId();
-      if (workSessionId && workPaneMaximized(sessionWorkPane(this.workPanes, workSessionId), this.workNarrow)) return;
+      if (this.work.maximized()) return;
       this.activePaneApp()?.handleGlobalEscape(event);
       return;
     }
@@ -644,15 +632,13 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) {
       if (this.paneSessionId) this.applyNavigation({ kind: "session", id: this.paneSessionId });
     } else {
-      this.setupWorkPane();
+      this.work.start();
       this.syncFromLocation();
       this.mobileNavMedia = window.matchMedia(APP_SHELL_DRAWER_MEDIA);
       this.mobileNavLayout = this.mobileNavMedia.matches;
       this.mobileNavMedia.addEventListener("change", this.onMobileNavChange);
       window.addEventListener("popstate", this.onPopState);
       document.addEventListener("keydown", this.onGlobalKeyDown);
-      // Capture: a focused terminal swallows keys, and Work pane shortcuts must still work from inside one.
-      document.addEventListener("keydown", this.onWorkShortcut, true);
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     }
@@ -683,11 +669,7 @@ export class HuiApp extends HuiElement {
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
-    document.removeEventListener("keydown", this.onWorkShortcut, true);
-    this.workMedia?.removeEventListener("change", this.onWorkMediaChange);
-    this.workMedia = undefined;
-    for (const stop of this.stopWorkAvailability) stop();
-    this.stopWorkAvailability = [];
+    this.work.stop();
     if (!this.embeddedPane) this.voice.dispose();
     this.streamStop?.();
     this.streamStop = undefined;
@@ -839,7 +821,7 @@ export class HuiApp extends HuiElement {
     this.groups = groups;
     const ids = new Set(groups.flatMap((group) => group.sessions.map(({ id }) => id)));
     // Removed conversations take their Work pane record with them (their terminals end with them).
-    if (!this.embeddedPane) this.commitWorkPanes(pruneWorkPaneStore(this.workPanes, ids));
+    if (!this.embeddedPane) this.work.commit(pruneWorkPaneStore(this.work.panes, ids));
     if (!this.sessionLayout) return;
     for (const pane of sessionPanes(this.sessionLayout)) {
       if (!ids.has(pane.sessionId)) this.sessionLayout = closeSessionPane(this.sessionLayout, pane.id);
@@ -998,13 +980,12 @@ export class HuiApp extends HuiElement {
       if (!saved) try { saved = parseSessionLayout(JSON.parse(localStorage.getItem(SESSION_LAYOUT_KEY) ?? "null")); } catch { /* Use a single view. */ }
       if (saved) {
         // Terminal and browser panes saved before the Work pane move into it, without losing any.
-        const migrated = migrateLayoutWorkViews(saved, this.workPanes);
+        const migrated = migrateLayoutWorkViews(saved, this.work.panes);
         if (migrated.moved) {
           saved = migrated.layout;
-          this.workPanes = migrated.store;
+          this.work.commit(migrated.store);
           this.sessionLayout = saved;
           this.persistSessionLayout();
-          this.persistWorkPanes();
           window.history.replaceState({ ...window.history.state, huiSessionLayout: saved }, "");
         }
       }
@@ -1574,7 +1555,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     // Choosing a conversation shows its chat; its Work pane stays one selector choice away on narrow screens.
-    this.workNarrowShown = false;
+    this.work.hideNarrow();
     const existing = this.sessionLayout && sessionPanes(this.sessionLayout).find((pane) => isChatPane(pane) && pane.sessionId === session.id);
     if (existing && this.sessionLayout) this.sessionLayout = focusSessionPane(this.sessionLayout, existing.id);
     this.navigate({ kind: "session", id: session.id });
@@ -1619,78 +1600,11 @@ export class HuiApp extends HuiElement {
 
   /* ── Work pane ────────────────────────────────────────────────────────── */
 
-  /** Unsubscribes the narrow chooser from the Work view kinds' availability changes. */
-  private stopWorkAvailability: (() => void)[] = [];
-
-  /** Registers the built-in Work view kinds, reads the browser-local record and follows the narrow breakpoint. */
-  private setupWorkPane() {
-    registerWorkViewKind(terminalWorkViewKind({
-      fontFamily: () => this.control.settings.fontTerminal,
-      unavailable: (sessionId) => sessionId && this.listedSession(sessionId)?.worker
-        ? "Terminals run on this gateway's machine; this conversation runs on a remote worker."
-        : undefined,
-    }));
-    registerWorkViewKind(browserWorkViewKind({ enabled: () => this.control.settings.browser.enabled }));
-    registerWorkViewKind(filesWorkViewKind);
-    registerWorkViewKind(vscodeWorkViewKind);
-    registerWorkViewKind(diffWorkViewKind);
-    // A launcher's reason can change outside this app's state (VS Code's gateway status): redraw the narrow chooser.
-    for (const stop of this.stopWorkAvailability) stop();
-    this.stopWorkAvailability = workViewKinds().flatMap((kind) => kind.onAvailabilityChange ? [kind.onAvailabilityChange(() => this.requestUpdate())] : []);
-    try { this.workPanes = parseWorkPaneStore(JSON.parse(localStorage.getItem(WORK_PANE_KEY) ?? "null")); } catch { this.workPanes = {}; }
-    this.workMedia = window.matchMedia(SESSION_SPLIT_MEDIA);
-    this.workNarrow = this.workMedia.matches;
-    this.workMedia.addEventListener("change", this.onWorkMediaChange);
-  }
-
-  private persistWorkPanes() {
-    try { localStorage.setItem(WORK_PANE_KEY, JSON.stringify(serializeWorkPaneStore(this.workPanes))); }
-    catch { /* The pane still works for this page if browser storage is unavailable. */ }
-  }
-
-  private commitWorkPanes(store: WorkPaneStore) {
-    if (store === this.workPanes) return;
-    this.workPanes = store;
-    this.persistWorkPanes();
-  }
-
   /** The conversation the Work pane follows: the focused chat pane's. */
   private workSessionId(): string | undefined {
     if (this.embeddedPane || this.view !== "home" || this.settingsOpen || !this.selected || !this.sessionLayout) return undefined;
     return activeSessionPane(this.sessionLayout).sessionId;
   }
-
-  private workPaneElement(): WorkPane | null {
-    return this.renderRoot.querySelector<WorkPane>("hui-work-pane");
-  }
-
-  /** Shows `ref` in its conversation's Work pane, focusing that conversation's chat pane and expanding the pane (or,
-   * on narrow screens, opening the Work destination). */
-  private showWorkView(sessionId: string, ref: WorkViewRef, launched = false) {
-    const layout = this.sessionLayout;
-    if (layout && activeSessionPane(layout).sessionId !== sessionId) {
-      const chat = sessionPanes(layout).find((pane) => isChatPane(pane) && pane.sessionId === sessionId);
-      if (chat) this.commitSessionLayout(focusSessionPane(layout, chat.id));
-    }
-    const key = workViewKey(ref);
-    if (launched) this.workLaunchedKey = key;
-    this.workError = "";
-    this.commitWorkPanes(openWorkView(this.workPanes, sessionId, ref));
-    if (this.workNarrow) this.workNarrowShown = true;
-    else this.workPaneElement()?.reveal(sessionId);
-    // Views that do not take focus themselves leave it on their tab.
-    if (!launched || ref.kind !== "terminal") void this.updateComplete.then(() => this.workPaneElement()?.focusPane("active"));
-  }
-
-  /** The chat header's **Open terminal**: the conversation's open terminal tab, else its first running terminal,
-   * else a new one. */
-  private openTerminalWorkView = async (pane: SessionPane) => {
-    const open = sessionWorkPane(this.workPanes, pane.sessionId).views.find((view) => view.kind === "terminal");
-    if (open) { this.showWorkView(pane.sessionId, open); return; }
-    const running = (await listTerminals(pane.sessionId)).find(({ status }) => status === "running");
-    const terminal = running ?? await createTerminal(pane.sessionId);
-    this.showWorkView(pane.sessionId, { kind: "terminal", terminalId: terminal.id }, !running);
-  };
 
   /**
    * A file reference clicked in a conversation's chat (`components/file-link.ts`): show it in that conversation's
@@ -1702,117 +1616,8 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane || !detail?.sessionId || !this.sessionLayout) return;
     if (!sessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === detail.sessionId)) return;
     event.stopPropagation();
-    void this.openFileInFiles(detail);
+    void this.work.openFile(detail);
   };
-
-  private async openFileInFiles(detail: OpenFileDetail) {
-    const kind = workViewKind("files");
-    if (!kind) return;
-    const { sessionId } = detail;
-    let ref = filesViewToReveal(sessionWorkPane(this.workPanes, sessionId));
-    if (!ref) {
-      try {
-        ref = await kind.create(sessionId) as FilesWorkViewRef;
-      } catch (error) {
-        this.workError = error instanceof Error ? error.message : "Could not open Files.";
-        this.revealWorkPane(sessionId);
-        return;
-      }
-    }
-    requestFilesViewReveal(ref.id, {
-      path: detail.path,
-      kind: detail.kind,
-      ...(detail.line ? { line: detail.line } : {}),
-      ...(detail.column ? { column: detail.column } : {}),
-    });
-    this.showWorkView(sessionId, ref);
-  }
-
-  /** The chat's inline browser preview and header globe open (or focus) the conversation's one browser view. */
-  private openBrowserWorkView = (pane: SessionPane) => {
-    this.showWorkView(pane.sessionId, { kind: "browser" });
-  };
-
-  /** A launcher in the Work pane ("+" menu, empty state, shortcut) for the focused conversation. */
-  private launchWorkView = async (kindName: string) => {
-    const sessionId = this.workSessionId();
-    const kind = workViewKind(kindName);
-    if (!sessionId || !kind || this.workLaunching) return;
-    const reason = kind.unavailable?.(sessionId);
-    if (reason) { this.workError = reason; this.revealWorkPane(sessionId); return; }
-    this.workLaunching = kindName;
-    this.workError = "";
-    try {
-      const ref = await kind.create(sessionId);
-      this.showWorkView(sessionId, ref, true);
-    } catch (error) {
-      this.workError = error instanceof Error ? error.message : `Could not open ${kind.label}.`;
-      this.revealWorkPane(sessionId);
-    } finally {
-      this.workLaunching = "";
-    }
-  };
-
-  private revealWorkPane(sessionId: string) {
-    this.commitWorkPanes(setWorkPaneOpen(this.workPanes, sessionId, true));
-    if (this.workNarrow) this.workNarrowShown = true;
-    else this.workPaneElement()?.reveal(sessionId);
-  }
-
-  private toggleWorkPane() {
-    const sessionId = this.workSessionId();
-    if (!sessionId) return;
-    if (this.workNarrow) {
-      this.workNarrowShown = !this.workNarrowShown;
-      if (this.workNarrowShown) void this.updateComplete.then(() => this.workPaneElement()?.focusPane("active"));
-      else this.focusActiveComposer();
-      return;
-    }
-    // Collapsed to its rail for lack of room counts as hidden: the shortcut shows it anyway.
-    const element = this.workPaneElement();
-    const open = !(element?.expanded ?? sessionWorkPane(this.workPanes, sessionId).open);
-    if (open && element) { element.expand(); return; }
-    this.commitWorkPanes(setWorkPaneOpen(this.workPanes, sessionId, open));
-    if (open) void this.updateComplete.then(() => this.workPaneElement()?.focusPane("active"));
-    else this.focusActiveComposer();
-  }
-
-  /** Maximizes the focused conversation's Work pane over its chat columns, or restores them (desktop only; narrow
-   * screens already show one panel at a time). The chat stays mounted underneath. */
-  private toggleWorkPaneMaximized(maximized?: boolean) {
-    const sessionId = this.workSessionId();
-    if (!sessionId || this.workNarrow) return;
-    const next = maximized ?? !workPaneMaximized(sessionWorkPane(this.workPanes, sessionId), false);
-    this.commitWorkPanes(setWorkPaneMaximized(this.workPanes, sessionId, next));
-    // Focus left in the now hidden chat moves into the pane; focus already in the pane (a terminal) stays put.
-    if (next) void this.updateComplete.then(() => {
-      const element = this.workPaneElement();
-      if (element && !element.contains(document.activeElement)) element.focusPane("active");
-    });
-  }
-
-  /** Escape inside the pane, or **Back to chat**: return to the conversation without touching its turn. A maximized
-   * pane hides the chat, so Escape goes to the panel selector, the way back to it; it never restores by itself. */
-  private leaveWorkPane = () => {
-    if (this.workNarrow) this.workNarrowShown = false;
-    const sessionId = this.workSessionId();
-    if (sessionId && workPaneMaximized(sessionWorkPane(this.workPanes, sessionId), this.workNarrow)) {
-      this.renderRoot.querySelector<HTMLElement>(".hui-panel-selector .picker-select__trigger")?.focus({ preventScroll: true });
-      return;
-    }
-    this.focusActiveComposer();
-  };
-
-  /** The focused conversation's last Work view closed, which hid its pane (`closeWorkView`): as **Hide Work pane**
-   * does, narrow screens go back to the chat and focus moves to the composer — unless it is elsewhere already (a view
-   * that removes itself never takes focus from, say, the sidebar). */
-  private workPaneEmptied(wasOpen: boolean) {
-    const shown = this.workNarrow ? this.workNarrowShown : wasOpen;
-    this.workNarrowShown = false;
-    const focused = document.activeElement;
-    const inPane = !focused || focused === document.body || Boolean(this.workPaneElement()?.contains(focused));
-    if (shown && inPane) this.focusActiveComposer();
-  }
 
   private focusActiveComposer() {
     void this.updateComplete.then(() => {
@@ -1821,28 +1626,6 @@ export class HuiApp extends HuiElement {
       target?.focus({ preventScroll: true });
     });
   }
-
-  /** Launcher shortcuts and the pane toggle, while a conversation is shown and nothing modal is open. */
-  private readonly onWorkShortcut = (event: KeyboardEvent) => {
-    if (!event.altKey || !this.workSessionId() || this.commandPaletteOpen || document.querySelector("dialog[open]")) return;
-    if (matchesShortcut(event, WORK_PANE_TOGGLE_SHORTCUT)) {
-      event.preventDefault();
-      event.stopPropagation();
-      this.toggleWorkPane();
-      return;
-    }
-    if (matchesShortcut(event, WORK_PANE_MAXIMIZE_SHORTCUT)) {
-      event.preventDefault();
-      event.stopPropagation();
-      this.toggleWorkPaneMaximized();
-      return;
-    }
-    const kind = workViewKinds().find((candidate) => candidate.shortcut && matchesShortcut(event, candidate.shortcut));
-    if (!kind) return;
-    event.preventDefault();
-    event.stopPropagation();
-    void this.launchWorkView(kind.kind);
-  };
 
   private openTerminal = async () => {
     this.terminalOpening = true;
@@ -3982,7 +3765,7 @@ export class HuiApp extends HuiElement {
     event.preventDefault();
     this.stopSettingsScroll?.();
     this.stopSettingsScroll = undefined;
-    if (this.workNarrow) this.workNarrowShown = false;
+    if (this.work.narrow) this.work.hideNarrow();
     this.openSurfaceSettings(page);
     const section = typeof detail?.section === "string" ? detail.section : "";
     if (section) this.stopSettingsScroll = scrollSettingsSection(this, section);
@@ -4635,8 +4418,8 @@ export class HuiApp extends HuiElement {
       .paneMobileNav=${this.mobileNavLayout}
       .onPaneClose=${state.split ? () => this.closePane(pane.id) : undefined}
       .onPaneSplit=${!state.narrow ? (direction: SplitDirection) => this.splitPane(pane, direction) : undefined}
-      .onPaneTerminal=${() => this.openTerminalWorkView(pane)}
-      .onPaneBrowser=${() => this.openBrowserWorkView(pane)}
+      .onPaneTerminal=${() => this.work.openTerminal(pane)}
+      .onPaneBrowser=${() => this.work.openBrowser(pane)}
       .onPaneNavigate=${(id: string) => this.changePaneSession(pane.id, id)}
       .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
       .paneCreating=${this.listedSession(pane.sessionId)?.creating}
@@ -4659,12 +4442,12 @@ export class HuiApp extends HuiElement {
     if (!this.selected || !this.sessionLayout) return renderHome(this.homeProps());
     const panes = sessionPanes(this.sessionLayout);
     const workSessionId = activeSessionPane(this.sessionLayout).sessionId;
-    const work = sessionWorkPane(this.workPanes, workSessionId);
-    this.workRetained = retainWorkSessions(this.workRetained, workSessionId, this.workPanes);
-    const workShown = this.workNarrow && this.workNarrowShown;
+    const work = sessionWorkPane(this.work.panes, workSessionId);
+    this.work.retained = retainWorkSessions(this.work.retained, workSessionId, this.work.panes);
+    const workShown = this.work.narrow && this.work.narrowShown;
     // Maximized on desktop: the Work pane fills the row and the panel selector (the narrow chooser) leads back to
     // the chat; the chat columns stay mounted, hidden and inert, underneath.
-    const maximized = workPaneMaximized(work, this.workNarrow);
+    const maximized = workPaneMaximized(work, this.work.narrow);
     return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""} ${maximized ? "hui-workspace-panels--maximized" : ""}">
     ${renderPanelSelector({
       panes,
@@ -4678,15 +4461,15 @@ export class HuiApp extends HuiElement {
       activeWorkKey: workShown || maximized ? work.active ?? "" : undefined,
       workShown: workShown || maximized,
       onSelectPane: (id) => {
-        this.workNarrowShown = false;
+        this.work.hideNarrow();
         // Choosing a chat while maximized restores it beside the pane.
-        if (maximized) this.commitWorkPanes(setWorkPaneMaximized(this.workPanes, workSessionId, false));
+        if (maximized) this.work.commit(setWorkPaneMaximized(this.work.panes, workSessionId, false));
         this.focusSessionPane(id);
         if (maximized) this.focusActiveComposer();
       },
-      onSelectWork: (key) => { this.commitWorkPanes(activateWorkView(this.workPanes, workSessionId, key, false)); if (this.workNarrow) this.workNarrowShown = true; },
-      onShowWork: () => { if (this.workNarrow) this.workNarrowShown = true; },
-      onLaunch: (kind) => void this.launchWorkView(kind),
+      onSelectWork: (key) => { this.work.commit(activateWorkView(this.work.panes, workSessionId, key, false)); this.work.showNarrow(); },
+      onShowWork: () => this.work.showNarrow(),
+      onLaunch: (kind) => void this.work.launch(kind),
     })}
     <div class="hui-workspace-row">
     <hui-session-multiplexer
@@ -4700,7 +4483,7 @@ export class HuiApp extends HuiElement {
       .onMovePane=${this.movePane}
       .onClosePane=${this.closePane}
       .paneLabel=${this.paneLabel}
-      .columnMinimum=${!this.workNarrow && work.open ? WORK_PANE_CHAT_MIN_WIDTH : PANE_COLUMN_MIN_WIDTH}
+      .columnMinimum=${!this.work.narrow && work.open ? WORK_PANE_CHAT_MIN_WIDTH : PANE_COLUMN_MIN_WIDTH}
       .onResize=${(columnId: string | undefined, index: number, ratio: number) => {
         if (this.sessionLayout) this.sessionLayout = resizeSessionLayout(this.sessionLayout, columnId, index, ratio);
       }}
@@ -4710,41 +4493,26 @@ export class HuiApp extends HuiElement {
       }}
     ></hui-session-multiplexer>
     <hui-work-pane
-      .store=${this.workPanes}
+      .store=${this.work.panes}
       .sessionId=${workSessionId}
-      .retained=${this.workRetained}
-      .narrow=${this.workNarrow}
+      .retained=${this.work.retained}
+      .narrow=${this.work.narrow}
       .chatColumns=${this.sessionLayout.columns.length}
-      .narrowShown=${this.workNarrowShown}
-      .launchedKey=${this.workLaunchedKey}
-      .launching=${this.workLaunching}
-      .error=${this.workError}
-      .onLaunch=${(kind: string) => void this.launchWorkView(kind)}
-      .onReopen=${(ref: WorkViewRef) => this.showWorkView(workSessionId, ref)}
-      .onActivate=${(key: string) => {
-        // Only a view just launched may take focus; switching tabs never refocuses an older one.
-        if (key !== this.workLaunchedKey) this.workLaunchedKey = "";
-        this.commitWorkPanes(activateWorkView(this.workPanes, workSessionId, key));
-      }}
-      .onClose=${(sessionId: string, key: string) => {
-        if (this.workLaunchedKey === key) this.workLaunchedKey = "";
-        const before = sessionWorkPane(this.workPanes, sessionId);
-        const ref = before.views.find((view) => workViewKey(view) === key);
-        const last = closingLastWorkView(this.workPanes, sessionId, key);
-        this.commitWorkPanes(closeWorkView(this.workPanes, sessionId, key));
-        if (ref) workViewKind(ref.kind)?.closed?.(ref, sessionId);
-        if (last && sessionId === workSessionId) this.workPaneEmptied(before.open);
-      }}
-      .onReorder=${(key: string, index: number) => this.commitWorkPanes(reorderWorkView(this.workPanes, workSessionId, key, index))}
-      .onToggle=${(open: boolean) => this.commitWorkPanes(setWorkPaneOpen(this.workPanes, workSessionId, open))}
-      .onMaximize=${(next: boolean) => this.toggleWorkPaneMaximized(next)}
-      .onResize=${(width: number, available: number, done: boolean) => {
-        this.workPanes = setWorkPaneWidth(this.workPanes, workSessionId, width, available, this.sessionLayout?.columns.length ?? 1);
-        if (done) this.persistWorkPanes();
-      }}
-      .onBack=${this.leaveWorkPane}
-      .onEscape=${this.leaveWorkPane}
-      .onDismissError=${() => { this.workError = ""; }}
+      .narrowShown=${this.work.narrowShown}
+      .launchedKey=${this.work.launchedKey}
+      .launching=${this.work.launching}
+      .error=${this.work.error}
+      .onLaunch=${(kind: string) => void this.work.launch(kind)}
+      .onReopen=${(ref: WorkViewRef) => this.work.showView(workSessionId, ref)}
+      .onActivate=${(key: string) => this.work.activate(workSessionId, key)}
+      .onClose=${(sessionId: string, key: string) => this.work.close(sessionId, key, workSessionId)}
+      .onReorder=${(key: string, index: number) => this.work.commit(reorderWorkView(this.work.panes, workSessionId, key, index))}
+      .onToggle=${(open: boolean) => this.work.commit(setWorkPaneOpen(this.work.panes, workSessionId, open))}
+      .onMaximize=${(next: boolean) => this.work.toggleMaximized(next)}
+      .onResize=${(width: number, available: number, done: boolean) => this.work.resize(workSessionId, width, available, done)}
+      .onBack=${this.work.leave}
+      .onEscape=${this.work.leave}
+      .onDismissError=${this.work.dismissError}
     ></hui-work-pane>
     </div></div>`;
   }
