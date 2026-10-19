@@ -5657,6 +5657,7 @@ export class HuiApp extends HuiElement {
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
       groups: this.listedGroups,
+      findSession: (id) => this.listedSession(id),
       ...(this.paneBot && this.onPaneBotPanel ? { bot: {
         ...this.paneBot,
         onTogglePanel: () => this.onPaneBotPanel?.(),
@@ -5710,13 +5711,15 @@ export class HuiApp extends HuiElement {
       terminalOpening: this.terminalOpening,
       terminalError: this.terminalError,
       onSelectSubagent: (sessionId) => {
+        const openBot = this.embeddedPane ? this.onPaneOpenBot : this.openBot;
+        const open = (session: SessionView) => session.bot && openBot ? openBot(session.bot.id) : this.selectSession(session);
         const session = this.groups.flatMap((group) => group.sessions)
           .find((candidate) => candidate.id === sessionId);
-        if (session) this.selectSession(session);
+        if (session) open(session);
         else void this.refreshSessions().then(() => {
           const refreshed = this.groups.flatMap((group) => group.sessions)
             .find((candidate) => candidate.id === sessionId);
-          if (refreshed) this.selectSession(refreshed);
+          if (refreshed) open(refreshed);
         });
       },
       taskSuggestions: {

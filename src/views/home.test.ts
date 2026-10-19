@@ -487,6 +487,7 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
     chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
+    findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
     ...overrides,
   };
   const inert = new Proxy(props, { get: (target, key) => key in target ? target[key as string] : typeof key === "string" && key.startsWith("on") ? () => {} : undefined });
@@ -594,14 +595,18 @@ test("the Parallel tasks card counts the latest batch of subagents and folds a b
 
 test("messages HUI delivered from bots, sessions and routines show their sender on the left, never as yours", async () => {
   const grace = { id: "b-grace", handle: "grace", name: "Grace", avatar: { color: "#2fc49a" } };
-  const groups = [{ name: "", sessions: [{ id: "s-fix", title: "Implement retry fix", group: "", cwd: "/repo", tool: "durable", status: "idle" }] }];
-  const html = await renderWorkerSession("idle", { bots: [grace], groups, transcript: [
+  const fix = { id: "s-fix", title: "Implement retry fix", group: "", cwd: "/repo", tool: "durable", status: "idle" };
+  const helper = { ...fix, id: "s-helper", title: "Context lane", parentId: "grace-chat" };
+  const sessions = [fix, helper];
+  const findSession = (id: string) => sessions.find((session) => session.id === id);
+  const html = await renderWorkerSession("idle", { bots: [grace], groups: [{ name: "", sessions: [fix] }], findSession, transcript: [
     { kind: "message", id: "u", role: "user", text: "@grace babysit PR #7" },
     { kind: "tool", id: "m", name: "message_bot", status: "succeeded", args: { to: "@grace", message: "Babysit PR #7. Keep 3 retries." }, output: "Queued for @grace." },
     { kind: "message", id: "a", role: "assistant", text: "Handed to Grace." },
     { kind: "message", id: "g", role: "user", text: "[from @grace · hop 2] PR #7 review needs your decision." },
     { kind: "message", id: "x", role: "user", text: "[from @ghost] Still here." },
     { kind: "message", id: "s", role: "user", text: "[from agent: Implement retry fix · reply-to agent:s-fix] Please babysit PR #7." },
+    { kind: "message", id: "h", role: "user", text: "[Inter-session message from Context lane (s-helper)]\nAlert history attached." },
     { kind: "message", id: "r", role: "user", text: "[routine: Daily standup] Summarize yesterday." },
   ] });
   const row = (id: string) => html.slice(html.indexOf(`data-chat-row-key=${id}`), html.indexOf("data-chat-row-key=", html.indexOf(`data-chat-row-key=${id}`) + 1));
@@ -616,6 +621,13 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
 
   assert.match(row("x"), /<span class="chat-sender-icon">G<\/span>.*<span class="chat-sender-name">@ghost<\/span>/u, "a bot HUI doesn't know: its handle, no guessed face");
   assert.match(row("s"), /<span class="chat-sender-icon"><svg.*<a class="chat-sender-name chat-sender-link" href=\/sessions\/s-fix @click=>Implement retry fix<\/a>/u);
+  assert.match(row("h"), /<a class="chat-sender-name chat-sender-link" href=\/sessions\/s-helper @click=>Context lane<\/a>/u, "a bot's subagent, which no session list shows, still links");
+  const child = await renderWorkerSession("idle", {
+    session: { ...helper, status: "idle" },
+    findSession: (id: string) => id === "grace-chat" ? { ...fix, id: "grace-chat", title: "Grace", bot: { id: "b-grace", handle: "grace", name: "Grace" } } : undefined,
+    transcript: [{ kind: "message", id: "t", role: "user", text: "[Subagent Task]\nCheck the alert history." }],
+  });
+  assert.match(child, /<a class="chat-sender-name chat-sender-link" href=\/bots\/b-grace @click=>Grace<\/a>/u, "a bot subagent's parent is its bot's chat in the Bots tab");
   assert.match(row("r"), /<div class="chat-text chat-text--plain">Summarize yesterday\.<\/div>.*<span class="chat-sender-name">Daily standup<\/span><span class="chat-message-source" title=Routine>Routine<\/span>/u);
   assert.match(row("u"), /<span class="chat-sender-name">You<\/span>/u);
 

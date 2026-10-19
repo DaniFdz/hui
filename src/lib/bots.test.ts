@@ -272,6 +272,19 @@ test("bot chats leave every session list while groups keep their meaning", () =>
   assert.deepEqual(withoutBotSessions([{ label: "ungrouped", sessions: [scout, session("loose", "")] }]).map((group) => group.sessions.map(({ id }) => id)), [["loose"]]);
 });
 
+test("a bot's subagents, and theirs, leave session lists with its chat; other subagents and orphans stay", () => {
+  const chat = session("bot-chat", "", { bot: { id: "b1", handle: "scout", name: "Scout" } });
+  const helper = session("helper", "Work", { parentId: "bot-chat" });
+  const nested = session("nested", "", { parentId: "helper" });
+  const parent = session("parent", "Work");
+  const child = session("child", "Work", { parentId: "parent" });
+  const orphan = session("orphan", "", { parentId: "gone" });
+  const loop = session("loop", "", { parentId: "loop" });
+  const filtered = withoutBotSessions([{ label: "Work", sessions: [helper, parent, child] }, { label: "ungrouped", sessions: [chat, nested, orphan, loop] }]);
+  assert.deepEqual(filtered.map((group) => [group.label, group.sessions.map(({ id }) => id)]), [["Work", ["parent", "child"]], ["ungrouped", ["orphan", "loop"]]]);
+  assert.deepEqual(withoutBotSessions([{ label: "ungrouped", sessions: [chat, nested] }, { label: "Work", sessions: [helper] }]).map((group) => [group.label, group.sessions.length]), [["Work", 0]], "OTHER goes when a bot's sessions were all it held; a configured group stays");
+});
+
 test("the dialog's language goes with a new bot, an edit sends it only when it changed and Auto clears it", () => {
   assert.deepEqual(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voiceLanguage: "es" }).voice, { language: "es" });
   assert.equal(botInputFromDraft({ ...EMPTY_DRAFT, name: "Vox", voiceLanguage: "" }).voice, undefined, "Auto is no language at all");
