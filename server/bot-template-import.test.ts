@@ -158,7 +158,7 @@ const HUI_TEMPLATE: BotTemplate = {
     { kind: "confirm", where: "Trigger “Reviews”", question: "Keep {{user}}'s rule?", excerpt: "Review it.", operator: true },
   ],
   needs: ["The GitHub CLI signed in"],
-  triggers: [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review it for {{user}}.", cooldownSeconds: 60 }],
+  triggers: [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review it for {{user}}.", cooldownSeconds: 60, delivery: "steer" }],
   hui: { disabledTools: [], disabledSkills: [] },
 };
 
@@ -175,7 +175,7 @@ test("a HUI template: {{user}} is your name, its open points close SOUL.md, its 
   const skill = written[0]!.skills[0]!;
   assert.match(skill.text, /Run scripts\/approve\.sh for Ada Lovelace\./u);
   assert.deepEqual(skill.files, [{ path: "scripts/approve.sh", text: "echo {{user}}\n" }, { path: "notes.md", text: "Ask Ada Lovelace.\n" }], "a script is never filled in, Markdown is");
-  assert.deepEqual(triggers, [{ botId: "new", input: { name: "Reviews", source: "listener", filter: { prLinks: true }, prompt: "Review it for Ada Lovelace.", enabled: false, cooldownSeconds: 60 } }]);
+  assert.deepEqual(triggers, [{ botId: "new", input: { name: "Reviews", source: "listener", filter: { prLinks: true }, prompt: "Review it for Ada Lovelace.", delivery: "steer", enabled: false, cooldownSeconds: 60 } }]);
   assert.equal(sent[0], botTemplateKickoffText("Ada Lovelace's reviewer"));
   assert.equal(result.opener, true);
 });

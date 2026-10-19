@@ -1072,6 +1072,15 @@ requests:
    isolated gateway driven in a browser
    ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
    the pull request).
+- **Compact trigger steering** (implemented and verified locally 2026-10-19):
+  operator-selected `delivery: "steer"` sends event summaries, times and PR links into the active
+  turn, without listener details or automatic GitHub reads. Idle bots start a
+  turn; existing triggers keep full-context follow-ups. Cooldowns, caps,
+  attribution and origin guards stay unchanged. The add form exposes the mode
+  and templates preserve it. Proof: `server/bot-trigger-routes.test.ts` at the
+  real gateway/runtime boundary, the trigger/template tests, and the isolated
+  desktop/mobile journey in `e2e/bot-triggers.browser.md`.
+
 14. **The panel as a profile** (implemented 2026-10-16; the owner's request,
    SPEC.md, "The bot panel is a profile you can resize and expand"): the panel
    opens on the bot's overview (profile, routines, triggers, activity, setup),

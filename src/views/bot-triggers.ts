@@ -51,7 +51,7 @@ function renderTrigger(trigger: BotTrigger, props: BotTriggersProps) {
       ${renderSettingsToggle(`Enable ${trigger.name}`, trigger.enabled, (checked) => props.onToggle(trigger, checked), state.pending)}
     </div>
     <p class="bot-trigger__filter" title=${botTriggerFilterSummary(trigger)}>${botTriggerFilterSummary(trigger)}</p>
-    <p class="bot-trigger__meta">${fired} · cooldown ${cooldownLabel(trigger.cooldownSeconds)}${trigger.createdBy === "bot" ? ` · added by ${props.bot.name}` : ""}</p>
+    <p class="bot-trigger__meta">${fired} · cooldown ${cooldownLabel(trigger.cooldownSeconds)}${trigger.delivery === "steer" ? " · steers with summaries and links" : ""}${trigger.createdBy === "bot" ? ` · added by ${props.bot.name}` : ""}</p>
     ${trigger.pending ? html`<p class="bot-trigger__meta bot-trigger__meta--pending">${trigger.pending.events} event${trigger.pending.events === 1 ? "" : "s"} wait${trigger.pending.events === 1 ? "s" : ""}, sent together at ${whenLabel(trigger.pending.until, props.now)}</p>` : nothing}
     ${renderWatch(trigger, props.now)}
     <p class="bot-trigger__meta">URL …/hooks/${trigger.tokenHint ?? ""}… · shown when it was made</p>
@@ -113,6 +113,7 @@ function submitTrigger(event: SubmitEvent, props: BotTriggersProps) {
       prLinks: data.get("prLinks") !== null,
       external: data.get("external") !== null,
       bots: data.get("bots") !== null,
+      steer: data.get("steer") !== null,
     });
     // Only an accepted trigger clears the form; a refusal keeps what was typed.
     void props.onCreate(input).then((created) => {
@@ -143,6 +144,8 @@ function renderForm(props: BotTriggersProps, open: boolean) {
       <label class="bot-trigger-form__check"><input type="checkbox" name="prLinks" /><span>Only events that link a GitHub pull request</span></label>
       <label class="bot-trigger-form__check"><input type="checkbox" name="external" /><span>Also events it marks as from outside your organization</span></label>
       <label class="bot-trigger-form__check"><input type="checkbox" name="bots" /><span>Also events it marks as from bots and apps</span></label>
+      <label class="bot-trigger-form__check"><input type="checkbox" name="steer" /><span>Steer the current turn with summaries and PR links only</span></label>
+      <p class="bot-field__hint">When selected, a busy bot receives the update before its next model call, without event details or fetched PR diffs. An idle bot starts a turn. Otherwise updates wait as full-context follow-ups.</p>
       <label class="bot-field"><span class="bot-field__label">Prompt</span>
         <textarea class="settings-input" name="prompt" rows="2" maxlength=${BOT_TRIGGER_LIMITS.prompt} placeholder=${`What should ${name} do when it fires?`}></textarea></label>
       <label class="bot-field bot-trigger-form__cooldown"><span class="bot-field__label">Cooldown</span>

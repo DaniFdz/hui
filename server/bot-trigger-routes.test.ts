@@ -261,11 +261,19 @@ test("a gated tool judges the run by every input it took: a trigger's message st
   await standingRoutine(t, "Added by a trigger");
   await listenerTrigger("Drop");
   const joiner = await listenerTrigger("Joiner", call64([...gated("a trigger"), { name: "triggers", input: { action: "remove", trigger: "Drop" } }]));
+  const patched = await call(`/__hui/bots/${ada.id}/triggers/Joiner`, "PATCH", { delivery: "steer" });
+  assert.equal(patched.status, 200, JSON.stringify(patched.body));
   const before = { profile: await profileOf(), soul: await soulOf() };
 
   await holdOperatorTurn();
-  assert.deepEqual(await reportOne(joiner, "joiner-1"), { status: 202, body: { status: "fired" } });
-  await steerQueued("[trigger: Joiner · ");
+  const link = "https://github.com/acme/widgets/pull/1";
+  assert.deepEqual(await hook(joiner, JSON.stringify({ events: [{ id: "joiner-1", summary: "PR 1 feedback changed", details: `RAW SNAPSHOT ${"x".repeat(4_000)}`, links: [link] }] })), { status: 202, body: { status: "fired" } });
+  const notice = await until("the compact trigger in the active turn's steering queue", async () => liveSessions.snapshot(ada.sessionId).queue.steering.find((text) => text.startsWith("[trigger: Joiner · ")));
+  assert.ok(notice.includes(link), "the affected PR stays identifiable");
+  assert.ok(!notice.includes("RAW SNAPSHOT") && !notice.includes("diff --git"), "steering carries no listener snapshots or fetched diffs");
+  assert.ok(notice.length < 3_000, "a status notification stays short");
+  assert.equal(liveSessions.snapshot(ada.sessionId).queue.followUp.length, 0, "the busy turn does not gain another follow-up");
+  assert.equal(liveSessions.status(ada.sessionId), "running", "the active turn is not aborted");
   await control("release-replay", { method: "POST" });
   const answer = await answerTo("[trigger: Joiner · ");
   assert.match(answer, /Only the operator changes your name, title or look, and this turn was started by a routine, a trigger, another bot, a session or your import\./u, "set_profile");

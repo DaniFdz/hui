@@ -14,7 +14,7 @@ import { triggerStore } from "./bot-triggers-store.ts";
 
 export type GatewayTriggerDeps = {
   /** The bot message path (`BotService.send`). */
-  send(botId: string, message: { text: string }): Promise<unknown>;
+  send(botId: string, message: { text: string; whenBusy?: "followUp" | "steer" }): Promise<unknown>;
   listBots(): Promise<readonly BotRecord[]>;
   /** Settings → Labs → Bots. */
   active(): Promise<boolean>;
@@ -34,7 +34,7 @@ export function createGatewayTriggers(deps: GatewayTriggerDeps) {
   const readPullRequests = pullRequestReader(deps.ghRaw ?? ghRaw(deps.ghCommand));
   const service = new BotTriggerService({
     store,
-    bots: { list: deps.listBots, deliver: (botId, text) => deps.send(botId, { text }) },
+    bots: { list: deps.listBots, deliver: (botId, text, delivery) => deps.send(botId, { text, whenBusy: delivery }) },
     pullRequests: (urls, diffBudget) => readPullRequests(urls, diffBudget),
     active: deps.active,
     report,

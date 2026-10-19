@@ -58,9 +58,10 @@ function templateTrigger(value: unknown): BotTemplateTrigger | undefined {
     const input = normalizeTriggerInput({
       name: value["name"], filter: value["filter"] ?? {},
       ...(value["prompt"] !== undefined ? { prompt: value["prompt"] } : {}),
+      ...(value["delivery"] !== undefined ? { delivery: value["delivery"] } : {}),
       ...(value["cooldownSeconds"] !== undefined ? { cooldownSeconds: value["cooldownSeconds"] } : {}),
     });
-    return { name: input.name, filter: input.filter, ...(input.prompt ? { prompt: input.prompt } : {}), cooldownSeconds: input.cooldownSeconds ?? BOT_TRIGGER_LIMITS.cooldownDefault };
+    return { name: input.name, filter: input.filter, ...(input.prompt ? { prompt: input.prompt } : {}), ...(input.delivery ? { delivery: input.delivery } : {}), cooldownSeconds: input.cooldownSeconds ?? BOT_TRIGGER_LIMITS.cooldownDefault };
   } catch {
     return undefined;
   }

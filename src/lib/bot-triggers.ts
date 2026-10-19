@@ -51,6 +51,7 @@ export function parseTrigger(raw: unknown): BotTrigger | undefined {
   return {
     id: str(raw["id"]), botId: str(raw["botId"]), name: str(raw["name"]), source, filter: parseFilter(raw["filter"]),
     ...(str(raw["prompt"]) ? { prompt: str(raw["prompt"]) } : {}),
+    ...(raw["delivery"] === "steer" || raw["delivery"] === "followUp" ? { delivery: raw["delivery"] } : {}),
     enabled: raw["enabled"] !== false,
     cooldownSeconds: Number.isInteger(raw["cooldownSeconds"]) ? raw["cooldownSeconds"] as number : BOT_TRIGGER_LIMITS.cooldownDefault,
     createdBy: raw["createdBy"] === "bot" ? "bot" : "operator",
@@ -152,6 +153,7 @@ export type TriggerFormFields = {
   prLinks: boolean;
   external: boolean;
   bots: boolean;
+  steer?: boolean;
 };
 
 /** The add form's fields as a `POST /__hui/bots/:id/triggers` body. */
@@ -164,6 +166,7 @@ export function triggerFormInput(fields: TriggerFormFields): BotTriggerInput {
   return {
     name, source: "listener",
     ...(fields.prompt.trim() ? { prompt: fields.prompt.trim() } : {}),
+    ...(fields.steer ? { delivery: "steer" } : {}),
     cooldownSeconds: Number.isInteger(cooldown) && cooldown >= 0 ? cooldown : BOT_TRIGGER_LIMITS.cooldownDefault,
     filter: {
       ...(value ? { match: { field: fields.matchField.trim(), op: fields.matchOp === "contains" ? "contains" as const : "equals" as const, value } } : {}),
