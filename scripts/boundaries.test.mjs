@@ -566,7 +566,7 @@ const ALLOWED = [
   "src/controllers/bots-controller.ts -> shared/calls.ts (R3)",
   "src/controllers/browser-view-controller.test.ts -> shared/browser.ts (R3)",
   "src/controllers/browser-view-controller.ts -> shared/browser.ts (R3)",
-  "src/hui-app.ts -> shared/session-list.ts (R3)",
+  "src/controllers/sessions-controller.ts -> shared/session-list.ts (R3)",
   "src/hui-app.ts -> shared/session-stages.ts (R3)",
   "src/lib/attachment-file-icon.test.ts -> src/views/home.ts (R6)",
   "src/lib/backlog-start.ts -> shared/backlog.ts (R3)",

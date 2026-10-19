@@ -17,7 +17,7 @@ test("pane views are keyed independently of session and retain hidden session vi
 
 test("embedded panes omit global monitors and delegate routing and Escape", () => {
   const app = readFileSync(new URL("./hui-app.ts", import.meta.url), "utf8");
-  assert.match(app, /if \(!this\.embeddedPane\) \{[\s\S]*?subscribeSessionStatuses/);
+  assert.match(app, /if \(!this\.embeddedPane\) \{\n\s+this\.sessions\.start\(\);/);
   assert.ok(app.includes('if (target.kind === "session") this.onPaneNavigate?.(target.id)'));
   assert.ok(app.includes('this.activePaneApp()?.handleGlobalEscape(event)'));
   assert.ok(app.includes('this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout'));
@@ -43,7 +43,7 @@ test("the narrow panel selector uses the shared HUI picker instead of a native s
 
 test("embedded panes open from the shell's registry entry instead of waiting on their own fetch", () => {
   const app = readFileSync(new URL("./hui-app.ts", import.meta.url), "utf8");
-  assert.ok(app.includes(".paneSession=${this.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId)}"));
+  assert.ok(app.includes(".paneSession=${this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId)}"));
   const open = app.slice(app.indexOf("private openPendingSession()"), app.indexOf("private selectView ="));
   assert.ok(open.includes("?? (this.paneSession?.id === id ? this.paneSession : undefined)"));
 });

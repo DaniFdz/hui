@@ -177,7 +177,7 @@ test("Labs → Bots is the one switch: off, the sidebar has no Agents | Bots swi
   assert.match(between(app, "private applyNavigation(", "private openPendingSession("), /if \(target\.kind === "bot"\) \{[\s\S]*?if \(this\.embeddedPane \|\| !botsEnabled\(this\.control\.settings\)\) \{\n\s+this\.navigate\(\{ kind: "home" \}, true\);/u);
   assert.match(between(app, "private openPendingSession(", "private selectView"), /if \(session\.bot && !botsEnabled\(this\.control\.settings\)\) \{\n\s+this\.navigate\(\{ kind: "home" \}, true\);\n\s+return;\n\s+\}\n\s+\/\/ A bot's chat opens as the bot \(with its panel\) wherever it is linked from\.\n\s+if \(!this\.embeddedPane && session\.bot\) \{/u);
   // Bot chats stay out of the Agents list on or off: it filters by the session's bot, not by a setting.
-  assert.match(between(app, "private get listedGroups(", "private activeBot("), /if \(this\.listedGroupsSource !== this\.groups\) \{\n\s+this\.listedGroupsSource = this\.groups;\n\s+this\.listedGroupsCache = withoutBotSessions\(this\.groups\);/u);
+  assert.match(between(app, "private get listedGroups(", "private activeBot("), /if \(this\.listedGroupsSource !== this\.sessions\.groups\) \{\n\s+this\.listedGroupsSource = this\.sessions\.groups;\n\s+this\.listedGroupsCache = withoutBotSessions\(this\.sessions\.groups\);/u);
   // Either way it applies at once: the setting's change follows here, and another screen's through the stream's 409.
   assert.match(app, /if \(this\.renderedSettings !== this\.control\.settings\) \{\n\s+const before = this\.renderedSettings;\n\s+this\.renderedSettings = this\.control\.settings;\n\s+if \(before && botsEnabled\(before\) !== botsEnabled\(this\.control\.settings\)\) this\.followBotsSetting\(\);/u);
   const follow = between(app, "private followBotsSetting(", "private shellBotsProps(");
@@ -191,7 +191,7 @@ test("Labs → Bots is the one switch: off, the sidebar has no Agents | Bots swi
   assert.match(sessions, /\$\{botsEnabled\(props\.settings\) \? renderSection\("Bots",/u);
   assert.doesNotMatch(settings, /Show the Bots tab|onChangeBots/u, "Settings → Sessions has no second switch");
   assert.match(between(settings, "function renderModelsPage(", "PI defaults"), /Two roles: the primary model does the real work and the utility model the quick work\./u, "the models' intro names no calls while they are hidden");
-  assert.match(app, /sessions: this\.groups\.flatMap\(\(group\) => group\.sessions\),\n\s+bots: botsEnabled\(this\.control\.settings\),/u);
+  assert.match(app, /sessions: this\.sessions\.groups\.flatMap\(\(group\) => group\.sessions\),\n\s+bots: botsEnabled\(this\.control\.settings\),/u);
 });
 
 test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bot; no dialog is left", () => {

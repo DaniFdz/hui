@@ -8,7 +8,6 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
 import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "./lib/subagent-activity.ts";
-import { applySessionListUpdate, type SessionListUpdate } from "../shared/session-list.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
@@ -32,7 +31,6 @@ import {
   loadModels,
   loadCommands,
   mutateQueuedMessage,
-  loadSessions,
   openSession,
   renameSession,
   resumeSession,
@@ -47,7 +45,6 @@ import {
   steerSession,
   setSessionModel,
   subscribeSession,
-  subscribeSessionStatuses,
   updateSessionGroup,
   type Attachment,
   type RuntimeEvent,
@@ -80,6 +77,7 @@ import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BacklogController } from "./controllers/backlog-controller.ts";
 import { LaunchController } from "./controllers/launch-controller.ts";
+import { SessionsController } from "./controllers/sessions-controller.ts";
 import { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
@@ -118,7 +116,6 @@ import {
   emptySessionPresentation,
   isCurrentSessionRequest,
   isSelectedSession,
-  mergeSessionStatuses,
   modelRequestMarkerAfterFailure,
   noteAfterRunOutcome,
   shouldRequestModels,
@@ -193,18 +190,7 @@ import {
   type NavigationTarget,
 } from "./lib/navigation.ts";
 
-const COLLAPSED_KEY = "hui.collapsed-groups";
 const HUI_UPDATE_SESSION_TITLE = "HUI update";
-
-/** Collapsed groups are a reading preference, so they stay in the browser. */
-function readCollapsed(): Set<string> {
-  try {
-    const raw = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]") as unknown;
-    return new Set(Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : []);
-  } catch {
-    return new Set();
-  }
-}
 
 /** Pane callbacks are behavior, not render data: only their presence changes
  * the output. The split parent recreates equivalent closures on every render;
@@ -252,11 +238,17 @@ export class HuiApp extends HuiElement {
   @state() private worktreeResults: readonly WorktreeRemovalResult[] = [];
   private worktreePoll?: number;
   private worktreeRemovalQueue: Promise<unknown> = Promise.resolve();
-  @state() private groups: readonly SessionGroup[] = [];
-  @state() private sessionsLoading = true;
-  @state() private sessionsError = "";
-  @state() private collapsed: ReadonlySet<string> = readCollapsed();
-  @state() private toggledSessionTrees: ReadonlySet<string> = new Set();
+  private readonly sessions = new SessionsController(this, {
+    presented: (id) => this.isSessionPresented(id),
+    listReceived: (ids) => this.followSessionList(ids),
+    listSettled: () => this.openPendingSession(),
+    statusesApplied: () => {
+      // Bot chats are sessions too: their roster rows follow the same stream.
+      if (this.bots.list.length) this.bots.adopt(this.withLiveBotState(this.bots.list));
+    },
+    statusApplied: (update) => this.followSessionStatus(update),
+    reportError: (error, message) => this.reportOperationError(error, message),
+  });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
   @state() private kanbanMovePendingId = "";
   @state() private draggingSessionId = "";
@@ -324,7 +316,6 @@ export class HuiApp extends HuiElement {
   @state() private connectionNote = "";
   @state() private importNote = "";
   @state() private importFailed = false;
-  @state() private groupMenuFor = "";
   @state() private groupAction: { action: "new" } | { action: Exclude<GroupMenuAction, "new">; group: SessionGroup } | undefined;
   @state() private groupMutationPending = false;
   @state() private groupMutationError = "";
@@ -482,13 +473,6 @@ export class HuiApp extends HuiElement {
 
   /** Ends the current event stream; replaced on every session switch. */
   private streamStop: (() => void) | undefined;
-  /** One lightweight connection keeps background session lifecycle visible. */
-  private statusStreamStop: (() => void) | undefined;
-  private sessionStatuses = new Map<string, SessionStatus>();
-  private sessionUnread = new Map<string, boolean>();
-  private hasSessionStatusSnapshot = false;
-  /** Revision of the gateway session list in `groups`; older lists lose. */
-  private sessionListRevision = 0;
   /** Session whose model list has already been requested for this selection. */
   private modelsRequestedFor = "";
   /** Direct session route waiting for the registry to finish loading. */
@@ -621,11 +605,7 @@ export class HuiApp extends HuiElement {
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
-      this.statusStreamStop ??= subscribeSessionStatuses({
-        onSnapshot: this.applySessionStatusSnapshot,
-        onStatus: this.applySessionStatusUpdate,
-        onSessions: this.applySessionListChange,
-      });
+      this.sessions.start();
       this.bots.sync();
       this.updates.watch();
     }
@@ -655,8 +635,7 @@ export class HuiApp extends HuiElement {
     this.followResize?.disconnect();
     this.followed = undefined;
     clearTimeout(this.actionToastTimer);
-    this.statusStreamStop?.();
-    this.statusStreamStop = undefined;
+    this.sessions.stop();
   }
 
   private sessionProgressPoll?: number;
@@ -685,55 +664,7 @@ export class HuiApp extends HuiElement {
     }
   }
 
-  private applySessionStatusSnapshot = (updates: readonly SessionStatusUpdate[]) => {
-    // The status stream has just (re)connected, so the gateway is reachable
-    // again: a list that failed to load earlier is worth asking for once more.
-    if (!this.embeddedPane && this.sessionsError && !this.sessionsLoading) void this.refreshSessions();
-    this.sessionStatuses = new Map(updates.map(({ id, status }) => [id, status]));
-    const unread = new Map(updates.flatMap((update) =>
-      update.unread === undefined ? [] : [[update.id, update.unread] as const]));
-    this.sessionUnread = new Map(updates.map((update) => [update.id, update.unread === true]));
-    this.hasSessionStatusSnapshot = true;
-    const selected = this.embeddedPane && this.selected && this.isSessionPresented(this.selected.id)
-      ? this.selected
-      : undefined;
-    const merged = mergeSessionStatuses(this.groups, this.sessionStatuses);
-    this.groups = merged.map((group) => ({
-      ...group,
-      sessions: group.sessions.map((session) => {
-        const status = session.id === selected?.id ? selected.status : session.status;
-        const isUnread = session.id === selected?.id
-          ? false
-          : unread.has(session.id) ? unread.get(session.id) === true : session.unread === true;
-        return { ...session, status, unread: isUnread || undefined };
-      }),
-    }));
-    // Bot chats are sessions too: their roster rows follow the same stream.
-    if (this.bots.list.length) this.bots.adopt(this.withLiveBotState(this.bots.list));
-  };
-
-  private applySessionStatusUpdate = ({ id, status, unread, creating, creationError, title }: SessionStatusUpdate) => {
-    const presented = this.isSessionPresented(id);
-    this.sessionStatuses.set(id, status);
-    if (unread !== undefined) this.sessionUnread.set(id, unread);
-    // A settled worktree session now has its real title and directory, or its error.
-    const created = Boolean(this.listedSession(id)?.creating) && !creating;
-    this.groups = this.groups.map((group) => ({
-      ...group,
-      sessions: group.sessions.map((session) => session.id === id
-        ? {
-            ...session,
-            status: this.embeddedPane && presented && this.selected?.id === id ? this.selected.status : status,
-            unread: presented
-              ? undefined
-              : unread === undefined ? session.unread : unread || undefined,
-            creating,
-            creationError,
-            ...(title ? { title } : {}),
-          }
-        : session),
-    }));
-    if (created) void this.refreshSessions(true);
+  private followSessionStatus({ id, status, title }: SessionStatusUpdate) {
     const bot = this.bots.list.find((candidate) => candidate.sessionId === id);
     if (bot) {
       this.bots.adopt(this.withLiveBotState(this.bots.list));
@@ -761,42 +692,10 @@ export class HuiApp extends HuiElement {
       await this.updateComplete;
       return;
     }
-    if (!background) this.sessionsLoading = true;
-    try {
-      const { revision, groups } = await loadSessions();
-      // The status stream may have delivered newer changes while this loaded.
-      this.receiveSessionList(revision, this.hasSessionStatusSnapshot ? mergeSessionStatuses(groups, this.sessionStatuses) : groups);
-      this.sessionsError = "";
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not read sessions.";
-      if (this.groups.length === 0) {
-        this.sessionsError = message;
-      } else {
-        // A refresh failure must not replace a usable registry with a full
-        // sidebar error. Preserve the last confirmed list and report inline.
-        this.reportOperationError(error, message);
-      }
-    } finally {
-      if (!background) this.sessionsLoading = false;
-      this.openPendingSession();
-    }
+    await this.sessions.refresh(background);
   }
 
-  private applySessionListChange = (update: SessionListUpdate<SessionView>) => {
-    if (update.revision <= this.sessionListRevision) return;
-    // Status events can overtake a list built a moment earlier.
-    this.receiveSessionList(update.revision, mergeSessionStatuses(applySessionListUpdate(this.groups, update), this.sessionStatuses));
-    this.sessionsLoading = false;
-    this.sessionsError = "";
-    this.openPendingSession();
-  };
-
-  /** Full lists and stream changes both land here, in revision order. */
-  private receiveSessionList(revision: number, groups: readonly SessionGroup[]) {
-    if (revision < this.sessionListRevision) return;
-    this.sessionListRevision = revision;
-    this.groups = groups;
-    const ids = new Set(groups.flatMap((group) => group.sessions.map(({ id }) => id)));
+  private followSessionList(ids: ReadonlySet<string>) {
     // Removed conversations take their Work pane record with them (their terminals end with them).
     if (!this.embeddedPane) this.work.commit(pruneWorkPaneStore(this.work.panes, ids));
     if (!this.work.layout) return;
@@ -814,7 +713,7 @@ export class HuiApp extends HuiElement {
   override willUpdate(changed: PropertyValues) {
     // Subagent trees follow the selection: moving elsewhere folds the old tree.
     if (changed.has("selected") && (changed.get("selected") as SessionView | undefined)?.id !== this.selected?.id) {
-      this.toggledSessionTrees = new Set();
+      this.sessions.toggledSessionTrees = new Set();
     }
     if (changed.has("paneCreating") && !this.paneCreating && changed.get("paneCreating") && this.selected?.id === this.paneSessionId) {
       void this.openSelected(this.selected.id);
@@ -823,7 +722,7 @@ export class HuiApp extends HuiElement {
       // The shell's list can trail this pane's own detailed stream; keep the
       // presented session's live status rather than regressing it.
       const selected = this.selected && this.isSessionPresented(this.selected.id) ? this.selected : undefined;
-      this.groups = selected
+      this.sessions.groups = selected
         ? this.paneGroups.map((group) => ({
             ...group,
             sessions: group.sessions.map((session) => session.id === selected.id ? { ...session, status: selected.status } : session),
@@ -836,7 +735,7 @@ export class HuiApp extends HuiElement {
       if (listed) this.selected = { ...selected, ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted };
       const shellStatus = selected && this.paneGroups.flatMap((group) => group.sessions).find((session) => session.id === selected.id)?.status;
       if (selected && shellStatus) this.reopenIfRestarted(selected.id, shellStatus);
-      this.sessionsLoading = false;
+      this.sessions.loading = false;
       this.openPendingSession();
     }
     if (changed.has("queueEditingId") && this.embeddedPane) {
@@ -1117,7 +1016,7 @@ export class HuiApp extends HuiElement {
     if (!id) {
       return;
     }
-    const session = this.groups.flatMap((group) => group.sessions).find((item) => item.id === id)
+    const session = this.sessions.groups.flatMap((group) => group.sessions).find((item) => item.id === id)
       ?? (this.paneSession?.id === id ? this.paneSession : undefined);
     if (session) {
       this.pendingSessionId = "";
@@ -1134,7 +1033,7 @@ export class HuiApp extends HuiElement {
       this.activateSession(session);
       return;
     }
-    if (!this.sessionsLoading && !this.sessionsError) {
+    if (!this.sessions.loading && !this.sessions.error) {
       this.navigate({ kind: "home" }, true);
     }
   }
@@ -1252,7 +1151,7 @@ export class HuiApp extends HuiElement {
           this.archiveToast = { session: updated, restoring: false };
           this.scheduleArchiveToast();
         }
-        const tree = sessionTreeIds(this.groups.flatMap((group) => group.sessions), updated.id);
+        const tree = sessionTreeIds(this.sessions.groups.flatMap((group) => group.sessions), updated.id);
         if (patch.archived === true && this.work.layout) {
           for (const pane of sessionPanes(this.work.layout)) {
             if (tree.has(pane.sessionId)) this.work.layout = closeSessionPane(this.work.layout, pane.id);
@@ -1486,19 +1385,19 @@ export class HuiApp extends HuiElement {
    * local one; nothing is shown optimistically. */
   private reorderGroup = (group: string, target: GroupDropTarget) => {
     if (this.groupReorderPending) return;
-    const order = customGroupOrder(this.groups);
+    const order = customGroupOrder(this.sessions.groups);
     const next = target.group === "ungrouped"
       ? order.at(-1) === group || !order.includes(group) ? undefined : [...order.filter((label) => label !== group), group]
       : moveGroupLabel(order, group, target.group, target.position);
     this.draggingGroup = "";
     this.groupDropTarget = undefined;
     if (!next) return;
-    this.groupMenuFor = "";
+    this.sessions.closeGroupMenu();
     this.groupReorderPending = true;
     this.notify(`Moving ${sessionGroupLabel(group)}…`);
     void reorderSessionGroups(next)
       .then(({ revision, groups }) => {
-        this.receiveSessionList(revision, groups);
+        this.sessions.receive(revision, groups);
         this.notify(`Moved ${sessionGroupLabel(group)}.`);
       })
       .catch((error: unknown) => {
@@ -1545,7 +1444,7 @@ export class HuiApp extends HuiElement {
   };
 
   private showSession(id: string) {
-    this.selected = this.groups.flatMap((group) => group.sessions).find((session) => session.id === id);
+    this.selected = this.sessions.groups.flatMap((group) => group.sessions).find((session) => session.id === id);
     this.pendingSessionId = this.selected ? "" : id;
     this.view = "home";
     this.activePage = undefined;
@@ -1590,7 +1489,7 @@ export class HuiApp extends HuiElement {
   };
 
   private dropSession = (id: string, paneId: string, zone: DropZone) => {
-    if (!this.work.layout || !this.groups.some((group) => group.sessions.some((session) => session.id === id))) return;
+    if (!this.work.layout || !this.sessions.groups.some((group) => group.sessions.some((session) => session.id === id))) return;
     this.draggingSessionId = "";
     this.work.dropSession(id, paneId, zone);
   };
@@ -1880,7 +1779,7 @@ export class HuiApp extends HuiElement {
       void this.persistComposerDraft();
     }
     // Keep the sidebar dot honest without a full re-fetch.
-    this.groups = this.groups.map((group) => ({
+    this.sessions.groups = this.sessions.groups.map((group) => ({
       ...group,
       sessions: group.sessions.map((session) =>
         session.id === id ? { ...session, status, interrupted } : session,
@@ -1986,7 +1885,7 @@ export class HuiApp extends HuiElement {
         group: "",
       });
       await this.refreshSessions();
-      const refreshed = this.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === session.id) ?? session;
+      const refreshed = this.sessions.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === session.id) ?? session;
       // The command was consumed by HUI, not by the source session. Remove
       // only that exact command draft; an unrelated draft from Review update
       // must survive the session switch.
@@ -2632,7 +2531,7 @@ export class HuiApp extends HuiElement {
   private forked = async (forked: SessionView) => {
     this.forkTarget = undefined;
     await this.refreshSessions();
-    this.selectSession(this.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === forked.id) ?? forked);
+    this.selectSession(this.sessions.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === forked.id) ?? forked);
   };
 
   private renderForkDialog() {
@@ -3094,24 +2993,6 @@ export class HuiApp extends HuiElement {
     this.importFailed = true;
   }
 
-  private toggleSessionTree = (id: string) => {
-    const next = new Set(this.toggledSessionTrees);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    this.toggledSessionTrees = next;
-  };
-
-  private toggleGroup = (label: string) => {
-    const next = new Set(this.collapsed);
-    if (next.has(label)) {
-      next.delete(label);
-    } else {
-      next.add(label);
-    }
-    this.collapsed = next;
-    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
-  };
-
   /* ── bots ─────────────────────────────────────────────────────────────── */
 
   /** Session lists never show bot chats; the Bots tab lists their bots. The
@@ -3119,9 +3000,9 @@ export class HuiApp extends HuiElement {
   private listedGroupsSource: readonly SessionGroup[] | undefined;
   private listedGroupsCache: readonly SessionGroup[] = [];
   private get listedGroups(): readonly SessionGroup[] {
-    if (this.listedGroupsSource !== this.groups) {
-      this.listedGroupsSource = this.groups;
-      this.listedGroupsCache = withoutBotSessions(this.groups);
+    if (this.listedGroupsSource !== this.sessions.groups) {
+      this.listedGroupsSource = this.sessions.groups;
+      this.listedGroupsCache = withoutBotSessions(this.sessions.groups);
     }
     return this.listedGroupsCache;
   }
@@ -3135,7 +3016,7 @@ export class HuiApp extends HuiElement {
   }
 
   private withLiveBotState(bots: readonly BotView[]): BotView[] {
-    return withLiveChats(bots, { statuses: this.sessionStatuses, unread: this.sessionUnread, presented: (id) => this.isSessionPresented(id) });
+    return withLiveChats(bots, { statuses: this.sessions.statuses, unread: this.sessions.unread, presented: (id) => this.isSessionPresented(id) });
   }
 
   private ensureBots() {
@@ -3399,8 +3280,8 @@ export class HuiApp extends HuiElement {
     }
     const session = this.listedSession(bot.sessionId);
     if (!session) {
-      return this.sessionsError
-        ? placeholder(bot.name, this.sessionsError, "alert", () => void this.refreshSessions())
+      return this.sessions.error
+        ? placeholder(bot.name, this.sessions.error, "alert", () => void this.refreshSessions())
         : placeholder(bot.name, `Opening ${bot.name}'s chat…`, "status");
     }
     const sheet = this.mobileNavLayout;
@@ -3445,7 +3326,7 @@ export class HuiApp extends HuiElement {
             if (target && id !== bot.sessionId) this.selectSession(target);
           }}
           .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
-          .paneGroups=${this.sessionListRevision ? this.groups : undefined}
+          .paneGroups=${this.sessions.revision ? this.sessions.groups : undefined}
           .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
           .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
           .paneCall=${paneCall}
@@ -3744,7 +3625,7 @@ export class HuiApp extends HuiElement {
   private deleteSelectedSessions = async (ids: readonly string[], withWorktrees: boolean) => {
     if (this.sessionsDeleting || ids.length === 0) return;
     this.sessionsDeleting = true;
-    const all = this.groups.flatMap((group) => group.sessions);
+    const all = this.sessions.groups.flatMap((group) => group.sessions);
     const deleted = new Set<string>();
     const failures: string[] = [];
     let worktrees: string[] | undefined;
@@ -3813,7 +3694,7 @@ export class HuiApp extends HuiElement {
 
   private updateSessionOptions = (options: SidebarSessionOptions) => {
     this.menuFor = "";
-    this.groupMenuFor = "";
+    this.sessions.closeGroupMenu();
     this.sessionOptions = options;
     writeSidebarSessionOptions(options);
   };
@@ -3904,15 +3785,12 @@ export class HuiApp extends HuiElement {
           : deleteSessionGroup(state.group.label);
     void operation
       .then(({ revision, groups }) => {
-        this.receiveSessionList(revision, groups);
+        this.sessions.receive(revision, groups);
         if (state.action === "new") {
           // A successful creation must be visible even when filters hid every row.
           this.search = "";
           this.updateSessionOptions({ ...this.sessionOptions, groupBy: "custom", status: "all", hideEmpty: "filtering" });
-          const collapsed = new Set(this.collapsed);
-          collapsed.delete(value("name"));
-          this.collapsed = collapsed;
-          try { localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed])); } catch { /* Keep the group visible when storage is unavailable. */ }
+          this.sessions.expandGroup(value("name"));
         }
         if (this.selected) {
           const refreshed = groups.flatMap((entry) => entry.sessions).find((session) => session.id === this.selected?.id);
@@ -4054,11 +3932,11 @@ export class HuiApp extends HuiElement {
       onSelectSubagent: (sessionId) => {
         const openBot = this.embeddedPane ? this.onPaneOpenBot : this.openBot;
         const open = (session: SessionView) => session.bot && openBot ? openBot(session.bot.id) : this.selectSession(session);
-        const session = this.groups.flatMap((group) => group.sessions)
+        const session = this.sessions.groups.flatMap((group) => group.sessions)
           .find((candidate) => candidate.id === sessionId);
         if (session) open(session);
         else void this.refreshSessions().then(() => {
-          const refreshed = this.groups.flatMap((group) => group.sessions)
+          const refreshed = this.sessions.groups.flatMap((group) => group.sessions)
             .find((candidate) => candidate.id === sessionId);
           if (refreshed) open(refreshed);
         });
@@ -4190,7 +4068,7 @@ export class HuiApp extends HuiElement {
   private automationProps(): AutomationProps {
     return {
       ...this.automation.props(),
-      sessions: this.groups.flatMap((group) => group.sessions),
+      sessions: this.sessions.groups.flatMap((group) => group.sessions),
       bots: botsEnabled(this.control.settings),
     };
   }
@@ -4253,7 +4131,7 @@ export class HuiApp extends HuiElement {
       class="chat-split-view__pane hui-session-pane-app"
       embedded-pane
       pane-session-id=${pane.sessionId}
-      .paneSession=${this.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId)}
+      .paneSession=${this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId)}
       .paneId=${pane.id}
       .paneActive=${state.active}
       .paneVisible=${state.visible}
@@ -4268,7 +4146,7 @@ export class HuiApp extends HuiElement {
       .paneCreating=${this.listedSession(pane.sessionId)?.creating}
       .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
       .paneUnsentPrompt=${this.listedSession(pane.sessionId)?.initialPrompt}
-      .paneGroups=${this.sessionListRevision ? this.groups : undefined}
+      .paneGroups=${this.sessions.revision ? this.sessions.groups : undefined}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
       .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
       .paneBots=${this.mentionable()}
@@ -4279,7 +4157,7 @@ export class HuiApp extends HuiElement {
   private paneLabel = (pane: SessionPane) => this.listedSession(pane.sessionId)?.title ?? "Session";
 
   private listedSession(id: string): SessionView | undefined {
-    return this.groups.flatMap((group) => group.sessions).find((session) => session.id === id);
+    return this.sessions.listed(id);
   }
 
   private renderSessionMultiplex() {
@@ -4296,7 +4174,7 @@ export class HuiApp extends HuiElement {
     ${renderPanelSelector({
       panes,
       activePaneId: this.work.layout.activePaneId,
-      sessionTitle: (sessionId) => this.groups.flatMap((group) => group.sessions).find(({ id }) => id === sessionId)?.title,
+      sessionTitle: (sessionId) => this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === sessionId)?.title,
       workViews: work.views.flatMap((ref) => {
         const kind = workViewKind(ref.kind);
         return kind ? [{ key: workViewKey(ref), title: kind.title(ref), icon: kind.icon }] : [];
@@ -4319,7 +4197,7 @@ export class HuiApp extends HuiElement {
     <hui-session-multiplexer
       ?inert=${maximized}
       .layout=${this.work.layout}
-      .sessionIds=${new Set(this.groups.flatMap((group) => group.sessions.map(({ id }) => id)))}
+      .sessionIds=${new Set(this.sessions.groups.flatMap((group) => group.sessions.map(({ id }) => id)))}
       .draggingSessionId=${this.draggingSessionId}
       .renderPane=${this.renderSessionPane}
       .onFocusPane=${this.work.focusPane}
@@ -4367,8 +4245,8 @@ export class HuiApp extends HuiElement {
       automation: () => this.automationProps(),
       sessions: () => ({
         groups: this.listedGroups,
-        loading: this.sessionsLoading,
-        error: this.sessionsError,
+        loading: this.sessions.loading,
+        error: this.sessions.error,
         query: this.search,
         state: this.sessionsPageState,
         filters: this.sessionsPageFilters,
@@ -4450,14 +4328,14 @@ export class HuiApp extends HuiElement {
       groups: this.listedGroups,
       bots: this.shellBotsProps(),
       draftSessionIds: this.draftSessionIds,
-      collapsed: this.collapsed,
-      loading: this.sessionsLoading,
-      error: this.sessionsError,
+      collapsed: this.sessions.collapsed,
+      loading: this.sessions.loading,
+      error: this.sessions.error,
       importNote: this.importNote,
       importFailed: this.importFailed,
       search: this.search,
       menuFor: this.menuFor,
-      groupMenuFor: this.groupMenuFor,
+      groupMenuFor: this.sessions.groupMenuFor,
       sessionOptions: this.sessionOptions,
       draggingSessionId: this.draggingSessionId,
       sessionDropTarget: this.sessionDropTarget,
@@ -4466,7 +4344,7 @@ export class HuiApp extends HuiElement {
       groupDropTarget: this.groupDropTarget,
       groupReorderPending: this.groupReorderPending,
       onGroupDragStart: (group: string) => {
-        this.groupMenuFor = "";
+        this.sessions.closeGroupMenu();
         this.draggingGroup = group;
         this.groupDropTarget = undefined;
       },
@@ -4486,20 +4364,18 @@ export class HuiApp extends HuiElement {
       onOpenPage: this.openPage,
       onSelectSession: this.selectSession,
       onSplitSession: this.openSplitSession,
-      onToggleGroup: this.toggleGroup,
-      toggledSessionTrees: this.toggledSessionTrees,
-      onToggleSessionTree: this.toggleSessionTree,
+      onToggleGroup: this.sessions.toggleGroup,
+      toggledSessionTrees: this.sessions.toggledSessionTrees,
+      onToggleSessionTree: this.sessions.toggleSessionTree,
       onToggleMenu: this.toggleMenu,
       onCloseMenu: () => {
         this.menuFor = "";
       },
       onToggleGroupMenu: (group: string) => {
         this.menuFor = "";
-        this.groupMenuFor = this.groupMenuFor === group ? "" : group;
+        this.sessions.toggleGroupMenu(group);
       },
-      onCloseGroupMenu: () => {
-        this.groupMenuFor = "";
-      },
+      onCloseGroupMenu: () => this.sessions.closeGroupMenu(),
       onGroupAction: this.openGroupAction,
       onNewSession: this.openNewSession,
       onRenameSession: this.renameFromMenu,
@@ -4559,8 +4435,8 @@ export class HuiApp extends HuiElement {
           : this.view === "kanban"
             ? renderKanbanPage({
                 groups: this.listedGroups,
-                loading: this.sessionsLoading,
-                error: this.sessionsError,
+                loading: this.sessions.loading,
+                error: this.sessions.error,
                 query: this.backlog.query,
                 options: this.backlog.options,
                 movePendingId: this.kanbanMovePendingId,

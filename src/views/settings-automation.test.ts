@@ -241,7 +241,7 @@ test("the create form shows only the selected schedule kind", () => {
 test("the automation page lists every session and reads its state from the controller", () => {
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
-  assert.match(app, /\.\.\.this\.automation\.props\(\),\s*\n\s*sessions: this\.groups\.flatMap\(\(group\) => group\.sessions\)/);
+  assert.match(app, /\.\.\.this\.automation\.props\(\),\s*\n\s*sessions: this\.sessions\.groups\.flatMap\(\(group\) => group\.sessions\)/);
 });
 
 test("a refused task action is reported next to the list, not inside the create form", () => {
