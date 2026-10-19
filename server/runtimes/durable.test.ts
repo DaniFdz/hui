@@ -26,7 +26,7 @@ const { DurableHost, durableContext, registryCaller } = await import("./durable-
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;
 };
-const { durableConversationId, durableReference, startDurable } = await import("./durable.ts");
+const { durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
 const { importPiSession } = await import("./pi-import.ts");
 const { aggregateUsage } = await import("../observability.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
@@ -1512,4 +1512,17 @@ test("a storage error ends the store's sessions; the host releases it and a sess
   assert.ok(answered("Fixture response.")(again.transcript()));
   assert.deepEqual(again.transcript().flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []).filter((text) => text !== "hello while the store is locked"),
     ["hello before", "hello after"], "the conversation is the one it was");
+});
+
+test("a skill named later in a message is expanded ahead of it", async () => {
+  const baseDir = await mkdtemp(join(tmpdir(), "hui-skill-"));
+  const filePath = join(baseDir, "SKILL.md");
+  await writeFile(filePath, "---\nname: arena\n---\nArena body.\n");
+  const skills = [{ name: "arena", filePath, baseDir }];
+  const block = `<skill name="arena" location="${filePath}">\nReferences are relative to ${baseDir}.\n\nArena body.\n</skill>`;
+  assert.equal(expandSkill("/skill:arena fix it", skills), `${block}\n\nfix it`);
+  assert.equal(expandSkill("fix it with $arena.", skills), `${block}\n\nfix it with $arena.`);
+  assert.equal(expandSkill("/skill:arena then $skill:arena", skills), `${block}\n\nthen $skill:arena`);
+  for (const text of ["costs $5", "see $HOME/x", "a$arena"]) assert.equal(expandSkill(text, skills), text);
+  await rm(baseDir, { recursive: true });
 });

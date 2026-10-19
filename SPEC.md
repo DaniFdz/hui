@@ -1161,13 +1161,17 @@ between chats; a successful send retires only that session's draft, while a
 rejected send restores its exact payload ahead of any newer draft.
 
 Typing `$` at the beginning of a chat draft searches skills and plugin actions.
+New Session offers the skills of the session it will start, never those of the
+chat that was open before it.
 Typing `/` opens one grouped menu containing HUI commands, plugin actions,
 skills, prompt templates, and absolute filesystem prefixes, with visible section separators.
 Selecting a skill/action inserts the same `$name` alias from either menu; name
 collisions retain the runtime-qualified skill name. Templates keep `/name`.
 The owning runtime resolves a leading alias against its current command catalog,
-not an installation path. Unknown dollar tokens and dollar signs inside prose
-remain literal; this is leading-command syntax, not inline skill expansion.
+not an installation path. Later in a message, a word starting with `$` or `/`
+searches skills only and inserts the same `$name`; Durable sessions prepend each
+skill named that way, while sessions on PI's SDK worker expand only a leading
+alias. Unknown dollar tokens and dollar signs inside prose remain literal.
 Existing slash invocations remain supported. PI remains responsible for skill
 expansion and extension execution, including queue and settle behavior.
 

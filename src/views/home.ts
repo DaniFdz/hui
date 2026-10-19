@@ -76,7 +76,7 @@ import { renderCallCard } from "./chat-call.ts";
 import type { BotView } from "../lib/bots.ts";
 import { botLook, previewLine } from "../../shared/bots.ts";
 import { navigationPath } from "../lib/navigation.ts";
-import { slashCommandQuery } from "../lib/slash-commands.ts";
+import { slashCommandQuery, type CommandQuery } from "../lib/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
 import { localPathQuery, type LocalPathQuery } from "../lib/local-paths.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
@@ -294,7 +294,7 @@ export type HomeProps = {
   onDraftChange: (draft: string) => void;
   onDraftInput: (draft: string) => void;
   commandMenu: SlashMenuProps;
-  onCommandQuery: (query: string | null) => void;
+  onCommandQuery: (query: CommandQuery | null) => void;
   onCommandKeydown: (event: KeyboardEvent) => void;
   localPathMenu: LocalPathMenuProps;
   onLocalPathQuery: (query: LocalPathQuery | null, cwd?: string) => void;
@@ -646,6 +646,7 @@ function renderCheckoutPicker(props: HomeProps) {
 }
 
 function renderLaunchForm(props: HomeProps) {
+  const commandQuery = slashCommandQuery(props.draft, props.draft.length);
   const groupOptions = [...new Set(props.groups.map((group) => group.label))];
   const initialGroup = props.launchDefaults?.group ?? "";
   const initialGroupLabel = initialGroup || "ungrouped";
@@ -695,8 +696,8 @@ function renderLaunchForm(props: HomeProps) {
           <div class="agent-chat__input agent-chat__input--mobile-toolbar" @click=${focusComposerFromSurface}>
             ${renderLocalPathMenu({ ...props.localPathMenu, id: sessionControlId(props, LOCAL_PATH_MENU_ID) })}
             ${renderSlashMenu({ ...props.commandMenu, id: sessionControlId(props, SLASH_MENU_ID), loading: false, error: "", streaming: false,
-              commands: props.commandMenu.commands, browseSession: !props.launching,
-              open: props.commandMenu.open && slashCommandQuery(props.draft, props.draft.length) !== null })}
+              commands: props.commandMenu.commands, browseSession: !props.launching && commandQuery?.start === 0,
+              open: props.commandMenu.open && commandQuery !== null })}
             <div class="agent-chat__composer-lede">${renderAttachments(props)}</div>
             <div class="agent-chat__composer-input-row">
               <div class="agent-chat__composer-combobox">

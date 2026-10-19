@@ -3,15 +3,23 @@ import { test } from "vitest";
 import { botChatCommandRefusal, completeCommandReference, completeSlashCommand, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
 import type { RuntimeCommand } from "./sessions-store.ts";
 
-test("slash suggestions are limited to the leading token and current caret", () => {
-  assert.equal(slashCommandQuery("/", 1), "");
-  assert.equal(slashCommandQuery("/skill:Review", 13), "skill:review");
-  assert.equal(slashCommandQuery("/rev existing args", 4), "rev");
-  for (const text of ["", "Explain /review", " /review", "/review args", "/review\nargs"]) {
+test("slash suggestions follow the command word at the caret", () => {
+  assert.deepEqual(slashCommandQuery("/", 1), { text: "", start: 0 });
+  assert.deepEqual(slashCommandQuery("/skill:Review", 13), { text: "skill:review", start: 0 });
+  assert.deepEqual(slashCommandQuery("/rev existing args", 4), { text: "rev", start: 0 });
+  for (const text of ["", "/review args", "/review\nargs"]) {
     assert.equal(slashCommandQuery(text, text.length), null, text);
   }
   assert.equal(slashCommandQuery("/review", 0), null);
   assert.equal(slashCommandQuery("/review", 1, 4), null);
+});
+
+test("a later $ or / word searches skills in place", () => {
+  assert.deepEqual(slashCommandQuery("$arena /Aren", 12), { text: "/aren", start: 7 });
+  assert.deepEqual(slashCommandQuery("Explain $rev", 12), { text: "$rev", start: 8 });
+  assert.equal(slashCommandQuery("see /home/dev", 13), null);
+  const commands: RuntimeCommand[] = [{ name: "skill:review", source: "skill", description: "Review code" }];
+  assert.deepEqual(completeCommandReference("Explain /rev now", commands[0]!, commands, 8), { text: "Explain $review now", caret: 16 });
 });
 
 test("HUI commands add btw and side without duplicating runtime names", () => {
@@ -79,11 +87,10 @@ test("operational commands and invalid arguments cannot leak into model prompts"
 });
 
 test("dollar discovery excludes templates and explicit nested paths leave command discovery", () => {
-  assert.equal(slashCommandQuery("$", 1), "$");
-  assert.equal(slashCommandQuery("$Review", 7), "$review");
+  assert.deepEqual(slashCommandQuery("$", 1), { text: "$", start: 0 });
+  assert.deepEqual(slashCommandQuery("$Review", 7), { text: "$review", start: 0 });
   assert.equal(slashCommandQuery("/home/developer", 10), null);
   assert.equal(slashCommandQuery("$HOME/file", 10), null);
-  assert.equal(slashCommandQuery("Explain $review", 15), null);
   const commands: RuntimeCommand[] = [
     { name: "skill:review", source: "skill", description: "Review code" },
     { name: "plan", source: "prompt", description: "Plan" },
