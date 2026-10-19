@@ -21,6 +21,39 @@ through typed `/__hui/` routes. The gateway owns HUI's state under
 `~/.config/hui`, PI owns its configuration and credentials under `~/.pi`, and
 Pi Durable owns conversations, runs, queues and crash recovery.
 
+## Dependency rules
+
+`scripts/boundaries.test.mjs` checks these in `npm test`. Its allowlist holds
+the exceptions that exist today: delete an entry when you fix it, never add one.
+
+- R1. `src/` imports only `src/` and npm packages; production `src/` code
+  imports no Node module.
+- R2. `server/`, `cli/`, `desktop/` and `bin/` never import `src/`.
+- R3. Nothing imports `shared/`, and the directory goes away.
+- R4. `server/` and `cli/` may import each other; `desktop/` imports only
+  `desktop/`; `bin/` imports `cli/`, `server/`, `desktop/` and `build/`.
+- R5. Only `src/api/` calls `fetch`, `new WebSocket` or `new EventSource`.
+- R6. `src/lib/` imports nothing from `src/controllers/`, `src/components/` or
+  `src/views/`, and only types from `src/api/`.
+- R7. `src/views/` imports nothing from `src/controllers/` or `src/hui-app.ts`.
+  Only `src/components/` and `src/hui-app.ts` register custom elements.
+- R8. `server/runtimes/` and `server/sessions/` never import `server/bots/`.
+- R9. `server/optchat/` imports only itself and npm packages.
+- R10. No import cycles inside `src/`, `server/` or `cli/`, type-only imports
+  included.
+- R11. Product code never imports `e2e/`, `evals/` or `scripts/`. Those may
+  import either side, and tests may import their fixtures.
+- R12. No file imports both `src/` and `server/`.
+- R14. The remote worker release ships every module that
+  `server/worker/main.ts`, `server/worker/host.ts` and `server/runtimes/` load.
+- R15. `server/api/` imports only `typebox` and itself.
+- R17. Installed entry points keep their paths: `bin/hui.mjs`, `cli/launch.ts`,
+  `cli/main.ts`, `cli/gateway-run.ts`, `server/runtimes/pi-sdk-worker.ts`,
+  `server/worker/main.ts` and `index.html`. An installed CLI checks their built
+  files before switching to a new release.
+
+R13 and R16 are not checked yet.
+
 ## A message, start to finish
 
 1. **Composer** (`src/hui-app.ts`, `src/lib/composer-state.ts`) builds the

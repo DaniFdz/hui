@@ -32,6 +32,10 @@ details in the owning directory guide.
   explicit CLI fallback.
 - Keep the browser free of filesystem and child-process access. All PI and local
   state access crosses typed `/__hui/` routes owned by `server/`.
+- The browser consumes `/__hui/` only. No code is shared between `src/` and
+  `server/`, `cli/` or `desktop/`. `scripts/boundaries.test.mjs` enforces this
+  and the other dependency rules in `docs/map.md`; its allowlist holds today's
+  exceptions and may only shrink.
 - Runtime integrations implement the generic contract in `server/runtimes/`.
   Do not leak PI-specific protocol details into views.
 - The agreed product currently uses full access. Do not introduce Agents,
