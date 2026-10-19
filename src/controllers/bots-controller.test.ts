@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
 import type { ReactiveController } from "lit";
+import type { WorkerView } from "../api/workers.ts";
 import type { BotsStreamHandlers, BotView } from "../lib/bots/bots.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../lib/settings.ts";
 import { BotsController } from "./bots-controller.ts";
@@ -12,7 +13,13 @@ const fake = vi.hoisted(() => ({
   written: [] as (() => void)[],
   refreshed: undefined as Settings | undefined,
   patches: [] as { id: string; patch: Record<string, unknown>; answer: (outcome: BotView | Error) => void }[],
+  calls: [] as { call: string; body?: unknown; answer: (outcome: unknown) => void }[],
+  modal: [] as string[],
 }));
+
+const pending = (call: string, body?: unknown) => new Promise((resolve, reject) => {
+  fake.calls.push({ call, body, answer: (outcome) => outcome instanceof Error ? reject(outcome) : resolve(outcome) });
+});
 
 vi.mock("../api/bots.ts", () => ({
   subscribeBots: (handlers: BotsStreamHandlers) => {
@@ -24,6 +31,14 @@ vi.mock("../api/bots.ts", () => ({
   updateBot: (id: string, patch: Record<string, unknown>) => new Promise<BotView>((resolve, reject) => {
     fake.patches.push({ id, patch, answer: (outcome) => outcome instanceof Error ? reject(outcome) : resolve(outcome) });
   }),
+  createBot: (body: unknown) => pending("create", body),
+  archiveBot: (id: string) => pending(`archive ${id}`),
+  deleteBot: (id: string) => pending(`delete ${id}`),
+  restoreBot: (id: string) => pending(`restore ${id}`),
+}));
+vi.mock("../lib/modal-dialog.ts", () => ({
+  ensureModal: (dialog: { open: boolean; selector: string }) => { dialog.open = true; fake.modal.push(`open ${dialog.selector}`); },
+  closeModal: (dialog: { selector: string }) => { fake.modal.push(`close ${dialog.selector}`); },
 }));
 vi.mock("../lib/settings/settings-store.ts", () => ({
   settingsWritten: () => new Promise<void>((resolve) => fake.written.push(resolve)),
@@ -37,6 +52,8 @@ beforeEach(() => {
   fake.written = [];
   fake.refreshed = undefined;
   fake.patches = [];
+  fake.calls = [];
+  fake.modal = [];
   const stored = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
 });
@@ -45,12 +62,30 @@ const ON: Settings = { ...DEFAULT_SETTINGS, labs: { ...DEFAULT_SETTINGS.labs, bo
 const ADA: BotView = { id: "ada", name: "Ada", sessionId: "s-ada", cwd: "/work" } as BotView;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+class FakeDialog {
+  open = false;
+  focused = "";
+  constructor(readonly selector: string) {}
+  querySelector(selector: string) { return { focus: () => { this.focused = selector; } }; }
+}
+
 function setup(settings: Settings = ON, embeddedPane = false) {
+  vi.stubGlobal("HTMLDialogElement", FakeDialog);
+  vi.stubGlobal("document", { activeElement: null });
   const adopted: Settings[] = [];
   const control = { settings, adoptSettings: (next: Settings) => { adopted.push(next); control.settings = next; } };
   const frames: string[] = [];
+  const shown = { botId: "", dialogs: new Map<string, FakeDialog>(), toast: undefined as { hovered: boolean } | undefined };
+  const notes: string[] = [];
+  const navigations: string[] = [];
+  let sessionRefreshes = 0;
   const host = {
     embeddedPane,
+    renderRoot: {
+      querySelector: (selector: string) => selector === ".bot-archive-toast"
+        ? shown.toast && { matches: () => shown.toast!.hovered, contains: () => false }
+        : shown.dialogs.get(selector) ?? null,
+    } as unknown as ParentNode,
     updates: 0,
     addController: (_controller: ReactiveController) => {},
     removeController: () => {},
@@ -61,8 +96,13 @@ function setup(settings: Settings = ON, embeddedPane = false) {
     control,
     live: (bots) => bots.map((bot) => ({ ...bot, unread: true })),
     onFrame: () => frames.push(controller.list.map((bot) => bot.id).join()),
+    notify: (message, failed) => notes.push(failed ? `error: ${message}` : message),
+    navigate: (target, replace) => navigations.push(`${target.kind === "bot" ? `bot ${target.id}` : target.kind}${replace ? " (replace)" : ""}`),
+    shownBotId: () => shown.botId,
+    refreshSessions: () => { sessionRefreshes += 1; },
+    workers: () => [{ id: "w1", name: "Lab box" }] as WorkerView[],
   });
-  return { controller, control, adopted, frames, host };
+  return { controller, control, adopted, frames, host, shown, notes, navigations, sessionRefreshes: () => sessionRefreshes };
 }
 
 test("no bot stream while Labs → Bots is off, and none in an embedded pane", () => {
@@ -241,4 +281,191 @@ test("each Settings change shows as saving at once and is one PATCH, sent in ord
   await settle();
   assert.deepEqual(controller.savesOf("gone").errors, { name: "This bot is gone." });
   assert.equal(fake.patches.length, 2);
+});
+
+test("+ creates one bot at a time, without a name, on the machine chosen, and opens its chat; a refusal shows as an error toast", async () => {
+  const { controller, notes, navigations, sessionRefreshes } = setup();
+  controller.create("w1");
+  controller.create();
+  assert.equal(controller.creating, true);
+  assert.deepEqual(fake.calls.map(({ call, body }) => [call, body]), [["create", { worker: "w1" }]], "one at a time; the gateway names it New Bot");
+  assert.deepEqual(notes, ["Creating a bot on Lab box…"], "a worker can take a moment: a toast says where");
+  fake.list = [{ ...ADA, id: "new" }];
+  fake.calls[0]!.answer({ ...ADA, id: "new" });
+  await settle();
+  assert.deepEqual(controller.list.map((bot) => bot.id), ["new"]);
+  assert.deepEqual(navigations, ["bot new"], "its chat opens");
+  assert.equal(sessionRefreshes(), 1, "its chat is a new session");
+  assert.equal(controller.creating, false);
+  controller.create();
+  assert.deepEqual(fake.calls[1]?.body, {}, "on this machine, everything on the defaults");
+  fake.calls[1]!.answer(new Error("That worker is offline."));
+  await settle();
+  assert.deepEqual(notes.slice(1), ["", "error: That worker is offline."]);
+});
+
+test("an imported bot's chat opens, as a new bot's does, and its warnings show", () => {
+  const { controller, notes, navigations, sessionRefreshes } = setup();
+  controller.imported(ADA, ["Its routines are paused."]);
+  assert.deepEqual(controller.list.map((bot) => bot.id), ["ada"]);
+  assert.deepEqual(notes, ["error: Imported Ada. Its routines are paused."]);
+  assert.deepEqual(navigations, ["bot ada"]);
+  assert.equal(sessionRefreshes(), 1);
+});
+
+test("Archive and Delete ask first in the app's own dialog, focused on Cancel; a refusal stays in the dialog", async () => {
+  const { controller, shown, navigations } = setup();
+  controller.adopt([ADA]);
+  controller.requestArchive(ADA);
+  const archiveDialog = new FakeDialog(".bot-archive-dialog");
+  shown.dialogs.set(".bot-archive-dialog", archiveDialog);
+  controller.showDialogs();
+  controller.showDialogs();
+  assert.deepEqual(fake.modal, ["open .bot-archive-dialog"], "opened once");
+  assert.equal(archiveDialog.focused, ".bot-archive-cancel");
+  controller.confirmArchive();
+  controller.confirmArchive();
+  assert.deepEqual(fake.calls.map(({ call }) => call), ["archive ada"], "once");
+  fake.calls[0]!.answer(new Error("Busy."));
+  await settle();
+  assert.equal(controller.archiveError, "Busy.");
+  assert.equal(controller.archiving, ADA);
+  controller.closeArchive();
+  assert.equal(controller.archiving, undefined);
+  controller.requestDelete(ADA);
+  const deleteDialog = new FakeDialog(".bot-delete-dialog");
+  shown.dialogs.set(".bot-delete-dialog", deleteDialog);
+  controller.showDialogs();
+  assert.equal(deleteDialog.focused, ".bot-delete-cancel");
+  controller.confirmDelete();
+  assert.equal(controller.pendingId, "ada", "the row waits for the gateway");
+  fake.calls[1]!.answer(new Error("Could not delete that bot."));
+  await settle();
+  assert.equal(controller.deleteError, "Could not delete that bot.");
+  assert.deepEqual(controller.list, [ADA], "the row stays");
+  assert.equal(controller.pendingId, "");
+  assert.deepEqual(navigations, []);
+});
+
+test("archiving or deleting the open bot returns home; a deleted bot leaves the list and its toast", async () => {
+  vi.useFakeTimers();
+  try {
+    const { controller, shown, notes, navigations, sessionRefreshes } = setup();
+    controller.adopt([ADA]);
+    shown.botId = "ada";
+    shown.dialogs.set(".bot-archive-dialog", new FakeDialog(".bot-archive-dialog"));
+    controller.requestArchive(ADA);
+    controller.confirmArchive();
+    fake.list = [{ ...ADA, archived: true }];
+    fake.calls[0]!.answer({ ...ADA, archived: true });
+    await vi.advanceTimersByTimeAsync(0);
+    assert.deepEqual(fake.modal, ["close .bot-archive-dialog"]);
+    assert.equal(controller.archiving, undefined);
+    assert.equal(controller.archiveToast?.bot.archived, true);
+    assert.deepEqual(navigations, ["home (replace)"]);
+    assert.equal(sessionRefreshes(), 1);
+    controller.toggleShowArchived();
+    shown.dialogs.set(".bot-delete-dialog", new FakeDialog(".bot-delete-dialog"));
+    controller.requestDelete(controller.list[0]!);
+    controller.confirmDelete();
+    fake.list = [];
+    fake.calls[1]!.answer(undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    assert.deepEqual(controller.list, []);
+    assert.equal(controller.showArchived, false, "with nothing archived, the next archived bot starts out of sight");
+    assert.equal(controller.archiveToast, undefined);
+    assert.equal(notes.at(-1), "Deleted Ada.");
+    assert.deepEqual(navigations, ["home (replace)", "home (replace)"], "its chat is gone");
+    assert.equal(sessionRefreshes(), 2);
+    shown.botId = "";
+    controller.adopt([ADA]);
+    controller.requestArchive(ADA);
+    controller.confirmArchive();
+    fake.calls[2]!.answer({ ...ADA, archived: true });
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(navigations.length, 2, "another bot's page stays");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("the archive toast lasts 15 s without hover or focus, and its Restore brings the bot back; a refusal stays on it", async () => {
+  vi.useFakeTimers();
+  try {
+    const { controller, shown, notes, sessionRefreshes } = setup();
+    controller.archiveToast = { bot: ADA, restoring: false };
+    shown.toast = { hovered: true };
+    controller.scheduleToast();
+    await vi.advanceTimersByTimeAsync(15_000);
+    assert.ok(controller.archiveToast, "hovered, it stays");
+    shown.toast.hovered = false;
+    controller.scheduleToast();
+    await vi.advanceTimersByTimeAsync(14_999);
+    assert.ok(controller.archiveToast);
+    controller.pauseToast();
+    await vi.advanceTimersByTimeAsync(1);
+    assert.ok(controller.archiveToast, "paused");
+    controller.scheduleToast();
+    await vi.advanceTimersByTimeAsync(15_000);
+    assert.equal(controller.archiveToast, undefined);
+
+    controller.archiveToast = { bot: ADA, restoring: false };
+    void controller.restoreFromToast();
+    assert.deepEqual(controller.archiveToast, { bot: ADA, restoring: true });
+    fake.calls[0]!.answer(new Error("Not now."));
+    await vi.advanceTimersByTimeAsync(0);
+    assert.deepEqual(controller.archiveToast, { bot: ADA, restoring: false, error: "Not now." });
+    controller.scheduleToast();
+    await vi.advanceTimersByTimeAsync(15_000);
+    assert.ok(controller.archiveToast, "an error stays until dismissed");
+    void controller.restoreFromToast();
+    fake.list = [ADA];
+    fake.calls[1]!.answer(ADA);
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(controller.archiveToast, undefined);
+    assert.deepEqual(controller.list.map((bot) => bot.id), ["ada"]);
+    assert.equal(notes.at(-1), "Restored Ada. Its routines stay paused until you turn them on.");
+    assert.equal(sessionRefreshes(), 1);
+
+    controller.archiveToast = { bot: ADA, restoring: false };
+    shown.toast.hovered = false;
+    controller.scheduleToast();
+    controller.hostDisconnected();
+    await vi.advanceTimersByTimeAsync(15_000);
+    assert.ok(controller.archiveToast, "disconnecting clears the timer");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("hiding and restoring from the roster wait on one row at a time; with none left, Show hidden and Show archived reset", async () => {
+  const { controller, notes } = setup();
+  const archived = { ...ADA, archived: true };
+  controller.adopt([archived]);
+  controller.toggleShowArchived();
+  controller.archiveToast = { bot: archived, restoring: false };
+  controller.restore(archived);
+  controller.restore(archived);
+  controller.requestDelete(archived);
+  assert.equal(controller.deleting, undefined, "Delete waits for the row");
+  assert.deepEqual(fake.calls.map(({ call }) => call), ["restore ada"]);
+  fake.calls[0]!.answer(ADA);
+  await settle();
+  assert.equal(controller.pendingId, "");
+  assert.equal(controller.showArchived, false);
+  assert.equal(controller.archiveToast, undefined);
+  assert.equal(notes.at(-1), "Restored Ada. Its routines stay paused until you turn them on.");
+
+  controller.toggleShowHidden();
+  controller.setHidden(ADA, true);
+  fake.patches[0]!.answer({ ...ADA, hidden: true });
+  await settle();
+  assert.equal(controller.showHidden, true, "a hidden bot is listed while Show hidden is on");
+  assert.equal(notes.at(-1), "Ada is hidden. Show hidden lists it again.");
+  controller.setHidden(ADA, false);
+  assert.deepEqual(fake.patches[1]?.patch, { hidden: false });
+  fake.patches[1]!.answer(ADA);
+  await settle();
+  assert.equal(controller.showHidden, false);
+  assert.equal(notes.at(-1), "Ada is back in the roster.");
 });

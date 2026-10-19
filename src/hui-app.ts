@@ -77,9 +77,8 @@ import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
-import { withLiveChats, upsertBot, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
-import { archiveBot, deleteBot, createBot, restoreBot, updateBot } from "./api/bots.ts";
-import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
+import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
+import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
 import { BotToolsController } from "./controllers/bot-tools-controller.ts";
@@ -453,39 +452,24 @@ export class HuiApp extends HuiElement {
       this.followBotTools();
       this.followBotTriggers();
     },
+    notify: (message, failed) => this.notify(message, failed),
+    navigate: (target, replace) => this.navigate(target, replace),
+    shownBotId: () => this.view === "bot" ? this.activeBotId : "",
+    refreshSessions: () => void this.refreshSessions(true),
+    workers: () => this.launchWorkers,
   });
   @state() private botSearch = "";
-  @state() private showHiddenBots = false;
-  @state() private showArchivedBots = false;
   @state() private botMenuFor = "";
-  @state() private botPendingId = "";
   /** The bot whose chat the bot route shows. */
   @state() private activeBotId = "";
-  /** + is creating a bot; another press waits for it. */
-  @state() private botCreating = false;
   /** The ChatGPT login GPT-Live calls use (`/__hui/calls`), read on a bot's page. */
   @state() private callsStatus: CallsStatus | undefined;
   private callsStatusLoading: Promise<void> | undefined;
-  @state() private botArchive: BotView | undefined;
-  @state() private botArchivePending = false;
-  @state() private botArchiveError = "";
-  /** The archived bot whose Delete asks for confirmation. */
-  @state() private botDelete: BotView | undefined;
-  @state() private botDeletePending = false;
-  @state() private botDeleteError = "";
-  @state() private botArchiveToast: { bot: BotView; restoring: boolean; error?: string } | undefined;
   /** Import bot… (+) and Export… (a bot's ⋯): their dialogs' state. An imported bot opens like a new one. */
   private botImports = new BotImportController(this, {
     workers: () => this.launchWorkers,
-    imported: (bot, warnings) => {
-      this.bots.adopt(upsertBot(this.bots.list, bot));
-      if (warnings.length) this.notify(`Imported ${bot.name}. ${warnings.join(" ")}`, true);
-      void this.bots.refresh();
-      void this.refreshSessions(true);
-      this.navigate({ kind: "bot", id: bot.id });
-    },
+    imported: (bot, warnings) => this.bots.imported(bot, warnings),
   });
-  private botArchiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   /** The panel's Tools page: what the operator can turn off in the bot's chat, kept in its own controller. */
   private botTools = new BotToolsController(this);
   private botFacts = new BotFactsController(this);
@@ -745,7 +729,6 @@ export class HuiApp extends HuiElement {
     this.subagentExpiryTimer = undefined;
     this.followResize?.disconnect();
     this.followed = undefined;
-    if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
     clearTimeout(this.actionToastTimer);
     this.statusStreamStop?.();
     this.statusStreamStop = undefined;
@@ -984,16 +967,7 @@ export class HuiApp extends HuiElement {
             : undefined;
       if (!this.embeddedPane) document.title = documentTitle(activeSessionTitle);
     }
-    const botArchiveDialog = this.botArchive ? this.renderRoot.querySelector?.(".bot-archive-dialog") : null;
-    if (botArchiveDialog instanceof HTMLDialogElement && !botArchiveDialog.open) {
-      ensureModal(botArchiveDialog);
-      botArchiveDialog.querySelector<HTMLButtonElement>(".bot-archive-cancel")?.focus();
-    }
-    const botDeleteDialog = this.botDelete ? this.renderRoot.querySelector?.(".bot-delete-dialog") : null;
-    if (botDeleteDialog instanceof HTMLDialogElement && !botDeleteDialog.open) {
-      ensureModal(botDeleteDialog);
-      botDeleteDialog.querySelector<HTMLButtonElement>(".bot-delete-cancel")?.focus();
-    }
+    this.bots.showDialogs();
     this.botImports.showDialogs(this.renderRoot);
     // A selector that matches nothing walks the whole open transcript, and
     // this runs on every keystroke: query a dialog only while its state shows it.
@@ -3863,29 +3837,29 @@ export class HuiApp extends HuiElement {
       onCreate: (worker) => this.createNewBot(worker),
       onImport: this.botImports.openImport,
       onWorkersMenu: () => this.loadLaunchWorkers(),
-      creating: this.botCreating,
+      creating: this.bots.creating,
       unread: this.bots.list.some((bot) => bot.unread && !bot.archived && !bot.hidden),
       roster: {
         bots: this.bots.list,
         loading: this.bots.loading || !this.bots.loaded,
         error: this.bots.error,
         query: this.botSearch,
-        showHidden: this.showHiddenBots,
-        showArchived: this.showArchivedBots,
+        showHidden: this.bots.showHidden,
+        showArchived: this.bots.showArchived,
         activeBotId: this.view === "bot" ? this.activeBotId : "",
         menuFor: this.botMenuFor,
-        pendingId: this.botPendingId,
+        pendingId: this.bots.pendingId,
         now: Date.now(),
         onSelect: this.selectBot,
         onNew: () => this.createNewBot(),
-        creating: this.botCreating,
+        creating: this.bots.creating,
         onEdit: this.openEditBot,
         onSetHidden: this.setBotHidden,
         onArchive: this.requestArchiveBot,
-        onToggleShowHidden: () => { this.showHiddenBots = !this.showHiddenBots; },
-        onToggleShowArchived: () => { this.showArchivedBots = !this.showArchivedBots; },
-        onRestore: this.restoreBotFromRoster,
-        onDelete: this.requestDeleteBot,
+        onToggleShowHidden: this.bots.toggleShowHidden,
+        onToggleShowArchived: this.bots.toggleShowArchived,
+        onRestore: this.bots.restore,
+        onDelete: this.bots.requestDelete,
         onExport: (bot) => { this.botMenuFor = ""; this.botImports.openExport(bot); },
         onImport: this.botImports.openImport,
         onRetry: this.bots.retry,
@@ -3895,36 +3869,9 @@ export class HuiApp extends HuiElement {
     };
   }
 
-  /**
-   * + (and the empty roster's New bot), as in Grok Bot: no form. The bot is created at once, on this machine or, from
-   * +'s menu while a remote worker exists, on the worker chosen, where it stays. It has no name, so the gateway calls it
-   * "New Bot", and everything else starts on the defaults with the face its id picks; its chat opens, where its first
-   * turn has already started asking what to call it, and its Settings page changes the rest. A refusal (a worker HUI is
-   * not connected to, say) shows in the roster's notice.
-   */
   private createNewBot = (worker?: string) => {
     this.botMenuFor = "";
-    if (this.botCreating) return;
-    this.botCreating = true;
-    // A worker can take a moment: the roster says where the bot is being made.
-    if (worker) {
-      this.notify(`Creating a bot on ${this.launchWorkers.find((candidate) => candidate.id === worker)?.name ?? "the worker"}…`);
-    }
-    void createBot(worker ? { worker } : {})
-      .then((bot) => {
-        this.bots.adopt(upsertBot(this.bots.list, bot));
-        this.notify("");
-        void this.bots.refresh();
-        // The new chat is a new session; open the bot once the list has it.
-        void this.refreshSessions(true);
-        this.navigate({ kind: "bot", id: bot.id });
-      })
-      .catch((error: unknown) => {
-        this.notify(error instanceof Error ? error.message : "Could not create a bot.", true);
-      })
-      .finally(() => {
-        this.botCreating = false;
-      });
+    this.bots.create(worker);
   };
 
   /** The roster's Edit: the bot's chat with its panel on the Settings page, docked beside it on wide screens, as the
@@ -3967,159 +3914,12 @@ export class HuiApp extends HuiElement {
 
   private setBotHidden = (bot: BotView, hidden: boolean) => {
     this.botMenuFor = "";
-    if (this.botPendingId) return;
-    this.botPendingId = bot.id;
-    void updateBot(bot.id, { hidden })
-      .then((updated) => {
-        this.bots.adopt(upsertBot(this.bots.list, updated));
-        // With nothing hidden any more, the next hidden bot starts out of sight again.
-        if (!hiddenBotCount(this.bots.list)) this.showHiddenBots = false;
-        this.notify(hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`);
-      })
-      .catch((error: unknown) => {
-        this.notify(error instanceof Error ? error.message : "Could not change that bot.", true);
-      })
-      .finally(() => {
-        this.botPendingId = "";
-      });
+    this.bots.setHidden(bot, hidden);
   };
 
   private requestArchiveBot = (bot: BotView) => {
     this.botMenuFor = "";
-    this.botArchive = bot;
-    this.botArchiveError = "";
-  };
-
-  private closeBotArchive = () => {
-    const dialog = this.renderRoot.querySelector?.(".bot-archive-dialog");
-    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
-    this.botArchive = undefined;
-    this.botArchiveError = "";
-  };
-
-  private confirmArchiveBot = () => {
-    const bot = this.botArchive;
-    if (!bot || this.botArchivePending) return;
-    this.botArchivePending = true;
-    this.botArchiveError = "";
-    void archiveBot(bot.id)
-      .then((archived) => {
-        this.closeBotArchive();
-        this.bots.adopt(upsertBot(this.bots.list, archived));
-        this.notify("");
-        this.botArchiveToast = { bot: archived, restoring: false };
-        this.scheduleBotArchiveToast();
-        if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
-        void this.bots.refresh();
-        void this.refreshSessions(true);
-      })
-      .catch((error: unknown) => {
-        this.botArchiveError = error instanceof Error ? error.message : "Could not archive that bot.";
-      })
-      .finally(() => {
-        this.botArchivePending = false;
-      });
-  };
-
-  /** Delete (the ⋯ menus, or Show archived's trash icon) asks first: deleting cannot be undone. */
-  private requestDeleteBot = (bot: BotView) => {
-    if (this.botPendingId) return;
-    this.botDelete = bot;
-    this.botDeleteError = "";
-  };
-
-  private closeBotDelete = () => {
-    const dialog = this.renderRoot.querySelector?.(".bot-delete-dialog");
-    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
-    this.botDelete = undefined;
-    this.botDeleteError = "";
-  };
-
-  /** The row stays until the gateway confirms; a failure stays in the dialog. */
-  private confirmDeleteBot = () => {
-    const bot = this.botDelete;
-    if (!bot || this.botDeletePending) return;
-    this.botDeletePending = true;
-    this.botDeleteError = "";
-    this.botPendingId = bot.id;
-    void deleteBot(bot.id)
-      .then(() => {
-        this.closeBotDelete();
-        this.bots.adopt(this.bots.list.filter((each) => each.id !== bot.id));
-        if (!archivedBotCount(this.bots.list)) this.showArchivedBots = false;
-        if (this.botArchiveToast?.bot.id === bot.id) this.dismissBotArchiveToast();
-        this.notify(`Deleted ${bot.name}.`);
-        // Its chat is gone: the open bot view goes with it, as after archiving.
-        if (this.view === "bot" && this.activeBotId === bot.id) this.navigate({ kind: "home" }, true);
-        void this.bots.refresh();
-        void this.refreshSessions(true);
-      })
-      .catch((error: unknown) => {
-        this.botDeleteError = error instanceof Error ? error.message : "Could not delete that bot.";
-      })
-      .finally(() => {
-        this.botDeletePending = false;
-        this.botPendingId = "";
-      });
-  };
-
-  /** Restore from Show archived: the row stays until the gateway confirms. */
-  private restoreBotFromRoster = (bot: BotView) => {
-    if (this.botPendingId) return;
-    this.botPendingId = bot.id;
-    void restoreBot(bot.id)
-      .then((restored) => {
-        this.bots.adopt(upsertBot(this.bots.list, restored));
-        // With nothing archived any more, the next archived bot starts out of sight again.
-        if (!archivedBotCount(this.bots.list)) this.showArchivedBots = false;
-        if (this.botArchiveToast?.bot.id === restored.id) this.dismissBotArchiveToast();
-        this.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
-        void this.bots.refresh();
-      })
-      .catch((error: unknown) => {
-        this.notify(error instanceof Error ? error.message : "Could not restore that bot.", true);
-      })
-      .finally(() => {
-        this.botPendingId = "";
-      });
-  };
-
-  private pauseBotArchiveToast = () => {
-    if (this.botArchiveToastTimer) clearTimeout(this.botArchiveToastTimer);
-    this.botArchiveToastTimer = undefined;
-  };
-
-  private dismissBotArchiveToast = () => {
-    this.pauseBotArchiveToast();
-    this.botArchiveToast = undefined;
-  };
-
-  /** Same lifetime as the session archive toast: 15 s without hover or focus. */
-  private scheduleBotArchiveToast = () => {
-    this.pauseBotArchiveToast();
-    if (!this.botArchiveToast || this.botArchiveToast.restoring || this.botArchiveToast.error) return;
-    const element = this.querySelector(".bot-archive-toast");
-    if (element?.matches(":hover") || element?.contains(document.activeElement)) return;
-    this.botArchiveToastTimer = setTimeout(this.dismissBotArchiveToast, 15_000);
-  };
-
-  private restoreArchivedBot = async () => {
-    const toast = this.botArchiveToast;
-    if (!toast || toast.restoring) return;
-    this.pauseBotArchiveToast();
-    this.botArchiveToast = { bot: toast.bot, restoring: true };
-    try {
-      const restored = await restoreBot(toast.bot.id);
-      this.bots.adopt(upsertBot(this.bots.list, restored));
-      if (this.botArchiveToast?.bot.id === toast.bot.id) this.dismissBotArchiveToast();
-      this.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
-      void this.bots.refresh();
-      void this.refreshSessions(true);
-    } catch (error) {
-      if (this.botArchiveToast?.bot.id === toast.bot.id) {
-        this.botArchiveToast = { bot: toast.bot, restoring: false, error: error instanceof Error ? error.message : "Could not restore that bot." };
-      }
-    }
+    this.bots.requestArchive(bot);
   };
 
   private botPanelVisible(): boolean {
@@ -4246,7 +4046,7 @@ export class HuiApp extends HuiElement {
     // Its chat opens again once it is restored; until then it takes no messages from here.
     if (bot.archived) {
       return placeholder(bot.name, `${bot.name} is archived. Its chat and memory are kept; restore it to open the chat again.`, "status",
-        () => this.restoreBotFromRoster(bot), this.botPendingId === bot.id ? "Restoring…" : "Restore");
+        () => this.bots.restore(bot), this.bots.pendingId === bot.id ? "Restoring…" : "Restore");
     }
     const session = this.listedSession(bot.sessionId);
     if (!session) {
@@ -4289,7 +4089,7 @@ export class HuiApp extends HuiElement {
           .onPaneBotAction=${(action: BotHeaderAction) => {
             if (action === "edit") this.openEditBot(bot);
             else if (action === "archive") this.requestArchiveBot(bot);
-            else this.requestDeleteBot(bot);
+            else this.bots.requestDelete(bot);
           }}
           .onPaneNavigate=${(id: string) => {
             const target = this.listedSession(id);
@@ -4357,8 +4157,9 @@ export class HuiApp extends HuiElement {
 
   private renderBotDialogs() {
     if (this.embeddedPane) return nothing;
-    return html`${this.botArchive ? renderBotArchiveDialog(this.botArchive, this.botArchivePending, this.botArchiveError, this.confirmArchiveBot, this.closeBotArchive) : nothing}
-    ${this.botDelete ? renderBotDeleteDialog(this.botDelete, this.botDeletePending, this.botDeleteError, this.confirmDeleteBot, this.closeBotDelete) : nothing}
+    const { archiving, deleting } = this.bots;
+    return html`${archiving ? renderBotArchiveDialog(archiving, this.bots.archivePending, this.bots.archiveError, this.bots.confirmArchive, this.bots.closeArchive) : nothing}
+    ${deleting ? renderBotDeleteDialog(deleting, this.bots.deletePending, this.bots.deleteError, this.bots.confirmDelete, this.bots.closeDelete) : nothing}
     ${this.renderBotTemplateDialogs()}`;
   }
 
@@ -5138,16 +4939,16 @@ export class HuiApp extends HuiElement {
         <button type="button" class="app-toast__dismiss" aria-label="Dismiss archive notification"
           @click=${this.dismissArchiveToast}><span aria-hidden="true">×</span></button>
       </div>` : null}
-      ${this.botArchiveToast ? html`<div class="app-toast session-archive-toast bot-archive-toast"
-        @pointerenter=${this.pauseBotArchiveToast} @pointerleave=${this.scheduleBotArchiveToast}
-        @focusin=${this.pauseBotArchiveToast} @focusout=${this.scheduleBotArchiveToast}>
-        <span class="app-toast__message" role=${this.botArchiveToast.error ? "alert" : "status"}>
-          ${this.botArchiveToast.error ?? `Archived “${this.botArchiveToast.bot.name}”. Its chat and memory are kept.`}
+      ${this.bots.archiveToast ? html`<div class="app-toast session-archive-toast bot-archive-toast"
+        @pointerenter=${this.bots.pauseToast} @pointerleave=${this.bots.scheduleToast}
+        @focusin=${this.bots.pauseToast} @focusout=${this.bots.scheduleToast}>
+        <span class="app-toast__message" role=${this.bots.archiveToast.error ? "alert" : "status"}>
+          ${this.bots.archiveToast.error ?? `Archived “${this.bots.archiveToast.bot.name}”. Its chat and memory are kept.`}
         </span>
-        <button type="button" class="app-toast__action" ?disabled=${this.botArchiveToast.restoring}
-          @click=${this.restoreArchivedBot}>${this.botArchiveToast.restoring ? "Restoring…" : "Restore"}</button>
+        <button type="button" class="app-toast__action" ?disabled=${this.bots.archiveToast.restoring}
+          @click=${this.bots.restoreFromToast}>${this.bots.archiveToast.restoring ? "Restoring…" : "Restore"}</button>
         <button type="button" class="app-toast__dismiss" aria-label="Dismiss archive notification"
-          @click=${this.dismissBotArchiveToast}><span aria-hidden="true">×</span></button>
+          @click=${this.bots.dismissToast}><span aria-hidden="true">×</span></button>
       </div>` : null}
     </div>`;
   }

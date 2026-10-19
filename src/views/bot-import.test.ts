@@ -17,7 +17,7 @@ test("+ → Import bot… opens the import dialog and a bot's ⋯ → Export… 
   assert.match(shell, /onImport: this\.botImports\.openImport,/u);
   assert.match(shell, /onExport: \(bot\) => \{ this\.botMenuFor = ""; this\.botImports\.openExport\(bot\); \},/u);
   assert.match(between(app, "private followBotsSetting(", "private shellBotsProps("), /this\.botImports\.close\(\);/u, "turning bots off closes both dialogs");
-  assert.match(app, /this\.navigate\(\{ kind: "bot", id: bot\.id \}\);\n\s+\},\n\s+\}\);/u, "an imported bot's chat opens, as a new bot's does");
+  assert.match(app, /imported: \(bot, warnings\) => this\.bots\.imported\(bot, warnings\),/u, "an imported bot's chat opens, as a new bot's does (bots-controller.test.ts)");
 });
 
 test("the preview shows every imported text as plain text, says it is untrusted, and Create is the only way to make the bot", () => {

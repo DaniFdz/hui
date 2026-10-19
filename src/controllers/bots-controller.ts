@@ -2,18 +2,22 @@
  * `BotsController` keeps the bot roster outside `hui-app.ts`: the list, its loading and error state, and the gateway's
  * bot stream that pushes it while Settings → Labs → Bots is on, with reads by GET as the fallback for a gateway without
  * the stream. It also owns the sidebar's Agents | Bots choice, the bot panel's state with the browser-remembered open
- * state and width, and the Settings page's saves. A top-level app only: an embedded pane never reads bots.
+ * state and width, the Settings page's saves, and the roster's actions: creating a bot, hiding, archiving (with its
+ * confirmation and its Restore toast), restoring and deleting one. A top-level app only: an embedded pane never reads bots.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
-import { loadBots, subscribeBots, updateBot } from "../api/bots.ts";
+import { archiveBot, createBot, deleteBot, loadBots, restoreBot, subscribeBots, updateBot } from "../api/bots.ts";
+import type { WorkerView } from "../api/workers.ts";
+import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
+import type { NavigationTarget } from "../lib/navigation.ts";
 import { applyBotsUpdate, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, type BotView } from "../lib/bots/bots.ts";
-import { readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "../lib/bots/roster.ts";
+import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "../lib/bots/roster.ts";
 import { botsEnabled } from "../lib/settings.ts";
 import { refreshSettings, settingsWritten } from "../lib/settings/settings-store.ts";
 import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsSaves, type BotSettingValue } from "../views/bot-settings.ts";
 import type { SettingsController } from "./settings-controller.ts";
 
-type BotsHost = ReactiveControllerHost & { embeddedPane: boolean };
+type BotsHost = ReactiveControllerHost & { embeddedPane: boolean; renderRoot: ParentNode };
 
 type BotsDeps = {
   control: Pick<SettingsController, "settings" | "adoptSettings">;
@@ -21,7 +25,15 @@ type BotsDeps = {
   live: (bots: readonly BotView[]) => BotView[];
   /** Every bots frame: a bot loaded after a panel page opened, or woken. */
   onFrame: () => void;
+  notify: (message: string, failed?: boolean) => void;
+  navigate: (target: NavigationTarget, replace?: boolean) => void;
+  /** The bot whose chat the bot route shows; "" off that route. */
+  shownBotId: () => string;
+  refreshSessions: () => void;
+  workers: () => readonly WorkerView[];
 };
+
+type BotArchiveToast = { bot: BotView; restoring: boolean; error?: string };
 
 /** A bot's Settings page: a row's saves or refusals without that row's. */
 function withoutSetting<Value>(record: Partial<Record<BotSettingKey, Value>>, key: BotSettingKey): Partial<Record<BotSettingKey, Value>> {
@@ -51,6 +63,22 @@ export class BotsController implements ReactiveController {
    * replaces a value still waiting. Kept per bot, so leaving a bot never drops a change on its way. */
   #saves: ReadonlyMap<string, BotSettingsSaves> = new Map();
   #savesQueue: Promise<void> = Promise.resolve();
+  showHidden = false;
+  showArchived = false;
+  /** The roster row whose hide, restore or delete is on its way; another waits for it. */
+  pendingId = "";
+  /** + is creating a bot; another press waits for it. */
+  creating = false;
+  /** The bot whose Archive asks for confirmation. */
+  archiving: BotView | undefined;
+  archivePending = false;
+  archiveError = "";
+  /** The bot whose Delete asks for confirmation. */
+  deleting: BotView | undefined;
+  deletePending = false;
+  deleteError = "";
+  archiveToast: BotArchiveToast | undefined;
+  #archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   readonly #host: BotsHost;
   readonly #deps: BotsDeps;
   #inFlight: Promise<void> | undefined;
@@ -68,6 +96,7 @@ export class BotsController implements ReactiveController {
   }
 
   hostDisconnected(): void {
+    if (this.#archiveToastTimer) clearTimeout(this.#archiveToastTimer);
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.streamLive = false;
@@ -78,7 +107,8 @@ export class BotsController implements ReactiveController {
     this.#host.requestUpdate();
   }
 
-  #set(next: Partial<Pick<BotsController, "list" | "loading" | "loaded" | "error">>): void {
+  #set(next: Partial<Pick<BotsController, "list" | "loading" | "loaded" | "error" | "showHidden" | "showArchived" | "pendingId" | "creating"
+    | "archiving" | "archivePending" | "archiveError" | "deleting" | "deletePending" | "deleteError" | "archiveToast">>): void {
     Object.assign(this, next);
     this.#host.requestUpdate();
   }
@@ -297,4 +327,209 @@ export class BotsController implements ReactiveController {
     if (!this.savesOf(botId).errors[key]) return;
     this.#updateSaves(botId, (saves) => ({ ...saves, errors: withoutSetting(saves.errors, key) }));
   }
+
+  /** Opens the archive and delete confirmations once they render, focus on Cancel. */
+  showDialogs(): void {
+    for (const [open, selector, focus] of [[this.archiving, ".bot-archive-dialog", ".bot-archive-cancel"], [this.deleting, ".bot-delete-dialog", ".bot-delete-cancel"]] as const) {
+      if (!open) continue;
+      const dialog = this.#host.renderRoot.querySelector?.(selector);
+      if (dialog instanceof HTMLDialogElement && !dialog.open) {
+        ensureModal(dialog);
+        dialog.querySelector<HTMLButtonElement>(focus)?.focus();
+      }
+    }
+  }
+
+  /** A bot made here or imported: in the list at once, its chat (a new session) open. */
+  #opened(bot: BotView): void {
+    this.adopt(upsertBot(this.list, bot));
+    void this.refresh();
+    // The new chat is a new session; open the bot once the list has it.
+    this.#deps.refreshSessions();
+    this.#deps.navigate({ kind: "bot", id: bot.id });
+  }
+
+  /**
+   * + (and the empty roster's New bot), as in Grok Bot: no form. The bot is created at once, on this machine or, from
+   * +'s menu while a remote worker exists, on the worker chosen, where it stays. It has no name, so the gateway calls it
+   * "New Bot", and everything else starts on the defaults with the face its id picks; its chat opens, where its first
+   * turn has already started asking what to call it, and its Settings page changes the rest. A refusal (a worker HUI is
+   * not connected to, say) shows in the roster's notice.
+   */
+  create = (worker?: string) => {
+    if (this.creating) return;
+    this.#set({ creating: true });
+    // A worker can take a moment: the roster says where the bot is being made.
+    if (worker) {
+      this.#deps.notify(`Creating a bot on ${this.#deps.workers().find((candidate) => candidate.id === worker)?.name ?? "the worker"}…`);
+    }
+    void createBot(worker ? { worker } : {})
+      .then((bot) => {
+        this.#deps.notify("");
+        this.#opened(bot);
+      })
+      .catch((error: unknown) => {
+        this.#deps.notify(error instanceof Error ? error.message : "Could not create a bot.", true);
+      })
+      .finally(() => {
+        this.#set({ creating: false });
+      });
+  };
+
+  /** An imported bot opens like a new one. */
+  imported(bot: BotView, warnings: readonly string[]): void {
+    if (warnings.length) this.#deps.notify(`Imported ${bot.name}. ${warnings.join(" ")}`, true);
+    this.#opened(bot);
+  }
+
+  toggleShowHidden = () => this.#set({ showHidden: !this.showHidden });
+
+  toggleShowArchived = () => this.#set({ showArchived: !this.showArchived });
+
+  setHidden = (bot: BotView, hidden: boolean) => {
+    if (this.pendingId) return;
+    this.#set({ pendingId: bot.id });
+    void updateBot(bot.id, { hidden })
+      .then((updated) => {
+        this.adopt(upsertBot(this.list, updated));
+        // With nothing hidden any more, the next hidden bot starts out of sight again.
+        if (!hiddenBotCount(this.list)) this.#set({ showHidden: false });
+        this.#deps.notify(hidden ? `${updated.name} is hidden. Show hidden lists it again.` : `${updated.name} is back in the roster.`);
+      })
+      .catch((error: unknown) => {
+        this.#deps.notify(error instanceof Error ? error.message : "Could not change that bot.", true);
+      })
+      .finally(() => {
+        this.#set({ pendingId: "" });
+      });
+  };
+
+  requestArchive = (bot: BotView) => {
+    this.#set({ archiving: bot, archiveError: "" });
+  };
+
+  closeArchive = () => {
+    const dialog = this.#host.renderRoot.querySelector?.(".bot-archive-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.#set({ archiving: undefined, archiveError: "" });
+  };
+
+  confirmArchive = () => {
+    const bot = this.archiving;
+    if (!bot || this.archivePending) return;
+    this.#set({ archivePending: true, archiveError: "" });
+    void archiveBot(bot.id)
+      .then((archived) => {
+        this.closeArchive();
+        this.adopt(upsertBot(this.list, archived));
+        this.#deps.notify("");
+        this.#set({ archiveToast: { bot: archived, restoring: false } });
+        this.scheduleToast();
+        if (this.#deps.shownBotId() === bot.id) this.#deps.navigate({ kind: "home" }, true);
+        void this.refresh();
+        this.#deps.refreshSessions();
+      })
+      .catch((error: unknown) => {
+        this.#set({ archiveError: error instanceof Error ? error.message : "Could not archive that bot." });
+      })
+      .finally(() => {
+        this.#set({ archivePending: false });
+      });
+  };
+
+  /** Delete (the ⋯ menus, or Show archived's trash icon) asks first: deleting cannot be undone. */
+  requestDelete = (bot: BotView) => {
+    if (this.pendingId) return;
+    this.#set({ deleting: bot, deleteError: "" });
+  };
+
+  closeDelete = () => {
+    const dialog = this.#host.renderRoot.querySelector?.(".bot-delete-dialog");
+    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
+    this.#set({ deleting: undefined, deleteError: "" });
+  };
+
+  /** The row stays until the gateway confirms; a failure stays in the dialog. */
+  confirmDelete = () => {
+    const bot = this.deleting;
+    if (!bot || this.deletePending) return;
+    this.#set({ deletePending: true, deleteError: "", pendingId: bot.id });
+    void deleteBot(bot.id)
+      .then(() => {
+        this.closeDelete();
+        this.adopt(this.list.filter((each) => each.id !== bot.id));
+        if (!archivedBotCount(this.list)) this.#set({ showArchived: false });
+        if (this.archiveToast?.bot.id === bot.id) this.dismissToast();
+        this.#deps.notify(`Deleted ${bot.name}.`);
+        // Its chat is gone: the open bot view goes with it, as after archiving.
+        if (this.#deps.shownBotId() === bot.id) this.#deps.navigate({ kind: "home" }, true);
+        void this.refresh();
+        this.#deps.refreshSessions();
+      })
+      .catch((error: unknown) => {
+        this.#set({ deleteError: error instanceof Error ? error.message : "Could not delete that bot." });
+      })
+      .finally(() => {
+        this.#set({ deletePending: false, pendingId: "" });
+      });
+  };
+
+  /** Restore from Show archived: the row stays until the gateway confirms. */
+  restore = (bot: BotView) => {
+    if (this.pendingId) return;
+    this.#set({ pendingId: bot.id });
+    void restoreBot(bot.id)
+      .then((restored) => {
+        this.adopt(upsertBot(this.list, restored));
+        // With nothing archived any more, the next archived bot starts out of sight again.
+        if (!archivedBotCount(this.list)) this.#set({ showArchived: false });
+        if (this.archiveToast?.bot.id === restored.id) this.dismissToast();
+        this.#deps.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
+        void this.refresh();
+      })
+      .catch((error: unknown) => {
+        this.#deps.notify(error instanceof Error ? error.message : "Could not restore that bot.", true);
+      })
+      .finally(() => {
+        this.#set({ pendingId: "" });
+      });
+  };
+
+  pauseToast = () => {
+    if (this.#archiveToastTimer) clearTimeout(this.#archiveToastTimer);
+    this.#archiveToastTimer = undefined;
+  };
+
+  dismissToast = () => {
+    this.pauseToast();
+    this.#set({ archiveToast: undefined });
+  };
+
+  /** Same lifetime as the session archive toast: 15 s without hover or focus. */
+  scheduleToast = () => {
+    this.pauseToast();
+    if (!this.archiveToast || this.archiveToast.restoring || this.archiveToast.error) return;
+    const element = this.#host.renderRoot.querySelector(".bot-archive-toast");
+    if (element?.matches(":hover") || element?.contains(document.activeElement)) return;
+    this.#archiveToastTimer = setTimeout(this.dismissToast, 15_000);
+  };
+
+  restoreFromToast = async () => {
+    const toast = this.archiveToast;
+    if (!toast || toast.restoring) return;
+    this.pauseToast();
+    this.#set({ archiveToast: { bot: toast.bot, restoring: true } });
+    try {
+      const restored = await restoreBot(toast.bot.id);
+      this.adopt(upsertBot(this.list, restored));
+      if (this.archiveToast?.bot.id === toast.bot.id) this.dismissToast();
+      this.#deps.notify(`Restored ${restored.name}. Its routines stay paused until you turn them on.`);
+      void this.refresh();
+      this.#deps.refreshSessions();
+    } catch (error) {
+      if (this.archiveToast?.bot.id === toast.bot.id) {
+        this.#set({ archiveToast: { bot: toast.bot, restoring: false, error: error instanceof Error ? error.message : "Could not restore that bot." } });
+      }
+    }
+  };
 }
