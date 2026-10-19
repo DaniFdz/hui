@@ -1524,5 +1524,6 @@ test("a skill named later in a message is expanded ahead of it", async () => {
   assert.equal(expandSkill("fix it with $arena.", skills), `${block}\n\nfix it with $arena.`);
   assert.equal(expandSkill("/skill:arena then $skill:arena", skills), `${block}\n\nthen $skill:arena`);
   for (const text of ["costs $5", "see $HOME/x", "a$arena"]) assert.equal(expandSkill(text, skills), text);
+  assert.equal(expandSkill("/plan with $arena", skills, (body) => body.replace("/plan", "Plan:")), `${block}\n\nPlan: with $arena`);
   await rm(baseDir, { recursive: true });
 });

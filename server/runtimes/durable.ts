@@ -111,8 +111,8 @@ const internal = async <T>(path: string): Promise<T> =>
 const { expandPromptTemplate } = await internal<{ expandPromptTemplate(text: string, templates: unknown[]): string }>("./core/prompt-templates.js");
 
 /** PI's `/skill:name args` expansion for the skills this conversation may use, plus a block for each later `$name`
- * word that names one of them. */
-export function expandSkill(text: string, skills: readonly { name: string; filePath: string; baseDir: string }[]): string {
+ * word that names one of them. Text that does not start with a skill goes through `expandTemplate`. */
+export function expandSkill(text: string, skills: readonly { name: string; filePath: string; baseDir: string }[], expandTemplate = (body: string) => body): string {
   const named = new Set<(typeof skills)[number]>();
   const add = (name: string) => {
     const skill = skills.find((candidate) => candidate.name === name);
@@ -120,10 +120,9 @@ export function expandSkill(text: string, skills: readonly { name: string; fileP
     return skill;
   };
   const leading = /^\/skill:(\S+)\s*/u.exec(text);
-  const body = leading && add(leading[1]!) ? text.slice(leading[0].length) : text;
-  for (const [, name] of body.matchAll(/(?<!\S)\$(?:skill:)?([\w-]+)/gu)) add(name!);
-  if (!named.size) return text;
-  return [...[...named].map(skillBlock), body.trim()].filter(Boolean).join("\n\n");
+  const body = leading && add(leading[1]!) ? text.slice(leading[0].length) : expandTemplate(text);
+  for (const [, name] of text.matchAll(/(?<!\S)\$(?:skill:)?([\w-]+)/gu)) add(name!);
+  return named.size ? [...[...named].map(skillBlock), body.trim()].filter(Boolean).join("\n\n") : body;
 }
 
 export function modelRef(value: string | undefined): { provider: string; modelId: string } | undefined {
@@ -960,7 +959,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   async #expand(text: string): Promise<string> {
     const loader = await this.#loader();
-    return expandPromptTemplate(expandSkill(text, /^\/skill:|(?<!\S)\$/u.test(text) ? await this.#skills(loader) : []), loader.getPrompts().prompts);
+    const skills = /^\/skill:|(?<!\S)\$/u.test(text) ? await this.#skills(loader) : [];
+    return expandSkill(text, skills, (body) => expandPromptTemplate(body, loader.getPrompts().prompts));
   }
 
   /**
