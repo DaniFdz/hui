@@ -116,4 +116,4 @@ expected states above before being attached.
   `SIGKILL` are covered by `server/watchers.test.ts` (including a process that
   traps `SIGTERM`), not by this browser journey.
 - Deleting a conversation with a running watcher is covered by
-  `server/watcher-routes.test.ts`.
+  `server/routes/watchers.test.ts`.

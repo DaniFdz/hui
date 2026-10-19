@@ -107,7 +107,7 @@ import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./github-p
 import { DatadogOrgs } from "./datadog.ts";
 import { DatadogPreviews } from "./datadog-previews.ts";
 import { TaskSuggestionInputError, TaskSuggestionStore } from "./task-suggestions.ts";
-import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
+import { WatcherInputError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
 import { Questionnaires } from "./questionnaires.ts";
 import {
@@ -116,7 +116,6 @@ import {
   createBacklogLifecycle,
 } from "./backlog.ts";
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription } from "../shared/task-suggestions.ts";
-import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
@@ -129,6 +128,7 @@ import { createLocalPathRoutes } from "./routes/local-paths.ts";
 import { createAutomationRoutes, AUTOMATION_ROUTE } from "./routes/automation.ts";
 import { createBacklogRoutes } from "./routes/backlog.ts";
 import { createTaskSuggestionRoutes } from "./routes/task-suggestions.ts";
+import { createWatcherRoutes } from "./routes/watchers.ts";
 import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
 import { handleApiSchemaRoute } from "./routes/api-schema.ts";
@@ -164,10 +164,6 @@ import { createSessionViews, pendingSessions, pendingStatus, pendingStatusSubscr
 const PREFIX = "/__hui/";
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
-/** A conversation's background watchers: stop (POST …/stop), restart
- * (POST …/restart), read a bounded log tail (GET …/log) or dismiss one that
- * is not running (DELETE). */
-const SESSION_WATCHER = /^\/__hui\/sessions\/([^/]+)\/watchers\/([^/]+?)(?:\/(stop|restart|log))?$/;
 const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 
 const piMutations = new PiMutationService();
@@ -351,6 +347,7 @@ const watchers = new WatcherService({
   logDir: WATCHER_LOG_DIR,
   onChange: (id) => liveSessions.notifySnapshot(id),
 });
+const watcherRoutes = createWatcherRoutes({ watchers, readRegistry });
 /** One managed browser per gateway; its settings are re-read on every call. */
 const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
@@ -1058,43 +1055,7 @@ async function handleRequest(
 
   if (answered(response, path, await taskSuggestionRoutes.handle(routed))) return;
 
-  const watcherRoute = path.match(SESSION_WATCHER);
-  if (watcherRoute) {
-    const verb = watcherRoute[3] ?? "";
-    const method = verb === "log" ? "GET" : verb === "stop" || verb === "restart" ? "POST" : "DELETE";
-    if (request.method !== method) {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const id = decodeURIComponent(watcherRoute[1] ?? "");
-    const watcherId = decodeURIComponent(watcherRoute[2] ?? "");
-    if (!(await readRegistry()).some((session) => session.id === id)) {
-      sendJson(response, 404, { error: `unknown session: ${id}` });
-      return;
-    }
-    try {
-      if (verb === "log") {
-        const requested = new URL(request.url ?? "/", "http://localhost").searchParams.get("lines");
-        const lines = requested === null ? 100 : Number(requested);
-        if (!Number.isInteger(lines) || lines < 1 || lines > WATCHER_LIMITS.logLines) {
-          sendJson(response, 400, { error: `lines must be between 1 and ${WATCHER_LIMITS.logLines}` });
-          return;
-        }
-        sendJson(response, 200, await watchers.log(id, watcherId, lines));
-        return;
-      }
-      if (verb === "stop") await watchers.stop(id, watcherId);
-      else if (verb === "restart") await watchers.restart(id, watcherId);
-      else await watchers.remove(id, watcherId);
-      sendJson(response, 200, { watchers: watchers.list(id) });
-    } catch (error) {
-      const status = error instanceof WatcherNotFoundError ? 404 : error instanceof WatcherConflictError ? 409 : 400;
-      sendJson(response, status, {
-        error: error instanceof Error ? error.message : "The watcher request failed.",
-      });
-    }
-    return;
-  }
+  if (answered(response, path, await watcherRoutes.handle(routed))) return;
 
   const sessionAction = await sessionActionRoutes.handle(routed);
   if (sessionAction && "stream" in sessionAction) {

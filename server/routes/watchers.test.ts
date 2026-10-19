@@ -1,3 +1,4 @@
+/** Watcher tool integration, guarded HTTP controls, log tails and session-deletion cleanup. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createServer } from "node:http";
@@ -5,7 +6,7 @@ import { once } from "node:events";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { waitFor } from "./test-support/wait-for.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 test("the watcher tool starts HUI-run processes and the guarded routes control them", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-watcher-routes-"));
@@ -21,9 +22,9 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
     { id: "alpha", title: "Alpha", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
     { id: "beta", title: "Beta", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
   ], groups: [] }));
-  const { middleware, startBackend, stopBackend } = await import("./hui.ts");
-  const { agentToolEnvironment } = await import("./agent-tools-bridge.ts");
-  const { liveSessions } = await import("./live-sessions.ts");
+  const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+  const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
+  const { liveSessions } = await import("../live-sessions.ts");
   await startBackend();
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");

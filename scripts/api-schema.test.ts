@@ -144,6 +144,7 @@ const ALLOWED = [
   "module: themes",
   "module: updates",
   "module: vscode",
+  "module: watchers",
   "module: workers",
   "module: worktrees",
   "undocumented: GET /__hui/power",

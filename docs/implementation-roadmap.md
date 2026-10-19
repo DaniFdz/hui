@@ -693,7 +693,7 @@ running/done/failed/stopped/dead from the process identity (a reused PID after
 a reboot reads dead), and lists them in the owning conversation as compact
 background-activity rows that open into details, a log tail and stop, restart
 and dismiss controls. The registry survives gateway
-restarts. Proof: `server/watchers.test.ts`, `server/watcher-routes.test.ts`,
+restarts. Proof: `server/watchers.test.ts`, `server/routes/watchers.test.ts`,
 `src/views/chat/watcher-activity.test.ts` and `e2e/watchers.browser.md`.
 
 ### HUI-18 — Bots with OptChat memory
