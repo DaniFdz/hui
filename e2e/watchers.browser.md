@@ -74,6 +74,32 @@ console held only the same Lit development warnings. Its screenshots (desktop
 at the limit, the dismiss turn and after it; mobile after it) go with its pull
 request, not this repository.
 
+## Keep running (`34bb298`)
+
+Run on 2026-10-19 against commit `34bb298` of
+`dani.fernandez/watchers-keep-running` with the same launcher, on a Durable
+session. The fixture's `E2E_CALL` started one watcher with `keepRunning: true`
+whose command is `exec python3 -u listener.py`, a script in the workspace that
+prints `listener check <time>` every five seconds. A shell stood in for the
+operator's kills, signalling only that watcher's own processes.
+
+1. The opened row read *Running* and *Keeps running: HUI starts it again if it
+   dies. Stop ends it.* under the target and outcome.
+2. **Its shell killed** (`kill -9` of the `/bin/sh` in its process group, what
+   `pkill -f` on HUI's directory does), the Python job lived on: the row kept
+   *Running* with the same PID and the log kept growing. *Stop* stayed offered.
+3. **Its whole group killed** (`kill -9 -<pgid>`, as a reboot leaves it), the
+   next poll started it again: a new PID, *Started 19s ago*, and the log line
+   `[HUI] Started again at <time>: its processes were gone with no exit
+   status.` before the new output.
+4. **Stop** turned it *Stopped* with *Restart* and *Dismiss*; 25 seconds and
+   more later nothing had started again.
+5. At 390×844 the opened row wraps the keep-running line inside the
+   conversation width. The console held only the Lit development warnings.
+
+A watcher's processes outlive the instance's cleanup, as they outlive any
+gateway: stop it before `cleanup`.
+
 ## Evidence
 
 Screenshots captured from the running instance (desktop 1440×900 and mobile

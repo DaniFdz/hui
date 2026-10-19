@@ -7,11 +7,14 @@
  * the log, so the watcher outlives the gateway while HUI can still report
  * running, done, failed, stopped or dead. State is derived on every refresh: a
  * recorded PID only counts as running when it is the same process HUI started
- * (a reboot reuses PIDs). */
+ * (a reboot reuses PIDs), or, once that shell was killed (`pkill -f` matches
+ * the script's path), while a process that started with it still runs in its
+ * process group. A watcher started with `keepRunning` that HUI finds dead
+ * starts again. */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -69,6 +72,8 @@ type WatcherRecord = {
   /** Set by an operator stop; survives so a killed watcher reads as stopped
    * even when the wrapper never recorded its exit. */
   stoppedAt?: string;
+  /** Found dead, it runs its command again. */
+  keepRunning?: true;
 };
 
 type WatcherFile = {
@@ -141,25 +146,32 @@ async function readTail(path: string, maxBytes: number): Promise<{ text: string;
   }
 }
 
-/** `ps -o etime=` reports how long the process has been alive, which tells a
+/** `ps` reports how long a process has been alive (`etime`), which tells a
  * watcher apart from an unrelated process that inherited its PID. */
-async function processAgeSeconds(pid: number): Promise<number | undefined> {
-  try {
-    const { stdout } = await execFileAsync("ps", ["-o", "etime=", "-p", String(pid)], { timeout: 5_000 });
-    const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)\s*$/u.exec(stdout.trim());
-    if (!match) return undefined;
-    const [, days = "0", hours = "0", minutes = "0", seconds = "0"] = match;
-    return Number(days) * 86_400 + Number(hours) * 3_600 + Number(minutes) * 60 + Number(seconds);
-  } catch {
-    return undefined;
-  }
+function etimeSeconds(text: string): number | undefined {
+  const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/u.exec(text.trim());
+  if (!match) return undefined;
+  const [, days = "0", hours = "0", minutes = "0", seconds = "0"] = match;
+  return Number(days) * 86_400 + Number(hours) * 3_600 + Number(minutes) * 60 + Number(seconds);
 }
 
 async function ownsProcess(pid: number, startedAtMs: number): Promise<boolean | undefined> {
-  if (!signalAlive(pid)) return false;
-  const age = await processAgeSeconds(pid);
-  if (age === undefined) return undefined;
-  return Math.abs(age - (Date.now() - startedAtMs) / 1_000) <= OWN_TOLERANCE_SECONDS;
+  const startedWith = (age: number | undefined) => age !== undefined && Math.abs(age - (Date.now() - startedAtMs) / 1_000) <= OWN_TOLERANCE_SECONDS;
+  try {
+    if (signalAlive(pid)) {
+      const age = etimeSeconds((await execFileAsync("ps", ["-o", "etime=", "-p", String(pid)], { timeout: 5_000 })).stdout);
+      return age === undefined ? undefined : startedWith(age);
+    }
+    // The shell is gone; what started with it may still run in its group.
+    if (!signalGroupAlive(pid)) return false;
+    const { stdout } = await execFileAsync("ps", ["-A", "-o", "pgid=,etime="], { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 });
+    return stdout.split("\n").some((line) => {
+      const [group, etime = ""] = line.trim().split(/\s+/u);
+      return Number(group) === pid && startedWith(etimeSeconds(etime));
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 function launchDetached(scriptPath: string, cwd: string, logPath: string): number {
@@ -231,6 +243,7 @@ function parseRecord(value: unknown): WatcherRecord | undefined {
     pid,
     startedAt,
     ...(typeof value["stoppedAt"] === "string" ? { stoppedAt: value["stoppedAt"] } : {}),
+    ...(value["keepRunning"] === true ? { keepRunning: true as const } : {}),
   };
 }
 
@@ -301,7 +314,7 @@ export class WatcherService {
     if (action === "restart") {
       // Ignoring a new definition would quietly re-run the old command instead.
       // Empty values are what some models send for fields they leave unset.
-      if (["command", "purpose", "target", "outcome"].some((field) => params[field])) {
+      if (["command", "purpose", "target", "outcome", "keepRunning"].some((field) => params[field])) {
         throw new WatcherInputError("restart re-runs the recorded command and takes only an id. To run something else, start a new watcher.");
       }
       return this.restart(sessionId, this.#watcherId(params));
@@ -329,6 +342,8 @@ export class WatcherService {
       const command = text(params["command"], "command", WATCHER_LIMITS.command);
       const target = text(params["target"], "target", WATCHER_LIMITS.target, true);
       const outcome = text(params["outcome"], "outcome", WATCHER_LIMITS.outcome, true);
+      const keepRunning = params["keepRunning"];
+      if (keepRunning !== undefined && typeof keepRunning !== "boolean") throw new WatcherInputError("keepRunning must be true or false.");
       if (target && !/^https?:\/\/\S+$/u.test(target)) {
         throw new WatcherInputError("target must be an http(s) URL.");
       }
@@ -350,6 +365,7 @@ export class WatcherService {
         logPath: join(this.#logDir, `${id}.log`),
         pid: 0,
         startedAt: new Date(this.#now()).toISOString(),
+        ...(keepRunning ? { keepRunning: true as const } : {}),
       };
       // The command may print secrets; the log and the script stay private.
       await writeFile(record.logPath, "", { flag: "a", mode: 0o600 });
@@ -382,8 +398,10 @@ export class WatcherService {
       this.#views.set(id, current);
       if (current.state !== "running") return current;
       await this.#terminate(record);
-      // A stop that raced the command's own exit keeps that outcome.
-      if (!await this.#readExit(id)) record.stoppedAt = new Date(this.#now()).toISOString();
+      // A stop that raced the command's own exit keeps that outcome; a shell
+      // that lived long enough to record the signal's status (143, 137) did not.
+      const exit = await this.#readExit(id);
+      if (!exit || exit.code === 143 || exit.code === 137) record.stoppedAt = new Date(this.#now()).toISOString();
       const view = await this.#refresh(record);
       this.#views.set(id, view);
       await this.#write();
@@ -401,16 +419,33 @@ export class WatcherService {
       if (current.state === "running") {
         throw new WatcherConflictError("Stop the watcher before restarting it.");
       }
-      await rm(this.#exitPath(id), { force: true });
-      delete record.stoppedAt;
-      await this.#writeScript(record);
-      record.pid = this.#launch(this.#scriptPath(id), record.cwd, record.logPath);
-      record.startedAt = new Date(this.#now()).toISOString();
-      this.#views.set(id, await this.#refresh(record));
-      await this.#write();
+      await this.#relaunch(record);
       this.#onChange(sessionId);
       return this.#view(id);
     });
+  }
+
+  /** A keep-running watcher found dead runs its command again, once per death. */
+  async #revive(record: WatcherRecord): Promise<void> {
+    await this.#lock(record.id, async () => {
+      if (this.#records.get(record.id) !== record) return;
+      this.#bump(record.id);
+      if ((await this.#refresh(record)).state !== "dead") return;
+      if (!(await stat(record.cwd).catch(() => undefined))?.isDirectory()) return;
+      await this.#relaunch(record);
+      await appendFile(record.logPath, `[HUI] Started again at ${record.startedAt}: its processes were gone with no exit status.\n`, { mode: 0o600 });
+      this.#onChange(record.sessionId);
+    });
+  }
+
+  async #relaunch(record: WatcherRecord): Promise<void> {
+    await rm(this.#exitPath(record.id), { force: true });
+    delete record.stoppedAt;
+    await this.#writeScript(record);
+    record.pid = this.#launch(this.#scriptPath(record.id), record.cwd, record.logPath);
+    record.startedAt = new Date(this.#now()).toISOString();
+    this.#views.set(record.id, await this.#refresh(record));
+    await this.#write();
   }
 
   async remove(sessionId: string, id: string): Promise<void> {
@@ -514,6 +549,7 @@ export class WatcherService {
         this.#views.set(record.id, view);
         // The card shows the latest line too, so new output is a change.
         if (view.state !== before?.state || view.lastLine !== before?.lastLine) changed.add(record.sessionId);
+        if (view.state === "dead" && record.keepRunning) void this.#revive(record).catch(() => undefined);
       }
       for (const sessionId of changed) this.#onChange(sessionId);
     } finally {
@@ -564,6 +600,7 @@ export class WatcherService {
       startedAt: record.startedAt,
       ...(endedAt ? { endedAt } : {}),
       lastLine,
+      ...(record.keepRunning ? { keepRunning: true as const } : {}),
     };
   }
 
@@ -657,6 +694,7 @@ export class WatcherService {
           pid: record.pid,
           startedAt: record.startedAt,
           ...(record.stoppedAt ? { stoppedAt: record.stoppedAt } : {}),
+          ...(record.keepRunning ? { keepRunning: true } : {}),
         })),
       };
       try {

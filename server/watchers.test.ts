@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync, spawn } from "node:child_process";
 import { test, type TestContext } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -23,6 +24,14 @@ async function waitFor(check: () => boolean, timeoutMs = 8_000): Promise<void> {
     await delay(25);
   }
   assert.fail("condition was not reached before the timeout");
+}
+
+/** The processes of one group, with the command each runs. */
+function groupMembers(pgid: number): Array<{ pid: number; command: string }> {
+  return execFileSync("ps", ["-A", "-o", "pid=,pgid=,command="], { encoding: "utf8" }).split("\n").flatMap((line) => {
+    const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(line);
+    return match && Number(match[2]) === pgid ? [{ pid: Number(match[1]), command: match[3]! }] : [];
+  });
 }
 
 function processGroupAlive(pid: number): boolean {
@@ -153,6 +162,7 @@ test("restart respawns a settled watcher and is refused while running", async (t
   assert.equal(service.list("alpha")[0]?.lastLine, "first");
   // Restart only re-runs the recorded command: a new one is refused, not silently ignored,
   await assert.rejects(service.tool("alpha", { action: "restart", id: watcher.id, command: "printf 'second\\n'" }), /re-runs the recorded command/u);
+  await assert.rejects(service.tool("alpha", { action: "restart", id: watcher.id, keepRunning: true }), /re-runs the recorded command/u);
   assert.equal(service.list("alpha")[0]?.pid, restarted.pid);
   // while the empty optional fields some models send are not a new definition.
   const again = await service.tool("alpha", { action: "restart", id: watcher.id, target: "", outcome: "" }) as { pid: number };
@@ -200,6 +210,7 @@ test("start rejects malformed input before spawning anything", async (t) => {
   await assert.rejects(service.start("alpha", { purpose: "Missing command" }), /command must be text/u);
   await assert.rejects(service.start("alpha", { purpose: "Long", command: "x".repeat(4_001) }), /at most 4000/u);
   await assert.rejects(service.start("alpha", { purpose: "Bad target", command: "true", target: "not-a-url" }), /http\(s\) URL/u);
+  await assert.rejects(service.start("alpha", { purpose: "Bad flag", command: "true", keepRunning: "yes" }), /keepRunning must be true or false/u);
   await assert.rejects(service.tool("alpha", { action: "nope" }), WatcherInputError);
   await assert.rejects(service.tool("alpha", { action: "log", id: "w-1", lines: 0 }), /lines must be between/u);
   assert.equal(launches, 0);
@@ -336,6 +347,97 @@ test("prune stops and forgets watchers whose conversation is gone", async (t) =>
   await service.stop("alpha", kept.id);
 });
 
+test("a job whose shell was killed still runs as the watcher, and stop ends it", async (t) => {
+  const { service } = await fixture(t, { settleMs: 0 });
+  const watcher = await service.start("alpha", { purpose: "Listener", command: "sleep 30" });
+  const pid = watcher.pid!;
+  t.onTestFinished(() => { try { process.kill(-pid, "SIGKILL"); } catch { /* already gone */ } });
+  await waitFor(() => groupMembers(pid).some(({ command }) => command.startsWith("sleep")));
+  // What `pkill -f` on HUI's directory does: the shells running the script die, the job they started lives on.
+  const shells = () => groupMembers(pid).filter(({ command }) => command.startsWith("/bin/sh"));
+  for (const shell of shells()) process.kill(shell.pid, "SIGKILL");
+  await waitFor(() => !shells().length);
+  assert.ok(processGroupAlive(pid));
+  const stopped = await service.stop("alpha", watcher.id);
+  assert.equal(stopped.state, "stopped");
+  await waitFor(() => !processGroupAlive(pid));
+});
+
+test("a process group whose leader is gone is not a watcher's unless it started with it", async (t) => {
+  // A daemon's shape: its leader exited and left a child in its group, as a reused PID could after a watcher ended.
+  const leader = spawn("/bin/sh", ["-c", "sleep 30 & exit 0"], { detached: true, stdio: "ignore" });
+  const pid = leader.pid!;
+  t.onTestFinished(() => { try { process.kill(-pid, "SIGKILL"); } catch { /* already gone */ } });
+  await new Promise((resolve) => leader.once("exit", resolve));
+  assert.ok(processGroupAlive(pid));
+  const dir = await mkdtemp(join(tmpdir(), "hui-watchers-reused-"));
+  const logDir = join(dir, "logs");
+  await mkdir(logDir, { recursive: true });
+  const file = join(dir, "watchers.json");
+  await writeFile(file, JSON.stringify({ version: 1, watchers: [{
+    id: "ended", sessionId: "alpha", cwd: dir, purpose: "Ended an hour ago", target: "", outcome: "", command: "sleep 30",
+    logPath: join(logDir, "ended.log"), pid, startedAt: new Date(Date.now() - 3_600_000).toISOString(),
+  }] }));
+  const service = new WatcherService({ file, logDir });
+  t.onTestFinished(async () => { service.dispose(); await rm(dir, { recursive: true, force: true }); });
+  await service.initialize();
+  assert.equal(service.list("alpha")[0]?.state, "dead");
+  assert.equal((await service.stop("alpha", "ended")).state, "dead");
+  assert.ok(processGroupAlive(pid), "someone else's group is never signalled");
+});
+
+test("a keep-running watcher found dead starts again, and stays stopped once stopped", async (t) => {
+  const { service } = await fixture(t, { settleMs: 0 });
+  const watcher = await service.start("alpha", { purpose: "Listener", command: "sleep 30", keepRunning: true });
+  assert.equal(watcher.keepRunning, true);
+  // Killed while its shells still fork, a child could escape and keep the group, rightly, running.
+  await waitFor(() => groupMembers(watcher.pid!).some(({ command }) => command.startsWith("sleep")));
+  // As a reboot or `kill -9` leaves it: nothing left and no exit status.
+  process.kill(-watcher.pid!, "SIGKILL");
+  await waitFor(() => service.list("alpha")[0]?.state === "running" && service.list("alpha")[0]?.pid !== watcher.pid);
+  const revived = service.list("alpha")[0]!;
+  await waitFor(() => /\[HUI\] Started again/u.test(service.list("alpha")[0]?.lastLine ?? ""));
+  assert.match(service.list("alpha")[0]!.lastLine, new RegExp(`^\\[HUI\\] Started again at ${revived.startedAt.replaceAll(".", "\\.")}: its processes were gone with no exit status\\.$`, "u"));
+  const stopped = await service.stop("alpha", watcher.id);
+  assert.equal(stopped.state, "stopped");
+  await waitFor(() => !processGroupAlive(revived.pid!));
+  const stored = JSON.parse(await readFile(join(watcher.logPath, "..", "..", "watchers.json"), "utf8")) as { watchers: Array<{ keepRunning?: boolean }> };
+  assert.equal(stored.watchers[0]?.keepRunning, true);
+});
+
+test("after a gateway restart only the keep-running watchers that died start again", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-watchers-revive-"));
+  const file = join(dir, "watchers.json");
+  const logDir = join(dir, "logs");
+  await mkdir(logDir, { recursive: true });
+  const startedAt = new Date(Date.now() - 60_000).toISOString();
+  const record = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, sessionId: "alpha", cwd: dir, purpose: id, target: "", outcome: "", command: "sleep 30",
+    logPath: join(logDir, `${id}.log`), pid: 111_111, startedAt, ...extra,
+  });
+  // The poll takes them in this order: by the time "died" starts again, the others had their turn.
+  await writeFile(file, JSON.stringify({ version: 1, watchers: [
+    record("plain"), record("finished", { keepRunning: true }), record("stopped", { keepRunning: true, stoppedAt: startedAt }),
+    record("moved", { keepRunning: true, cwd: join(dir, "gone") }), record("died", { keepRunning: true }),
+  ] }));
+  await writeFile(join(logDir, "finished.exit"), "0\n");
+  const launched: string[] = [];
+  const service = new WatcherService({
+    file, logDir, pollMs: 20,
+    launch: (script) => { launched.push(script); return 222_222; },
+    ownsProcess: async (pid) => pid === 222_222,
+    signalGroup: () => {},
+  });
+  t.onTestFinished(async () => { service.dispose(); await rm(dir, { recursive: true, force: true }); });
+  await service.initialize();
+  await waitFor(() => /\[HUI\] Started again/u.test(service.list("alpha").find(({ id }) => id === "died")?.lastLine ?? ""));
+  // Each stop waits for whatever that watcher's own poll started.
+  const settled = await Promise.all(["plain", "finished", "stopped", "moved"].map((id) => service.stop("alpha", id)));
+  assert.deepEqual(settled.map(({ id, state }) => [id, state]), [["plain", "dead"], ["finished", "done"], ["stopped", "stopped"], ["moved", "dead"]]);
+  assert.deepEqual(launched, [join(logDir, "died.sh")]);
+  assert.equal(service.list("alpha").find(({ id }) => id === "died")?.state, "running");
+});
+
 test("watcherScript quotes paths and records the command's status", () => {
   const script = watcherScript("exit 3", "/tmp/it's here.log", "/tmp/it's here.exit");
   assert.match(script, /^\(exit 3\n\)/u);
@@ -345,14 +447,14 @@ test("watcherScript quotes paths and records the command's status", () => {
 
 test("parseWatchers normalizes snapshot rows and drops malformed ones", () => {
   const watchers = parseWatchers([
-    { id: "a", purpose: "Wait", command: "true", startedAt: "2026-10-02T10:00:00.000Z", state: "running", pid: 12, logPath: "/tmp/a.log" },
+    { id: "a", purpose: "Wait", command: "true", startedAt: "2026-10-02T10:00:00.000Z", state: "running", pid: 12, logPath: "/tmp/a.log", keepRunning: true },
     { id: "b", purpose: "Bad state", command: "true", startedAt: "2026-10-02T10:00:00.000Z", state: "weird" },
     { id: "", purpose: "No id", command: "true", startedAt: "2026-10-02T10:00:00.000Z", state: "done" },
     "nope",
   ]);
-  assert.deepEqual(watchers.map(({ id, state }) => ({ id, state })), [
-    { id: "a", state: "running" },
-    { id: "b", state: "dead" },
+  assert.deepEqual(watchers.map(({ id, state, keepRunning }) => ({ id, state, keepRunning })), [
+    { id: "a", state: "running", keepRunning: true },
+    { id: "b", state: "dead", keepRunning: undefined },
   ]);
   assert.equal(parseWatchers(undefined).length, 0);
 });

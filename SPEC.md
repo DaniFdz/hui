@@ -1365,10 +1365,12 @@ running), the purpose, the latest non-empty log line and a one-word state with
 its time (phones keep only the purpose and state until a row is opened).
 Several watchers collapse into one summary line (*N watchers · M running ·
 purpose*); nothing floats over the conversation. State is derived
-from reality, never guessed: `running` only while the recorded PID is still the
-process HUI started (a reboot that reuses the PID reads dead), `done` or
-`failed` from the recorded exit status, `stopped` after an operator stop, and
-`dead` when the process is gone with no exit record. Opening a row shows the
+from reality, never guessed: `running` while the recorded PID is still the
+process HUI started (a reboot that reuses the PID reads dead) or, once that
+shell is gone, while a process that started with it still runs in its process
+group; `done` or `failed` from the recorded exit status, `stopped` after an
+operator stop, and `dead` when none of that is left and no exit record
+exists. Opening a row shows the
 target link, the outcome, start and end times, why a watcher failed or died, a
 bottom-anchored log tail that follows new output, the PID and log path, and
 *Stop* while running or *Restart* and *Dismiss* once settled. The command runs
@@ -1381,7 +1383,37 @@ The gateway re-reads the registry on start, so a watcher that survived a
 restart reappears with its state, and one killed by a reboot is shown dead
 instead of silently missing. HUI does not install a launchd agent: a watcher
 runs until its command ends or the machine restarts, and *Restart* brings it
-back afterwards.
+back afterwards, unless it keeps running (below).
+
+### Watchers survive their shell and can keep running (2026-10-19)
+
+A bot's pull-request listener ran as a watcher. Each time the operator
+recovered a stuck update with `pkill -f hui`, the shells running watchers'
+scripts died (their path is under HUI's configuration directory) while the
+listener they started kept running. HUI then showed the watcher dead and its
+*Stop* no longer reached the listener, and nothing would have brought it back
+had it died too. Asked what HUI should do when a worker really dies, the owner
+chose restarting it automatically.
+
+- **A job outlives its shell.** A watcher whose shell is gone still runs while
+  a process that started with it (within 20 seconds) runs in its process group;
+  *Stop* ends the whole group. A reused PID or group id belongs to processes
+  that started later, so it is never taken for the watcher. The limit: a job
+  the command starts later reads dead once its shell is killed.
+- **`keepRunning`.** `start` takes `keepRunning: true` for a watcher that
+  should run until stopped, such as a listener reporting to a trigger. When
+  HUI's poll finds it dead, including the first poll after a gateway start
+  (after a reboot), it starts the recorded command again in the same watcher
+  and log, then adds `[HUI] Started again at <time>: its processes were gone
+  with no exit status.` A watcher that ends by itself (`done` or `failed`) or
+  that the operator stops stays as it is, and one whose directory is gone
+  stays dead. Its opened row says *Keeps running: HUI starts it again if it
+  dies. Stop ends it.* One-shot waits don't use it: their command would act
+  again.
+- **Stopped means stopped.** A stop reads `stopped` even when the shell lived
+  long enough to record the signal's status (143 or 137) as it died.
+- **Stored data.** The record gains an optional `keepRunning: true`; older
+  records read as `false`, so no `hui doctor` check applies.
 
 ## Secret requests
 

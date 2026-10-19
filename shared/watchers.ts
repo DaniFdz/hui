@@ -4,7 +4,8 @@
  *
  * The registry survives gateway restarts; state is derived from the process
  * identity and the exit record the wrapper leaves behind, so a watcher whose
- * process is gone is reported dead instead of pretending to still run. */
+ * process is gone is reported dead instead of pretending to still run, and one
+ * that keeps running is started again. */
 export type WatcherState = "running" | "done" | "failed" | "stopped" | "dead";
 
 export type Watcher = {
@@ -31,6 +32,8 @@ export type Watcher = {
   endedAt?: string;
   /** The latest non-empty log line, for the card. */
   lastLine: string;
+  /** HUI starts it again when it finds it dead. */
+  keepRunning?: true;
 };
 
 export const WATCHER_LIMITS = {
@@ -71,6 +74,7 @@ export function parseWatchers(value: unknown): Watcher[] {
       startedAt: text(row["startedAt"], 40),
       ...(text(row["endedAt"], 40) ? { endedAt: text(row["endedAt"], 40) } : {}),
       lastLine: text(row["lastLine"], WATCHER_LIMITS.logLine),
+      ...(row["keepRunning"] === true ? { keepRunning: true as const } : {}),
     };
     return watcher.id && watcher.purpose && watcher.command && watcher.startedAt ? [watcher] : [];
   });
