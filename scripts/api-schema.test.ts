@@ -135,7 +135,6 @@ const ALLOWED = [
   "module: providers",
   "module: session-actions",
   "module: sessions",
-  "module: settings",
   "module: task-suggestions",
   "module: terminals",
   "module: themes",

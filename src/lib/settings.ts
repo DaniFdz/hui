@@ -3,98 +3,13 @@
  * out, so a stale or hand-edited file degrades to defaults instead of reaching CSS or the gateway. Loading
  * and saving them through the gateway is `settings/settings-store.ts`'s job.
  */
-import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice, type GptLiveVoice } from "../../shared/calls.ts";
-import { normalizeAppearance, DEFAULT_APPEARANCE, type Appearance } from "./appearance.ts";
+import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "../../shared/calls.ts";
+import { normalizeAppearance, DEFAULT_APPEARANCE } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
-import { normalizeThemeMode, type ThemeMode } from "./theme.ts";
-import type { VscodeProviderPreference } from "../../shared/vscode.ts";
+import { normalizeThemeMode } from "./theme.ts";
+import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../api/schema/settings.ts";
 
-/** The whole of what the app remembers. Written to `~/.config/hui/settings.json`
- * as flat, hand-editable JSON, and normalised on the way in and out so a stale
- * or hand-edited file can never put an unknown value into CSS. */
-export type Settings = {
-  /** Theme id. Empty means "whatever the first available theme is". */
-  theme: string;
-  themeMode: ThemeMode;
-  /** Empty inherits the active theme. Otherwise a validated #rrggbb override. */
-  accent: string;
-  fontUi: Appearance["fontUi"];
-  fontChat: Appearance["fontChat"];
-  fontTerminal: string;
-  textScale: Appearance["textScale"];
-  chat: {
-    messageWidth: "compact" | "comfortable" | "wide";
-    collapseTaskProgress: boolean;
-    sendShortcut: "enter" | "modifierEnter";
-    /** Unfurl GitHub repositories, pull requests and issues after chat messages. */
-    githubEmbeds: boolean;
-    /** Unfurl Datadog share links and dashboard widgets after chat messages. */
-    datadogEmbeds: boolean;
-  };
-  profileName: string;
-  profileHandle: string;
-  /** Prefix for branches created by New Session worktrees. Always ends in `/`. */
-  branchPrefix: string;
-  /** Settings → Tools → Browser: HUI's managed, agent-only browser profile. */
-  browser: BrowserSettings;
-  /** Settings → Tools → Codemode: offer PI's `codemode` tool in Durable sessions. On unless switched off. */
-  codemode: { enabled: boolean };
-  questions: { timeoutMinutes: number };
-  /** Settings → Tools → VS Code: how the Work pane's VS Code view runs VS Code on this machine. */
-  vscode: VscodeSettings;
-  /** Settings → Gateway → Power (macOS). Lid-close prevention is deliberately not
-   * saved: it lasts one gateway run (`/__hui/power`). */
-  power: {
-    /** Prevent idle sleep while the gateway runs, like `caffeinate -i`. */
-    keepAwake: boolean;
-  };
-  /** HUI-owned model routing. Empty values inherit PI's configured default. */
-  models: {
-    primary: string;
-    fallback: string;
-    utility: string;
-  };
-  /** Settings → Models → Calls: calls with bots talk through GPT-Live over the ChatGPT login saved in Settings → Models.
-   * `voice` is the GPT-Live voice of a bot that has none of its own. */
-  calls: { voice: GptLiveVoice };
-  /** PI skills hidden from HUI-owned runtimes without changing PI's installation. */
-  disabledSkills: readonly { name: string; path: string }[];
-  /** PI packages/extensions excluded before HUI's SDK worker discovers resources. */
-  disabledPlugins: readonly { id: string; name: string; kind: "package" | "extension" }[];
-  labs: {
-    denseObservability: boolean;
-    detailedDebug: boolean;
-    /** Settings → Labs → Bots, the one switch for bots (HUI-18), a preview: off until the operator turns it on. On, the
-     * sidebar gets its Agents | Bots switch. Off, bots are dormant everywhere: the gateway refuses their routes and
-     * calls, skips their routines and starts none of their turns, and no screen shows them. Nothing is deleted, and
-     * turning it on brings them back as they were, without a restart. */
-    bots: boolean;
-  };
-};
-
-export type BrowserSettings = {
-  /** Offer the agent `browser` tool; off also refuses calls from running sessions. */
-  enabled: boolean;
-  /** No window, Dock icon or focus change. Off shows a visible browser window. */
-  headless: boolean;
-  /** Absolute Chromium-family executable. Empty auto-detects Chrome, Brave, Edge or Chromium. */
-  executablePath: string;
-};
-
-/** Which VS Code the view runs: `auto` takes the first that can run, in the order of the other values. */
-export type { VscodeProviderPreference };
-
-export type VscodeSettings = {
-  /** The opt-in switch of the first VS Code view. Kept as saved so an older HUI reading this file still works; it no
-   * longer gates anything (the launcher is always there and nothing starts before it is used). */
-  enabled: boolean;
-  /** Absolute VS Code server (or VS Code `code` CLI) executable. Empty finds one. */
-  executable: string;
-  provider: VscodeProviderPreference;
-  /** When the operator accepted Microsoft's VS Code Server license for `code serve-web`, ISO time; empty: not
-   * accepted, and HUI never runs serve-web. */
-  licenseAcceptedAt: string;
-};
+export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../api/schema/settings.ts";
 
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 

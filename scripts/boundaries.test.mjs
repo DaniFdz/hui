@@ -531,7 +531,6 @@ const ALLOWED = [
   "src/lib/session/sessions.ts -> shared/calls.ts (R3)",
   "src/lib/session/sidebar-sessions.ts -> shared/session-stages.ts (R3)",
   "src/lib/settings.ts -> shared/calls.ts (R3)",
-  "src/lib/settings.ts -> shared/vscode.ts (R3)",
   "src/lib/subagent-completion.test.ts -> src/views/chat/projection.ts (R6)",
   "src/lib/task-suggestions.ts -> shared/task-suggestions.ts (R3)",
   "src/lib/terminal-font.test.ts -> src/views/settings.ts (R6)",

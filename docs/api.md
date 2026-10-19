@@ -3542,6 +3542,18 @@ reports wait in memory and are retried with backoff (5–60 s), or at once when 
 `/__hui/` request succeeds; a page reload discards them. Cross-origin
 `Script error.`, ResizeObserver loop notices and aborted requests are ignored.
 
+### `GET /__hui/settings`
+
+Returns the normalized HUI `Settings` document, including `BrowserSettings`
+and `VscodeSettings`. Missing or malformed saved settings use the defaults.
+
+### `PUT /__hui/settings`
+
+Normalizes and saves the supplied settings, then returns the saved `Settings`.
+Missing or invalid fields use their defaults rather than the previous values.
+The gateway applies the settings to its running services. Neither route changes
+PI's configuration.
+
 ### HUI-owned presentation state
 
 `PUT /__hui/settings` also persists the validated `#rrggbb` accent override,

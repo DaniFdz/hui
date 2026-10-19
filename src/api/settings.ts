@@ -1,5 +1,5 @@
 /** The raw `/__hui/settings` requests. The cache, write queue and appearance live in `lib/settings/settings-store.ts`. */
-import type { Settings } from "../lib/settings.ts";
+import type { Settings } from "./schema/settings.ts";
 import { fetchJson } from "./request.ts";
 
 const SETTINGS_URL = "/__hui/settings";

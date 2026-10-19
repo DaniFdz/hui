@@ -144,6 +144,25 @@
         }
       }
     },
+    "BrowserSettings": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "headless",
+        "executablePath"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "headless": {
+          "type": "boolean"
+        },
+        "executablePath": {
+          "type": "string"
+        }
+      }
+    },
     "DatadogConnection": {
       "type": "object",
       "required": [
@@ -1411,6 +1430,462 @@
           "type": "string"
         }
       }
+    },
+    "Settings": {
+      "type": "object",
+      "required": [
+        "theme",
+        "themeMode",
+        "accent",
+        "fontUi",
+        "fontChat",
+        "fontTerminal",
+        "textScale",
+        "chat",
+        "profileName",
+        "profileHandle",
+        "branchPrefix",
+        "browser",
+        "codemode",
+        "questions",
+        "vscode",
+        "power",
+        "models",
+        "calls",
+        "disabledSkills",
+        "disabledPlugins",
+        "labs"
+      ],
+      "properties": {
+        "theme": {
+          "type": "string"
+        },
+        "themeMode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "system"
+            },
+            {
+              "type": "string",
+              "const": "light"
+            },
+            {
+              "type": "string",
+              "const": "dark"
+            }
+          ]
+        },
+        "accent": {
+          "type": "string"
+        },
+        "fontUi": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "instrument-sans"
+            },
+            {
+              "type": "string",
+              "const": "geist"
+            },
+            {
+              "type": "string",
+              "const": "dm-sans"
+            },
+            {
+              "type": "string",
+              "const": "ibm-plex-sans"
+            },
+            {
+              "type": "string",
+              "const": "space-grotesk"
+            },
+            {
+              "type": "string",
+              "const": "atkinson-hyperlegible"
+            },
+            {
+              "type": "string",
+              "const": "fraunces"
+            },
+            {
+              "type": "string",
+              "const": "lora"
+            },
+            {
+              "type": "string",
+              "const": "jetbrains-mono"
+            },
+            {
+              "type": "string",
+              "const": "system"
+            }
+          ]
+        },
+        "fontChat": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "instrument-sans"
+            },
+            {
+              "type": "string",
+              "const": "geist"
+            },
+            {
+              "type": "string",
+              "const": "dm-sans"
+            },
+            {
+              "type": "string",
+              "const": "ibm-plex-sans"
+            },
+            {
+              "type": "string",
+              "const": "space-grotesk"
+            },
+            {
+              "type": "string",
+              "const": "atkinson-hyperlegible"
+            },
+            {
+              "type": "string",
+              "const": "fraunces"
+            },
+            {
+              "type": "string",
+              "const": "lora"
+            },
+            {
+              "type": "string",
+              "const": "jetbrains-mono"
+            },
+            {
+              "type": "string",
+              "const": "system"
+            }
+          ]
+        },
+        "fontTerminal": {
+          "type": "string"
+        },
+        "textScale": {
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 90
+            },
+            {
+              "type": "number",
+              "const": 100
+            },
+            {
+              "type": "number",
+              "const": 110
+            },
+            {
+              "type": "number",
+              "const": 125
+            },
+            {
+              "type": "number",
+              "const": 140
+            }
+          ]
+        },
+        "chat": {
+          "type": "object",
+          "required": [
+            "messageWidth",
+            "collapseTaskProgress",
+            "sendShortcut",
+            "githubEmbeds",
+            "datadogEmbeds"
+          ],
+          "properties": {
+            "messageWidth": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "compact"
+                },
+                {
+                  "type": "string",
+                  "const": "comfortable"
+                },
+                {
+                  "type": "string",
+                  "const": "wide"
+                }
+              ]
+            },
+            "collapseTaskProgress": {
+              "type": "boolean"
+            },
+            "sendShortcut": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "enter"
+                },
+                {
+                  "type": "string",
+                  "const": "modifierEnter"
+                }
+              ]
+            },
+            "githubEmbeds": {
+              "type": "boolean"
+            },
+            "datadogEmbeds": {
+              "type": "boolean"
+            }
+          }
+        },
+        "profileName": {
+          "type": "string"
+        },
+        "profileHandle": {
+          "type": "string"
+        },
+        "branchPrefix": {
+          "type": "string"
+        },
+        "browser": {
+          "$ref": "#/$defs/BrowserSettings"
+        },
+        "codemode": {
+          "type": "object",
+          "required": [
+            "enabled"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "questions": {
+          "type": "object",
+          "required": [
+            "timeoutMinutes"
+          ],
+          "properties": {
+            "timeoutMinutes": {
+              "type": "number"
+            }
+          }
+        },
+        "vscode": {
+          "$ref": "#/$defs/VscodeSettings"
+        },
+        "power": {
+          "type": "object",
+          "required": [
+            "keepAwake"
+          ],
+          "properties": {
+            "keepAwake": {
+              "type": "boolean"
+            }
+          }
+        },
+        "models": {
+          "type": "object",
+          "required": [
+            "primary",
+            "fallback",
+            "utility"
+          ],
+          "properties": {
+            "primary": {
+              "type": "string"
+            },
+            "fallback": {
+              "type": "string"
+            },
+            "utility": {
+              "type": "string"
+            }
+          }
+        },
+        "calls": {
+          "type": "object",
+          "required": [
+            "voice"
+          ],
+          "properties": {
+            "voice": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "cove"
+                },
+                {
+                  "type": "string",
+                  "const": "arbor"
+                },
+                {
+                  "type": "string",
+                  "const": "breeze"
+                },
+                {
+                  "type": "string",
+                  "const": "ember"
+                },
+                {
+                  "type": "string",
+                  "const": "juniper"
+                },
+                {
+                  "type": "string",
+                  "const": "maple"
+                },
+                {
+                  "type": "string",
+                  "const": "sol"
+                },
+                {
+                  "type": "string",
+                  "const": "spruce"
+                },
+                {
+                  "type": "string",
+                  "const": "vale"
+                }
+              ]
+            }
+          }
+        },
+        "disabledSkills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "path"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "disabledPlugins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "kind"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "package"
+                  },
+                  {
+                    "type": "string",
+                    "const": "extension"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "labs": {
+          "type": "object",
+          "required": [
+            "denseObservability",
+            "detailedDebug",
+            "bots"
+          ],
+          "properties": {
+            "denseObservability": {
+              "type": "boolean"
+            },
+            "detailedDebug": {
+              "type": "boolean"
+            },
+            "bots": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "SettingsError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "SettingsRequest": {},
+    "VscodeProviderPreference": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "auto"
+        },
+        {
+          "type": "string",
+          "const": "configured"
+        },
+        {
+          "type": "string",
+          "const": "desktop"
+        },
+        {
+          "type": "string",
+          "const": "managed"
+        },
+        {
+          "type": "string",
+          "const": "path"
+        }
+      ]
+    },
+    "VscodeSettings": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "executable",
+        "provider",
+        "licenseAcceptedAt"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "executable": {
+          "type": "string"
+        },
+        "provider": {
+          "$ref": "#/$defs/VscodeProviderPreference"
+        },
+        "licenseAcceptedAt": {
+          "type": "string"
+        }
+      }
     }
   },
   "x-hui-api-version": "0.1.4",
@@ -1477,6 +1952,14 @@
       "JiraProjectsResponse",
       "JiraStatusCategory",
       "SessionJiraIssue"
+    ],
+    "settings": [
+      "BrowserSettings",
+      "Settings",
+      "SettingsError",
+      "SettingsRequest",
+      "VscodeProviderPreference",
+      "VscodeSettings"
     ]
   },
   "x-hui-routes": [
@@ -1670,6 +2153,23 @@
       },
       "response": {
         "$ref": "#/$defs/JiraLinkResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/settings",
+      "response": {
+        "$ref": "#/$defs/Settings"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/settings",
+      "request": {
+        "$ref": "#/$defs/SettingsRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/Settings"
       }
     }
   ]

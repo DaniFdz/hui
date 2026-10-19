@@ -6,11 +6,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CONFIG_DIR } from "./paths.ts";
+import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
+export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
 
 const GPT_LIVE_VOICES = ["cove", "arbor", "breeze", "ember", "juniper", "maple", "sol", "spruce", "vale"] as const;
 type GptLiveVoice = (typeof GPT_LIVE_VOICES)[number];
 const DEFAULT_GPT_LIVE_VOICE: GptLiveVoice = "cove";
-export type VscodeProviderPreference = "auto" | "configured" | "desktop" | "managed" | "path";
 
 function gptLiveVoice(value: unknown): GptLiveVoice | undefined {
   if (typeof value !== "string") return undefined;
@@ -73,80 +74,6 @@ function normalizeTerminalFont(value: unknown): string {
 function normalizeThemeMode(value: unknown): ThemeMode {
   return THEME_MODES.find((mode) => mode === value) ?? "system";
 }
-
-export type Settings = {
-
-  theme: string;
-  themeMode: ThemeMode;
-
-  accent: string;
-  fontUi: Appearance["fontUi"];
-  fontChat: Appearance["fontChat"];
-  fontTerminal: string;
-  textScale: Appearance["textScale"];
-  chat: {
-    messageWidth: "compact" | "comfortable" | "wide";
-    collapseTaskProgress: boolean;
-    sendShortcut: "enter" | "modifierEnter";
-
-    githubEmbeds: boolean;
-
-    datadogEmbeds: boolean;
-  };
-  profileName: string;
-  profileHandle: string;
-
-  branchPrefix: string;
-
-  browser: BrowserSettings;
-
-  codemode: { enabled: boolean };
-  questions: { timeoutMinutes: number };
-
-  vscode: VscodeSettings;
-
-  power: {
-
-    keepAwake: boolean;
-  };
-
-  models: {
-    primary: string;
-    fallback: string;
-    utility: string;
-  };
-
-  calls: { voice: GptLiveVoice };
-
-  disabledSkills: readonly { name: string; path: string }[];
-
-  disabledPlugins: readonly { id: string; name: string; kind: "package" | "extension" }[];
-  labs: {
-    denseObservability: boolean;
-    detailedDebug: boolean;
-
-    bots: boolean;
-  };
-};
-
-export type BrowserSettings = {
-
-  enabled: boolean;
-
-  headless: boolean;
-
-  executablePath: string;
-};
-
-export type VscodeSettings = {
-
-  enabled: boolean;
-
-  executable: string;
-  provider: VscodeProviderPreference;
-
-  licenseAcceptedAt: string;
-};
 
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 

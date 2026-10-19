@@ -5,6 +5,7 @@ import * as github from "./github.ts";
 import * as datadog from "./datadog.ts";
 import * as jira from "./jira.ts";
 import * as apiSchema from "./api-schema.ts";
+import * as settings from "./settings.ts";
 
 export type RouteSchema = {
   method: string;
@@ -14,7 +15,7 @@ export type RouteSchema = {
   events?: TSchema;
 };
 
-export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira };
+export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings };
 
 export function buildApiSchema(version: string) {
   const definitions = new Map<string, unknown>();
