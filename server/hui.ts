@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./routes/workers.ts";
-import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotsOffError, BotStoreError, BotWorkerOfflineError } from "./bots.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./routes/bots.ts";
@@ -46,7 +46,7 @@ import { CALLS_ROUTE, createCallRoutes } from "./routes/calls.ts";
 import { buildCallRecord, createCallDelegate, operatorName, type CallCompletion } from "./call-helper.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
-import { BOTS_OFF_MESSAGE, BOTS_OFF_ROUTINE_MESSAGE, type BotReply, type BotsUpdate, type BotView } from "../shared/bots.ts";
+import { BOTS_OFF_MESSAGE, type BotReply, type BotsUpdate, type BotView } from "../shared/bots.ts";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import { lowestThinkingLevel, withUpstreamThinkingMap } from "./runtimes/thinking-level.ts";
 import { isThinkingLevel } from "../shared/thinking.ts";
@@ -90,11 +90,8 @@ import {
   AutomationNotFoundError,
   AutomationService,
   AutomationStoreError,
-  AutomationRetryError,
-  type AutomationExecution,
-  type AutomationExecutionContext,
+  executeAutomationTask,
 } from "./automation.ts";
-import type { AutomationTask } from "../src/lib/automation-types.ts";
 import { BotRoutines } from "./bot-routines.ts";
 import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
 import { completeLocalPaths, completeWorkingDirectories, resolveWorkingDirectory } from "./working-directories.ts";
@@ -1316,131 +1313,7 @@ function automationErrorStatus(error: unknown): 400 | 404 | 409 | 500 {
   return 500;
 }
 
-function waitForAutomationSession(
-  record: SessionRecord,
-  signal: AbortSignal,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      signal.removeEventListener("abort", onAbort);
-      watched.unsubscribe();
-      if (error) reject(error);
-      else resolve();
-    };
-    const onAbort = () => finish(new DOMException("Run cancelled.", "AbortError"));
-    const watched = liveSessions.watch(record.id, (message) => {
-      if (message.kind !== "status") return;
-      if (message.status === "idle") finish();
-      else if (message.status === "running" || message.status === "waiting") {
-        finish(new AutomationConflictError("The target session is already running."));
-      } else if (message.status === "error") {
-        finish(new Error("The target session runtime could not start."));
-      } else if (message.status === "disconnected") {
-        finish(new Error("The target session's machine is disconnected."));
-      }
-    });
-    signal.addEventListener("abort", onAbort, { once: true });
-    if (signal.aborted) onAbort();
-    else if (watched.snapshot.status === "idle") finish();
-    else if (watched.snapshot.status === "running" || watched.snapshot.status === "waiting") {
-      finish(new AutomationConflictError("The target session is already running."));
-    } else if (watched.snapshot.status === "error") {
-      finish(new Error("The target session runtime could not start."));
-    } else if (watched.snapshot.status === "disconnected") {
-      finish(new Error("The target session's machine is disconnected."));
-    }
-  });
-}
-
-export function waitForAutomationRun(
-  record: SessionRecord,
-  signal: AbortSignal,
-  sessions: Pick<typeof liveSessions, "watch" | "transcript" | "abort"> = liveSessions,
-): Promise<AutomationExecution> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      signal.removeEventListener("abort", onAbort);
-      watched.unsubscribe();
-      if (error) {
-        reject(error);
-        return;
-      }
-      const lastAssistant = sessions.transcript(record.id)
-        .findLast((entry) => entry.kind === "message" && entry.role === "assistant");
-      const summary = lastAssistant?.kind === "message" ? lastAssistant.text.trim() : "";
-      resolve(summary ? { summary } : {});
-    };
-    const onAbort = () => {
-      void sessions.abort(record.id).finally(() => {
-        finish(new DOMException("Run cancelled.", "AbortError"));
-      });
-    };
-    const watched = sessions.watch(record.id, (message) => {
-      if (message.kind === "event" && message.event.type === "settled") finish();
-      else if (message.kind === "status" && message.status === "error") {
-        finish(new Error("The target session runtime failed."));
-      } else if (message.kind === "status" && message.status === "disconnected") {
-        finish(new Error("HUI is disconnected from the machine the target session runs on."));
-      } else if (message.kind === "closed") {
-        finish(new Error("The target session runtime exited."));
-      }
-    });
-    signal.addEventListener("abort", onAbort, { once: true });
-    if (signal.aborted) onAbort();
-  });
-}
-
-async function executeAutomationTask(
-  task: AutomationTask,
-  signal: AbortSignal,
-  context: AutomationExecutionContext,
-): Promise<AutomationExecution> {
-  const record = (await readRegistry()).find((session) => session.id === task.sessionId);
-  if (!record) throw new AutomationNotFoundError("The target session no longer exists.");
-  // A bot's routine: marked as such, and queued behind a busy bot instead of skipped. While bots are off it is skipped
-  // (409, never a failure) and kept: its next time runs once they are on, and a skipped time is not run again.
-  const bot = record.bot ? await bots.botForSession(record.id) : undefined;
-  if (record.bot && !bot) throw new AutomationNotFoundError("The target bot no longer exists.");
-  if (bot) {
-    if (!await botsOn()) throw new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE);
-    const execution = context.run.delivery
-      ? bots.resumeRoutine(bot, record, context.run.delivery, signal)
-      : bots.runRoutine(bot, record, task, signal, { requestId: context.run.id, checkpoint: context.checkpoint });
-    return execution.catch((error: unknown) => {
-      // Turned off as it started: skipped all the same.
-      if (error instanceof BotsOffError) throw new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE);
-      // The scheduler permits this only before the persisted dispatch checkpoint.
-      if (error instanceof BotWorkerOfflineError) throw new AutomationRetryError(error.message, "connection");
-      throw error;
-    });
-  }
-  if (liveSessions.status(record.id) === "running") {
-    throw new AutomationConflictError("The target session is already running.");
-  }
-  if (!liveSessions.ensure(record)) {
-    throw new AutomationNotFoundError("The target session no longer exists.");
-  }
-  await waitForAutomationSession(record, signal);
-  const completion = waitForAutomationRun(record, signal);
-  try {
-    await liveSessions.prompt(record.id, task.prompt);
-  } catch (error) {
-    // The completion watcher has not observed a turn yet. Cancelling it keeps
-    // the subscription from leaking while the original acceptance error is
-    // reported to the automation run.
-    if (!signal.aborted) await liveSessions.abort(record.id).catch(() => undefined);
-    throw error;
-  }
-  return completion;
-}
-
-const automation = new AutomationService(AUTOMATION_FILE, executeAutomationTask);
+const automation = new AutomationService(AUTOMATION_FILE, (task, signal, context) => executeAutomationTask(task, signal, context, { liveSessions, bots, botsOn }));
 /** A bot's `routines` tool: its own chat's Automation tasks, behind its guards. */
 const botRoutines = new BotRoutines({
   botForSession: (sessionId) => bots.botForSession(sessionId),

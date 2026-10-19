@@ -1,13 +1,19 @@
 /**
  * HUI's scheduled prompts: the task and run registry in one JSON file, the at/every/cron schedule rules, and
- * the in-process timer that fires due tasks. Sending a prompt to its session is the injected executor's job;
- * this module only decides when a task runs and records how each run ended. Runs a previous gateway left
+ * the in-process timer that fires due tasks. Sending a prompt to its session is the injected executor's job:
+ * the service only decides when a task runs and records how each run ended. Runs a previous gateway left
  * queued or running are reconciled through a saved delivery, never blindly sent again.
+ * `executeAutomationTask` is the gateway's executor: it prompts the target session, or hands a bot's routine to
+ * the bot service, and waits for the run to settle.
  */
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { recordDiagnosticEvent } from "./observability.ts";
+import { BotsOffError, BotWorkerOfflineError } from "./bots.ts";
+import type { LiveSessions } from "./live-sessions.ts";
+import { readRegistry, type SessionRecord } from "./sessions.ts";
+import { BOTS_OFF_ROUTINE_MESSAGE, type BotRecord } from "../shared/bots.ts";
 
 import type {
   AutomationCreator,
@@ -885,4 +891,146 @@ export class AutomationService {
     for (const active of this.#active.values()) active.abort.abort(AUTOMATION_SUSPENDED);
     this.#active.clear();
   }
+}
+
+export type AutomationTaskDeps = {
+  liveSessions: LiveSessions;
+  bots: {
+    botForSession(sessionId: string): Promise<BotRecord | undefined>;
+    runRoutine(
+      bot: BotRecord,
+      record: SessionRecord,
+      task: AutomationTask,
+      signal: AbortSignal,
+      options: { requestId: string; checkpoint: AutomationExecutionContext["checkpoint"] },
+    ): Promise<AutomationExecution>;
+    resumeRoutine(bot: BotRecord, record: SessionRecord, delivery: NonNullable<AutomationRun["delivery"]>, signal: AbortSignal): Promise<AutomationExecution>;
+  };
+  botsOn: () => Promise<boolean>;
+};
+
+function waitForAutomationSession(
+  record: SessionRecord,
+  signal: AbortSignal,
+  sessions: Pick<LiveSessions, "watch">,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      watched.unsubscribe();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onAbort = () => finish(new DOMException("Run cancelled.", "AbortError"));
+    const watched = sessions.watch(record.id, (message) => {
+      if (message.kind !== "status") return;
+      if (message.status === "idle") finish();
+      else if (message.status === "running" || message.status === "waiting") {
+        finish(new AutomationConflictError("The target session is already running."));
+      } else if (message.status === "error") {
+        finish(new Error("The target session runtime could not start."));
+      } else if (message.status === "disconnected") {
+        finish(new Error("The target session's machine is disconnected."));
+      }
+    });
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    else if (watched.snapshot.status === "idle") finish();
+    else if (watched.snapshot.status === "running" || watched.snapshot.status === "waiting") {
+      finish(new AutomationConflictError("The target session is already running."));
+    } else if (watched.snapshot.status === "error") {
+      finish(new Error("The target session runtime could not start."));
+    } else if (watched.snapshot.status === "disconnected") {
+      finish(new Error("The target session's machine is disconnected."));
+    }
+  });
+}
+
+export function waitForAutomationRun(
+  record: SessionRecord,
+  signal: AbortSignal,
+  sessions: Pick<LiveSessions, "watch" | "transcript" | "abort">,
+): Promise<AutomationExecution> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      watched.unsubscribe();
+      if (error) {
+        reject(error);
+        return;
+      }
+      const lastAssistant = sessions.transcript(record.id)
+        .findLast((entry) => entry.kind === "message" && entry.role === "assistant");
+      const summary = lastAssistant?.kind === "message" ? lastAssistant.text.trim() : "";
+      resolve(summary ? { summary } : {});
+    };
+    const onAbort = () => {
+      void sessions.abort(record.id).finally(() => {
+        finish(new DOMException("Run cancelled.", "AbortError"));
+      });
+    };
+    const watched = sessions.watch(record.id, (message) => {
+      if (message.kind === "event" && message.event.type === "settled") finish();
+      else if (message.kind === "status" && message.status === "error") {
+        finish(new Error("The target session runtime failed."));
+      } else if (message.kind === "status" && message.status === "disconnected") {
+        finish(new Error("HUI is disconnected from the machine the target session runs on."));
+      } else if (message.kind === "closed") {
+        finish(new Error("The target session runtime exited."));
+      }
+    });
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+}
+
+export async function executeAutomationTask(
+  task: AutomationTask,
+  signal: AbortSignal,
+  context: AutomationExecutionContext,
+  { liveSessions, bots, botsOn }: AutomationTaskDeps,
+): Promise<AutomationExecution> {
+  const record = (await readRegistry()).find((session) => session.id === task.sessionId);
+  if (!record) throw new AutomationNotFoundError("The target session no longer exists.");
+  // A bot's routine: marked as such, and queued behind a busy bot instead of skipped. While bots are off it is skipped
+  // (409, never a failure) and kept: its next time runs once they are on, and a skipped time is not run again.
+  const bot = record.bot ? await bots.botForSession(record.id) : undefined;
+  if (record.bot && !bot) throw new AutomationNotFoundError("The target bot no longer exists.");
+  if (bot) {
+    if (!await botsOn()) throw new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE);
+    const execution = context.run.delivery
+      ? bots.resumeRoutine(bot, record, context.run.delivery, signal)
+      : bots.runRoutine(bot, record, task, signal, { requestId: context.run.id, checkpoint: context.checkpoint });
+    return execution.catch((error: unknown) => {
+      // Turned off as it started: skipped all the same.
+      if (error instanceof BotsOffError) throw new AutomationConflictError(BOTS_OFF_ROUTINE_MESSAGE);
+      // The scheduler permits this only before the persisted dispatch checkpoint.
+      if (error instanceof BotWorkerOfflineError) throw new AutomationRetryError(error.message, "connection");
+      throw error;
+    });
+  }
+  if (liveSessions.status(record.id) === "running") {
+    throw new AutomationConflictError("The target session is already running.");
+  }
+  if (!liveSessions.ensure(record)) {
+    throw new AutomationNotFoundError("The target session no longer exists.");
+  }
+  await waitForAutomationSession(record, signal, liveSessions);
+  const completion = waitForAutomationRun(record, signal, liveSessions);
+  try {
+    await liveSessions.prompt(record.id, task.prompt);
+  } catch (error) {
+    // The completion watcher has not observed a turn yet. Cancelling it keeps
+    // the subscription from leaking while the original acceptance error is
+    // reported to the automation run.
+    if (!signal.aborted) await liveSessions.abort(record.id).catch(() => undefined);
+    throw error;
+  }
+  return completion;
 }
