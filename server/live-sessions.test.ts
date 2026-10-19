@@ -27,7 +27,15 @@ import { waitFor } from "./test-support/wait-for.ts";
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-live-"));
 
 const { LiveSessions, SessionBusyError } = await import("./live-sessions.ts");
-const { deleteSession } = await import("./hui.ts");
+const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");
+const { deleteSession } = createSessionLifecycle({
+  views: { pendingView: () => { throw new Error("No pending sessions here."); } },
+  readAttachments: async () => ({ attachments: [], cleanupRejected: async () => undefined }),
+  subagents: () => ({ forgetSessions: () => undefined }),
+  taskSuggestions: () => ({ forget: () => undefined }),
+  watchers: () => ({ forget: async () => undefined }),
+  managedBrowser: () => ({ closeOwner: () => undefined }),
+});
 const { readRegistry, SessionRegistryError, updateRegistry } = await import("./sessions.ts");
 const { readObservability } = await import("./observability.ts");
 const { workers } = await import("./workers.ts");

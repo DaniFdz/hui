@@ -14,7 +14,17 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
 afterAll(() => rm(root, { recursive: true, force: true }));
-const { sessionGroupPatch, discoverThemes, markBackgroundWork, mergeThemes, registryUrlFor, waitForAutomationRun, waitForSessionReady } = await import("./hui.ts");
+const { sessionGroupPatch, discoverThemes, mergeThemes, registryUrlFor, waitForAutomationRun } = await import("./hui.ts");
+const { markBackgroundWork } = await import("./sessions/views.ts");
+const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");
+const { waitForSessionReady } = createSessionLifecycle({
+  views: { pendingView: () => { throw new Error("No pending sessions here."); } },
+  readAttachments: async () => ({ attachments: [], cleanupRejected: async () => undefined }),
+  subagents: () => ({ forgetSessions: () => undefined }),
+  taskSuggestions: () => ({ forget: () => undefined }),
+  watchers: () => ({ forget: async () => undefined }),
+  managedBrowser: () => ({ closeOwner: () => undefined }),
+});
 
 async function dirOf(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hui-themes-"));

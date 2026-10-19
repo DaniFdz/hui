@@ -12,24 +12,41 @@ import { waitFor } from "./test-support/wait-for.ts";
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-sse-"));
 
 const {
+  readAttachments,
+  reattachAfterStoreFailure,
+  recoverInterruptedSessions,
+  reopenDurableSessions,
+  sessionMutationErrorStatus,
+  storeAttachmentFile,
+  streamSession,
+  streamSessionStatuses,
+} = await import("./hui.ts");
+const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");
+const { setAgentStage } = await import("./sessions/stages.ts");
+const { createSessionViews } = await import("./sessions/views.ts");
+const {
   createSession,
   deleteSession,
   forkFromSession,
   forkRequest,
   forkSession,
-  readAttachments,
-  reattachAfterStoreFailure,
-  recoverInterruptedSessions,
-  reopenDurableSessions,
   renameWithGeneratedTitle,
-  sessionMutationErrorStatus,
-  storeAttachmentFile,
-  streamSession,
   startWorktreeSession,
-  streamSessionStatuses,
-  setAgentStage,
   updateSession,
-} = await import("./hui.ts");
+} = createSessionLifecycle({
+  views: createSessionViews({
+    bots: () => ({ identity: () => undefined }),
+    botRegistry: { list: async () => [] },
+    pullRequestStatuses: () => ({ view: (ref) => ref }),
+    jiraIssues: () => [],
+    watchers: () => ({ list: () => [] }),
+  }),
+  readAttachments,
+  subagents: () => ({ forgetSessions: () => undefined }),
+  taskSuggestions: () => ({ forget: () => undefined }),
+  watchers: () => ({ forget: async () => undefined }),
+  managedBrowser: () => ({ closeOwner: () => undefined }),
+});
 const { LiveSessions } = await import("./live-sessions.ts");
 const { SessionRegistryError } = await import("./sessions.ts");
 const { runGit } = await import("./worktrees.ts");
