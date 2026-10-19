@@ -10,13 +10,9 @@
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 
-import {
-  GITHUB_CLI_REQUIRED,
-  type GitHubAccount,
-  type GitHubConnection,
-  type GitHubLoginState,
-} from "../shared/github.ts";
+import type { GitHubAccount, GitHubConnection, GitHubLoginState } from "./api/github.ts";
 
+export const GITHUB_CLI_REQUIRED = "GitHub CLI (gh) is required. Install it on the machine that runs HUI and make sure `gh` is on the gateway's PATH.";
 export const GITHUB_HOST = "github.com";
 export const GITHUB_DEVICE_URL = "https://github.com/login/device";
 /** GitHub device codes expire after 15 minutes; `gh` keeps polling until then. */

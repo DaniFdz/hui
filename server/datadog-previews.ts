@@ -9,16 +9,9 @@
  * a lookup, and a lookup never rejects. `HUI_DATADOG_TEST_ORIGIN` admits one exact extra origin, so E2E and the demo
  * videos can serve pages and graphs from a local fixture (as `HUI_JIRA_TEST_ORIGIN` does for Jira).
  */
-import {
-  DATADOG_APP_HOSTS,
-  isDatadogHost,
-  parseDatadogUrl,
-  type DatadogOrg,
-  type DatadogPreview,
-  type DatadogPreviewError,
-  type DatadogPreviewResult,
-  type DatadogRef,
-} from "../shared/datadog.ts";
+import { DATADOG_APP_HOSTS, isDatadogHost, parseDatadogUrl } from "./integrations/datadog-links.ts";
+import type { DatadogOrg, DatadogPreview, DatadogPreviewError, DatadogPreviewResult } from "./api/datadog.ts";
+import type { DatadogRef } from "./integrations/datadog-links.ts";
 import { PupError, type DatadogOrgs } from "./datadog.ts";
 
 const HOUR = 3_600_000;

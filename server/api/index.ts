@@ -1,6 +1,8 @@
 /** Catalogs the public API areas and builds their portable JSON Schema document without loading services. */
 import type { TSchema } from "typebox";
 import * as power from "./power.ts";
+import * as github from "./github.ts";
+import * as datadog from "./datadog.ts";
 import * as apiSchema from "./api-schema.ts";
 
 export type RouteSchema = {
@@ -11,7 +13,7 @@ export type RouteSchema = {
   events?: TSchema;
 };
 
-export const apiAreas = { "api-schema": apiSchema, power };
+export const apiAreas = { "api-schema": apiSchema, power, github, datadog };
 
 export function buildApiSchema(version: string) {
   const definitions = new Map<string, unknown>();

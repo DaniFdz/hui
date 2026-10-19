@@ -1,6 +1,7 @@
 /** Labels for the Datadog integration: what a chat card says instead of a graph, an org's name, a widget's time range
  * and the Settings status line. */
-import type { DatadogConnection, DatadogOrg, DatadogPreviewResult, DatadogRef } from "../../shared/datadog.ts";
+import type { DatadogConnection, DatadogOrg, DatadogPreviewResult } from "../api/schema/datadog.ts";
+import type { DatadogRef } from "./datadog-links.ts";
 
 /** What a card says instead of a graph. */
 export function datadogPreviewMessage(ref: DatadogRef, result: DatadogPreviewResult): string {

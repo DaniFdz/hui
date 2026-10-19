@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { datadogRefsInText, normalizeDatadogSite, parseDatadogUrl, pupSite } from "../../../shared/datadog.ts";
+import { datadogRefsInText, normalizeDatadogSite, parseDatadogUrl, pupSite } from "../datadog-links.ts";
 
 const SHARE = "https://app.datadoghq.com/s/yB5yjZ/dgj-s33-htg";
 const WIDGET = "https://app.datadoghq.com/dashboard/ict-mcm-a8d/home-server?from_ts=1792170000000&live=true&tile_focus=7104162830770254&to_ts=1792173600000";

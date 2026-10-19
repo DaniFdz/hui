@@ -90,6 +90,671 @@
         }
       }
     },
+    "DatadogConnection": {
+      "type": "object",
+      "required": [
+        "cli",
+        "orgs",
+        "pupOrgs",
+        "login"
+      ],
+      "properties": {
+        "cli": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "installed"
+              ],
+              "properties": {
+                "installed": {
+                  "type": "boolean",
+                  "const": false
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "installed",
+                "version"
+              ],
+              "properties": {
+                "installed": {
+                  "type": "boolean",
+                  "const": true
+                },
+                "version": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "orgs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DatadogOrgStatus"
+          }
+        },
+        "pupOrgs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DatadogOrg"
+          }
+        },
+        "login": {
+          "$ref": "#/$defs/DatadogLoginState"
+        }
+      }
+    },
+    "DatadogLoginState": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "phase"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "const": "idle"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "phase",
+            "org",
+            "expiresAt"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "const": "pending"
+            },
+            "org": {
+              "$ref": "#/$defs/DatadogOrg"
+            },
+            "url": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "phase",
+            "org",
+            "message"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "const": "failed"
+            },
+            "org": {
+              "$ref": "#/$defs/DatadogOrg"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "DatadogOrg": {
+      "type": "object",
+      "required": [
+        "name",
+        "site"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "site": {
+          "type": "string"
+        }
+      }
+    },
+    "DatadogOrgStatus": {
+      "type": "object",
+      "required": [
+        "name",
+        "site",
+        "status"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "site": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "connected"
+            },
+            {
+              "type": "string",
+              "const": "signed_out"
+            },
+            {
+              "type": "string",
+              "const": "unknown"
+            }
+          ]
+        }
+      }
+    },
+    "DatadogPreview": {
+      "type": "object",
+      "required": [
+        "kind",
+        "url",
+        "title"
+      ],
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "share"
+            },
+            {
+              "type": "string",
+              "const": "widget"
+            },
+            {
+              "type": "string",
+              "const": "dashboard"
+            }
+          ]
+        },
+        "url": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "org": {
+          "type": "string"
+        },
+        "from": {
+          "type": "number"
+        },
+        "to": {
+          "type": "number"
+        },
+        "relative": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "string"
+        }
+      }
+    },
+    "DatadogPreviewError": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "not_found"
+        },
+        {
+          "type": "string",
+          "const": "signed_out"
+        },
+        {
+          "type": "string",
+          "const": "no_org"
+        },
+        {
+          "type": "string",
+          "const": "cli_missing"
+        },
+        {
+          "type": "string",
+          "const": "unavailable"
+        }
+      ]
+    },
+    "DatadogPreviewResult": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "preview": {
+          "$ref": "#/$defs/DatadogPreview"
+        },
+        "error": {
+          "$ref": "#/$defs/DatadogPreviewError"
+        },
+        "signIn": {
+          "$ref": "#/$defs/DatadogOrg"
+        }
+      }
+    },
+    "GitHubAccount": {
+      "type": "object",
+      "required": [
+        "host",
+        "login",
+        "scopes"
+      ],
+      "properties": {
+        "host": {
+          "type": "string"
+        },
+        "login": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tokenSource": {
+          "type": "string"
+        }
+      }
+    },
+    "GitHubConnection": {
+      "type": "object",
+      "required": [
+        "cli",
+        "status",
+        "login"
+      ],
+      "properties": {
+        "cli": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "installed"
+              ],
+              "properties": {
+                "installed": {
+                  "type": "boolean",
+                  "const": false
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "installed",
+                "version"
+              ],
+              "properties": {
+                "installed": {
+                  "type": "boolean",
+                  "const": true
+                },
+                "version": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "connected"
+            },
+            {
+              "type": "string",
+              "const": "disconnected"
+            },
+            {
+              "type": "string",
+              "const": "invalid"
+            },
+            {
+              "type": "string",
+              "const": "unknown"
+            }
+          ]
+        },
+        "account": {
+          "$ref": "#/$defs/GitHubAccount"
+        },
+        "message": {
+          "type": "string"
+        },
+        "login": {
+          "$ref": "#/$defs/GitHubLoginState"
+        }
+      }
+    },
+    "GitHubContributionAccount": {
+      "type": "object",
+      "required": [
+        "login",
+        "commits",
+        "pullRequests"
+      ],
+      "properties": {
+        "login": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "commits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pullRequests": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "GitHubContributions": {
+      "type": "object",
+      "required": [
+        "accounts"
+      ],
+      "properties": {
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GitHubContributionAccount"
+          }
+        }
+      }
+    },
+    "GitHubLoginState": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "phase"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "const": "idle"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "phase"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "const": "starting"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "phase",
+            "userCode",
+            "verificationUri",
+            "expiresAt"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "const": "pending"
+            },
+            "userCode": {
+              "type": "string"
+            },
+            "verificationUri": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "phase",
+            "message"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "const": "failed"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "GitHubPreview": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "url",
+            "fullName",
+            "stars",
+            "forks",
+            "private",
+            "archived"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "repo"
+            },
+            "url": {
+              "type": "string"
+            },
+            "fullName": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "stars": {
+              "type": "number"
+            },
+            "forks": {
+              "type": "number"
+            },
+            "language": {
+              "type": "string"
+            },
+            "private": {
+              "type": "boolean"
+            },
+            "archived": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "url",
+            "repository",
+            "number",
+            "title",
+            "state",
+            "additions",
+            "deletions",
+            "changedFiles",
+            "comments"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "pull"
+            },
+            "url": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "number": {
+              "type": "number"
+            },
+            "title": {
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/PullRequestState"
+            },
+            "author": {
+              "type": "string"
+            },
+            "additions": {
+              "type": "number"
+            },
+            "deletions": {
+              "type": "number"
+            },
+            "changedFiles": {
+              "type": "number"
+            },
+            "comments": {
+              "type": "number"
+            },
+            "body": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "url",
+            "repository",
+            "number",
+            "title",
+            "state",
+            "comments",
+            "labels"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "issue"
+            },
+            "url": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "number": {
+              "type": "number"
+            },
+            "title": {
+              "type": "string"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "open"
+                },
+                {
+                  "type": "string",
+                  "const": "closed"
+                }
+              ]
+            },
+            "stateReason": {
+              "type": "string"
+            },
+            "author": {
+              "type": "string"
+            },
+            "comments": {
+              "type": "number"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "body": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "GitHubPreviewError": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "not_found"
+        },
+        {
+          "type": "string",
+          "const": "signed_out"
+        },
+        {
+          "type": "string",
+          "const": "cli_missing"
+        },
+        {
+          "type": "string",
+          "const": "unavailable"
+        }
+      ]
+    },
+    "GitHubPreviewResult": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "preview": {
+          "$ref": "#/$defs/GitHubPreview"
+        },
+        "error": {
+          "$ref": "#/$defs/GitHubPreviewError"
+        }
+      }
+    },
     "PowerError": {
       "type": "object",
       "required": [
@@ -180,6 +845,26 @@
           "type": "boolean"
         }
       }
+    },
+    "PullRequestState": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "open"
+        },
+        {
+          "type": "string",
+          "const": "draft"
+        },
+        {
+          "type": "string",
+          "const": "merged"
+        },
+        {
+          "type": "string",
+          "const": "closed"
+        }
+      ]
     }
   },
   "x-hui-api-version": "0.1.4",
@@ -196,6 +881,26 @@
       "PowerResponse",
       "PowerState",
       "PowerStatus"
+    ],
+    "github": [
+      "GitHubAccount",
+      "GitHubConnection",
+      "GitHubContributionAccount",
+      "GitHubContributions",
+      "GitHubLoginState",
+      "GitHubPreview",
+      "GitHubPreviewError",
+      "GitHubPreviewResult",
+      "PullRequestState"
+    ],
+    "datadog": [
+      "DatadogConnection",
+      "DatadogLoginState",
+      "DatadogOrg",
+      "DatadogOrgStatus",
+      "DatadogPreview",
+      "DatadogPreviewError",
+      "DatadogPreviewResult"
     ]
   },
   "x-hui-routes": [

@@ -4,7 +4,7 @@
  */
 import { LitElement, html, nothing, svg } from "lit";
 
-import type { GitHubContributions } from "../../shared/github.ts";
+import type { GitHubContributions } from "../api/schema/github.ts";
 import { contributionLevels, contributionRange, contributionWeeks, contributionYears, metricLabel, type ContributionMetric, type ContributionWeek } from "../lib/github-contributions.ts";
 import { loadGitHubContributions } from "../api/github-contributions.ts";
 import { icons } from "../lib/icons.ts";

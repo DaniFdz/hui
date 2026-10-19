@@ -10,7 +10,7 @@
 import { execFile } from "node:child_process";
 
 import { BOT_TRIGGER_LIMITS } from "../shared/bot-triggers.ts";
-import { parseGitHubUrl } from "../shared/github-links.ts";
+import { parseGitHubUrl } from "./integrations/github-links.ts";
 import { GH_ENV } from "./github.ts";
 
 /** A diff's text read at most: gh stops past it, and what came is cut to the delivery's budget. */

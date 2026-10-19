@@ -4,7 +4,9 @@
  * session has ended, it offers to sign in again. Facts come from the gateway and stay absent until it answers.
  */
 import { LitElement, html, nothing } from "lit";
-import { datadogRefsInText, type DatadogOrg, type DatadogPreviewResult, type DatadogRef } from "../../shared/datadog.ts";
+import { datadogRefsInText } from "../lib/datadog-links.ts";
+import type { DatadogOrg, DatadogPreviewResult } from "../api/schema/datadog.ts";
+import type { DatadogRef } from "../lib/datadog-links.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { datadogOrgLabel, datadogPreviewMessage, formatDatadogRange } from "../lib/datadog.ts";
 import { DATADOG_CHANGED, loadDatadogPreviews, settledDatadogPreview, signInToDatadog } from "../lib/datadog-store.ts";

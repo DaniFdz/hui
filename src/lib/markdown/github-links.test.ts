@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { githubRefKey, githubRefsInText, MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../../../shared/github-links.ts";
+import { githubRefKey, githubRefsInText, MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../github-links.ts";
 
 test("parses repositories, pull requests and issues, and rejects other GitHub pages", () => {
   assert.deepEqual(parseGitHubUrl("https://github.com/cli/cli"), { kind: "repo", owner: "cli", repo: "cli", url: "https://github.com/cli/cli" });

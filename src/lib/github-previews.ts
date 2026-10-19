@@ -1,5 +1,5 @@
 /** Labels for GitHub chat embeds: compact counts and why a preview is missing. */
-import type { GitHubPreviewResult } from "../../shared/github-links.ts";
+import type { GitHubPreviewResult } from "../api/schema/github.ts";
 
 export function compactCount(value: number): string {
   if (value < 1_000) return String(value);

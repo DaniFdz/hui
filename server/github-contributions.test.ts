@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 
-import { GITHUB_CLI_REQUIRED } from "../shared/github.ts";
+import { GITHUB_CLI_REQUIRED } from "./github.ts";
 import { GitHubContributionsReader } from "./github-contributions.ts";
 
 const FIXTURE = fileURLToPath(new URL("../e2e/github-cli-fixture.mjs", import.meta.url));

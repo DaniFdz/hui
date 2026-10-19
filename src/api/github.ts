@@ -1,6 +1,6 @@
 /** Browser client for the GitHub integration: connection status and the `gh auth login --web` flow. `gh` on the
  * gateway owns the credential; these requests only move credential-free status and login state. */
-import type { GitHubConnection } from "../../shared/github.ts";
+import type { GitHubConnection } from "./schema/github.ts";
 import { fetchJson } from "./request.ts";
 
 const GITHUB_URL = "/__hui/github";

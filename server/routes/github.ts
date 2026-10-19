@@ -11,7 +11,7 @@ import type { JsonResult, RouteRequest } from "../http/route.ts";
 import { botsOn } from "../hui-settings.ts";
 import { activityRange, readSessionActivity } from "../session-activity.ts";
 import { readRegistry } from "../sessions.ts";
-import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../../shared/github-links.ts";
+import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../integrations/github-links.ts";
 
 const GITHUB_ROUTE = "/__hui/github";
 const GITHUB_LOGIN_ROUTE = `${GITHUB_ROUTE}/login`;

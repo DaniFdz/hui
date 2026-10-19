@@ -1,6 +1,4 @@
-/** Datadog links found in chat text, the previews HUI shows for them and the credential-free view of the orgs
- * the gateway reads them through. Parsing is pure and performs no network IO: share links are public pages the
- * gateway reads directly, everything else goes through the operator's `pup` sessions (`server/datadog*.ts`). */
+/** Detects Datadog links and normalizes org sites while the browser renders Markdown. */
 import { withoutCode } from "./github-links.ts";
 
 /** Like GitHub's, at most this many Datadog cards per message. */
@@ -17,57 +15,12 @@ export const DATADOG_APP_HOSTS = [
 
 export const DEFAULT_DATADOG_SITE = "app.datadoghq.com";
 export const DATADOG_CLI_URL = "https://github.com/DataDog/pup";
-export const DATADOG_CLI_REQUIRED = "The Datadog CLI (pup) is required. Install it on the machine that runs HUI and make sure `pup` is on the gateway's PATH.";
 
 export type DatadogRef =
   /** `/s/<a>/<b>`: a share link, public. */
   | { kind: "share"; url: string; host: string }
   /** `/dashboard/<id>`, focused on one widget when the link has `tile_focus` or `fullscreen_widget`. */
   | { kind: "dashboard"; url: string; host: string; dashboardId: string; widgetId?: string };
-
-export type DatadogPreview = {
-  kind: "share" | "widget" | "dashboard";
-  /** The link as the message has it. */
-  url: string;
-  title: string;
-  /** A widget's dashboard title, or a dashboard's description. */
-  detail?: string;
-  /** Name of the HUI org that answered (empty for pup's default session); absent for share links. */
-  org?: string;
-  /** A widget's time range in epoch milliseconds; `relative` when it is the past hour at lookup time. */
-  from?: number;
-  to?: number;
-  relative?: boolean;
-  /** `data:image/…;base64,…`. A widget without one is a widget Datadog could not draw. */
-  image?: string;
-};
-
-/** Why a link has no preview. The card still links to Datadog. */
-export type DatadogPreviewError = "not_found" | "signed_out" | "no_org" | "cli_missing" | "unavailable";
-
-/** `signIn` names the org to sign in to when `error` is `signed_out`. */
-export type DatadogPreviewResult = { url: string; preview?: DatadogPreview; error?: DatadogPreviewError; signIn?: DatadogOrg };
-
-/** An org HUI may read links through: a `pup` session name (empty: pup's default session) and the Datadog host
- * its links use. */
-export type DatadogOrg = { name: string; site: string };
-
-export type DatadogOrgStatus = DatadogOrg & { status: "connected" | "signed_out" | "unknown" };
-
-/** The `pup auth login` the gateway runs, one at a time. */
-export type DatadogLoginState =
-  | { phase: "idle" }
-  /** `url` is the sign-in page pup printed, when it did. */
-  | { phase: "pending"; org: DatadogOrg; url?: string; expiresAt: number }
-  | { phase: "failed"; org: DatadogOrg; message: string };
-
-export type DatadogConnection = {
-  cli: { installed: false } | { installed: true; version: string };
-  orgs: DatadogOrgStatus[];
-  /** pup's own sessions, for the add form's suggestions. */
-  pupOrgs: DatadogOrg[];
-  login: DatadogLoginState;
-};
 
 const SHARE_SEGMENT = /^[A-Za-z0-9_-]{1,64}$/u;
 const DASHBOARD_ID = /^[a-z0-9]{3}-[a-z0-9]{3}-[a-z0-9]{3}$/u;
@@ -76,7 +29,7 @@ const DASHBOARD_ID = /^[a-z0-9]{3}-[a-z0-9]{3}-[a-z0-9]{3}$/u;
 const WIDGET_ID = /^\d+$/u;
 const URL_IN_TEXT = /https:\/\/[a-z0-9.-]+\.(?:datadoghq\.com|datadoghq\.eu|datad0g\.com|ddog-gov\.com)\/[^\s<>"'`]+/giu;
 
-export function isDatadogHost(host: string): boolean {
+function isDatadogHost(host: string): boolean {
   const name = host.toLowerCase();
   return DATADOG_DOMAINS.some((domain) => name === domain || name.endsWith(`.${domain}`));
 }

@@ -11,14 +11,9 @@
  */
 import { execFile, type ExecFileException } from "node:child_process";
 
-import {
-  githubRefKey,
-  parseGitHubUrl,
-  type GitHubPreview,
-  type GitHubPreviewError,
-  type GitHubPreviewResult,
-  type GitHubRef,
-} from "../shared/github-links.ts";
+import { githubRefKey, parseGitHubUrl } from "./integrations/github-links.ts";
+import type { GitHubPreview, GitHubPreviewError, GitHubPreviewResult } from "./api/github.ts";
+import type { GitHubRef } from "./integrations/github-links.ts";
 import type { PullRequestState } from "../shared/pull-requests.ts";
 import { GH_ENV, GITHUB_HOST, parseAccounts } from "./github.ts";
 import { pullRequestBodyPreview, type PullRequestFetcher } from "./pull-requests.ts";

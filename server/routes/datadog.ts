@@ -5,7 +5,7 @@
 import { DatadogError, type DatadogOrgs } from "../datadog.ts";
 import type { DatadogPreviews } from "../datadog-previews.ts";
 import type { JsonResult, RouteRequest } from "../http/route.ts";
-import { MAX_DATADOG_EMBEDS, parseDatadogUrl } from "../../shared/datadog.ts";
+import { MAX_DATADOG_EMBEDS, parseDatadogUrl } from "../integrations/datadog-links.ts";
 
 const DATADOG_ROUTE = "/__hui/datadog";
 const DATADOG_ORGS_ROUTE = `${DATADOG_ROUTE}/orgs`;

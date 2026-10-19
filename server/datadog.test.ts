@@ -7,7 +7,7 @@ import { test } from "vitest";
 
 import { waitFor } from "./test-support/wait-for.ts";
 
-import { DATADOG_CLI_REQUIRED } from "../shared/datadog.ts";
+import { DATADOG_CLI_REQUIRED } from "./integrations/datadog-links.ts";
 import {
   classifyPupFailure,
   DatadogError,

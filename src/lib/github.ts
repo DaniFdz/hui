@@ -1,5 +1,7 @@
 /** The GitHub connection's status line in Settings. Its requests live in src/api/github.ts. */
-import type { GitHubConnection } from "../../shared/github.ts";
+import type { GitHubConnection } from "../api/schema/github.ts";
+
+export const GITHUB_CLI_URL = "https://cli.github.com";
 
 /** Status line shown under the GitHub heading. */
 export function gitHubStatusLabel(connection: GitHubConnection | undefined): { kind: "ok" | "warn" | "danger" | "accent" | "muted"; label: string } {

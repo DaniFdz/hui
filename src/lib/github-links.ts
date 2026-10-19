@@ -1,61 +1,10 @@
-/** GitHub references found in chat text and the previews HUI shows for them.
- * Parsing is pure and performs no network IO; previews come from the gateway's
- * `gh` login through `/__hui/github/previews`. */
-import type { PullRequestState } from "./pull-requests.ts";
-
-/** Like Slack, a message unfurls at most this many links. */
+/** Detects GitHub references synchronously while the browser renders Markdown. */
 export const MAX_GITHUB_EMBEDS = 3;
 
 export type GitHubRef =
   | { kind: "repo"; owner: string; repo: string; url: string }
   /** `issue` also covers `owner/repo#N` shorthand; the gateway resolves it to a pull request when it is one. */
   | { kind: "pull" | "issue"; owner: string; repo: string; number: number; url: string };
-
-export type GitHubPreview =
-  | {
-    kind: "repo";
-    url: string;
-    fullName: string;
-    description?: string;
-    stars: number;
-    forks: number;
-    language?: string;
-    private: boolean;
-    archived: boolean;
-  }
-  | {
-    kind: "pull";
-    url: string;
-    repository: string;
-    number: number;
-    title: string;
-    state: PullRequestState;
-    author?: string;
-    additions: number;
-    deletions: number;
-    changedFiles: number;
-    comments: number;
-    body?: string;
-  }
-  | {
-    kind: "issue";
-    url: string;
-    repository: string;
-    number: number;
-    title: string;
-    state: "open" | "closed";
-    /** `completed`, `not_planned` or `reopened` when GitHub reports it. */
-    stateReason?: string;
-    author?: string;
-    comments: number;
-    labels: string[];
-    body?: string;
-  };
-
-/** Why a reference has no preview. The card still links to GitHub. */
-export type GitHubPreviewError = "not_found" | "signed_out" | "cli_missing" | "unavailable";
-
-export type GitHubPreviewResult = { url: string; preview?: GitHubPreview; error?: GitHubPreviewError };
 
 /** First path segments that are GitHub pages rather than accounts. */
 const RESERVED_OWNERS = new Set([
@@ -103,7 +52,7 @@ export function githubRefKey(ref: GitHubRef): string {
 }
 
 /** Text with fenced and inline code blanked out, keeping offsets. Code is quoted, not referenced.
- * Datadog link previews (`datadog.ts`) skip code the same way. */
+ * Datadog link previews (`datadog-links.ts`) skip code the same way. */
 export function withoutCode(text: string): string {
   const blank = (match: string) => match.replace(/[^\n]/gu, " ");
   return text.replace(/(^|\n)(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n\2[^\n]*(?=\n|$)|$)/gu, blank).replace(/`[^`\n]+`/gu, blank);

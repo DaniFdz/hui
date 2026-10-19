@@ -1,5 +1,5 @@
 /** Browser client for the Contributions page: the gateway's GitHub activity for a year or the last year. */
-import type { GitHubContributions } from "../../shared/github.ts";
+import type { GitHubContributions } from "./schema/github.ts";
 import { fetchJson } from "./request.ts";
 
 /** `year` omitted: the last year. */
