@@ -74,7 +74,7 @@ import {
   PiMutationInputError,
   PiMutationService,
 } from "./pi-mutations.ts";
-import { readGatewayHealth, readWorkspaceInspection } from "./control-surfaces.ts";
+import { readWorkspaceInspection } from "./control-surfaces.ts";
 import { WorktreeService } from "./worktree-inventory.ts";
 import type { WorktreeRisk } from "../shared/worktrees.ts";
 import { liveSessions, SessionBusyError } from "./live-sessions.ts";
@@ -92,7 +92,6 @@ import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
 import { completeLocalPaths, completeWorkingDirectories, existingDirectory, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
-import { parseUiErrorBatch, UI_ERROR_BODY_LIMIT, uiErrorLog } from "./ui-errors.ts";
 import { inspectGitCheckout } from "./worktrees.ts";
 import { answerSideQuestion, suggestWorktreeName } from "./model-routing.ts";
 import { sessionDigest } from "./session-digest.ts";
@@ -160,6 +159,7 @@ import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
 import { createPowerRoutes } from "./routes/power.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
+import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
 import {
@@ -192,13 +192,9 @@ const PI_PACKAGE_INSTALL_ROUTE = `${PI_ROUTE}/packages/install`;
 const PI_PACKAGE_REMOVE_ROUTE = `${PI_ROUTE}/packages/remove`;
 const PI_SKILL_INSTALL_ROUTE = `${PI_ROUTE}/skills/install`;
 const PI_RESOURCE_READ_ROUTE = /^\/__hui\/pi\/resources\/(skill|plugin)\/([a-f0-9]{24})$/;
-const HEALTH_ROUTE = `${PREFIX}health`;
 const WORKSPACES_ROUTE = `${PREFIX}workspaces`;
 const WORKTREES_ROUTE = `${PREFIX}worktrees`;
 const WORKTREES_REMOVE_ROUTE = `${PREFIX}worktrees/remove`;
-const OBSERVABILITY_ROUTE = `${PREFIX}observability`;
-const DIAGNOSTICS_EXPORT_ROUTE = `${PREFIX}diagnostics/export`;
-const UI_ERRORS_ROUTE = `${PREFIX}diagnostics/ui-errors`;
 const AUTOMATION_ROUTE = `${PREFIX}automation`;
 const DIRECTORIES_ROUTE = `${PREFIX}directories`;
 const LOCAL_PATHS_ROUTE = `${PREFIX}local-paths`;
@@ -252,6 +248,9 @@ const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry
 const themeRoutes = createThemeRoutes();
 const updateRoutes = createUpdateRoutes();
 const settingsRoutes = createSettingsRoutes({ writeSettings });
+const diagnosticsRoutes = createDiagnosticsRoutes({
+  observability: async () => readObservability(await readRegistry(), async (conversationId) => durableHost().conversationUsage(conversationId as never)),
+});
 const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
@@ -1442,14 +1441,7 @@ async function handleRequest(
 
   if (answered(response, path, await powerRoutes.handle(routed))) return;
 
-  if (path === HEALTH_ROUTE) {
-    if (request.method === "GET") {
-      sendJson(response, 200, await readGatewayHealth());
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
+  if (answered(response, path, await diagnosticsRoutes.handle(routed, response))) return;
 
   if (path === WORKTREES_ROUTE) {
     if (request.method === "GET") {
@@ -1480,35 +1472,6 @@ async function handleRequest(
   if (path === WORKSPACES_ROUTE) {
     if (request.method === "GET") {
       sendJson(response, 200, await readWorkspaceInspection());
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
-
-  if (path === UI_ERRORS_ROUTE) {
-    if (request.method !== "POST") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    let batch: ReturnType<typeof parseUiErrorBatch>;
-    try {
-      batch = parseUiErrorBatch(await readBody(request, UI_ERROR_BODY_LIMIT));
-    } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid UI error report." });
-      return;
-    }
-    sendJson(response, 202, uiErrorLog.record(batch));
-    return;
-  }
-
-  if (path === OBSERVABILITY_ROUTE || path === DIAGNOSTICS_EXPORT_ROUTE) {
-    if (request.method === "GET") {
-      const snapshot = await readObservability(await readRegistry(), async (conversationId) => durableHost().conversationUsage(conversationId as never));
-      if (path === DIAGNOSTICS_EXPORT_ROUTE) {
-        response.setHeader("content-disposition", `attachment; filename="hui-diagnostics-${new Date().toISOString().slice(0, 10)}.json"`);
-      }
-      sendJson(response, 200, snapshot);
       return;
     }
     sendJson(response, 405, { error: "method not allowed" });
