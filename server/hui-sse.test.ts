@@ -15,10 +15,10 @@ const {
   reattachAfterStoreFailure,
   recoverInterruptedSessions,
   reopenDurableSessions,
-  sessionMutationErrorStatus,
   streamSession,
   streamSessionStatuses,
 } = await import("./hui.ts");
+const { sessionMutationErrorStatus } = await import("./routes/sessions.ts");
 const { readAttachments, storeAttachmentFile } = await import("./sessions/attachments.ts");
 const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");
 const { setAgentStage } = await import("./sessions/stages.ts");

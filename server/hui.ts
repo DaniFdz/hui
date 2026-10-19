@@ -16,7 +16,7 @@
  * manifest to keep in step.
  */
 import { existsSync } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { homedir, hostname, userInfo } from "node:os";
@@ -152,26 +152,21 @@ import { createVscodeRoutes } from "./routes/vscode.ts";
 import { createGitHubRoutes } from "./routes/github.ts";
 import { createDatadogRoutes } from "./routes/datadog.ts";
 import { createJiraRoutes } from "./routes/jira.ts";
+import { createSessionRoutes, foreverChatRefusal, MAX_PROMPT_BYTES, sessionMutationErrorStatus } from "./routes/sessions.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
 import {
-  createSessionGroup,
-  deleteSessionGroup,
   readRegistry,
-  reorderSessionGroups,
   SessionNotFoundError,
   SessionRegistryError,
   updateRegistry,
-  updateSessionGroup,
   type SessionRecord,
 } from "./sessions.ts";
 import {
   createSessionLifecycle,
   defaultSessionTool,
-  SESSION_GROUP_MAX,
   SESSION_TITLE_MAX,
-  sessionText,
 } from "./sessions/lifecycle.ts";
 import { setAgentStage } from "./sessions/stages.ts";
 import { createSessionViews, pendingSessions, pendingStatus, pendingStatusSubscribers, type PendingStatusUpdate } from "./sessions/views.ts";
@@ -184,13 +179,9 @@ const AUTOMATION_TASK_RUN = /^\/__hui\/automation\/tasks\/([^/]+)\/run$/;
 const AUTOMATION_RUN_CANCEL = /^\/__hui\/automation\/runs\/([^/]+)\/cancel$/;
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
-const SESSION_GROUPS_ROUTE = `${PREFIX}session-groups`;
-const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
   /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork)$/;
-/** The session itself, for changing it rather than acting on it. */
-const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
 /** Dismiss (DELETE), start (POST …/start) or save to the backlog (POST
  * …/backlog) one pending `suggest_task` card. */
 const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;
@@ -203,7 +194,6 @@ const BACKLOG_ROUTE = `${PREFIX}backlog`;
  * …/branch-name (suggested worktree name), and for local tasks POST …/jira
  * (create), …/jira/draft (parents) and …/jira/link. */
 const BACKLOG_ITEM = /^\/__hui\/backlog\/items\/([^/]+?)(?:\/(start|branch-name|jira|jira\/draft|jira\/link))?$/;
-const SESSION_GROUP_ONE = /^\/__hui\/session-groups\/([^/]+)$/;
 const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 
 const piMutations = new PiMutationService();
@@ -499,9 +489,6 @@ function initializeWatchers(): void {
     });
 }
 
-/** Prompts may carry images inline, so they get their own, larger ceiling. */
-const MAX_PROMPT_BYTES = 24 * 1024 * 1024;
-
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
 const providerRoutes = createProviderRoutes({ providerService });
 
@@ -612,87 +599,6 @@ function answered(response: ServerResponse, path: string, result: RouteResult | 
   return Boolean(result);
 }
 
-/* ── sessions ────────────────────────────────────────────────────────────── */
-
-/** Why a bot's chat refuses an operation that would end, shorten or fork it (409). Without a handle (an unreadable
- * bot registry), the record's `bot` field alone refuses. */
-function foreverChatRefusal(handle: string | undefined, operation: "clear" | "compact" | "rewind" | "fork" | "delete"): string {
-  const chat = handle ? `@${handle}'s` : "a bot's";
-  return {
-    clear: `This is ${chat} forever chat: it cannot be cleared. Its memory keeps everything; archive the bot when you are done with it.`,
-    compact: `This is ${chat} forever chat: its memory condenses it by itself, so it is not compacted by hand.`,
-    rewind: `This is ${chat} forever chat: it cannot be rewound or forked.`,
-    fork: `This is ${chat} forever chat: it cannot be rewound or forked.`,
-    delete: `This is ${chat} forever chat: archive the bot instead${handle ? ` (hui bot remove ${handle})` : ""}, which keeps its chat and memory, or delete the bot${handle ? ` (hui bot delete ${handle})` : ""} with its chat, memory and folder.`,
-  }[operation];
-}
-
-function sessionGroupName(body: Record<string, unknown>, key = "name"): string {
-  if (typeof body[key] !== "string") throw new Error("A group name is required.");
-  const value = body[key].trim();
-  if (!value || value.length > SESSION_GROUP_MAX) {
-    throw new Error(`A group name must be 1-${SESSION_GROUP_MAX} characters.`);
-  }
-  if (value.toLocaleLowerCase() === "ungrouped") {
-    throw new Error('"ungrouped" is reserved for sessions without a group.');
-  }
-  return value;
-}
-
-/** The complete catalog order; registry validation rejects stale lists. */
-function sessionGroupOrder(body: Record<string, unknown>): string[] {
-  const order = body["order"];
-  if (!Array.isArray(order) || order.length > SESSION_GROUP_ORDER_MAX) {
-    throw new Error(`A group order must list at most ${SESSION_GROUP_ORDER_MAX} groups.`);
-  }
-  return order.map((label) => {
-    if (typeof label !== "string" || !label || label.length > SESSION_GROUP_MAX) {
-      throw new Error(`Group names must be 1-${SESSION_GROUP_MAX} characters.`);
-    }
-    return label;
-  });
-}
-
-export async function sessionGroupPatch(body: Record<string, unknown>): Promise<{
-  label?: string;
-  cwd?: string;
-  workspaceMode?: "branch" | "worktree" | "";
-  baseRef?: string;
-}> {
-  const patch: { label?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string } = {};
-  if ("name" in body) patch.label = sessionGroupName(body);
-  if ("cwd" in body) {
-    if (typeof body["cwd"] !== "string") throw new Error("Working directory must be text.");
-    const entered = body["cwd"].trim();
-    const cwd = entered ? resolveWorkingDirectory(entered) : "";
-    if (cwd) {
-      let info;
-      try {
-        info = await stat(cwd);
-      } catch {
-        throw new Error(`No such directory: ${cwd}`);
-      }
-      if (!info.isDirectory()) throw new Error(`Not a directory: ${cwd}`);
-    }
-    patch.cwd = cwd;
-  }
-  if ("workspaceMode" in body) {
-    const mode = body["workspaceMode"];
-    if (mode !== "" && mode !== "branch" && mode !== "worktree") throw new Error("Environment must be branch or worktree.");
-    patch.workspaceMode = mode;
-  }
-  if ("baseRef" in body) patch.baseRef = sessionText(body, "baseRef", SESSION_TITLE_MAX, { optional: false, allowEmpty: true })!;
-  if (Object.keys(patch).length === 0) throw new Error("Nothing to change.");
-  return patch;
-}
-
-/** Input/import-source failures are client-visible 400s; registry integrity or
- * storage failures are backend failures and must never be misreported as bad
- * user input. */
-export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
-  return error instanceof SessionRegistryError ? 500 : 400;
-}
-
 /* ── GitHub ── status, device login and previews run through the operator's
  * `gh`; HUI never sees the token. `HUI_GITHUB_CLI` points E2E at a fake executable. */
 const GH_COMMAND = process.env["HUI_GITHUB_CLI"] || "gh";
@@ -798,6 +704,13 @@ function sessionJiraIssues(record: SessionRecord, transcript: readonly Transcrip
 }
 
 const sessionList = createSessionListHub(listSessionViews);
+const sessionRoutes = createSessionRoutes({
+  sessionList,
+  lifecycle: { createSession, startWorktreeSession, deleteSession, updateSession },
+  views: sessionViews,
+  bots,
+  isDormantBotChat,
+});
 
 function automationErrorStatus(error: unknown): 400 | 404 | 409 | 500 {
   if (error instanceof AutomationNotFoundError) return 404;
@@ -1210,92 +1123,7 @@ async function handleRequest(
     return;
   }
 
-  if (path === SESSION_GROUPS_ROUTE && request.method === "POST") {
-    try {
-      const body = (await readBody(request)) as Record<string, unknown>;
-      await createSessionGroup(sessionGroupName(body));
-      sendJson(response, 200, await sessionList.refresh());
-    } catch (error) {
-      sendJson(response, sessionMutationErrorStatus(error), {
-        error: error instanceof Error ? error.message : "Could not create that group.",
-      });
-    }
-    return;
-  }
-
-  if (path === SESSION_GROUPS_ROUTE && request.method === "PUT") {
-    try {
-      const body = (await readBody(request)) as Record<string, unknown>;
-      await reorderSessionGroups(sessionGroupOrder(body));
-      sendJson(response, 200, await sessionList.refresh());
-    } catch (error) {
-      sendJson(response, sessionMutationErrorStatus(error), {
-        error: error instanceof Error ? error.message : "Could not reorder the groups.",
-      });
-    }
-    return;
-  }
-
-  const groupOne = path.match(SESSION_GROUP_ONE);
-  if (groupOne && (request.method === "PATCH" || request.method === "DELETE")) {
-    const label = decodeURIComponent(groupOne[1] ?? "");
-    try {
-      if (request.method === "DELETE") {
-        await deleteSessionGroup(label);
-      } else {
-        await updateSessionGroup(
-          label,
-          await sessionGroupPatch((await readBody(request)) as Record<string, unknown>),
-        );
-      }
-      sendJson(response, 200, await sessionList.refresh());
-    } catch (error) {
-      sendJson(response, sessionMutationErrorStatus(error), {
-        error: error instanceof Error ? error.message : "Could not update that group.",
-      });
-    }
-    return;
-  }
-
-  if (path === SESSIONS_ROUTE) {
-    if (request.method === "GET") {
-      sendJson(response, 200, await sessionList.refresh());
-      return;
-    }
-    if (request.method === "POST") {
-      let body: Record<string, unknown>;
-      try {
-        // A worktree launch may carry its first prompt's attachments.
-        body = (await readBody(request, MAX_PROMPT_BYTES)) as Record<string, unknown>;
-      } catch (error) {
-        sendJson(response, sessionMutationErrorStatus(error), {
-          error: error instanceof Error ? error.message : "Could not read that session request.",
-        });
-        return;
-      }
-      if (body["worktree"] === true) {
-        try {
-          sendJson(response, 200, { session: await startWorktreeSession(body) });
-        } catch (error) {
-          sendJson(response, sessionMutationErrorStatus(error), {
-            error: error instanceof Error ? error.message : "Could not start that session.",
-          });
-        }
-        return;
-      }
-      try {
-        const record = await createSession(body);
-        sendJson(response, 200, { session: toView(record, liveSessions.status(record.id)) });
-      } catch (error) {
-        sendJson(response, sessionMutationErrorStatus(error), {
-          error: error instanceof Error ? error.message : "Could not start that session.",
-        });
-      }
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
+  if (answered(response, path, await sessionRoutes.handle(routed))) return;
 
   if (path === BACKLOG_ROUTE) {
     if (request.method !== "GET") {
@@ -1488,68 +1316,6 @@ async function handleRequest(
       sendJson(response, status, {
         error: error instanceof Error ? error.message : "The watcher request failed.",
       });
-    }
-    return;
-  }
-
-  const one = path.match(SESSION_ONE);
-  if (one && (request.method === "PATCH" || request.method === "DELETE")) {
-    const id = decodeURIComponent(one[1] ?? "");
-
-    const pending = pendingSessions.get(id);
-    if (pending) {
-      if (request.method === "DELETE" && pending.error) {
-        pendingSessions.delete(id);
-        sendJson(response, 200, { ok: true });
-      } else {
-        sendJson(response, 409, { error: pending.error ?? "The Git worktree is still being created." });
-      }
-      return;
-    }
-
-    const owned = (await readRegistry()).find((session) => session.id === id);
-    if (owned && await isDormantBotChat(owned)) {
-      sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
-      return;
-    }
-
-    if (request.method === "DELETE") {
-      // A bot owns its chat: deleting the row would orphan the bot. Archiving keeps both.
-      const bot = await bots.botForSession(id).catch(() => undefined);
-      if (bot) {
-        sendJson(response, 409, { error: foreverChatRefusal(bot.handle, "delete") });
-        return;
-      }
-      // Block stale opens first, but keep the runtime and streams alive until
-      // registry removal commits. A storage failure rolls the tombstone back.
-      try {
-        await deleteSession(id);
-      } catch (error) {
-        sendJson(response, error instanceof SessionNotFoundError ? 404 : 500, {
-          error: error instanceof Error ? error.message : "Could not remove that session.",
-        });
-        return;
-      }
-      // The conversation file under ~/.pi is pi's and is deliberately left
-      // alone; losing a transcript because you tidied a list is unforgivable.
-      sendJson(response, 200, { ok: true });
-      return;
-    }
-
-    const body = (await readBody(request)) as Record<string, unknown>;
-    try {
-      const next = await updateSession(id, body);
-      sendJson(response, 200, { session: toView(next, liveSessions.status(id)) });
-    } catch (error) {
-      sendJson(
-        response,
-        error instanceof SessionNotFoundError
-          ? 404
-          : error instanceof SessionRegistryError
-            ? 500
-            : 400,
-        { error: error instanceof Error ? error.message : "Could not update that session." },
-      );
     }
     return;
   }
