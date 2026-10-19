@@ -1952,6 +1952,20 @@ The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
 
+### Every assistant message stays in sight (2026-10-19)
+
+The owner's on-call bot posted its "what to check" message, with the links to
+open first, in the middle of its turn, before starting its helpers. Once the
+turn ended, the chat folded that message into the run's disclosure with the
+tool calls, and only the turn's last message stayed visible, so it read as
+hidden reasoning. Now every assistant message keeps a row of its own, live or
+settled; only what comes between messages (thinking, tool calls, errors) folds.
+A finished turn looks as it did while it ran. The cost the owner accepted:
+short in-between notes ("Checking the logs.") stay visible too. Presentation
+tools (`present_media`, `show_widget`, `ask_user_question`, `message_bot`) keep
+their own rows as before. Link previews still render only under the newest
+assistant message; the links themselves work in every message.
+
 ### Chats show who sent each message (2026-10-16)
 
 The owner found agent and bot exchanges hard to read: a bot's reply showed in

@@ -944,9 +944,6 @@ function renderMessage(props: HomeProps, item: ChatMessage, embeds: boolean, att
 }
 
 function renderActivityItem(props: HomeProps, item: ChatActivity): TemplateResult {
-  if (item.kind === "message") {
-    return html`<div class="chat-activity-message">${renderAgentMarkdown(item.text)}</div>`;
-  }
   if (item.kind === "thinking") {
     return html`<div class="chat-activity-message">${renderMarkdown(item.text)}</div>`;
   }
@@ -1291,7 +1288,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
               <span class="chat-activity-group__icon">${chevronDownIcon}</span>
               <span class="chat-activity-group__label">${activityLabel(row.items, props.streaming)}</span>
             </summary>
-            <div class="chat-activity-group__body">${row.items.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}${item.kind === "message" ? html`<button type="button" class="btn btn--ghost btn--sm" @click=${(event: Event) => replyToMessage(event, props, item.text)}>Reply to message</button>` : nothing}</div>`)}</div>
+            <div class="chat-activity-group__body">${row.items.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>
           </details>
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>
@@ -2511,10 +2508,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
 }
 
 function renderTranscript(props: HomeProps, session: SessionView) {
-  const rows = projectChatTranscript(
-    props.transcript.filter((item) => item.kind !== "tool" || item.name !== "progress_card"),
-    props.streaming,
-  );
+  const rows = projectChatTranscript(props.transcript.filter((item) => item.kind !== "tool" || item.name !== "progress_card"));
   return html`
     ${renderHeader(props, session)}
     <section class="card chat">

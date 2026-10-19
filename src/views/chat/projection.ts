@@ -1,8 +1,8 @@
 /**
  * Turns PI's transcript items into the rows the chat renders: message groups (each user row by its sender: the operator,
- * or the bot, session, routine or trigger HUI delivered it from), folded activity, compactions, calls, subagent events
- * and bot kickoffs, plus the working labels and where the live browser preview goes. Presentation only; PI's transcript
- * keeps the order and the data.
+ * or the bot, session, routine or trigger HUI delivered it from), every assistant message on a row of its own with the
+ * activity between them folded, compactions, calls, subagent events and bot kickoffs, plus the working labels and where
+ * the live browser preview goes. Presentation only; PI's transcript keeps the order and the data.
  */
 import type { TranscriptItem } from "../../lib/sessions-store.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../../lib/subagent-completion.ts";
@@ -11,7 +11,7 @@ import { agentReplyTo, botKickoffName, botTurnOrigin } from "../../../shared/bot
 export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
 export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;
 export type ChatCall = Extract<TranscriptItem, { kind: "call" }>;
-export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" | "call" }> | ChatMessage;
+export type ChatActivity = Exclude<TranscriptItem, { kind: "message" | "compaction" | "call" }>;
 
 /** Tool calls that present something to the user, or hand a message to another chat, get a row of their own, so
  * they stay visible after the turn's other activity folds into a disclosure. */
@@ -76,19 +76,14 @@ export type ChatProjectionRow =
   | { kind: "botCreated"; id: string; name: string };
 
 /**
- * Presentation-only projection of PI's durable transcript. OpenClaw groups
- * adjacent user messages by author. While the newest turn is live, intermediate
- * assistant messages remain in place and consecutive activity is collapsed
- * between them. Once the turn settles, all intermediate context moves into one
- * disclosure and only the final assistant message remains visible. PI remains
- * the owner of event order and data.
+ * Presentation-only projection of PI's durable transcript. OpenClaw groups adjacent user messages by author. Every
+ * assistant message keeps a row of its own, live or settled, so what the agent wrote mid-turn (a first finding, links
+ * to check) stays in sight; only the activity between messages (thinking, tool calls, errors) folds into a disclosure.
+ * PI remains the owner of event order and data.
  */
-export function projectChatTranscript(
-  items: readonly TranscriptItem[],
-  liveLastTurn = false,
-): ChatProjectionRow[] {
+export function projectChatTranscript(items: readonly TranscriptItem[]): ChatProjectionRow[] {
   const rows: ChatProjectionRow[] = [];
-  let assistantTurn: ChatActivity[] = [];
+  let assistantTurn: (ChatActivity | ChatMessage)[] = [];
 
   const pushActivity = (items: readonly ChatActivity[]) => {
     let ordinary: ChatActivity[] = [];
@@ -106,7 +101,7 @@ export function projectChatTranscript(
     flushOrdinary();
   };
 
-  const flushLiveAssistantTurn = () => {
+  const flushAssistantTurn = () => {
     let activity: ChatActivity[] = [];
     const flushActivity = () => {
       if (activity.length === 0) return;
@@ -114,7 +109,7 @@ export function projectChatTranscript(
       activity = [];
     };
     for (const item of assistantTurn) {
-      if (item.kind === "message" && item.role === "assistant") {
+      if (item.kind === "message") {
         flushActivity();
         rows.push({ kind: "messages", id: item.id, role: "assistant", messages: [item] });
       } else {
@@ -125,26 +120,9 @@ export function projectChatTranscript(
     assistantTurn = [];
   };
 
-  const flushCompletedAssistantTurn = () => {
-    if (assistantTurn.length === 0) return;
-    const finalIndex = assistantTurn.findLastIndex((item) => item.kind === "message" && item.role === "assistant");
-    const finalIsLast = finalIndex === assistantTurn.length - 1;
-    const activity = finalIsLast ? assistantTurn.slice(0, finalIndex) : assistantTurn;
-    if (activity.length > 0) {
-      pushActivity(activity);
-    }
-    if (finalIsLast) {
-      const final = assistantTurn[finalIndex];
-      if (final?.kind === "message") {
-        rows.push({ kind: "messages", id: final.id, role: "assistant", messages: [final] });
-      }
-    }
-    assistantTurn = [];
-  };
-
   for (const item of items) {
     if (item.kind === "message" && item.role === "user") {
-      flushCompletedAssistantTurn();
+      flushAssistantTurn();
       const event = parseSubagentCompletionEvent(item.text);
       if (event) {
         rows.push({ kind: "subagentEvent", id: item.id, items: event });
@@ -165,22 +143,18 @@ export function projectChatTranscript(
       continue;
     }
     if (item.kind === "compaction") {
-      flushCompletedAssistantTurn();
+      flushAssistantTurn();
       rows.push({ kind: "compaction", id: item.id, item });
       continue;
     }
     if (item.kind === "call") {
-      flushCompletedAssistantTurn();
+      flushAssistantTurn();
       rows.push({ kind: "call", id: item.id, item });
       continue;
     }
     assistantTurn.push(item);
   }
-  // A turn whose reply is already in PI's history has finished: it stays folded while the
-  // session works on something else (a compaction, a run whose prompt is on its way).
-  const last = assistantTurn.at(-1);
-  if (liveLastTurn && !(last?.kind === "message" && last.entryId)) flushLiveAssistantTurn();
-  else flushCompletedAssistantTurn();
+  flushAssistantTurn();
   return rows;
 }
 
