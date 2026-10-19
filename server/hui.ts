@@ -63,7 +63,7 @@ import { attachBrowserTransport, browserViewTicket } from "./browser-transport.t
 import type { EventEmitter } from "node:events";
 import type { BrowserStatus } from "../shared/browser.ts";
 import { botsEnabled, type Settings } from "../src/lib/settings.ts";
-import { ProviderService, ProviderInputError } from "./providers.ts";
+import { ProviderService } from "./providers.ts";
 import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocument } from "./pi-resource-reader.ts";
 import { readToolsCatalog } from "./tools.ts";
@@ -157,6 +157,7 @@ import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.ts";
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
 import { createPowerRoutes } from "./routes/power.ts";
+import { createProviderRoutes } from "./routes/providers.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
@@ -533,6 +534,7 @@ function initializeWatchers(): void {
 const MAX_PROMPT_BYTES = 24 * 1024 * 1024;
 
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
+const providerRoutes = createProviderRoutes({ providerService });
 
 /** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT.
  * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */
@@ -1392,41 +1394,7 @@ async function handleRequest(
     return;
   }
 
-  if (path === `${PREFIX}providers` || path.startsWith(`${PREFIX}providers/`)) {
-    try {
-      const parts = path.slice(`${PREFIX}providers`.length).split("/").filter(Boolean);
-      const [id, action] = parts;
-      if (!id && request.method === "GET") sendJson(response, 200, await providerService.snapshot());
-      else if (id === "login" && action && parts.length === 2 && request.method === "DELETE") {
-        providerService.cancel(action); sendJson(response, 200, { ok: true });
-      } else if (id === "login" && action && parts.length === 2 && request.method === "POST") {
-        const body = await readBody(request) as Record<string, unknown>;
-        providerService.answer(action, body["promptId"], body["value"]); sendJson(response, 200, { ok: true });
-      } else if (id && action === "login" && parts.length === 2 && request.method === "POST") {
-        const body = await readBody(request) as Record<string, unknown>;
-        sendJson(response, 200, await providerService.start(id, body["method"], { accountId: body["accountId"], name: body["name"] }));
-      } else if (id && action === "accounts" && parts.length === 2 && request.method === "PUT") {
-        const body = await readBody(request) as Record<string, unknown>;
-        await providerService.reorder(id, body["order"]); sendJson(response, 200, { ok: true });
-      } else if (id && action === "accounts" && parts[2] && parts.length === 3 && request.method === "DELETE") {
-        await providerService.removeAccount(id, parts[2]); sendJson(response, 200, { ok: true });
-      } else if (id && action === "accounts" && parts[2] && parts[3] === "quota" && parts.length === 4 && request.method === "GET") {
-        sendJson(response, 200, await providerService.quota(id, parts[2]));
-      } else if (id && action === "quota" && parts.length === 2 && request.method === "GET") {
-        sendJson(response, 200, await providerService.quota(id));
-      } else if (id && !action && request.method === "PUT") {
-        const body = await readBody(request) as Record<string, unknown>;
-        await providerService.save(id, body["models"]); sendJson(response, 200, { ok: true });
-      } else if (id && !action && request.method === "DELETE") {
-        await providerService.disconnect(id); sendJson(response, 200, { ok: true });
-      } else sendJson(response, 405, { error: "method not allowed" });
-    } catch (error) {
-      sendJson(response, error instanceof ProviderInputError ? 400 : 500, {
-        error: error instanceof ProviderInputError ? error.message : "Provider operation failed. Check the gateway and retry.",
-      });
-    }
-    return;
-  }
+  if (answered(response, path, await providerRoutes.handle(routed))) return;
 
   // PI remains the writer: mutations above delegate to PI's own CLI or a
   // short-lived PI installer agent, then this route reports the refreshed view.
