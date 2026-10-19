@@ -170,14 +170,14 @@ import {
 } from "./api/control-surfaces.ts";
 import type { PowerStatus } from "../shared/power.ts";
 import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./api/observability.ts";
-import { renderHome, renderNewSession, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
-import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
+import { renderHome, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
+import { DEFAULT_SESSIONS_PAGE_FILTERS, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./components/contributions.ts";
 import { worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { loadWorktrees, removeWorktrees } from "./api/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
-import { renderAutomationSurface } from "./views/automation.ts";
+import { dedicatedPageRenderer, type DedicatedPageProps } from "./views/pages.ts";
 import { renderKanbanPage } from "./views/kanban.ts";
 import { readKanbanOptions, writeKanbanOptions, type KanbanMove, type KanbanOptions } from "./lib/kanban.ts";
 import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS, type SessionStage } from "../shared/session-stages.ts";
@@ -6036,6 +6036,38 @@ export class HuiApp extends HuiElement {
     </div></div>`;
   }
 
+  private dedicatedPageProps(): DedicatedPageProps {
+    return {
+      home: () => this.homeProps(),
+      automation: () => this.automationProps(),
+      sessions: () => ({
+        groups: this.listedGroups,
+        loading: this.sessionsLoading,
+        error: this.sessionsError,
+        query: this.search,
+        state: this.sessionsPageState,
+        filters: this.sessionsPageFilters,
+        onQuery: this.updateSearch,
+        onState: (state) => { this.sessionsPageState = state; },
+        onFilters: (filters) => { this.sessionsPageFilters = filters; },
+        onOpen: this.selectSession,
+        onRestore: (session) => this.setSessionMetadata(session, { archived: false }, "Session restored."),
+        onCopyPath: this.copyPath,
+        onNew: () => this.openPageById("new-session"),
+        onRefresh: () => void this.refreshSessions(),
+        selected: this.sessionsSelected,
+        onSelect: this.selectSessions,
+        confirmingDelete: this.sessionsDeleteConfirm,
+        deleting: this.sessionsDeleting,
+        onDeleteSelected: () => { this.sessionsDeleteConfirm = true; },
+        onCancelDelete: this.closeSessionsDeleteDialog,
+        onConfirmDelete: (ids, withWorktrees) => void this.deleteSelectedSessions(ids, withWorktrees),
+      }),
+      onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),
+      onOpenSession: (id) => this.navigate({ kind: "session", id }),
+    };
+  }
+
   private renderWorkspace() {
     if (this.embeddedPane) {
       return html`<div class="hui-embedded-session">${this.selected ? renderHome(this.homeProps()) : html`<p role="status">Opening session…</p>`}${this.renderJiraCreateDialog()}${this.renderForkDialog()}</div>`;
@@ -6271,38 +6303,8 @@ export class HuiApp extends HuiElement {
                 onSessionAction: this.kanbanSessionAction,
               })
             : this.view === "surface" && this.activePage
-              ? this.activePage.id === "new-session"
-                ? renderNewSession(this.homeProps())
-                : this.activePage.id === "cron" || this.activePage.id === "tasks"
-                  ? renderAutomationSurface(this.automationProps(), this.activePage.id === "cron" ? "Automations" : "Tasks")
-                : this.activePage.id === "sessions"
-                  ? renderSessionsPage({
-                      groups: this.listedGroups,
-                      loading: this.sessionsLoading,
-                      error: this.sessionsError,
-                      query: this.search,
-                      state: this.sessionsPageState,
-                      filters: this.sessionsPageFilters,
-                      onQuery: this.updateSearch,
-                      onState: (state) => { this.sessionsPageState = state; },
-                      onFilters: (filters) => { this.sessionsPageFilters = filters; },
-                      onOpen: this.selectSession,
-                      onRestore: (session) => this.setSessionMetadata(session, { archived: false }, "Session restored."),
-                      onCopyPath: this.copyPath,
-                      onNew: () => this.openPageById("new-session"),
-                      onRefresh: () => void this.refreshSessions(),
-                      selected: this.sessionsSelected,
-                      onSelect: this.selectSessions,
-                      confirmingDelete: this.sessionsDeleteConfirm,
-                      deleting: this.sessionsDeleting,
-                      onDeleteSelected: () => { this.sessionsDeleteConfirm = true; },
-                      onCancelDelete: this.closeSessionsDeleteDialog,
-                      onConfirmDelete: (ids, withWorktrees) => void this.deleteSelectedSessions(ids, withWorktrees),
-                    })
-                  : this.activePage.id === "contributions"
-                    ? html`<hui-contributions-page .onOpenSettings=${() => this.navigate({ kind: "settings", page: "integrations" })}
-                      .onOpenSession=${(id: string) => this.navigate({ kind: "session", id })}></hui-contributions-page>`
-                  : isPiSurface(this.activePage)
+              ? dedicatedPageRenderer(this.activePage.id)?.(this.dedicatedPageProps()) ?? (
+                  isPiSurface(this.activePage)
                     ? renderPiSurface({
                         page: this.activePage,
                         pi: this.pi,
@@ -6346,7 +6348,7 @@ export class HuiApp extends HuiElement {
                             health: this.health,
                             onSettings: this.patchOwnedSettings,
                           })
-                    : html``
+                    : html``)
             : html``,
       )}
     </div>`;
