@@ -26,6 +26,7 @@ function request(method: string, path: string, options: { query?: Record<string,
     headers: options.ifMatch ? { "if-match": `"${options.ifMatch}"` } : {},
     json: async () => options.body,
     bytes: async () => options.bytes ?? Buffer.alloc(0),
+    signal: new AbortController().signal,
   };
 }
 

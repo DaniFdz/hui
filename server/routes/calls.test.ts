@@ -53,7 +53,7 @@ function fixture(options: { settings?: Settings; voice?: Settings["calls"]["voic
   const settings: Settings = options.settings ?? { ...DEFAULT_SETTINGS, profileName: "Dani", calls: { voice: options.voice ?? "vale" } };
   const routes = createCallRoutes({ broker, bots: bots as never, delegate, settings: async () => settings, timeZone: () => "Europe/Madrid" });
   const call = (method: string, path: string, body?: unknown, raw?: string) => routes.handle({
-    method, path, query: new URLSearchParams(), headers: {},
+    method, path, query: new URLSearchParams(), headers: {}, signal: new AbortController().signal,
     bytes: () => Promise.reject(new Error("no bytes")),
     json: async (maxBytes = 64 * 1024) => {
       const text = raw ?? (body === undefined ? "" : JSON.stringify(body));

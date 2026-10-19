@@ -114,7 +114,7 @@ export function createCallRoutes(deps: CallRouteDeps) {
     const timeZone = deps.timeZone?.();
     const { instructions, memoryBytes } = buildCallInstructions({ bot, operator: settings.profileName, ...(soul ? { soul } : {}), ...(view ? { view } : {}), ...(timeZone ? { timeZone } : {}) });
     const voice = sessionVoice(bot, settings.calls.voice);
-    const started = await broker.start({ botId: bot.id, sdp, session: buildCallSession(instructions, voice), ...(request.signal ? { signal: request.signal } : {}) });
+    const started = await broker.start({ botId: bot.id, sdp, session: buildCallSession(instructions, voice), signal: request.signal });
     const result: CallStarted = {
       callId: started.id, answer: started.answer, model: GPT_LIVE_MODEL, voice, account: { name: started.accountName },
       instructionsBytes: Buffer.byteLength(instructions, "utf8"), memoryBytes,
@@ -152,7 +152,7 @@ export function createCallRoutes(deps: CallRouteDeps) {
         const task = call.tasks.get(action.slice("tasks/".length));
         if (!task) throw new CallNotFoundError("No such task on this call.");
         const gone = new Promise<never>((_, reject) => {
-          request.signal?.addEventListener("abort", () => reject(new DOMException("The wait was cancelled.", "AbortError")), { once: true });
+          request.signal.addEventListener("abort", () => reject(new DOMException("The wait was cancelled.", "AbortError")), { once: true });
         });
         gone.catch(() => {});
         const reply = await Promise.race([task, gone]).catch((error: unknown) => {

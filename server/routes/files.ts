@@ -1,7 +1,7 @@
 /**
  * `/__hui/sessions/:id/files…`: the Files view's routes. It finds the conversation's working directory in the
  * registry, refuses conversations on a remote worker (their files are on that machine, not the gateway's disk), and
- * maps requests onto `FilesRoot` (`files.ts`). `hui.ts` applies the `x-hui` guard before dispatching here.
+ * maps requests onto `FilesRoot` (`../files.ts`). `hui.ts` applies the `x-hui` guard before dispatching here.
  */
 import { displayPath } from "../working-directories.ts";
 import { FilesError, FilesRoot, parseIfMatch } from "../files.ts";

@@ -10,7 +10,7 @@ import type { RouteRequest } from "../http/route.ts";
 
 function request(path: string, query: URLSearchParams, method = "GET"): RouteRequest {
   const noBody = () => Promise.reject(new Error("no body"));
-  return { method, path, query, headers: {}, json: noBody, bytes: noBody };
+  return { method, path, query, headers: {}, json: noBody, bytes: noBody, signal: new AbortController().signal };
 }
 
 const isolated = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid" };

@@ -1,7 +1,12 @@
 /** The Kanban stage a session's own agent sets with `set_stage`, behind any operator placement. */
 import { isSessionStage, SESSION_STAGE_LABELS, SESSION_STAGES, type SessionStage } from "../../shared/session-stages.ts";
-import { updateRegistry } from "../sessions.ts";
-import { knownPullRequestUrls, SessionNotFoundError } from "./lifecycle.ts";
+import { liveSessions } from "../live-sessions.ts";
+import { pullRequestsFromTranscript } from "../pull-requests.ts";
+import { SessionNotFoundError, updateRegistry } from "../sessions.ts";
+
+export function knownPullRequestUrls(sessionId: string): string[] {
+  return pullRequestsFromTranscript(liveSessions.transcript(sessionId)).map((ref) => ref.url.toLowerCase()).slice(-20);
+}
 
 /** `set_stage` from a session's own agent. An operator placement wins, so the
  * tool reports it instead of silently overriding the board. */

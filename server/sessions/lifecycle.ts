@@ -13,9 +13,8 @@ import { readHuiSettings } from "../hui-settings.ts";
 import { liveSessions, type DeleteToken, type SessionStatus } from "../live-sessions.ts";
 import { fallbackTitle, generateSessionNames } from "../model-routing.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
-import { pullRequestsFromTranscript } from "../pull-requests.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
-import { updateRegistry, upsert, type SessionRecord } from "../sessions.ts";
+import { SessionNotFoundError, updateRegistry, upsert, type SessionRecord } from "../sessions.ts";
 import type { SubagentService } from "../subagents.ts";
 import type { TaskSuggestionStore } from "../task-suggestions.ts";
 import { terminals } from "../terminals.ts";
@@ -27,6 +26,7 @@ import { fallbackBranchName } from "../../shared/branch-names.ts";
 import { isSessionStage, SESSION_STAGES, type SessionStage } from "../../shared/session-stages.ts";
 import { isThinkingLevel } from "../../shared/thinking.ts";
 import { sessionTreeIds } from "../../src/lib/session-tree.ts";
+import { knownPullRequestUrls } from "./stages.ts";
 import { pendingSessions, pendingStatus, publishPendingStatus, type createSessionViews, type PendingSession, type PendingStatusUpdate, type SessionView } from "./views.ts";
 
 const NEW_SESSION_TOOLS = new Set(["durable", "pi"]);
@@ -39,10 +39,6 @@ export const SESSION_TITLE_MAX = 200;
 export const SESSION_GROUP_MAX = 200;
 /** A started suggestion's runtime must boot before its prompt is accepted. */
 const SUGGESTION_READY_TIMEOUT_MS = 30_000;
-
-export class SessionNotFoundError extends Error {
-  override name = "SessionNotFoundError";
-}
 
 export function sessionText(
   body: Record<string, unknown>,
@@ -68,10 +64,6 @@ export function sessionText(
     );
   }
   return value;
-}
-
-export function knownPullRequestUrls(sessionId: string): string[] {
-  return pullRequestsFromTranscript(liveSessions.transcript(sessionId)).map((ref) => ref.url.toLowerCase()).slice(-20);
 }
 
 /** Registers a session and starts it. The directory is checked before anything

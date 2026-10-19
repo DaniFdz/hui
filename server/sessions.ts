@@ -114,6 +114,10 @@ export class SessionRegistryError extends Error {
   override name = "SessionRegistryError";
 }
 
+export class SessionNotFoundError extends Error {
+  override name = "SessionNotFoundError";
+}
+
 export type SessionGroupConfig = {
   label: string;
   /** Defaults for sessions created from this group. HUI owns these values;

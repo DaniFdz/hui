@@ -35,8 +35,8 @@ import {
 } from "./jira.ts";
 import type { liveSessions } from "./live-sessions.ts";
 import { CONFIG_DIR } from "./paths.ts";
-import { readRegistry, updateRegistry, type SessionRecord } from "./sessions.ts";
-import type { createSessionLifecycle, SessionNotFoundError } from "./sessions/lifecycle.ts";
+import { readRegistry, updateRegistry, type SessionNotFoundError, type SessionRecord } from "./sessions.ts";
+import type { createSessionLifecycle } from "./sessions/lifecycle.ts";
 import type { createSessionViews, SessionView } from "./sessions/views.ts";
 import { TaskSuggestionInputError, type TaskSuggestionStore } from "./task-suggestions.ts";
 

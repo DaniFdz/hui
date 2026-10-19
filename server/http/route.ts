@@ -17,10 +17,10 @@ export type RouteRequest = {
   /** The raw body, at most `maxBytes`. */
   bytes(maxBytes: number): Promise<Buffer>;
   /** Aborts when the client goes away. */
-  signal?: AbortSignal;
+  signal: AbortSignal;
 };
 
-export type RouteFile = { mimeType: string; data: Buffer; headers: Record<string, string> };
+type RouteFile = { mimeType: string; data: Buffer; headers: Record<string, string> };
 
 export type JsonResult = { status: number; body: unknown; etag?: string };
 

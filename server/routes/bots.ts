@@ -96,7 +96,7 @@ export function createBotRoutes(deps: Deps) {
       // An image alone is a message; a file needs words saying what to do with it.
       if (!text.trim() && !prepared.attachments.some((item) => item.kind === "image")) throw new BotInputError("A message is required.");
       const wait = input["wait"] === true
-        ? { timeoutMs: ((timeout as number | undefined) ?? DEFAULT_WAIT_SECONDS) * 1000, ...(request.signal ? { signal: request.signal } : {}) }
+        ? { timeoutMs: ((timeout as number | undefined) ?? DEFAULT_WAIT_SECONDS) * 1000, signal: request.signal }
         : undefined;
       const result = await service.send(bot.id, { text, attachments: prepared.attachments }, wait);
       return { status: wait ? 200 : 202, body: result };

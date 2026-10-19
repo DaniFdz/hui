@@ -166,6 +166,7 @@ import {
   deleteSessionGroup,
   readRegistry,
   reorderSessionGroups,
+  SessionNotFoundError,
   SessionRegistryError,
   updateRegistry,
   updateSessionGroup,
@@ -176,7 +177,6 @@ import {
   defaultSessionTool,
   SESSION_GROUP_MAX,
   SESSION_TITLE_MAX,
-  SessionNotFoundError,
   sessionText,
 } from "./sessions/lifecycle.ts";
 import { setAgentStage } from "./sessions/stages.ts";
