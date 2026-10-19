@@ -117,8 +117,7 @@ import { WIDGET_SANDBOX_PATH } from "../shared/widgets.ts";
 import { GitHubCli } from "./github.ts";
 import { GitHubContributionsReader } from "./github-contributions.ts";
 import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./github-previews.ts";
-import { MAX_DATADOG_EMBEDS, parseDatadogUrl } from "../shared/datadog.ts";
-import { DatadogError, DatadogOrgs } from "./datadog.ts";
+import { DatadogOrgs } from "./datadog.ts";
 import { DatadogPreviews } from "./datadog-previews.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherConflictError, WatcherInputError, WatcherNotFoundError, WatcherService } from "./watchers.ts";
@@ -155,6 +154,7 @@ import { createTerminalRoutes } from "./routes/terminals.ts";
 import { createBrowserRoutes } from "./routes/browser.ts";
 import { createVscodeRoutes } from "./routes/vscode.ts";
 import { createGitHubRoutes } from "./routes/github.ts";
+import { createDatadogRoutes } from "./routes/datadog.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
@@ -194,10 +194,6 @@ const SESSION_ACTION =
   /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
-const DATADOG_ROUTE = `${PREFIX}datadog`;
-const DATADOG_ORGS_ROUTE = `${DATADOG_ROUTE}/orgs`;
-const DATADOG_LOGIN_ROUTE = `${DATADOG_ROUTE}/login`;
-const DATADOG_PREVIEWS_ROUTE = `${DATADOG_ROUTE}/previews`;
 const JIRA_ROUTE = `${PREFIX}jira`;
 const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
 /** Create (POST) or draft (POST …/draft) a Jira work item for one session. */
@@ -726,13 +722,7 @@ const githubRoutes = createGitHubRoutes({ githubCli, githubPreviews, githubContr
  * `HUI_PUP_CLI` points E2E at a fake executable. A sign-in or an org change drops cached previews. */
 const datadogOrgs = new DatadogOrgs({ command: process.env["HUI_PUP_CLI"] || "pup", onChange: () => datadogPreviews.clear() });
 const datadogPreviews = new DatadogPreviews(datadogOrgs);
-
-/** A Datadog route failure: the operator's input (400/404/409) or HUI's own (500), never pup's output. */
-function sendDatadogError(response: ServerResponse, error: unknown): void {
-  if (error instanceof DatadogError) sendJson(response, error.status, { error: error.message });
-  else if (error instanceof SyntaxError) sendJson(response, 400, { error: "Send a JSON body." });
-  else sendJson(response, 500, { error: error instanceof Error ? error.message : "Datadog request failed." });
-}
+const datadogRoutes = createDatadogRoutes({ datadogOrgs, datadogPreviews });
 const pullRequestStatuses = new PullRequestStatuses(previewPullRequestFetcher(githubPreviews));
 
 const worktreeService = new WorktreeService({
@@ -1209,61 +1199,7 @@ async function handleRequest(
 
   if (answered(response, path, await githubRoutes.handle(routed))) return;
 
-  if (path === DATADOG_ROUTE) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      sendJson(response, 200, await datadogOrgs.connection());
-    } catch (error) {
-      sendDatadogError(response, error);
-    }
-    return;
-  }
-
-  if (path === DATADOG_ORGS_ROUTE) {
-    if (request.method !== "POST" && request.method !== "DELETE") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      const params = new URL(request.url ?? "/", "http://localhost").searchParams;
-      sendJson(response, 200, request.method === "POST"
-        ? await datadogOrgs.add(await readBody(request))
-        : await datadogOrgs.remove({ name: params.get("name") ?? "", site: params.get("site") ?? "" }));
-    } catch (error) {
-      sendDatadogError(response, error);
-    }
-    return;
-  }
-
-  if (path === DATADOG_LOGIN_ROUTE) {
-    if (request.method !== "POST" && request.method !== "DELETE") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      sendJson(response, 200, request.method === "POST" ? await datadogOrgs.startLogin(await readBody(request)) : await datadogOrgs.cancelLogin());
-    } catch (error) {
-      sendDatadogError(response, error);
-    }
-    return;
-  }
-
-  if (path === DATADOG_PREVIEWS_ROUTE) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const urls = new URL(request.url ?? "/", "http://localhost").searchParams.getAll("url");
-    if (urls.length === 0 || urls.length > MAX_DATADOG_EMBEDS || urls.some((url) => url.length > 4_000 || !parseDatadogUrl(url))) {
-      sendJson(response, 400, { error: `Pass 1-${MAX_DATADOG_EMBEDS} Datadog share or dashboard URLs.` });
-      return;
-    }
-    sendJson(response, 200, { previews: await Promise.all(urls.map((url) => datadogPreviews.lookup(url))) });
-    return;
-  }
+  if (answered(response, path, await datadogRoutes.handle(routed))) return;
 
   if (path === JIRA_ROUTE) {
     await jiraConfigReady;
