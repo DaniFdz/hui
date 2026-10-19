@@ -269,7 +269,7 @@ test("a gated tool judges the run by every input it took: a trigger's message st
   const link = "https://github.com/acme/widgets/pull/1";
   assert.deepEqual(await hook(joiner, JSON.stringify({ events: [{ id: "joiner-1", summary: "PR 1 feedback changed", details: `RAW SNAPSHOT ${"x".repeat(4_000)}`, links: [link] }] })), { status: 202, body: { status: "fired" } });
   const notice = await until("the compact trigger in the active turn's steering queue", async () => liveSessions.snapshot(ada.sessionId).queue.steering.find((text) => text.startsWith("[trigger: Joiner · ")));
-  assert.ok(notice.includes(link), "the affected PR stays identifiable");
+  assert.ok(notice.split("\n").includes(link), "the complete affected PR URL stays on its own line");
   assert.ok(!notice.includes("RAW SNAPSHOT") && !notice.includes("diff --git"), "steering carries no listener snapshots or fetched diffs");
   assert.ok(notice.length < 3_000, "a status notification stays short");
   assert.equal(liveSessions.snapshot(ada.sessionId).queue.followUp.length, 0, "the busy turn does not gain another follow-up");
