@@ -18,7 +18,7 @@
  * grants it reports (`onAccessRecorded`).
  */
 import { BotFactsStoreError, type BotFacts } from "./bot-facts.ts";
-import type { BotFact } from "../shared/bot-facts.ts";
+import type { BotFact } from "./api/bots.ts";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { BotAccess, BotMemoryStatus, BotToolGroup } from "../shared/bots.ts";

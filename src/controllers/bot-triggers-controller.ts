@@ -5,7 +5,7 @@
  * its listener reports to, once, right after it was made or replaced.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
-import type { BotTrigger, BotTriggerCreated, BotTriggerInput, BotTriggerPatch, BotTriggerRun, BotTriggersList } from "../../shared/bot-triggers.ts";
+import type { BotTrigger, BotTriggerCreated, BotTriggerInput, BotTriggerPatch, BotTriggerRun, BotTriggersList } from "../api/schema/bot-triggers.ts";
 import type { BotView } from "../../shared/bots.ts";
 import { botTriggersApi } from "../api/bot-triggers.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";

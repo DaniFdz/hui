@@ -9,7 +9,8 @@
  * The model call is injected (`CallCompletion`), so these run under test;
  * `callCompletion` is the gateway's own, through its durable host's models.
  */
-import { orderedBotFacts, type BotFact } from "../shared/bot-facts.ts";
+import type { BotFact } from "./api/bots.ts";
+import { orderedBotFacts } from "./bot-facts.ts";
 import { randomUUID } from "node:crypto";
 import { boundText, CALL_LIMITS, CALL_TASK_PREFIX, callMinutes, callTranscriptText, type CallDelegationResult, type CallRecord, type CallRecordLine } from "../shared/calls.ts";
 import type { BotRecord, BotReply } from "../shared/bots.ts";

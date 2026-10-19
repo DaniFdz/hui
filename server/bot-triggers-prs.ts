@@ -9,7 +9,7 @@
  */
 import { execFile } from "node:child_process";
 
-import { BOT_TRIGGER_LIMITS } from "../shared/bot-triggers.ts";
+import { BOT_TRIGGER_LIMITS } from "./bot-triggers-format.ts";
 import { parseGitHubUrl } from "./integrations/github-links.ts";
 import { GH_ENV } from "./github.ts";
 

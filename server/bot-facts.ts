@@ -2,8 +2,15 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { BOT_FACT_KINDS, BOT_FACT_LIMITS, orderedBotFacts, type BotFact, type BotFactInput, type BotFactPatch } from "../shared/bot-facts.ts";
+import type { BotFact, BotFactInput, BotFactPatch } from "./api/bots.ts";
 import { BotConflictError, BotInputError, BotNotFoundError } from "./bots.ts";
+
+export const BOT_FACT_KINDS = ["fact", "preference", "decision"] as const;
+export const BOT_FACT_LIMITS = { count: 40, text: 500, source: 200 } as const;
+/** Pinned first, then newest saved; stable identity breaks timestamp ties. */
+export function orderedBotFacts(facts: readonly BotFact[]): BotFact[] {
+  return [...facts].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+}
 
 export interface BotFacts {
   list(botId: string): Promise<BotFact[]>;

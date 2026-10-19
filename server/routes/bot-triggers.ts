@@ -12,12 +12,16 @@
  * They live under `/__hui/bots`, so the `x-hui` guard and the 409 while bots are off apply as to every bot route.
  * The route its listener reports to, `POST /__hui/hooks/<token>`, is `bot-triggers-gateway.ts`'s.
  */
-import { BOT_TRIGGER_LIMITS } from "../../shared/bot-triggers.ts";
+import { BOT_TRIGGER_LIMITS } from "../bot-triggers-format.ts";
 import type { BotTriggerService } from "../bot-triggers.ts";
 import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "../bot-triggers-input.ts";
 import { TriggerStoreError } from "../bot-triggers-store.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotStoreError } from "../bots.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
+import { BotTriggerCreated, BotTriggerDeleted, BotTriggerResponse, BotTriggerRunResponse, BotTriggersList, routeSchemas as botTriggerRouteSchemas } from "../api/bot-triggers.ts";
+
+export const routeSchemas: RouteSchema[] = botTriggerRouteSchemas;
 
 export const BOT_TRIGGERS_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/triggers(?:\/([^/]{1,400})(?:\/(test|token))?)?$/u;
 const BODY_BYTES = 64 * 1024;
@@ -49,8 +53,8 @@ export function createBotTriggerRoutes(deps: { service: Pick<BotTriggerService, 
     const notAllowed = { status: 405, body: { error: "method not allowed" } };
     try {
       if (!encoded) {
-        if (request.method === "GET") return { status: 200, body: await service.list(bot!) };
-        if (request.method === "POST") return { status: 201, body: await service.create(bot!, await json(request)) };
+        if (request.method === "GET") return reply(BotTriggersList, await service.list(bot!));
+        if (request.method === "POST") return reply(BotTriggerCreated, await service.create(bot!, await json(request)), 201);
         return notAllowed;
       }
       let trigger: string;
@@ -63,13 +67,13 @@ export function createBotTriggerRoutes(deps: { service: Pick<BotTriggerService, 
       if (action) {
         if (request.method !== "POST") return notAllowed;
         return action === "test"
-          ? { status: 200, body: { run: await service.test(bot!, trigger) } }
-          : { status: 200, body: await service.rotate(bot!, trigger) };
+          ? reply(BotTriggerRunResponse, { run: await service.test(bot!, trigger) })
+          : reply(BotTriggerCreated, await service.rotate(bot!, trigger));
       }
-      if (request.method === "PATCH") return { status: 200, body: { trigger: await service.update(bot!, trigger, await json(request)) } };
+      if (request.method === "PATCH") return reply(BotTriggerResponse, { trigger: await service.update(bot!, trigger, await json(request)) });
       if (request.method === "DELETE") {
         await service.remove(bot!, trigger);
-        return { status: 200, body: { ok: true } };
+        return reply(BotTriggerDeleted, { ok: true });
       }
       return notAllowed;
     } catch (error) {

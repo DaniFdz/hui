@@ -622,6 +622,482 @@
         }
       }
     },
+    "BotFact": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "text",
+        "pinned",
+        "source",
+        "createdAt",
+        "updatedAt",
+        "revision"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/BotFactKind"
+        },
+        "text": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "source": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "number"
+        }
+      }
+    },
+    "BotFactInput": {
+      "type": "object",
+      "required": [
+        "kind",
+        "text"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/BotFactKind"
+        },
+        "text": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        }
+      }
+    },
+    "BotFactKind": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "fact"
+        },
+        {
+          "type": "string",
+          "const": "preference"
+        },
+        {
+          "type": "string",
+          "const": "decision"
+        }
+      ]
+    },
+    "BotFactPatch": {
+      "type": "object",
+      "required": [
+        "revision"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/BotFactKind"
+        },
+        "text": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "number"
+        }
+      }
+    },
+    "BotFactsResponse": {
+      "type": "object",
+      "required": [
+        "facts"
+      ],
+      "properties": {
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotFact"
+          }
+        }
+      }
+    },
+    "BotTrigger": {
+      "type": "object",
+      "required": [
+        "id",
+        "botId",
+        "name",
+        "source",
+        "filter",
+        "enabled",
+        "cooldownSeconds",
+        "createdBy",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "botId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/BotTriggerSource"
+        },
+        "filter": {
+          "$ref": "#/$defs/BotTriggerFilter"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "delivery": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "followUp"
+            },
+            {
+              "type": "string",
+              "const": "steer"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "cooldownSeconds": {
+          "type": "number"
+        },
+        "createdBy": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "operator"
+            },
+            {
+              "type": "string",
+              "const": "bot"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "lastFiredAt": {
+          "type": "string"
+        },
+        "tokenHint": {
+          "type": "string"
+        },
+        "pending": {
+          "type": "object",
+          "required": [
+            "events",
+            "until"
+          ],
+          "properties": {
+            "events": {
+              "type": "number"
+            },
+            "until": {
+              "type": "string"
+            }
+          }
+        },
+        "watch": {
+          "type": "object",
+          "properties": {
+            "polledAt": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "BotTriggerCreated": {
+      "type": "object",
+      "required": [
+        "trigger",
+        "hook"
+      ],
+      "properties": {
+        "trigger": {
+          "$ref": "#/$defs/BotTrigger"
+        },
+        "hook": {
+          "type": "object",
+          "required": [
+            "token",
+            "path"
+          ],
+          "properties": {
+            "token": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "BotTriggerDeleted": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "BotTriggerFilter": {
+      "type": "object",
+      "properties": {
+        "match": {
+          "$ref": "#/$defs/TriggerMatch"
+        },
+        "prLinks": {
+          "type": "boolean",
+          "const": true
+        },
+        "bots": {
+          "type": "boolean",
+          "const": true
+        },
+        "external": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "BotTriggerInput": {
+      "type": "object",
+      "required": [
+        "name",
+        "source",
+        "filter"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/BotTriggerSource"
+        },
+        "filter": {
+          "$ref": "#/$defs/BotTriggerFilter"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "delivery": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "followUp"
+            },
+            {
+              "type": "string",
+              "const": "steer"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "cooldownSeconds": {
+          "type": "number"
+        }
+      }
+    },
+    "BotTriggerPatch": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "delivery": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "followUp"
+            },
+            {
+              "type": "string",
+              "const": "steer"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "cooldownSeconds": {
+          "type": "number"
+        },
+        "filter": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {}
+          }
+        }
+      }
+    },
+    "BotTriggerResponse": {
+      "type": "object",
+      "required": [
+        "trigger"
+      ],
+      "properties": {
+        "trigger": {
+          "$ref": "#/$defs/BotTrigger"
+        }
+      }
+    },
+    "BotTriggerRun": {
+      "type": "object",
+      "required": [
+        "id",
+        "triggerId",
+        "triggerName",
+        "at",
+        "status",
+        "events",
+        "summary"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "triggerId": {
+          "type": "string"
+        },
+        "triggerName": {
+          "type": "string"
+        },
+        "at": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/BotTriggerRunStatus"
+        },
+        "events": {
+          "type": "number"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "test": {
+          "type": "boolean",
+          "const": true
+        },
+        "catchUp": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "BotTriggerRunResponse": {
+      "type": "object",
+      "required": [
+        "run"
+      ],
+      "properties": {
+        "run": {
+          "$ref": "#/$defs/BotTriggerRun"
+        }
+      }
+    },
+    "BotTriggerRunStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "fired"
+        },
+        {
+          "type": "string",
+          "const": "coalesced"
+        },
+        {
+          "type": "string",
+          "const": "skipped"
+        },
+        {
+          "type": "string",
+          "const": "failed"
+        }
+      ]
+    },
+    "BotTriggersList": {
+      "type": "object",
+      "required": [
+        "triggers",
+        "runs",
+        "deliveries"
+      ],
+      "properties": {
+        "triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTrigger"
+          }
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTriggerRun"
+          }
+        },
+        "deliveries": {
+          "type": "object",
+          "required": [
+            "lastHour",
+            "perHour"
+          ],
+          "properties": {
+            "lastHour": {
+              "type": "number"
+            },
+            "perHour": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "BotTriggerSource": {
+      "type": "string",
+      "const": "listener"
+    },
     "BrowserControl": {
       "type": "object",
       "required": [
@@ -5584,6 +6060,34 @@
         }
       }
     },
+    "TriggerMatch": {
+      "type": "object",
+      "required": [
+        "field",
+        "op",
+        "value"
+      ],
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "op": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "equals"
+            },
+            {
+              "type": "string",
+              "const": "contains"
+            }
+          ]
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
     "UpdateCheck": {
       "type": "object",
       "required": [
@@ -6277,6 +6781,28 @@
       "BrowserViewMessage",
       "BrowserViewState",
       "BrowserViewTab"
+    ],
+    "bots": [
+      "BotFact",
+      "BotFactInput",
+      "BotFactKind",
+      "BotFactPatch",
+      "BotFactsResponse"
+    ],
+    "bot-triggers": [
+      "BotTrigger",
+      "BotTriggerCreated",
+      "BotTriggerDeleted",
+      "BotTriggerFilter",
+      "BotTriggerInput",
+      "BotTriggerPatch",
+      "BotTriggerResponse",
+      "BotTriggerRun",
+      "BotTriggerRunResponse",
+      "BotTriggerRunStatus",
+      "BotTriggerSource",
+      "BotTriggersList",
+      "TriggerMatch"
     ]
   },
   "x-hui-routes": [
@@ -6333,6 +6859,88 @@
       "path": "/__hui/automation/tasks/:id/run",
       "response": {
         "$ref": "#/$defs/AutomationRunResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/facts",
+      "response": {
+        "$ref": "#/$defs/BotFactsResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/facts",
+      "request": {
+        "$ref": "#/$defs/BotFactInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BotFactsResponse"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/bots/:id/facts/:factId",
+      "response": {
+        "$ref": "#/$defs/BotFactsResponse"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/__hui/bots/:id/facts/:factId",
+      "request": {
+        "$ref": "#/$defs/BotFactPatch"
+      },
+      "response": {
+        "$ref": "#/$defs/BotFactsResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/triggers",
+      "response": {
+        "$ref": "#/$defs/BotTriggersList"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/triggers",
+      "request": {
+        "$ref": "#/$defs/BotTriggerInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BotTriggerCreated"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/bots/:id/triggers/:trigger",
+      "response": {
+        "$ref": "#/$defs/BotTriggerDeleted"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/__hui/bots/:id/triggers/:trigger",
+      "request": {
+        "$ref": "#/$defs/BotTriggerPatch"
+      },
+      "response": {
+        "$ref": "#/$defs/BotTriggerResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/triggers/:trigger/test",
+      "response": {
+        "$ref": "#/$defs/BotTriggerRunResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/triggers/:trigger/token",
+      "response": {
+        "$ref": "#/$defs/BotTriggerCreated"
       }
     },
     {

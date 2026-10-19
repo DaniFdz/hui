@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { applyChanges, buildExport, changeGroups, picksWithoutAddition, withAdditions, type BotExportAddition, type BotExportManifest } from "../shared/bot-export.ts";
 import type { BotView } from "../shared/bots.ts";
-import type { BotTrigger } from "../shared/bot-triggers.ts";
+import type { BotTrigger } from "./bot-triggers-format.ts";
 import type { AutomationTask } from "./automation.ts";
 import { BotExportService, type BotExportDeps } from "./bot-export.ts";
 import type { BotOwnSkill } from "./bot-skills.ts";

@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { BOT_TRIGGER_LIMITS, type BotTriggerRecord, type BotTriggerRun, type BotTriggerRunStatus } from "../shared/bot-triggers.ts";
+import { BOT_TRIGGER_LIMITS, type BotTriggerRecord, type BotTriggerRun, type BotTriggerRunStatus } from "./bot-triggers-format.ts";
 import { parseTriggerRecord } from "./bot-triggers-input.ts";
 import { CONFIG_DIR } from "./paths.ts";
 

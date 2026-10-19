@@ -1521,12 +1521,23 @@ type BotFact = {
 };
 ```
 
-| Route | Result | Input and behavior |
-| --- | --- | --- |
-| `GET /__hui/bots/:id/facts` | 200 `{ facts: BotFact[] }` | Pinned first, then newest created |
-| `POST /__hui/bots/:id/facts` | 201 `{ facts }` | `{ kind, text, source?, pinned? }`; source defaults to `Saved by you`, pinned to false; at most 40 entries |
-| `PATCH /__hui/bots/:id/facts/:factId` | 200 `{ facts }` | `{ revision, kind?, text?, pinned? }`; preserves source and creation time |
-| `DELETE /__hui/bots/:id/facts/:factId?revision=N` | 200 `{ facts }` | Deletes the saved entry, not raw conversation history or OptChat summaries |
+### `GET /__hui/bots/:id/facts`
+
+200 `{ facts: BotFact[] }`. Pinned first, then newest created
+
+### `POST /__hui/bots/:id/facts`
+
+201 `{ facts }`. `{ kind, text, source?, pinned? }`; source defaults to `Saved by you`, pinned to false; at most 40 entries
+
+### `PATCH /__hui/bots/:id/facts/:factId`
+
+200 `{ facts }`. `{ revision, kind?, text?, pinned? }`; preserves source and creation time
+
+### `DELETE /__hui/bots/:id/facts/:factId`
+
+Query `revision=N`.
+
+200 `{ facts }`. Deletes the saved entry, not raw conversation history or OptChat summaries
 
 Every route retains `x-hui: 1`, the Bots Labs gate and bounded JSON bodies.
 Malformed input is 400, missing bot/entry 404, an archived bot write or stale
@@ -2210,14 +2221,29 @@ Under `/__hui/bots`, with the `x-hui` guard and the 409 while bots are off;
 Bodies are JSON up to 64 KiB; unknown fields are refused. 400 for input, 404 for
 an unknown bot or trigger, 409 for a state that refuses it, 500 for storage.
 
-| Route | Success | Behavior |
-| --- | --- | --- |
-| `GET /__hui/bots/:id/triggers` | 200 `BotTriggersList` | `{ triggers, runs, deliveries: { lastHour, perHour } }`: its triggers (with `pending: { events, until }` while some wait), its latest 50 runs, newest first, and the hour's deliveries against the cap. Archived bots too |
-| `POST /__hui/bots/:id/triggers` | 201 `BotTriggerCreated` | `{ name, source?, filter?, prompt?, delivery?, enabled?, cooldownSeconds? }` (`prompt` ≤ 4,000 characters; `source`, when given, is `listener`: another is 400). Its `hook` comes this once. Archived bots are 409 |
-| `PATCH /__hui/bots/:id/triggers/:trigger` | 200 `{ trigger }` | `name`, `prompt` (`""` clears it), `delivery` (`followUp` or `steer`), `enabled`, `cooldownSeconds`, `filter`: its keys replace the filter's, `null` or `false` clears one; no `source` (400). Turning it off skips what waited for it |
-| `DELETE /__hui/bots/:id/triggers/:trigger` | 200 `{ ok: true }` | With its runs, what waited for it and the ids it kept |
-| `POST /__hui/bots/:id/triggers/:trigger/test` | 200 `{ run }` | Delivers a sample event at once, marked as a test, outside the cooldown and the cap (neither moves); 409 while bots are off |
-| `POST /__hui/bots/:id/triggers/:trigger/token` | 200 `BotTriggerCreated` | Its new token, this once; the old URL stops working |
+### `GET /__hui/bots/:id/triggers`
+
+200 `BotTriggersList`. `{ triggers, runs, deliveries: { lastHour, perHour } }`: its triggers (with `pending: { events, until }` while some wait), its latest 50 runs, newest first, and the hour's deliveries against the cap. Archived bots too
+
+### `POST /__hui/bots/:id/triggers`
+
+201 `BotTriggerCreated`. `{ name, source?, filter?, prompt?, delivery?, enabled?, cooldownSeconds? }` (`prompt` ≤ 4,000 characters; `source`, when given, is `listener`: another is 400). Its `hook` comes this once. Archived bots are 409
+
+### `PATCH /__hui/bots/:id/triggers/:trigger`
+
+200 `{ trigger }`. `name`, `prompt` (`""` clears it), `delivery` (`followUp` or `steer`), `enabled`, `cooldownSeconds`, `filter`: its keys replace the filter's, `null` or `false` clears one; no `source` (400). Turning it off skips what waited for it
+
+### `DELETE /__hui/bots/:id/triggers/:trigger`
+
+200 `{ ok: true }`. With its runs, what waited for it and the ids it kept
+
+### `POST /__hui/bots/:id/triggers/:trigger/test`
+
+200 `{ run }`. Delivers a sample event at once, marked as a test, outside the cooldown and the cap (neither moves); 409 while bots are off
+
+### `POST /__hui/bots/:id/triggers/:trigger/token`
+
+200 `BotTriggerCreated`. Its new token, this once; the old URL stops working
 
 #### The bot's `triggers` tool
 

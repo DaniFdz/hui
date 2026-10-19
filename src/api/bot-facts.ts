@@ -1,6 +1,6 @@
 /** Browser client for a bot's explicit memories (`/__hui/bots/:id/facts`): list, add, edit and delete, each answered
  * with the bot's whole list. */
-import type { BotFact, BotFactInput, BotFactPatch } from "../../shared/bot-facts.ts";
+import type { BotFact, BotFactInput, BotFactPatch } from "../api/schema/bots.ts";
 import { fetchJson } from "./request.ts";
 
 export type BotFactsApi = (botId: string, method?: string, id?: string, value?: BotFactInput | BotFactPatch | number) => Promise<BotFact[]>;

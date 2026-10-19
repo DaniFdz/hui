@@ -3,7 +3,7 @@
  * Triggers section of the Bots tab uses them: list, add, remove and test. Every trigger is a listener's: `add` prints
  * the URL its listener reports to, this once.
  */
-import { BOT_TRIGGER_SOURCE_LABELS, botTriggerFilterSummary, cooldownLabel, type BotTrigger, type BotTriggerCreated, type BotTriggerRun, type BotTriggersList } from "../shared/bot-triggers.ts";
+import { BOT_TRIGGER_SOURCE_LABELS, botTriggerFilterSummary, cooldownLabel, type BotTrigger, type BotTriggerCreated, type BotTriggerRun, type BotTriggersList } from "../server/bot-triggers-format.ts";
 import type { BotView } from "../shared/bots.ts";
 import type { BotIO } from "./gateway-client.ts";
 

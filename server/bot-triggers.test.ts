@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
-import { BOT_TRIGGER_LIMITS, BOTS_OFF_TRIGGER_REASON, type BotTriggerRun } from "../shared/bot-triggers.ts";
+import { BOT_TRIGGER_LIMITS, BOTS_OFF_TRIGGER_REASON, type BotTriggerRun } from "./bot-triggers-format.ts";
 import { BOTS_OFF_MESSAGE, botTurnOrigin, type BotRecord } from "../shared/bots.ts";
 import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./bot-triggers-input.ts";
 import { HookBodyError, newHookToken } from "./bot-triggers-listener.ts";

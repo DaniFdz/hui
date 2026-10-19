@@ -7,7 +7,7 @@
 import {
   BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES,
   type BotTriggerFilter, type BotTriggerInput, type BotTriggerPatch, type BotTriggerRecord, type BotTriggerSource, type TriggerMatch,
-} from "../shared/bot-triggers.ts";
+} from "./bot-triggers-format.ts";
 
 /** Rejected input (400), with what to fix. */
 export class TriggerInputError extends Error {

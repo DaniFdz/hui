@@ -1,13 +1,38 @@
 /**
  * A bot's triggers in the Bots tab (HUI-18): the list on its panel's overview and its Triggers page. This module narrows
- * what the trigger routes answer, turns the add form into a request body and holds what the section shows; the
+ * what the trigger routes answer, formats a trigger's filter and cooldown, turns the add form into a request body and holds what the section shows; the
  * section's state, its polling and its requests live in `controllers/bot-triggers-controller.ts` and
  * `api/bot-triggers.ts`. The view is `src/views/bot-triggers.ts`.
  */
-import {
-  BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES,
-  type BotTrigger, type BotTriggerCreated, type BotTriggerFilter, type BotTriggerInput, type BotTriggerRun, type BotTriggerRunStatus, type BotTriggersList,
-} from "../../../shared/bot-triggers.ts";
+import type {
+  BotTrigger, BotTriggerCreated, BotTriggerFilter, BotTriggerInput, BotTriggerRun, BotTriggerRunStatus, BotTriggerSource, BotTriggersList,
+} from "../../api/schema/bot-triggers.ts";
+
+const BOT_TRIGGER_SOURCES: readonly BotTriggerSource[] = ["listener"];
+
+/** The gateway's limits the add form and the section show (`server/bot-triggers-format.ts` enforces them). */
+export const BOT_TRIGGER_LIMITS = { name: 60, prompt: 4_000, perHour: 12, cooldownDefault: 300 } as const;
+
+/** `5 min`, `1 h 30 min`, `45 s`, `none`. */
+export function cooldownLabel(seconds: number): string {
+  if (seconds <= 0) return "none";
+  if (seconds < 60) return `${seconds} s`;
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  const rest = seconds % 60;
+  return [hours ? `${hours} h` : "", minutes ? `${minutes} min` : "", rest && !hours ? `${rest} s` : ""].filter(Boolean).join(" ");
+}
+
+/** One line for what a trigger lets through: `fields.channel equals "C0123" · PR links only`. */
+export function botTriggerFilterSummary(trigger: { filter: BotTriggerFilter }): string {
+  const filter = trigger.filter;
+  return [
+    filter.match ? `${filter.match.field || "event"} ${filter.match.op} "${filter.match.value}"` : "Any event",
+    ...(filter.prLinks ? ["PR links only"] : []),
+    ...(filter.external ? ["outsiders too"] : []),
+    ...(filter.bots ? ["bots too"] : []),
+  ].join(" · ");
+}
 
 /** How often the open section reads the triggers again: they fire on their own. */
 export const TRIGGERS_POLL_MS = 5_000;

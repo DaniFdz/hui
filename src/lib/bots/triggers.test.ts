@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "vitest";
-import { parseTrigger, parseTriggersList, TriggerFormError, triggerFormInput, type TriggerFormFields } from "./triggers.ts";
+import {
+  BOT_TRIGGER_LIMITS, botTriggerFilterSummary, cooldownLabel, parseTrigger, parseTriggersList, TriggerFormError, triggerFormInput, type TriggerFormFields,
+} from "./triggers.ts";
+
+test("trigger limits and labels match the portable fixtures", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./triggers.fixture.json", import.meta.url), "utf8"));
+  assert.deepEqual(BOT_TRIGGER_LIMITS, fixture.limits);
+  for (const item of fixture.cooldowns) assert.equal(cooldownLabel(item.input), item.expected, String(item.input));
+  for (const item of fixture.filters) assert.equal(botTriggerFilterSummary({ filter: item.input }), item.expected);
+});
 
 const FIELDS: TriggerFormFields = { name: "Reviews", prompt: "  Review it.  ", cooldown: "300", matchField: "", matchOp: "equals", matchValue: "", prLinks: false, external: false, bots: false };
 

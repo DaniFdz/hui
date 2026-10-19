@@ -2,8 +2,8 @@
 import { html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { ref } from "lit/directives/ref.js";
-import { BOT_FACT_KINDS, BOT_FACT_LIMITS, type BotFactKind } from "../../shared/bot-facts.ts";
-import type { BotFactsActions, BotFactsState } from "../lib/bots/facts.ts";
+import type { BotFactKind } from "../api/schema/bots.ts";
+import { BOT_FACT_KINDS, BOT_FACT_LIMITS, type BotFactsActions, type BotFactsState } from "../lib/bots/facts.ts";
 import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 loadViewAssets(() => import("../styles/bot-facts.css"));

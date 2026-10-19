@@ -4,7 +4,7 @@
  * browser's timezone; nothing here schedules anything, the gateway does.
  */
 import type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask } from "../../api/schema/automation.ts";
-import type { BotTriggerRun } from "../../../shared/bot-triggers.ts";
+import type { BotTriggerRun } from "../../api/schema/bot-triggers.ts";
 
 export type RoutineCadence = "every" | "daily" | "weekly" | "once";
 export type RoutineEveryUnit = "minutes" | "hours" | "days";

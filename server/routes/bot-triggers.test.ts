@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test, type TestContext } from "vitest";
-import type { BotTriggerCreated, BotTriggersList } from "../../shared/bot-triggers.ts";
+import { BotTriggerCreated, BotTriggersList } from "../api/bot-triggers.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 import { BOTS_OFF_MESSAGE, type BotView } from "../../shared/bots.ts";
 import type { BotIO } from "../../cli/gateway-client.ts";
 
@@ -202,9 +203,11 @@ test("a listener trigger: another program's reports reach the bot through the ga
   assert.match(String(refused.body["error"]), /^source must be listener/u);
   const made = await call(`/__hui/bots/${ada.handle}/triggers`, "POST", { name: "Pings", prompt: "E2E_LISTENER_PROMPT review it", filter: { match: { field: "fields.channel", op: "equals", value: "G01REVIEWS" } }, cooldownSeconds: 0 });
   assert.equal(made.status, 201, JSON.stringify(made.body));
-  const { hook: token, trigger } = made.body as unknown as BotTriggerCreated;
+  expectSchema(BotTriggerCreated, made.body);
+  const { hook: token, trigger } = made.body;
   const pings = async () => ((await call(`/__hui/bots/${ada.id}/triggers`)).body as unknown as BotTriggersList).triggers.find((each) => each.name === "Pings");
-  const listed = (await call(`/__hui/bots/${ada.id}/triggers`)).body as unknown as BotTriggersList;
+  const listed = (await call(`/__hui/bots/${ada.id}/triggers`)).body;
+  expectSchema(BotTriggersList, listed);
   assert.ok(!JSON.stringify(listed).includes(token.token), "the token is shown once, never listed");
   assert.equal(listed.triggers[0]?.tokenHint, token.token.slice(0, 4));
   assert.deepEqual(listed.triggers[0]?.watch, { error: "No report from the listener since the gateway started." });

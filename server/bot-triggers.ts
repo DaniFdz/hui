@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import {
   BOT_TRIGGER_HOOK_PREFIX, BOT_TRIGGER_LIMITS, BOT_TRIGGER_MARKER, BOT_TRIGGER_SOURCE_LABELS, BOTS_OFF_TRIGGER_REASON, botTriggerFilterSummary, cooldownLabel,
   type BotTrigger, type BotTriggerCreated, type BotTriggerRecord, type BotTriggerRun, type BotTriggerRunStatus, type BotTriggersList,
-} from "../shared/bot-triggers.ts";
+} from "./bot-triggers-format.ts";
 import { BOTS_OFF_MESSAGE, type BotRecord } from "../shared/bots.ts";
 import { normalizeTriggerInput, normalizeTriggerPatch, patchedFilter, TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./bot-triggers-input.ts";
 import { hashHookToken, HookBodyError, LISTENER_SILENT_MS, listenerMatches, newHookToken, oneLine, parseListenerReport, sameHash } from "./bot-triggers-listener.ts";

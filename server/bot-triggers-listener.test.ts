@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import type { IncomingMessage } from "node:http";
 import { Readable } from "node:stream";
 import { test } from "vitest";
-import { BOT_TRIGGER_LIMITS } from "../shared/bot-triggers.ts";
+import { BOT_TRIGGER_LIMITS } from "./bot-triggers-format.ts";
 import {
   hashHookToken, HOOK_ROUTE, HookBodyError, isHookPath, isTailnetOrLoopback, listenerMatches, newHookToken, parseListenerReport, readHookBody, sameHash,
   type ListenerEvent,

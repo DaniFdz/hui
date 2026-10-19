@@ -1,7 +1,7 @@
 /** The explicit-memory page's confirmed server state, read and changed through src/api/bot-facts.ts; no extraction,
  * optimistic saves or cross-bot leakage. */
 import type { ReactiveControllerHost } from "lit";
-import type { BotFact, BotFactInput, BotFactPatch } from "../../shared/bot-facts.ts";
+import type { BotFact, BotFactInput, BotFactPatch } from "../api/schema/bots.ts";
 import { botFactsApi, type BotFactsApi } from "../api/bot-facts.ts";
 import type { BotFactsState } from "../lib/bots/facts.ts";
 export class BotFactsController {

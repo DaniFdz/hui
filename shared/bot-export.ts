@@ -6,7 +6,7 @@
  * export dialog shows exactly the files the gateway then saves. See docs/api.md#importing-and-exporting-bots.
  */
 import { handleFromName, type BotFaceEars, type BotFaceShape, type BotTagging, type BotVoice } from "./bots.ts";
-import type { BotTriggerInput } from "./bot-triggers.ts";
+import type { BotTriggerInput } from "../server/api/bot-triggers.ts";
 
 export const BOT_EXPORT_FORMAT = "hui-bot";
 /** 2: a template, reviewed for personal information. A version 1 export (an exact copy, memory included) still imports. */

@@ -1,7 +1,7 @@
 /** The memory page follows confirmed saves and keeps pending or failed work from another bot out of view. */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { BotFact } from "../../shared/bot-facts.ts";
+import type { BotFact } from "../api/schema/bots.ts";
 import { BotFactsController } from "./bot-facts-controller.ts";
 const fact: BotFact = { id: "f-1", kind: "fact", text: "Useful fact", source: "Saved by you", pinned: false, revision: 1, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z" };
 test("a failed save preserves editing state and never presents the change as saved", async () => {

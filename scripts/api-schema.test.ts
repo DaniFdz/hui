@@ -89,7 +89,6 @@ const ALLOWED = [
   "module: attachments",
   "module: backlog",
   "module: bot-templates",
-  "module: bot-triggers",
   "module: bots",
   "module: calls",
   "module: diagnostics",

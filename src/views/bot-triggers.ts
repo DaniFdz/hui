@@ -5,10 +5,10 @@
  * (`src/controllers/bot-triggers-controller.ts`) owns the state and every request.
  */
 import { html, nothing } from "lit";
-import { BOT_TRIGGER_LIMITS, botTriggerFilterSummary, cooldownLabel, type BotTrigger, type BotTriggerRun } from "../../shared/bot-triggers.ts";
+import type { BotTrigger, BotTriggerRun } from "../api/schema/bot-triggers.ts";
 import type { BotView } from "../../shared/bots.ts";
 import { icons } from "../lib/icons.ts";
-import { TriggerFormError, triggerFormInput, type BotTriggersActions, type BotTriggersState, type RevealedHook } from "../lib/bots/triggers.ts";
+import { BOT_TRIGGER_LIMITS, botTriggerFilterSummary, cooldownLabel, TriggerFormError, triggerFormInput, type BotTriggersActions, type BotTriggersState, type RevealedHook } from "../lib/bots/triggers.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 

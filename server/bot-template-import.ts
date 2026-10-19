@@ -24,7 +24,7 @@ import {
   BOT_SKILL_TEXT_FILE, BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, botOpenerKickoffText, botTemplateKickoffText, notAgreedSection,
   type BotImportPreview, type BotImportResult, type BotImportRoutine, type BotTemplate,
 } from "../shared/bot-templates.ts";
-import type { BotTriggerInput } from "../shared/bot-triggers.ts";
+import type { BotTriggerInput } from "./bot-triggers-format.ts";
 import type { AutomationSchedule, AutomationTask, AutomationTaskInput } from "./automation.ts";
 import { nextScheduleAt } from "./automation.ts";
 import type { BotOffer, BotService } from "./bot-service.ts";

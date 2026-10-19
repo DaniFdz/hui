@@ -4,8 +4,14 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
-import { botFactsSection, localBotFacts, readBotFacts } from "./bot-facts.ts";
+import { BOT_FACT_KINDS, BOT_FACT_LIMITS, botFactsSection, localBotFacts, readBotFacts } from "./bot-facts.ts";
 import { BotConflictError, BotInputError, BotNotFoundError } from "./bots.ts";
+
+test("memory kinds and limits match the portable fixtures", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./bot-facts.fixture.json", import.meta.url), "utf8"));
+  assert.deepEqual(BOT_FACT_KINDS, fixture.kinds);
+  assert.deepEqual(BOT_FACT_LIMITS, fixture.limits);
+});
 
 test("manual memories survive reopen with provenance; concurrent corrections cannot overwrite each other", async () => {
   const root = await mkdtemp(join(tmpdir(), "hui-facts-"));

@@ -20,7 +20,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { isIPv4, isIPv6 } from "node:net";
 
-import { BOT_TRIGGER_HOOK_PREFIX, BOT_TRIGGER_LIMITS, type BotTriggerFilter, type TriggerMatch } from "../shared/bot-triggers.ts";
+import { BOT_TRIGGER_HOOK_PREFIX, BOT_TRIGGER_LIMITS, type BotTriggerFilter, type TriggerMatch } from "./bot-triggers-format.ts";
 import { parseGitHubUrl } from "./integrations/github-links.ts";
 import { refuseUnknown, TriggerInputError } from "./bot-triggers-input.ts";
 

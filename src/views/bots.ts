@@ -18,7 +18,7 @@ import { closeDropdownOnEscape, hasOpenWebAwesomePopup, labelDropdown } from "..
 import { navigationPath } from "../lib/navigation.ts";
 import type { BotView } from "../lib/bots/bots.ts";
 import { botLook } from "../../shared/bots.ts";
-import type { BotTrigger } from "../../shared/bot-triggers.ts";
+import type { BotTrigger } from "../api/schema/bot-triggers.ts";
 import type { WorkerState } from "../api/schema/workers.ts";
 import { rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bots/face.ts";
 import "../components/bot-face.ts";
