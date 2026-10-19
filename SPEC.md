@@ -1309,7 +1309,8 @@ sessions nest below their parent in the sidebar, except collected children, whic
 have no sidebar row (as in OpenClaw): the card lists and opens them, and the parent
 row still shows their work as background activity. A bot's subagents, and anything
 below them, have no row either: like the bot's chat, which is never listed, they
-stay out of every session list, and the bot chat's cards list and open them. Each parent with visible children has a separate keyboard-accessible
+stay out of every session list, and the bot chat's cards list and open them; a
+subagent's *Open parent* opens its bot's chat in the Bots tab. Each parent with visible children has a separate keyboard-accessible
 disclosure button that folds its entire subtree without changing the open session.
 Folding is kept in memory for the current page; search and status filters reveal
 matches without clearing the fold choices. PI remains the sole transcript writer. HUI persists only lineage,
