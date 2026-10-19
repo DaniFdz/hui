@@ -63,6 +63,7 @@ import {
 import { PullRequestStatuses, pullRequestsFromTranscript } from "./pull-requests.ts";
 
 
+import { HUI_SETTINGS_FILE, readHuiSettings } from "./hui-settings.ts";
 import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeError, VscodeService } from "./vscode.ts";
 import { VscodeInstaller } from "./vscode-install.ts";
@@ -302,7 +303,7 @@ const botRegistry = new BotRegistry(undefined, (count) => recordDiagnosticEvent(
 }));
 /** The Durable side of bots' chats here, and their remote workers' half: the bot service's, and what a bot import
  * checks a new bot against. */
-const botConversations = durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readSettings()).models.primary || undefined });
+const botConversations = durableBotConversations(durableHost(), botMemory, { primaryModel: async () => (await readHuiSettings()).models.primary || undefined });
 const botWorkers = remoteBots(workers, {
   cleanupFile: BOT_CLEANUP_FILE,
   report: (action, summary, error) => recordDiagnosticEvent({
@@ -344,7 +345,7 @@ const bots = new BotService({
 });
 /** Settings → Labs → Bots, read at each use, so turning bots on or off applies without a restart. */
 async function botsOn(): Promise<boolean> {
-  return botsEnabled(await readSettings());
+  return botsEnabled(await readHuiSettings());
 }
 /** Open `GET /__hui/bots/events` streams, ended as bots are turned off so every screen hears it. */
 const botStreams = new Set<ServerResponse>();
@@ -378,7 +379,7 @@ const botTemplateRoutes = createBotTemplateRoutes({
     triggers: { create: (botId, input) => triggers.service.create(botId, input) },
     skills: botSkillFiles,
     findWorker: (target) => botWorkers.find(target),
-    operator: async () => soulOperatorName((await readSettings()).profileName),
+    operator: async () => soulOperatorName((await readHuiSettings()).profileName),
     timezone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
     fetchPage: (url) => fetchGrokBotPage(url),
     skillsWritten: (cwd) => durableHost().prompt.reload(cwd),
@@ -390,11 +391,11 @@ const botTemplateRoutes = createBotTemplateRoutes({
     routines: { tasks: async () => (await automation.snapshot()).tasks },
     triggers: { list: async (botId) => (await triggers.service.list(botId)).triggers },
     skills: botSkillFiles,
-    utilityModel: async () => (await readSettings()).models.utility || undefined,
+    utilityModel: async () => (await readHuiSettings()).models.utility || undefined,
     // A plain completion, as a call's helper makes: the reviewer has no tools, whatever the text it reads asks for.
     completion: (model, request) => callCompletion(model, request),
     identity: async (worker) => {
-      const operator = soulOperatorName((await readSettings()).profileName);
+      const operator = soulOperatorName((await readHuiSettings()).profileName);
       const remote = await workers.list().catch(() => []);
       // A bot on a worker: that machine's home and host name are its owner's too.
       const there = remote.find((each) => each.id === worker)?.host;
@@ -433,7 +434,7 @@ workers.serve("bot.section", async (workerId, params) => {
 });
 durableHost().botSouls = {
   home: (botId) => botHome(botId),
-  operator: async () => soulOperatorName((await readSettings()).profileName),
+  operator: async () => soulOperatorName((await readHuiSettings()).profileName),
   // From the last registry read: a bot still called "New Bot" asks for a name first.
   name: (botId) => bots.identity(botId)?.name,
 };
@@ -453,15 +454,15 @@ const watchers = new WatcherService({
 /** One managed browser per gateway; its settings are re-read on every call. */
 const managedBrowser = new ManagedBrowser({
   profileDir: BROWSER_PROFILE_DIR,
-  readSettings: async () => (await readSettings()).browser,
+  readSettings: async () => (await readHuiSettings()).browser,
 });
 /** One VS Code server per gateway for every VS Code view, started on the first open (`vscode.ts`). Nothing runs or
  * downloads before that; an openvscode-server install happens only when the operator asks for it. */
 const vscode = new VscodeService({
   dir: VSCODE_DIR,
-  settings: async () => (await readSettings()).vscode,
+  settings: async () => (await readHuiSettings()).vscode,
   saveLicense: async (licenseAcceptedAt) => {
-    const current = await readSettings();
+    const current = await readHuiSettings();
     await writeSettings({ ...current, vscode: { ...current.vscode, licenseAcceptedAt } });
   },
   installer: new VscodeInstaller({
@@ -510,7 +511,7 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "ask_user_question") {
     if (!(await readRegistry()).some(({ id }) => id === invocation.callerSessionId)) throw new Error("Conversation no longer exists.");
-    const { timeoutMinutes } = (await readSettings()).questions;
+    const { timeoutMinutes } = (await readHuiSettings()).questions;
     return questionnaires.request(invocation.callerSessionId, invocation.params, invocation.signal, timeoutMinutes);
   }
   if (invocation.action === "watcher") {
@@ -619,7 +620,7 @@ const callCompletion: CallCompletion = async (ref, { system, prompt, signal, lea
   return reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
 };
 const callSettings = async () => {
-  const settings = await readSettings();
+  const settings = await readHuiSettings();
   return { utility: settings.models.utility, operator: operatorName(settings.profileName) };
 };
 const reportCall = (summary: string, detail?: string) => recordDiagnosticEvent({ area: "runtime", level: "warning", action: "call_helper", summary, ...(detail ? { detail } : {}) });
@@ -652,12 +653,11 @@ const callRoutes = createCallRoutes({
     handOff: async (botId, text) => await bots.send(botId, { text }, { timeoutMs: 600_000 }) as BotReply,
     report: reportCall,
   }),
-  settings: () => readSettings(),
+  settings: () => readHuiSettings(),
   timeZone: () => Intl.DateTimeFormat().resolvedOptions().timeZone,
 });
 const BOT_CALLS = /^\/__hui\/bots\/[^/]+\/calls(?:\/|$)/u;
 
-const SETTINGS_FILE = join(CONFIG_DIR, "settings.json");
 const BUILTIN_THEME_DIR = fileURLToPath(new URL("../themes/", import.meta.url));
 
 type ThemeSource = "builtin" | "user";
@@ -677,14 +677,6 @@ type ThemeListing = {
   files: Map<string, string>;
 };
 
-async function readSettings(): Promise<Settings> {
-  try {
-    return normalizeSettings(JSON.parse(await readFile(SETTINGS_FILE, "utf8")));
-  } catch {
-    return normalizeSettings(undefined);
-  }
-}
-
 /** Creating both directories is what gives a fresh install somewhere obvious to
  * drop a theme file. */
 async function ensureConfigDir(): Promise<void> {
@@ -693,10 +685,10 @@ async function ensureConfigDir(): Promise<void> {
 
 async function writeSettings(raw: unknown): Promise<Settings> {
   const settings = normalizeSettings(raw);
-  const before = await readSettings();
+  const before = await readHuiSettings();
   const botsWereOn = botsEnabled(before);
   await ensureConfigDir();
-  await writeFile(SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  await writeFile(HUI_SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   // A changed browser mode or executable must not leave the old process running.
   await managedBrowser.applySettings(settings.browser);
   // Off withdraws every VS Code frame's access and stops the server; a new executable applies to the next start.
@@ -1836,7 +1828,7 @@ export async function createSession(
   const fast = body["fast"] === true;
   // A worker runs the same runtime a local session would.
   const runtimeTool = tool || defaultSessionTool();
-  const settings = await readSettings();
+  const settings = await readHuiSettings();
   // Sessions started without a choice (suggestions, backlog items) use the
   // primary route rather than whatever PI currently treats as its default.
   const model = requestedModel || settings.models.primary;
@@ -1956,7 +1948,7 @@ export async function forkFromSession(
 ): Promise<SessionRecord> {
   if (!request.worktree) return forkSession(source, await fork(request.entryId), sessions, registryUpdater);
   if (source.worker) throw new Error("Worktrees are not available on remote workers yet.");
-  const settings = await readSettings();
+  const settings = await readHuiSettings();
   const worktree = await createSessionWorktree({
     sourceDirectory: source.cwd,
     title: forkTitle(source.title),
@@ -3031,7 +3023,7 @@ async function handleRequest(
 
   if (path === SETTINGS_ROUTE) {
     if (request.method === "GET") {
-      sendJson(response, 200, await readSettings());
+      sendJson(response, 200, await readHuiSettings());
       return;
     }
     if (request.method === "PUT") {
@@ -3625,7 +3617,7 @@ async function handleRequest(
           cwd: record.worker ? homedir() : record.cwd,
           context: suggestion ? taskSuggestionJiraDescription(suggestion) : digest?.text ?? "",
           ...(digest?.goal ? { goal: digest.goal } : {}),
-          model: (await readSettings()).models.utility,
+          model: (await readHuiSettings()).models.utility,
           run: runPiUtilityPrompt,
         });
         sendJson(response, 200, { draft });
@@ -3803,7 +3795,7 @@ async function handleRequest(
         const body = (await readBody(request)) as Record<string, unknown>;
         const item = await findBacklogItem(itemId);
         const cwd = await existingDirectory(body["cwd"]);
-        sendJson(response, 200, await suggestWorktreeName({ cwd, item, settings: await readSettings() }));
+        sendJson(response, 200, await suggestWorktreeName({ cwd, item, settings: await readHuiSettings() }));
         return;
       }
       // Jira actions only apply to local tasks without a key yet.
@@ -3824,7 +3816,7 @@ async function handleRequest(
           title: task.title,
           cwd: task.cwd ?? CONFIG_DIR,
           context: taskSuggestionJiraDescription(task),
-          model: (await readSettings()).models.utility,
+          model: (await readHuiSettings()).models.utility,
           run: runPiUtilityPrompt,
         });
         sendJson(response, 200, { draft });
@@ -4210,7 +4202,7 @@ async function handleRequest(
           cwd: record.worker ? homedir() : record.cwd,
           question,
           transcript: liveSessions.transcript(id),
-          settings: await readSettings(),
+          settings: await readHuiSettings(),
         });
         sendJson(response, 200, { question, ...result });
       } catch (error) {
@@ -4474,7 +4466,7 @@ export async function startBackend(): Promise<void> {
   // gateway appends it to gateway.log and a development server prints it.
   mirrorDiagnosticLogs((line) => process.stderr.write(line));
   await ensureConfigDir();
-  void macPower?.start((await readSettings()).power.keepAwake);
+  void macPower?.start((await readHuiSettings()).power.keepAwake);
   await automation.start();
   // Session views name bots' chats from this list; a broken bots.json is reported by the bot routes.
   await botRegistry.list().catch(() => undefined);
