@@ -3,11 +3,13 @@
  * Lookups that arrive together become one read-only `gh api graphql` query, one
  * alias per item, made with the GitHub CLI login that Settings → Integrations →
  * GitHub establishes, so private repositories the operator can read preview too.
- * Results are cached in gateway memory with state-dependent lifetimes; concurrent
- * requests for one item share a lookup. `gh` diagnostics never reach the browser:
- * failures become a coarse reason.
+ * What the active account cannot preview, every other github.com account `gh` is
+ * signed in to tries in turn; such an account's token goes only into its `gh`
+ * child's `GH_TOKEN` and is never kept. Results are cached in gateway memory with
+ * state-dependent lifetimes; concurrent requests for one item share a lookup.
+ * `gh` diagnostics never reach the browser: failures become a coarse reason.
  */
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
 
 import {
   githubRefKey,
@@ -18,9 +20,9 @@ import {
   type GitHubRef,
 } from "../shared/github-links.ts";
 import type { PullRequestState } from "../shared/pull-requests.ts";
+import { GH_ENV, GITHUB_HOST, parseAccounts } from "./github.ts";
 import { pullRequestBodyPreview, type PullRequestFetcher } from "./pull-requests.ts";
 
-const GH_ENV = { GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1", GH_SPINNER_DISABLED: "1", NO_COLOR: "1" };
 const MAX_TITLE = 300;
 const MAX_DESCRIPTION = 400;
 const MAX_LABELS = 6;
@@ -29,11 +31,17 @@ const BATCH_WINDOW_MS = 20;
 /** Items per query; each pull request and issue brings its whole body. */
 const BATCH_SIZE = 25;
 const CALLS_AT_ONCE = 2;
+/** Listing accounts checks every token with GitHub, about a second. */
+const LOGINS_TTL_MS = 10 * 60_000;
 
 /** What GitHub answered: an alias whose item failed is null, with an error naming it in `path`. */
 export type GraphQLResponse = { data: Record<string, unknown>; errors?: { type?: string; path?: unknown[] }[] };
-/** Runs one `gh api graphql` query; rejects with a classified reason when GitHub answered no data at all. */
-export type GitHubGraphQL = (query: string) => Promise<GraphQLResponse>;
+export type GitHubGraphQL = {
+  /** One query as `login`, or as `gh`'s active account; rejects with a classified reason when GitHub answered no data. */
+  query: (query: string, login?: string) => Promise<GraphQLResponse>;
+  /** The github.com accounts `gh` is signed in to besides the active one. */
+  otherLogins: () => Promise<string[]>;
+};
 
 export class GitHubApiError extends Error {
   readonly reason: GitHubPreviewError;
@@ -55,21 +63,32 @@ export function classifyGhFailure(error: unknown): GitHubPreviewError {
 }
 
 export function ghGraphQL(command = "gh", env: NodeJS.ProcessEnv = process.env): GitHubGraphQL {
-  const childEnv = { ...env, ...GH_ENV };
-  return (query) => new Promise((resolve, reject) => {
-    const child = execFile(command, ["api", "graphql", "--input", "-"], { env: childEnv, timeout: 15_000, maxBuffer: 16 * 1024 * 1024, encoding: "utf8" }, (error, stdout, stderr) => {
+  const run = (args: string[], extra?: Record<string, string>, input?: string) =>
+    new Promise<{ error: ExecFileException | null; stdout: string; stderr: string }>((resolve) => {
+      const child = execFile(command, args, { env: { ...env, ...GH_ENV, ...extra }, timeout: 15_000, maxBuffer: 16 * 1024 * 1024, encoding: "utf8" },
+        (error, stdout, stderr) => resolve({ error, stdout, stderr }));
+      // A gh that exits before reading the query (signed out) breaks the pipe; the callback reports why it exited.
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(input);
+    });
+  return {
+    async query(query, login) {
+      const token = login ? (await run(["auth", "token", "--hostname", GITHUB_HOST, "--user", login])).stdout.trim() : "";
+      if (login && !token) throw new GitHubApiError("signed_out");
+      const { error, stdout, stderr } = await run(["api", "graphql", "--input", "-"], token ? { GH_TOKEN: token } : undefined, JSON.stringify({ query }));
       // gh exits 1 when any alias failed, after printing GitHub's answer with the others' data.
       let response: unknown;
       try { response = JSON.parse(stdout); } catch { /* no answer from GitHub */ }
       const data = record(response)["data"];
-      if (data && typeof data === "object") resolve(response as GraphQLResponse);
+      if (data && typeof data === "object") return response as GraphQLResponse;
       // The callback form does not attach stderr to the error; classify with both.
-      else reject(new GitHubApiError(error ? classifyGhFailure({ code: error.code, stderr }) : "unavailable"));
-    });
-    // A gh that exits before reading the query (signed out) breaks the pipe; the callback reports why it exited.
-    child.stdin?.on("error", () => {});
-    child.stdin?.end(JSON.stringify({ query }));
-  });
+      throw new GitHubApiError(error ? classifyGhFailure({ code: error.code, stderr }) : "unavailable");
+    },
+    async otherLogins() {
+      const { stdout } = await run(["auth", "status", "--hostname", GITHUB_HOST, "--json", "hosts"]);
+      return parseAccounts(stdout).filter((account) => !account.active).map((account) => account.login);
+    },
+  };
 }
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -202,6 +221,7 @@ export class GitHubPreviews {
   readonly #pending: Pending[] = [];
   #window?: ReturnType<typeof setTimeout>;
   #running = 0;
+  #otherLogins?: { until: number; logins: Promise<string[]> };
 
   constructor(api: GitHubGraphQL = ghGraphQL(), options: GitHubPreviewOptions = {}) {
     this.#api = api;
@@ -226,8 +246,9 @@ export class GitHubPreviews {
     return entry.result.then(asAsked);
   }
 
-  /** Forgets failures, e.g. after the operator signs in. */
+  /** Forgets failures and the accounts, e.g. after the operator signs in. */
   clearFailures(): void {
+    this.#otherLogins = undefined;
     for (const [key, entry] of this.#cache) {
       void entry.result.then((result) => { if (result.error && this.#cache.get(key) === entry) this.#cache.delete(key); });
     }
@@ -256,14 +277,41 @@ export class GitHubPreviews {
     }
   }
 
+  /** As the active account, then what it could not preview as each other account in turn. An item no account
+   * previews keeps the active account's answer. */
   async #send(batch: readonly Pending[]): Promise<void> {
+    const results = await this.#query(batch.map(({ ref }) => ref));
+    let missing = results.flatMap((result, index) => result.preview ? [] : [index]);
+    if (missing.length) {
+      for (const login of await this.#logins()) {
+        const retried = await this.#query(missing.map((index) => batch[index]!.ref), login);
+        retried.forEach((result, position) => { if (result.preview) results[missing[position]!] = result; });
+        missing = missing.filter((index) => !results[index]!.preview);
+        if (!missing.length) break;
+      }
+    }
+    batch.forEach(({ resolve }, index) => resolve(results[index]!));
+  }
+
+  async #query(refs: readonly GitHubRef[], login?: string): Promise<GitHubPreviewResult[]> {
     try {
-      const response = await this.#api(previewQuery(batch.map(({ ref }) => ref)));
-      batch.forEach(({ ref, resolve }, index) => resolve(previewResult(ref, response, `i${index}`)));
+      const response = await this.#api.query(previewQuery(refs), login);
+      return refs.map((ref, index) => previewResult(ref, response, `i${index}`));
     } catch (error) {
       const reason = error instanceof GitHubApiError ? error.reason : "unavailable";
-      for (const { ref, resolve } of batch) resolve({ url: ref.url, error: reason });
+      return refs.map((ref) => ({ url: ref.url, error: reason }));
     }
+  }
+
+  #logins(): Promise<string[]> {
+    if (!this.#otherLogins || this.#otherLogins.until <= this.#now()) {
+      const logins = this.#api.otherLogins().catch(() => {
+        this.#otherLogins = undefined;
+        return [];
+      });
+      this.#otherLogins = { until: this.#now() + LOGINS_TTL_MS, logins };
+    }
+    return this.#otherLogins.logins;
   }
 }
 

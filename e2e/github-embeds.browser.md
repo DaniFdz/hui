@@ -81,3 +81,16 @@ its URL written into `pi-agent/models.json`), checked with the Browser tool at
   links (a repository, merged pull requests, an issue, a pull URL that names an
   issue and two missing items) in one call; a 25-item query costs one GraphQL
   rate-limit point.
+
+## Two GitHub accounts (2026-10-17)
+
+The same seed with the fake `gh` signed in to two accounts (`gh/accounts` holds
+`hui-e2e`, the active one, and `hui-e2e-personal`) and `gh/previews.json`
+making issue `acme/web#7` visible to `hui-e2e-personal` only (`"_account"`).
+Opening the session at 1440×900 and 390×844 showed the `#7` card filled in
+(*Closed*, its labels and 4 comments). `gh/preview-log` held
+`hui-e2e: acme/web#7 acme/web#12 acme/web#13 acme/web`, then
+`hui-e2e-personal: acme/web#7`, and the wrapper logged one `gh auth status` and
+one `gh auth token --user hui-e2e-personal` between the two queries. Against the
+real `gh`, a private repository of the second signed-in account that the active
+account cannot see previewed the same way.

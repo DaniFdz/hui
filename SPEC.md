@@ -269,8 +269,9 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   `owner/repo#N`) as cards after the message, at most three per message like
   Slack: PRs show state, title, description snippet, author and diff stats;
   issues show state, labels and comments; repositories show description,
-  language, stars and forks. Facts come from the same `gh` login as PR badges;
-  without it the card still links to GitHub and says why there is no preview.
+  language, stars and forks. Facts come from the same `gh` logins as PR badges:
+  the active account, then each other signed-in account for what it cannot see;
+  without one the card still links to GitHub and says why there is no preview.
   Lookups made together, cards and badges alike, share `gh api graphql` calls of
   up to 25 items.
   Hovering a PR card shows its full description in the PR badge hovercard.

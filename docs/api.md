@@ -4507,7 +4507,15 @@ request previews the pull request. A call carries at most 25 items and at most
 two run at once; lookups that wait for a free call go out together in the next.
 Private repositories the account can read preview too. An item GitHub cannot
 resolve is `not_found` while the rest of its call still previews; a call that
-fails as a whole fails each of its items with the same `error`. `gh` output never
+fails as a whole fails each of its items with the same `error`. What the active
+account cannot preview goes, in one call per account, to each other github.com
+account `gh` is signed in to (`gh auth status`), in the order `gh` lists them,
+until one previews it; an item none of them previews keeps the active account's
+`error`. Such an account's token comes from `gh auth token --user` and goes only
+into that `gh` child's `GH_TOKEN`; it is never logged, cached or sent to the
+browser. The account list is read only when the active account misses something
+and is kept for 10 minutes, or until the next GitHub sign-in; a failed read is
+not kept. `gh` output never
 reaches the browser; failures map to the coarse `error`. A pull request's
 `comments` counts its conversation comments and review threads.
 Results are cached in gateway memory: open PRs 60 s, open issues 2 min,

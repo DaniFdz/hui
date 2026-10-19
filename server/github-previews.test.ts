@@ -31,18 +31,22 @@ const issue = (patch: Record<string, unknown> = {}) => ({
   comments: { totalCount: 3 }, labels: { nodes: [{ name: "bug" }, { name: "p1" }] }, body: "Steps", ...patch,
 });
 
-/** `gh api graphql` over `nodes` (keyed `owner/repo` or `owner/repo#N`), as GitHub answers HUI's aliased query. */
+/** `gh` signed in to one account that sees `nodes` (keyed `owner/repo` or `owner/repo#N`), answering HUI's aliased
+ * query as GitHub does. */
 function graphql(nodes: Record<string, unknown>, queries: string[] = []): GitHubGraphQL {
-  return async (query) => {
-    queries.push(query);
-    const data: Record<string, unknown> = {};
-    const errors: { type: string; path: string[] }[] = [];
-    for (const [, alias = "", owner, name, number] of query.matchAll(/(i\d+): repository\(owner: "([^"]+)", name: "([^"]+)"\) \{ (?:item: issueOrPullRequest\(number: (\d+)\))?/gu)) {
-      const node = nodes[`${owner}/${name}${number ? `#${number}` : ""}`] ?? null;
-      data[alias] = number ? { item: node } : node;
-      if (!node) errors.push({ type: "NOT_FOUND", path: number ? [alias, "item"] : [alias] });
-    }
-    return { data, errors };
+  return {
+    async query(query) {
+      queries.push(query);
+      const data: Record<string, unknown> = {};
+      const errors: { type: string; path: string[] }[] = [];
+      for (const [, alias = "", owner, name, number] of query.matchAll(/(i\d+): repository\(owner: "([^"]+)", name: "([^"]+)"\) \{ (?:item: issueOrPullRequest\(number: (\d+)\))?/gu)) {
+        const node = nodes[`${owner}/${name}${number ? `#${number}` : ""}`] ?? null;
+        data[alias] = number ? { item: node } : node;
+        if (!node) errors.push({ type: "NOT_FOUND", path: number ? [alias, "item"] : [alias] });
+      }
+      return { data, errors };
+    },
+    otherLogins: async () => [],
   };
 }
 
@@ -121,10 +125,10 @@ test("a failed call fails its whole batch, sign-in clears failures, and badges r
   assert.equal(previewTtlMs({ url: "u", error: "not_found" }), 300_000);
   let signedIn = false;
   const merged = graphql({ "cli/cli#14517": pull({ state: "MERGED" }), "cli/cli": repo });
-  const previews = new GitHubPreviews(async (query) => {
+  const previews = new GitHubPreviews({ ...merged, query: async (query) => {
     if (!signedIn) throw new GitHubApiError("signed_out");
-    return merged(query);
-  });
+    return merged.query(query);
+  } });
   const url = "https://github.com/cli/cli/pull/14517";
   assert.deepEqual((await Promise.all([previews.lookup(url), previews.lookup("https://github.com/cli/cli")])).map((result) => result.error), ["signed_out", "signed_out"]);
   signedIn = true;
@@ -141,34 +145,80 @@ test("a burst goes out in batches of 25, at most two gh calls at once", async ()
   let peak = 0;
   const sizes: number[] = [];
   const answer = graphql(Object.fromEntries(Array.from({ length: 60 }, (_, index) => [`acme/r${index}`, { ...repo, nameWithOwner: `acme/r${index}` }])));
-  const previews = new GitHubPreviews(async (query) => {
+  const previews = new GitHubPreviews({ ...answer, query: async (query) => {
     sizes.push(aliases(query));
     running += 1;
     peak = Math.max(peak, running);
     await new Promise((resolve) => setTimeout(resolve, 5));
     running -= 1;
-    return answer(query);
-  });
+    return answer.query(query);
+  } });
   const results = await Promise.all(Array.from({ length: 60 }, (_, index) => previews.lookup(`https://github.com/acme/r${index}`)));
   assert.deepEqual(sizes, [25, 25, 10]);
   assert.equal(peak, 2);
   assert.deepEqual(results.map((result) => result.preview?.kind === "repo" && result.preview.fullName), Array.from({ length: 60 }, (_, index) => `acme/r${index}`));
 });
 
-test("gh's partial answer keeps the items it found; signed out and missing gh are reported", async () => {
+test("what the active account cannot preview, each other signed-in account tries in turn", async () => {
+  const asked: string[] = [];
+  let listed = 0;
+  const visible: Record<string, Record<string, unknown>> = {
+    active: { "cli/cli": repo },
+    work: {},
+    personal: { "acme/secret": { ...repo, nameWithOwner: "acme/secret" } },
+  };
+  const previews = new GitHubPreviews({
+    query: async (query, login = "active") => {
+      asked.push(`${login}:${aliases(query)}`);
+      if (login === "work") throw new GitHubApiError("unavailable");
+      return graphql(visible[login]!).query(query);
+    },
+    otherLogins: async () => {
+      listed += 1;
+      if (listed === 3) throw new Error("gh auth status timed out");
+      return ["work", "personal"];
+    },
+  });
+  assert.equal((await previews.lookup("https://github.com/cli/cli")).preview?.kind, "repo");
+  assert.equal(listed, 0, "no account list while the active account sees everything");
+
+  const [secret, missing] = await Promise.all(["https://github.com/acme/secret", "https://github.com/acme/missing"].map((url) => previews.lookup(url)));
+  assert.equal(secret?.preview?.kind === "repo" && secret.preview.fullName, "acme/secret");
+  assert.deepEqual(missing, { url: "https://github.com/acme/missing", error: "not_found" }, "no account sees it: the active account's answer");
+  assert.deepEqual(asked, ["active:1", "active:2", "work:2", "personal:2"], "each other account is asked once, for what is still missing");
+  await previews.lookup("https://github.com/acme/elsewhere");
+  assert.equal(listed, 1, "the account list is kept, not read on every miss");
+  previews.clearFailures();
+  await previews.lookup("https://github.com/acme/after-sign-in");
+  assert.equal(listed, 2, "and read again after a sign-in");
+  previews.clearFailures();
+  await previews.lookup("https://github.com/acme/listing-fails");
+  await previews.lookup("https://github.com/acme/listing-retried");
+  assert.equal(listed, 4, "a failed read is not kept");
+});
+
+test("gh's partial answer keeps the items it found and other accounts find the rest; signed out and missing gh are reported", async () => {
   const dir = await mkdtemp(join(tmpdir(), "hui-gh-previews-"));
   try {
     await chmod(FIXTURE, 0o755);
-    await writeFile(join(dir, "account"), "hui-e2e\n");
+    await writeFile(join(dir, "accounts"), "hui-e2e\nhui-e2e-personal\n");
+    await writeFile(join(dir, "previews.json"), JSON.stringify({
+      "acme/secret": { nameWithOwner: "acme/secret", stargazerCount: 1, forkCount: 0, isPrivate: true, isArchived: false, _account: "hui-e2e-personal" },
+    }));
     const previews = new GitHubPreviews(ghGraphQL(FIXTURE, { ...process.env, HUI_FAKE_GH_DIR: dir }));
-    const [found, merged, missing] = await Promise.all(["https://github.com/acme/web", "https://github.com/acme/web/pull/13", "https://github.com/acme/web/issues/404"]
-      .map((url) => previews.lookup(url)));
+    const [found, merged, secret, missing] = await Promise.all([
+      "https://github.com/acme/web", "https://github.com/acme/web/pull/13", "https://github.com/acme/secret", "https://github.com/acme/web/issues/404",
+    ].map((url) => previews.lookup(url)));
     assert.equal(found?.preview?.kind === "repo" && found.preview.fullName, "acme/web");
     assert.equal(merged?.preview?.kind === "pull" && merged.preview.state, "merged");
+    assert.equal(secret?.preview?.kind === "repo" && secret.preview.fullName, "acme/secret", "found with the other account's token");
     assert.deepEqual(missing, { url: "https://github.com/acme/web/issues/404", error: "not_found" });
-    assert.equal((await readFile(join(dir, "preview-log"), "utf8")).trim(), "acme/web acme/web#13 acme/web#404", "one gh call");
+    assert.deepEqual((await readFile(join(dir, "preview-log"), "utf8")).trim().split("\n"), [
+      "hui-e2e: acme/web acme/web#13 acme/secret acme/web#404",
+      "hui-e2e-personal: acme/secret acme/web#404",
+    ]);
 
-    await rm(join(dir, "account"));
+    await rm(join(dir, "accounts"));
     const signedOut = new GitHubPreviews(ghGraphQL(FIXTURE, { ...process.env, HUI_FAKE_GH_DIR: dir }));
     assert.equal((await signedOut.lookup("https://github.com/acme/web")).error, "signed_out");
     const noCli = new GitHubPreviews(ghGraphQL(join(dir, "missing-gh")));

@@ -13,7 +13,8 @@
  *                  searches (both logged to search-log) and `api user`;
  *                  `rate-limit-once` fails the next commit search with a rate limit
  *   previews.json — `{ "owner/repo" | "owner/repo#N": GraphQL node }` added to or replacing
- *                  the canned previews; each preview query logs its items to preview-log
+ *                  the canned previews; a node with `_account` is visible to that login only.
+ *                  Each preview query logs `<login>: <items>` to preview-log
  * HUI_FAKE_GH_CODE overrides the printed one-time code; HUI_FAKE_GH_PROTOCOL
  * is the configured git protocol. Each login writes its arguments to login-args. */
 import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -30,6 +31,9 @@ const accounts = () => {
   if (existsSync(file("accounts"))) return readFileSync(file("accounts"), "utf8").split("\n").map((line) => line.trim()).filter(Boolean);
   return existsSync(file("account")) ? [readFileSync(file("account"), "utf8").trim()].filter(Boolean) : [];
 };
+// A token from `auth token --user` below; a real token in the caller's environment is neither used nor logged.
+const fakeToken = /^fake-token-./u.test(process.env.GH_TOKEN ?? "") ? process.env.GH_TOKEN : "";
+const tokenLogin = fakeToken.slice("fake-token-".length);
 
 if (args[0] === "--version") {
   process.stdout.write("gh version 9.9.9 (fixture)\nhttps://github.com/cli/cli/releases/tag/v9.9.9\n");
@@ -48,13 +52,14 @@ if (args[0] === "--version") {
   process.stdout.write(`fake-token-${login}\n`);
 } else if (args[0] === "api" && args[1] === "user") {
   // `gh api user --jq .created_at` for the account whose token the call carries.
-  const login = process.env.GH_TOKEN?.replace(/^fake-token-/u, "") ?? accounts()[0];
+  const login = tokenLogin || accounts()[0];
   const data = existsSync(file("contributions.json")) ? JSON.parse(readFileSync(file("contributions.json"), "utf8")) : {};
   process.stdout.write(`${data[login]?.createdAt ?? "2020-06-01T00:00:00Z"}\n`);
 } else if (args[0] === "api" && args[1] === "graphql" && args[2] === "--input" && args[3] === "-") {
   // HUI's chat embed and PR badge previews: one alias per item, the query on stdin. Like gh, a
   // query with a missing item prints GitHub's answer, the other items' data included, and exits 1.
-  if (!existsSync(file("account")) || !readFileSync(file("account"), "utf8").trim()) {
+  const login = tokenLogin || accounts()[0];
+  if (!login) {
     process.stderr.write("To get started with GitHub CLI, please run:  gh auth login\n");
     process.exit(4);
   }
@@ -73,11 +78,11 @@ if (args[0] === "--version") {
   for (const [, alias, owner, name, number] of query.matchAll(/(\w+): repository\(owner: "([^"]+)", name: "([^"]+)"\) \{ (?:item: issueOrPullRequest\(number: (\d+)\))?/gu)) {
     const key = `${owner}/${name}${number ? `#${number}` : ""}`.toLowerCase();
     items.push(key);
-    const node = previews[key] ?? null;
+    const node = previews[key] && (previews[key]._account ?? login) === login ? previews[key] : null;
     data[alias] = number ? { item: node } : node;
     if (!node) errors.push({ type: "NOT_FOUND", path: number ? [alias, "item"] : [alias], message: `Could not resolve ${key}.` });
   }
-  appendFileSync(file("preview-log"), `${items.join(" ")}\n`);
+  appendFileSync(file("preview-log"), `${login}: ${items.join(" ")}\n`);
   process.stdout.write(`${JSON.stringify(errors.length ? { data, errors } : { data })}\n`);
   if (errors.length) {
     process.stderr.write(`gh: ${errors.map((error) => error.message).join("\n")}\n`);
@@ -95,7 +100,7 @@ if (args[0] === "--version") {
     }
     const start = Number(after ?? 0);
     const dates = (data[login]?.pullRequests ?? []).filter((date) => date.slice(0, 10) >= from && date.slice(0, 10) <= to);
-    appendFileSync(file("search-log"), `graphql ${login} ${from}..${to} page=${start / 100 + 1} token=${process.env.GH_TOKEN ?? ""}\n`);
+    appendFileSync(file("search-log"), `graphql ${login} ${from}..${to} page=${start / 100 + 1} token=${fakeToken}\n`);
     const nodes = dates.slice(start, start + 100).map((createdAt) => ({ createdAt }));
     result[alias] = { issueCount: dates.length, pageInfo: { hasNextPage: start + 100 < dates.length, endCursor: String(start + 100) }, nodes };
   }
@@ -120,7 +125,7 @@ if (args[0] === "--version") {
   const all = data[login]?.[args[3] === "search/commits" ? "commits" : "pullRequests"] ?? [];
   const dates = all.filter((date) => date.slice(0, 10) >= from && date.slice(0, 10) <= to);
   const page = Number(field("page") ?? 1);
-  appendFileSync(file("search-log"), `${args[3]} ${login} ${from}..${to} page=${page} token=${process.env.GH_TOKEN ?? ""}\n`);
+  appendFileSync(file("search-log"), `${args[3]} ${login} ${from}..${to} page=${page} token=${fakeToken}\n`);
   const items = dates.slice(0, 1000).slice((page - 1) * 100, page * 100);
   const shown = page > 1 ? items : [String(dates.length), ...items];
   process.stdout.write(shown.map((line) => `${line}\n`).join(""));
