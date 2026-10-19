@@ -14,8 +14,8 @@
  * has it ask the operator what they expect and write SOUL.md itself.
  *
  * Delivery follows the composer: a prompt while the chat is idle, a follow-up
- * while it works. A waiting caller resolves when the run that answers its
- * message settles, which for a follow-up is the run HUI starts once it drains
+ * while it works, or steering when requested. A waiting caller resolves when
+ * the run that answers its message settles, which for a follow-up is the run HUI starts once it drains
  * that message from its queue.
  *
  * A bot created on a remote worker keeps its conversation and memory in that
@@ -66,7 +66,7 @@ const HOP = /^\[from (?:@[a-z0-9-]+|agent: [^\]\n]*?)(?: · hop ([1-9]\d*))?\] /
 
 export type BotSessions = Pick<
   LiveSessions,
-  "ensure" | "status" | "watch" | "snapshot" | "transcript" | "isLive" | "prompt" | "followUp" | "removeFollowUp" | "abort" | "setModel" | "setThinking" | "restart" | "supportsTrackedPrompts" | "waitForTrackedPrompt" | "cancelTrackedPrompt"
+  "ensure" | "status" | "watch" | "snapshot" | "transcript" | "isLive" | "prompt" | "steer" | "followUp" | "removeFollowUp" | "abort" | "setModel" | "setThinking" | "restart" | "supportsTrackedPrompts" | "waitForTrackedPrompt" | "cancelTrackedPrompt"
 >;
 
 /** Stored before dispatch; native identities reacquire durable receipts, older runtimes use the exact input occurrence. */
@@ -915,14 +915,14 @@ export class BotService {
 
   /**
    * Delivers an operator's message. Without `wait`: `sent` (prompted) or
-   * `queued` (a follow-up). With it: the outcome of the run that answers it,
+   * `queued` (a follow-up, or steering when requested). With it: the outcome of the run that answers it,
    * `needs-input` as soon as that run asks a question, or `timeout`.
    */
-  async send(target: string, message: { text: string; attachments?: readonly PromptAttachment[] }, wait?: { timeoutMs: number; signal?: AbortSignal }): Promise<BotMessageResult> {
+  async send(target: string, message: { text: string; attachments?: readonly PromptAttachment[]; whenBusy?: "followUp" | "steer" }, wait?: { timeoutMs: number; signal?: AbortSignal }): Promise<BotMessageResult> {
     const bot = await this.resolve(target);
     if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before messaging it.`);
     const record = await this.#sessionOf(bot);
-    const delivery = await this.#deliver(record, message.text, message.attachments, wait && { ...wait, stopAtQuestion: true, cancelWork: false });
+    const delivery = await this.#deliver(record, message.text, message.attachments, wait && { ...wait, stopAtQuestion: true, cancelWork: false }, undefined, message.whenBusy);
     return delivery.outcome ? await delivery.outcome : { status: delivery.status };
   }
 
@@ -1479,7 +1479,7 @@ export class BotService {
     if (!await this.#isActive()) throw new BotsOffError();
   }
 
-  /** A prompt while idle, else a follow-up; with `wait`, also the outcome of the run that answers it. Every bot turn
+  /** A prompt while idle, else a follow-up or requested steering; with `wait`, also the outcome of the run that answers it. Every bot turn
    * HUI starts passes here (messages, routines, `message_bot`, calls' hand-offs, a new bot's first turn), and so does a
    * bot's reply to a session, so bots that are off refuse here. */
   async #deliver(
@@ -1488,6 +1488,7 @@ export class BotService {
     attachments: readonly PromptAttachment[] | undefined,
     wait?: WaitOptions,
     promptOptions?: RuntimePromptOptions,
+    whenBusy: "followUp" | "steer" = "followUp",
   ): Promise<{ status: "sent" | "queued"; outcome?: Promise<BotReply> }> {
     await this.#assertActive();
     await this.#open(record);
@@ -1507,6 +1508,11 @@ export class BotService {
           if (!(error instanceof SessionBusyError) || this.#sessions.status(record.id) === "idle") throw error;
           watch?.queueing();
         }
+      }
+      if (whenBusy === "steer") {
+        await this.#sessions.steer(record.id, text, files);
+        watch?.queued(undefined);
+        return { status: "queued", ...(watch ? { outcome: watch.outcome } : {}) };
       }
       const item = await this.#sessions.followUp(record.id, text, files, promptOptions);
       watch?.queued(item);

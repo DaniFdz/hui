@@ -9,6 +9,7 @@ const FIELDS: TriggerFormFields = { name: "Reviews", prompt: "  Review it.  ", c
 
 test("the add form becomes a listener trigger's body", () => {
   assert.deepEqual(triggerFormInput(FIELDS), { name: "Reviews", source: "listener", prompt: "Review it.", cooldownSeconds: 300, filter: {} });
+  assert.equal(triggerFormInput({ ...FIELDS, steer: true }).delivery, "steer");
   assert.deepEqual(triggerFormInput({ ...FIELDS, prompt: "", cooldown: "0", matchField: " fields.channel ", matchValue: " G01M4T1JFLK ", prLinks: true, bots: true }),
     { name: "Reviews", source: "listener", cooldownSeconds: 0, filter: { match: { field: "fields.channel", op: "equals", value: "G01M4T1JFLK" }, prLinks: true, bots: true } });
   assert.deepEqual(triggerFormInput({ ...FIELDS, matchField: "summary", matchOp: "contains", matchValue: "review", external: true }).filter, { match: { field: "summary", op: "contains", value: "review" }, external: true });
@@ -28,6 +29,7 @@ test("the routes' answers are narrowed: unknown sources, bad entries and missing
   const parsed = parseTrigger(TRIGGER);
   assert.deepEqual(parsed?.filter, { match: { field: "fields.channel", op: "equals", value: "C0" }, prLinks: true }, "a switch that isn't true is left out");
   assert.deepEqual([parsed?.createdBy, parsed?.tokenHint, parsed?.pending], ["bot", "AbCd", { events: 2, until: "2026-10-07T10:05:00.000Z" }]);
+  assert.equal(parseTrigger({ ...TRIGGER, delivery: "steer" })?.delivery, "steer");
   assert.equal(parseTrigger({ ...TRIGGER, source: "github" }), undefined, "a kind HUI no longer has");
   assert.deepEqual(parseTrigger({ ...TRIGGER, filter: { match: { field: "a", op: "regex", value: "x" } } })?.filter, {}, "a match it can't read is left out");
   assert.deepEqual(parseTrigger({ ...TRIGGER, filter: undefined })?.filter, {});

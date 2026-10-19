@@ -6,7 +6,7 @@
  * export dialog shows exactly the files the gateway then saves. See docs/api.md#importing-and-exporting-bots.
  */
 import { handleFromName, type BotFaceEars, type BotFaceShape, type BotTagging, type BotVoice } from "./bots.ts";
-import type { BotTriggerFilter } from "./bot-triggers.ts";
+import type { BotTriggerInput } from "./bot-triggers.ts";
 
 export const BOT_EXPORT_FORMAT = "hui-bot";
 /** 2: a template, reviewed for personal information. A version 1 export (an exact copy, memory included) still imports. */
@@ -31,7 +31,7 @@ export type BotOpenPoint = {
 };
 
 /** A trigger as a template carries it: never its URL or token, and it starts disabled. */
-export type BotTemplateTrigger = { name: string; filter: BotTriggerFilter; prompt?: string; cooldownSeconds: number };
+export type BotTemplateTrigger = Pick<BotTriggerInput, "name" | "filter" | "prompt" | "delivery"> & { cooldownSeconds: number };
 
 /** `bot.json`, version 2: what of a bot travels once its review is done. No handle, path, date or memory. */
 export type BotExportManifest = {
@@ -132,7 +132,7 @@ export type BotExportMeta = {
   tagging?: Exclude<BotTagging, "anyone">;
   routines: { schedule: BotExportSchedule }[];
   /** Each trigger's filter; a `match` value is its part's `match` field. */
-  triggers: { filter: BotTriggerFilter; cooldownSeconds: number }[];
+  triggers: Pick<BotTemplateTrigger, "filter" | "delivery" | "cooldownSeconds">[];
   disabledTools: string[];
   disabledSkills: string[];
   skills: string[];
@@ -429,6 +429,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
       filter: match && !touched ? { ...filter, match: { ...match, value: text["match"] ?? match.value } } : filter,
       ...(text["prompt"] ? { prompt: text["prompt"] } : {}),
       cooldownSeconds: trigger.cooldownSeconds,
+      ...(trigger.delivery ? { delivery: trigger.delivery } : {}),
     };
   });
   const manifest: BotExportManifest = {

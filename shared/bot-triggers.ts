@@ -3,7 +3,8 @@
  * schedule. Every trigger is a listener's: a program the operator runs outside HUI watches something (a Slack, a Jira
  * board, a repo) and reports what it found to the trigger's URL; when an event matches the trigger's filter, HUI
  * delivers `[trigger: <name> · <summary>] <prompt>` plus the event's details into the bot's chat, as a routine's message
- * is (a follow-up while the bot works). Shared by the gateway, the `hui bot trigger` CLI and the browser;
+ * is by default (a follow-up while the bot works), or as a compact steering notice when selected.
+ * Shared by the gateway, the `hui bot trigger` CLI and the browser;
  * docs/api.md#triggers is the contract.
  */
 
@@ -88,6 +89,7 @@ type BotTriggerBase = {
   filter: BotTriggerFilter;
   /** What the bot is asked to do, after the marker; absent: only the event. */
   prompt?: string;
+  delivery?: "followUp" | "steer";
   enabled: boolean;
   /** Events within this many seconds of the last delivery wait and arrive together, as one delivery. */
   cooldownSeconds: number;
@@ -144,13 +146,14 @@ export type BotTriggersList = {
 export type BotTriggerCreated = { trigger: BotTrigger; hook: { token: string; path: string } };
 
 /** `POST /__hui/bots/:id/triggers`. Without `cooldownSeconds` it is 300; without `enabled`, on. */
-export type BotTriggerInput = { name: string; source: BotTriggerSource; filter: BotTriggerFilter; prompt?: string; enabled?: boolean; cooldownSeconds?: number };
+export type BotTriggerInput = { name: string; source: BotTriggerSource; filter: BotTriggerFilter; prompt?: string; delivery?: "followUp" | "steer"; enabled?: boolean; cooldownSeconds?: number };
 
 /** `PATCH /__hui/bots/:id/triggers/:trigger`: only what changes. `filter` keys replace those of the filter (`null`
  * or `false` clears an optional one). `prompt: ""` clears the prompt. */
 export type BotTriggerPatch = {
   name?: string;
   prompt?: string;
+  delivery?: "followUp" | "steer";
   enabled?: boolean;
   cooldownSeconds?: number;
   filter?: Record<string, unknown>;

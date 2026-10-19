@@ -301,7 +301,7 @@ test("a version 2 HUI template brings its open points, needs, triggers and the t
     bot: { name: "{{user}}'s reviewer", model: "claude-sonnet-4-5" },
     routines: [{ name: "Sweep", prompt: "Review what waits.", schedule: { kind: "cron", expression: "0 9 * * 1-5" } }, { name: "Often", prompt: "Look.", schedule: { kind: "every", everyMs: 1_800_000 } }],
     triggers: [
-      { name: "Reviews", filter: { prLinks: true, match: { field: "fields.channel", op: "equals", value: "reviews" } }, prompt: "Review it.", cooldownSeconds: 60 },
+      { name: "Reviews", filter: { prLinks: true, match: { field: "fields.channel", op: "equals", value: "reviews" } }, prompt: "Review it.", cooldownSeconds: 60, delivery: "steer" },
       { name: "reviews", filter: {}, cooldownSeconds: 60 }, { name: "", filter: {} },
     ],
     disabledTools: ["bash"], disabledSkills: ["review"], skills: ["review"],
@@ -320,7 +320,7 @@ test("a version 2 HUI template brings its open points, needs, triggers and the t
   assert.deepEqual(template.skills, [{ name: "review", description: "Review a pull request", content: "Run scripts/approve.sh.", files: [{ path: "scripts/approve.sh", text: "#!/bin/sh\ngh pr review \"$1\" --approve\n" }] }]);
   assert.match(template.dropped.join("\n"), /Skill review: logo\.png \(not text\)\./u);
   assert.deepEqual(template.routines.map((routine) => [routine.schedule, routine.automation]), [["cron 0 9 * * 1-5", undefined], ["every 30m", { kind: "every", everyMs: 1_800_000 }]]);
-  assert.deepEqual(template.triggers, [{ name: "Reviews", filter: { prLinks: true, match: { field: "fields.channel", op: "equals", value: "reviews" } }, prompt: "Review it.", cooldownSeconds: 60 }]);
+  assert.deepEqual(template.triggers, [{ name: "Reviews", filter: { prLinks: true, match: { field: "fields.channel", op: "equals", value: "reviews" } }, prompt: "Review it.", cooldownSeconds: 60, delivery: "steer" }]);
   assert.match(template.dropped.join("\n"), /Trigger reviews: another one has its name\./u);
   assert.match(template.dropped.join("\n"), /A trigger HUI can't read\./u);
   assert.deepEqual(template.open, [{ kind: "ask", where: "SOUL.md", question: "Which repositories should I watch?" }, { kind: "confirm", where: "Trigger “Reviews”", question: "Keep it?", excerpt: "Review it.", operator: true }]);

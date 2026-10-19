@@ -112,7 +112,15 @@ const listened = (id: string, extra: Record<string, unknown> = {}) => ({
 test("triggers are created, listed, changed and removed per bot, with their input checked", async (t) => {
   const f = await fixture(t);
   await f.service.start();
-  const created = await f.service.create("ada", reviews());
+  const created = await f.service.create("ada", reviews({ delivery: "steer" }));
+  assert.equal((await f.service.list("ada")).triggers[0]?.delivery, "steer", "compact delivery survives a store read");
+  await f.send(created.hook.token, [listened("compact")]);
+  await f.settled(1);
+  assert.deepEqual(f.prs.read, [], "compact notices do not make automatic GitHub reads");
+  assert.ok(f.delivered[0]?.text.split("\n").some((line) => line === PR42), "the complete PR URL is retained on its own line");
+  assert.ok(!f.delivered[0]?.text.includes("From Rodrigo"), "raw listener details are omitted");
+  assert.equal((await f.service.update("ada", created.trigger.id, { delivery: "followUp" })).delivery, "followUp");
+  await assert.rejects(f.service.update("ada", created.trigger.id, { delivery: "interrupt" }), /delivery must be followUp or steer/u);
   assert.match(created.hook.token, /^[A-Za-z0-9_-]{43}$/u, "its URL's token, this once");
   assert.equal(created.hook.path, `/__hui/hooks/${created.hook.token}`);
   assert.deepEqual([created.trigger.source, created.trigger.filter, created.trigger.tokenHint, created.trigger.cooldownSeconds, created.trigger.createdBy],

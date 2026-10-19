@@ -57,6 +57,11 @@ function promptField(raw: unknown): string {
   return prompt;
 }
 
+function deliveryField(raw: unknown): "followUp" | "steer" {
+  if (raw !== "followUp" && raw !== "steer") throw new TriggerInputError("delivery must be followUp or steer.");
+  return raw;
+}
+
 function cooldownField(raw: unknown): number {
   if (!Number.isInteger(raw) || (raw as number) < 0 || (raw as number) > BOT_TRIGGER_LIMITS.cooldownMax) {
     throw new TriggerInputError(`cooldownSeconds must be a whole number of seconds, 0-${BOT_TRIGGER_LIMITS.cooldownMax}.`);
@@ -105,7 +110,7 @@ function sourceField(raw: unknown): BotTriggerSource {
 /** Validates `POST /__hui/bots/:id/triggers`; `source` may be left out. */
 export function normalizeTriggerInput(value: unknown): BotTriggerInput {
   if (!isRecord(value)) throw new TriggerInputError("A trigger must be an object.");
-  refuseUnknown(value, ["name", "source", "filter", "prompt", "enabled", "cooldownSeconds"], "trigger");
+  refuseUnknown(value, ["name", "source", "filter", "prompt", "delivery", "enabled", "cooldownSeconds"], "trigger");
   const prompt = value["prompt"] === undefined ? "" : promptField(value["prompt"]);
   if (value["enabled"] !== undefined && typeof value["enabled"] !== "boolean") throw new TriggerInputError("enabled must be a boolean.");
   return {
@@ -113,6 +118,7 @@ export function normalizeTriggerInput(value: unknown): BotTriggerInput {
     source: sourceField(value["source"]),
     filter: triggerFilter(value["filter"]),
     ...(prompt ? { prompt } : {}),
+    ...(value["delivery"] !== undefined ? { delivery: deliveryField(value["delivery"]) } : {}),
     enabled: value["enabled"] !== false,
     cooldownSeconds: value["cooldownSeconds"] === undefined ? BOT_TRIGGER_LIMITS.cooldownDefault : cooldownField(value["cooldownSeconds"]),
   };
@@ -122,11 +128,12 @@ export function normalizeTriggerInput(value: unknown): BotTriggerInput {
 export function normalizeTriggerPatch(value: unknown): BotTriggerPatch {
   if (!isRecord(value)) throw new TriggerInputError("A trigger change must be an object.");
   if ("source" in value) throw new TriggerInputError("A trigger's source can't change.");
-  refuseUnknown(value, ["name", "filter", "prompt", "enabled", "cooldownSeconds"], "trigger");
+  refuseUnknown(value, ["name", "filter", "prompt", "delivery", "enabled", "cooldownSeconds"], "trigger");
   if (!Object.keys(value).length) throw new TriggerInputError("Nothing to change.");
   const patch: BotTriggerPatch = {};
   if ("name" in value) patch.name = triggerName(value["name"]);
   if ("prompt" in value) patch.prompt = promptField(value["prompt"]);
+  if ("delivery" in value) patch.delivery = deliveryField(value["delivery"]);
   if ("enabled" in value) {
     if (typeof value["enabled"] !== "boolean") throw new TriggerInputError("enabled must be a boolean.");
     patch.enabled = value["enabled"];
@@ -185,6 +192,7 @@ export function parseTriggerRecord(raw: unknown): BotTriggerRecord | undefined {
     return {
       id, botId, name: triggerName(raw["name"]), source, filter,
       ...(prompt ? { prompt } : {}),
+      ...(raw["delivery"] !== undefined ? { delivery: deliveryField(raw["delivery"]) } : {}),
       enabled: raw["enabled"], cooldownSeconds, createdBy, createdAt, updatedAt,
       ...(lastFiredAt ? { lastFiredAt } : {}),
       tokenHash, ...(tokenHint ? { tokenHint } : {}),

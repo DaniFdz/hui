@@ -178,7 +178,7 @@ export class BotTemplateService {
         });
       }
       for (const trigger of plan.triggers) {
-        await this.#deps.triggers.create(bot.id, { name: trigger.name, source: "listener", filter: trigger.filter, ...(trigger.prompt ? { prompt: trigger.prompt } : {}), enabled: false, cooldownSeconds: trigger.cooldownSeconds });
+        await this.#deps.triggers.create(bot.id, { name: trigger.name, source: "listener", filter: trigger.filter, ...(trigger.prompt ? { prompt: trigger.prompt } : {}), ...(trigger.delivery ? { delivery: trigger.delivery } : {}), enabled: false, cooldownSeconds: trigger.cooldownSeconds });
       }
     } catch (error) {
       // Half an import is no import: the bot goes again, with its folder and the routines and triggers made so far.

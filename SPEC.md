@@ -1811,10 +1811,14 @@ everything the Bots tab can, through the same routes.
   program the operator runs, watches what it watches and reports to the
   trigger's URL, a secret on the tailnet; each event wakes the bot once, its
   delivery carrying the pull requests it links to, read through the gateway's
-  `gh`. Each delivery is `[trigger: <name> · <summary>] <prompt>` in its chat;
-  a cooldown coalesces events into one delivery and an hourly cap holds the
-  rest. The bot's panel lists them on its overview and manages them on its
-  Triggers page, and `hui bot trigger` manages them too; only
+  `gh`, by default. The operator can instead select compact steering: event
+  summaries, times and PR links only, without event details or fetched PR
+  context. It starts a turn while idle or steers the active turn before its
+  next model call without aborting work. Existing triggers keep full-context
+  follow-ups. Each delivery is `[trigger: <name> · <summary>] <prompt>` in its
+  chat; its sender restrictions remain the same in either mode. A cooldown
+  coalesces events into one delivery and an hourly cap holds the rest. The bot's
+  panel lists them on its overview and manages them on its Triggers page, and `hui bot trigger` manages them too; only
   the operator adds or changes one, and the bot's `triggers` tool lists and
   removes its own.
 - **Tagging.** Agents and bots hand a bot work by tagging it, `@handle`. A bot

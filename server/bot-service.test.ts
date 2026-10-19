@@ -1028,7 +1028,7 @@ test("messages prompt an idle bot, queue behind a busy one, and a wait reports t
   const bot = await h.service.create({ soul: SOUL, name: "Ada" });
   const chat = await h.chat(bot.sessionId);
 
-  assert.deepEqual(await h.service.send(bot.id, { text: "first" }), { status: "sent" });
+  assert.deepEqual(await h.service.send(bot.id, { text: "first", whenBusy: "steer" }), { status: "sent" });
   assert.deepEqual(chat.prompts, ["first"]);
   assert.deepEqual(await h.service.send(bot.id, { text: "second" }), { status: "queued" }, "busy: a follow-up, never a refusal");
   const drained = chat.nextPrompt();

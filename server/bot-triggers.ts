@@ -6,7 +6,8 @@
  *
  * An event that matches an enabled trigger is delivered into the bot's chat as `[trigger: <name> · <summary>]
  * <prompt>` with the event's details, through the bot's message path (a prompt while it is idle, a follow-up while it
- * works, on its worker for a bot there), unless the trigger's cooldown or the bot's hourly cap holds it: then it waits,
+ * works, or compact steering when selected, on its worker for a bot there), unless the trigger's cooldown or the
+ * bot's hourly cap holds it: then it waits,
  * and what waited goes out as one delivery that lists it all once they allow. Each delivery, and each event that
  * could not be delivered, is recorded as a run.
  *
@@ -36,8 +37,8 @@ const LISTED_RUNS = 50;
 export type TriggerBots = {
   /** Every bot, archived ones included. */
   list(): Promise<readonly BotRecord[]>;
-  /** The bot's message path: a prompt while it is idle, a follow-up while it works. Refuses while bots are off. */
-  deliver(botId: string, text: string): Promise<unknown>;
+  /** The bot's message path: a prompt while idle, otherwise a follow-up or selected steering. Refuses while bots are off. */
+  deliver(botId: string, text: string, delivery?: "followUp" | "steer"): Promise<unknown>;
 };
 
 export type BotTriggerServiceDeps = {
@@ -108,7 +109,7 @@ const bracketless = (value: string) => value.replace(/\[/gu, "(").replace(/\]/gu
  * cut to `BOT_TRIGGER_LIMITS.message` characters.
  */
 export function triggerMessage(
-  trigger: Pick<BotTriggerRecord, "name" | "prompt" | "cooldownSeconds">,
+  trigger: Pick<BotTriggerRecord, "name" | "prompt" | "cooldownSeconds" | "delivery">,
   events: readonly PendingEvent[],
   more: number,
   options: { catchUp?: boolean; test?: boolean } = {},
@@ -121,9 +122,11 @@ export function triggerMessage(
   const header = `${BOT_TRIGGER_MARKER}${trigger.name} · ${summary}]${trigger.prompt ? ` ${trigger.prompt}` : ""}`;
   const intro = options.test ? `${INTRO} This one is a sample the operator sent to test the trigger, not a real event.` : INTRO;
   const shown = events.slice(0, BOT_TRIGGER_LIMITS.listed);
-  const body = count === 1 && events[0]
-    ? [events[0].details]
-    : shown.map((event, index) => `${index + 1}. ${event.summary} (${event.at})\n${event.details.split("\n").map((line) => `   ${line}`).join("\n")}`);
+  const body = trigger.delivery === "steer"
+    ? shown.map((event) => [event.summary, event.at, ...(event.links ?? [])].join("\n"))
+    : count === 1 && events[0]
+      ? [events[0].details]
+      : shown.map((event, index) => `${index + 1}. ${event.summary} (${event.at})\n${event.details.split("\n").map((line) => `   ${line}`).join("\n")}`);
   const left = count - (count === 1 ? 1 : shown.length);
   const limit = BOT_TRIGGER_LIMITS.message;
   let text = [header, "", intro, ...body, ...(left > 0 ? [`… and ${left} more not listed.`] : [])].join("\n");
@@ -218,6 +221,7 @@ export class BotTriggerService {
       const created = {
         id: randomUUID(), botId: bot.id, name: input.name, source: input.source, filter: input.filter,
         ...(input.prompt ? { prompt: input.prompt } : {}),
+        ...(input.delivery ? { delivery: input.delivery } : {}),
         enabled: input.enabled !== false,
         cooldownSeconds: input.cooldownSeconds ?? BOT_TRIGGER_LIMITS.cooldownDefault,
         createdBy: "operator", createdAt: now, updatedAt: now,
@@ -245,6 +249,7 @@ export class BotTriggerService {
         if (patch.prompt) next.prompt = patch.prompt;
         else delete next.prompt;
       }
+      if (patch.delivery !== undefined) next.delivery = patch.delivery;
       if (patch.enabled !== undefined) next.enabled = patch.enabled;
       if (patch.cooldownSeconds !== undefined) next.cooldownSeconds = patch.cooldownSeconds;
       if (patch.filter) next.filter = patchedFilter(current.filter, patch.filter);
@@ -460,13 +465,13 @@ export class BotTriggerService {
   /** Puts the delivery in the bot's chat and records its run: `fired` for one event, `coalesced` for several, `skipped`
    * when bots went off or the bot was archived meanwhile, `failed` otherwise. */
   async #deliver(trigger: BotTriggerRecord, events: readonly PendingEvent[], more: number, options: { catchUp?: boolean; test?: boolean }): Promise<BotTriggerRun> {
-    const shown = await this.#withPullRequests(events);
+    const shown = trigger.delivery === "steer" ? events : await this.#withPullRequests(events);
     const { text, summary } = triggerMessage(trigger, shown, more, options);
     const count = events.length + more;
     let status: BotTriggerRunStatus = count > 1 ? "coalesced" : "fired";
     let reason: string | undefined;
     try {
-      await this.#deps.bots.deliver(trigger.botId, text);
+      await this.#deps.bots.deliver(trigger.botId, text, trigger.delivery);
     } catch (error) {
       if (error instanceof BotsOffError) {
         status = "skipped";

@@ -222,7 +222,7 @@ export class BotExportService {
       name: bot.name, title: bot.title, description: bot.description, avatar: bot.avatar, model: bot.model, thinking: bot.thinking,
       memoryModel: bot.memoryModel, memoryThinking: bot.memoryThinking, voice: bot.voice, tagging: bot.tagging, soul, skills,
       routines: routines.map(({ name, description, prompt, schedule }) => ({ name, description, prompt, schedule })),
-      triggers: triggers.map(({ name, filter, prompt, cooldownSeconds }) => ({ name, filter, prompt, cooldownSeconds })),
+      triggers: triggers.map(({ name, filter, prompt, cooldownSeconds, delivery }) => ({ name, filter, prompt, cooldownSeconds, ...(delivery ? { delivery } : {}) })),
       disabledTools, disabledSkills,
     };
     return {
@@ -296,7 +296,7 @@ export class BotExportService {
     const triggers: BotExportMeta["triggers"] = input.triggers.map((trigger, index) => {
       const id = `triggers/${index}`;
       text(id, `Trigger “${plain(trigger.name)}”`, [["name", trigger.name], ["prompt", trigger.prompt], ["match", trigger.filter.match?.value]]);
-      return { filter: trigger.filter, cooldownSeconds: trigger.cooldownSeconds };
+      return { filter: trigger.filter, cooldownSeconds: trigger.cooldownSeconds, ...(trigger.delivery ? { delivery: trigger.delivery } : {}) };
     });
     if (input.otherTools) leftOut.push(`${input.otherTools} turned-off tool${input.otherTools === 1 ? "" : "s"} of your extensions: a new owner's bot has its own.`);
     if (input.otherSkills) leftOut.push(`${input.otherSkills} turned-off skill${input.otherSkills === 1 ? "" : "s"} of your folders: a new owner's bot has its own.`);

@@ -47,7 +47,7 @@ const TASKS = [
 
 const TRIGGERS = [{
   id: "g1", botId: "b1", name: "Reviews", source: "listener", enabled: true, cooldownSeconds: 60, createdBy: "operator", createdAt: "", updatedAt: "", tokenHint: "abcd",
-  filter: { prLinks: true, match: { field: "fields.user", op: "equals", value: "dani@example.com" } }, prompt: "Review the pull request.",
+  filter: { prLinks: true, match: { field: "fields.user", op: "equals", value: "dani@example.com" } }, prompt: "Review the pull request.", delivery: "steer",
 }] as BotTrigger[];
 
 /** The fixture reviewer: a change for each passage it knows, wherever the part holds it. */
@@ -257,7 +257,7 @@ test("the download holds exactly what the review and the picks make: no handle, 
   assert.deepEqual(manifest.disabledTools, ["bash"]);
   assert.deepEqual(manifest.disabledSkills, ["review"]);
   assert.deepEqual(manifest.routines, [{ name: "Morning sweep", prompt: "Review what waits for {{user}}.", schedule: { kind: "cron", expression: "0 9 * * 1-5" } }]);
-  assert.deepEqual(manifest.triggers, [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review the pull request.", cooldownSeconds: 60 }], "a filter value the cleanup touched is left out");
+  assert.deepEqual(manifest.triggers, [{ name: "Reviews", filter: { prLinks: true }, prompt: "Review the pull request.", cooldownSeconds: 60, delivery: "steer" }], "a filter value the cleanup touched is left out");
   assert.deepEqual(manifest.open, [
     { kind: "ask", where: "SOUL.md", question: "Which repositories should I watch?" },
     { kind: "confirm", where: "SOUL.md", question: "Approve only on green CI?", excerpt: "Approve only when CI is green" },
