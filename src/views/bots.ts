@@ -12,6 +12,7 @@ import { renderBotFacts } from "./bot-facts.ts";
 import type { BotFactsController } from "../lib/bot-facts.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { keyed } from "lit/directives/keyed.js";
+import { repeat } from "lit/directives/repeat.js";
 import { icons } from "../lib/icons.ts";
 import { closeDropdownOnEscape, hasOpenWebAwesomePopup, labelDropdown } from "../lib/web-awesome.ts";
 import { navigationPath } from "../lib/navigation.ts";
@@ -37,6 +38,7 @@ import {
   rosterBots,
   botSettingsShortcutLabel,
   BOT_PANEL_MIN_WIDTH,
+  type BotActivity,
   type BotPanelView,
 } from "../lib/bot-roster.ts";
 import { botRecentRuns, botRoutineRuns, botRoutines, routineFacts, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
@@ -71,13 +73,13 @@ export function renderBotAvatar(bot: Pick<BotView, "id" | "avatar">, size: BotFa
     .seed=${look.seed} state=${options.state ?? "idle"} .level=${options.level}></hui-bot-face>${badge}</span>`;
 }
 
-function activityBadge(bot: BotView) {
-  const activity = botActivity(bot);
-  if (activity === "idle") return nothing;
+function activityBadge(activity: BotActivity) {
+  if (activity === "done") return html`<span class="bot-avatar__badge bot-avatar__badge--done" title="Done"></span>`;
+  if (activity === "sleeping") return html`<span class="bot-avatar__badge bot-avatar__badge--sleeping" title="Sleeping">z</span>`;
   if (activity === "waiting") return html`<span class="bot-avatar__badge bot-avatar__badge--waiting" title="Waiting for your answer">${icons.hand}</span>`;
   if (activity === "error") return html`<span class="bot-avatar__badge bot-avatar__badge--error" title="Failed">${icons.alertTriangle}</span>`;
   if (activity === "away") return html`<span class="bot-avatar__badge bot-avatar__badge--away" title="Unreachable">${icons.plug}</span>`;
-  return html`<span class="bot-avatar__badge bot-avatar__badge--${activity}" title=${activity === "summarizing" ? "Summarizing memory…" : "Active now"}></span>`;
+  return nothing;
 }
 
 /* ── roster ───────────────────────────────────────────────────────────────── */
@@ -129,21 +131,21 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
   const active = props.activeBotId === bot.id;
   const open = props.menuFor === bot.id;
   const at = botActivityAt(bot);
-  const activity = botActivity(bot);
+  const activity = botActivity(bot, active);
   const preview = activity === "summarizing" ? "Summarizing memory…" : activity === "waiting" ? "Waiting for your answer" : botPreview(bot);
   const unread = bot.unread && !active;
   return html`<div
     class="session-row-wrap session-row-host sidebar-recent-session bot-row ${active ? "sidebar-recent-session--active" : ""} ${unread ? "sidebar-recent-session--unread" : ""} ${bot.hidden ? "bot-row--hidden" : ""} ${props.pendingId === bot.id ? "sidebar-recent-session--moving" : ""}"
     data-bot-id=${bot.id} data-session-row-action-count="1">
     <a href=${navigationPath({ kind: "bot", id: bot.id })} class="session-row sidebar-recent-session__link bot-row__link" draggable="false"
-      aria-current=${active ? "true" : "false"} aria-label=${botAccessibleName(bot)}
+      aria-current=${active ? "true" : "false"} aria-label=${botAccessibleName(bot, active)}
       @click=${(event: MouseEvent) => {
         if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         drawer.navigate(event);
         props.onSelect(bot);
       }}>
-      ${renderBotAvatar(bot, "sm", { state: rosterFaceState(bot), badge: activityBadge(bot) })}
+      ${renderBotAvatar(bot, "sm", { state: rosterFaceState(bot, active), badge: activityBadge(activity) })}
       <span class="bot-row__text">
         <span class="bot-row__top">
           <span class="bot-row__name sidebar-recent-session__name">${bot.name}</span>
@@ -154,7 +156,6 @@ function botRow(bot: BotView, props: BotRosterProps, drawer: RosterDrawer) {
           ${bot.worker ? html`<span class="bot-row__tag bot-row__machine" title=${`Runs on ${bot.worker.name}`}>${icons.globe}<span>${bot.worker.name}</span></span>` : nothing}
           ${bot.hidden ? html`<span class="bot-row__tag">Hidden</span>` : nothing}
           <span class="bot-row__preview">${preview}</span>
-          ${unread ? html`<span class="sidebar-session-unread-dot bot-row__unread" title="Unread"></span>` : nothing}
         </span>
       </span>
     </a>
@@ -253,7 +254,7 @@ export function renderBotRoster(props: BotRosterProps, drawer: RosterDrawer) {
   return html`${props.error ? html`<p class="sidebar-list__note is-error" role="alert">${props.error} <button type="button" class="btn btn--sm" @click=${props.onRetry}>Retry</button></p>` : nothing}
     <div class="session-group__rows sidebar-recent-sessions__list bot-roster__rows">
       ${rows.length
-        ? rows.map((bot) => botRow(bot, props, drawer))
+        ? repeat(rows, (bot) => bot.id, (bot) => botRow(bot, props, drawer))
         : html`<p class="sidebar-list__note" role="status">${props.query.trim() ? "No matching bots." : "Every bot is hidden."}</p>`}
     </div>
     ${renderRosterToggles(props, drawer)}`;
@@ -563,10 +564,10 @@ function overviewLink(props: BotPanelProps, view: BotPanelView, link: string, na
 /** Face, name, role and what it is doing, then Call and Edit, as a Dots profile opens. */
 function renderProfile(props: BotPanelProps) {
   const { bot } = props;
-  const activity = botActivityLabel(bot);
+  const activity = botActivityLabel(bot, true);
   const meta = [bot.title, `${activity.charAt(0).toUpperCase()}${activity.slice(1)}`, bot.worker ? `on ${bot.worker.name}` : ""].filter(Boolean).join(" · ");
   return html`<section class="bot-profile" aria-labelledby=${`${props.id}-name`}>
-    ${renderBotAvatar(bot, "lg", { state: rosterFaceState(bot) })}
+    ${renderBotAvatar(bot, "lg", { state: rosterFaceState(bot, true) })}
     <h2 class="bot-profile__name" id=${`${props.id}-name`}>${bot.name}</h2>
     <p class="bot-profile__meta">${meta}</p>
     <div class="bot-profile__actions">

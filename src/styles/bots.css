@@ -124,26 +124,19 @@
   border-radius: var(--radius-full);
   box-shadow: 0 0 0 2px var(--sidebar-bg, var(--bg));
 }
-.bot-avatar__badge--running { background: var(--ok); animation: bot-activity-pulse 1.6s ease-in-out infinite; }
-.bot-avatar__badge--summarizing { background: var(--warn); animation: bot-activity-pulse 1.6s ease-in-out infinite; }
-.bot-avatar__badge:is(.bot-avatar__badge--waiting, .bot-avatar__badge--error, .bot-avatar__badge--away) {
+.bot-avatar__badge--done { background: var(--ok); }
+.bot-avatar__badge:is(.bot-avatar__badge--sleeping, .bot-avatar__badge--waiting, .bot-avatar__badge--error, .bot-avatar__badge--away) {
   display: grid;
   place-items: center;
   width: 14px;
   height: 14px;
   background: var(--bg-elevated);
 }
+.bot-avatar__badge--sleeping { color: var(--muted); font-size: 10px; font-weight: 700; }
 .bot-avatar__badge--waiting { color: var(--warn); }
 .bot-avatar__badge--error { color: var(--danger); }
 .bot-avatar__badge--away { color: var(--muted); }
 .bot-avatar__badge svg { width: 10px; height: 10px; stroke-width: 2.2px; }
-@keyframes bot-activity-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .4; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .bot-avatar__badge { animation: none !important; }
-}
 
 /* ── roster rows (session row anatomy, two lines) ── */
 /* The Bots tab has no navigation above its list, so the list starts right under
@@ -206,7 +199,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.app-shell .bot-row__unread { flex: none; }
 .app-shell .bot-row__warning { display: inline-flex; flex: none; color: var(--warn); }
 .app-shell .bot-row__warning svg { width: 12px; height: 12px; }
 .app-shell .bot-row__tag {

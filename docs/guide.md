@@ -297,7 +297,10 @@ Block or Hexagon) in one of six colors, with two dot eyes, and if you like cat,
 bear or bunny ears, an antenna, a sprout or horns on top. It shows what the bot is doing: it breathes while idle, squints and
 ponders while it thinks, bobs while a tool runs, tilts and hops while it waits
 for your answer, gets sleepy while it summarizes its memory, droops after a
-failure and does a little hop when a turn ends. On a call it fills the screen
+failure and does a little hop when a turn ends. In the Bots list a bot with
+nothing to do sleeps, eyes closed beside a small *z*. When it finishes
+something you haven't read, it wakes with a green dot, which goes once you open
+its chat. A bot at work has no badge. On a call it fills the screen
 in the bot's color, puffs up as it listens to your voice and stretches with its
 own. The large faces (an empty chat, a call) look at your pointer. With
 *reduce motion* on in your system settings the faces keep still and change only
