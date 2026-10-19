@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
 import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
-import type { AutomationSnapshot, AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationSnapshot, AutomationTask } from "./automation.ts";
 import type { BotIO } from "../cli/gateway-client.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 

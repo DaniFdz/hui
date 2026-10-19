@@ -9,7 +9,7 @@ import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotOpenPo
 import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../shared/bots.ts";
 import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateSkillFile } from "../../shared/bot-templates.ts";
 import { BOT_TRIGGER_LIMITS } from "../../shared/bot-triggers.ts";
-import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
+import type { AutomationSchedule } from "../automation.ts";
 import { normalizeTriggerInput } from "../bot-triggers-input.ts";
 import { blankTemplate, fileText, findFile, isRecord, oneLine, skillFilePath, skillFromFile, str, TemplateFormatError, unwrapFolder, within, type ImportFile } from "./common.ts";
 

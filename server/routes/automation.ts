@@ -2,7 +2,9 @@
  * `/__hui/automation…`: scheduled tasks, their runs and cancellation over `automation.ts`. `hui.ts` applies the
  * `x-hui` guard before dispatching here.
  */
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import { AutomationSnapshot, AutomationCreateResponse, AutomationMutationResponse, AutomationRunResponse, AutomationCancelResponse, AutomationError } from "../api/automation.ts";
+export { routeSchemas } from "../api/automation.ts";
 import {
   AutomationConflictError,
   AutomationInputError,
@@ -29,22 +31,22 @@ export function createAutomationRoutes(deps: { automation: AutomationService }) 
     const { automation } = deps;
     if (path === AUTOMATION_ROUTE && request.method === "GET") {
       try {
-        return { status: 200, body: await automation.snapshot() };
+        return reply(AutomationSnapshot, await automation.snapshot());
       } catch (error) {
-        return { status: 500, body: {
+        return reply(AutomationError, {
           error: error instanceof Error ? error.message : "Could not read automation state.",
-        } };
+        }, 500);
       }
     }
 
     if (path === AUTOMATION_TASKS_ROUTE && request.method === "POST") {
       try {
         const task = await automation.create(await request.json());
-        return { status: 201, body: { task, snapshot: await automation.snapshot() } };
+        return reply(AutomationCreateResponse, { task, snapshot: await automation.snapshot() }, 201);
       } catch (error) {
-        return { status: automationErrorStatus(error), body: {
+        return reply(AutomationError, {
           error: error instanceof Error ? error.message : "Could not create that task.",
-        } };
+        }, automationErrorStatus(error));
       }
     }
 
@@ -54,11 +56,11 @@ export function createAutomationRoutes(deps: { automation: AutomationService }) 
       try {
         if (request.method === "DELETE") await automation.remove(id);
         else await automation.update(id, await request.json());
-        return { status: 200, body: { snapshot: await automation.snapshot() } };
+        return reply(AutomationMutationResponse, { snapshot: await automation.snapshot() });
       } catch (error) {
-        return { status: automationErrorStatus(error), body: {
+        return reply(AutomationError, {
           error: error instanceof Error ? error.message : "Could not update that task.",
-        } };
+        }, automationErrorStatus(error));
       }
     }
 
@@ -66,11 +68,11 @@ export function createAutomationRoutes(deps: { automation: AutomationService }) 
     if (automationRun && request.method === "POST") {
       try {
         const run = await automation.run(decodeURIComponent(automationRun[1] ?? ""));
-        return { status: 202, body: { run } };
+        return reply(AutomationRunResponse, { run }, 202);
       } catch (error) {
-        return { status: automationErrorStatus(error), body: {
+        return reply(AutomationError, {
           error: error instanceof Error ? error.message : "Could not run that task.",
-        } };
+        }, automationErrorStatus(error));
       }
     }
 
@@ -78,11 +80,11 @@ export function createAutomationRoutes(deps: { automation: AutomationService }) 
     if (automationCancel && request.method === "POST") {
       try {
         await automation.cancel(decodeURIComponent(automationCancel[1] ?? ""));
-        return { status: 200, body: { ok: true } };
+        return reply(AutomationCancelResponse, { ok: true });
       } catch (error) {
-        return { status: automationErrorStatus(error), body: {
+        return reply(AutomationError, {
           error: error instanceof Error ? error.message : "Could not cancel that run.",
-        } };
+        }, automationErrorStatus(error));
       }
     }
     return undefined;

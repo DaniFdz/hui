@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import type { ReactiveController } from "lit";
-import type { UpdateSnapshot } from "../lib/update-types.ts";
+import type { UpdateSnapshot } from "../api/schema/updates.ts";
 import { UpdateController } from "./update-controller.ts";
 
 const fake = vi.hoisted(() => ({ loads: 0, answers: [] as Array<"running" | "succeeded" | "offline"> }));

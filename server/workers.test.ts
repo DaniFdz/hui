@@ -14,6 +14,8 @@ import { dirname, join } from "node:path";
 import { afterAll, beforeAll, test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { completeLines } from "./test-support/json-lines.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
+import { WorkerView } from "./api/workers.ts";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const root = await mkdtemp(join(tmpdir(), "hui-workers-"));
@@ -182,6 +184,7 @@ test("a remote session runs with gateway credentials and mirrored resources, lea
       assert.ok(!text.includes(KEY), `${file} holds the provider key`);
     }
     const view = (await workers.list()).find((worker) => worker.id === workerId)!;
+    expectSchema(WorkerView, view);
     assert.equal(view.state, "connected");
     assert.ok(view.sync && view.sync.files > 0 && view.sync.errors.length === 0, JSON.stringify(view.sync));
   } finally {

@@ -10,7 +10,7 @@ import type {
   AutomationSnapshot,
   AutomationTask,
   AutomationTaskInput,
-} from "../lib/automation-types.ts";
+} from "../api/schema/automation.ts";
 import type { SessionView } from "../api/sessions.ts";
 import { routineCadenceSummary, routineFacts } from "../lib/bots/routines.ts";
 import { automationRunLabel, automationRunRecoveryDetail } from "../lib/automation-recovery.ts";

@@ -23,7 +23,9 @@ import type {
   AutomationSnapshot,
   AutomationTask,
   AutomationTaskInput,
-} from "../src/lib/automation-types.ts";
+} from "./api/automation.ts";
+
+export type { AutomationSchedule, AutomationRunStatus, AutomationCreator, AutomationTask, AutomationRun, AutomationFailureKind, AutomationSnapshot, AutomationTaskInput } from "./api/automation.ts";
 
 const STORE_VERSION = 1;
 const MAX_RUNS = 500;

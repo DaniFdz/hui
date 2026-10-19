@@ -19,10 +19,10 @@ import { navigationPath } from "../lib/navigation.ts";
 import type { BotView } from "../lib/bots/bots.ts";
 import { botLook } from "../../shared/bots.ts";
 import type { BotTrigger } from "../../shared/bot-triggers.ts";
-import type { WorkerState } from "../../shared/workers.ts";
+import type { WorkerState } from "../api/schema/workers.ts";
 import { rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bots/face.ts";
 import "../components/bot-face.ts";
-import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
+import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../api/schema/automation.ts";
 import { automationRunLabel, automationRunRecoveryDetail } from "../lib/automation-recovery.ts";
 import {
   archivedBotCount,

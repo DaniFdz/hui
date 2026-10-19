@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { createTerminalStreamReader } from "./stream.ts";
-import type { TerminalView } from "../terminal-types.ts";
+import { createTerminalStreamReader } from "./terminals.ts";
+import type { TerminalView } from "./schema/terminals.ts";
 
 const terminal: TerminalView = { id: "t1", ownerSessionId: "s1", title: "Terminal 1", cwd: "/tmp", cols: 80, rows: 24, status: "running", createdAt: "2026-10-09T00:00:00.000Z" };
 const encode = (text: string) => new TextEncoder().encode(text).buffer;

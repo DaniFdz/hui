@@ -14,7 +14,7 @@ import { afterAll, beforeAll, test } from "vitest";
 import { botKickoffName, type BotCatalog, type BotView } from "../../shared/bots.ts";
 import type { BotExportManifest, BotExportReview } from "../../shared/bot-export.ts";
 import type { BotImportPreview, BotImportResult } from "../../shared/bot-templates.ts";
-import type { AutomationTask } from "../../src/lib/automation-types.ts";
+import type { AutomationTask } from "../automation.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { readZip, writeZip } from "../bot-templates/zip.ts";
 

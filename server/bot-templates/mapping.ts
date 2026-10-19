@@ -5,7 +5,7 @@
  */
 import { BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape, storedTagging } from "../../shared/bots.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateIntegration } from "../../shared/bot-templates.ts";
-import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
+import type { AutomationSchedule } from "../automation.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage } from "../../shared/voice.ts";
 import { isRecord, oneLine, str, TemplateFormatError } from "./common.ts";

@@ -4,7 +4,7 @@
  * and `hui schedule` command takes, and a routine's schedule from those flags.
  */
 import type { BotView } from "../shared/bots.ts";
-import type { AutomationSchedule } from "../src/lib/automation-types.ts";
+import type { AutomationSchedule } from "../server/automation.ts";
 
 export type BotFlags = {
   archived?: boolean;

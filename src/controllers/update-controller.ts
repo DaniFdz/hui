@@ -7,7 +7,7 @@ import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "../api/update.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import { availableUpdate, watchUpdateAvailability } from "../lib/update-notice.ts";
-import type { UpdateSnapshot } from "../lib/update-types.ts";
+import type { UpdateSnapshot } from "../api/schema/updates.ts";
 
 type UpdateHost = ReactiveControllerHost & { renderRoot: ParentNode };
 

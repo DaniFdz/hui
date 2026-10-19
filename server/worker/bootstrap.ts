@@ -7,7 +7,7 @@
  */
 import { spawn } from "node:child_process";
 import { releaseBundle, type WorkerRelease } from "./release.ts";
-import { shellQuote } from "../../shared/workers.ts";
+import { shellQuote } from "./workers.ts";
 
 export type ConnectCommand = readonly string[];
 

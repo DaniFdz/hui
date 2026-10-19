@@ -19,7 +19,7 @@
  * bot tool; an archived bot has none to manage.
  */
 import { botTurnOrigin, runTurnOrigins, type BotRecord, type BotTurnOrigin } from "../shared/bots.ts";
-import type { AutomationSchedule, AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationSchedule, AutomationTask } from "./automation.ts";
 import { AutomationInputError, normalizeSchedule, type AutomationService } from "./automation.ts";
 import { BotConflictError, BotInputError, BotsOffError } from "./bots.ts";
 import { BOT_ROUTINE_LIMITS, ROUTINE_ACTIONS, ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";

@@ -98,7 +98,7 @@ SHA-256 sidecar. See README for install, trust and host-management limits.
 ### Browser updates
 
 The browser owns no package, process, token or filesystem access. These guarded
-routes expose `UpdateSnapshot` from `src/lib/update-types.ts`:
+routes expose `UpdateSnapshot` from `server/api/updates.ts`:
 
 | Route | Behavior |
 | --- | --- |
@@ -106,6 +106,13 @@ routes expose `UpdateSnapshot` from `src/lib/update-types.ts`:
 | `GET /__hui/update/check` | Background discovery; use the gateway's one-hour in-memory check cache, shared across browsers |
 | `POST /__hui/update/check` | Check latest stable GitHub release; never install or restart |
 | `POST /__hui/update` | Accept only `{ version: "x.y.z" }` matching an installable check; return 202 after detached updater starts |
+
+### `GET /__hui/update`
+### `GET /__hui/update/check`
+### `POST /__hui/update/check`
+### `POST /__hui/update`
+
+The table above describes these routes. Their response is `UpdateSnapshot`; the install request is `UpdateRequest`.
 
 Malformed input returns 400; absent/stale checks, active sessions a restart
 would interrupt, or concurrent operations return 409. Pi Durable runs do not
@@ -1373,14 +1380,18 @@ Node.js 24 or newer.
 hostname, platform, arch, node, home, release }, sync?: { at, files, uploaded,
 deleted, installed, skipped, errors } }`. Connection state is gateway memory.
 
-### `POST /__hui/workers` · `PATCH|DELETE /__hui/workers/:id`
+### `POST /__hui/workers`
+### `PATCH /__hui/workers/:id`
+### `DELETE /__hui/workers/:id`
 
 Body `{ name, command, extraPaths? }`; `command` is parsed like a shell would
 split plain words and quotes, without expansion. `POST` responds 201 `{ worker
 }`. A new command applies to the next connection. `DELETE` returns 409 while any
 session record names the worker; nothing on the remote is deleted.
 
-### `POST /__hui/workers/:id/connect|sync|disconnect`
+### `POST /__hui/workers/:id/connect`
+### `POST /__hui/workers/:id/sync`
+### `POST /__hui/workers/:id/disconnect`
 
 `connect` and `sync` respond 202 and continue in the gateway (a first connect
 may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
@@ -3426,7 +3437,7 @@ Returns the whole scheduler snapshot:
 `{ "scheduler": { "enabled": true, "activeRuns": number, "nextWakeAt": string | null }, "tasks": AutomationTask[], "runs": AutomationRun[] }`.
 The scheduler and its store are HUI-owned (`~/.config/hui/automation.json`); PI
 has no scheduler contract to reuse. A malformed store is reported and never
-replaced by a later mutation. Each task (`src/lib/automation-types.ts`) has
+replaced by a later mutation. Each task (`AutomationTask` in `server/api/automation.ts`) has
 `id`, `name`, `description`, `sessionId`, `prompt`, `schedule`, `enabled`,
 `timeoutSeconds`, `createdAt`, `updatedAt` and `nextRunAt`, and three optional
 fields, absent from tasks written before them (which load unchanged; a value
@@ -3477,7 +3488,8 @@ stored as `runsLeft`). HUI deletes it by itself after either:
 Deleting is one write of the store, so a temporary task never runs again once
 it is due to go. Its runs stay in the history.
 
-### `PUT|DELETE /__hui/automation/tasks/:id`
+### `PUT /__hui/automation/tasks/:id`
+### `DELETE /__hui/automation/tasks/:id`
 
 `PUT` takes the same body as creation and rewrites the task, recomputing
 `nextRunAt` (`null` when `enabled` is false). `createdBy` stays. `until` and
@@ -3674,6 +3686,15 @@ The gateway chooses the session's recorded `cwd`; callers cannot override it.
 | Same | POST | `{ action: "input", data }`, `{ action: "resize", cols, rows }`, or `{ action: "close" }` |
 | `/__hui/sessions/:owner/terminals/:id/connect` | POST | `{ url }`, a one-use WebSocket capability valid for 15 seconds |
 
+### `GET /__hui/sessions/:owner/terminals`
+### `POST /__hui/sessions/:owner/terminals`
+### `GET /__hui/sessions/:owner/terminals/:id`
+### `POST /__hui/sessions/:owner/terminals/:id`
+### `POST /__hui/sessions/:owner/terminals/:id/connect`
+
+The table above describes these routes. `TerminalsResponse`, `TerminalResponse`, `TerminalSnapshot`,
+`TerminalOperationRequest`, `TerminalOperationResponse` and `TerminalConnectResponse` describe their JSON bodies.
+
 `TerminalView` contains `id`, `ownerSessionId`, `title`, initial `cwd`, `cols`,
 `rows`, `status` (`running` or `exited`), `createdAt`, and optional `exitCode`.
 `cwd` is the launch directory, not a promise about a later shell `cd`.
@@ -3688,7 +3709,8 @@ only exception mechanism, not an unguarded create/input route. Tickets are not
 stored in browser layout, logs or tool output. Production and Vite share the
 same transport. Binary or malformed client messages never execute input.
 
-The wire format is defined in `shared/terminal-stream.ts`. PTY output travels as
+JSON control messages are described in `server/api/terminals.ts`; the browser parser lives in
+`src/api/terminals.ts`. PTY output travels as
 **binary** messages holding the raw UTF-8 bytes the shell wrote, in order, with
 no JSON envelope or escaping; the browser sets `binaryType = "arraybuffer"` and
 hands the bytes to Gespenst (Ghostty's VT), which decodes UTF-8 itself (a code point may span

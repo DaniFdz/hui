@@ -18,9 +18,9 @@ import { DEFAULT_TERMINAL_FONT, loadTerminalFont, terminalFontFaces, terminalFon
 import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
 import { connectTerminal, endTerminal } from "../api/terminals.ts";
-import type { TerminalView } from "../lib/terminal-types.ts";
-import type { TerminalInput } from "../../shared/terminal-stream.ts";
-import { createTerminalStreamReader } from "../lib/terminal/stream.ts";
+import type { TerminalView } from "../api/schema/terminals.ts";
+import type { TerminalInput } from "../api/terminals.ts";
+import { createTerminalStreamReader } from "../api/terminals.ts";
 import { prepareReflow, ptyResize, skipHiddenFits, wrappedRowsAbove } from "../lib/terminal/fit.ts";
 import { parseRgb, terminalTheme, type Rgb } from "../lib/terminal/theme.ts";
 import { terminalLinkAt } from "../lib/terminal/links.ts";

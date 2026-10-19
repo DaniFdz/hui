@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
 import type { ReactiveController } from "lit";
-import type { AutomationSnapshot, AutomationTask } from "../lib/automation-types.ts";
+import type { AutomationSnapshot, AutomationTask } from "../api/schema/automation.ts";
 import { AUTOMATION_POLL_MS, AutomationController, type AutomationApi } from "./automation-controller.ts";
 
 afterEach(() => {

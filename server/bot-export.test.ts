@@ -7,7 +7,7 @@ import { test } from "vitest";
 import { applyChanges, buildExport, changeGroups, picksWithoutAddition, withAdditions, type BotExportAddition, type BotExportManifest } from "../shared/bot-export.ts";
 import type { BotView } from "../shared/bots.ts";
 import type { BotTrigger } from "../shared/bot-triggers.ts";
-import type { AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationTask } from "./automation.ts";
 import { BotExportService, type BotExportDeps } from "./bot-export.ts";
 import type { BotOwnSkill } from "./bot-skills.ts";
 import { BotConflictError, BotInputError } from "./bots.ts";

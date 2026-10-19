@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { automationRunLabel, automationRunRecoveryDetail } from "./automation-recovery.ts";
-import type { AutomationRun } from "./automation-types.ts";
+import type { AutomationRun } from "../api/schema/automation.ts";
 
 const run = (extra: Partial<AutomationRun> = {}): AutomationRun => ({
   id: "r1", taskId: "t1", taskName: "Digest", sessionId: "s1", source: "scheduled", status: "queued",

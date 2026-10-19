@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import type { WorkerView } from "../shared/workers.ts";
+import type { WorkerView } from "./worker/workers.ts";
 import { waitFor } from "./test-support/wait-for.ts";
 
 // Paths are resolved at import time: never the operator's own configuration.

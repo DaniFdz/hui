@@ -7,6 +7,10 @@ import { ToolsError } from "../api/tools.ts";
 import { ProviderError } from "../api/providers.ts";
 import { SettingsError } from "../api/settings.ts";
 import { SessionError } from "../api/sessions.ts";
+import { AutomationError, AutomationSnapshot } from "../api/automation.ts";
+import { UpdateError, UpdateSnapshot } from "../api/updates.ts";
+import { WorkerError, WorkersResponse } from "../api/workers.ts";
+import { TerminalError } from "../api/terminals.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -58,6 +62,7 @@ const CASES: Case[] = [
   ["POST /__hui/sessions/missing/vscode/connect", 404, ["code", "error"], false],
   ["PUT /__hui/vscode-server", 405, ["code", "error"], false],
   ["POST /__hui/sessions/missing/browser/connect", 404, ["error"], false],
+  ["GET /__hui/update", 200, ["check", "currentVersion", "job"], false],
   ["POST /__hui/update", 400, ["error"], true],
   ["DELETE /__hui/update/check", 405, ["error"], true],
   ["POST /__hui/directories", 405, ["error"], true],
@@ -69,6 +74,7 @@ const CASES: Case[] = [
   ["GET /__hui/pi/packages/install", 405, ["error"], true],
   ["POST /__hui/tools", 405, ["error"], true],
   [`GET /__hui/pi/resources/skill/${"0".repeat(24)}`, 404, ["error"], true],
+  ["GET /__hui/workers", 200, ["workers"], false],
   ["GET /__hui/workers/missing", 404, ["error"], true],
   ["GET /__hui/bots/events", 200, null, false],
   ["POST /__hui/calls", 405, ["error"], true],
@@ -86,6 +92,7 @@ const CASES: Case[] = [
   ["POST /__hui/diagnostics/ui-errors", 400, ["error"], true],
   ["POST /__hui/observability", 405, ["error"], false],
   ["POST /__hui/diagnostics/export", 405, ["error"], false],
+  ["GET /__hui/automation", 200, ["runs", "scheduler", "tasks"], false],
   ["POST /__hui/automation/tasks", 400, ["error"], true],
   ["POST /__hui/automation/runs/missing/cancel", 409, ["error"], true],
   ["POST /__hui/themes/import", 400, ["error"], true],
@@ -143,10 +150,19 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
     if (path === "/__hui/tools" || /\/sessions\/[^/]+\/tools$/u.test(path)) expectSchema(ToolsError, body);
     if (path.startsWith("/__hui/providers")) expectSchema(ProviderError, body);
     if (path === "/__hui/settings") expectSchema(SettingsError, body);
+    if (path.startsWith("/__hui/automation")) expectSchema(AutomationError, body);
+    if (path.startsWith("/__hui/update")) expectSchema(UpdateError, body);
+    if (path.startsWith("/__hui/workers")) expectSchema(WorkerError, body);
+    if (/\/terminals(?:\/|$)/u.test(path)) expectSchema(TerminalError, body);
     if (path.startsWith("/__hui/github") || path.startsWith("/__hui/session-activity")) expectSchema(GitHubError, body);
     if (path.startsWith("/__hui/datadog")) expectSchema(DatadogError, body);
     if (path.startsWith("/__hui/jira") || /\/jira(?:\/|$)/u.test(path)) expectSchema(JiraError, body);
     if (/^\/__hui\/(?:session-groups(?:\/[^/]+)?|sessions(?:\/[^/]+(?:\/(?:prompt|steer|follow-up|continue|compact|reload|abort|rewind|resume|question|fork|fast|connect))?)?)$/u.test(path)) expectSchema(SessionError, body);
+  }
+  if (response.status === 200) {
+    if (path === "/__hui/automation") expectSchema(AutomationSnapshot, body);
+    if (path === "/__hui/update") expectSchema(UpdateSnapshot, body);
+    if (path === "/__hui/workers") expectSchema(WorkersResponse, body);
   }
   return [response.status, body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).sort() : null];
 }

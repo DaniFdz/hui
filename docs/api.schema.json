@@ -144,6 +144,484 @@
         }
       }
     },
+    "AutomationCancelResponse": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "AutomationCreateResponse": {
+      "type": "object",
+      "required": [
+        "task",
+        "snapshot"
+      ],
+      "properties": {
+        "task": {
+          "$ref": "#/$defs/AutomationTask"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/AutomationSnapshot"
+        }
+      }
+    },
+    "AutomationCreator": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "operator"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "botId",
+            "handle"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "bot"
+            },
+            "botId": {
+              "type": "string"
+            },
+            "handle": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "AutomationError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "AutomationFailureKind": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "connection"
+        },
+        {
+          "type": "string",
+          "const": "rate-limit"
+        },
+        {
+          "type": "string",
+          "const": "configuration"
+        },
+        {
+          "type": "string",
+          "const": "transient"
+        },
+        {
+          "type": "string",
+          "const": "interrupted"
+        },
+        {
+          "type": "string",
+          "const": "timeout"
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        }
+      ]
+    },
+    "AutomationMutationResponse": {
+      "type": "object",
+      "required": [
+        "snapshot"
+      ],
+      "properties": {
+        "snapshot": {
+          "$ref": "#/$defs/AutomationSnapshot"
+        }
+      }
+    },
+    "AutomationRun": {
+      "type": "object",
+      "required": [
+        "id",
+        "taskId",
+        "taskName",
+        "sessionId",
+        "source",
+        "status",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "taskId": {
+          "type": "string"
+        },
+        "taskName": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "manual"
+            },
+            {
+              "type": "string",
+              "const": "scheduled"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/AutomationRunStatus"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "finishedAt": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "attempt": {
+          "type": "number"
+        },
+        "retryAt": {
+          "type": "string"
+        },
+        "deadlineAt": {
+          "type": "string"
+        },
+        "delivery": {
+          "type": "object",
+          "required": [
+            "text",
+            "before"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "before": {
+              "type": "number"
+            },
+            "requestId": {
+              "type": "string"
+            }
+          }
+        },
+        "failure": {
+          "type": "object",
+          "required": [
+            "kind",
+            "needsAttention"
+          ],
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/AutomationFailureKind"
+            },
+            "needsAttention": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "AutomationRunResponse": {
+      "type": "object",
+      "required": [
+        "run"
+      ],
+      "properties": {
+        "run": {
+          "$ref": "#/$defs/AutomationRun"
+        }
+      }
+    },
+    "AutomationRunStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "queued"
+        },
+        {
+          "type": "string",
+          "const": "running"
+        },
+        {
+          "type": "string",
+          "const": "completed"
+        },
+        {
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "type": "string",
+          "const": "skipped"
+        },
+        {
+          "type": "string",
+          "const": "cancelled"
+        }
+      ]
+    },
+    "AutomationSchedule": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "at"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "at"
+            },
+            "at": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "everyMs"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "every"
+            },
+            "everyMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "expression",
+            "timezone"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "cron"
+            },
+            "expression": {
+              "type": "string"
+            },
+            "timezone": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "AutomationSnapshot": {
+      "type": "object",
+      "required": [
+        "scheduler",
+        "tasks",
+        "runs"
+      ],
+      "properties": {
+        "scheduler": {
+          "type": "object",
+          "required": [
+            "enabled",
+            "activeRuns",
+            "nextWakeAt"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "const": true
+            },
+            "activeRuns": {
+              "type": "number"
+            },
+            "nextWakeAt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AutomationTask"
+          }
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AutomationRun"
+          }
+        }
+      }
+    },
+    "AutomationTask": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "sessionId",
+        "prompt",
+        "schedule",
+        "enabled",
+        "timeoutSeconds",
+        "createdAt",
+        "updatedAt",
+        "nextRunAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "schedule": {
+          "$ref": "#/$defs/AutomationSchedule"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "timeoutSeconds": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "nextRunAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdBy": {
+          "$ref": "#/$defs/AutomationCreator"
+        },
+        "until": {
+          "type": "string"
+        },
+        "runsLeft": {
+          "type": "number"
+        }
+      }
+    },
+    "AutomationTaskInput": {
+      "type": "object",
+      "required": [
+        "name",
+        "sessionId",
+        "prompt",
+        "schedule"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "schedule": {
+          "$ref": "#/$defs/AutomationSchedule"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "timeoutSeconds": {
+          "type": "number"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runs": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "BrowserSettings": {
       "type": "object",
       "required": [
@@ -2309,6 +2787,25 @@
         }
       }
     },
+    "ReleaseInfo": {
+      "type": "object",
+      "required": [
+        "version",
+        "tag",
+        "url"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
     "RuntimeInspection": {
       "type": "object",
       "required": [
@@ -3419,6 +3916,344 @@
         }
       ]
     },
+    "TerminalConnectResponse": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "TerminalControlFrame": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TerminalSnapshotFrame"
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "terminal"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "state"
+            },
+            "terminal": {
+              "$ref": "#/$defs/TerminalView"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "error"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "TerminalCreateRequest": {
+      "type": "object",
+      "properties": {
+        "cols": {
+          "type": "number"
+        },
+        "rows": {
+          "type": "number"
+        },
+        "title": {
+          "type": "string"
+        }
+      }
+    },
+    "TerminalError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "TerminalInput": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "data"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "input"
+            },
+            "data": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "cols",
+            "rows"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "resize"
+            },
+            "cols": {
+              "type": "number"
+            },
+            "rows": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
+    "TerminalOperationRequest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TerminalInput"
+        },
+        {
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "list"
+                },
+                {
+                  "type": "string",
+                  "const": "read"
+                },
+                {
+                  "type": "string",
+                  "const": "close"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "TerminalOperationResponse": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TerminalsResponse"
+        },
+        {
+          "type": "object",
+          "required": [
+            "terminal",
+            "data",
+            "sequence",
+            "truncated",
+            "format"
+          ],
+          "properties": {
+            "terminal": {
+              "$ref": "#/$defs/TerminalView"
+            },
+            "data": {
+              "type": "string"
+            },
+            "sequence": {
+              "type": "number"
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "accepted",
+            "terminal"
+          ],
+          "properties": {
+            "accepted": {
+              "type": "boolean",
+              "const": true
+            },
+            "terminal": {
+              "$ref": "#/$defs/TerminalView"
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/TerminalResponse"
+        },
+        {
+          "type": "object",
+          "required": [
+            "closed"
+          ],
+          "properties": {
+            "closed": {
+              "type": "boolean",
+              "const": true
+            }
+          }
+        }
+      ]
+    },
+    "TerminalResponse": {
+      "type": "object",
+      "required": [
+        "terminal"
+      ],
+      "properties": {
+        "terminal": {
+          "$ref": "#/$defs/TerminalView"
+        }
+      }
+    },
+    "TerminalSnapshot": {
+      "type": "object",
+      "required": [
+        "terminal",
+        "data",
+        "sequence",
+        "truncated"
+      ],
+      "properties": {
+        "terminal": {
+          "$ref": "#/$defs/TerminalView"
+        },
+        "data": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "number"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "TerminalSnapshotFrame": {
+      "type": "object",
+      "required": [
+        "type",
+        "terminal",
+        "sequence",
+        "truncated",
+        "replayBytes"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "snapshot"
+        },
+        "terminal": {
+          "$ref": "#/$defs/TerminalView"
+        },
+        "sequence": {
+          "type": "number"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "replayBytes": {
+          "type": "number"
+        }
+      }
+    },
+    "TerminalsResponse": {
+      "type": "object",
+      "required": [
+        "terminals"
+      ],
+      "properties": {
+        "terminals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TerminalView"
+          }
+        }
+      }
+    },
+    "TerminalView": {
+      "type": "object",
+      "required": [
+        "id",
+        "ownerSessionId",
+        "title",
+        "cwd",
+        "cols",
+        "rows",
+        "status",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "ownerSessionId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "cols": {
+          "type": "number"
+        },
+        "rows": {
+          "type": "number"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "running"
+            },
+            {
+              "type": "string",
+              "const": "exited"
+            }
+          ]
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      }
+    },
     "ToolCatalogEntry": {
       "type": "object",
       "required": [
@@ -3543,6 +4378,166 @@
         }
       }
     },
+    "UpdateCheck": {
+      "type": "object",
+      "required": [
+        "currentVersion",
+        "latest",
+        "status",
+        "canInstall",
+        "message"
+      ],
+      "properties": {
+        "currentVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "latest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReleaseInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "available"
+            },
+            {
+              "type": "string",
+              "const": "current"
+            },
+            {
+              "type": "string",
+              "const": "unpublished"
+            },
+            {
+              "type": "string",
+              "const": "unavailable"
+            }
+          ]
+        },
+        "canInstall": {
+          "type": "boolean"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "UpdateError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "UpdateJob": {
+      "type": "object",
+      "required": [
+        "id",
+        "pid",
+        "status",
+        "version",
+        "message"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "number"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "running"
+            },
+            {
+              "type": "string",
+              "const": "succeeded"
+            },
+            {
+              "type": "string",
+              "const": "failed"
+            }
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "UpdateRequest": {
+      "type": "object",
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "UpdateSnapshot": {
+      "type": "object",
+      "required": [
+        "currentVersion",
+        "check",
+        "job"
+      ],
+      "properties": {
+        "currentVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "check": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateCheck"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "job": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UpdateJob"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "VscodeProviderPreference": {
       "anyOf": [
         {
@@ -3587,6 +4582,223 @@
         },
         "licenseAcceptedAt": {
           "type": "string"
+        }
+      }
+    },
+    "WorkerActionResponse": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "WorkerError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "WorkerInput": {
+      "type": "object",
+      "required": [
+        "name",
+        "command"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "extraPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "WorkerPatch": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "extraPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "WorkerResponse": {
+      "type": "object",
+      "required": [
+        "worker"
+      ],
+      "properties": {
+        "worker": {
+          "$ref": "#/$defs/WorkerView"
+        }
+      }
+    },
+    "WorkersResponse": {
+      "type": "object",
+      "required": [
+        "workers"
+      ],
+      "properties": {
+        "workers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorkerView"
+          }
+        }
+      }
+    },
+    "WorkerState": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "disconnected"
+        },
+        {
+          "type": "string",
+          "const": "connecting"
+        },
+        {
+          "type": "string",
+          "const": "connected"
+        },
+        {
+          "type": "string",
+          "const": "error"
+        }
+      ]
+    },
+    "WorkerView": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "command",
+        "extraPaths",
+        "state"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "extraPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "state": {
+          "$ref": "#/$defs/WorkerState"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "host": {
+          "type": "object",
+          "required": [
+            "hostname",
+            "platform",
+            "arch",
+            "node",
+            "home",
+            "release"
+          ],
+          "properties": {
+            "hostname": {
+              "type": "string"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "arch": {
+              "type": "string"
+            },
+            "node": {
+              "type": "string"
+            },
+            "home": {
+              "type": "string"
+            },
+            "release": {
+              "type": "string"
+            }
+          }
+        },
+        "sync": {
+          "type": "object",
+          "required": [
+            "at",
+            "files",
+            "uploaded",
+            "deleted",
+            "installed",
+            "skipped",
+            "errors"
+          ],
+          "properties": {
+            "at": {
+              "type": "string"
+            },
+            "files": {
+              "type": "number"
+            },
+            "uploaded": {
+              "type": "number"
+            },
+            "deleted": {
+              "type": "number"
+            },
+            "installed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "skipped": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },
@@ -3767,6 +4979,53 @@
       "SubagentStatus",
       "TranscriptMetrics",
       "WorktreeProgress"
+    ],
+    "automation": [
+      "AutomationCancelResponse",
+      "AutomationCreateResponse",
+      "AutomationCreator",
+      "AutomationError",
+      "AutomationFailureKind",
+      "AutomationMutationResponse",
+      "AutomationRun",
+      "AutomationRunResponse",
+      "AutomationRunStatus",
+      "AutomationSchedule",
+      "AutomationSnapshot",
+      "AutomationTask",
+      "AutomationTaskInput"
+    ],
+    "updates": [
+      "ReleaseInfo",
+      "UpdateCheck",
+      "UpdateError",
+      "UpdateJob",
+      "UpdateRequest",
+      "UpdateSnapshot"
+    ],
+    "workers": [
+      "WorkerActionResponse",
+      "WorkerError",
+      "WorkerInput",
+      "WorkerPatch",
+      "WorkerResponse",
+      "WorkerState",
+      "WorkerView",
+      "WorkersResponse"
+    ],
+    "terminals": [
+      "TerminalConnectResponse",
+      "TerminalControlFrame",
+      "TerminalCreateRequest",
+      "TerminalError",
+      "TerminalInput",
+      "TerminalOperationRequest",
+      "TerminalOperationResponse",
+      "TerminalResponse",
+      "TerminalSnapshot",
+      "TerminalSnapshotFrame",
+      "TerminalView",
+      "TerminalsResponse"
     ]
   },
   "x-hui-routes": [
@@ -3775,6 +5034,54 @@
       "path": "/__hui/api-schema",
       "response": {
         "$ref": "#/$defs/ApiSchemaDocument"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/automation",
+      "response": {
+        "$ref": "#/$defs/AutomationSnapshot"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/automation/runs/:id/cancel",
+      "response": {
+        "$ref": "#/$defs/AutomationCancelResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/automation/tasks",
+      "request": {
+        "$ref": "#/$defs/AutomationTaskInput"
+      },
+      "response": {
+        "$ref": "#/$defs/AutomationCreateResponse"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/automation/tasks/:id",
+      "response": {
+        "$ref": "#/$defs/AutomationMutationResponse"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/automation/tasks/:id",
+      "request": {
+        "$ref": "#/$defs/AutomationTaskInput"
+      },
+      "response": {
+        "$ref": "#/$defs/AutomationMutationResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/automation/tasks/:id/run",
+      "response": {
+        "$ref": "#/$defs/AutomationRunResponse"
       }
     },
     {
@@ -4251,6 +5558,50 @@
     },
     {
       "method": "GET",
+      "path": "/__hui/sessions/:owner/terminals",
+      "response": {
+        "$ref": "#/$defs/TerminalsResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:owner/terminals",
+      "request": {
+        "$ref": "#/$defs/TerminalCreateRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/TerminalResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:owner/terminals/:id",
+      "response": {
+        "$ref": "#/$defs/TerminalSnapshot"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:owner/terminals/:id",
+      "request": {
+        "$ref": "#/$defs/TerminalOperationRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/TerminalOperationResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:owner/terminals/:id/connect",
+      "response": {
+        "$ref": "#/$defs/TerminalConnectResponse"
+      },
+      "events": {
+        "$ref": "#/$defs/TerminalControlFrame"
+      }
+    },
+    {
+      "method": "GET",
       "path": "/__hui/settings",
       "response": {
         "$ref": "#/$defs/Settings"
@@ -4271,6 +5622,92 @@
       "path": "/__hui/tools",
       "response": {
         "$ref": "#/$defs/ToolsCatalog"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/update",
+      "response": {
+        "$ref": "#/$defs/UpdateSnapshot"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/update",
+      "request": {
+        "$ref": "#/$defs/UpdateRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/UpdateSnapshot"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/update/check",
+      "response": {
+        "$ref": "#/$defs/UpdateSnapshot"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/update/check",
+      "response": {
+        "$ref": "#/$defs/UpdateSnapshot"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/workers",
+      "response": {
+        "$ref": "#/$defs/WorkersResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/workers",
+      "request": {
+        "$ref": "#/$defs/WorkerInput"
+      },
+      "response": {
+        "$ref": "#/$defs/WorkerResponse"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/workers/:id",
+      "response": {
+        "$ref": "#/$defs/WorkerActionResponse"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/__hui/workers/:id",
+      "request": {
+        "$ref": "#/$defs/WorkerPatch"
+      },
+      "response": {
+        "$ref": "#/$defs/WorkerResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/workers/:id/connect",
+      "response": {
+        "$ref": "#/$defs/WorkerActionResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/workers/:id/disconnect",
+      "response": {
+        "$ref": "#/$defs/WorkerActionResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/workers/:id/sync",
+      "response": {
+        "$ref": "#/$defs/WorkerActionResponse"
       }
     }
   ]

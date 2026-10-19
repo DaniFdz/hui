@@ -16,7 +16,7 @@ import {
   scheduleFromForm,
   taskInputFromForm,
 } from "./settings-automation.ts";
-import type { AutomationRun, AutomationSnapshot } from "../lib/automation-types.ts";
+import type { AutomationRun, AutomationSnapshot } from "../api/schema/automation.ts";
 
 function form(fields: Record<string, string | undefined>): FormData {
   const data = new FormData();

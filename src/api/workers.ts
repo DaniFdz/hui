@@ -3,7 +3,7 @@
  * disconnect. Those operations run in the gateway; the UI polls the list for progress.
  */
 import { fetchJson } from "./request.ts";
-import type { WorkerInput, WorkerView } from "../../shared/workers.ts";
+import type { WorkerInput, WorkerView, WorkersResponse, WorkerResponse } from "./schema/workers.ts";
 
 export type { WorkerInput, WorkerView };
 
@@ -12,15 +12,15 @@ const JSON_HEADERS = { "content-type": "application/json" } as const;
 const workerUrl = (id: string, suffix = "") => `${WORKERS_URL}/${encodeURIComponent(id)}${suffix}`;
 
 export async function loadWorkers(): Promise<WorkerView[]> {
-  return (await fetchJson<{ workers?: WorkerView[] }>(WORKERS_URL)).workers ?? [];
+  return (await fetchJson<WorkersResponse>(WORKERS_URL)).workers ?? [];
 }
 
 export async function createWorker(input: WorkerInput): Promise<WorkerView> {
-  return (await fetchJson<{ worker: WorkerView }>(WORKERS_URL, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(input) })).worker;
+  return (await fetchJson<WorkerResponse>(WORKERS_URL, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(input) })).worker;
 }
 
 export async function updateWorker(id: string, input: Partial<WorkerInput>): Promise<WorkerView> {
-  return (await fetchJson<{ worker: WorkerView }>(workerUrl(id), { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(input) })).worker;
+  return (await fetchJson<WorkerResponse>(workerUrl(id), { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(input) })).worker;
 }
 
 export async function removeWorker(id: string): Promise<void> {

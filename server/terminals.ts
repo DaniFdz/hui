@@ -9,8 +9,10 @@ import { execFileSync } from "node:child_process";
 import { userInfo } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import { spawn, type IPty } from "@lydell/node-pty";
-import type { TerminalSnapshot, TerminalView } from "../src/lib/terminal-types.ts";
+import type { TerminalSnapshot, TerminalView, TerminalOperationResponse } from "./api/terminals.ts";
 import { ReplayBuffer } from "./terminal-replay.ts";
+
+export type { TerminalSnapshot, TerminalView } from "./api/terminals.ts";
 
 export const TERMINAL_BUFFER_BYTES = 256 * 1024;
 export const TERMINAL_INPUT_BYTES = 16 * 1024;
@@ -154,7 +156,7 @@ export class TerminalService {
 
   /** Same actions/terminal sessionId as OpenClaw. Only operator-created PTYs in
    * the authenticated caller's conversation are visible, not sibling chats. */
-  tool(owner: string, params: Record<string, unknown>): unknown {
+  tool(owner: string, params: Record<string, unknown>): TerminalOperationResponse {
     if (params["action"] === "list") return { terminals: this.list(owner) };
     const id = params["sessionId"];
     if (typeof id !== "string" || !id) throw new TerminalError("sessionId must identify a shared terminal returned by list.");

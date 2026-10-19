@@ -25,7 +25,7 @@ import {
   type BotImportPreview, type BotImportResult, type BotImportRoutine, type BotTemplate,
 } from "../shared/bot-templates.ts";
 import type { BotTriggerInput } from "../shared/bot-triggers.ts";
-import type { AutomationSchedule, AutomationTask, AutomationTaskInput } from "../src/lib/automation-types.ts";
+import type { AutomationSchedule, AutomationTask, AutomationTaskInput } from "./automation.ts";
 import { nextScheduleAt } from "./automation.ts";
 import type { BotOffer, BotService } from "./bot-service.ts";
 import type { BotSkillFiles } from "./bot-skills.ts";

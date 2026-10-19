@@ -3,7 +3,7 @@
  * Recovery decisions belong to the scheduler; this only explains its recorded
  * retry or intervention state without guessing from an error message.
  */
-import type { AutomationRun } from "./automation-types.ts";
+import type { AutomationRun } from "../api/schema/automation.ts";
 
 const STATUS_LABELS: Record<AutomationRun["status"], string> = {
   queued: "Queued",

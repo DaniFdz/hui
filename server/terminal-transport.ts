@@ -2,14 +2,14 @@
  * The WebSocket transport for terminals. Upgrades are accepted only with a short-lived, single-use ticket
  * minted through a guarded request, from the same origin and an allowed host; the socket then streams terminal
  * output out as binary messages (a burst of small PTY chunks batched into fewer messages), metadata as JSON
- * text, and takes input and resize messages in (wire format: shared/terminal-stream.ts).
+ * text, and takes input and resize messages in (JSON control schema: server/api/terminals.ts).
  */
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import type { EventEmitter } from "node:events";
 import { WebSocketServer, WebSocket } from "ws";
 import { terminals, TerminalService, TerminalError, TERMINAL_INPUT_BYTES, type TerminalStreamEvent } from "./terminals.ts";
-import type { TerminalControlFrame } from "../shared/terminal-stream.ts";
+import type { TerminalControlFrame } from "./api/terminals.ts";
 
 /** A client this far behind is dropped; it reconnects and replays instead of queueing unbounded output. */
 export const TERMINAL_MAX_BUFFERED_BYTES = 1024 * 1024;

@@ -16,8 +16,10 @@ import {
   normalizeSchedule,
   parseCron,
 } from "./automation.ts";
-import type { AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationTask } from "./automation.ts";
 import { waitFor } from "./test-support/wait-for.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
+import { AutomationSnapshot, AutomationRun } from "./api/automation.ts";
 
 // Fault injection stays at the registry boundary; all other filesystem work is real and isolated.
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -73,6 +75,7 @@ test("persists task definitions atomically and reloads them", async () => {
 
   const second = new AutomationService(file, async () => ({}));
   const snapshot = await second.snapshot();
+  expectSchema(AutomationSnapshot, snapshot);
   assert.equal(snapshot.tasks.length, 1);
   assert.equal(snapshot.tasks[0]?.name, "Daily review");
   assert.equal(snapshot.runs.length, 0);
@@ -108,6 +111,7 @@ test("records manual run lifecycle and summary", async () => {
   release();
   await runEnds(service, "completed");
   const completed = (await service.snapshot()).runs[0];
+  expectSchema(AutomationRun, completed);
   assert.equal(completed?.summary, "Done");
   assert.ok(completed?.finishedAt);
   service.dispose();

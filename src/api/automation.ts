@@ -5,9 +5,11 @@
 import type {
   AutomationRun,
   AutomationSnapshot,
-  AutomationTask,
+  AutomationCreateResponse,
+  AutomationMutationResponse,
+  AutomationRunResponse,
   AutomationTaskInput,
-} from "../lib/automation-types.ts";
+} from "./schema/automation.ts";
 import { trackedFetch } from "./request.ts";
 
 const AUTOMATION_URL = "/__hui/automation";
@@ -24,7 +26,7 @@ export async function loadAutomation(): Promise<AutomationSnapshot> {
 }
 
 export async function createAutomationTask(input: AutomationTaskInput): Promise<AutomationSnapshot> {
-  const body = await responseJson<{ task: AutomationTask; snapshot: AutomationSnapshot }>(
+  const body = await responseJson<AutomationCreateResponse>(
     await trackedFetch(`${AUTOMATION_URL}/tasks`, {
       method: "POST",
       headers: { ...HEADERS, "content-type": "application/json" },
@@ -38,7 +40,7 @@ export async function updateAutomationTask(
   id: string,
   input: AutomationTaskInput,
 ): Promise<AutomationSnapshot> {
-  const body = await responseJson<{ snapshot: AutomationSnapshot }>(
+  const body = await responseJson<AutomationMutationResponse>(
     await trackedFetch(`${AUTOMATION_URL}/tasks/${encodeURIComponent(id)}`, {
       method: "PUT",
       headers: { ...HEADERS, "content-type": "application/json" },
@@ -49,7 +51,7 @@ export async function updateAutomationTask(
 }
 
 export async function deleteAutomationTask(id: string): Promise<AutomationSnapshot> {
-  const body = await responseJson<{ snapshot: AutomationSnapshot }>(
+  const body = await responseJson<AutomationMutationResponse>(
     await trackedFetch(`${AUTOMATION_URL}/tasks/${encodeURIComponent(id)}`, {
       method: "DELETE",
       headers: HEADERS,
@@ -59,7 +61,7 @@ export async function deleteAutomationTask(id: string): Promise<AutomationSnapsh
 }
 
 export async function runAutomationTask(id: string): Promise<AutomationRun> {
-  const body = await responseJson<{ run: AutomationRun }>(
+  const body = await responseJson<AutomationRunResponse>(
     await trackedFetch(`${AUTOMATION_URL}/tasks/${encodeURIComponent(id)}/run`, {
       method: "POST",
       headers: HEADERS,
@@ -77,4 +79,4 @@ export async function cancelAutomationRun(id: string): Promise<void> {
   );
 }
 
-export type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
+export type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "./schema/automation.ts";

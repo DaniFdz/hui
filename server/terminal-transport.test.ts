@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { WebSocket } from "ws";
 import { terminals } from "./terminals.ts";
 import { attachTerminalTransport, createOutputBatcher, TERMINAL_BATCH_BYTES } from "./terminal-transport.ts";
-import type { TerminalControlFrame } from "../shared/terminal-stream.ts";
+import { TerminalControlFrame, TerminalResponse, TerminalSnapshot, TerminalOperationResponse, TerminalConnectResponse, TerminalsResponse } from "./api/terminals.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
 
 test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share one PTY", { timeout: 20_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-terminal-api-"));
@@ -36,11 +37,19 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   assert.equal((await api(path, { cols: 999 })).status, 400);
   const created = await api(path, {});
   assert.equal(created.status, 201);
-  const { terminal } = await created.json();
+  const createdBody = await created.json();
+  expectSchema(TerminalResponse, createdBody);
+  const { terminal } = createdBody;
+  expectSchema(TerminalsResponse, await (await api(path)).json());
+  expectSchema(TerminalSnapshot, await (await api(`${path}/${terminal.id}`)).json());
   assert.equal(terminal.cwd, dir);
   assert.equal((await api(`/__hui/sessions/beta/terminals/${terminal.id}`)).status, 404);
   assert.equal((await api(`${path}/${terminal.id}/connect`, {}, false)).status, 403);
-  const ticket = async () => (await (await api(`${path}/${terminal.id}/connect`, {})).json()).url as string;
+  const ticket = async () => {
+    const body = await (await api(`${path}/${terminal.id}/connect`, {})).json();
+    expectSchema(TerminalConnectResponse, body);
+    return body.url as string;
+  };
   const connect = (url: string, pageOrigin = origin) => new WebSocket(origin.replace("http:", "ws:") + url, { origin: pageOrigin });
   const rejected = async (url: string, pageOrigin: string) => {
     const ws = connect(url, pageOrigin);
@@ -56,7 +65,12 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   const output: Buffer[] = [];
   const text = () => Buffer.concat(output).toString("utf8");
   ws.on("message", (data, binary) => {
-    if (binary) output.push(data as Buffer); else frames.push(JSON.parse(data.toString()) as TerminalControlFrame);
+    if (binary) output.push(data as Buffer);
+    else {
+      const frame = JSON.parse(data.toString());
+      expectSchema(TerminalControlFrame, frame);
+      frames.push(frame as TerminalControlFrame);
+    }
   });
   await once(ws, "open");
   const waitFrame = (check: () => boolean) => new Promise<void>((resolve, reject) => {
@@ -71,10 +85,17 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   const env = await agentToolEnvironment("alpha");
   const tool = async (params: Record<string, unknown>) => {
     const response = await fetch(`${env["HUI_AGENT_BRIDGE_URL"]}/invoke`, { method: "POST", headers: { authorization: `Bearer ${env["HUI_AGENT_BRIDGE_TOKEN"]}`, "content-type": "application/json" }, body: JSON.stringify({ callerSessionId: "alpha", action: "terminal", params }) });
-    assert.equal(response.status, 200); return (await response.json()).result;
+    assert.equal(response.status, 200);
+    const result = (await response.json()).result;
+    expectSchema(TerminalOperationResponse, result);
+    return result;
   };
-  assert.equal((await tool({ action: "list" })).terminals[0].id, terminal.id);
-  assert.match((await tool({ action: "read", sessionId: terminal.id })).data, /BROWSER_INPUT/);
+  const listed = await tool({ action: "list" });
+  assert.ok("terminals" in listed);
+  assert.equal(listed.terminals[0]?.id, terminal.id);
+  const read = await tool({ action: "read", sessionId: terminal.id });
+  assert.ok("data" in read);
+  assert.match(read.data, /BROWSER_INPUT/);
   await tool({ action: "input", sessionId: terminal.id, data: "printf '%s%s\\n' AGENT_ INPUT\r" });
   await waitFrame(() => text().includes("AGENT_INPUT"));
   ws.send(JSON.stringify({ action: "input", data: "printf '\\033[31m%s\\033[0m\\n' RED_OUTPUT\r" }));
@@ -99,6 +120,7 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   });
   const [[snapshotData, snapshotBinary], [replayData, replayBinary]] = await replayed;
   const snapshot = JSON.parse(snapshotData.toString()) as TerminalControlFrame;
+  expectSchema(TerminalControlFrame, snapshot);
   assert.equal(snapshotBinary, false);
   assert.ok(snapshot.type === "snapshot" && snapshot.replayBytes === replayData.length, "the snapshot announces its replay's exact size");
   assert.equal(replayBinary, true);

@@ -9,7 +9,7 @@ import { test, type TestContext } from "vitest";
 import { agentReplyTo, BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, botTurnOrigin, mentionsBot, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import type { CallRecord } from "../shared/calls.ts";
-import type { AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationTask } from "./automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts";
 import { DEFAULT_SETTINGS } from "./hui-settings.ts";
 import type { BotMemory } from "./bot-memory.ts";

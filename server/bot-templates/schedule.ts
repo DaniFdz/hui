@@ -4,7 +4,7 @@
  * Mondays, the 1st) and what it can't be read as stands in as every day at 09:00; either way `guessed` says so, and the
  * routine starts disabled until the operator checks it.
  */
-import type { AutomationSchedule } from "../../src/lib/automation-types.ts";
+import type { AutomationSchedule } from "../automation.ts";
 import { parseCron, validateTimezone } from "../automation.ts";
 
 export type ReadSchedule = { schedule: AutomationSchedule; guessed: boolean };

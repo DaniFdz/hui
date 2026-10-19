@@ -4,7 +4,7 @@ import { test } from "vitest";
 import { botCallsLabel, botModelLabel, botTaggingLabel } from "./bot-settings.ts";
 import { renderBotPanel, renderBotRoster, type BotPanelProps, type BotRosterProps } from "./bots.ts";
 import type { BotView } from "../lib/bots/bots.ts";
-import type { AutomationRun } from "../lib/automation-types.ts";
+import type { AutomationRun } from "../api/schema/automation.ts";
 import { formatTimestamp } from "./settings-automation.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");

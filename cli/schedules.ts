@@ -10,7 +10,7 @@
  * does. Sessions' schedules work regardless.
  */
 import type { BotView } from "../shared/bots.ts";
-import type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask } from "../server/automation.ts";
 import { findBot, GatewayError, request, routineSchedule, type BotFlags, type BotIO } from "./gateway-client.ts";
 
 export type ScheduleFlags = BotFlags & {

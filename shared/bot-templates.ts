@@ -10,7 +10,7 @@
  * triggers start disabled, a model it names is kept only when this gateway resolves it, and its first turn is not the
  * operator's.
  */
-import type { AutomationSchedule } from "../src/lib/automation-types.ts";
+import type { AutomationSchedule } from "../server/automation.ts";
 import type { BotOpenPoint, BotTemplateTrigger } from "./bot-export.ts";
 import { BOT_IMPORTED_KICKOFF_LINE, BOT_KICKOFF_MARKER, type BotFaceEars, type BotFaceShape, type BotTagging, type BotView, type BotVoice } from "./bots.ts";
 

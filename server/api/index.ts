@@ -10,6 +10,10 @@ import * as settings from "./settings.ts";
 import * as pi from "./pi.ts";
 import * as providers from "./providers.ts";
 import * as tools from "./tools.ts";
+import * as automation from "./automation.ts";
+import * as updates from "./updates.ts";
+import * as workers from "./workers.ts";
+import * as terminals from "./terminals.ts";
 
 export type RouteSchema = {
   method: string;
@@ -19,7 +23,7 @@ export type RouteSchema = {
   events?: TSchema;
 };
 
-export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings, pi, providers, tools, sessions };
+export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings, pi, providers, tools, sessions, automation, updates, workers, terminals };
 
 export function buildApiSchema(version: string) {
   const definitions = new Map<string, unknown>();

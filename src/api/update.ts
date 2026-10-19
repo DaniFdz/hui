@@ -3,7 +3,7 @@
  * install. Downloading and activating releases happen in the gateway.
  */
 import { fetchJson } from "./request.ts";
-import type { UpdateSnapshot } from "../lib/update-types.ts";
+import type { UpdateSnapshot } from "./schema/updates.ts";
 
 export const loadUpdate = () => fetchJson<UpdateSnapshot>("/__hui/update");
 export const checkUpdate = () => fetchJson<UpdateSnapshot>("/__hui/update/check", { method: "POST", signal: AbortSignal.timeout(30_000) });

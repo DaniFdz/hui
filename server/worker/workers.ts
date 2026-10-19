@@ -1,23 +1,5 @@
-/** Browser-facing view of remote workers. */
-
-export type WorkerState = "disconnected" | "connecting" | "connected" | "error";
-
-export type WorkerView = {
-  id: string;
-  name: string;
-  /** The connect command, shell-quoted for display and editing. */
-  command: string;
-  /** Additional local files or directories mirrored to the remote. */
-  extraPaths: string[];
-  state: WorkerState;
-  /** What a connecting worker is doing right now. */
-  phase?: string;
-  error?: string;
-  host?: { hostname: string; platform: string; arch: string; node: string; home: string; release: string };
-  sync?: { at: string; files: number; uploaded: number; deleted: number; installed: string[]; skipped: string[]; errors: string[] };
-};
-
-export type WorkerInput = { name: string; command: string; extraPaths?: string[] };
+/** Remote-worker command parsing, shell formatting and public view types for Node callers. */
+export type { WorkerState, WorkerView, WorkerInput } from "../api/workers.ts";
 
 /** Splits a connect command like a POSIX shell would for plain words and
  * single/double quotes; no expansion or operators. */

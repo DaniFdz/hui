@@ -6,7 +6,7 @@
  */
 import { html, svg } from "lit";
 import { createTerminal, listTerminals } from "../../api/terminals.ts";
-import type { TerminalView } from "../../lib/terminal-types.ts";
+import type { TerminalView } from "../../api/schema/terminals.ts";
 import type { WorkViewKind } from "../../lib/work-pane.ts";
 import { WORK_SHORTCUTS } from "../../lib/work-shortcuts.ts";
 

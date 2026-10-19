@@ -38,7 +38,7 @@ import {
   type BotQuestion, type BotRecord, type BotReply, type BotTurnOrigin, type BotView,
 } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
-import type { AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationTask } from "./automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import { AUTOMATION_SUSPENDED } from "./automation.ts";

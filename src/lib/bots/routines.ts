@@ -3,7 +3,7 @@
  * friendly schedules map onto Automation's own kinds (at, every, cron) in the
  * browser's timezone; nothing here schedules anything, the gateway does.
  */
-import type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask } from "../automation-types.ts";
+import type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask } from "../../api/schema/automation.ts";
 import type { BotTriggerRun } from "../../../shared/bot-triggers.ts";
 
 export type RoutineCadence = "every" | "daily" | "weekly" | "once";

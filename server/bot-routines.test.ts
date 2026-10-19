@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 import { botKickoffText, type BotRecord, type BotTurnOrigin } from "../shared/bots.ts";
-import type { AutomationTask } from "../src/lib/automation-types.ts";
+import type { AutomationTask } from "./automation.ts";
 import { AutomationService } from "./automation.ts";
 import { BotRoutines } from "./bot-routines.ts";
 import { BotConflictError, BotInputError, BotsOffError } from "./bots.ts";

@@ -33,7 +33,7 @@ import { brokeredModels, buildSyncPlan, contentFile, mirrorPath } from "./worker
 import type { Settings } from "./hui-settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/protocol.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
-import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";
+import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "./worker/workers.ts";
 import { parseRunOrigins } from "../shared/bots.ts";
 import { invokeAgentTool } from "./agent-tools-bridge.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
