@@ -4111,15 +4111,16 @@ utility model only proposes a parent.
 A regular PI session can start a long-running watch with the HUI `watcher`
 tool: HUI runs the command detached in its own process group, appends its
 output to a HUI-owned log and has the wrapper record the exit status beside it.
-The watcher outlives the turn and the gateway; deleting its conversation stops
-and forgets it.
+The watcher outlives the turn and the gateway, and its shell: it runs while
+anything in its process group does. Deleting its conversation stops and forgets
+it.
 
 | Tool | Contract |
 |---|---|
-| `watcher { action: "start", purpose ≤200, command ≤4000, target? ≤500, outcome? ≤200 }` | Records the watcher against the calling session and starts it in the session's working directory. `target` must be an http(s) URL when present. Returns the `Watcher` view. At most 10 watchers per conversation, settled ones included |
+| `watcher { action: "start", purpose ≤200, command ≤4000, target? ≤500, outcome? ≤200, keepRunning? }` | Records the watcher against the calling session and starts it in the session's working directory. `target` must be an http(s) URL when present; `keepRunning` must be a boolean. Returns the `Watcher` view. At most 10 watchers per conversation, settled ones included |
 | `watcher { action: "list" }` | `{ watchers: Watcher[] }` of the calling session, newest first |
 | `watcher { action: "stop", id }` | Signals the watcher's process group (`SIGTERM`, `SIGKILL` after 2s), records `stopped` and returns the view. A settled watcher is returned unchanged |
-| `watcher { action: "restart", id }` | Runs the recorded command again after clearing the exit record; refused while the watcher is running, and when a non-empty `command`, `purpose`, `target` or `outcome` is passed |
+| `watcher { action: "restart", id }` | Runs the recorded command again after clearing the exit record; refused while the watcher is running, and when a non-empty `command`, `purpose`, `target` or `outcome` or a true `keepRunning` is passed |
 | `watcher { action: "dismiss", id }` | Removes a settled watcher, its log and its exit record, like the operator's `DELETE`; returns `{ id, status: "dismissed" }`. Refused while the watcher is running |
 | `watcher { action: "log", id, lines? }` | `{ id, lines, truncated }`: at most `lines` (default 100, max 400) from the end of the log, reading at most 256 KiB |
 
@@ -4135,12 +4136,19 @@ session or watcher → 404, a running watcher for `restart` or `DELETE` → 409)
 
 The session snapshot/SSE `snapshot` event carries an optional `watchers: Watcher[]`
 (omitted when empty). The view is `{ id, purpose, target, outcome, command,
-logPath, state, pid, exitCode?, startedAt, endedAt?, lastLine }`; `state` is
-`running`, `done`, `failed`, `stopped` or `dead`. The registry is
-`~/.config/hui/watchers.json`; logs and exit records live under
-`~/.config/hui/watchers/`. State is derived on read and on the gateway's poll,
-which re-emits the session snapshot when a watcher's state or latest log line
-changes.
+logPath, state, pid, exitCode?, startedAt, endedAt?, lastLine, keepRunning? }`;
+`state` is `running`, `done`, `failed`, `stopped` or `dead`. The registry is
+`~/.config/hui/watchers.json` (records carry `keepRunning: true` when set);
+logs and exit records live under `~/.config/hui/watchers/`. State is derived on
+read and on the gateway's poll, which re-emits the session snapshot when a
+watcher's state or latest log line changes. `running` means the recorded PID is
+the process HUI started, or that process is gone but its process group still
+has members; nothing from before the last boot counts, and `dead` stays dead
+until the watcher starts again. A `keepRunning` watcher read `dead`, at gateway
+start or on a poll, starts again in place: its log gets `[HUI] Started again at
+<time>: its processes were gone with no exit status.`, then the command runs
+with a new PID and start time. `done`, `failed` and `stopped` watchers, and
+one whose working directory is gone, are left as they are.
 
 ### Secret requests
 

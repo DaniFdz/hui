@@ -320,6 +320,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       "The command runs with /bin/sh in this conversation's working directory, appends its output to the watcher's own log and records its exit status. It must end on its own; do not start background children of your own inside it.",
       "Keep one watcher per condition. Stop watchers that are no longer needed instead of leaving them running, and dismiss finished ones you no longer need: a conversation holds at most 10 watchers, finished ones included.",
       "A watcher card reports running, done, failed, stopped or dead (the process was lost, for example after a reboot). Restart a dead watcher instead of starting a duplicate. Restarting re-runs the same command; to watch something else, start a new watcher.",
+      "Pass keepRunning: true only for a watcher that should run until stopped, such as a listener that reports to a bot's trigger: HUI starts it again whenever it finds it dead, including after a reboot. Never for a one-shot wait, whose command would act again.",
     ],
     parameters: Type.Object({
       action: Type.Union(["start", "list", "stop", "restart", "dismiss", "log"].map((action) => Type.Literal(action))),
@@ -328,6 +329,7 @@ Every question also offers a free-text answer the card adds itself, and the user
       target: Type.Optional(Type.String({ maxLength: 500 })),
       outcome: Type.Optional(Type.String({ maxLength: 200 })),
       command: Type.Optional(Type.String({ minLength: 1, maxLength: 4_000 })),
+      keepRunning: Type.Optional(Type.Boolean()),
       lines: Type.Optional(Type.Integer({ minimum: 1, maximum: 400 })),
     }),
     async execute(_toolCallId, params) {

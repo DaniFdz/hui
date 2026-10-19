@@ -63,6 +63,7 @@ function renderDetails(props: WatcherActivityProps, watcher: Watcher) {
         : nothing}
       ${watcher.outcome ? html`<span>Then: ${watcher.outcome}</span>` : nothing}
       <span>Started ${relativeTime(watcher.startedAt) || "just now"}${watcher.endedAt ? ` · ended ${relativeTime(watcher.endedAt)}` : ""}</span>
+      ${watcher.keepRunning ? html`<span>Keeps running: HUI starts it again if it dies. Stop ends it.</span>` : nothing}
     </div>
     ${note ? html`<p class="chat-watcher__note">${note}</p>` : nothing}
     <div class="chat-watcher__log" tabindex="0" role="log" aria-label="Watcher log" aria-busy=${String(Boolean(log?.loading))}><pre>${lines.length ? lines.join("\n") : "No output yet."}</pre></div>

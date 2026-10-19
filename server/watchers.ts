@@ -7,11 +7,15 @@
  * the log, so the watcher outlives the gateway while HUI can still report
  * running, done, failed, stopped or dead. State is derived on every refresh: a
  * recorded PID only counts as running when it is the same process HUI started
- * (a reboot reuses PIDs). */
+ * (a reboot reuses PIDs), or while what it started still runs in its process
+ * group after the shell itself was killed (`pkill -f` matches the script's
+ * path). A watcher started with `keepRunning` that HUI finds dead starts
+ * again. */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { uptime } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -69,6 +73,8 @@ type WatcherRecord = {
   /** Set by an operator stop; survives so a killed watcher reads as stopped
    * even when the wrapper never recorded its exit. */
   stoppedAt?: string;
+  /** Found dead, it runs its command again. */
+  keepRunning?: true;
 };
 
 type WatcherFile = {
@@ -120,8 +126,14 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
+/** A group of someone else's (EPERM) is not a watcher's. */
 function signalGroupAlive(pid: number): boolean {
-  return signalAlive(-pid);
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function readTail(path: string, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
@@ -156,7 +168,10 @@ async function processAgeSeconds(pid: number): Promise<number | undefined> {
 }
 
 async function ownsProcess(pid: number, startedAtMs: number): Promise<boolean | undefined> {
-  if (!signalAlive(pid)) return false;
+  // Nothing from before the last boot still runs, whatever now holds the PID.
+  if (Date.now() - uptime() * 1_000 - OWN_TOLERANCE_SECONDS * 1_000 > startedAtMs) return false;
+  // The kernel never gives a new process a PID that is still a group's id.
+  if (!signalAlive(pid)) return signalGroupAlive(pid);
   const age = await processAgeSeconds(pid);
   if (age === undefined) return undefined;
   return Math.abs(age - (Date.now() - startedAtMs) / 1_000) <= OWN_TOLERANCE_SECONDS;
@@ -231,6 +246,7 @@ function parseRecord(value: unknown): WatcherRecord | undefined {
     pid,
     startedAt,
     ...(typeof value["stoppedAt"] === "string" ? { stoppedAt: value["stoppedAt"] } : {}),
+    ...(value["keepRunning"] === true ? { keepRunning: true as const } : {}),
   };
 }
 
@@ -281,6 +297,9 @@ export class WatcherService {
       this.#views.set(record.id, await this.#refresh(record));
     }
     this.#started = true;
+    for (const record of records) {
+      if (record.keepRunning && this.#views.get(record.id)?.state === "dead") await this.#revive(record).catch(() => undefined);
+    }
     this.#timer = setInterval(() => void this.#poll(), this.#pollMs);
     this.#timer.unref?.();
   }
@@ -301,7 +320,7 @@ export class WatcherService {
     if (action === "restart") {
       // Ignoring a new definition would quietly re-run the old command instead.
       // Empty values are what some models send for fields they leave unset.
-      if (["command", "purpose", "target", "outcome"].some((field) => params[field])) {
+      if (["command", "purpose", "target", "outcome", "keepRunning"].some((field) => params[field])) {
         throw new WatcherInputError("restart re-runs the recorded command and takes only an id. To run something else, start a new watcher.");
       }
       return this.restart(sessionId, this.#watcherId(params));
@@ -329,6 +348,8 @@ export class WatcherService {
       const command = text(params["command"], "command", WATCHER_LIMITS.command);
       const target = text(params["target"], "target", WATCHER_LIMITS.target, true);
       const outcome = text(params["outcome"], "outcome", WATCHER_LIMITS.outcome, true);
+      const keepRunning = params["keepRunning"];
+      if (keepRunning !== undefined && typeof keepRunning !== "boolean") throw new WatcherInputError("keepRunning must be true or false.");
       if (target && !/^https?:\/\/\S+$/u.test(target)) {
         throw new WatcherInputError("target must be an http(s) URL.");
       }
@@ -350,6 +371,7 @@ export class WatcherService {
         logPath: join(this.#logDir, `${id}.log`),
         pid: 0,
         startedAt: new Date(this.#now()).toISOString(),
+        ...(keepRunning ? { keepRunning: true as const } : {}),
       };
       // The command may print secrets; the log and the script stay private.
       await writeFile(record.logPath, "", { flag: "a", mode: 0o600 });
@@ -401,16 +423,33 @@ export class WatcherService {
       if (current.state === "running") {
         throw new WatcherConflictError("Stop the watcher before restarting it.");
       }
-      await rm(this.#exitPath(id), { force: true });
-      delete record.stoppedAt;
-      await this.#writeScript(record);
-      record.pid = this.#launch(this.#scriptPath(id), record.cwd, record.logPath);
-      record.startedAt = new Date(this.#now()).toISOString();
-      this.#views.set(id, await this.#refresh(record));
-      await this.#write();
+      await this.#relaunch(record);
       this.#onChange(sessionId);
       return this.#view(id);
     });
+  }
+
+  /** A keep-running watcher found dead runs its command again, once per death. */
+  async #revive(record: WatcherRecord): Promise<void> {
+    await this.#lock(record.id, async () => {
+      if (this.#records.get(record.id) !== record) return;
+      this.#bump(record.id);
+      if ((await this.#refresh(record)).state !== "dead") return;
+      if (!(await stat(record.cwd).catch(() => undefined))?.isDirectory()) return;
+      await appendFile(record.logPath, `[HUI] Started again at ${new Date(this.#now()).toISOString()}: its processes were gone with no exit status.\n`, { mode: 0o600 });
+      await this.#relaunch(record);
+      this.#onChange(record.sessionId);
+    });
+  }
+
+  async #relaunch(record: WatcherRecord): Promise<void> {
+    await rm(this.#exitPath(record.id), { force: true });
+    delete record.stoppedAt;
+    await this.#writeScript(record);
+    record.pid = this.#launch(this.#scriptPath(record.id), record.cwd, record.logPath);
+    record.startedAt = new Date(this.#now()).toISOString();
+    this.#views.set(record.id, await this.#refresh(record));
+    await this.#write();
   }
 
   async remove(sessionId: string, id: string): Promise<void> {
@@ -514,6 +553,7 @@ export class WatcherService {
         this.#views.set(record.id, view);
         // The card shows the latest line too, so new output is a change.
         if (view.state !== before?.state || view.lastLine !== before?.lastLine) changed.add(record.sessionId);
+        if (view.state === "dead" && record.keepRunning) void this.#revive(record).catch(() => undefined);
       }
       for (const sessionId of changed) this.#onChange(sessionId);
     } finally {
@@ -543,7 +583,11 @@ export class WatcherService {
       state = exit.code === 0 ? "done" : "failed";
       endedAt = exit.at;
     } else {
-      const owns = await this.#ownsProcess(record.pid, Date.parse(record.startedAt));
+      const previous = this.#views.get(record.id);
+      // Dead stays dead until it starts again: by then its PID, and the group
+      // id that comes with it, may belong to another process.
+      const died = previous?.state === "dead" && previous.startedAt === record.startedAt;
+      const owns = died ? false : await this.#ownsProcess(record.pid, Date.parse(record.startedAt));
       // The wrapper writes the exit record just after the command; a process
       // that is already gone this soon may not have written it yet.
       const settling = this.#now() - Date.parse(record.startedAt) < this.#settleMs;
@@ -564,6 +608,7 @@ export class WatcherService {
       startedAt: record.startedAt,
       ...(endedAt ? { endedAt } : {}),
       lastLine,
+      ...(record.keepRunning ? { keepRunning: true as const } : {}),
     };
   }
 
@@ -657,6 +702,7 @@ export class WatcherService {
           pid: record.pid,
           startedAt: record.startedAt,
           ...(record.stoppedAt ? { stoppedAt: record.stoppedAt } : {}),
+          ...(record.keepRunning ? { keepRunning: true } : {}),
         })),
       };
       try {
