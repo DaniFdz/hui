@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { recordDiagnosticEvent } from "./observability.ts";
-import { BotsOffError, BotWorkerOfflineError } from "./bots.ts";
+import { BotStoreError, BotsOffError, BotWorkerOfflineError } from "./bots.ts";
 import type { LiveSessions } from "./live-sessions.ts";
 import { readRegistry, type SessionRecord } from "./sessions.ts";
 import { BOTS_OFF_ROUTINE_MESSAGE, type BotRecord } from "../shared/bots.ts";
@@ -1033,4 +1033,8 @@ export async function executeAutomationTask(
     throw error;
   }
   return completion;
+}
+
+export function automationStoreFailure(error: unknown): never {
+  throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
 }

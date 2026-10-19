@@ -26,6 +26,7 @@ import { isRecord, oneLine } from "./bot-templates/common.ts";
 import { NEEDS_MERGE_PROMPT, parseNeeds, parseReviewAnswer, reviewChunks, reviewPrompt, reviewSystemPrompt, type ReviewAnswer, type ReviewedChange } from "./bot-templates/review.ts";
 import { writeZip } from "./bot-templates/zip.ts";
 import type { CallCompletion } from "./call-helper.ts";
+import { runCommand } from "./worktree-inventory.ts";
 
 export type BotExportDeps = {
   bots: Pick<BotService, "get" | "list" | "soul">;
@@ -411,4 +412,14 @@ export class BotExportService {
     }
     return files;
   }
+}
+
+/** This account's full name, for an export's cleanup: macOS keeps it in the directory service, Linux in the password
+ * entry's comment. Read once; none when neither answers. */
+let accountName: Promise<string | undefined> | undefined;
+export function accountFullName(username: string): Promise<string | undefined> {
+  return accountName ??= (process.platform === "darwin"
+    ? runCommand("dscl", [".", "-read", `/Users/${username}`, "RealName"], { timeoutMs: 5_000 }).then((result) => result.code ? "" : result.stdout.replace(/^RealName:/u, ""))
+    : runCommand("getent", ["passwd", username], { timeoutMs: 5_000 }).then((result) => result.code ? "" : result.stdout.split(":")[4]?.split(",")[0] ?? "")
+  ).then((name) => name.replace(/\s+/gu, " ").trim() || undefined);
 }

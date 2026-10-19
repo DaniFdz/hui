@@ -102,3 +102,18 @@ export async function completeLocalPaths(
     .sort((a, b) => Number(b.kind === "directory") - Number(a.kind === "directory") || a.path.localeCompare(b.path))
     .slice(0, MAX_SUGGESTIONS);
 }
+
+/** A browser-entered working directory, resolved (`~/`) and confirmed to be
+ * an existing directory. */
+export async function existingDirectory(value: unknown): Promise<string> {
+  if (typeof value !== "string") throw new Error("Working directory must be text.");
+  const cwd = resolveWorkingDirectory(value);
+  let info;
+  try {
+    info = await stat(cwd);
+  } catch {
+    throw new Error(`No such directory: ${cwd}`);
+  }
+  if (!info.isDirectory()) throw new Error(`Not a directory: ${cwd}`);
+  return cwd;
+}

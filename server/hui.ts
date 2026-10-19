@@ -24,14 +24,14 @@ import { homedir, hostname, userInfo } from "node:os";
 import type { Connect, Plugin } from "vite";
 import { workers } from "./workers.ts";
 import { createWorkerRoutes, WORKERS_ROUTE } from "./routes/workers.ts";
-import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry, BotStoreError } from "./bots.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots.ts";
 import { BotService } from "./bot-service.ts";
 import { remoteBots } from "./bot-remote.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE, createBotRoutes } from "./routes/bots.ts";
 import { BOT_TRIGGERS_ROUTE } from "./routes/bot-triggers.ts";
 import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
 import { isHookPath } from "./bot-triggers-listener.ts";
-import { BotExportService } from "./bot-export.ts";
+import { accountFullName, BotExportService } from "./bot-export.ts";
 import { nameFromUsername } from "./bot-templates/cleanup.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes } from "./routes/bot-templates.ts";
@@ -76,7 +76,7 @@ import {
   PiMutationService,
 } from "./pi-mutations.ts";
 import { readGatewayHealth, readWorkspaceInspection } from "./control-surfaces.ts";
-import { runCommand, WorktreeService } from "./worktree-inventory.ts";
+import { WorktreeService } from "./worktree-inventory.ts";
 import type { WorktreeRisk } from "../shared/worktrees.ts";
 import { liveSessions, SessionBusyError } from "./live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
@@ -85,12 +85,12 @@ import {
   AutomationInputError,
   AutomationNotFoundError,
   AutomationService,
-  AutomationStoreError,
+  automationStoreFailure,
   executeAutomationTask,
 } from "./automation.ts";
 import { BotRoutines } from "./bot-routines.ts";
 import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
-import { completeLocalPaths, completeWorkingDirectories, resolveWorkingDirectory } from "./working-directories.ts";
+import { completeLocalPaths, completeWorkingDirectories, existingDirectory, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { parseUiErrorBatch, UI_ERROR_BODY_LIMIT, uiErrorLog } from "./ui-errors.ts";
@@ -390,18 +390,6 @@ const botTemplateRoutes = createBotTemplateRoutes({
     },
   }),
 });
-/** This account's full name, for an export's cleanup: macOS keeps it in the directory service, Linux in the password
- * entry's comment. Read once; none when neither answers. */
-let accountName: Promise<string | undefined> | undefined;
-function accountFullName(username: string): Promise<string | undefined> {
-  return accountName ??= (process.platform === "darwin"
-    ? runCommand("dscl", [".", "-read", `/Users/${username}`, "RealName"], { timeoutMs: 5_000 }).then((result) => result.code ? "" : result.stdout.replace(/^RealName:/u, ""))
-    : runCommand("getent", ["passwd", username], { timeoutMs: 5_000 }).then((result) => result.code ? "" : result.stdout.split(":")[4]?.split(",")[0] ?? "")
-  ).then((name) => name.replace(/\s+/gu, " ").trim() || undefined);
-}
-function automationStoreFailure(error: unknown): never {
-  throw error instanceof AutomationStoreError ? new BotStoreError(error.message, { cause: error }) : error;
-}
 // A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag while bots are on (a
 // worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
 // SOUL.md (or has its first conversation) in its `soul` section, from its home folder in HUI's configuration; a worker's
@@ -869,21 +857,6 @@ const botRoutines = new BotRoutines({
   automation,
   active: botsOn,
 });
-
-/** A browser-entered working directory, resolved (`~/`) and confirmed to be
- * an existing directory. */
-async function existingDirectory(value: unknown): Promise<string> {
-  if (typeof value !== "string") throw new Error("Working directory must be text.");
-  const cwd = resolveWorkingDirectory(value);
-  let info;
-  try {
-    info = await stat(cwd);
-  } catch {
-    throw new Error(`No such directory: ${cwd}`);
-  }
-  if (!info.isDirectory()) throw new Error(`Not a directory: ${cwd}`);
-  return cwd;
-}
 
 /* ── backlog ── local tasks and HUI metadata in backlog.json; assigned To Do
  * Jira items are read live through a short cache. */
