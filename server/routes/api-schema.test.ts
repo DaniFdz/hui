@@ -13,7 +13,8 @@ test("the guarded schema route returns the committed document from the running s
   process.env["HOME"] = dir;
   process.env["XDG_CONFIG_HOME"] = join(dir, "config");
   process.env["PI_CODING_AGENT_DIR"] = join(dir, "agent");
-  const { middleware, stopBackend } = await import("../hui.ts");
+  const { middleware } = await import("../hui.ts");
+  const { stopBackend } = await import("../backend.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

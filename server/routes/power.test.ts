@@ -17,7 +17,8 @@ expectTypeOf<PowerStatus>().toEqualTypeOf<OriginalPowerStatus>();
 test("the power route reports the platform and rejects a malformed lid switch", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-power-routes-"));
   process.env["XDG_CONFIG_HOME"] = dir;
-  const { middleware, stopBackend } = await import("../hui.ts");
+  const { middleware } = await import("../hui.ts");
+  const { stopBackend } = await import("../backend.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

@@ -47,7 +47,8 @@ const pull = (number: number, author: string, created: string) => ({
 const github = { login: "operator", repos: { "acme/widgets": { pulls: [pull(1, "alice", PAST)] } } };
 await writeFile(join(ghDir, "github.json"), JSON.stringify(github));
 
-const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+const { middleware } = await import("../hui.ts");
+const { startBackend, stopBackend } = await import("../backend.ts");
 const { triggerCommand } = await import("../../cli/bot-triggers.ts");
 const { liveSessions } = await import("../live-sessions.ts");
 let origin = "";

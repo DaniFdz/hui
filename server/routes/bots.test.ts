@@ -43,7 +43,8 @@ const BOTS_ON = JSON.stringify({ labs: { bots: true } });
 await mkdir(join(dir, "config", "hui"), { recursive: true });
 await writeFile(join(dir, "config", "hui", "settings.json"), BOTS_ON);
 
-const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+const { middleware } = await import("../hui.ts");
+const { startBackend, stopBackend } = await import("../backend.ts");
 const { liveSessions } = await import("../live-sessions.ts");
 const { readRegistry } = await import("../sessions.ts");
 const { durableHost } = await import("../runtimes/durable-host.ts");

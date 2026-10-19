@@ -19,7 +19,8 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
     { id: "alpha", title: "Alpha", tool: "pi", cwd: dir, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     { id: "beta", title: "Beta", tool: "pi", cwd: dir, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
   ], groups: [] }));
-  const { middleware, stopBackend } = await import("./hui.ts");
+  const { middleware } = await import("./hui.ts");
+  const { stopBackend } = await import("./backend.ts");
   const { agentToolEnvironment } = await import("./agent-tools-bridge.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   const detach = attachTerminalTransport(server, new Set(["127.0.0.1"]));

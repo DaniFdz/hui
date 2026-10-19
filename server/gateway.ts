@@ -15,7 +15,8 @@ import { atomicJson, GATEWAY_DIR, removeState, STATE_FILE, type GatewayState } f
 import { packageVersion } from "../cli/installation.ts";
 import { allowedHostsFromConfig, tailnetFromStatus } from "./host.ts";
 import { liveSessions } from "./live-sessions.ts";
-import { attachLiveStreams, middleware, startBackend, stopBackend } from "./hui.ts";
+import { attachLiveStreams, middleware } from "./hui.ts";
+import { startBackend, stopBackend } from "./backend.ts";
 import { serveStatic } from "./static-files.ts";
 import { configureUpdates } from "./updates.ts";
 import { terminals } from "./terminals.ts";

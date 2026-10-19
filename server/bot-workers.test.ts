@@ -62,7 +62,8 @@ await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvide
 await mkdir(join(root, "gateway", "config", "hui"), { recursive: true });
 await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 
-const { middleware, startBackend, stopBackend } = await import("./hui.ts");
+const { middleware } = await import("./hui.ts");
+const { startBackend, stopBackend } = await import("./backend.ts");
 const { workers } = await import("./workers.ts");
 const { liveSessions } = await import("./live-sessions.ts");
 const { readRegistry } = await import("./sessions.ts");

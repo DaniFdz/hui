@@ -25,7 +25,8 @@ process.env["PI_CODING_AGENT_DIR"] = agentDir;
 process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
 for (const name of ["HUI_CONFIG_DIR", "HUI_DURABLE_DIR", "HUI_SESSION_RUNTIME"]) delete process.env[name];
 
-const { middleware, startBackend, stopBackend } = await import("./hui.ts");
+const { middleware } = await import("./hui.ts");
+const { startBackend, stopBackend } = await import("./backend.ts");
 const { liveSessions } = await import("./live-sessions.ts");
 const { readRegistry } = await import("./sessions.ts");
 const { DURABLE_DIR } = await import("./runtimes/durable-host.ts");

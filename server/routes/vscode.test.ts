@@ -28,7 +28,8 @@ test("VS Code routes: x-hui still guards every other route, the cookie opens onl
     { id: "remote", title: "Remote", tool: "pi", cwd: "/srv/remote", worker: "w1", createdAt: now, updatedAt: now },
     { id: "gone", title: "Gone", tool: "pi", cwd: join(dir, "deleted"), createdAt: now, updatedAt: now },
   ], groups: [] }));
-  const { middleware, stopBackend, attachLiveStreams } = await import("../hui.ts");
+  const { middleware, attachLiveStreams } = await import("../hui.ts");
+  const { stopBackend } = await import("../backend.ts");
   const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
   const detach = attachLiveStreams(server);
   server.listen(0, "127.0.0.1");

@@ -36,7 +36,8 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 } } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
 
-const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+const { middleware } = await import("../hui.ts");
+const { startBackend, stopBackend } = await import("../backend.ts");
 const { liveSessions } = await import("../live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));

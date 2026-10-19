@@ -59,7 +59,8 @@ test("the gateway serves the sandbox page without x-hui and keeps every other ro
   const dir = await mkdtemp(join(tmpdir(), "hui-widget-sandbox-"));
   process.env["XDG_CONFIG_HOME"] = dir;
   await mkdir(join(dir, "hui"));
-  const { middleware, stopBackend } = await import("./hui.ts");
+  const { middleware } = await import("./hui.ts");
+  const { stopBackend } = await import("./backend.ts");
   const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

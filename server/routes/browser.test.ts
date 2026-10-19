@@ -18,7 +18,8 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
     { id: "alpha", title: "Alpha", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
     { id: "beta", title: "Beta", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
   ], groups: [] }));
-  const { middleware, stopBackend } = await import("../hui.ts");
+  const { middleware } = await import("../hui.ts");
+  const { stopBackend } = await import("../backend.ts");
   const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");

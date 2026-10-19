@@ -22,7 +22,8 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
     { id: "alpha", title: "Alpha", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
     { id: "beta", title: "Beta", tool: "pi", cwd: dir, createdAt: now, updatedAt: now },
   ], groups: [] }));
-  const { middleware, startBackend, stopBackend } = await import("../hui.ts");
+  const { middleware } = await import("../hui.ts");
+  const { startBackend, stopBackend } = await import("../backend.ts");
   const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
   const { liveSessions } = await import("../live-sessions.ts");
   await startBackend();

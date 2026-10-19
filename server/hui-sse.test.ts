@@ -12,12 +12,14 @@ import { waitFor } from "./test-support/wait-for.ts";
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-sse-"));
 
 const {
-  reattachAfterStoreFailure,
-  recoverInterruptedSessions,
-  reopenDurableSessions,
   streamSession,
   streamSessionStatuses,
 } = await import("./hui.ts");
+const {
+  reattachAfterStoreFailure,
+  recoverInterruptedSessions,
+  reopenDurableSessions,
+} = await import("./backend.ts");
 const { sessionMutationErrorStatus } = await import("./routes/sessions.ts");
 const { readAttachments, storeAttachmentFile } = await import("./sessions/attachments.ts");
 const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");

@@ -148,7 +148,8 @@ test("the gateway guards file routes with x-hui and serves previews as inert byt
   ], groups: [] }));
   await writeFile(join(cwd, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   await writeFile(join(cwd, "blob.bin"), Buffer.from([1, 0, 2]));
-  const { middleware, stopBackend } = await import("../hui.ts");
+  const { middleware } = await import("../hui.ts");
+  const { stopBackend } = await import("../backend.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
