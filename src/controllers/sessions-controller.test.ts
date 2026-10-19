@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { beforeEach, test, vi } from "vitest";
+import { afterEach, beforeEach, test, vi } from "vitest";
 import type { SessionGroup, SessionStatusUpdate, SessionView } from "../api/sessions.ts";
 import { SessionsController } from "./sessions-controller.ts";
 
@@ -28,7 +28,9 @@ beforeEach(() => {
   fake.list = { revision: 0, groups: [] };
 });
 
-const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => {}, updateComplete: Promise.resolve(true) };
+afterEach(() => { vi.useRealTimers(); });
+
+const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => {}, updateComplete: Promise.resolve(true), querySelector: () => null };
 const session = (id: string, extra: Partial<SessionView> = {}) => ({ id, title: id, status: "idle", ...extra }) as SessionView;
 const group = (...sessions: SessionView[]) => ({ label: "ungrouped", sessions }) as unknown as SessionGroup;
 
@@ -41,6 +43,7 @@ function controller(presented = "") {
     statusesApplied: () => calls.statuses.push("snapshot"),
     statusApplied: ({ id }) => calls.statuses.push(id),
     reportError: () => {},
+    refreshSessions: async () => {},
   });
   return { sessions, calls };
 }
@@ -83,4 +86,28 @@ test("collapsed groups are remembered in the browser", () => {
   assert.deepEqual([...controller().sessions.collapsed], ["repo"]);
   sessions.expandGroup("repo");
   assert.deepEqual(JSON.parse(localStorage.getItem("hui.collapsed-groups") ?? ""), []);
+});
+
+test("a success toast clears after 6 s, while failures and progress stay", () => {
+  vi.useFakeTimers();
+  const { sessions } = controller();
+  sessions.notify("Moved repo.");
+  vi.advanceTimersByTime(6_000);
+  assert.equal(sessions.actionToast, undefined);
+  sessions.notify("Could not move it.", true);
+  vi.advanceTimersByTime(6_000);
+  assert.deepEqual(sessions.actionToast, { message: "Could not move it.", failed: true });
+  sessions.notify("Moving repo…");
+  vi.advanceTimersByTime(6_000);
+  assert.deepEqual(sessions.actionToast, { message: "Moving repo…", failed: false });
+});
+
+test("an archive toast dismisses itself after 15 s", () => {
+  vi.useFakeTimers();
+  const { sessions } = controller();
+  sessions.showArchived(session("a"));
+  vi.advanceTimersByTime(14_999);
+  assert.equal(sessions.archiveToast?.session.id, "a");
+  vi.advanceTimersByTime(1);
+  assert.equal(sessions.archiveToast, undefined);
 });

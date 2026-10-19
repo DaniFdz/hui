@@ -2,11 +2,12 @@
  * `SessionsController` owns the session registry and the sidebar's reading state outside `hui-app.ts`: the gateway's
  * session list with its revision, loading and error, the one status stream that keeps every session's status and
  * unread mark current, the collapsed groups (`COLLAPSED_KEY`), the subagent trees toggled open and the open group
- * menu. The shell decides when the stream starts and follows each list into its layout and selection.
+ * menu, and the shell's action toast and session archive toast with their timers. The shell decides when the stream
+ * starts and follows each list into its layout and selection.
  */
 import type { ReactiveControllerHost } from "lit";
 import { applySessionListUpdate, type SessionListUpdate } from "../../shared/session-list.ts";
-import { loadSessions, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
+import { loadSessions, renameSession, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
 import { mergeSessionStatuses } from "../lib/session/ui-state.ts";
 
 const COLLAPSED_KEY = "hui.collapsed-groups";
@@ -21,6 +22,8 @@ function readCollapsed(): Set<string> {
   }
 }
 
+type SessionsHost = ReactiveControllerHost & Pick<HTMLElement, "querySelector">;
+
 type SessionsDeps = {
   presented: (id: string) => boolean;
   listReceived: (ids: ReadonlySet<string>) => void;
@@ -28,6 +31,7 @@ type SessionsDeps = {
   statusesApplied: () => void;
   statusApplied: (update: SessionStatusUpdate) => void;
   reportError: (error: unknown, message: string) => void;
+  refreshSessions: () => Promise<void>;
 };
 
 export class SessionsController {
@@ -41,13 +45,18 @@ export class SessionsController {
   collapsed: ReadonlySet<string> = readCollapsed();
   toggledSessionTrees: ReadonlySet<string> = new Set();
   groupMenuFor = "";
-  readonly #host: ReactiveControllerHost;
+  /** Outcome of a sidebar, Kanban, Sessions or bot action, shown as the shell toast. */
+  actionToast: { message: string; failed: boolean } | undefined;
+  archiveToast: { session: SessionView; restoring: boolean; error?: string } | undefined;
+  readonly #host: SessionsHost;
   readonly #deps: SessionsDeps;
   #hasStatusSnapshot = false;
   /** One lightweight connection keeps background session lifecycle visible. */
   #statusStreamStop: (() => void) | undefined;
+  #archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
+  #actionToastTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(host: ReactiveControllerHost, deps: SessionsDeps) {
+  constructor(host: SessionsHost, deps: SessionsDeps) {
     this.#host = host;
     this.#deps = deps;
   }
@@ -61,6 +70,7 @@ export class SessionsController {
   }
 
   stop(): void {
+    clearTimeout(this.#actionToastTimer);
     this.#statusStreamStop?.();
     this.#statusStreamStop = undefined;
   }
@@ -141,6 +151,60 @@ export class SessionsController {
     this.groupMenuFor = "";
     this.#host.requestUpdate();
   }
+
+  /** Replaces the action toast; an empty message clears it. Successes clear
+   * after 6 s, while failures and progress ("…") stay until replaced or dismissed. */
+  notify(message: string, failed = false): void {
+    clearTimeout(this.#actionToastTimer);
+    this.actionToast = message ? { message, failed } : undefined;
+    this.#host.requestUpdate();
+    if (message && !failed && !message.endsWith("…")) this.#actionToastTimer = setTimeout(() => this.notify(""), 6_000);
+  }
+
+  showArchived(session: SessionView): void {
+    this.archiveToast = { session, restoring: false };
+    this.#host.requestUpdate();
+    this.scheduleArchiveToast();
+  }
+
+  pauseArchiveToast = () => {
+    if (this.#archiveToastTimer) clearTimeout(this.#archiveToastTimer);
+    this.#archiveToastTimer = undefined;
+  };
+
+  dismissArchiveToast = () => {
+    this.pauseArchiveToast();
+    this.archiveToast = undefined;
+    this.#host.requestUpdate();
+  };
+
+  scheduleArchiveToast = () => {
+    this.pauseArchiveToast();
+    if (!this.archiveToast || this.archiveToast.restoring || this.archiveToast.error) return;
+    const element = this.#host.querySelector(".session-archive-toast");
+    if (element?.matches(":hover") || element?.contains(document.activeElement)) return;
+    this.#archiveToastTimer = setTimeout(this.dismissArchiveToast, 15_000);
+  };
+
+  restoreArchivedSession = async () => {
+    const toast = this.archiveToast;
+    if (!toast || toast.restoring) return;
+    this.pauseArchiveToast();
+    this.archiveToast = { session: toast.session, restoring: true };
+    this.#host.requestUpdate();
+    try {
+      await renameSession(toast.session.id, { archived: false });
+      if (this.archiveToast?.session.id === toast.session.id) this.dismissArchiveToast();
+      this.notify("Session restored.");
+      await this.#deps.refreshSessions();
+    } catch (error) {
+      if (this.archiveToast?.session.id === toast.session.id) {
+        this.archiveToast = { session: toast.session, restoring: false,
+          error: error instanceof Error ? error.message : "Could not restore that session." };
+        this.#host.requestUpdate();
+      }
+    }
+  };
 
   #applyStatusSnapshot = (updates: readonly SessionStatusUpdate[]) => {
     // The status stream has just (re)connected, so the gateway is reachable
