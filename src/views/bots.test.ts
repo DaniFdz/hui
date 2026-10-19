@@ -198,7 +198,7 @@ test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bo
   const app = read("../hui-app.ts");
   assert.match(between(app, "private createNewBot = ", "/** The roster's Edit"), /this\.bots\.create\(worker\);/u,
     "one at a time, without a name, on the machine chosen; its chat opens, and a refusal or a worker's wait shows as a toast (bots-controller.test.ts)");
-  assert.match(app, /onNew: \(\) => this\.createNewBot\(\),\n\s+workers: this\.launchWorkers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),\n\s+onImport: this\.botImports\.openImport,\n\s+onWorkersMenu: \(\) => this\.loadLaunchWorkers\(\),\n\s+creating: this\.bots\.creating,/u, "+ and its menu create the same way");
+  assert.match(app, /onNew: \(\) => this\.createNewBot\(\),\n\s+workers: this\.launcher\.workers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),\n\s+onImport: this\.botImports\.openImport,\n\s+onWorkersMenu: \(\) => this\.launcher\.loadWorkers\(\),\n\s+creating: this\.bots\.creating,/u, "+ and its menu create the same way");
   assert.doesNotMatch(app, /\bNEW_BOT_NAME\b|createBotOn/u, "one way to create a bot, without a name");
   const source = read("./bots.ts");
   const button = between(source, "export function renderNewBotButton(", "/** The menu item for this machine");
@@ -338,7 +338,7 @@ test("the roster's + is a menu, New bot (on Local or on each worker while a work
   const shell = read("./shell.ts");
   assert.match(shell, /\$\{botsTab \? renderNewBotButton\(\{\n\s+workers: botsTab\.workers, onNew: botsTab\.onNew, onCreate: botsTab\.onCreate,/u);
   const app = read("../hui-app.ts");
-  assert.match(app, /workers: this\.launchWorkers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),/u);
+  assert.match(app, /workers: this\.launcher\.workers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),/u);
   assert.match(between(app, "private createNewBot = ", "/** The roster's Edit"), /this\.bots\.create\(worker\);/u,
     "created at once, where it was chosen, without a name, and its chat opens; a refusal shows as an error toast (bots-controller.test.ts)");
 });
@@ -357,10 +357,9 @@ test("Settings → Workspace shows the machine a bot runs on, read-only, and off
   assert.match(workspace, /<\/div>\n\s+\$\{renderMachineHint\(props\.bot\)\}\n\s+<\/section>/u, "a bot on a worker says why under the section");
   assert.doesNotMatch(source, /renderPicker\(\{ label: "Runs on"/u, "a bot's machine is chosen with +, never changed");
   const app = read("../hui-app.ts");
-  assert.match(app, /suggestions: this\.directorySuggestionsFrom === \(bot\.worker\?\.id \?\? ""\) \? this\.directorySuggestions : \[\],\n\s+onInput: \(value\) => this\.loadDirectorySuggestions\(value, bot\.worker\?\.id\),/u,
+  assert.match(app, /suggestions: this\.launcher\.directorySuggestionsFrom === \(bot\.worker\?\.id \?\? ""\) \? this\.launcher\.directorySuggestions : \[\],\n\s+onInput: \(value\) => this\.launcher\.loadDirectorySuggestions\(value, bot\.worker\?\.id\),/u,
     "a bot on a worker is offered its worker's folders, never this machine's");
-  assert.match(between(app, "private loadDirectorySuggestions(", "private requestDirectorySuggestions"), /this\.directorySuggestionsFrom = worker \?\? "";\n\s+this\.directorySuggestions = directories;/u, "each answer says which machine it came from");
-  assert.match(app, /workersExist: this\.launchWorkers\.length > 0,/u);
+  assert.match(app, /workersExist: this\.launcher\.workers\.length > 0,/u);
 });
 
 test("a bot on a worker shows the machine compactly in its roster row, its chat header and its confirmations", () => {

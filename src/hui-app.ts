@@ -5,7 +5,6 @@
  * this element mirrors it and sends requests, it never reads files or runs processes.
  */
 import { renderPicker } from "./views/settings-picker.ts";
-import { groupCheckoutDefaults } from "./lib/group-session-defaults.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
 import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "./lib/subagent-activity.ts";
@@ -80,6 +79,7 @@ import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BacklogController } from "./controllers/backlog-controller.ts";
+import { LaunchController } from "./controllers/launch-controller.ts";
 import { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
@@ -131,8 +131,6 @@ import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
 import { botsEnabled, type Settings } from "./lib/settings.ts";
 import { settingsWritten } from "./lib/settings/settings-store.ts";
-import type { PiSnapshot } from "./lib/pi.ts";
-import { loadWorkingDirectorySuggestions } from "./api/working-directories.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
@@ -154,7 +152,7 @@ import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } f
 import { liveCallPlatform } from "./lib/voice/live-call-platform.ts";
 import { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postCallTask, startBotCall } from "./api/calls.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
-import { loadWorkers, workerAction, type WorkerView } from "./api/workers.ts";
+import { workerAction } from "./api/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
@@ -338,23 +336,10 @@ export class HuiApp extends HuiElement {
   @state() private groupCheckoutError = "";
   private groupCheckoutRequest = 0;
   private groupCheckoutDirectory = "";
-  @state() private launchDefaults: { group: string; cwd: string; workspaceMode?: "branch" | "worktree"; baseRef?: string } | undefined;
-  @state() private launchWorkers: readonly WorkerView[] = [];
-  /** Sticky across launches: the worker new sessions run on, if any. */
-  @state() private launchWorker: string | undefined;
-  @state() private launchModel = "";
-  @state() private launchThinking = "";
-  @state() private launchFast = false;
-  @state() private directorySuggestions: readonly string[] = [];
-  /** The machine `directorySuggestions` came from: "" for this one, else a worker's id. A bot's Settings page shows only
-   * its own machine's, so a bot on a worker is never offered this machine's folders. */
-  private directorySuggestionsFrom = "";
-  private directorySuggestionRequest = 0;
-  private gitCheckoutRequest = 0;
-  private inspectedCheckoutDirectory = "";
+  private readonly launcher = new LaunchController(this);
   private readonly automation = new AutomationController(this);
   private readonly control = new SettingsController(this, {
-    piLoaded: (snapshot) => this.seedLaunchPreferences(snapshot),
+    piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary),
     copyFailed: (message) => {
       this.note = message;
       this.noteLevel = "error";
@@ -390,12 +375,6 @@ export class HuiApp extends HuiElement {
   @state() private currentModel: RuntimeModel | undefined;
   @state() private usage: RuntimeUsage | undefined;
   @state() private compaction: RuntimeCompaction | undefined;
-  @state() private workspaceBranch = "";
-  @state() private workspaceWorktree = false;
-  @state() private workspaceBaseRef = "";
-  @state() private workspaceBranchSuggestionsOpen = false;
-  @state() private gitCheckout: GitCheckoutInfo | undefined;
-  @state() private gitCheckoutLoading = false;
   @state() private draftSessionIds: ReadonlySet<string> = new Set();
   /** Picked but not yet sent; cleared on send and on switching session. */
   @state() private attachments: readonly Attachment[] = [];
@@ -417,7 +396,7 @@ export class HuiApp extends HuiElement {
     navigate: (target, replace) => this.navigate(target, replace),
     shownBotId: () => this.view === "bot" ? this.activeBotId : "",
     refreshSessions: () => void this.refreshSessions(true),
-    workers: () => this.launchWorkers,
+    workers: () => this.launcher.workers,
   });
   @state() private botSearch = "";
   @state() private botMenuFor = "";
@@ -425,7 +404,7 @@ export class HuiApp extends HuiElement {
   @state() private activeBotId = "";
   /** Import bot… (+) and Export… (a bot's ⋯): their dialogs' state. An imported bot opens like a new one. */
   private botImports = new BotImportController(this, {
-    workers: () => this.launchWorkers,
+    workers: () => this.launcher.workers,
     imported: (bot, warnings) => this.bots.imported(bot, warnings),
   });
   /** The panel's Tools page: what the operator can turn off in the bot's chat, kept in its own controller. */
@@ -701,7 +680,7 @@ export class HuiApp extends HuiElement {
       void this.refreshSessions();
       this.loadLaunchPreferences();
       // The home page shows the launch form too, without a page navigation.
-      this.loadLaunchWorkers();
+      this.launcher.loadWorkers();
       this.control.loadPreviews();
     }
   }
@@ -1097,8 +1076,8 @@ export class HuiApp extends HuiElement {
       if (target.page.id === "new-session") {
         this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
         this.loadLaunchPreferences();
-        this.requestGitCheckout(this.launchDefaults?.cwd ?? "~/");
-        this.loadLaunchWorkers();
+        this.launcher.requestCheckout(this.launcher.defaults?.cwd ?? "~/");
+        this.launcher.loadWorkers();
       }
       this.pendingSessionId = "";
       this.activePage = target.page;
@@ -2002,7 +1981,7 @@ export class HuiApp extends HuiElement {
     this.updateSessionCreating = true;
     try {
       const session = await createSession({
-        cwd: activeSession?.cwd || this.launchDefaults?.cwd || "~/",
+        cwd: activeSession?.cwd || this.launcher.defaults?.cwd || "~/",
         title: HUI_UPDATE_SESSION_TITLE,
         group: "",
       });
@@ -2112,7 +2091,7 @@ export class HuiApp extends HuiElement {
   /** A draft has no runtime yet: offer the local PI skills it will start with. */
   private runtimeCommands(): readonly RuntimeCommand[] {
     if (this.composerSession()) return this.commands;
-    return this.launchWorker ? [] : skillCommands(this.control.pi?.skills ?? [], this.control.settings.disabledSkills);
+    return this.launcher.worker ? [] : skillCommands(this.control.pi?.skills ?? [], this.control.settings.disabledSkills);
   }
 
   private menuCommands(): ComposerCommand[] {
@@ -2186,7 +2165,7 @@ export class HuiApp extends HuiElement {
       this.resetLocalPaths();
       return;
     }
-    const workspace = this.composerSession()?.cwd || cwd?.trim() || this.launchDefaults?.cwd || "~/";
+    const workspace = this.composerSession()?.cwd || cwd?.trim() || this.launcher.defaults?.cwd || "~/";
     const sameQuery = this.localPathQuery?.input === query.input
       && this.localPathQuery.start === query.start
       && this.localPathQuery.end === query.end
@@ -3007,9 +2986,7 @@ export class HuiApp extends HuiElement {
         this.pendingCommandBrowse = commandDraft !== undefined;
         this.attachments = [];
         if (commandDraft !== undefined) void this.persistComposerDraft();
-        this.workspaceBranch = "";
-        this.workspaceWorktree = false;
-        this.workspaceBaseRef = "";
+        this.launcher.resetWorkspace();
         this.selected = session;
         await this.refreshSessions();
         this.navigate({ kind: "session", id: session.id });
@@ -3041,44 +3018,11 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  private loadDirectorySuggestions(input: string, worker?: string) {
-    const marker = ++this.directorySuggestionRequest;
-    void loadWorkingDirectorySuggestions(input, worker).then((directories) => {
-      if (marker !== this.directorySuggestionRequest) return;
-      this.directorySuggestionsFrom = worker ?? "";
-      this.directorySuggestions = directories;
-    }).catch(() => {
-      if (marker === this.directorySuggestionRequest) this.directorySuggestions = [];
-    });
-  }
-
   private requestDirectorySuggestions = (input: string) => {
-    this.loadDirectorySuggestions(input);
+    this.launcher.loadDirectorySuggestions(input);
     if (this.groupAction?.action === "defaults") this.requestGroupCheckout(input);
-    else this.requestGitCheckout(input);
+    else this.launcher.requestCheckout(input);
   };
-
-  private requestGitCheckout(input: string) {
-    const directory = input.trim() || "~/";
-    if (directory === this.inspectedCheckoutDirectory && this.gitCheckout) return;
-    this.inspectedCheckoutDirectory = directory;
-    const marker = ++this.gitCheckoutRequest;
-    this.workspaceWorktree = false;
-    this.workspaceBaseRef = "";
-    this.gitCheckoutLoading = true;
-    void loadGitCheckout(directory).then((checkout) => {
-      if (marker !== this.gitCheckoutRequest) return;
-      this.gitCheckout = checkout;
-      const defaults = groupCheckoutDefaults(directory, checkout, this.launchDefaults);
-      this.workspaceBaseRef = defaults.baseRef;
-      this.workspaceWorktree = defaults.worktree;
-    }).catch(() => {
-      if (marker !== this.gitCheckoutRequest) return;
-      this.gitCheckout = undefined;
-    }).finally(() => {
-      if (marker === this.gitCheckoutRequest) this.gitCheckoutLoading = false;
-    });
-  }
 
   private clearSessionState() {
     // Invalidates an open response even if it resolves after the selection is
@@ -3197,7 +3141,7 @@ export class HuiApp extends HuiElement {
   private ensureBots() {
     this.bots.ensure();
     // The roster's + offers the workers a new bot can run on.
-    this.loadLaunchWorkers();
+    this.launcher.loadWorkers();
   }
 
   private setSidebarTab = (tab: SidebarTab) => {
@@ -3244,10 +3188,10 @@ export class HuiApp extends HuiElement {
       search: this.botSearch,
       onSearch: (value) => { this.botSearch = value; },
       onNew: () => this.createNewBot(),
-      workers: this.launchWorkers,
+      workers: this.launcher.workers,
       onCreate: (worker) => this.createNewBot(worker),
       onImport: this.botImports.openImport,
-      onWorkersMenu: () => this.loadLaunchWorkers(),
+      onWorkersMenu: () => this.launcher.loadWorkers(),
       creating: this.bots.creating,
       unread: this.bots.list.some((bot) => bot.unread && !bot.archived && !bot.hidden),
       roster: {
@@ -3549,11 +3493,11 @@ export class HuiApp extends HuiElement {
           onChange: (key, value) => this.bots.changeSetting(bot.id, key, value),
           onDismiss: (key) => this.bots.dismissSetting(bot.id, key),
           call: settingsCall,
-          workersExist: this.launchWorkers.length > 0,
+          workersExist: this.launcher.workers.length > 0,
           // A bot on a worker works in a folder there: its folders come from that worker, never from this machine.
           directory: {
-            suggestions: this.directorySuggestionsFrom === (bot.worker?.id ?? "") ? this.directorySuggestions : [],
-            onInput: (value) => this.loadDirectorySuggestions(value, bot.worker?.id),
+            suggestions: this.launcher.directorySuggestionsFrom === (bot.worker?.id ?? "") ? this.launcher.directorySuggestions : [],
+            onInput: (value) => this.launcher.loadDirectorySuggestions(value, bot.worker?.id),
           },
         },
       }) : nothing}
@@ -3675,27 +3619,9 @@ export class HuiApp extends HuiElement {
     this.automation.load();
   };
 
-  private seedLaunchPreferences(snapshot: PiSnapshot) {
-    if (!this.launchModel) {
-      this.launchModel = this.control.settings.models.primary || (
-        snapshot.model.defaultProvider && snapshot.model.defaultModel
-          ? `${snapshot.model.defaultProvider}/${snapshot.model.defaultModel}`
-          : ""
-      );
-    }
-    if (!this.launchThinking) this.launchThinking = snapshot.model.thinking ?? "medium";
-  }
-
-  private loadLaunchWorkers() {
-    void loadWorkers().then((list) => {
-      this.launchWorkers = list;
-      if (this.launchWorker && !list.some((worker) => worker.id === this.launchWorker)) this.launchWorker = undefined;
-    }).catch(() => undefined);
-  }
-
   private loadLaunchPreferences() {
     if (this.control.pi) {
-      this.seedLaunchPreferences(this.control.pi);
+      this.launcher.seedPreferences(this.control.pi, this.control.settings.models.primary);
       return;
     }
     this.control.loadPi();
@@ -3881,20 +3807,7 @@ export class HuiApp extends HuiElement {
   }
 
   private openNewSession = (group?: SessionGroup) => {
-    this.launchDefaults = group
-      ? {
-          group: group.label === "ungrouped" ? "" : group.label,
-          cwd: group.cwd ?? group.sessions[0]?.cwd ?? "",
-          ...(group.workspaceMode ? { workspaceMode: group.workspaceMode } : {}),
-          ...(group.baseRef ? { baseRef: group.baseRef } : {}),
-        }
-      : undefined;
-    this.workspaceBranch = "";
-    this.workspaceWorktree = false;
-    this.workspaceBaseRef = "";
-    this.workspaceBranchSuggestionsOpen = false;
-    this.gitCheckout = undefined;
-    this.inspectedCheckoutDirectory = "";
+    this.launcher.open(group);
     this.openPageById("new-session");
   };
 
@@ -4036,7 +3949,7 @@ export class HuiApp extends HuiElement {
         ${state.action === "defaults" ? html`
           <div class="exec-approval-sub">Choose where sessions created from this group start.</div>
           <div class="field input-dialog__field"><label for="group-default-cwd">Working directory</label>
-            ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.directorySuggestions, onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true })}
+            ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestions, onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true })}
           </div>
           ${this.groupCheckoutLoading ? html`<p role="status">Checking repository…</p>` : null}
           ${this.groupCheckoutError ? html`<p role="alert">${this.groupCheckoutError}</p>` : null}
@@ -4075,7 +3988,7 @@ export class HuiApp extends HuiElement {
     const launchModels = this.control.pi?.model.catalog ?? [];
     const launchModel = resolveLaunchModel(
       launchModels,
-      this.launchModel,
+      this.launcher.model,
       `${this.control.pi?.model.defaultProvider}/${this.control.pi?.model.defaultModel}`,
     );
     return {
@@ -4262,40 +4175,14 @@ export class HuiApp extends HuiElement {
       onConfirmDelete: this.confirmDelete,
       onRetry: this.retrySelected,
       onReconnect: this.reconnectSelected,
-      launchDefaults: this.launchDefaults,
+      ...this.launcher.props(),
       launchModels,
       launchModel,
-      launchThinking: this.launchThinking || "medium",
-      onSelectLaunchModel: (provider, modelId) => { this.launchModel = `${provider}/${modelId}`; },
-      onSelectLaunchThinking: (level) => { this.launchThinking = level; },
-      launchFast: this.launchFast,
-      onSelectLaunchFast: (fast) => { this.launchFast = fast; },
-      launchWorkers: this.launchWorkers,
-      ...(this.launchWorker ? { launchWorker: this.launchWorker } : {}),
-      onSelectLaunchWorker: (id) => {
-        this.launchWorker = id;
-        ++this.directorySuggestionRequest;
-        this.directorySuggestions = [];
-      },
-      directorySuggestions: this.directorySuggestions,
       // Git inspection reads this machine's disk; folder suggestions come from the worker.
-      onDirectoryInput: this.launchWorker ? (input) => this.loadDirectorySuggestions(input, this.launchWorker) : this.requestDirectorySuggestions,
+      onDirectoryInput: this.launcher.worker ? (input) => this.launcher.loadDirectorySuggestions(input, this.launcher.worker) : this.requestDirectorySuggestions,
       branchPrefix: this.control.settings.branchPrefix,
-      gitCheckout: this.gitCheckout,
-      gitCheckoutLoading: this.gitCheckoutLoading,
-      workspaceWorktree: this.workspaceWorktree,
-      workspaceBaseRef: this.workspaceBaseRef,
-      workspaceBranchSuggestionsOpen: this.workspaceBranchSuggestionsOpen,
-      workspaceBranch: this.workspaceBranch,
       worktreeProgress: this.paneCreating,
       worktreeError: this.paneCreationError,
-      onWorkspaceMode: (worktree) => {
-        this.workspaceWorktree = worktree;
-        this.workspaceBranchSuggestionsOpen = false;
-      },
-      onWorkspaceBaseRef: (baseRef) => { this.workspaceBaseRef = baseRef; },
-      onWorkspaceBranchSuggestionsOpen: (open) => { this.workspaceBranchSuggestionsOpen = open; },
-      onWorkspaceBranch: (branch) => { this.workspaceBranch = branch; },
       onOpenBranchPrefixSettings: () => this.openSurfaceSettings("sessions"),
     };
   }
@@ -4541,7 +4428,7 @@ export class HuiApp extends HuiElement {
           onRefreshObservability: () => this.loadOperationalData(true),
           onSelectPage: this.selectSettingsPage,
           onChangeModels: (models) => {
-            this.launchModel = models.primary;
+            this.launcher.model = models.primary;
             void this.control.save({ models });
           },
           onClose: this.closeSettings,

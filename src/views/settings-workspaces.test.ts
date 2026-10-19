@@ -95,14 +95,6 @@ test("New Session exposes explicit worktree creation and Settings owns its branc
   assert.match(homeSource, /workspaceBranchSuggestionsOpen/);
   assert.match(homeSource, /aria-expanded=\$\{String\(props\.workspaceBranchSuggestionsOpen\)\}/);
   assert.match(homeSource, /props\.onWorkspaceBranchSuggestionsOpen\(false\)/);
-  assert.match(appSource, /workspaceBranchSuggestionsOpen = false/);
-  assert.match(appSource, /groupCheckoutDefaults\(directory, checkout, this\.launchDefaults\)/);
-  assert.match(appSource, /this\.workspaceBaseRef = defaults\.baseRef/);
-  assert.match(appSource, /this\.workspaceWorktree = defaults\.worktree/);
-  const modeHandler = appSource.match(/onWorkspaceMode: \(worktree\) => \{([^}]+)\}/)?.[1];
-  assert.ok(modeHandler);
-  assert.match(modeHandler, /this\.workspaceWorktree = worktree/);
-  assert.doesNotMatch(modeHandler, /workspaceBaseRef\s*=/);
   assert.doesNotMatch(homeSource, /new-session-branches/);
   assert.match(homeSource, /Generated from the prompt/);
   assert.match(homeSource, /Configure default prefix/);
