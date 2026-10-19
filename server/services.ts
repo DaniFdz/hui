@@ -36,7 +36,7 @@ import { VscodeInstaller } from "./vscode-install.ts";
 import { verifyVscodeServer } from "./vscode-providers.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
-import type { BrowserStatus } from "../shared/browser.ts";
+import type { BrowserStatus } from "./api/browser.ts";
 import { ProviderService } from "./providers.ts";
 import { invalidateModelCatalog } from "./pi-config.ts";
 import { PiMutationService } from "./pi-mutations.ts";

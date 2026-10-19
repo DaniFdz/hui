@@ -11,7 +11,8 @@ import type { EventEmitter } from "node:events";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import { encodeBrowserFrame } from "../shared/browser.ts";
+import { encodeBrowserFrame } from "./browser/transport.ts";
+import type { BrowserViewMessage } from "./api/browser.ts";
 import { BrowserToolError, type BrowserViewFrame, type BrowserViewHandle, type BrowserViewListener } from "./browser/manager.ts";
 import { validTerminalOrigin } from "./terminal-transport.ts";
 
@@ -54,7 +55,7 @@ export function attachBrowserTransport(server: EventEmitter, source: BrowserView
       heartbeat.unref();
       let pending: BrowserViewFrame | undefined;
       let catchUp: ReturnType<typeof setTimeout> | undefined;
-      const sendText = (message: Record<string, unknown>) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message)); };
+      const sendText = (message: BrowserViewMessage) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(message)); };
       const sendFrame = (frame: BrowserViewFrame) => {
         if (ws.readyState !== WebSocket.OPEN) return;
         if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {

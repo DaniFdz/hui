@@ -4,7 +4,8 @@
  * frame so a remounted view paints at once. Layout and wording stay in `lib/browser-view.ts`.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
-import { decodeBrowserFrame, parseBrowserViewMessage, type BrowserViewAction, type BrowserViewState } from "../../shared/browser.ts";
+import { decodeBrowserFrame, parseBrowserViewMessage } from "../api/browser.ts";
+import type { BrowserViewAction, BrowserViewState } from "../api/schema/browser.ts";
 import { pointPosition, type BrowserViewConnection, type PreviewFrame } from "../lib/browser-view.ts";
 
 /** `stream` follows the page while it repaints; `snapshot` takes the current

@@ -3,7 +3,7 @@
  * the agent's pointer, tab options and the status and placeholder text. No sockets or DOM; the controller and
  * views supply the state.
  */
-import type { BrowserViewState } from "../../shared/browser.ts";
+import type { BrowserViewState } from "../api/schema/browser.ts";
 import type { PickerOption } from "./picker-options.ts";
 
 export type Size = { width: number; height: number };

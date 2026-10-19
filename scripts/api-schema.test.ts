@@ -91,7 +91,6 @@ const ALLOWED = [
   "module: bot-templates",
   "module: bot-triggers",
   "module: bots",
-  "module: browser",
   "module: calls",
   "module: diagnostics",
   "module: local-paths",

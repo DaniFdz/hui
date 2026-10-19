@@ -3,7 +3,7 @@
  * process, its tabs and previews, which this page polls and captures while it is open.
  */
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import type { BrowserStatus, BrowserTabView } from "../../../shared/browser.ts";
+import type { BrowserStatus, BrowserTabView } from "../../api/schema/browser.ts";
 import { browserStatusLabel, browserVersionLabel } from "../../lib/browser-status.ts";
 import { controlBrowser, loadBrowserStatus, previewBrowserTab } from "../../api/browser.ts";
 import { DEFAULT_BROWSER_SETTINGS, type BrowserSettings } from "../../lib/settings.ts";

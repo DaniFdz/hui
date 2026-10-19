@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 import { resolveBrowserExecutable } from "../browser/executable.ts";
+import { BrowserError, BrowserPreview, BrowserStatus, BrowserViewConnection } from "../api/browser.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 const detected = await resolveBrowserExecutable("");
 
@@ -43,7 +45,11 @@ test("browser routes are guarded and the agent bridge drives conversation-scoped
 
   const api = async (path: string, init: RequestInit = {}) => {
     const response = await fetch(origin + path, { ...init, headers: { "x-hui": "1", "content-type": "application/json", ...init.headers } });
-    return { status: response.status, body: await response.json() as Record<string, any> };
+    const body = await response.json() as Record<string, any>;
+    if (path.includes("/browser")) {
+      expectSchema(response.status >= 400 ? BrowserError : path.endsWith("/connect") ? BrowserViewConnection : path.endsWith("/preview") ? BrowserPreview : BrowserStatus, body as unknown);
+    }
+    return { status: response.status, body };
   };
   const tool = async (session: string, params: Record<string, unknown>) => {
     const env = await agentToolEnvironment(session);

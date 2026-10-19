@@ -3,7 +3,9 @@ import { once } from "node:events";
 import { createServer } from "node:http";
 import { test } from "vitest";
 import { WebSocket } from "ws";
-import { decodeBrowserFrame } from "../shared/browser.ts";
+import { readFile } from "node:fs/promises";
+import { BrowserViewMessage } from "./api/browser.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
 import type { BrowserViewListener } from "./browser/manager.ts";
 import { attachBrowserTransport, browserViewTicket, type BrowserViewSource } from "./browser-transport.ts";
 
@@ -56,11 +58,12 @@ test("one-use, same-origin tickets bind a view-only stream to one conversation",
     type: "state", running: true, mode: "headless", tabs: [{ id: "t1", title: "Fixture", url: "http://127.0.0.1/" }],
     current: "t1", watching: "t1", following: true,
   });
-  const frame = decodeBrowserFrame(new Uint8Array(messages[1]!.binary!));
-  assert.deepEqual(frame?.header, { tabId: "t1", width: 1280, height: 800, seq: 7 });
-  assert.deepEqual([...frame!.image], [0xff, 0xd8, 0xff, 0xd9]);
+  const fixture = JSON.parse(await readFile(new URL("./browser/transport.fixture.json", import.meta.url), "utf8"));
+  assert.equal(messages[1]!.binary!.toString("hex"), fixture.frame);
+  expectSchema(BrowserViewMessage, messages[0]!.text);
   listener!.action({ tabId: "t1", text: "Clicked e2 (button \"Greet\")", point: { x: 10, y: 20 }, at: "2026-09-28T07:00:00.000Z" });
   await until(() => messages.length >= 3);
+  expectSchema(BrowserViewMessage, messages[2]!.text);
   assert.deepEqual(messages[2]!.text, { type: "action", tabId: "t1", text: "Clicked e2 (button \"Greet\")", point: { x: 10, y: 20 }, at: "2026-09-28T07:00:00.000Z" });
 
   // The only control message picks a tab; anything else is ignored.

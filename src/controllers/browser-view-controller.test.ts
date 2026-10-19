@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { encodeBrowserFrame } from "../../shared/browser.ts";
 import { BrowserViewController, forgetRecentBrowserFrames } from "./browser-view-controller.ts";
 
 class FakeSocket {
@@ -14,7 +13,10 @@ class FakeSocket {
   close() { this.closed = true; this.readyState = 3; }
   text(value: unknown) { this.onmessage?.({ data: JSON.stringify(value) }); }
   frame(tabId: string, bytes = [0xff, 0xd8, 0xff, 0xd9]) {
-    this.onmessage?.({ data: encodeBrowserFrame({ tabId, width: 1280, height: 800, seq: 1 }, new Uint8Array(bytes)).buffer });
+    assert.equal(tabId, "t1");
+    const header = Buffer.from('000000307b227461624964223a227431222c227769647468223a313238302c22686569676874223a3830302c22736571223a317d', "hex");
+    const frame = new Uint8Array([...header, ...bytes]);
+    this.onmessage?.({ data: frame.buffer });
   }
 }
 

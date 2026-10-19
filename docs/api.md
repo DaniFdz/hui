@@ -3781,14 +3781,23 @@ changed mode or executable, or turning the tool off, stops a running browser.
 
 All routes use the `x-hui` guard.
 
-| Route | Method | Result |
-| --- | --- | --- |
-| `/__hui/browser` | GET | `BrowserStatus` |
-| Same | POST | `{ action: "start" \| "stop" }`, then `BrowserStatus` |
-| `/__hui/browser/tabs/:tabId/preview` | GET | `{ image: "data:image/jpeg;base64,…" }` for one open tab |
-| `/__hui/sessions/:id/browser/connect` | POST | `{ url: "/__hui/browser-stream?ticket=…" }` for that conversation's live view |
+### `GET /__hui/browser`
 
-`BrowserStatus` (`shared/browser.ts`) reports the saved `enabled`, `headless`
+Returns `BrowserStatus`.
+
+### `POST /__hui/browser`
+
+`BrowserControl` `{ action: "start" | "stop" }`, then `BrowserStatus`.
+
+### `GET /__hui/browser/tabs/:tab/preview`
+
+`BrowserPreview` `{ image: "data:image/jpeg;base64,…" }` for one open tab.
+
+### `POST /__hui/sessions/:id/browser/connect`
+
+`BrowserViewConnection` `{ url: "/__hui/browser-stream?ticket=…" }` for that conversation's live view.
+
+`BrowserStatus` (`server/api/browser.ts`, generated browser types in `src/api/schema/browser.ts`) reports the saved `enabled`, `headless`
 and `executablePath`, the resolved `executable` (`path`, `name`, `source:
 configured | detected`) or `executableError`, `state` (`stopped`, `starting`,
 `running`, `stopping`), the running `mode` (`headless` or `windowed`),
@@ -3798,6 +3807,8 @@ start while the tool is off or no executable is usable returns 409; launch
 failures return 502 with the browser's reason. A preview of an unknown tab
 returns 404, and a background tab in a visible window that cannot be captured
 without switching to it returns 409.
+
+### `WS /__hui/browser-stream`
 
 The live-view ticket is single-use, expires after 15 seconds and is bound to
 one conversation (unknown conversations return 404). The WebSocket upgrade at

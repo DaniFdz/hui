@@ -9,7 +9,7 @@ import { test } from "vitest";
 import type { BrowserSettings } from "../hui-settings.ts";
 import { resolveBrowserExecutable } from "./executable.ts";
 import { browserLaunchArguments, BrowserToolError, ManagedBrowser, normalizeBrowserUrl, type BrowserViewFrame } from "./manager.ts";
-import type { BrowserViewAction, BrowserViewState } from "../../shared/browser.ts";
+import type { BrowserViewAction, BrowserViewState } from "../api/browser.ts";
 
 const noBrowser = { platform: "linux" as const, env: { PATH: "/nowhere" }, home: "/home/nobody", isExecutable: async () => false };
 
