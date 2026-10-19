@@ -7,15 +7,14 @@
  * the log, so the watcher outlives the gateway while HUI can still report
  * running, done, failed, stopped or dead. State is derived on every refresh: a
  * recorded PID only counts as running when it is the same process HUI started
- * (a reboot reuses PIDs), or while what it started still runs in its process
- * group after the shell itself was killed (`pkill -f` matches the script's
- * path). A watcher started with `keepRunning` that HUI finds dead starts
- * again. */
+ * (a reboot reuses PIDs), or, once that shell was killed (`pkill -f` matches
+ * the script's path), while a process it started with it still runs in its
+ * process group. A watcher started with `keepRunning` that HUI finds dead
+ * starts again. */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
 import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { uptime } from "node:os";
 import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
@@ -126,14 +125,8 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
   }
 }
 
-/** A group of someone else's (EPERM) is not a watcher's. */
 function signalGroupAlive(pid: number): boolean {
-  try {
-    process.kill(-pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+  return signalAlive(-pid);
 }
 
 async function readTail(path: string, maxBytes: number): Promise<{ text: string; truncated: boolean }> {
@@ -153,28 +146,31 @@ async function readTail(path: string, maxBytes: number): Promise<{ text: string;
   }
 }
 
-/** `ps -o etime=` reports how long the process has been alive, which tells a
+/** `ps` reports how long a process has been alive (`etime`), which tells a
  * watcher apart from an unrelated process that inherited its PID. */
-async function processAgeSeconds(pid: number): Promise<number | undefined> {
-  try {
-    const { stdout } = await execFileAsync("ps", ["-o", "etime=", "-p", String(pid)], { timeout: 5_000 });
-    const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)\s*$/u.exec(stdout.trim());
-    if (!match) return undefined;
-    const [, days = "0", hours = "0", minutes = "0", seconds = "0"] = match;
-    return Number(days) * 86_400 + Number(hours) * 3_600 + Number(minutes) * 60 + Number(seconds);
-  } catch {
-    return undefined;
-  }
+function etimeSeconds(text: string): number | undefined {
+  const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/u.exec(text.trim());
+  if (!match) return undefined;
+  const [, days = "0", hours = "0", minutes = "0", seconds = "0"] = match;
+  return Number(days) * 86_400 + Number(hours) * 3_600 + Number(minutes) * 60 + Number(seconds);
 }
 
 async function ownsProcess(pid: number, startedAtMs: number): Promise<boolean | undefined> {
-  // Nothing from before the last boot still runs, whatever now holds the PID.
-  if (Date.now() - uptime() * 1_000 - OWN_TOLERANCE_SECONDS * 1_000 > startedAtMs) return false;
-  // The kernel never gives a new process a PID that is still a group's id.
-  if (!signalAlive(pid)) return signalGroupAlive(pid);
-  const age = await processAgeSeconds(pid);
-  if (age === undefined) return undefined;
-  return Math.abs(age - (Date.now() - startedAtMs) / 1_000) <= OWN_TOLERANCE_SECONDS;
+  const startedWith = (age: number | undefined) => age !== undefined && Math.abs(age - (Date.now() - startedAtMs) / 1_000) <= OWN_TOLERANCE_SECONDS;
+  try {
+    if (signalAlive(pid)) {
+      const age = etimeSeconds((await execFileAsync("ps", ["-o", "etime=", "-p", String(pid)], { timeout: 5_000 })).stdout);
+      return age === undefined ? undefined : startedWith(age);
+    }
+    // The shell is gone; what it started with it may still run in its group.
+    const { stdout } = await execFileAsync("ps", ["-axo", "pgid=,etime="], { timeout: 5_000, maxBuffer: 8 * 1024 * 1024 });
+    return stdout.split("\n").some((line) => {
+      const [group, etime = ""] = line.trim().split(/\s+/u);
+      return Number(group) === pid && startedWith(etimeSeconds(etime));
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 function launchDetached(scriptPath: string, cwd: string, logPath: string): number {
@@ -297,9 +293,6 @@ export class WatcherService {
       this.#views.set(record.id, await this.#refresh(record));
     }
     this.#started = true;
-    for (const record of records) {
-      if (record.keepRunning && this.#views.get(record.id)?.state === "dead") await this.#revive(record).catch(() => undefined);
-    }
     this.#timer = setInterval(() => void this.#poll(), this.#pollMs);
     this.#timer.unref?.();
   }
@@ -404,8 +397,10 @@ export class WatcherService {
       this.#views.set(id, current);
       if (current.state !== "running") return current;
       await this.#terminate(record);
-      // A stop that raced the command's own exit keeps that outcome.
-      if (!await this.#readExit(id)) record.stoppedAt = new Date(this.#now()).toISOString();
+      // A stop that raced the command's own exit keeps that outcome; a shell
+      // that lived long enough to record the signal's status (143, 137) did not.
+      const exit = await this.#readExit(id);
+      if (!exit || exit.code === 143 || exit.code === 137) record.stoppedAt = new Date(this.#now()).toISOString();
       const view = await this.#refresh(record);
       this.#views.set(id, view);
       await this.#write();
@@ -436,8 +431,8 @@ export class WatcherService {
       this.#bump(record.id);
       if ((await this.#refresh(record)).state !== "dead") return;
       if (!(await stat(record.cwd).catch(() => undefined))?.isDirectory()) return;
-      await appendFile(record.logPath, `[HUI] Started again at ${new Date(this.#now()).toISOString()}: its processes were gone with no exit status.\n`, { mode: 0o600 });
       await this.#relaunch(record);
+      await appendFile(record.logPath, `[HUI] Started again at ${record.startedAt}: its processes were gone with no exit status.\n`, { mode: 0o600 });
       this.#onChange(record.sessionId);
     });
   }
@@ -583,11 +578,7 @@ export class WatcherService {
       state = exit.code === 0 ? "done" : "failed";
       endedAt = exit.at;
     } else {
-      const previous = this.#views.get(record.id);
-      // Dead stays dead until it starts again: by then its PID, and the group
-      // id that comes with it, may belong to another process.
-      const died = previous?.state === "dead" && previous.startedAt === record.startedAt;
-      const owns = died ? false : await this.#ownsProcess(record.pid, Date.parse(record.startedAt));
+      const owns = await this.#ownsProcess(record.pid, Date.parse(record.startedAt));
       // The wrapper writes the exit record just after the command; a process
       // that is already gone this soon may not have written it yet.
       const settling = this.#now() - Date.parse(record.startedAt) < this.#settleMs;
