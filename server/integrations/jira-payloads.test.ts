@@ -1,5 +1,6 @@
 import { expectTypeOf, test } from "vitest";
 import type * as Api from "../api/jira.ts";
+import type * as SessionApi from "../api/sessions.ts";
 
 type LegacyJiraStatusCategory = "new" | "indeterminate" | "done";
 
@@ -66,10 +67,10 @@ type LegacyJiraIssueMatch = {
 
 
 test("the schemas preserve the existing Jira payload types", () => {
-  expectTypeOf<LegacyJiraStatusCategory>().toMatchTypeOf<Api.JiraStatusCategory>();
-  expectTypeOf<Api.JiraStatusCategory>().toMatchTypeOf<LegacyJiraStatusCategory>();
-  expectTypeOf<LegacySessionJiraIssue>().toMatchTypeOf<Api.SessionJiraIssue>();
-  expectTypeOf<Api.SessionJiraIssue>().toMatchTypeOf<LegacySessionJiraIssue>();
+  expectTypeOf<LegacyJiraStatusCategory>().toMatchTypeOf<SessionApi.JiraStatusCategory>();
+  expectTypeOf<SessionApi.JiraStatusCategory>().toMatchTypeOf<LegacyJiraStatusCategory>();
+  expectTypeOf<LegacySessionJiraIssue>().toMatchTypeOf<SessionApi.SessionJiraIssue>();
+  expectTypeOf<SessionApi.SessionJiraIssue>().toMatchTypeOf<LegacySessionJiraIssue>();
   expectTypeOf<LegacyJiraConnection>().toMatchTypeOf<Api.JiraConnection>();
   expectTypeOf<Api.JiraConnection>().toMatchTypeOf<LegacyJiraConnection>();
   expectTypeOf<LegacyJiraProject>().toMatchTypeOf<Api.JiraProject>();

@@ -961,7 +961,7 @@ Durable sessions follow Durable's compaction semantics; see
 Every session has a development stage shown as its Kanban column. Sessions
 never sit in the Backlog column, which holds [backlog items](#kanban-backlog).
 The effective `stage` in a view is resolved by `effectiveSessionStage`
-(`shared/session-stages.ts`) with this precedence:
+(`server/sessions/session-stages.ts`) with this precedence:
 
 1. An **operator** placement (`PATCH … { stage }`) wins until the operator
    sends `stage: null`. Neither the agent nor pull requests can move it.

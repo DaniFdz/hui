@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "vitest";
 
 import { jiraIssueAccessibleLabel, primaryJiraIssue } from "./jira.ts";
-import type { SessionJiraIssue } from "../api/schema/jira.ts";
+import type { SessionJiraIssue } from "../api/schema/sessions.ts";
 import { applyJiraDraft, jiraParentHint } from "./jira.ts";
 
 const issue = (key: string, patch: Partial<SessionJiraIssue> = {}): SessionJiraIssue => ({

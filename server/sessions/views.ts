@@ -4,7 +4,7 @@
  * creation. `createSessionViews(deps)` takes the gateway services a view reads.
  */
 import { displayPath } from "../working-directories.ts";
-import { liveSessions, type SessionStatus, type SessionStatusUpdate } from "../live-sessions.ts";
+import { liveSessions, type SessionStatusUpdate } from "../live-sessions.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { pullRequestsFromTranscript, type PullRequestStatuses } from "../pull-requests.ts";
 import { runtimeMemoryByPid } from "../runtime-resources.ts";
@@ -12,60 +12,9 @@ import type { TranscriptEntry } from "../runtimes/types.ts";
 import { groupSessions, readSessionRegistry, updateRegistry, type SessionRecord } from "../sessions.ts";
 import type { WatcherService } from "../watchers.ts";
 import { workers } from "../workers.ts";
-import type { WorktreeProgress } from "../worktrees.ts";
-import type { SessionJiraIssue } from "../api/jira.ts";
-import { progressCardFromTranscript, type ProgressCard } from "../../shared/progress-card.ts";
-import type { SessionPullRequest } from "../api/github.ts";
-import { effectiveSessionStage, stageRank, type SessionStage, type SessionStageOrigin } from "../../shared/session-stages.ts";
-
-/** The wire shape; `status` is HUI's own and never comes from a record. */
-export type SessionView = {
-  progress?: ProgressCard;
-  /** Pull requests this session created; GitHub facts are cached, never stored. */
-  pullRequests?: SessionPullRequest[];
-  /** Jira work items linked to this session; Jira facts are cached, never stored. */
-  jiraIssues?: SessionJiraIssue[];
-  id: string;
-  title: string;
-  group: string;
-  cwd: string;
-  /** `cwd` with the home directory shortened to `~/`, for display only. */
-  displayCwd: string;
-  /** Remote worker the session runs on; absent for this machine. */
-  worker?: { id: string; name: string };
-  tool: string;
-  status: SessionStatus;
-  /** Git worktree progress while the session's checkout is still created. */
-  creating?: WorktreeProgress;
-  /** Why a pending worktree session could not be created, and its unsent prompt. */
-  creationError?: string;
-  initialPrompt?: string;
-  /** Ephemeral process telemetry. Absent when this session is cold or failed. */
-  runtime?: {
-    active: true;
-    memoryBytes?: number;
-    bootDurationMs?: number;
-  };
-  /** A prompt was active when its owning runtime disappeared. */
-  interrupted?: true;
-  /** A watcher of this session, or a subagent below it, still runs. */
-  background?: true;
-  model?: string;
-  thinking?: string;
-  pinned?: true;
-  archived?: true;
-  unread?: true;
-  icon?: string;
-  parentId?: string;
-  subagent?: NonNullable<SessionRecord["subagent"]>;
-  /** The bot whose forever chat this is; the Sessions list leaves these to the Bots tab. */
-  bot?: { id: string; handle: string; name: string };
-  /** Effective Kanban stage; see `effectiveSessionStage`. */
-  stage: SessionStage;
-  stageOrigin: SessionStageOrigin;
-  createdAt: string;
-  updatedAt: string;
-};
+import type { SessionJiraIssue, SessionStatus, SessionView, WorktreeProgress } from "../api/sessions.ts";
+import { progressCardFromTranscript } from "../../shared/progress-card.ts";
+import { effectiveSessionStage, stageRank } from "./session-stages.ts";
 
 /** Worktree sessions whose checkout is still being created, shown in the
  * sidebar before their record exists. Memory only: a restart forgets them. */

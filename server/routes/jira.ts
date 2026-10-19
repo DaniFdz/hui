@@ -28,11 +28,11 @@ import {
   normalizeProjectKey,
   parentCandidates,
 } from "../jira.ts";
-import { liveSessions, type SessionStatus } from "../live-sessions.ts";
+import { liveSessions } from "../live-sessions.ts";
 import { runPiUtilityPrompt } from "../runtimes/pi.ts";
 import { sessionDigest } from "../session-digest.ts";
 import { readRegistry, type SessionRecord, updateRegistry } from "../sessions.ts";
-import type { SessionView } from "../sessions/views.ts";
+import type { SessionStatus, SessionView } from "../api/sessions.ts";
 import { TaskSuggestionNotFoundError, type TaskSuggestionStore } from "../task-suggestions.ts";
 import { taskSuggestionJiraDescription } from "../../shared/task-suggestions.ts";
 

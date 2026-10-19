@@ -37,10 +37,11 @@ function session(
     cwd: `/work/${group}`,
     tool: "pi",
     status: "idle",
+    displayCwd: "",
     createdAt: "2026-09-22T00:00:00.000Z",
     updatedAt: "2026-09-22T00:00:00.000Z",
     ...overrides,
-  };
+  } as SessionView;
 }
 
 const SESSION_GROUPS: SessionGroup[] = [

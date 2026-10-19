@@ -6,7 +6,9 @@
  */
 import { stat } from "node:fs/promises";
 import type { BotService } from "../bot-service.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
+import { SessionError, SessionList, SessionOk, SessionResponse, sessionRouteSchemas } from "../api/sessions.ts";
 import { liveSessions } from "../live-sessions.ts";
 import {
   createSessionGroup,
@@ -22,6 +24,8 @@ import { type createSessionLifecycle, SESSION_GROUP_MAX, SESSION_TITLE_MAX, sess
 import { type createSessionViews, pendingSessions } from "../sessions/views.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";
 import { BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
+
+export const routeSchemas: RouteSchema[] = sessionRouteSchemas;
 
 const SESSIONS_ROUTE = "/__hui/sessions";
 const SESSION_GROUPS_ROUTE = "/__hui/session-groups";
@@ -113,7 +117,7 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
 }
 
 export function createSessionRoutes(deps: {
-  sessionList: { refresh(): Promise<unknown> };
+  sessionList: { refresh(): Promise<SessionList> };
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "createSession" | "startWorktreeSession" | "deleteSession" | "updateSession">;
   views: Pick<ReturnType<typeof createSessionViews>, "toView">;
   bots: Pick<BotService, "botForSession">;
@@ -129,11 +133,11 @@ export function createSessionRoutes(deps: {
       try {
         const body = (await request.json()) as Record<string, unknown>;
         await createSessionGroup(sessionGroupName(body));
-        return { status: 200, body: await sessionList.refresh() };
+        return reply(SessionList, await sessionList.refresh());
       } catch (error) {
-        return { status: sessionMutationErrorStatus(error), body: {
+        return reply(SessionError, {
           error: error instanceof Error ? error.message : "Could not create that group.",
-        } };
+        }, sessionMutationErrorStatus(error));
       }
     }
 
@@ -141,11 +145,11 @@ export function createSessionRoutes(deps: {
       try {
         const body = (await request.json()) as Record<string, unknown>;
         await reorderSessionGroups(sessionGroupOrder(body));
-        return { status: 200, body: await sessionList.refresh() };
+        return reply(SessionList, await sessionList.refresh());
       } catch (error) {
-        return { status: sessionMutationErrorStatus(error), body: {
+        return reply(SessionError, {
           error: error instanceof Error ? error.message : "Could not reorder the groups.",
-        } };
+        }, sessionMutationErrorStatus(error));
       }
     }
 
@@ -161,17 +165,17 @@ export function createSessionRoutes(deps: {
             await sessionGroupPatch((await request.json()) as Record<string, unknown>),
           );
         }
-        return { status: 200, body: await sessionList.refresh() };
+        return reply(SessionList, await sessionList.refresh());
       } catch (error) {
-        return { status: sessionMutationErrorStatus(error), body: {
+        return reply(SessionError, {
           error: error instanceof Error ? error.message : "Could not update that group.",
-        } };
+        }, sessionMutationErrorStatus(error));
       }
     }
 
     if (path === SESSIONS_ROUTE) {
       if (method === "GET") {
-        return { status: 200, body: await sessionList.refresh() };
+        return reply(SessionList, await sessionList.refresh());
       }
       if (method === "POST") {
         let body: Record<string, unknown>;
@@ -179,29 +183,29 @@ export function createSessionRoutes(deps: {
           // A worktree launch may carry its first prompt's attachments.
           body = (await request.json(MAX_PROMPT_BYTES)) as Record<string, unknown>;
         } catch (error) {
-          return { status: sessionMutationErrorStatus(error), body: {
+          return reply(SessionError, {
             error: error instanceof Error ? error.message : "Could not read that session request.",
-          } };
+          }, sessionMutationErrorStatus(error));
         }
         if (body["worktree"] === true) {
           try {
-            return { status: 200, body: { session: await startWorktreeSession(body) } };
+            return reply(SessionResponse, { session: await startWorktreeSession(body) });
           } catch (error) {
-            return { status: sessionMutationErrorStatus(error), body: {
+            return reply(SessionError, {
               error: error instanceof Error ? error.message : "Could not start that session.",
-            } };
+            }, sessionMutationErrorStatus(error));
           }
         }
         try {
           const record = await createSession(body);
-          return { status: 200, body: { session: toView(record, liveSessions.status(record.id)) } };
+          return reply(SessionResponse, { session: toView(record, liveSessions.status(record.id)) });
         } catch (error) {
-          return { status: sessionMutationErrorStatus(error), body: {
+          return reply(SessionError, {
             error: error instanceof Error ? error.message : "Could not start that session.",
-          } };
+          }, sessionMutationErrorStatus(error));
         }
       }
-      return { status: 405, body: { error: "method not allowed" } };
+      return reply(SessionError, { error: "method not allowed" }, 405);
     }
 
     const one = path.match(SESSION_ONE);
@@ -212,49 +216,46 @@ export function createSessionRoutes(deps: {
       if (pending) {
         if (method === "DELETE" && pending.error) {
           pendingSessions.delete(id);
-          return { status: 200, body: { ok: true } };
+          return reply(SessionOk, { ok: true });
         }
-        return { status: 409, body: { error: pending.error ?? "The Git worktree is still being created." } };
+        return reply(SessionError, { error: pending.error ?? "The Git worktree is still being created." }, 409);
       }
 
       const owned = (await readRegistry()).find((session) => session.id === id);
       if (owned && await isDormantBotChat(owned)) {
-        return { status: 409, body: { error: BOTS_OFF_MESSAGE } };
+        return reply(SessionError, { error: BOTS_OFF_MESSAGE }, 409);
       }
 
       if (method === "DELETE") {
         // A bot owns its chat: deleting the row would orphan the bot. Archiving keeps both.
         const bot = await bots.botForSession(id).catch(() => undefined);
         if (bot) {
-          return { status: 409, body: { error: foreverChatRefusal(bot.handle, "delete") } };
+          return reply(SessionError, { error: foreverChatRefusal(bot.handle, "delete") }, 409);
         }
         // Block stale opens first, but keep the runtime and streams alive until
         // registry removal commits. A storage failure rolls the tombstone back.
         try {
           await deleteSession(id);
         } catch (error) {
-          return { status: error instanceof SessionNotFoundError ? 404 : 500, body: {
+          return reply(SessionError, {
             error: error instanceof Error ? error.message : "Could not remove that session.",
-          } };
+          }, error instanceof SessionNotFoundError ? 404 : 500);
         }
         // The conversation file under ~/.pi is pi's and is deliberately left
         // alone; losing a transcript because you tidied a list is unforgivable.
-        return { status: 200, body: { ok: true } };
+        return reply(SessionOk, { ok: true });
       }
 
       const body = (await request.json()) as Record<string, unknown>;
       try {
         const next = await updateSession(id, body);
-        return { status: 200, body: { session: toView(next, liveSessions.status(id)) } };
+        return reply(SessionResponse, { session: toView(next, liveSessions.status(id)) });
       } catch (error) {
-        return {
-          status: error instanceof SessionNotFoundError
-            ? 404
-            : error instanceof SessionRegistryError
-              ? 500
-              : 400,
-          body: { error: error instanceof Error ? error.message : "Could not update that session." },
-        };
+        return reply(SessionError, { error: error instanceof Error ? error.message : "Could not update that session." }, error instanceof SessionNotFoundError
+          ? 404
+          : error instanceof SessionRegistryError
+            ? 500
+            : 400);
       }
     }
 

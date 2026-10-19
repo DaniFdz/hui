@@ -18,8 +18,8 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 
 import { BACKLOG_LIMITS, backlogItemId, backlogItemPrompt, type BacklogItem, type BacklogView } from "../shared/backlog.ts";
-import type { SessionJiraIssue } from "./api/jira.ts";
-import { isSessionStage, SESSION_STAGES } from "../shared/session-stages.ts";
+import type { SessionJiraIssue } from "./api/sessions.ts";
+import { isSessionStage, SESSION_STAGES } from "./sessions/session-stages.ts";
 import { taskSuggestionPrompt, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
 import {
   JIRA_KEY,
@@ -37,7 +37,8 @@ import type { liveSessions } from "./live-sessions.ts";
 import { CONFIG_DIR } from "./paths.ts";
 import { readRegistry, updateRegistry, type SessionNotFoundError, type SessionRecord } from "./sessions.ts";
 import type { createSessionLifecycle } from "./sessions/lifecycle.ts";
-import type { createSessionViews, SessionView } from "./sessions/views.ts";
+import type { SessionView } from "./api/sessions.ts";
+import type { createSessionViews } from "./sessions/views.ts";
 import { TaskSuggestionInputError, type TaskSuggestionStore } from "./task-suggestions.ts";
 
 export const BACKLOG_FILE = join(CONFIG_DIR, "backlog.json");

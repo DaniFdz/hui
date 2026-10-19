@@ -1,43 +1,32 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vitest";
-import { applySessionListUpdate, type SessionListGroup, type SessionListUpdate } from "../shared/session-list.ts";
 import { createSessionListHub } from "./session-list.ts";
 
 type Session = { id: string; title: string };
-const list = (...groups: [string, ...Session[]][]): SessionListGroup<Session>[] =>
-  groups.map(([label, ...sessions]) => ({ label, sessions }));
+type Group = { label: string; sessions: Session[] };
+type Frame = { revision: number; groups?: unknown[]; upserts: Session[] };
+const golden: { lists: Group[][]; frames: Frame[] } = JSON.parse(readFileSync(new URL("./session-list.fixture.json", import.meta.url), "utf8"));
 
-test("screens share one list: a full list on join, then only what changed", async () => {
-  const a = { id: "a", title: "A" };
-  const b = { id: "b", title: "B" };
-  let next = list(["work", a, b]);
+test("screens share one list: a full list on join, then only what changed, as the golden frames", async () => {
+  let next: Group[] = [];
   const hub = createSessionListHub<Session>(async () => next, 60_000);
-  const phone: SessionListUpdate<Session>[] = [];
+  const phone: Frame[] = [];
   const stopPhone = hub.subscribe((update) => phone.push(update));
-  await hub.refresh();
-
-  next = list(["work", a, { ...b, title: "B2" }]);
-  await hub.refresh();
-  await hub.refresh(); // Unchanged: nothing is sent.
+  for (const list of golden.lists) {
+    next = list;
+    await hub.refresh();
+    await hub.refresh(); // Unchanged: nothing is sent.
+  }
   const first = phone[0]?.revision ?? 0;
   assert.ok(first > Date.now() - 60_000, "revisions keep rising across gateway restarts");
-  assert.deepEqual(phone.map(({ revision, groups, upserts }) => ({ revision: revision - first, groups: Boolean(groups), ids: upserts.map(({ id }) => id) })), [
-    { revision: 0, groups: true, ids: ["a", "b"] },
-    { revision: 1, groups: false, ids: ["b"] },
-  ]);
+  assert.deepEqual(phone.map((frame) => ({ ...frame, revision: frame.revision - first })), golden.frames);
 
   // A late joiner gets the current list immediately, not a replay.
-  const mac: SessionListUpdate<Session>[] = [];
+  const mac: Frame[] = [];
   const stopMac = hub.subscribe((update) => mac.push(update));
-  next = list(["done", b], ["work"]);
-  const latest = await hub.refresh();
-
-  for (const updates of [phone, mac]) {
-    const applied = updates.reduce<SessionListGroup<Session>[]>((groups, update) => applySessionListUpdate(groups, update), []);
-    assert.deepEqual(applied, latest.groups);
-  }
-  assert.equal(mac[0]?.revision, first + 1);
-  assert.equal(latest.revision, first + 2);
+  const last = golden.frames.at(-1)!;
+  assert.deepEqual(mac, [{ revision: first + last.revision, groups: last.groups, upserts: golden.lists.at(-1)!.flatMap((group) => group.sessions) }]);
   stopPhone();
   stopMac();
 });

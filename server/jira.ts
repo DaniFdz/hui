@@ -16,7 +16,8 @@ import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
-import type { JiraConnection, JiraDraft, JiraIssueMatch, JiraParentCandidate, JiraProject, JiraStatusCategory, SessionJiraIssue } from "./api/jira.ts";
+import type { JiraConnection, JiraDraft, JiraIssueMatch, JiraParentCandidate, JiraProject } from "./api/jira.ts";
+import type { JiraStatusCategory, SessionJiraIssue } from "./api/sessions.ts";
 import { adfToMarkdown, markdownToAdf } from "./jira-adf.ts";
 import { CONFIG_DIR } from "./paths.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";

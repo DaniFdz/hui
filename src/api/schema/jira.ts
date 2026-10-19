@@ -1,4 +1,5 @@
 /** Generated from docs/api.schema.json by scripts/api-schema.ts. Do not edit. */
+import type { JiraStatusCategory, SessionView } from "./sessions.ts";
 
 export type JiraConnectRequest = { "site": string; "email": string; "token": string; "defaultProject": string; };
 
@@ -6,7 +7,7 @@ export type JiraConnection = { "configured": boolean; "site": string; "email": s
 
 export type JiraCreateRequest = { "project": string; "parent": string; "summary": string; "description": string; "assignToMe"?: boolean; "suggestionId"?: string; };
 
-export type JiraCreateResponse = { "issue": JiraIssueRef; "session"?: unknown; "warning"?: string; };
+export type JiraCreateResponse = { "issue": JiraIssueRef; "session"?: SessionView; "warning"?: string; };
 
 export type JiraDefaultProjectRequest = { "defaultProject": string; };
 
@@ -26,14 +27,10 @@ export type JiraIssuesResponse = { "issues": Array<JiraIssueMatch>; };
 
 export type JiraLinkRequest = { "key": string; };
 
-export type JiraLinkResponse = { "issue": JiraIssueRef; "session"?: unknown; };
+export type JiraLinkResponse = { "issue": JiraIssueRef; "session"?: SessionView; };
 
 export type JiraParentCandidate = { "key": string; "summary": string; "issueType": string; "hierarchyLevel": number; "status"?: string; };
 
 export type JiraProject = { "key": string; "name": string; };
 
 export type JiraProjectsResponse = { "projects": Array<JiraProject>; "total": number; };
-
-export type JiraStatusCategory = ("new") | ("indeterminate") | ("done");
-
-export type SessionJiraIssue = { "key": string; "url": string; "summary"?: string; "status"?: string; "statusCategory"?: JiraStatusCategory; "issueType"?: string; "description"?: string; };

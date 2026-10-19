@@ -9,7 +9,8 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
-import { liveSessions, type SessionStatus } from "./live-sessions.ts";
+import { liveSessions } from "./live-sessions.ts";
+import type { SessionStatus } from "./api/sessions.ts";
 import { readRegistry, type SessionRecord } from "./sessions.ts";
 
 const execFileAsync = promisify(execFile);

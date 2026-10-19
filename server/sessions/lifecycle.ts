@@ -10,7 +10,7 @@ import { basename } from "node:path";
 
 import type { ManagedBrowser } from "../browser/manager.ts";
 import { readHuiSettings } from "../hui-settings.ts";
-import { liveSessions, type DeleteToken, type SessionStatus } from "../live-sessions.ts";
+import { liveSessions, type DeleteToken } from "../live-sessions.ts";
 import { fallbackTitle, generateSessionNames } from "../model-routing.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
@@ -21,13 +21,15 @@ import { terminals } from "../terminals.ts";
 import type { WatcherService } from "../watchers.ts";
 import { workers } from "../workers.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";
-import { checkoutSessionRef, createSessionWorktree, type WorktreeProgress } from "../worktrees.ts";
+import { checkoutSessionRef, createSessionWorktree } from "../worktrees.ts";
 import { fallbackBranchName } from "../../shared/branch-names.ts";
-import { isSessionStage, SESSION_STAGES, type SessionStage } from "../../shared/session-stages.ts";
+import type { SessionStage } from "../api/sessions.ts";
+import { isSessionStage, SESSION_STAGES } from "./session-stages.ts";
 import { isThinkingLevel } from "../../shared/thinking.ts";
 import { sessionTreeIds } from "./session-tree.ts";
 import { knownPullRequestUrls } from "./stages.ts";
-import { pendingSessions, pendingStatus, publishPendingStatus, type createSessionViews, type PendingSession, type PendingStatusUpdate, type SessionView } from "./views.ts";
+import { pendingSessions, pendingStatus, publishPendingStatus, type createSessionViews, type PendingSession, type PendingStatusUpdate } from "./views.ts";
+import type { SessionStatus, SessionView, WorktreeProgress } from "../api/sessions.ts";
 
 const NEW_SESSION_TOOLS = new Set(["durable", "pi"]);
 /** New sessions run on Pi Durable; `HUI_SESSION_RUNTIME=pi` keeps PI's SDK

@@ -3,20 +3,18 @@
  * `/__hui/sessions` requests, and the status and per-session event streams with their reconnects. HUI owns
  * the registry and the contract is fixed in `docs/api.md`; this module holds no session state of its own.
  */
-import type { TranscriptMetrics } from "../../server/runtimes/transcript-metrics.ts";
-import type { QuestionnaireQuestion } from "../../server/questionnaires.ts";
+import type {
+  QuestionnaireQuestion, SessionList, SessionListUpdate, SessionStage, SessionStatus, SessionView, SubagentStatus, TranscriptMetrics, WorktreeProgress,
+} from "./schema/sessions.ts";
 
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
 export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
 import type { CallRecord } from "../../shared/calls.ts";
-import type { ProgressCard } from "../lib/progress-card.ts";
-import type { SessionPullRequest } from "./schema/github.ts";
-import type { SessionJiraIssue } from "./schema/jira.ts";
 import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
 import type { Watcher } from "../../shared/watchers.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
-import type { SessionStage, SessionStageOrigin } from "../../shared/session-stages.ts";
-import type { SessionListUpdate } from "../../shared/session-list.ts";
+
+export type { SessionGroup, SessionList, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
 
 const SESSIONS_URL = "/__hui/sessions";
 const CREATE_SESSION_TIMEOUT_MS = 120_000;
@@ -24,9 +22,6 @@ const CREATE_SESSION_TIMEOUT_MS = 120_000;
 const SESSION_STREAM_GONE = 4404;
 const SESSION_STATUSES_URL = `${SESSIONS_URL}/events`;
 
-/** `reconnecting` and `disconnected`: the session runs on a machine HUI
- * cannot reach right now, retrying by itself or not. */
-export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 export type SessionStatusUpdate = {
   id: string;
   status: SessionStatus;
@@ -37,14 +32,6 @@ export type SessionStatusUpdate = {
   title?: string;
 };
 
-export type WorktreeProgress = {
-  /** `naming` precedes Git work while the utility model picks the branch. */
-  phase: "naming" | "preparing" | "checkout" | "filtering" | "finalizing";
-  percent?: number;
-  completed?: number;
-  total?: number;
-};
-
 export type GitCheckoutInfo = {
   available: boolean;
   headBranch: string;
@@ -52,83 +39,6 @@ export type GitCheckoutInfo = {
   branches: readonly string[];
   branchesUnavailable?: boolean;
 };
-
-export type SessionView = {
-  progress?: ProgressCard;
-  /** Pull requests the session created, oldest first; GitHub facts may be absent. */
-  pullRequests?: readonly SessionPullRequest[];
-  /** Jira work items linked to the session, oldest first; Jira facts may be absent. */
-  jiraIssues?: readonly SessionJiraIssue[];
-  id: string;
-  title: string;
-  /** Already flattened by the backend: `pr-signal-notifications - v1`. */
-  group: string;
-  cwd: string;
-  /** `cwd` with home shortened to `~/`; absent from older gateways. */
-  displayCwd?: string;
-  /** Remote worker the session runs on; `cwd` is a path there. */
-  worker?: { id: string; name: string };
-  tool: string;
-  status: SessionStatus;
-  /** Git worktree progress while the gateway still creates this session. */
-  creating?: WorktreeProgress;
-  /** Why the gateway could not create this worktree session, and its unsent prompt. */
-  creationError?: string;
-  initialPrompt?: string;
-  /** Ephemeral process telemetry; absent for cold or failed sessions. */
-  runtime?: {
-    active: true;
-    memoryBytes?: number;
-    bootDurationMs?: number;
-  };
-  /** The previous runtime disappeared before its active run settled. */
-  interrupted?: boolean;
-  /** A watcher of this session, or a subagent below it, still runs. */
-  background?: true;
-  /** `provider/id` the session is running on, when the tool reports one. */
-  model?: string;
-  /** Runtime reasoning level persisted with the HUI session. */
-  thinking?: string;
-  /** Sorts to the top of its group. */
-  pinned?: boolean;
-  /** Organizer metadata owned by HUI, matching OpenClaw's session menu. */
-  archived?: boolean;
-  unread?: boolean;
-  icon?: string;
-  /** Parent session for a child created through `sessions_spawn`. */
-  parentId?: string;
-  /** Set when this session is a bot's one permanent chat. Bot chats belong to
-   * the Bots tab and never appear in session lists or pickers. */
-  bot?: { id: string; handle: string; name: string };
-  subagent?: {
-    taskId: string;
-    task: string;
-    label?: string;
-    status: SubagentStatus;
-    startedAt: string;
-    updatedAt: string;
-    endedAt?: string;
-    summary?: string;
-    error?: string;
-    /** A Swarm helper: its result goes back to the parent's script, and it has no sidebar row. */
-    collect?: true;
-  };
-  /** Kanban development stage; absent (or `backlog` from older gateways)
-   * means Investigation. */
-  stage?: SessionStage;
-  stageOrigin?: SessionStageOrigin;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type SubagentStatus =
-  | "starting"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "timed_out"
-  | "interrupted";
 
 export type SubagentTaskView = {
   taskId: string;
@@ -143,15 +53,6 @@ export type SubagentTaskView = {
   endedAt?: string;
   summary?: string;
   error?: string;
-};
-
-export type SessionGroup = {
-  label: string;
-  /** HUI-owned defaults used when the group starts a new session. */
-  cwd?: string;
-  workspaceMode?: "branch" | "worktree";
-  baseRef?: string;
-  sessions: SessionView[];
 };
 
 /** `url` is an opaque gateway route (or a local data URL while pending) for images. */
@@ -310,7 +211,6 @@ export type RuntimeCompaction = {
 };
 
 /** `revision` orders this full list against the status stream's changes. */
-export type SessionList = { revision: number; groups: SessionGroup[] };
 
 function sessionList(body: Partial<SessionList>): SessionList {
   return { revision: body.revision ?? 0, groups: body.groups ?? [] };
@@ -704,7 +604,7 @@ export type SessionStatusesHandlers = {
   onSnapshot: (statuses: readonly SessionStatusUpdate[]) => void;
   onStatus: (update: SessionStatusUpdate) => void;
   /** The gateway's shared session list: full on connect, then only changes. */
-  onSessions?: (update: SessionListUpdate<SessionView>) => void;
+  onSessions?: (update: SessionListUpdate) => void;
 };
 
 /** Keeps one lightweight stream open for lifecycle updates from every live
@@ -898,7 +798,7 @@ async function connectStatusesOnce(
         } else if (frame.name === "status") {
           handlers.onStatus(frame.payload as SessionStatusUpdate);
         } else if (frame.name === "sessions") {
-          handlers.onSessions?.(frame.payload as SessionListUpdate<SessionView>);
+          handlers.onSessions?.(frame.payload as SessionListUpdate);
         }
       }
     }

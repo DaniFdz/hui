@@ -200,7 +200,7 @@ test("a confirmed record replaces its old copy or joins the list", () => {
 });
 
 function session(id: string, group: string, overrides: Partial<SessionView> = {}): SessionView {
-  return { id, title: id, group, cwd: "/work", tool: "durable", status: "idle", createdAt: "2026-10-05T00:00:00.000Z", updatedAt: "2026-10-05T00:00:00.000Z", ...overrides };
+  return { id, title: id, group, cwd: "/work", tool: "durable", status: "idle", displayCwd: "", stage: "investigation", stageOrigin: "default", createdAt: "2026-10-05T00:00:00.000Z", updatedAt: "2026-10-05T00:00:00.000Z", ...overrides };
 }
 
 test("bot chats leave every session list while groups keep their meaning", () => {

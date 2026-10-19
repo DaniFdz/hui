@@ -980,7 +980,9 @@
         "issue": {
           "$ref": "#/$defs/JiraIssueRef"
         },
-        "session": {},
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        },
         "warning": {
           "type": "string"
         }
@@ -1170,7 +1172,9 @@
         "issue": {
           "$ref": "#/$defs/JiraIssueRef"
         },
-        "session": {}
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        }
       }
     },
     "JiraParentCandidate": {
@@ -1732,6 +1736,52 @@
         }
       }
     },
+    "ProgressCard": {
+      "type": "object",
+      "required": [
+        "markdown",
+        "steps"
+      ],
+      "properties": {
+        "markdown": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProgressStep"
+          }
+        }
+      }
+    },
+    "ProgressStep": {
+      "type": "object",
+      "required": [
+        "step",
+        "status"
+      ],
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "pending"
+            },
+            {
+              "type": "string",
+              "const": "in_progress"
+            },
+            {
+              "type": "string",
+              "const": "completed"
+            }
+          ]
+        }
+      }
+    },
     "ProviderAnswerRequest": {
       "type": "object",
       "required": [
@@ -2165,6 +2215,100 @@
         }
       ]
     },
+    "QuestionnaireAnswer": {
+      "type": "object",
+      "required": [
+        "header",
+        "question",
+        "selected"
+      ],
+      "properties": {
+        "header": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "selected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preview": {
+          "type": "string"
+        }
+      }
+    },
+    "QuestionnaireOption": {
+      "type": "object",
+      "required": [
+        "label",
+        "description"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "preview": {
+          "type": "string"
+        }
+      }
+    },
+    "QuestionnaireQuestion": {
+      "type": "object",
+      "required": [
+        "header",
+        "question",
+        "multiSelect",
+        "options"
+      ],
+      "properties": {
+        "header": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "multiSelect": {
+          "type": "boolean"
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QuestionnaireOption"
+          }
+        }
+      }
+    },
+    "QuestionnaireResult": {
+      "type": "object",
+      "required": [
+        "cancelled",
+        "answers"
+      ],
+      "properties": {
+        "cancelled": {
+          "type": "boolean"
+        },
+        "answers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QuestionnaireAnswer"
+          }
+        },
+        "timedOut": {
+          "type": "boolean",
+          "const": true
+        },
+        "timeoutMinutes": {
+          "type": "number"
+        }
+      }
+    },
     "RuntimeInspection": {
       "type": "object",
       "required": [
@@ -2267,6 +2411,75 @@
         }
       }
     },
+    "SessionConnectResponse": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "SessionError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "SessionFastResponse": {
+      "type": "object",
+      "required": [
+        "fast"
+      ],
+      "properties": {
+        "fast": {
+          "type": "boolean"
+        }
+      }
+    },
+    "SessionGroup": {
+      "type": "object",
+      "required": [
+        "label",
+        "sessions"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "workspaceMode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "branch"
+            },
+            {
+              "type": "string",
+              "const": "worktree"
+            }
+          ]
+        },
+        "baseRef": {
+          "type": "string"
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionView"
+          }
+        }
+      }
+    },
     "SessionJiraIssue": {
       "type": "object",
       "required": [
@@ -2294,6 +2507,112 @@
         },
         "description": {
           "type": "string"
+        }
+      }
+    },
+    "SessionList": {
+      "type": "object",
+      "required": [
+        "revision",
+        "groups"
+      ],
+      "properties": {
+        "revision": {
+          "type": "number"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionGroup"
+          }
+        }
+      }
+    },
+    "SessionListLayoutGroup": {
+      "type": "object",
+      "required": [
+        "label",
+        "ids"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "workspaceMode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "branch"
+            },
+            {
+              "type": "string",
+              "const": "worktree"
+            }
+          ]
+        },
+        "baseRef": {
+          "type": "string"
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "SessionListUpdate": {
+      "type": "object",
+      "required": [
+        "revision",
+        "upserts"
+      ],
+      "properties": {
+        "revision": {
+          "type": "number"
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionListLayoutGroup"
+          }
+        },
+        "upserts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionView"
+          }
+        }
+      }
+    },
+    "SessionOk": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "SessionPromptResponse": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        },
+        "duplicate": {
+          "type": "boolean",
+          "const": true
         }
       }
     },
@@ -2325,6 +2644,151 @@
         }
       }
     },
+    "SessionResponse": {
+      "type": "object",
+      "required": [
+        "session"
+      ],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        }
+      }
+    },
+    "SessionStage": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "investigation"
+        },
+        {
+          "type": "string",
+          "const": "implementation"
+        },
+        {
+          "type": "string",
+          "const": "testing"
+        },
+        {
+          "type": "string",
+          "const": "done"
+        }
+      ]
+    },
+    "SessionStageOrigin": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SessionStageSource"
+        },
+        {
+          "type": "string",
+          "const": "default"
+        }
+      ]
+    },
+    "SessionStageSource": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "operator"
+        },
+        {
+          "type": "string",
+          "const": "agent"
+        },
+        {
+          "type": "string",
+          "const": "pullRequest"
+        }
+      ]
+    },
+    "SessionStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "idle"
+        },
+        {
+          "type": "string",
+          "const": "running"
+        },
+        {
+          "type": "string",
+          "const": "waiting"
+        },
+        {
+          "type": "string",
+          "const": "starting"
+        },
+        {
+          "type": "string",
+          "const": "error"
+        },
+        {
+          "type": "string",
+          "const": "reconnecting"
+        },
+        {
+          "type": "string",
+          "const": "disconnected"
+        }
+      ]
+    },
+    "SessionSubagent": {
+      "type": "object",
+      "required": [
+        "taskId",
+        "task",
+        "status",
+        "startedAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SubagentStatus"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "endedAt": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "completionDelivery": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "pending"
+            },
+            {
+              "type": "string",
+              "const": "delivered"
+            }
+          ]
+        },
+        "collect": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
     "SessionTools": {
       "anyOf": [
         {
@@ -2351,6 +2815,168 @@
           }
         }
       ]
+    },
+    "SessionView": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "group",
+        "cwd",
+        "displayCwd",
+        "tool",
+        "status",
+        "stage",
+        "stageOrigin",
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "progress": {
+          "$ref": "#/$defs/ProgressCard"
+        },
+        "pullRequests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionPullRequest"
+          }
+        },
+        "jiraIssues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionJiraIssue"
+          }
+        },
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "displayCwd": {
+          "type": "string"
+        },
+        "worker": {
+          "type": "object",
+          "required": [
+            "id",
+            "name"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "tool": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SessionStatus"
+        },
+        "creating": {
+          "$ref": "#/$defs/WorktreeProgress"
+        },
+        "creationError": {
+          "type": "string"
+        },
+        "initialPrompt": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "object",
+          "required": [
+            "active"
+          ],
+          "properties": {
+            "active": {
+              "type": "boolean",
+              "const": true
+            },
+            "memoryBytes": {
+              "type": "number"
+            },
+            "bootDurationMs": {
+              "type": "number"
+            }
+          }
+        },
+        "interrupted": {
+          "type": "boolean",
+          "const": true
+        },
+        "background": {
+          "type": "boolean",
+          "const": true
+        },
+        "model": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "pinned": {
+          "type": "boolean",
+          "const": true
+        },
+        "archived": {
+          "type": "boolean",
+          "const": true
+        },
+        "unread": {
+          "type": "boolean",
+          "const": true
+        },
+        "icon": {
+          "type": "string"
+        },
+        "parentId": {
+          "type": "string"
+        },
+        "subagent": {
+          "$ref": "#/$defs/SessionSubagent"
+        },
+        "bot": {
+          "type": "object",
+          "required": [
+            "id",
+            "handle",
+            "name"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "handle": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "stage": {
+          "$ref": "#/$defs/SessionStage"
+        },
+        "stageOrigin": {
+          "$ref": "#/$defs/SessionStageOrigin"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      }
     },
     "Settings": {
       "type": "object",
@@ -2761,6 +3387,38 @@
       }
     },
     "SettingsRequest": {},
+    "SubagentStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "starting"
+        },
+        {
+          "type": "string",
+          "const": "running"
+        },
+        {
+          "type": "string",
+          "const": "completed"
+        },
+        {
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "type": "string",
+          "const": "cancelled"
+        },
+        {
+          "type": "string",
+          "const": "timed_out"
+        },
+        {
+          "type": "string",
+          "const": "interrupted"
+        }
+      ]
+    },
     "ToolCatalogEntry": {
       "type": "object",
       "required": [
@@ -2856,6 +3514,35 @@
         }
       }
     },
+    "TranscriptMetrics": {
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "number"
+        },
+        "completedAt": {
+          "type": "number"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "inputTokens": {
+          "type": "number"
+        },
+        "outputTokens": {
+          "type": "number"
+        },
+        "cacheReadTokens": {
+          "type": "number"
+        },
+        "cacheWriteTokens": {
+          "type": "number"
+        },
+        "costUsd": {
+          "type": "number"
+        }
+      }
+    },
     "VscodeProviderPreference": {
       "anyOf": [
         {
@@ -2900,6 +3587,47 @@
         },
         "licenseAcceptedAt": {
           "type": "string"
+        }
+      }
+    },
+    "WorktreeProgress": {
+      "type": "object",
+      "required": [
+        "phase"
+      ],
+      "properties": {
+        "phase": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "naming"
+            },
+            {
+              "type": "string",
+              "const": "preparing"
+            },
+            {
+              "type": "string",
+              "const": "checkout"
+            },
+            {
+              "type": "string",
+              "const": "filtering"
+            },
+            {
+              "type": "string",
+              "const": "finalizing"
+            }
+          ]
+        },
+        "percent": {
+          "type": "number"
+        },
+        "completed": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
         }
       }
     }
@@ -2965,9 +3693,7 @@
       "JiraLinkResponse",
       "JiraParentCandidate",
       "JiraProject",
-      "JiraProjectsResponse",
-      "JiraStatusCategory",
-      "SessionJiraIssue"
+      "JiraProjectsResponse"
     ],
     "settings": [
       "BrowserSettings",
@@ -3012,6 +3738,35 @@
       "ToolCatalogEntry",
       "ToolsCatalog",
       "ToolsError"
+    ],
+    "sessions": [
+      "JiraStatusCategory",
+      "ProgressCard",
+      "ProgressStep",
+      "QuestionnaireAnswer",
+      "QuestionnaireOption",
+      "QuestionnaireQuestion",
+      "QuestionnaireResult",
+      "SessionConnectResponse",
+      "SessionError",
+      "SessionFastResponse",
+      "SessionGroup",
+      "SessionJiraIssue",
+      "SessionList",
+      "SessionListLayoutGroup",
+      "SessionListUpdate",
+      "SessionOk",
+      "SessionPromptResponse",
+      "SessionResponse",
+      "SessionStage",
+      "SessionStageOrigin",
+      "SessionStageSource",
+      "SessionStatus",
+      "SessionSubagent",
+      "SessionView",
+      "SubagentStatus",
+      "TranscriptMetrics",
+      "WorktreeProgress"
     ]
   },
   "x-hui-routes": [
@@ -3305,6 +4060,118 @@
     },
     {
       "method": "POST",
+      "path": "/__hui/session-groups",
+      "response": {
+        "$ref": "#/$defs/SessionList"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/session-groups",
+      "response": {
+        "$ref": "#/$defs/SessionList"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/session-groups/:name",
+      "response": {
+        "$ref": "#/$defs/SessionList"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/__hui/session-groups/:name",
+      "response": {
+        "$ref": "#/$defs/SessionList"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions",
+      "response": {
+        "$ref": "#/$defs/SessionList"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions",
+      "response": {
+        "$ref": "#/$defs/SessionResponse"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/sessions/:id",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/__hui/sessions/:id",
+      "response": {
+        "$ref": "#/$defs/SessionResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/abort",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/sessions/:id/compact",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/compact",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/connect",
+      "response": {
+        "$ref": "#/$defs/SessionConnectResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/continue",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/fast",
+      "response": {
+        "$ref": "#/$defs/SessionFastResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/follow-up",
+      "response": {
+        "$ref": "#/$defs/SessionPromptResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/fork",
+      "response": {
+        "$ref": "#/$defs/SessionResponse"
+      }
+    },
+    {
+      "method": "POST",
       "path": "/__hui/sessions/:id/jira",
       "request": {
         "$ref": "#/$defs/JiraCreateRequest"
@@ -3331,6 +4198,48 @@
       },
       "response": {
         "$ref": "#/$defs/JiraLinkResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/prompt",
+      "response": {
+        "$ref": "#/$defs/SessionPromptResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/question",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/reload",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/resume",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/rewind",
+      "response": {
+        "$ref": "#/$defs/SessionOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/steer",
+      "response": {
+        "$ref": "#/$defs/SessionPromptResponse"
       }
     },
     {

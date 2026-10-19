@@ -19,7 +19,7 @@ import { sessionGroupLabel } from "../lib/session/sessions.ts";
 import type { NoteLevel } from "../lib/session/ui-state.ts";
 import { clampSuggestionIndex, parseTaskSuggestions, type TaskSuggestion, type TaskSuggestionStartMode } from "../lib/task-suggestions.ts";
 import type { BacklogCardAction } from "../views/kanban.ts";
-import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS } from "../../shared/session-stages.ts";
+import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS } from "../lib/kanban.ts";
 
 type BacklogDeps = {
   notify: (message: string, failed?: boolean) => void;

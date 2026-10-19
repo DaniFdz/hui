@@ -1,6 +1,7 @@
 /** Browser half of the Jira integration: merging project search results and the draft form's parent hint and
  * edits. Its requests live in src/api/jira.ts. */
-import type { JiraDraft, JiraProject, SessionJiraIssue } from "../api/schema/jira.ts";
+import type { JiraDraft, JiraProject } from "../api/schema/jira.ts";
+import type { SessionJiraIssue } from "../api/schema/sessions.ts";
 
 export const JIRA_API_TOKEN_URL = "https://id.atlassian.com/manage-profile/security/api-tokens";
 

@@ -3,7 +3,7 @@
  * custom group order, plus the per-browser view options in localStorage. Every projection is view-only; the
  * registry's groups and order are changed only through its API.
  */
-import { DEFAULT_SESSION_STAGE, isSessionStage, stageRank } from "../../../shared/session-stages.ts";
+import { DEFAULT_SESSION_STAGE, isSessionStage, stageRank } from "../kanban.ts";
 import type { SessionGroup, SessionStatus, SessionView } from "../../api/sessions.ts";
 import { sessionGroupLabel } from "./sessions.ts";
 

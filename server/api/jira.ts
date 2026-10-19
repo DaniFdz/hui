@@ -1,16 +1,6 @@
 /** Public Jira connection, project search, work-item and draft payloads, separate from stored credentials. */
 import { Type, type Static } from "typebox";
-
-export const JiraStatusCategory = Type.Union([
-  Type.Literal("new"), Type.Literal("indeterminate"), Type.Literal("done"),
-], { $id: "JiraStatusCategory" });
-export type JiraStatusCategory = Static<typeof JiraStatusCategory>;
-
-export const SessionJiraIssue = Type.Object({
-  key: Type.String(), url: Type.String(), summary: Type.Optional(Type.String()), status: Type.Optional(Type.String()),
-  statusCategory: Type.Optional(JiraStatusCategory), issueType: Type.Optional(Type.String()), description: Type.Optional(Type.String()),
-}, { $id: "SessionJiraIssue" });
-export type SessionJiraIssue = Static<typeof SessionJiraIssue>;
+import { JiraStatusCategory, SessionView } from "./sessions.ts";
 
 export const JiraConnection = Type.Object({
   configured: Type.Boolean(), site: Type.String(), email: Type.String(), tokenSet: Type.Boolean(),
@@ -80,12 +70,12 @@ export const JiraError = Type.Object({ error: Type.String() }, { $id: "JiraError
 export type JiraError = Static<typeof JiraError>;
 
 export const JiraLinkResponse = Type.Object({
-  issue: JiraIssueRef, session: Type.Optional(Type.Unknown()),
+  issue: JiraIssueRef, session: Type.Optional(SessionView),
 }, { $id: "JiraLinkResponse" });
 export type JiraLinkResponse = Static<typeof JiraLinkResponse>;
 
 export const JiraCreateResponse = Type.Object({
-  issue: JiraIssueRef, session: Type.Optional(Type.Unknown()), warning: Type.Optional(Type.String()),
+  issue: JiraIssueRef, session: Type.Optional(SessionView), warning: Type.Optional(Type.String()),
 }, { $id: "JiraCreateResponse" });
 export type JiraCreateResponse = Static<typeof JiraCreateResponse>;
 

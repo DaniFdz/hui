@@ -20,7 +20,7 @@ test("upstream heads-up distinguishes running, paused, terminal and completed pl
 });
 
 test("HUI supplies real session facts without manufacturing identity or task completion", () => {
-  const row = huiHovercardRow({ id: "one", title: "Build", cwd: "/work/project", group: "", tool: "pi", status: "idle", createdAt: "2026-09-25T00:00:00Z", updatedAt: "2026-09-25T00:00:00Z" });
+  const row = huiHovercardRow({ id: "one", title: "Build", cwd: "/work/project", group: "", tool: "pi", status: "idle", displayCwd: "", stage: "investigation", stageOrigin: "default", createdAt: "2026-09-25T00:00:00Z", updatedAt: "2026-09-25T00:00:00Z" });
   assert.equal(row.label, "Build");
   assert.equal(row.status, undefined);
   assert.equal(row.hasActiveRun, false);

@@ -9,6 +9,7 @@
  * agent goes on without an answer.
  */
 import { randomUUID } from "node:crypto";
+import type { QuestionnaireAnswer, QuestionnaireOption, QuestionnaireQuestion, QuestionnaireResult } from "./api/sessions.ts";
 
 const MAX_QUESTIONS = 4;
 const MAX_HEADER = 16;
@@ -23,15 +24,8 @@ const MAX_CUSTOM = 4_000;
 /** The transports' ceiling on one call: a day, after which the caller gives up and the card goes. */
 export const QUESTIONNAIRE_WAIT_MS = 24 * 60 * 60_000;
 
-type QuestionnaireOption = { label: string; description: string; preview?: string };
-export type QuestionnaireQuestion = { header: string; question: string; multiSelect: boolean; options: QuestionnaireOption[] };
 /** A pending questionnaire as the session's question list carries it; `title` is the first question. */
 export type QuestionnairePrompt = { id: string; method: "questionnaire"; title: string; questions: QuestionnaireQuestion[] };
-/** One answered question: the chosen labels, then the operator's own text when they typed one. */
-export type QuestionnaireAnswer = { header: string; question: string; selected: string[]; preview?: string };
-/** The tool result. Cancelled, or answered with nothing, is a decline. `timedOut` (always cancelled, without
- * answers) says nobody answered within the question timeout, `timeoutMinutes`. */
-export type QuestionnaireResult = { cancelled: boolean; answers: QuestionnaireAnswer[]; timedOut?: true; timeoutMinutes?: number };
 
 type Pending = { sessionId: string; prompt: QuestionnairePrompt; settle(result: QuestionnaireResult): void };
 

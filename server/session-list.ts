@@ -1,9 +1,29 @@
 /** Owns the one in-memory session list every screen shares. While anyone
- * listens it is recomputed on an interval and only changes are broadcast.
+ * listens it is recomputed on an interval and only changes are broadcast, as
+ * revisioned update frames (`SessionListUpdate`) this module encodes.
  * ponytail: timer-driven; hook registry/runtime events if 1 s lag matters. */
-import { diffSessionList, sessionListLayout, type SessionListGroup, type SessionListUpdate } from "../shared/session-list.ts";
-
+type SessionListGroup<S> = { label: string; cwd?: string; workspaceMode?: "branch" | "worktree"; baseRef?: string; sessions: S[] };
+type Layout = (Omit<SessionListGroup<never>, "sessions"> & { ids: string[] })[];
+/** `groups` (order and membership) is present only when it changed; `upserts`
+ * holds every session whose view changed. */
+type SessionListUpdate<S> = { revision: number; groups?: Layout; upserts: S[] };
 type Groups<S> = SessionListGroup<S>[];
+
+function sessionListLayout<S extends { id: string }>(groups: readonly SessionListGroup<S>[]): Layout {
+  return groups.map(({ sessions, ...meta }) => ({ ...meta, ids: sessions.map(({ id }) => id) }));
+}
+
+function diffSessionList<S extends { id: string }>(
+  previous: readonly SessionListGroup<S>[],
+  next: readonly SessionListGroup<S>[],
+): Omit<SessionListUpdate<S>, "revision"> | undefined {
+  const layout = sessionListLayout(next);
+  const layoutChanged = JSON.stringify(layout) !== JSON.stringify(sessionListLayout(previous));
+  const before = new Map(previous.flatMap((group) => group.sessions).map((session) => [session.id, JSON.stringify(session)]));
+  const upserts = next.flatMap((group) => group.sessions).filter((session) => before.get(session.id) !== JSON.stringify(session));
+  if (!layoutChanged && !upserts.length) return undefined;
+  return { ...(layoutChanged ? { groups: layout } : {}), upserts };
+}
 
 export function createSessionListHub<S extends { id: string }>(load: () => Promise<Groups<S>>, intervalMs = 1_000) {
   // Clock-seeded so revisions keep rising across gateway restarts.

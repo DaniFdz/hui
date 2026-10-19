@@ -8,25 +8,15 @@
  * session's pull requests can each move it, with a fixed precedence: an operator placement wins until the operator clears it,
  * and pull-request evidence only ever advances an agent-reported stage.
  */
-import type { SessionPullRequest } from "../server/api/github.ts";
+import type { SessionPullRequest } from "../api/github.ts";
+import type { SessionStage, SessionStageOrigin, SessionStageSource } from "../api/sessions.ts";
 
-/** Board columns, left to right. */
-export const KANBAN_COLUMNS = ["backlog", "investigation", "implementation", "testing", "done"] as const;
-export type KanbanColumn = (typeof KANBAN_COLUMNS)[number];
 /** Stages a session can be in: every column except Backlog. */
 export const SESSION_STAGES = ["investigation", "implementation", "testing", "done"] as const;
-export type SessionStage = (typeof SESSION_STAGES)[number];
 /** Where a session without a stored stage (or a legacy stored `backlog`) sits. */
 export const DEFAULT_SESSION_STAGE: SessionStage = "investigation";
 
-/** Who placed the stored stage. `pullRequest` is persisted inference, so a
- * cold session keeps the stage its pull requests earned before a restart. */
-export type SessionStageSource = "operator" | "agent" | "pullRequest";
-/** Where a view's effective stage came from; `default` means nothing has. */
-export type SessionStageOrigin = SessionStageSource | "default";
-
-export const SESSION_STAGE_LABELS: Readonly<Record<KanbanColumn, string>> = {
-  backlog: "Backlog",
+export const SESSION_STAGE_LABELS: Readonly<Record<SessionStage, string>> = {
   investigation: "Investigation",
   implementation: "Implementation",
   testing: "Testing",
@@ -35,10 +25,6 @@ export const SESSION_STAGE_LABELS: Readonly<Record<KanbanColumn, string>> = {
 
 export function isSessionStage(value: unknown): value is SessionStage {
   return typeof value === "string" && (SESSION_STAGES as readonly string[]).includes(value);
-}
-
-export function isKanbanColumn(value: unknown): value is KanbanColumn {
-  return typeof value === "string" && (KANBAN_COLUMNS as readonly string[]).includes(value);
 }
 
 export function isSessionStageSource(value: unknown): value is SessionStageSource {

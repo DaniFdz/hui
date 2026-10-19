@@ -5,7 +5,7 @@ export type ProgressStepStatus = "pending" | "in_progress" | "completed";
 export type ProgressStep = { step: string; status: ProgressStepStatus };
 export type ProgressCard = {
   markdown: string;
-  steps: readonly ProgressStep[];
+  steps: ProgressStep[];
 };
 
 const STATUSES = new Set<ProgressStepStatus>(["pending", "in_progress", "completed"]);

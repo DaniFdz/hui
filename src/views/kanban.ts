@@ -6,10 +6,11 @@
  */
 import { html, nothing, svg, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
-import { KANBAN_COLUMNS, SESSION_STAGE_LABELS, SESSION_STAGES, type KanbanColumn, type SessionStage } from "../../shared/session-stages.ts";
+import { KANBAN_COLUMNS, SESSION_STAGE_LABELS, SESSION_STAGES, type KanbanColumn } from "../lib/kanban.ts";
+import type { SessionStage } from "../api/schema/sessions.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { jiraIssueAccessibleLabel, jiraStatusLabel } from "../lib/jira.ts";
-import type { SessionJiraIssue } from "../api/schema/jira.ts";
+import type { SessionJiraIssue } from "../api/schema/sessions.ts";
 import type { BacklogItem, BacklogJiraState } from "../../shared/backlog.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { brandIcons } from "../lib/brand-icons.ts";

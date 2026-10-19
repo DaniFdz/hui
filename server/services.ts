@@ -50,7 +50,7 @@ import { resolveWorkingDirectory } from "./working-directories.ts";
 import { readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { createDurableBots } from "./runtimes/durable-bot-access.ts";
-import type { SessionJiraIssue } from "./api/jira.ts";
+import type { SessionJiraIssue } from "./api/sessions.ts";
 import {
   JiraClient,
   JiraConfigStore,

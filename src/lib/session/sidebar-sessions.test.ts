@@ -15,7 +15,7 @@ import {
 function session(id: string, overrides: Partial<SessionView> = {}): SessionView {
   return {
     id, title: id, group: "Work", cwd: "/work/app", tool: "pi", status: "idle",
-    createdAt: "2026-09-20T00:00:00Z", updatedAt: "2026-09-20T00:00:00Z", ...overrides,
+    displayCwd: "", stage: "investigation", stageOrigin: "default", createdAt: "2026-09-20T00:00:00Z", updatedAt: "2026-09-20T00:00:00Z", ...overrides,
   };
 }
 

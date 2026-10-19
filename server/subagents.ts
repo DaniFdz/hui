@@ -4,9 +4,9 @@ import { randomUUID } from "node:crypto";
 import {
   liveSessions,
   type LiveSessions,
-  type SessionStatus,
   type SubagentTaskView,
 } from "./live-sessions.ts";
+import type { SessionStatus } from "./api/sessions.ts";
 import { recordDiagnosticEvent } from "./observability.ts";
 import {
   readRegistry,

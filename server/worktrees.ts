@@ -10,18 +10,12 @@ import { basename, join, relative, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 
 import { WORKTREES_DIR } from "./paths.ts";
+import type { WorktreeProgress } from "./api/sessions.ts";
 import { worktreeSlug } from "../shared/branch-names.ts";
 
 export { worktreeSlug };
 
 export type GitResult = { code: number; stdout: string; stderr: string };
-export type WorktreeProgress = {
-  /** `naming` precedes Git work while the utility model picks the branch. */
-  phase: "naming" | "preparing" | "checkout" | "filtering" | "finalizing";
-  percent?: number;
-  completed?: number;
-  total?: number;
-};
 export type GitRunner = (
   cwd: string,
   args: readonly string[],

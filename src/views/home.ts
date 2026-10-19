@@ -50,7 +50,7 @@ import "../components/datadog-embeds.ts";
 import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
-import type { QuestionnaireQuestion, QuestionnaireResult } from "../../server/questionnaires.ts";
+import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
 import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";

@@ -35,8 +35,8 @@ test("a multiplex snapshot refreshes every session and resets cold rows to idle"
   const groups = [{
     label: "Work",
     sessions: [
-      { id: "a", title: "A", group: "Work", cwd: "/tmp", tool: "pi", status: "running" as const, createdAt: "now", updatedAt: "now" },
-      { id: "b", title: "B", group: "Work", cwd: "/tmp", tool: "pi", status: "error" as const, createdAt: "now", updatedAt: "now" },
+      { id: "a", title: "A", group: "Work", cwd: "/tmp", tool: "pi", status: "running" as const, displayCwd: "", stage: "investigation" as const, stageOrigin: "default" as const, createdAt: "now", updatedAt: "now" },
+      { id: "b", title: "B", group: "Work", cwd: "/tmp", tool: "pi", status: "error" as const, displayCwd: "", stage: "investigation" as const, stageOrigin: "default" as const, createdAt: "now", updatedAt: "now" },
     ],
   }];
 

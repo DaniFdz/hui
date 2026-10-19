@@ -6,6 +6,7 @@ import { PiError } from "../api/pi.ts";
 import { ToolsError } from "../api/tools.ts";
 import { ProviderError } from "../api/providers.ts";
 import { SettingsError } from "../api/settings.ts";
+import { SessionError } from "../api/sessions.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -145,6 +146,7 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
     if (path.startsWith("/__hui/github") || path.startsWith("/__hui/session-activity")) expectSchema(GitHubError, body);
     if (path.startsWith("/__hui/datadog")) expectSchema(DatadogError, body);
     if (path.startsWith("/__hui/jira") || /\/jira(?:\/|$)/u.test(path)) expectSchema(JiraError, body);
+    if (/^\/__hui\/(?:session-groups(?:\/[^/]+)?|sessions(?:\/[^/]+(?:\/(?:prompt|steer|follow-up|continue|compact|reload|abort|rewind|resume|question|fork|fast|connect))?)?)$/u.test(path)) expectSchema(SessionError, body);
   }
   return [response.status, body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).sort() : null];
 }

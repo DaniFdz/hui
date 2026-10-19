@@ -12,7 +12,7 @@ import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.t
 import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/session/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
 import { kanbanIcon } from "./kanban.ts";
-import { isSessionStage, SESSION_STAGE_LABELS } from "../../shared/session-stages.ts";
+import { isSessionStage, SESSION_STAGE_LABELS } from "../lib/kanban.ts";
 export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
 import { HUI_PAGES, type HuiPage } from "../lib/pages.ts";
 import { navigationPath } from "../lib/navigation.ts";

@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "vitest";
-import { effectiveSessionStage, isKanbanColumn, isSessionStage, pullRequestStage } from "../shared/session-stages.ts";
+import type { SessionStage } from "../api/sessions.ts";
+import {
+  DEFAULT_SESSION_STAGE, effectiveSessionStage, isSessionStage, pullRequestStage, SESSION_STAGE_LABELS, SESSION_STAGES, stageRank,
+} from "./session-stages.ts";
+
+const fixture: {
+  stages: string[];
+  defaultStage: string;
+  labels: Record<string, string>;
+  isSessionStage: { input: unknown; expected: boolean }[];
+  stageRank: { input: SessionStage; expected: number }[];
+} = JSON.parse(readFileSync(new URL("./session-stages.fixture.json", import.meta.url), "utf8"));
+
+test("session stages preserve the shared runtime fixtures", () => {
+  assert.deepEqual(SESSION_STAGES, fixture.stages);
+  assert.equal(DEFAULT_SESSION_STAGE, fixture.defaultStage);
+  assert.deepEqual(SESSION_STAGE_LABELS, fixture.labels);
+  for (const { input, expected } of fixture.isSessionStage) assert.equal(isSessionStage(input), expected, String(input));
+  for (const { input, expected } of fixture.stageRank) assert.equal(stageRank(input), expected, input);
+});
 
 test("pull requests prove testing while any is open and done only once merged", () => {
   assert.equal(pullRequestStage([]), undefined);
@@ -14,7 +34,6 @@ test("pull requests prove testing while any is open and done only once merged", 
 test("an unplaced session starts in Investigation; Backlog is not a session stage", () => {
   assert.deepEqual(effectiveSessionStage({}), { stage: "investigation", stageOrigin: "default" });
   assert.equal(isSessionStage("backlog"), false);
-  assert.equal(isKanbanColumn("backlog"), true);
 });
 
 test("pull-request evidence advances an agent stage but never moves it backwards", () => {

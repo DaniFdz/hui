@@ -4,6 +4,7 @@ import * as power from "./power.ts";
 import * as github from "./github.ts";
 import * as datadog from "./datadog.ts";
 import * as jira from "./jira.ts";
+import * as sessions from "./sessions.ts";
 import * as apiSchema from "./api-schema.ts";
 import * as settings from "./settings.ts";
 import * as pi from "./pi.ts";
@@ -18,7 +19,7 @@ export type RouteSchema = {
   events?: TSchema;
 };
 
-export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings, pi, providers, tools };
+export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings, pi, providers, tools, sessions };
 
 export function buildApiSchema(version: string) {
   const definitions = new Map<string, unknown>();

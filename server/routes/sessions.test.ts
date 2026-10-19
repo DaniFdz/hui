@@ -6,6 +6,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { waitFor } from "../test-support/wait-for.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
+import { SessionError, SessionList, SessionOk, SessionResponse } from "../api/sessions.ts";
 
 test("a failed worktree launch stays listed with its prompt until dismissed", { timeout: 20_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-worktree-routes-"));
@@ -36,12 +38,17 @@ test("a failed worktree launch stays listed with its prompt until dismissed", { 
     });
     return { status: response.status, body: await response.json() as { session?: View; groups?: { sessions: View[] }[]; error?: string } };
   };
-  const listed = async () => (await route("/__hui/sessions")).body.groups?.flatMap(({ sessions }) => sessions) ?? [];
+  const listed = async () => {
+    const { body } = await route("/__hui/sessions");
+    expectSchema(SessionList, body);
+    return body.groups.flatMap(({ sessions }) => sessions);
+  };
 
   const started = await route("/__hui/sessions", "POST", {
     cwd: notRepository, title: "Doomed", initialPrompt: "keep this prompt", worktree: true,
   });
   assert.equal(started.status, 200);
+  expectSchema(SessionResponse, started.body);
   const id = started.body.session?.id ?? "";
   assert.equal(started.body.session?.status, "starting");
   assert.ok(started.body.session?.creating);
@@ -55,7 +62,10 @@ test("a failed worktree launch stays listed with its prompt until dismissed", { 
   const opened = await route(`/__hui/sessions/${id}/open`, "POST", {});
   assert.equal(opened.status, 409);
   assert.match(opened.body.error ?? "", /Git/);
+  expectSchema(SessionError, opened.body);
 
-  assert.equal((await route(`/__hui/sessions/${id}`, "DELETE")).status, 200);
+  const dismissed = await route(`/__hui/sessions/${id}`, "DELETE");
+  assert.equal(dismissed.status, 200);
+  expectSchema(SessionOk, dismissed.body);
   assert.deepEqual(await listed(), []);
 });

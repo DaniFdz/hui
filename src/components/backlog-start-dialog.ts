@@ -12,7 +12,8 @@
  * here. Cancel changes nothing.
  */
 import { LitElement, html, nothing } from "lit";
-import { SESSION_STAGE_LABELS, type SessionStage } from "../../shared/session-stages.ts";
+import { SESSION_STAGE_LABELS } from "../lib/kanban.ts";
+import type { SessionStage } from "../api/schema/sessions.ts";
 import type { BacklogItem } from "../../shared/backlog.ts";
 import { fallbackBranchName } from "../../shared/branch-names.ts";
 import { startBacklogItem, suggestBacklogBranchName } from "../api/backlog.ts";

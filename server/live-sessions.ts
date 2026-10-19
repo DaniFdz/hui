@@ -20,6 +20,7 @@ import type { TaskSuggestion } from "../shared/task-suggestions.ts";
 import type { Watcher } from "../shared/watchers.ts";
 import type { SecretQuestion } from "./secret-requests.ts";
 import type { QuestionnairePrompt } from "./questionnaires.ts";
+import type { SessionStatus } from "./api/sessions.ts";
 
 /** A question HUI itself asks: a `secret_request` or an `ask_user_question` card. */
 export type HuiQuestion = SecretQuestion | QuestionnairePrompt;
@@ -49,7 +50,6 @@ import { recordDiagnosticEvent } from "./observability.ts";
 import { readHuiSettings } from "./hui-settings.ts";
 import type { Settings } from "./hui-settings.ts";
 
-export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 
 /** Replace runtime-internal attachment locations with opaque gateway URLs. */

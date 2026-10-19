@@ -8,7 +8,8 @@
  * layout and selection.
  */
 import type { ReactiveControllerHost } from "lit";
-import { applySessionListUpdate, type SessionListUpdate } from "../../shared/session-list.ts";
+import { applySessionListUpdate } from "../api/session-list.ts";
+import type { SessionListUpdate } from "../api/schema/sessions.ts";
 import { deleteSession, loadSessions, renameSession, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
@@ -458,7 +459,7 @@ export class SessionsController {
     this.#deps.statusApplied(update);
   };
 
-  #applyListChange = (update: SessionListUpdate<SessionView>) => {
+  #applyListChange = (update: SessionListUpdate) => {
     if (update.revision <= this.revision) return;
     // Status events can overtake a list built a moment earlier.
     this.receive(update.revision, mergeSessionStatuses(applySessionListUpdate(this.groups, update), this.statuses));

@@ -12,7 +12,8 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 import { CONFIG_DIR } from "./paths.ts";
-import { isSessionStage, isSessionStageSource, type SessionStage, type SessionStageSource } from "../shared/session-stages.ts";
+import type { SessionStage, SessionStageSource } from "./api/sessions.ts";
+import { isSessionStage, isSessionStageSource } from "./sessions/session-stages.ts";
 
 const REGISTRY_FILE = join(CONFIG_DIR, "sessions.json");
 
