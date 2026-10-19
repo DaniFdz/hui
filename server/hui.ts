@@ -85,7 +85,6 @@ import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnost
 import { durableHost } from "./runtimes/durable-host.ts";
 import { answerSideQuestion, suggestWorktreeName } from "./model-routing.ts";
 import { sessionDigest } from "./session-digest.ts";
-import { activityRange, readSessionActivity } from "./session-activity.ts";
 import { runPiUtilityPrompt } from "./runtimes/pi.ts";
 import type { SessionJiraIssue } from "../shared/jira.ts";
 import {
@@ -115,10 +114,9 @@ import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession, servePresentedMedia } from "./presented-media.ts";
 import { serveWidgetSandbox } from "./widget-sandbox.ts";
 import { WIDGET_SANDBOX_PATH } from "../shared/widgets.ts";
-import { GitHubCli, GitHubCliError } from "./github.ts";
-import { FIRST_YEAR as GITHUB_FIRST_YEAR, GitHubContributionsReader, latestYear } from "./github-contributions.ts";
+import { GitHubCli } from "./github.ts";
+import { GitHubContributionsReader } from "./github-contributions.ts";
 import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./github-previews.ts";
-import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../shared/github-links.ts";
 import { MAX_DATADOG_EMBEDS, parseDatadogUrl } from "../shared/datadog.ts";
 import { DatadogError, DatadogOrgs } from "./datadog.ts";
 import { DatadogPreviews } from "./datadog-previews.ts";
@@ -156,6 +154,7 @@ import { createSettingsRoutes } from "./routes/settings.ts";
 import { createTerminalRoutes } from "./routes/terminals.ts";
 import { createBrowserRoutes } from "./routes/browser.ts";
 import { createVscodeRoutes } from "./routes/vscode.ts";
+import { createGitHubRoutes } from "./routes/github.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
@@ -189,17 +188,12 @@ const AUTOMATION_RUN_CANCEL = /^\/__hui\/automation\/runs\/([^/]+)\/cancel$/;
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
 const SESSION_GROUPS_ROUTE = `${PREFIX}session-groups`;
-const SESSION_ACTIVITY_ROUTE = `${PREFIX}session-activity`;
 const SESSION_GROUP_ORDER_MAX = 1_000;
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
   /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
-const GITHUB_ROUTE = `${PREFIX}github`;
-const GITHUB_LOGIN_ROUTE = `${GITHUB_ROUTE}/login`;
-const GITHUB_PREVIEWS_ROUTE = `${GITHUB_ROUTE}/previews`;
-const GITHUB_CONTRIBUTIONS_ROUTE = `${GITHUB_ROUTE}/contributions`;
 const DATADOG_ROUTE = `${PREFIX}datadog`;
 const DATADOG_ORGS_ROUTE = `${DATADOG_ROUTE}/orgs`;
 const DATADOG_LOGIN_ROUTE = `${DATADOG_ROUTE}/login`;
@@ -726,6 +720,7 @@ const triggers = createGatewayTriggers({
 });
 const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
+const githubRoutes = createGitHubRoutes({ githubCli, githubPreviews, githubContributions, bots });
 
 /* ── Datadog ── orgs, sign-in and previews run through the operator's `pup`; HUI never sees a token.
  * `HUI_PUP_CLI` points E2E at a fake executable. A sign-in or an org change drops cached previews. */
@@ -1212,83 +1207,7 @@ async function handleRequest(
     }
   }
 
-  if (path === GITHUB_ROUTE) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    sendJson(response, 200, await githubCli.connection());
-    return;
-  }
-
-  if (path === GITHUB_PREVIEWS_ROUTE) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const urls = new URL(request.url ?? "/", "http://localhost").searchParams.getAll("url");
-    if (urls.length === 0 || urls.length > MAX_GITHUB_EMBEDS || urls.some((url) => url.length > 500 || !parseGitHubUrl(url))) {
-      sendJson(response, 400, { error: `Pass 1-${MAX_GITHUB_EMBEDS} github.com repository, pull request or issue URLs.` });
-      return;
-    }
-    sendJson(response, 200, { previews: await Promise.all(urls.map((url) => githubPreviews.lookup(url))) });
-    return;
-  }
-
-  if (path === SESSION_ACTIVITY_ROUTE) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const range = activityRange(new URL(request.url ?? "/", "http://localhost").searchParams);
-    if (!range) {
-      sendJson(response, 400, { error: "from and to must be epoch milliseconds, to after from and at most 31 days apart." });
-      return;
-    }
-    try {
-      // Bots off: their chats' activity stays out of the calendar too (a record whose bot is gone is a session).
-      const records = await readRegistry();
-      const listed = await botsOn() ? records : records.filter((record) => !record.bot || !bots.identity(record.bot));
-      sendJson(response, 200, await readSessionActivity(listed, range.from, range.to));
-    } catch (error) {
-      sendJson(response, 500, { error: error instanceof Error ? error.message : "Session activity could not be read." });
-    }
-    return;
-  }
-
-  if (path === GITHUB_CONTRIBUTIONS_ROUTE) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const params = new URL(request.url ?? "/", "http://localhost").searchParams;
-    const year = params.has("year") ? Number(params.get("year")) : undefined;
-    if (year !== undefined && !(Number.isInteger(year) && year >= GITHUB_FIRST_YEAR && year <= latestYear())) {
-      sendJson(response, 400, { error: `year must be ${GITHUB_FIRST_YEAR}-${latestYear()}.` });
-      return;
-    }
-    try {
-      sendJson(response, 200, await githubContributions.read(year, params.get("refresh") === "1"));
-    } catch (error) {
-      sendJson(response, 502, { error: error instanceof Error ? error.message : "GitHub activity could not be read." });
-    }
-    return;
-  }
-
-  if (path === GITHUB_LOGIN_ROUTE) {
-    if (request.method !== "POST" && request.method !== "DELETE") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      const result = request.method === "POST" ? await githubCli.startLogin() : await githubCli.cancelLogin();
-      if (result.status === "connected") githubPreviews.clearFailures();
-      sendJson(response, 200, result);
-    } catch (error) {
-      sendJson(response, error instanceof GitHubCliError ? error.status : 500, { error: error instanceof Error ? error.message : "Could not sign in to GitHub." });
-    }
-    return;
-  }
+  if (answered(response, path, await githubRoutes.handle(routed))) return;
 
   if (path === DATADOG_ROUTE) {
     if (request.method !== "GET") {
