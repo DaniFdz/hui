@@ -9,18 +9,18 @@
  * a fork.
  */
 import { renderBotFacts } from "./bot-facts.ts";
-import type { BotFactsActions, BotFactsState } from "../lib/bot-facts.ts";
+import type { BotFactsActions, BotFactsState } from "../lib/bots/facts.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { repeat } from "lit/directives/repeat.js";
 import { icons } from "../lib/icons.ts";
 import { closeDropdownOnEscape, hasOpenWebAwesomePopup, labelDropdown } from "../lib/web-awesome.ts";
 import { navigationPath } from "../lib/navigation.ts";
-import type { BotView } from "../lib/bots.ts";
+import type { BotView } from "../lib/bots/bots.ts";
 import { botLook } from "../../shared/bots.ts";
 import type { BotTrigger } from "../../shared/bot-triggers.ts";
 import type { WorkerState } from "../../shared/workers.ts";
-import { rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bot-face.ts";
+import { rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bots/face.ts";
 import "../components/bot-face.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";
 import { automationRunLabel, automationRunRecoveryDetail } from "../lib/automation-recovery.ts";
@@ -40,9 +40,9 @@ import {
   BOT_PANEL_MIN_WIDTH,
   type BotActivity,
   type BotPanelView,
-} from "../lib/bot-roster.ts";
-import { botRecentRuns, botRoutineRuns, botRoutines, routineFacts, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bot-routines.ts";
-import { botToolsOffLabel } from "../lib/bot-tools.ts";
+} from "../lib/bots/roster.ts";
+import { botRecentRuns, botRoutineRuns, botRoutines, routineFacts, routineSchedule, RoutineFormError, ROUTINE_WEEKDAYS } from "../lib/bots/routines.ts";
+import { botToolsOffLabel } from "../lib/bots/tools.ts";
 import { describeRoutineSchedule, formatTimestamp } from "./settings-automation.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { botCallsLabel, botModelLabel, botTaggingLabel, renderBotSettings, type BotSettingsProps } from "./bot-settings.ts";

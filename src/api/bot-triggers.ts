@@ -1,8 +1,8 @@
 /** Browser client for a bot's triggers (`/__hui/bots/:id/triggers`): list, add, switch, test, delete and new URL,
  * each answer narrowed on the way in. */
 import type { BotTriggerInput, BotTriggerPatch } from "../../shared/bot-triggers.ts";
-import { isRecord } from "../lib/bots.ts";
-import { parseCreated, parseRun, parseTrigger, parseTriggersList } from "../lib/bot-triggers.ts";
+import { isRecord } from "../lib/bots/bots.ts";
+import { parseCreated, parseRun, parseTrigger, parseTriggersList } from "../lib/bots/triggers.ts";
 import { fetchJson } from "./request.ts";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;

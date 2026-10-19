@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, sessionDraftKey, sessionIdFromDraftKey } from "./composer-drafts.ts";
+import { mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, sessionDraftKey, sessionIdFromDraftKey } from "./drafts.ts";
 
 test("draft keys isolate New Session and each registered session", () => {
   assert.equal(NEW_SESSION_DRAFT_KEY, "new-session");

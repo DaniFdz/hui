@@ -1,6 +1,6 @@
 /** Browser client for a bot's Tools & skills catalog (`GET /__hui/bots/:id/catalog`), narrowed on the way in. */
 import type { BotCatalog } from "../../shared/bots.ts";
-import { parseBotCatalog } from "../lib/bot-tools.ts";
+import { parseBotCatalog } from "../lib/bots/tools.ts";
 import { fetchJson } from "./request.ts";
 
 /** Reading the catalog may start the bot's chat first. */

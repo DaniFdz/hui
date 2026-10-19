@@ -3,11 +3,11 @@
  * never reads a template itself: it packs the picked file, folder, link or text for the gateway and narrows the
  * preview and export review it answers. The requests live in src/api/bot-templates.ts.
  */
-import type { BotExportReview } from "../../shared/bot-export.ts";
-import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportSource } from "../../shared/bot-templates.ts";
+import type { BotExportReview } from "../../../shared/bot-export.ts";
+import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportSource } from "../../../shared/bot-templates.ts";
 
-export type { BotImportPreview, BotImportResult, BotImportSource } from "../../shared/bot-templates.ts";
-export type { BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
+export type { BotImportPreview, BotImportResult, BotImportSource } from "../../../shared/bot-templates.ts";
+export type { BotExportGroup, BotExportReview } from "../../../shared/bot-export.ts";
 
 /** Where an import's source comes from, as the dialog's tabs name them. */
 export type BotImportTab = "file" | "link" | "paste";

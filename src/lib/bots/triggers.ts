@@ -7,7 +7,7 @@
 import {
   BOT_TRIGGER_LIMITS, BOT_TRIGGER_SOURCES,
   type BotTrigger, type BotTriggerCreated, type BotTriggerFilter, type BotTriggerInput, type BotTriggerRun, type BotTriggerRunStatus, type BotTriggersList,
-} from "../../shared/bot-triggers.ts";
+} from "../../../shared/bot-triggers.ts";
 
 /** How often the open section reads the triggers again: they fire on their own. */
 export const TRIGGERS_POLL_MS = 5_000;

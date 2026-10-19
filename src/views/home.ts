@@ -34,10 +34,10 @@ import type {
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
-import { composerEnterMode, composerPlaceholder } from "../lib/composer-state.ts";
+import { composerEnterMode, composerPlaceholder } from "../lib/composer/state.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
-import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
+import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
 import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../../shared/thinking.ts";
 import { forkPoint } from "../lib/fork-point.ts";
@@ -70,10 +70,10 @@ import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
-import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bot-face.ts";
+import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bots/face.ts";
 import { renderCallButton } from "./bot-voice.ts";
 import { renderCallCard } from "./chat-call.ts";
-import type { BotView } from "../lib/bots.ts";
+import type { BotView } from "../lib/bots/bots.ts";
 import { botLook, previewLine } from "../../shared/bots.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { slashCommandQuery, type CommandQuery } from "../lib/slash-commands.ts";

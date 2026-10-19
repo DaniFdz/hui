@@ -1,10 +1,10 @@
 /**
  * Client half of the bots API (`/__hui/bots`, owned by `server/`; the contract is in `docs/api.md`): reading the
  * roster, the live list stream, and creating, editing, archiving, restoring and deleting a bot. Records are
- * normalized by src/lib/bots.ts on the way in.
+ * normalized by src/lib/bots/bots.ts on the way in.
  */
 import type { BotPatch, BotView } from "../../shared/bots.ts";
-import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers, type NewBotInput } from "../lib/bots.ts";
+import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers, type NewBotInput } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS } from "./sessions.ts";
 

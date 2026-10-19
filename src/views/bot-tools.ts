@@ -8,9 +8,9 @@
  */
 import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
-import type { BotView } from "../lib/bots.ts";
+import type { BotView } from "../lib/bots/bots.ts";
 import { BOT_ACCESS_ANSWERS } from "../../shared/bots.ts";
-import { botToolsSummary, groupBotTools, matchingSkills, SKILL_SEARCH_MIN, type BotToolsActions, type BotToolsState } from "../lib/bot-tools.ts";
+import { botToolsSummary, groupBotTools, matchingSkills, SKILL_SEARCH_MIN, type BotToolsActions, type BotToolsState } from "../lib/bots/tools.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { parseTrigger, parseTriggersList, TriggerFormError, triggerFormInput, type TriggerFormFields } from "./bot-triggers.ts";
+import { parseTrigger, parseTriggersList, TriggerFormError, triggerFormInput, type TriggerFormFields } from "./triggers.ts";
 
 const FIELDS: TriggerFormFields = { name: "Reviews", prompt: "  Review it.  ", cooldown: "300", matchField: "", matchOp: "equals", matchValue: "", prLinks: false, external: false, bots: false };
 

@@ -3,7 +3,7 @@
 import type { ReactiveControllerHost } from "lit";
 import type { BotFact, BotFactInput, BotFactPatch } from "../../shared/bot-facts.ts";
 import { botFactsApi, type BotFactsApi } from "../api/bot-facts.ts";
-import type { BotFactsState } from "../lib/bot-facts.ts";
+import type { BotFactsState } from "../lib/bots/facts.ts";
 export class BotFactsController {
   state: BotFactsState = { botId: "", facts: [], loading: false, loaded: false, pending: false, error: "" };
   #host: Pick<ReactiveControllerHost, "requestUpdate">;

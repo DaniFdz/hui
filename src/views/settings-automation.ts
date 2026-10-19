@@ -12,7 +12,7 @@ import type {
   AutomationTaskInput,
 } from "../lib/automation-types.ts";
 import type { SessionView } from "../api/sessions.ts";
-import { routineCadenceSummary, routineFacts } from "../lib/bot-routines.ts";
+import { routineCadenceSummary, routineFacts } from "../lib/bots/routines.ts";
 import { automationRunLabel, automationRunRecoveryDetail } from "../lib/automation-recovery.ts";
 import { icons } from "../lib/icons.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";

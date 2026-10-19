@@ -8,13 +8,13 @@
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import { botLook, isBotFaceEars, isBotFaceShape, isBotTagging, storedTagging, type BotAvatar, type BotAvatarPatch, type BotFaceEars, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../shared/bots.ts";
-import { gptLiveVoice } from "../../shared/calls.ts";
-import { voiceLanguage } from "../../shared/voice.ts";
-import type { SessionGroup, SessionView } from "../api/sessions.ts";
-import { sessionTreeIds } from "./session-tree.ts";
+import { botLook, isBotFaceEars, isBotFaceShape, isBotTagging, storedTagging, type BotAvatar, type BotAvatarPatch, type BotFaceEars, type BotFaceShape, type BotInput, type BotMemoryStatus, type BotMemoryUsage, type BotPatch, type BotSessionStatus, type BotsUpdate, type BotView, type BotVoice } from "../../../shared/bots.ts";
+import { gptLiveVoice } from "../../../shared/calls.ts";
+import { voiceLanguage } from "../../../shared/voice.ts";
+import type { SessionGroup, SessionView } from "../../api/sessions.ts";
+import { sessionTreeIds } from "../session-tree.ts";
 
-export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../shared/bots.ts";
+export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../../shared/bots.ts";
 
 /** A bot's editable fields as its Settings page holds them. Empty model fields mean the default: the gateway's
  * model, the default thinking level, Settings' utility model. The persona is not here: the bot writes its SOUL.md in

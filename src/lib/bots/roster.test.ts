@@ -18,7 +18,7 @@ import {
   rosterBots,
   tabAfterKey,
   SIDEBAR_TABS,
-} from "./bot-roster.ts";
+} from "./roster.ts";
 import type { BotView } from "./bots.ts";
 
 const NO_USAGE = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };

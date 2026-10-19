@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { contrastRatio, parseColor, toOklch } from "./color-contrast.ts";
-import { ANSI_NAMES, luminance, parseRgb, terminalTheme } from "./terminal-theme.ts";
+import { contrastRatio, parseColor, toOklch } from "../color-contrast.ts";
+import { ANSI_NAMES, luminance, parseRgb, terminalTheme } from "./theme.ts";
 
 const white = { r: 255, g: 255, b: 255 };
 const ink = { r: 30, g: 30, b: 30 };

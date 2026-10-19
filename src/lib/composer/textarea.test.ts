@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "vitest";
-import { adjustTextareaHeight, disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./composer-textarea.ts";
+import { adjustTextareaHeight, disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./textarea.ts";
 
 function replaceGlobal(t: TestContext, name: string, value: unknown) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, name);

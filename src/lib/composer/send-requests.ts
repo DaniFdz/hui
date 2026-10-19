@@ -4,7 +4,7 @@
  * browser stopped waiting first) and answer with that one's outcome instead of running it twice. Anything else, or any
  * send after one that went through, gets a new id. Browser memory only.
  */
-import type { Attachment } from "../api/sessions.ts";
+import type { Attachment } from "../../api/sessions.ts";
 
 type Payload = { text: string; attachments: readonly Attachment[] };
 type Failed = Payload & { requestId: string; row?: string };

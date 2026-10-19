@@ -121,7 +121,7 @@ test("the composer ports OpenClaw input interactions without unsupported control
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /import \{ adjustTextareaHeight as syncComposerTextarea \} from "\.\.\/lib\/composer-textarea\.ts"/);
+  assert.match(source, /import \{ adjustTextareaHeight as syncComposerTextarea \} from "\.\.\/lib\/composer\/textarea\.ts"/);
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(app, /observeTextareaOverflow\(textarea\)/);
   assert.match(app, /disconnectTextareaOverflowObserver\(this\.composerTextarea\)/);

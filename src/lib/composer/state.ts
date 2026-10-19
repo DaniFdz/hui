@@ -9,7 +9,7 @@ import type {
   QueueSnapshot,
   RuntimeQuestion,
   SessionStatus,
-} from "../api/sessions.ts";
+} from "../../api/sessions.ts";
 
 export const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
 

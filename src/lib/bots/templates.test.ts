@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { base64, downloadName, importSource, parseBotExportReview, parseBotImportPreview, pickedFile, pickedFolder } from "./bot-templates.ts";
+import { base64, downloadName, importSource, parseBotExportReview, parseBotImportPreview, pickedFile, pickedFolder } from "./templates.ts";
 
 test("a picked file or folder becomes a source, refused here when the gateway would refuse it", async () => {
   const bytes = new TextEncoder().encode("You are Nova.");

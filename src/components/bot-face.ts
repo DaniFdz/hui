@@ -35,7 +35,7 @@ import {
   settlesWithDone,
   type BotFaceSize,
   type BotFaceState,
-} from "../lib/bot-face.ts";
+} from "../lib/bots/face.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
 loadViewAssets(() => import("../styles/bot-face.css"));

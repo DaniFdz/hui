@@ -23,7 +23,7 @@ import { brandIcons } from "../lib/brand-icons.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
-import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bot-roster.ts";
+import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bots/roster.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
 // The real browser entry loads these before this view can render.

@@ -9,7 +9,7 @@ import type { BotTrigger, BotTriggerCreated, BotTriggerInput, BotTriggerPatch, B
 import type { BotView } from "../../shared/bots.ts";
 import { botTriggersApi } from "../api/bot-triggers.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
-import { TRIGGERS_POLL_MS, type BotTriggersActions, type BotTriggersState } from "../lib/bot-triggers.ts";
+import { TRIGGERS_POLL_MS, type BotTriggersActions, type BotTriggersState } from "../lib/bots/triggers.ts";
 
 export type BotTriggersApi = {
   list(botId: string): Promise<BotTriggersList>;

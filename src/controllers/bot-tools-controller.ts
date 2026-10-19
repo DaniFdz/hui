@@ -8,7 +8,7 @@ import type { BotCatalog, BotSkillRef, BotView } from "../../shared/bots.ts";
 import { loadBotCatalog } from "../api/bot-tools.ts";
 import { updateBot } from "../api/bots.ts";
 import { answerQuestion } from "../api/sessions.ts";
-import { botToolsKey, skillsAfter, toolsAfter, type BotAccessAnswer, type BotToolsActions, type BotToolsState } from "../lib/bot-tools.ts";
+import { botToolsKey, skillsAfter, toolsAfter, type BotAccessAnswer, type BotToolsActions, type BotToolsState } from "../lib/bots/tools.ts";
 
 export type BotToolsApi = {
   load: (id: string) => Promise<BotCatalog>;

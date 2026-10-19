@@ -800,8 +800,8 @@ requests:
    screens), whose Memory tab shows the memory's stats and summarizer spend,
    follows the bots stream while open, zooms a line down to its message and
    links the memory page; bot routines' schedules worded on the Automations
-   page as in the panel. Proof: `src/lib/bots.test.ts`,
-   `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
+   page as in the panel. Proof: `src/lib/bots/bots.test.ts`,
+   `src/lib/bots/roster.test.ts`, `src/lib/bots/routines.test.ts`,
    `src/lib/bot-memory.test.ts`, `src/lib/navigation.test.ts`,
    `src/lib/settings.test.ts`, `src/lib/slash-commands.test.ts`,
    `src/views/settings-automation.test.ts` and the Browser-tool journey
@@ -815,7 +815,7 @@ requests:
    bot wrote one, followed live from the bots stream), and HUI's kickoff of a
    new bot shows as a note, *<name> was created*. Proof:
    `src/views/bot-soul.test.ts`, `src/views/chat/projection.test.ts`,
-   `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts` and the Browser-tool
+   `src/lib/bots/bots.test.ts`, `src/lib/bots/roster.test.ts` and the Browser-tool
    journey in `e2e/bots.browser.md` (screens in PR #69).
 4. **Voice through VoiceStudio** — dropped on 2026-10-06 before it merged: the
    owner removed VoiceStudio, so calls run on GPT-Live only (item 5) and voice
@@ -843,7 +843,7 @@ requests:
    `server/bot-service.test.ts`, `server/routes/bots.test.ts`, `server/bots.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
    `src/lib/live-call.test.ts`, `src/lib/voice*.test.ts`, `src/lib/settings.test.ts`,
-   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `src/views/settings-calls.test.ts`,
+   `src/lib/bots/bots.test.ts`, `src/views/bots.test.ts`, `src/views/settings-calls.test.ts`,
    `cli/*.test.ts` and a real call run (both calls of the e2e in the pull request).
 6. **Bots on remote workers** (implemented 2026-10-06; the owner's request, SPEC.md
    "Bots run on remote workers"): `BotInput.worker` (an id or name, at creation
@@ -873,7 +873,7 @@ requests:
    the remote store, a reply with the bots section, the utility-model compactor,
    `message_bot` both ways, a routine, a queued message, steering, a question,
    Stop, a call's record, archive, restore, delete and a disconnected worker),
-   `src/lib/bots.test.ts`, `src/views/bots.test.ts`, `cli/*.test.ts` and the
+   `src/lib/bots/bots.test.ts`, `src/views/bots.test.ts`, `cli/*.test.ts` and the
    browser journey `e2e/bots-workers.browser.md` (a built gateway with a local
    worker, headless Chromium through CDP; screenshots in the pull request).
 7. **Bot setup like Grok Bot** (2026-10-06; SPEC.md, "Bots are set up like
@@ -888,7 +888,7 @@ requests:
    own through the existing `PATCH`; Edit bot… in either ⋯ menu opens it, as
    does Ctrl+Shift+,; the panel's tabs moved to a row of their own under a
    header with the bot's name, with room for five. No API or CLI change. Proof:
-   `src/lib/bots.test.ts`, `src/lib/bot-roster.test.ts`,
+   `src/lib/bots/bots.test.ts`, `src/lib/bots/roster.test.ts`,
    `src/views/bots.test.ts`, `server/routes/bots.test.ts` (a New Bot's
    opener) and the Browser journey `e2e/bot-setup.browser.md` (built gateway,
    fixture provider, a local worker, 1440×900, 1280×720 and 390×844, dark).
@@ -923,7 +923,7 @@ requests:
    `server/routes/bots.test.ts` (a real gateway: what is off leaves the
    provider's request, a granted tool is on the next one, a skill that is off
    is not in the prompt, the roster follows), `server/bots.test.ts`,
-   `src/lib/bot-tools.test.ts`, `src/views/bot-tools.test.ts`,
+   `src/lib/bots/tools.test.ts`, `src/views/bot-tools.test.ts`,
    `cli/*.test.ts`, for workers `server/worker/host.test.ts` (the host's list
    operations and offer), `server/bot-remote.test.ts`, `server/bot-service.test.ts`,
    `server/runtimes/durable-bot-access.test.ts` (a host with `gatewayOnlyTools`: a
@@ -951,7 +951,7 @@ requests:
    `server/routes/bots.test.ts` (a real gateway: every refusal while off, toggled
    live through `PUT /__hui/settings`, a routine skipped then run, a bot stream
    ended), `src/views/hui-owned-surfaces.test.ts`, `src/views/bots.test.ts`,
-   `src/views/settings-automation.test.ts`, `src/lib/bots.test.ts`,
+   `src/views/settings-automation.test.ts`, `src/lib/bots/bots.test.ts`,
    `src/lib/live-call.test.ts`, `cli/*.test.ts`, and an isolated gateway driven
    in a browser ([`e2e/bots-labs.browser.md`](../e2e/bots-labs.browser.md),
    screens in the pull request).
@@ -981,7 +981,7 @@ requests:
     bot adds a temporary routine through a real turn, that routine's turn
     removes it, another bot's message can't add one, `hui schedule` with bots
     off), `server/bot-workers.test.ts` (the tool from a bot on a worker),
-    `cli/schedules.test.ts`, `cli/*.test.ts`, `src/lib/bot-routines.test.ts`
+    `cli/schedules.test.ts`, `cli/*.test.ts`, `src/lib/bots/routines.test.ts`
     and an isolated gateway driven in a browser
     ([`e2e/bot-schedules.browser.md`](../e2e/bot-schedules.browser.md), screens
     in the pull request).
@@ -1016,7 +1016,7 @@ requests:
    the bot's tool, the CLI, bots off), `server/bot-workers.test.ts` (a real local
    worker: a webhook's delivery runs on the worker, and the bot's tool there
    reaches the gateway), `server/runtimes/durable-bot-access.test.ts`,
-   `src/lib/bot-triggers.test.ts`, `src/views/bot-triggers.test.ts`,
+   `src/lib/bots/triggers.test.ts`, `src/views/bot-triggers.test.ts`,
    `cli/bot-triggers.test.ts` and an isolated gateway driven in a browser
    (`e2e/bot-triggers.browser.md` before item 13 rewrote it, screens in the pull
    request).
@@ -1068,7 +1068,7 @@ requests:
    checks, the linked pull request read through a fake gh, the gated tools on a
    trigger's turn, bots off), `server/bot-workers.test.ts` (the same on a
    worker), `cli/doctor-triggers.test.ts`, `cli/bot-triggers.test.ts`,
-   `src/lib/bot-triggers.test.ts`, `src/views/bot-triggers.test.ts` and an
+   `src/lib/bots/triggers.test.ts`, `src/views/bot-triggers.test.ts` and an
    isolated gateway driven in a browser
    ([`e2e/bot-triggers.browser.md`](../e2e/bot-triggers.browser.md), screens in
    the pull request).
@@ -1088,8 +1088,8 @@ requests:
    its edge resizes it and the width is remembered; Expand fills the bot's view
    over a hidden, still-mounted chat. The Memory and Soul tabs and their client
    code went; `hui bot memory` and `hui bot soul` stay. Proof:
-   `src/lib/bot-roster.test.ts`, `src/lib/bot-routines.test.ts`,
-   `src/lib/bot-tools.test.ts`, `src/views/bots.test.ts` and an isolated
+   `src/lib/bots/roster.test.ts`, `src/lib/bots/routines.test.ts`,
+   `src/lib/bots/tools.test.ts`, `src/views/bots.test.ts` and an isolated
    gateway driven in a browser
    ([`e2e/bots.browser.md`](../e2e/bots.browser.md), screens in the pull
    request).
@@ -1109,7 +1109,7 @@ requests:
    `server/runtimes/durable-bots.test.ts` (the tool and section in a session,
    on and off), `server/bot-workers.test.ts` (a session on a worker),
    `server/bot-routines.test.ts`, the template tests, `cli/main.test.ts`,
-   `cli/bots.test.ts`, `src/lib/bots.test.ts`, `src/lib/local-paths.test.ts`,
+   `cli/bots.test.ts`, `src/lib/bots/bots.test.ts`, `src/lib/local-paths.test.ts`,
    `src/views/bots.test.ts` and an isolated gateway driven in a browser
    ([`e2e/bot-tagging.browser.md`](../e2e/bot-tagging.browser.md), screens in
    the pull request).
@@ -1130,7 +1130,7 @@ requests:
    `server/routes/bot-templates.test.ts` (a real gateway with the fixture
    provider as utility model: the review's requests carry no tools and none of
    the owner's text, the zip none of it, a changed bot is 409, and the import
-   asks the new owner), `cli/bot-templates.test.ts`, `src/lib/bot-templates.test.ts`,
+   asks the new owner), `cli/bot-templates.test.ts`, `src/lib/bots/templates.test.ts`,
    `src/views/bot-import.test.ts` and an isolated gateway driven in a browser
    ([`e2e/bot-templates.browser.md`](../e2e/bot-templates.browser.md), screens in
    the pull request).

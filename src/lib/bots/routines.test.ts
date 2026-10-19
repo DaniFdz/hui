@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { botRecentRuns, botRoutineRuns, botRoutines, routineCadenceSummary, routineEndLabel, routineFacts, routineSchedule, RoutineFormError } from "./bot-routines.ts";
-import type { AutomationRun, AutomationSnapshot, AutomationTask } from "./automation-types.ts";
+import { botRecentRuns, botRoutineRuns, botRoutines, routineCadenceSummary, routineEndLabel, routineFacts, routineSchedule, RoutineFormError } from "./routines.ts";
+import type { AutomationRun, AutomationSnapshot, AutomationTask } from "../automation-types.ts";
 
 const TZ = "Europe/Madrid";
 

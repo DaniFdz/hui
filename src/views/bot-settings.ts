@@ -9,13 +9,13 @@
  */
 import { html, nothing, svg, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
-import { botSettingOf, type BotSettingKey, type BotSettingValue, type BotView } from "../lib/bots.ts";
+import { botSettingOf, type BotSettingKey, type BotSettingValue, type BotView } from "../lib/bots/bots.ts";
 import type { RuntimeModel } from "../api/sessions.ts";
 import {
   BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botColorName,
   isBotFaceEars, isBotFaceShape, type BotAvatar, type BotFaceEars, type BotFaceShape, type BotTagging,
 } from "../../shared/bots.ts";
-import { FACE_LEAF_COLOR, faceEars, facePath, faceViewBox } from "../lib/bot-face.ts";
+import { FACE_LEAF_COLOR, faceEars, facePath, faceViewBox } from "../lib/bots/face.ts";
 import { callVoice, GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguageName } from "../../shared/voice.ts";
 import { languageOptions } from "../lib/voice.ts";
@@ -23,7 +23,7 @@ import { renderPicker } from "./settings-picker.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { THINKING_LABELS } from "../../shared/thinking.ts";
 
-export type { BotSettingKey, BotSettingValue } from "../lib/bots.ts";
+export type { BotSettingKey, BotSettingValue } from "../lib/bots/bots.ts";
 
 /** Per row: the value a save is sending (shown until the gateway answers) and the last refusal. */
 export type BotSettingsSaves = {

@@ -109,19 +109,19 @@ presentation from `packages/vscode/src/server/render.ts` and
 
 HUI's shared terminal adapts AgentsInTheCloud's Gespenst terminal client at the
 same commit: the web-link lookup over Gespenst's buffer cells
-(`packages/observable-terminal/src/client/links.ts` → `src/lib/terminal-links.ts`,
+(`packages/observable-terminal/src/client/links.ts` → `src/lib/terminal/links.ts`,
 limited to http and https links); the key bar's keys, Control mapping and
 Control latch (`src/client/key-bar.ts` and `src/server/key-bar.ts` →
-`src/lib/terminal-keys.ts`); touch scrolling with its glide and tap focus
+`src/lib/terminal/keys.ts`); touch scrolling with its glide and tap focus
 (`packages/cli-agent/src/client/index.ts` and `TerminalTouchFocus` in
-`src/client/index.ts` → `src/lib/terminal-touch.ts`); the 16px input font that
+`src/client/index.ts` → `src/lib/terminal/touch.ts`); the 16px input font that
 keeps iOS from zooming (`src/client/style.css`); and, in
 `src/components/terminal-pane.ts`, measuring only visible hosts before a PTY
 resize, the serialized theme updates that repaint by reapplying the theme, the
 link pointer handling, the selection clearing on a plain click and the native
 Ctrl+V paste. Its Gespenst patch (`patches/@gespenst%2Fcore@0.1.1.patch`, skip
 fits of a 0×0 host) is reimplemented in HUI as `skipHiddenFits` in
-`src/lib/terminal-fit.ts` instead of patching the package.
+`src/lib/terminal/fit.ts` instead of patching the package.
 
 Source: https://github.com/lucasmeijer/AgentsInTheCloud
 

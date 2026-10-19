@@ -3,7 +3,7 @@ import { test } from "vitest";
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotTriggerCreated, BotTriggersList } from "../../shared/bot-triggers.ts";
 import type { BotView } from "../../shared/bots.ts";
-import { parseTrigger } from "../lib/bot-triggers.ts";
+import { parseTrigger } from "../lib/bots/triggers.ts";
 import { BotTriggersController, type BotTriggersApi } from "./bot-triggers-controller.ts";
 
 const TRIGGER = {

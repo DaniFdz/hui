@@ -57,11 +57,11 @@ R13 and R16 are not checked yet.
 
 ## A message, start to finish
 
-1. **Composer** (`src/hui-app.ts`, `src/lib/composer-state.ts`) builds the
+1. **Composer** (`src/hui-app.ts`, `src/lib/composer/state.ts`) builds the
    prompt with its attachments and draft.
 2. **Client API** (`src/api/sessions.ts`) posts it to
    `/__hui/sessions/:id/prompt` (or `steer`, `follow-up`, `queue`) with a
-   request id (`src/lib/send-requests.ts`) that a resend after a failure reuses.
+   request id (`src/lib/composer/send-requests.ts`) that a resend after a failure reuses.
 3. **Route** (`server/hui.ts`) validates the request and hands it to the live
    session; `server/recent-requests.ts` answers a resent id with the first
    send's outcome instead of sending it again.
@@ -105,12 +105,12 @@ R13 and R16 are not checked yet.
 | Client stores and API | `src/api/` (requests to `/__hui/`: `request.ts` (fetch boundary, `x-hui` header, response deadline), `settings.ts`, `ui-errors.ts` (browser errors batched to the gateway), `sessions.ts` (session API), `terminals.ts`, `browser.ts`, `files.ts`, `diff.ts`, and one client per area: `automation.ts`, `backlog.ts`, `bots.ts`, `bot-facts.ts`, `bot-templates.ts`, `bot-tools.ts`, `bot-triggers.ts`, `calls.ts`, `datadog.ts`, `jira.ts`, `github.ts`, `github-previews.ts`, `pi.ts`, `providers.ts`, `themes.ts`, `vscode.ts`, `workers.ts`, …), `lib/settings-store.ts` (settings cache and write queue), other `lib/*-store.ts` |
 | Controllers | `src/controllers/` (Lit controllers holding a page's state and calling `src/api/`: bot import and export, a bot's tools, triggers and memories, calls, the browser live view) |
 | Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file) |
-| Chat | `views/chat/` (projection, tool cards, position rail), `lib/markdown*.ts`, `lib/composer-*.ts`; file references that open in the Files view: `lib/file-references.ts` (which text is a path), `lib/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
+| Chat | `views/chat/` (projection, tool cards, position rail), `lib/markdown*.ts`, `src/lib/composer/` (drafts, state, textarea, send requests); file references that open in the Files view: `lib/file-references.ts` (which text is a path), `lib/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
 | Sidebar and sessions | `lib/sidebar-sessions.ts`, `lib/session-tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |
-| Pages | `views/*.ts` (settings, automation, kanban, contributions, bots, worktrees) |
+| Pages | `views/*.ts` (settings, automation, kanban, contributions, bots, worktrees); the bots pages' parsers and state in `src/lib/bots/` |
 | Reusable components | `components/` (panes, hovercards, dialogs); `components/openclaw/` is a hash-pinned OpenClaw port, do not edit it by hand |
 | Split chats and the Work pane | `lib/session-multiplexer.ts` + `components/session-multiplexer.ts` (chat columns, stacks, tabs); `lib/work-pane.ts` (Work view registry and contract, browser-local per-conversation state, migration of old terminal/browser panes), `components/work-pane.ts` (tab strip, launchers, collapsed rail, maximized presentation, narrow destination), `lib/work-shortcuts.ts` (the Work pane's shortcut table and the chords it avoids), `views/panel-selector.ts` (narrow destination chooser, also above a maximized Work pane) |
-| Shared terminal | `components/terminal-pane.ts` (Gespenst view: socket, replay, input, links, clipboard, touch, key bar); `lib/terminal-stream.ts` (wire reader), `lib/terminal-fit.ts` (hidden-pane fits, PTY resize, prompt reflow), `lib/terminal-theme.ts`, `lib/terminal-font.ts` (faces for the worker), `lib/terminal-links.ts`, `lib/terminal-keys.ts` (key bar, clipboard keys), `lib/terminal-touch.ts`; Vite settings for Gespenst in `server/hui.ts` (`huiConfig`) |
+| Shared terminal | `components/terminal-pane.ts` (Gespenst view: socket, replay, input, links, clipboard, touch, key bar); `src/lib/terminal/` (`stream.ts`: wire reader; `fit.ts`: hidden-pane fits, PTY resize, prompt reflow; `theme.ts`, `links.ts`, `keys.ts`: key bar, clipboard keys; `touch.ts`), `lib/terminal-font.ts` (faces for the worker); Vite settings for Gespenst in `server/hui.ts` (`huiConfig`) |
 | Work views | `src/lib/work-views/` (one kind per Work pane view: launch, title, render — terminal, browser, files, vscode, diff), `components/files-view.ts` with `lib/file-draft.ts`, `lib/file-editor.ts` (CodeMirror, loaded on demand), `api/files.ts`, `lib/files-view-state.ts`; `components/vscode-view.ts` through `lib/vscode-store.ts`, with HUI's colors for it read by `lib/vscode-theme.ts`; `components/diff-view.ts` with `api/diff.ts`, `lib/diff-view-state.ts`, `lib/diff-hunks.ts` (patch parsing, side-by-side rows) and `lib/diff-highlight.ts` (syntax colours through `lib/code-languages.ts`, shared with the Files editor) |
 | Visual tokens | `styles/tokens.css` first, then the per-surface stylesheets; themes through `lib/theme-store.ts` (loading through `api/themes.ts`, user accent) and `lib/shadcn-theme.ts` (token mapping, contrast rules), with color math in `lib/color-contrast.ts` |
 

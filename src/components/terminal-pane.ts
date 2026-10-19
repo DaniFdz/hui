@@ -20,12 +20,12 @@ import { icons } from "../lib/icons.ts";
 import { connectTerminal, endTerminal } from "../api/terminals.ts";
 import type { TerminalView } from "../lib/terminal-types.ts";
 import type { TerminalInput } from "../../shared/terminal-stream.ts";
-import { createTerminalStreamReader } from "../lib/terminal-stream.ts";
-import { prepareReflow, ptyResize, skipHiddenFits, wrappedRowsAbove } from "../lib/terminal-fit.ts";
-import { parseRgb, terminalTheme, type Rgb } from "../lib/terminal-theme.ts";
-import { terminalLinkAt } from "../lib/terminal-links.ts";
-import { clipboardKey, ControlLatch, controlModifiedText, TERMINAL_BAR_KEYS, type ControlState, type TerminalBarKey } from "../lib/terminal-keys.ts";
-import { TerminalTouchGesture } from "../lib/terminal-touch.ts";
+import { createTerminalStreamReader } from "../lib/terminal/stream.ts";
+import { prepareReflow, ptyResize, skipHiddenFits, wrappedRowsAbove } from "../lib/terminal/fit.ts";
+import { parseRgb, terminalTheme, type Rgb } from "../lib/terminal/theme.ts";
+import { terminalLinkAt } from "../lib/terminal/links.ts";
+import { clipboardKey, ControlLatch, controlModifiedText, TERMINAL_BAR_KEYS, type ControlState, type TerminalBarKey } from "../lib/terminal/keys.ts";
+import { TerminalTouchGesture } from "../lib/terminal/touch.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 

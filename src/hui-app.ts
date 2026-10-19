@@ -78,9 +78,9 @@ import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./views/list-filter.ts";
-import { applyBotsUpdate, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, withLiveChats, withoutBotSessions, type BotView } from "./lib/bots.ts";
+import { applyBotsUpdate, withLiveChats, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { archiveBot, deleteBot, createBot, loadBots, restoreBot, subscribeBots, updateBot } from "./api/bots.ts";
-import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "./lib/bot-roster.ts";
+import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
 import { BotToolsController } from "./controllers/bot-tools-controller.ts";
 import { BotTriggersController } from "./controllers/bot-triggers-controller.ts";
@@ -97,11 +97,11 @@ import { renderPowerNotice } from "./views/power-notice.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "./lib/local-paths.ts";
 import { loadLocalPathSuggestions } from "./api/local-paths.ts";
 import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/sidebar-sessions.ts";
-import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer-textarea.ts";
+import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
 import {
   EMPTY_QUEUE,
   streamingAfterSubmission,
-} from "./lib/composer-state.ts";
+} from "./lib/composer/state.ts";
 import {
   deleteComposerDraft,
   listComposerDraftSessionIds,
@@ -112,10 +112,10 @@ import {
   sessionDraftKey,
   sessionIdFromDraftKey,
   writeComposerDraft,
-} from "./lib/composer-drafts.ts";
+} from "./lib/composer/drafts.ts";
 import { attachmentPreview } from "./lib/attachments.ts";
 import { appendPendingUser, keepSentPreviews, localTranscriptId, normalizeTranscript, reduceTranscript, settlePendingUser } from "./lib/transcript-state.ts";
-import { SendRequests } from "./lib/send-requests.ts";
+import { SendRequests } from "./lib/composer/send-requests.ts";
 import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts";
 import {
   emptySessionPresentation,

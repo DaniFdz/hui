@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { prepareReflow, ptyResize, skipHiddenFits, wrappedRowsAbove } from "./terminal-fit.ts";
+import { prepareReflow, ptyResize, skipHiddenFits, wrappedRowsAbove } from "./fit.ts";
 
 const host = { clientWidth: 800, clientHeight: 600 };
 const sent = { cols: 80, rows: 24 };

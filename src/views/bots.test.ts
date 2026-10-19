@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "vitest";
 import { botCallsLabel, botModelLabel, botTaggingLabel } from "./bot-settings.ts";
 import { renderBotPanel, renderBotRoster, type BotPanelProps, type BotRosterProps } from "./bots.ts";
-import type { BotView } from "../lib/bots.ts";
+import type { BotView } from "../lib/bots/bots.ts";
 import type { AutomationRun } from "../lib/automation-types.ts";
 import { formatTimestamp } from "./settings-automation.ts";
 
@@ -215,7 +215,7 @@ test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bo
   assert.match(read("./shell.ts"), /onCreate: botsTab\.onCreate, onImport: botsTab\.onImport, creating: botsTab\.creating,/u);
   assert.match(source, /props\.creating \? "Creating…" : "New bot"/u, "and so does the empty roster's New bot");
   for (const file of [source, app]) assert.doesNotMatch(file, /renderBotDialog\b|bot-dialog|botDialog|botDraft/u, "the New bot and Edit dialogs are gone");
-  assert.match(read("../lib/bots.ts"), /export type NewBotInput = Omit<BotInput, "name"> & \{ name\?: string \};/u, "the create body may leave the name out");
+  assert.match(read("../lib/bots/bots.ts"), /export type NewBotInput = Omit<BotInput, "name"> & \{ name\?: string \};/u, "the create body may leave the name out");
 });
 
 test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {
@@ -381,7 +381,7 @@ test("a bot on a worker shows the machine compactly in its roster row, its chat 
   const source = read("./bots.ts");
   assert.match(between(source, "function botRow(", "function archivedRow("),
     /\$\{bot\.worker \? html`<span class="bot-row__tag bot-row__machine" title=\$\{`Runs on \$\{bot\.worker\.name\}`\}>\$\{icons\.globe\}<span>\$\{bot\.worker\.name\}<\/span><\/span>` : nothing\}/u);
-  assert.match(read("../lib/bot-roster.ts"), /\.\.\.\(bot\.worker \? \[`on \$\{bot\.worker\.name\}`\] : \[\]\)/u, "the row's accessible name says where it runs");
+  assert.match(read("../lib/bots/roster.ts"), /\.\.\.\(bot\.worker \? \[`on \$\{bot\.worker\.name\}`\] : \[\]\)/u, "the row's accessible name says where it runs");
   const identity = between(read("./home.ts"), "function renderBotIdentity(", "function renderHeader(");
   assert.match(identity, /<span class="bot-chat-identity__machine" title=\$\{`Runs on \$\{worker\.name\}`\}><span class="sr-only">on <\/span>\$\{icons\.globe\}<span>\$\{worker\.name\}<\/span><\/span> · /u);
   assert.match(identity, /title=\$\{worker \? `\$\{worker\.name\}:\$\{session\.cwd\}` : session\.cwd\}/u, "its folder reads devbox:/path");

@@ -7,7 +7,7 @@ import {
   questionAnswer,
   restoreRejectedSubmission,
   streamingAfterSubmission,
-} from "./composer-state.ts";
+} from "./state.ts";
 
 test("Enter steers, modifier Enter queues and Shift Enter keeps a newline", () => {
   assert.equal(composerEnterMode({ streaming: true, shiftKey: false, ctrlKey: false, metaKey: false, isComposing: false }), "steer");

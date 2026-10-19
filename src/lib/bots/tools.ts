@@ -12,7 +12,7 @@
 import {
   BOT_ACCESS_ANSWERS,
   type BotAccessRequest, type BotCatalog, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup, type BotView,
-} from "../../shared/bots.ts";
+} from "../../../shared/bots.ts";
 
 /** Skills a tab shows before it offers a search. */
 export const SKILL_SEARCH_MIN = 8;

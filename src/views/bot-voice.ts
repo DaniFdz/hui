@@ -4,12 +4,12 @@
  * `hui-app.ts` (src/lib/live-call.ts and voice-controller.ts hold the logic).
  */
 import { html, nothing, svg, type SVGTemplateResult, type TemplateResult } from "lit";
-import type { BotView } from "../lib/bots.ts";
+import type { BotView } from "../lib/bots/bots.ts";
 import { callStatusLabel, type CallView } from "../lib/live-call.ts";
 import { gptLiveVoiceLabel, isGptLiveVoice } from "../../shared/calls.ts";
 import { formatCallTime } from "../lib/voice.ts";
 import { renderBotAvatar } from "./bots.ts";
-import { callFaceState } from "../lib/bot-face.ts";
+import { callFaceState } from "../lib/bots/face.ts";
 import { botLook } from "../../shared/bots.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 

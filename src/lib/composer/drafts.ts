@@ -3,8 +3,8 @@
  * best effort and bounded by count, age and attachment size, writes to one key are serialised, and draft
  * contents never leave the browser.
  */
-import { attachmentBytes, validateAttachmentTotal } from "./attachments.ts";
-import type { Attachment } from "../api/sessions.ts";
+import { attachmentBytes, validateAttachmentTotal } from "../attachments.ts";
+import type { Attachment } from "../../api/sessions.ts";
 
 export type ComposerDraft = { text: string; attachments: readonly Attachment[] };
 

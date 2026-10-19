@@ -4,8 +4,8 @@
  * that follow it. Output stays as bytes; Ghostty decodes UTF-8 itself, including code points split across
  * messages.
  */
-import { parseTerminalControlFrame, type TerminalSnapshotFrame } from "../../shared/terminal-stream.ts";
-import type { TerminalView } from "./terminal-types.ts";
+import { parseTerminalControlFrame, type TerminalSnapshotFrame } from "../../../shared/terminal-stream.ts";
+import type { TerminalView } from "../terminal-types.ts";
 
 export type TerminalStreamHandlers = {
   snapshot(frame: TerminalSnapshotFrame, replay: Uint8Array): void;

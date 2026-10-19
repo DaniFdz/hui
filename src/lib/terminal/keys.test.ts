@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { clipboardKey, ControlLatch, controlModifiedText, TERMINAL_BAR_KEYS } from "./terminal-keys.ts";
+import { clipboardKey, ControlLatch, controlModifiedText, TERMINAL_BAR_KEYS } from "./keys.ts";
 
 test("the key bar offers Esc, Tab, Ctrl and the arrows", () => {
   assert.deepEqual(TERMINAL_BAR_KEYS.map(({ label }) => label), ["Esc", "Tab", "Ctrl", "↑", "↓", "←", "→"]);

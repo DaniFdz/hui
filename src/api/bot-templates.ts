@@ -4,8 +4,8 @@
  */
 import type { BotExportAddition, BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
 import type { BotImportPreview, BotImportResult, BotImportSource, BotTemplate } from "../../shared/bot-templates.ts";
-import { downloadName, parseBotExportReview, parseBotImportPreview } from "../lib/bot-templates.ts";
-import { isRecord, parseBot } from "../lib/bots.ts";
+import { downloadName, parseBotExportReview, parseBotImportPreview } from "../lib/bots/templates.ts";
+import { isRecord, parseBot } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;

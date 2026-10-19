@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotCatalog, BotCatalogTool, BotView } from "../../shared/bots.ts";
-import { botToolsKey } from "../lib/bot-tools.ts";
+import { botToolsKey } from "../lib/bots/tools.ts";
 import { BotToolsController, type BotToolsApi } from "./bot-tools-controller.ts";
 
 const tool = (name: string, group: BotCatalogTool["group"], extra: Partial<BotCatalogTool> = {}): BotCatalogTool => ({

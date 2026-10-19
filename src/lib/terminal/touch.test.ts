@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { TerminalTouchGesture, type TouchLikeEvent, type TouchPoint } from "./terminal-touch.ts";
+import { TerminalTouchGesture, type TouchLikeEvent, type TouchPoint } from "./touch.ts";
 
 const point = (x: number, y: number, identifier = 1): TouchPoint => ({ identifier, screenX: x, screenY: y, clientX: x, clientY: y });
 function event(touches: TouchPoint[], timeStamp: number, changed: TouchPoint[] = touches) {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "vitest";
-import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, botFaceColor, botFaceEars, botFaceShape, botLook, botSeed, defaultBotLook } from "../../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, botFaceColor, botFaceEars, botFaceShape, botLook, botSeed, defaultBotLook } from "../../../shared/bots.ts";
 import {
   BOT_FACE_STATES,
   FACE_EYES,
@@ -23,9 +23,9 @@ import {
   rosterFaceState,
   settlesWithDone,
   type ChatFaceInput,
-} from "./bot-face.ts";
-import { initialLiveCallState } from "./live-call.ts";
-import type { TranscriptItem } from "../api/sessions.ts";
+} from "./face.ts";
+import { initialLiveCallState } from "../live-call.ts";
+import type { TranscriptItem } from "../../api/sessions.ts";
 
 const PALETTE: ReadonlySet<string> = new Set(BOT_FACE_COLORS.map((color) => color.hex));
 const SHAPES: ReadonlySet<string> = new Set(BOT_FACE_SHAPES);
