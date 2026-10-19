@@ -12,7 +12,13 @@ import { spawn } from "node:child_process";
 import { copyFile, mkdir, mkdtemp, rm, stat, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { DiffBranch, DiffChanges, DiffComparison, DiffEndpoint, DiffFile, DiffFileStatus, DiffInfo, DiffParentSource } from "../shared/diff.ts";
+import type { DiffBranch, DiffChanges, DiffComparison, DiffEndpoint, DiffFile, DiffFileStatus, DiffInfo, DiffParentSource } from "./api/diff.ts";
+
+export const DIFF_COMPARISONS: readonly DiffComparison[] = ["uncommitted", "last-commit", "parent", "default"];
+
+export function isDiffComparison(value: unknown): value is DiffComparison {
+  return typeof value === "string" && (DIFF_COMPARISONS as readonly string[]).includes(value);
+}
 import { normalizeFilesPath } from "./files.ts";
 
 /** A refusal with the HTTP status the route answers. */

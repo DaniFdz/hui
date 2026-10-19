@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { DIFF_COMPARISONS, isDiffComparison } from "./git-diff.ts";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -367,4 +368,10 @@ test("CRLF lines, a missing final newline and binary files come through", async 
   assert.match(byPath.get("eof.txt")!.patch!, /^\\ No newline at end of file$/mu);
   assert.equal(byPath.get("blob.bin")!.binary, true);
   assert.equal(byPath.get("blob.bin")!.patch, undefined);
+});
+
+test("diff comparison guards match the portable fixtures", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./git-diff.fixture.json", import.meta.url), "utf8"));
+  assert.deepEqual(DIFF_COMPARISONS, fixture.comparisons);
+  for (const item of fixture.cases) assert.equal(isDiffComparison(item.input), item.expected);
 });

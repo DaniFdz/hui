@@ -7,7 +7,10 @@ import { join } from "node:path";
 import { test } from "vitest";
 import { createFileRoutes, REMOTE_FILES_REASON } from "./files.ts";
 import type { RouteRequest } from "../http/route.ts";
-import { MAX_RESOLVE_PATHS, type FileRead } from "../../shared/files.ts";
+import * as schemas from "../api/files.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
+import { MAX_RESOLVE_PATHS } from "../files.ts";
+import type { FileRead } from "../api/files.ts";
 
 async function workspace() {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "hui-file-routes-")));
@@ -38,6 +41,12 @@ test("file routes scope every request to the conversation's directory and explai
   const call = async (...args: Parameters<typeof request>) => {
     const result = await routes.handle(request(...args));
     assert(result && "body" in result, "expected a JSON result");
+    const route = schemas.routeSchemas.find((route) => route.method === args[0] && route.path === args[1].replace(/\/sessions\/[^/]+/u, "/sessions/:id"));
+    if (result.status >= 400) expectSchema(schemas.FileError, result.body);
+    else {
+      assert(route);
+      expectSchema(route.response, result.body);
+    }
     return result as { status: number; body: Record<string, unknown>; etag?: string };
   };
 

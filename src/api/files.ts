@@ -4,8 +4,20 @@
  * local-client header and turns refusals into errors, except a save conflict, which is an answer. It also downloads
  * the blobs behind media and file previews.
  */
-import type { FileEntry, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "../../shared/files.ts";
+import type { FileEntry, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "./schema/files.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
+
+export const MAX_RESOLVE_PATHS = 100;
+
+export function fileExtension(name: string): string {
+  const base = name.slice(name.lastIndexOf("/") + 1);
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+}
+
+export function isMarkdownPath(path: string): boolean {
+  return ["md", "markdown", "mdx"].includes(fileExtension(path));
+}
 
 const base = (sessionId: string, action = "") => `/__hui/sessions/${encodeURIComponent(sessionId)}/files${action ? `/${action}` : ""}`;
 const withQuery = (url: string, query: Record<string, string>) => `${url}?${new URLSearchParams(query)}`;

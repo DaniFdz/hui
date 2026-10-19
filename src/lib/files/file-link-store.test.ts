@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createFileLinkResolver, type ResolveTransport } from "./file-link-store.ts";
-import { MAX_RESOLVE_PATHS, type FilesResolve } from "../../../shared/files.ts";
+import type { FilesResolve } from "../../api/schema/files.ts";
 
 function fakeGateway(existing: Record<string, Record<string, "file" | "directory">>, unavailable = new Set<string>()) {
   const calls: { sessionId: string; paths: string[] }[] = [];
@@ -70,6 +70,6 @@ test("a conversation without Files answers null for every path without asking ag
 test("a large render is split into requests the gateway accepts", async () => {
   const gateway = fakeGateway({ a: {} });
   const resolver = createFileLinkResolver(gateway.transport);
-  await Promise.all(Array.from({ length: MAX_RESOLVE_PATHS + 5 }, (_, index) => resolver.resolve("a", `f${index}.ts`)));
-  assert.deepEqual(gateway.calls.map((call) => call.paths.length), [MAX_RESOLVE_PATHS, 5]);
+  await Promise.all(Array.from({ length: 105 }, (_, index) => resolver.resolve("a", `f${index}.ts`)));
+  assert.deepEqual(gateway.calls.map((call) => call.paths.length), [100, 5]);
 });

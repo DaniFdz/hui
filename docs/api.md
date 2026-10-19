@@ -3871,20 +3871,45 @@ these routes. They use the existing `x-hui: 1` guard (the raw route included:
 previews are fetched as blobs, never pointed at by an element) and a registered
 HUI session; the gateway chooses the session's recorded `cwd`. Every `path` is
 relative to it, `/`-separated, with `""` for the root. Shapes live in
-`shared/files.ts`.
+`server/api/files.ts` and the generated `src/api/schema/files.ts`.
 
-| Route | Method | Result |
-| --- | --- | --- |
-| `/__hui/sessions/:id/files` | GET | `FilesInfo`: `{ available: true, root, name }` (`root` with `~` for home) or `{ available: false, reason }` |
-| `/__hui/sessions/:id/files/list?path=` | GET | `{ path, entries: FileEntry[], truncated }`: one folder, folders first, at most 2,000 entries |
-| `/__hui/sessions/:id/files/search?q=` | GET | `{ query, entries, truncated, source: "git" \| "walk" }`, at most 100 files |
-| `/__hui/sessions/:id/files/file?path=` | GET | `FileRead` and an `ETag` header |
-| Same | PUT | `{ content }` with `If-Match: "<etag>"` → `FileSaved` `{ path, etag, size, mtime }` |
-| `/__hui/sessions/:id/files/raw?path=` | GET | The file's bytes, at most 64 MiB |
-| `/__hui/sessions/:id/files/entry` | POST | `{ path, kind: "file" \| "directory" }` → 201 `{ entry }`, empty and never replacing |
-| `/__hui/sessions/:id/files/entry?path=[&recursive=1]` | DELETE | `{ deleted: { path, kind } }` |
-| `/__hui/sessions/:id/files/upload?dir=&name=[&overwrite=1]` | POST | Raw body, at most 64 MiB → 201 `{ entry }` |
-| `/__hui/sessions/:id/files/resolve` | POST | `{ paths: string[] }` (at most 100, each at most 1,024 characters) → `{ entries: ({ path, kind: "file" \| "directory" } \| null)[] }`, one per path in order |
+### `GET /__hui/sessions/:id/files`
+
+`FilesInfo`: `{ available: true, root, name }` (`root` with `~` for home) or `{ available: false, reason }`.
+
+### `GET /__hui/sessions/:id/files/list?path=`
+
+`FilesListing`: `{ path, entries: FileEntry[], truncated }`, one folder, folders first, at most 2,000 entries.
+
+### `GET /__hui/sessions/:id/files/search?q=`
+
+`FilesSearch`: `{ query, entries, truncated, source: "git" | "walk" }`, at most 100 files.
+
+### `GET /__hui/sessions/:id/files/file?path=`
+
+`FileRead` and an `ETag` header.
+
+### `PUT /__hui/sessions/:id/files/file?path=`
+
+`FileSaveRequest` `{ content }` with `If-Match: "<etag>"` → `FileSaved` `{ path, etag, size, mtime }`.
+
+### `POST /__hui/sessions/:id/files/entry`
+
+`FileCreateRequest` `{ path, kind: "file" | "directory" }` → 201 `FileEntryResponse` `{ entry }`, empty and never replacing.
+
+### `DELETE /__hui/sessions/:id/files/entry?path=[&recursive=1]`
+
+`FileDeleted`: `{ deleted: { path, kind } }`.
+
+### `POST /__hui/sessions/:id/files/upload?dir=&name=[&overwrite=1]`
+
+Raw body, at most 64 MiB → 201 `FileEntryResponse` `{ entry }`. The request bytes are outside the JSON schema.
+
+### `POST /__hui/sessions/:id/files/resolve`
+
+`FilesResolveRequest` `{ paths: string[] }` (at most 100, each at most 1,024 characters) → `FilesResolve` `{ entries: ({ path, kind: "file" | "directory" } | null)[] }`, one per path in order.
+
+`GET /__hui/sessions/:id/files/raw?path=` returns the file's bytes, at most 64 MiB; this response is outside the JSON schema.
 
 `resolve` answers which paths the agent wrote in the chat exist inside the root,
 so the chat can link them to the Files view. A path may be relative (`./` and
@@ -3949,13 +3974,19 @@ refreshes on it.
 The Diff view reads the conversation's Git checkout through these routes, with
 the same guard, session lookup and root as the Files view (the recorded `cwd`,
 opened through `realpath`; a remote worker's conversation answers 409 `code:
-"remote"`). Shapes live in `shared/diff.ts`; Git runs in `server/git-diff.ts`.
+"remote"`). Shapes live in `server/api/diff.ts` and the generated `src/api/schema/diff.ts`; Git runs in `server/git-diff.ts`.
 
-| Route | Method | Result |
-| --- | --- | --- |
-| `/__hui/sessions/:id/diff` | GET | `DiffInfo`: `{ available: false, reason, code: "remote" \| "not-repo" \| "missing" \| "git" }` or `{ available: true, root, subdirectory, branch?, detached, unborn, head?, uncommitted, lastCommit?, parent?, branches, defaultBranch?, comparisons }` |
-| `/__hui/sessions/:id/diff/changes?compare=[&parent=][&uncommitted=0]` | GET | `DiffChanges`: `{ comparison, base, head, includesUncommitted, files: DiffFile[], additions, deletions, truncated, filesOmitted, untrackedOmitted }` |
-| `/__hui/sessions/:id/diff/file?compare=…&path=[&from=]` | GET | `{ file: DiffFile \| null }`: one file of the same comparison (`from` is a rename's old path) |
+### `GET /__hui/sessions/:id/diff`
+
+`DiffInfo`: `{ available: false, reason, code: "remote" | "not-repo" | "missing" | "git" }` or `{ available: true, root, subdirectory, branch?, detached, unborn, head?, uncommitted, lastCommit?, parent?, branches, defaultBranch?, comparisons }`.
+
+### `GET /__hui/sessions/:id/diff/changes?compare=[&parent=][&uncommitted=0]`
+
+`DiffChanges`: `{ comparison, base, head, includesUncommitted, files: DiffFile[], additions, deletions, truncated, filesOmitted, untrackedOmitted }`.
+
+### `GET /__hui/sessions/:id/diff/file?compare=…&path=[&from=]`
+
+`DiffFileChanges`: `{ file: DiffFile | null }`, one file of the same comparison (`from` is a rename's old path).
 
 `compare` is one of `uncommitted` (working tree and index against HEAD, untracked
 files included; against the empty tree before the first commit), `last-commit`

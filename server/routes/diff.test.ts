@@ -7,6 +7,8 @@ import { test } from "vitest";
 import { createDiffRoutes, parseDiffRequest, REMOTE_DIFF_REASON } from "./diff.ts";
 import type { GitRunner } from "../git-diff.ts";
 import type { RouteRequest } from "../http/route.ts";
+import * as schemas from "../api/diff.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 function request(path: string, query: URLSearchParams, method = "GET"): RouteRequest {
   const noBody = () => Promise.reject(new Error("no body"));
@@ -59,6 +61,9 @@ test("diff routes stay inside the conversation's directory and explain remote an
   const call = async (path: string, query: Record<string, string> = {}, method = "GET") => {
     const result = await routes.handle(request(path, new URLSearchParams(query), method));
     assert(result, "expected a result");
+    const route = schemas.routeSchemas.find((route) => route.path === path.replace(/\/sessions\/[^/]+/u, "/sessions/:id"));
+    assert(route);
+    expectSchema(result.status >= 400 ? schemas.DiffErrorResponse : route.response, result.body);
     return result as { status: number; body: Record<string, unknown> };
   };
 

@@ -9,7 +9,8 @@
  *
  * It also names the event a file reference dispatches when clicked, which the app shell turns into a Files view.
  */
-import { MAX_RESOLVE_PATHS, type FileLocation, type FilesResolve } from "../../../shared/files.ts";
+import { MAX_RESOLVE_PATHS } from "../../api/files.ts";
+import type { FileLocation, FilesResolve } from "../../api/schema/files.ts";
 
 /** Dispatched (bubbling, composed) by a clicked file reference; `hui-app.ts` opens it in the Work pane. */
 export const OPEN_FILE_EVENT = "hui-open-file";

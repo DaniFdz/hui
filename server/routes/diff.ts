@@ -7,9 +7,10 @@
  */
 import { displayPath } from "../working-directories.ts";
 import { FilesError, FilesRoot } from "../files.ts";
-import { diffChanges, diffFile, diffInfo, DiffError, runGit, type DiffRequest, type GitRunner } from "../git-diff.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
-import { isDiffComparison, type DiffFileChanges, type DiffInfo } from "../../shared/diff.ts";
+import { diffChanges, diffFile, diffInfo, DiffError, runGit, isDiffComparison, type DiffRequest, type GitRunner } from "../git-diff.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import { DiffChanges, DiffErrorResponse, DiffFileChanges, DiffInfo } from "../api/diff.ts";
+export { routeSchemas } from "../api/diff.ts";
 
 export const DIFF_ROUTE = /^\/__hui\/sessions\/([^/]+)\/diff(?:\/(changes|file))?$/u;
 
@@ -45,32 +46,32 @@ export function createDiffRoutes(deps: { session(id: string): Promise<SessionLoc
     const id = decodeURIComponent(match[1] ?? "");
     const action = match[2];
     try {
-      if (request.method !== "GET") return { status: 405, body: { error: "method not allowed" } };
+      if (request.method !== "GET") return reply(DiffErrorResponse, { error: "method not allowed" }, 405);
       const location = await deps.session(id);
-      if (!location) return { status: 404, body: { error: `unknown session: ${id}` } };
+      if (!location) return reply(DiffErrorResponse, { error: `unknown session: ${id}` }, 404);
       if (!action) {
-        if (location.worker) return { status: 200, body: { available: false, reason: REMOTE_DIFF_REASON, code: "remote" } satisfies DiffInfo };
+        if (location.worker) return reply(DiffInfo, { available: false, reason: REMOTE_DIFF_REASON, code: "remote" });
         let root: FilesRoot;
         try {
           root = await FilesRoot.open(location.cwd);
         } catch (error) {
-          if (error instanceof FilesError) return { status: 200, body: { available: false, reason: error.message, code: "missing" } satisfies DiffInfo };
+          if (error instanceof FilesError) return reply(DiffInfo, { available: false, reason: error.message, code: "missing" });
           throw error;
         }
-        return { status: 200, body: await diffInfo(root.root, displayPath(root.root), git) };
+        return reply(DiffInfo, await diffInfo(root.root, displayPath(root.root), git));
       }
-      if (location.worker) return { status: 409, body: { error: REMOTE_DIFF_REASON, code: "remote" } };
+      if (location.worker) return reply(DiffErrorResponse, { error: REMOTE_DIFF_REASON, code: "remote" }, 409);
       const root = await FilesRoot.open(location.cwd);
       const diff = parseDiffRequest(request.query);
-      if (action === "changes") return { status: 200, body: await diffChanges(root.root, diff, git) };
+      if (action === "changes") return reply(DiffChanges, await diffChanges(root.root, diff, git));
       const path = queryValue(request.query, "path") ?? "";
       const from = queryValue(request.query, "from");
-      return { status: 200, body: { file: await diffFile(root.root, diff, path, from, git) } satisfies DiffFileChanges };
+      return reply(DiffFileChanges, { file: await diffFile(root.root, diff, path, from, git) });
     } catch (error) {
       if (error instanceof DiffError || error instanceof FilesError) {
-        return { status: error.status, body: { error: error.message, ...(error.code ? { code: error.code } : {}) } };
+        return reply(DiffErrorResponse, { error: error.message, ...(error.code ? { code: error.code } : {}) }, error.status);
       }
-      return { status: 500, body: { error: error instanceof Error ? error.message : "Diff request failed." } };
+      return reply(DiffErrorResponse, { error: error instanceof Error ? error.message : "Diff request failed." }, 500);
     }
   }
 

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { DIFF_COMPARISONS, isDiffComparison } from "./view-state.ts";
 import { test } from "vitest";
-import type { DiffInfo } from "../../../shared/diff.ts";
+import type { DiffInfo } from "../../api/schema/diff.ts";
 import { chosenParent, clearDiffViewState, initialComparison, normalizeDiffViewState, readDiffViewState, writeDiffViewState } from "./view-state.ts";
 
 type Available = Extract<DiffInfo, { available: true }>;
@@ -45,4 +47,10 @@ test("stored state is validated, remembered per view and forgotten on close", ()
   clearDiffViewState("diff-a", store);
   assert.equal(readDiffViewState("diff-a", store).selected, undefined);
   assert.equal(values.has("hui.diff-view.v1:diff-a"), false);
+});
+
+test("diff comparison guards match the portable fixtures", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./view-state.fixture.json", import.meta.url), "utf8"));
+  assert.deepEqual(DIFF_COMPARISONS, fixture.comparisons);
+  for (const item of fixture.cases) assert.equal(isDiffComparison(item.input), item.expected);
 });

@@ -935,6 +935,777 @@
         }
       }
     },
+    "DiffBranch": {
+      "type": "object",
+      "required": [
+        "ref",
+        "name",
+        "remote"
+      ],
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "boolean"
+        },
+        "distance": {
+          "type": "number"
+        }
+      }
+    },
+    "DiffChanges": {
+      "type": "object",
+      "required": [
+        "comparison",
+        "base",
+        "head",
+        "includesUncommitted",
+        "files",
+        "additions",
+        "deletions",
+        "truncated",
+        "filesOmitted",
+        "untrackedOmitted"
+      ],
+      "properties": {
+        "comparison": {
+          "$ref": "#/$defs/DiffComparison"
+        },
+        "base": {
+          "$ref": "#/$defs/DiffEndpoint"
+        },
+        "head": {
+          "$ref": "#/$defs/DiffEndpoint"
+        },
+        "includesUncommitted": {
+          "type": "boolean"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DiffFile"
+          }
+        },
+        "additions": {
+          "type": "number"
+        },
+        "deletions": {
+          "type": "number"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "filesOmitted": {
+          "type": "number"
+        },
+        "untrackedOmitted": {
+          "type": "number"
+        }
+      }
+    },
+    "DiffComparison": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "uncommitted"
+        },
+        {
+          "type": "string",
+          "const": "last-commit"
+        },
+        {
+          "type": "string",
+          "const": "parent"
+        },
+        {
+          "type": "string",
+          "const": "default"
+        }
+      ]
+    },
+    "DiffEndpoint": {
+      "type": "object",
+      "required": [
+        "label"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "sha": {
+          "type": "string"
+        }
+      }
+    },
+    "DiffErrorResponse": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        }
+      }
+    },
+    "DiffFile": {
+      "type": "object",
+      "required": [
+        "path",
+        "status",
+        "additions",
+        "deletions",
+        "binary"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "oldPath": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/DiffFileStatus"
+        },
+        "similarity": {
+          "type": "number"
+        },
+        "additions": {
+          "type": "number"
+        },
+        "deletions": {
+          "type": "number"
+        },
+        "binary": {
+          "type": "boolean"
+        },
+        "oldMode": {
+          "type": "string"
+        },
+        "newMode": {
+          "type": "string"
+        },
+        "patch": {
+          "type": "string"
+        },
+        "truncated": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "file"
+            },
+            {
+              "type": "string",
+              "const": "total"
+            }
+          ]
+        }
+      }
+    },
+    "DiffFileChanges": {
+      "type": "object",
+      "required": [
+        "file"
+      ],
+      "properties": {
+        "file": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DiffFile"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "DiffFileStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "A"
+        },
+        {
+          "type": "string",
+          "const": "M"
+        },
+        {
+          "type": "string",
+          "const": "D"
+        },
+        {
+          "type": "string",
+          "const": "R"
+        },
+        {
+          "type": "string",
+          "const": "C"
+        },
+        {
+          "type": "string",
+          "const": "T"
+        },
+        {
+          "type": "string",
+          "const": "U"
+        }
+      ]
+    },
+    "DiffInfo": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "available",
+            "reason",
+            "code"
+          ],
+          "properties": {
+            "available": {
+              "type": "boolean",
+              "const": false
+            },
+            "reason": {
+              "type": "string"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "remote"
+                },
+                {
+                  "type": "string",
+                  "const": "not-repo"
+                },
+                {
+                  "type": "string",
+                  "const": "missing"
+                },
+                {
+                  "type": "string",
+                  "const": "git"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "available",
+            "root",
+            "subdirectory",
+            "detached",
+            "unborn",
+            "uncommitted",
+            "branches",
+            "comparisons"
+          ],
+          "properties": {
+            "available": {
+              "type": "boolean",
+              "const": true
+            },
+            "root": {
+              "type": "string"
+            },
+            "subdirectory": {
+              "type": "string"
+            },
+            "branch": {
+              "type": "string"
+            },
+            "detached": {
+              "type": "boolean"
+            },
+            "unborn": {
+              "type": "boolean"
+            },
+            "head": {
+              "type": "string"
+            },
+            "uncommitted": {
+              "type": "number"
+            },
+            "lastCommit": {
+              "type": "object",
+              "required": [
+                "sha",
+                "subject"
+              ],
+              "properties": {
+                "sha": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              }
+            },
+            "parent": {
+              "type": "object",
+              "required": [
+                "ref",
+                "name",
+                "remote",
+                "source"
+              ],
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "remote": {
+                  "type": "boolean"
+                },
+                "distance": {
+                  "type": "number"
+                },
+                "source": {
+                  "$ref": "#/$defs/DiffParentSource"
+                }
+              }
+            },
+            "branches": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DiffBranch"
+              }
+            },
+            "defaultBranch": {
+              "type": "object",
+              "required": [
+                "ref",
+                "name"
+              ],
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            },
+            "comparisons": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/DiffComparison"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "DiffParentSource": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "gh-merge-base"
+        },
+        {
+          "type": "string",
+          "const": "git-town"
+        },
+        {
+          "type": "string",
+          "const": "upstream"
+        },
+        {
+          "type": "string",
+          "const": "nearest"
+        }
+      ]
+    },
+    "FileCreateRequest": {
+      "type": "object",
+      "required": [
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "file"
+            },
+            {
+              "type": "string",
+              "const": "directory"
+            }
+          ]
+        }
+      }
+    },
+    "FileDeleted": {
+      "type": "object",
+      "required": [
+        "deleted"
+      ],
+      "properties": {
+        "deleted": {
+          "type": "object",
+          "required": [
+            "path",
+            "kind"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/$defs/FileEntryKind"
+            }
+          }
+        }
+      }
+    },
+    "FileEntry": {
+      "type": "object",
+      "required": [
+        "name",
+        "path",
+        "kind",
+        "size"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/FileEntryKind"
+        },
+        "size": {
+          "type": "number"
+        },
+        "symlink": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "FileEntryKind": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "directory"
+        },
+        {
+          "type": "string",
+          "const": "file"
+        },
+        {
+          "type": "string",
+          "const": "symlink"
+        },
+        {
+          "type": "string",
+          "const": "other"
+        }
+      ]
+    },
+    "FileEntryResponse": {
+      "type": "object",
+      "required": [
+        "entry"
+      ],
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/FileEntry"
+        }
+      }
+    },
+    "FileError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "current": {
+          "$ref": "#/$defs/FileRead"
+        }
+      }
+    },
+    "FileLocation": {
+      "type": "object",
+      "required": [
+        "path",
+        "kind"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "file"
+            },
+            {
+              "type": "string",
+              "const": "directory"
+            }
+          ]
+        }
+      }
+    },
+    "FilePreviewKind": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "text"
+        },
+        {
+          "type": "string",
+          "const": "image"
+        },
+        {
+          "type": "string",
+          "const": "pdf"
+        },
+        {
+          "type": "string",
+          "const": "binary"
+        },
+        {
+          "type": "string",
+          "const": "too-large"
+        }
+      ]
+    },
+    "FileRead": {
+      "type": "object",
+      "required": [
+        "path",
+        "name",
+        "size",
+        "mtime",
+        "etag",
+        "writable",
+        "kind",
+        "mimeType"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number"
+        },
+        "mtime": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string"
+        },
+        "writable": {
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/FilePreviewKind"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "FileSaved": {
+      "type": "object",
+      "required": [
+        "path",
+        "etag",
+        "size",
+        "mtime"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "etag": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number"
+        },
+        "mtime": {
+          "type": "string"
+        }
+      }
+    },
+    "FileSaveRequest": {
+      "type": "object",
+      "required": [
+        "content"
+      ],
+      "properties": {
+        "content": {
+          "type": "string"
+        }
+      }
+    },
+    "FilesInfo": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "available",
+            "root",
+            "name"
+          ],
+          "properties": {
+            "available": {
+              "type": "boolean",
+              "const": true
+            },
+            "root": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "available",
+            "reason"
+          ],
+          "properties": {
+            "available": {
+              "type": "boolean",
+              "const": false
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "FilesListing": {
+      "type": "object",
+      "required": [
+        "path",
+        "entries",
+        "truncated"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileEntry"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "FilesResolve": {
+      "type": "object",
+      "required": [
+        "entries"
+      ],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/FileLocation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "FilesResolveRequest": {
+      "type": "object",
+      "required": [
+        "paths"
+      ],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "FilesSearch": {
+      "type": "object",
+      "required": [
+        "query",
+        "entries",
+        "truncated",
+        "source"
+      ],
+      "properties": {
+        "query": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FileEntry"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "git"
+            },
+            {
+              "type": "string",
+              "const": "walk"
+            }
+          ]
+        }
+      }
+    },
     "GitHubAccount": {
       "type": "object",
       "required": [
@@ -5026,6 +5797,36 @@
       "TerminalSnapshotFrame",
       "TerminalView",
       "TerminalsResponse"
+    ],
+    "files": [
+      "FileCreateRequest",
+      "FileDeleted",
+      "FileEntry",
+      "FileEntryKind",
+      "FileEntryResponse",
+      "FileError",
+      "FileLocation",
+      "FilePreviewKind",
+      "FileRead",
+      "FileSaveRequest",
+      "FileSaved",
+      "FilesInfo",
+      "FilesListing",
+      "FilesResolve",
+      "FilesResolveRequest",
+      "FilesSearch"
+    ],
+    "diff": [
+      "DiffBranch",
+      "DiffChanges",
+      "DiffComparison",
+      "DiffEndpoint",
+      "DiffErrorResponse",
+      "DiffFile",
+      "DiffFileChanges",
+      "DiffFileStatus",
+      "DiffInfo",
+      "DiffParentSource"
     ]
   },
   "x-hui-routes": [
@@ -5457,10 +6258,103 @@
       }
     },
     {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/diff",
+      "response": {
+        "$ref": "#/$defs/DiffInfo"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/diff/changes",
+      "response": {
+        "$ref": "#/$defs/DiffChanges"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/diff/file",
+      "response": {
+        "$ref": "#/$defs/DiffFileChanges"
+      }
+    },
+    {
       "method": "POST",
       "path": "/__hui/sessions/:id/fast",
       "response": {
         "$ref": "#/$defs/SessionFastResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/files",
+      "response": {
+        "$ref": "#/$defs/FilesInfo"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/sessions/:id/files/entry",
+      "response": {
+        "$ref": "#/$defs/FileDeleted"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/files/entry",
+      "request": {
+        "$ref": "#/$defs/FileCreateRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/FileEntryResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/files/file",
+      "response": {
+        "$ref": "#/$defs/FileRead"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/sessions/:id/files/file",
+      "request": {
+        "$ref": "#/$defs/FileSaveRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/FileSaved"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/files/list",
+      "response": {
+        "$ref": "#/$defs/FilesListing"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/files/resolve",
+      "request": {
+        "$ref": "#/$defs/FilesResolveRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/FilesResolve"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/files/search",
+      "response": {
+        "$ref": "#/$defs/FilesSearch"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/files/upload",
+      "response": {
+        "$ref": "#/$defs/FileEntryResponse"
       }
     },
     {

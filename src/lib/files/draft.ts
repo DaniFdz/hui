@@ -7,7 +7,7 @@
  * src/client/file-editor.ts, MIT, see THIRD_PARTY_NOTICES.md). HUI's versions are the gateway's etags, and an
  * explicit overwrite names the version shown in the conflict instead of forcing past every check.
  */
-import type { FileRead } from "../../../shared/files.ts";
+import type { FileRead } from "../../api/schema/files.ts";
 
 /** The part of a read a draft needs. */
 export type DraftFile = Pick<FileRead, "content" | "etag" | "writable"> & { content: string };

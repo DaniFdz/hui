@@ -21,7 +21,8 @@ import { loadViewAssets } from "../lib/view-assets.ts";
 import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
 import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
-import { isMarkdownPath, type FileEntry, type FileRead, type FilesInfo, type FilesSearch } from "../../shared/files.ts";
+import { isMarkdownPath } from "../api/files.ts";
+import type { FileEntry, FileRead, FilesInfo, FilesSearch } from "../api/schema/files.ts";
 import { editFileText, editorText, type FileTextChange } from "../lib/editable-text.ts";
 import { draftKey, draftStatus, existingDraft, forgetDraft, hasUnsavedDrafts, openDraft, releaseDraft, type DraftFile, type FileDraft } from "../lib/files/draft.ts";
 import {

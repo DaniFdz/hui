@@ -12,7 +12,7 @@
 import { resolveFilePaths, FilesRequestError } from "../api/files.ts";
 import { createFileLinkResolver, OPEN_FILE_EVENT, type OpenFileDetail } from "../lib/files/file-link-store.ts";
 import { TURN_END_EVENT, type TurnEndDetail } from "../lib/session/turn-end.ts";
-import type { FileLocation } from "../../shared/files.ts";
+import type { FileLocation } from "../api/schema/files.ts";
 
 export const fileLinkResolver = createFileLinkResolver(async (sessionId, paths) => {
   try {

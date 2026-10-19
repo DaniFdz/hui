@@ -4,7 +4,15 @@
  * file. Keyed by the view's id like the Files view's state; closing the tab forgets it. Also the rule for the
  * comparison a view opens on.
  */
-import { isDiffComparison, type DiffComparison, type DiffInfo } from "../../../shared/diff.ts";
+import type { DiffComparison, DiffInfo } from "../../api/schema/diff.ts";
+
+export const DIFF_COMPARISONS: readonly DiffComparison[] = ["uncommitted", "last-commit", "parent", "default"];
+
+export function isDiffComparison(value: unknown): value is DiffComparison {
+  return typeof value === "string" && (DIFF_COMPARISONS as readonly string[]).includes(value);
+}
+
+export const DIFF_COLLAPSE_LINES = 1_500;
 
 export type DiffLayout = "unified" | "split";
 

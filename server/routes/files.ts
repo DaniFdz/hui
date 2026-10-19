@@ -4,9 +4,10 @@
  * maps requests onto `FilesRoot` (`../files.ts`). `hui.ts` applies the `x-hui` guard before dispatching here.
  */
 import { displayPath } from "../working-directories.ts";
-import { FilesError, FilesRoot, parseIfMatch } from "../files.ts";
-import type { RouteRequest, RouteResult } from "../http/route.ts";
-import { MAX_EDITABLE_FILE_BYTES, MAX_RAW_FILE_BYTES, MAX_RESOLVE_PATH_LENGTH, MAX_RESOLVE_PATHS, type FilesInfo, type FilesResolve } from "../../shared/files.ts";
+import { FilesError, FilesRoot, parseIfMatch, MAX_EDITABLE_FILE_BYTES, MAX_RAW_FILE_BYTES, MAX_RESOLVE_PATH_LENGTH, MAX_RESOLVE_PATHS } from "../files.ts";
+import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
+import { FileDeleted, FileEntryResponse, FileError, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "../api/files.ts";
+export { routeSchemas } from "../api/files.ts";
 import { basename } from "node:path";
 
 export const FILES_ROUTE = /^\/__hui\/sessions\/([^/]+)\/files(?:\/(list|search|file|raw|entry|upload|resolve))?$/u;
@@ -42,20 +43,20 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
     const action = match[2];
     try {
       const location = await deps.session(id);
-      if (!location) return { status: 404, body: { error: `unknown session: ${id}` } };
+      if (!location) return reply(FileError, { error: `unknown session: ${id}` }, 404);
       if (!action) {
-        if (request.method !== "GET") return { status: 405, body: { error: "method not allowed" } };
-        return { status: 200, body: await info(location) };
+        if (request.method !== "GET") return reply(FileError, { error: "method not allowed" }, 405);
+        return reply(FilesInfo, await info(location));
       }
-      if (location.worker) return { status: 409, body: { error: REMOTE_FILES_REASON, code: "remote" } };
+      if (location.worker) return reply(FileError, { error: REMOTE_FILES_REASON, code: "remote" }, 409);
       const root = await FilesRoot.open(location.cwd);
       const path = request.query.get("path") ?? "";
       const method = request.method;
-      if (action === "list" && method === "GET") return { status: 200, body: await root.list(path) };
-      if (action === "search" && method === "GET") return { status: 200, body: await root.search(request.query.get("q") ?? "") };
+      if (action === "list" && method === "GET") return reply(FilesListing, await root.list(path));
+      if (action === "search" && method === "GET") return reply(FilesSearch, await root.search(request.query.get("q") ?? ""));
       if (action === "file" && method === "GET") {
         const file = await root.read(path);
-        return { status: 200, body: file, etag: file.etag };
+        return { ...reply(FileRead, file), etag: file.etag };
       }
       if (action === "file" && method === "PUT") {
         let body: unknown;
@@ -65,7 +66,7 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
           throw new FilesError("Send only the file's text: { \"content\": \"…\" }.", 400);
         }
         const saved = await root.write(path, fields["content"], parseIfMatch(request.headers["if-match"]));
-        return { status: 200, body: saved, etag: saved.etag };
+        return { ...reply(FileSaved, saved), etag: saved.etag };
       }
       if (action === "raw" && method === "GET") {
         const raw = await root.raw(path);
@@ -82,11 +83,11 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
         if (typeof fields["path"] !== "string" || (kind !== "file" && kind !== "directory")) {
           throw new FilesError("Send { \"path\": \"…\", \"kind\": \"file\" | \"directory\" }.", 400);
         }
-        return { status: 201, body: { entry: await root.create(fields["path"], kind) } };
+        return reply(FileEntryResponse, { entry: await root.create(fields["path"], kind) }, 201);
       }
       if (action === "entry" && method === "DELETE") {
         const recursive = request.query.get("recursive") === "1";
-        return { status: 200, body: { deleted: await root.remove(path, recursive) } };
+        return reply(FileDeleted, { deleted: await root.remove(path, recursive) });
       }
       if (action === "resolve" && method === "POST") {
         const usage = `Send { "paths": ["…"] }: at most ${MAX_RESOLVE_PATHS} paths of at most ${MAX_RESOLVE_PATH_LENGTH} characters.`;
@@ -97,24 +98,21 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
           throw new FilesError(usage, 400);
         }
         const entries = await Promise.all((paths as string[]).map(async (path) => (await root.locate(path)) ?? null));
-        return { status: 200, body: { entries } satisfies FilesResolve };
+        return reply(FilesResolve, { entries });
       }
       if (action === "upload" && method === "POST") {
         const name = request.query.get("name") ?? "";
         const overwrite = request.query.get("overwrite") === "1";
         let data: Buffer;
         try { data = await request.bytes(MAX_RAW_FILE_BYTES); } catch { throw new FilesError("Uploads are limited to 64 MB.", 413); }
-        return { status: 201, body: { entry: await root.upload(request.query.get("dir") ?? "", name, data, overwrite) } };
+        return reply(FileEntryResponse, { entry: await root.upload(request.query.get("dir") ?? "", name, data, overwrite) }, 201);
       }
-      return { status: 405, body: { error: "method not allowed" } };
+      return reply(FileError, { error: "method not allowed" }, 405);
     } catch (error) {
       if (error instanceof FilesError) {
-        return {
-          status: error.status,
-          body: { error: error.message, ...(error.code ? { code: error.code } : {}), ...(error.current ? { current: error.current } : {}) },
-        };
+        return reply(FileError, { error: error.message, ...(error.code ? { code: error.code } : {}), ...(error.current ? { current: error.current } : {}) }, error.status);
       }
-      return { status: 500, body: { error: error instanceof Error ? error.message : "Files request failed." } };
+      return reply(FileError, { error: error instanceof Error ? error.message : "Files request failed." }, 500);
     }
   }
 

@@ -94,8 +94,6 @@ const ALLOWED = [
   "module: browser",
   "module: calls",
   "module: diagnostics",
-  "module: diff",
-  "module: files",
   "module: local-paths",
   "module: task-suggestions",
   "module: themes",

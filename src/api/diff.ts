@@ -3,7 +3,7 @@
  * owns every rule about refs and paths; this only builds the query, sends the local-client header and turns refusals
  * into errors the view shows.
  */
-import type { DiffChanges, DiffComparison, DiffFile, DiffFileChanges, DiffInfo } from "../../shared/diff.ts";
+import type { DiffChanges, DiffComparison, DiffFile, DiffFileChanges, DiffInfo } from "./schema/diff.ts";
 import { CLIENT_HEADERS, trackedFetch } from "./request.ts";
 
 const base = (sessionId: string, action = "") => `/__hui/sessions/${encodeURIComponent(sessionId)}/diff${action ? `/${action}` : ""}`;
