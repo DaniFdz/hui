@@ -120,6 +120,7 @@ const ALLOWED = [
   "missing: POST /__hui/worktrees/remove",
   "missing: PUT /__hui/session-groups",
   "module: attachments",
+  "module: automation",
   "module: bot-templates",
   "module: bot-triggers",
   "module: bots",

@@ -69,9 +69,6 @@ import { WorktreeService } from "./worktree-inventory.ts";
 import { liveSessions, SessionBusyError } from "./live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import {
-  AutomationConflictError,
-  AutomationInputError,
-  AutomationNotFoundError,
   AutomationService,
   automationStoreFailure,
   executeAutomationTask,
@@ -138,6 +135,7 @@ import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.ts";
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
 import { createLocalPathRoutes } from "./routes/local-paths.ts";
+import { createAutomationRoutes, AUTOMATION_ROUTE } from "./routes/automation.ts";
 import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
 import { handleApiSchemaRoute } from "./routes/api-schema.ts";
@@ -172,11 +170,6 @@ import { setAgentStage } from "./sessions/stages.ts";
 import { createSessionViews, pendingSessions, pendingStatus, pendingStatusSubscribers, type PendingStatusUpdate } from "./sessions/views.ts";
 
 const PREFIX = "/__hui/";
-const AUTOMATION_ROUTE = `${PREFIX}automation`;
-const AUTOMATION_TASKS_ROUTE = `${AUTOMATION_ROUTE}/tasks`;
-const AUTOMATION_TASK_ONE = /^\/__hui\/automation\/tasks\/([^/]+)$/;
-const AUTOMATION_TASK_RUN = /^\/__hui\/automation\/tasks\/([^/]+)\/run$/;
-const AUTOMATION_RUN_CANCEL = /^\/__hui\/automation\/runs\/([^/]+)\/cancel$/;
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
 const SESSION_STATUSES_ROUTE = `${SESSIONS_ROUTE}/events`;
 /** Dismiss (DELETE), start (POST …/start) or save to the backlog (POST
@@ -718,14 +711,8 @@ const sessionActionRoutes = createSessionActionRoutes({
   questionnaires,
 });
 
-function automationErrorStatus(error: unknown): 400 | 404 | 409 | 500 {
-  if (error instanceof AutomationNotFoundError) return 404;
-  if (error instanceof AutomationConflictError) return 409;
-  if (error instanceof AutomationInputError) return 400;
-  return 500;
-}
-
 const automation = new AutomationService(AUTOMATION_FILE, (task, signal, context) => executeAutomationTask(task, signal, context, { liveSessions, bots, botsOn }));
+const automationRoutes = createAutomationRoutes({ automation });
 /** A bot's `routines` tool: its own chat's Automation tasks, behind its guards. */
 const botRoutines = new BotRoutines({
   botForSession: (sessionId) => bots.botForSession(sessionId),
@@ -1043,69 +1030,7 @@ async function handleRequest(
 
   if (answered(response, path, await worktreeRoutes.handle(routed))) return;
 
-  if (path === AUTOMATION_ROUTE && request.method === "GET") {
-    try {
-      sendJson(response, 200, await automation.snapshot());
-    } catch (error) {
-      sendJson(response, 500, {
-        error: error instanceof Error ? error.message : "Could not read automation state.",
-      });
-    }
-    return;
-  }
-
-  if (path === AUTOMATION_TASKS_ROUTE && request.method === "POST") {
-    try {
-      const task = await automation.create(await readBody(request));
-      sendJson(response, 201, { task, snapshot: await automation.snapshot() });
-    } catch (error) {
-      sendJson(response, automationErrorStatus(error), {
-        error: error instanceof Error ? error.message : "Could not create that task.",
-      });
-    }
-    return;
-  }
-
-  const automationTask = path.match(AUTOMATION_TASK_ONE);
-  if (automationTask && (request.method === "PUT" || request.method === "DELETE")) {
-    const id = decodeURIComponent(automationTask[1] ?? "");
-    try {
-      if (request.method === "DELETE") await automation.remove(id);
-      else await automation.update(id, await readBody(request));
-      sendJson(response, 200, { snapshot: await automation.snapshot() });
-    } catch (error) {
-      sendJson(response, automationErrorStatus(error), {
-        error: error instanceof Error ? error.message : "Could not update that task.",
-      });
-    }
-    return;
-  }
-
-  const automationRun = path.match(AUTOMATION_TASK_RUN);
-  if (automationRun && request.method === "POST") {
-    try {
-      const run = await automation.run(decodeURIComponent(automationRun[1] ?? ""));
-      sendJson(response, 202, { run });
-    } catch (error) {
-      sendJson(response, automationErrorStatus(error), {
-        error: error instanceof Error ? error.message : "Could not run that task.",
-      });
-    }
-    return;
-  }
-
-  const automationCancel = path.match(AUTOMATION_RUN_CANCEL);
-  if (automationCancel && request.method === "POST") {
-    try {
-      await automation.cancel(decodeURIComponent(automationCancel[1] ?? ""));
-      sendJson(response, 200, { ok: true });
-    } catch (error) {
-      sendJson(response, automationErrorStatus(error), {
-        error: error instanceof Error ? error.message : "Could not cancel that run.",
-      });
-    }
-    return;
-  }
+  if (answered(response, path, await automationRoutes.handle(routed))) return;
 
   if (path.startsWith(THEMES_ROUTE)) {
     const result = await themeRoutes.handle(routed);
