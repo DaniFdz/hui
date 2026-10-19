@@ -10,8 +10,8 @@ import { agentReplyTo, BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, botTur
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
-import { SUBAGENT_COMPLETION_MARKER } from "../src/lib/subagent-completion.ts";
-import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts";
+import { DEFAULT_SETTINGS } from "./hui-settings.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { AgentRuntime, PromptAttachment, RuntimeEvent, RuntimeModel, RuntimeQuestion, RuntimeSession, StartOptions, TranscriptEntry } from "./runtimes/types.ts";
 import type { SecretQuestion } from "./secret-requests.ts";

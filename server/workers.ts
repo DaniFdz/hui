@@ -30,7 +30,7 @@ import { readHuiSettings } from "./hui-settings.ts";
 import { BootstrapError, connectScript, markers, nodeInstallScript, probeScript, releaseInstallScript, runScript } from "./worker/bootstrap.ts";
 import { remoteReleasePath, workerRelease, type WorkerRelease } from "./worker/release.ts";
 import { brokeredModels, buildSyncPlan, contentFile, mirrorPath } from "./worker/sync.ts";
-import type { Settings } from "../src/lib/settings.ts";
+import type { Settings } from "./hui-settings.ts";
 import type { HostInfo, RemoteLaunch, RemoteState } from "./worker/protocol.ts";
 import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from "./runtimes/types.ts";
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "../shared/workers.ts";

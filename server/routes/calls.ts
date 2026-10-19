@@ -14,7 +14,7 @@
  *   DELETE /__hui/bots/:id/calls/:callId                 { ended }; the call's record goes to the bot's chat
  */
 import { CALL_LIMITS, GPT_LIVE_MODEL, GPT_LIVE_VOICES, type CallDelegationResult, type CallRecordLine, type CallsStatus, type CallStarted } from "../../shared/calls.ts";
-import type { Settings } from "../../src/lib/settings.ts";
+import type { Settings } from "../hui-settings.ts";
 import { BotMemoryUnavailableError } from "../bot-memory.ts";
 import type { BotRecord } from "../../shared/bots.ts";
 import type { BotService } from "../bot-service.ts";

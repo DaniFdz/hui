@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
@@ -121,4 +122,12 @@ test("a new session offers its enabled local skills as /skill: commands", () => 
   const commands = skillCommands([skill("configure-model"), skill("off")], [{ path: "/skills/off/SKILL.md" }]);
   assert.deepEqual(commands, [{ name: "skill:configure-model", description: "configure-model help", source: "skill" }]);
   assert.equal(filterSlashCommands(composerCommands(commands), "configure-m")[0]?.name, "skill:configure-model");
+});
+
+const fixtures: { input: string; expected: unknown }[] = JSON.parse(readFileSync(new URL("./slash-commands.fixture.json", import.meta.url), "utf8"));
+
+test("slash-commands preserves the shared runtime fixtures", () => {
+  for (const fixture of fixtures) {
+    assert.deepEqual({ clear: parseClearCommand(fixture.input), compact: parseCompactCommand(fixture.input) ?? null, reload: parseReloadCommand(fixture.input), update: parseUpdateCommand(fixture.input) }, fixture.expected);
+  }
 });

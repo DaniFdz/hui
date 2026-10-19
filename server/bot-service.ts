@@ -39,7 +39,7 @@ import {
 } from "../shared/bots.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "../src/lib/automation-types.ts";
-import { SUBAGENT_COMPLETION_MARKER } from "../src/lib/subagent-completion.ts";
+import { SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./bot-memory.ts";
 import { AUTOMATION_SUSPENDED } from "./automation.ts";
 import {

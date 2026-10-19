@@ -6,7 +6,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
-import type { BrowserSettings } from "../../src/lib/settings.ts";
+import type { BrowserSettings } from "../hui-settings.ts";
 import { resolveBrowserExecutable } from "./executable.ts";
 import { browserLaunchArguments, BrowserToolError, ManagedBrowser, normalizeBrowserUrl, type BrowserViewFrame } from "./manager.ts";
 import type { BrowserViewAction, BrowserViewState } from "../../shared/browser.ts";

@@ -25,7 +25,7 @@ import { checkoutSessionRef, createSessionWorktree, type WorktreeProgress } from
 import { fallbackBranchName } from "../../shared/branch-names.ts";
 import { isSessionStage, SESSION_STAGES, type SessionStage } from "../../shared/session-stages.ts";
 import { isThinkingLevel } from "../../shared/thinking.ts";
-import { sessionTreeIds } from "../../src/lib/session-tree.ts";
+import { sessionTreeIds } from "./session-tree.ts";
 import { knownPullRequestUrls } from "./stages.ts";
 import { pendingSessions, pendingStatus, publishPendingStatus, type createSessionViews, type PendingSession, type PendingStatusUpdate, type SessionView } from "./views.ts";
 

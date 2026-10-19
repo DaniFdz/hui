@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, test, type TestContext } from "vitest";
 import type { ConversationId, ToolExecutionApi } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { normalizeSettings } from "../../src/lib/settings.ts";
+import { normalizeSettings } from "../hui-settings.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { BotMemory } from "../bot-memory.ts";
 

@@ -15,8 +15,8 @@
  */
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { interruptedRunOriginal } from "./interrupted-run.ts";
-import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../src/lib/subagent-completion.ts";
-import { CONTINUE_AFTER_ERROR_PROMPT } from "../src/lib/run-error.ts";
+import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts";
+export const CONTINUE_AFTER_ERROR_PROMPT = "Continue from where you left off.";
 
 export type SessionDigest = { text: string; goal: string };
 

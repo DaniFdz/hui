@@ -13,7 +13,7 @@
  * by itself) or `disconnected` (it waits for a reconnect); its streams stay open.
  */
 import { remoteRuntime } from "./runtimes/remote.ts";
-import { CONTINUE_PROMPT } from "../src/lib/subagent-completion.ts";
+import { CONTINUE_PROMPT } from "./agent-tools/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../shared/task-suggestions.ts";
@@ -47,7 +47,7 @@ import type {
 import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 import { recordDiagnosticEvent } from "./observability.ts";
 import { readHuiSettings } from "./hui-settings.ts";
-import type { Settings } from "../src/lib/settings.ts";
+import type { Settings } from "./hui-settings.ts";
 
 export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;

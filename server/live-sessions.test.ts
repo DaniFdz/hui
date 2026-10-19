@@ -18,7 +18,7 @@ import type {
   StartOptions,
   TranscriptEntry,
 } from "./runtimes/types.ts";
-import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
+import { DEFAULT_SETTINGS } from "./hui-settings.ts";
 import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 import { waitFor } from "./test-support/wait-for.ts";
 

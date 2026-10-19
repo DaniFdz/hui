@@ -24,7 +24,7 @@ import {
   VSCODE_BASE_PATH, VSCODE_ENTER_PATH,
   type VscodeConnection, type VscodeErrorCode, type VscodeFlavor, type VscodeProvider, type VscodeState, type VscodeStatus, type VscodeTheme,
 } from "../shared/vscode.ts";
-import type { VscodeSettings } from "../src/lib/settings.ts";
+import type { VscodeSettings } from "./hui-settings.ts";
 import {
   defaultVscodeProbe, detectVscodeProviders, parseServeWebProgress, planVscode, publicProvider, serveWebLaunchArguments,
   vscodeEnvironment, vscodeLaunchArguments, type DetectedProvider, type VscodePlan, type VscodeProbe,

@@ -1,10 +1,11 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 
-import { discoverThemes, mergeThemes, registryUrlFor, type ThemeEntry } from "./themes.ts";
+import { discoverThemes, mergeThemes, registryUrlFor, type ThemeEntry, mapTheme } from "./themes.ts";
 
 async function dirOf(files: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "hui-themes-"));
@@ -110,5 +111,13 @@ test("refuses a tweakcn link that is not a theme link", () => {
     "https://tweakcn.com/themes/",
   ]) {
     assert.throws(() => registryUrlFor(input), Error, input);
+  }
+});
+
+const fixtures: { input: Parameters<typeof mapTheme>[0]; expected: ReturnType<typeof mapTheme> | null }[] = JSON.parse(readFileSync(new URL("./themes.fixture.json", import.meta.url), "utf8"));
+
+test("themes preserves the shared runtime fixtures", () => {
+  for (const fixture of fixtures) {
+    assert.deepEqual(mapTheme(fixture.input) ?? null, fixture.expected);
   }
 });

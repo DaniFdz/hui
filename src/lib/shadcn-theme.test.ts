@@ -366,3 +366,11 @@ test("stylesheets use only OpenClaw semantic color roles, not retired HUI aliase
     assert.doesNotMatch(css, /--(?:bg-raised|bg-sunken|fg|fg-strong|fg-muted|focus-ring-color)(?![\w-])/u, file);
   }
 });
+
+const fixtures: { input: Parameters<typeof mapTheme>[0]; expected: ReturnType<typeof mapTheme> | null }[] = JSON.parse(readFileSync(new URL("./shadcn-theme.fixture.json", import.meta.url), "utf8"));
+
+test("shadcn-theme preserves the shared runtime fixtures", () => {
+  for (const fixture of fixtures) {
+    assert.deepEqual(mapTheme(fixture.input) ?? null, fixture.expected);
+  }
+});

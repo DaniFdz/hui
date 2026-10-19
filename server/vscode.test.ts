@@ -10,7 +10,7 @@ import {
   defaultVscodeProbe, desktopCodeCandidates, detectVscodeProviders, parseCodeVersion, parseServeWebHelp, parseServeWebProgress, planVscode,
   serveWebLaunchArguments, type VscodeDetection,
 } from "./vscode-providers.ts";
-import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "../src/lib/settings.ts";
+import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "./hui-settings.ts";
 
 const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", import.meta.url));
 const COMMIT = "645f29cc3176500b4b5762ba887cf2a7f0ffdf2c";

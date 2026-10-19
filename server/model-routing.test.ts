@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
+import { DEFAULT_SETTINGS } from "./hui-settings.ts";
 import {
   answerSideQuestion,
   GENERATED_TITLE_LENGTH_MAX,

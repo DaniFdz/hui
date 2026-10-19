@@ -15,7 +15,7 @@ import {
   attachVscodeTransport, downstreamHeaders, isVscodeProxyPath, isWorkbenchPath, patchWorkbenchHtml, proxyVscodeHttp, scopeVscodeCookie,
   serveVscodeEnter, upstreamHeaders, vscodeCookieSessionIds, vscodeThemeDefaults,
 } from "./vscode-proxy.ts";
-import { DEFAULT_VSCODE_SETTINGS } from "../src/lib/settings.ts";
+import { DEFAULT_VSCODE_SETTINGS } from "./hui-settings.ts";
 import { normalizeVscodeTheme, vscodeContrast } from "../shared/vscode.ts";
 
 const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", import.meta.url));

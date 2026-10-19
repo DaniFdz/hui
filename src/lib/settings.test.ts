@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
@@ -245,4 +246,14 @@ test("calls take Cove unless a known GPT-Live voice is saved", () => {
     assert.deepEqual(normalizeSettings({ calls }).calls, { voice: "cove" }, JSON.stringify(calls));
   }
   assert.deepEqual(normalizeCalls({ voice: "marin" }), { voice: "cove" }, "a public-API voice is not one of the route's");
+});
+
+const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings>; botsEnabled: boolean }[] = JSON.parse(readFileSync(new URL("./settings.fixture.json", import.meta.url), "utf8"));
+
+test("settings preserves the shared runtime fixtures", () => {
+  for (const fixture of fixtures) {
+    assert.deepEqual(normalizeSettings(fixture.input), fixture.expected);
+    assert.equal(botsEnabled(normalizeSettings(fixture.input)), fixture.botsEnabled);
+  }
+  assert.deepEqual(DEFAULT_SETTINGS, fixtures.find((fixture) => fixture.input === null)!.expected);
 });

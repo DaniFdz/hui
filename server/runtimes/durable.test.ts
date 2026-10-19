@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, test, type TestContext } from "vitest";
-import { normalizeSettings } from "../../src/lib/settings.ts";
+import { normalizeSettings } from "../hui-settings.ts";
 import type { DurableSession } from "./durable.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
@@ -376,7 +376,7 @@ test("a gateway killed mid-tool resumes the run without replaying bash", { timeo
   const f = await fixture(t);
   const hostUrl = new URL("./durable-host.ts", import.meta.url).href;
   const durableUrl = new URL("./durable.ts", import.meta.url).href;
-  const settingsUrl = new URL("../../src/lib/settings.ts", import.meta.url).href;
+  const settingsUrl = new URL("../hui-settings.ts", import.meta.url).href;
   // A separate process owns the store and is SIGKILLed while bash is running.
   const child = spawn(process.execPath, ["--input-type=module", "-e", `
     const { DurableHost } = await import(${JSON.stringify(hostUrl)});
@@ -1263,7 +1263,7 @@ test("interrupted runs wait for their extensions even when another session's sta
   }` } });
   const hostUrl = new URL("./durable-host.ts", import.meta.url).href;
   const durableUrl = new URL("./durable.ts", import.meta.url).href;
-  const settingsUrl = new URL("../../src/lib/settings.ts", import.meta.url).href;
+  const settingsUrl = new URL("../hui-settings.ts", import.meta.url).href;
   // A separate gateway owns the store and is SIGKILLed while bash is running.
   const child = spawn(process.execPath, ["--input-type=module", "-e", `
     const { DurableHost } = await import(${JSON.stringify(hostUrl)});

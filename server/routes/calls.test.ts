@@ -3,7 +3,7 @@ import { test } from "vitest";
 
 import type { BotRecord, BotReply } from "../../shared/bots.ts";
 import { CALL_LIMITS, type CallDelegationResult } from "../../shared/calls.ts";
-import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../../src/lib/settings.ts";
+import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../hui-settings.ts";
 import { BotConflictError, BotNotFoundError } from "../bots.ts";
 import { checkLines, createCallRoutes } from "./calls.ts";
 import type { RouteRequest } from "../http/route.ts";

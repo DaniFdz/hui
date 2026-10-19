@@ -24,7 +24,7 @@ import type { SubagentService } from "../subagents.ts";
 import { foreverChatRefusal, MAX_PROMPT_BYTES, sessionMutationErrorStatus } from "./sessions.ts";
 import { BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
 import { isThinkingLevel } from "../../shared/thinking.ts";
-import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../../src/lib/slash-commands.ts";
+import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
 
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =

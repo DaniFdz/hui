@@ -5,7 +5,6 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import { normalizeSettings } from "../src/lib/settings.ts";
 
 // HUI's directory, the Durable store and PI's agent directory resolve at import time, and PI finds skills in
 // ~/.agents/skills: never the operator's own.
@@ -28,6 +27,7 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
   }],
 } } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
+const { normalizeSettings } = await import("../server/hui-settings.ts");
 const { formatDoctorReport, runDoctor } = await import("./doctor.ts");
 const { readRegistry, writeRegistry } = await import("../server/sessions.ts");
 const { DurableHost } = await import("../server/runtimes/durable-host.ts");

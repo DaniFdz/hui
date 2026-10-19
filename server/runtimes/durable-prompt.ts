@@ -12,7 +12,7 @@
  */
 import { DefaultResourceLoader, type BuildSystemPromptOptions, type Skill } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
-import type { Settings } from "../../src/lib/settings.ts";
+import type { Settings } from "../hui-settings.ts";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-skills.ts";
 import { createPolicySettingsManager } from "./resource-policy.ts";
 import { HUI_DEFAULT_PROMPT } from "./hui-prompt.ts";

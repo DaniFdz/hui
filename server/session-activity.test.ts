@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import { CONTINUE_PROMPT } from "../src/lib/subagent-completion.ts";
+import { CONTINUE_PROMPT } from "./agent-tools/subagent-completion.ts";
 import type { SessionRecord } from "./sessions.ts";
 
 // HUI's configuration directory is resolved at import time; never read the operator's own.

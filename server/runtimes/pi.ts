@@ -10,7 +10,7 @@
 import { piEnvironment } from "./pi-environment.ts";
 import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
 import { parseCallRecord } from "../../shared/calls.ts";
-import { resolveCommandReference } from "../../src/lib/command-references.ts";
+import { resolveCommandReference } from "./command-references.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { relayCredentials, secretEnv } from "../worker/credentials.ts";
 import { fileURLToPath } from "node:url";

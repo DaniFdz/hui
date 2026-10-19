@@ -18,7 +18,7 @@ import { AgentToolInputError, rootSessionId } from "./sessions/session-tree.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { piThinking } from "./runtimes/model-controls.ts";
 import { isThinkingLevel } from "../shared/thinking.ts";
-import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "../src/lib/subagent-completion.ts";
+import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "./agent-tools/subagent-completion.ts";
 
 const MAX_ACTIVE_SUBAGENTS = 8;
 /** Collected children of one session tree (OpenClaw's Swarm defaults): at most this many start or run at once… */
