@@ -159,6 +159,7 @@ import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.t
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
 import { createPowerRoutes } from "./routes/power.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
+import { createSettingsRoutes } from "./routes/settings.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
 import {
@@ -183,7 +184,6 @@ import { setAgentStage } from "./sessions/stages.ts";
 import { createSessionViews, pendingSessions, pendingStatus, pendingStatusSubscribers, type PendingStatusUpdate } from "./sessions/views.ts";
 
 const PREFIX = "/__hui/";
-const SETTINGS_ROUTE = `${PREFIX}settings`;
 const BROWSER_ROUTE = `${PREFIX}browser`;
 /** An operator preview of one managed-browser tab, as a data URL. */
 const BROWSER_TAB_PREVIEW = /^\/__hui\/browser\/tabs\/(t\d{1,6})\/preview$/u;
@@ -251,6 +251,7 @@ const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry
 const diffRoutes = createDiffRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
 const themeRoutes = createThemeRoutes();
 const updateRoutes = createUpdateRoutes();
+const settingsRoutes = createSettingsRoutes({ writeSettings });
 const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
 // and stop showing a reconnect once HUI no longer tries.
@@ -1309,18 +1310,7 @@ async function handleRequest(
     return;
   }
 
-  if (path === SETTINGS_ROUTE) {
-    if (request.method === "GET") {
-      sendJson(response, 200, await readHuiSettings());
-      return;
-    }
-    if (request.method === "PUT") {
-      sendJson(response, 200, await writeSettings(await readBody(request)));
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
+  if (answered(response, path, await settingsRoutes.handle(routed))) return;
 
   if (
     path === PI_PACKAGE_INSTALL_ROUTE ||

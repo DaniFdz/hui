@@ -96,7 +96,7 @@ R13 and R16 are not checked yet.
 | Bots and calls (Labs) | `bots.ts`, `bot-*.ts` (`bot-facts.ts`: explicit operator knowledge on the bot's host; `bot-export.ts`: a bot as a template, reviewed for personal information), `server/bot-templates/` (other platforms' bot templates, read for import, and the export's cleanup and reviewer), `calls.ts`, `call-*.ts`, `runtimes/durable-bots.ts` |
 | OptChat memory | `optchat/` (engine, no HUI imports), `runtimes/durable-optchat.ts` (Durable glue); see `docs/optchat.md` |
 | Remote workers | `workers.ts`, `routes/workers.ts` (gateway side), `worker/` (host daemon, protocol, bootstrap, config sync) |
-| Settings, paths, updates | `hui-settings.ts`, `themes.ts` (built-in and user themes, tweakcn import) with `routes/themes.ts`, `paths.ts`, `updates.ts` with `routes/updates.ts`, `power.ts` with `routes/power.ts` |
+| Settings, paths, updates | `hui-settings.ts` with `routes/settings.ts`, `themes.ts` (built-in and user themes, tweakcn import) with `routes/themes.ts`, `paths.ts`, `updates.ts` with `routes/updates.ts`, `power.ts` with `routes/power.ts` |
 
 ## src/ — the browser app
 
