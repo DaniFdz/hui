@@ -19,21 +19,20 @@
  * the user's account can, the files of turned-off skills included. Isolation
  * is a worker in a container.
  */
-import { readFileSync } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import { defineTool, section, type ConversationId, type PromptSection, type ToolExecutionResult, type ToolRegistration } from "@earendil-works/pi-durable";
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup, type BotTurnOrigin } from "../../shared/bots.ts";
+import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotSkillRef, type BotToolGroup } from "../../shared/bots.ts";
 import { bundledSkills } from "../bundled-skills.ts";
 import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL } from "./durable-bots.ts";
 import { ROUTINES_TOOL } from "./durable-bot-routines.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-bot-triggers.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
+import { skillBlock, type BotChat, type OfferedSkill, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";
 import { QuestionsClosedError, type QuestionDraft } from "./question-box.ts";
-import type { RuntimeQuestionResponse } from "./types.ts";
 
 export const REQUEST_ACCESS_TOOL = "request_access";
 export const LOAD_SKILL_TOOL = "load_skill";
@@ -81,15 +80,6 @@ const ACCESS_DESCRIPTION_CHARS = 100;
 const [ALLOW, DENY] = BOT_ACCESS_ANSWERS;
 
 /* ── catalog ─────────────────────────────────────────────────────────── */
-
-/** One tool of a bot's chat the operator can turn off, as the catalog and the access section describe it. */
-export type OfferedTool = Omit<BotCatalogTool, "enabled">;
-export type OfferedSkill = Omit<BotCatalogSkill, "enabled">;
-
-/** Where a tool in a chat's offer comes from. */
-export type ToolOrigin =
-  | { kind: "coding" | "hui" | "bot" }
-  | { kind: "extension"; source: string; label?: string; snippet?: string };
 
 const CODING_TOOLS: Readonly<Record<string, { group: BotToolGroup; label: string; description: string }>> = {
   read: { group: "files", label: "Read files", description: "Read files and images" },
@@ -226,13 +216,6 @@ export function botSkills<T extends { readonly name: string; readonly filePath: 
   return skills.filter((skill) => !hasSkill(disabled, skillRef(skill)));
 }
 
-/** A skill's instructions as the model reads them, from `/skill:name` or `load_skill`: SKILL.md without its front
- * matter, with the directory its references are relative to. */
-export function skillBlock(skill: Pick<Skill, "name" | "filePath" | "baseDir">): string {
-  const body = readFileSync(skill.filePath, "utf8").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/u, "").trim();
-  return `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
-}
-
 const escapeXml = (text: string) => text.replace(/&/gu, "&amp;").replace(/</gu, "&lt;").replace(/>/gu, "&gt;").replace(/"/gu, "&quot;").replace(/'/gu, "&apos;");
 
 /** The `skills` prompt section of a bot with neither read nor bash: PI's own, told to load each skill with
@@ -274,27 +257,6 @@ export function botAccessText(tools: readonly Pick<OfferedTool, "name" | "descri
 }
 
 /* ── the bot's own tools ─────────────────────────────────────────────── */
-
-/** The live chat of a bot's conversation, which its own tools ask through. */
-export interface BotChat {
-  /** The tools the operator can turn off in this chat, as the latest tool offer found them. */
-  botOffer(): readonly OfferedTool[];
-  /** Skills a session in this chat's directory gets, Settings' choices applied. */
-  availableSkills(): Promise<readonly Skill[]>;
-  /** Asks the operator in this chat; undefined once dismissed, or when `signal` aborts first. Rejects with
-   * `QuestionsClosedError` when the chat closes under the question. */
-  ask(question: QuestionDraft, signal?: AbortSignal): Promise<RuntimeQuestionResponse | undefined>;
-  /** Offers the conversation its tools again, after its lists changed. */
-  applyTools(): Promise<void>;
-  /** The message that started the run going now (or the latest one): who started the turn, as `botTurnOrigin` reads
-   * it. */
-  runInput(): string | undefined;
-  /** The newest message the conversation took, read from its store: one that joined the running turn since (a follow-up
-   * does, on a worker) is what its model answers then. */
-  latestInput(): Promise<string | undefined>;
-  /** Who brought each input of the run going now: its first message and every one it took since. */
-  runOrigins(): Promise<readonly BotTurnOrigin[]>;
-}
 
 export type BotAccessDeps = {
   /** The live session of a conversation; undefined while none has it open. */

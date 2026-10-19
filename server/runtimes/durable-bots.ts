@@ -30,12 +30,11 @@ import { mkdir, open, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Context } from "@earendil-works/chord";
 import {
-  defineDoc, defineEntry, defineExtension, defineTool, section,
+  defineDoc, defineExtension, defineTool, section,
   type ConversationId, type DocumentReader, type Extension, type PromptSection, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
 import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME, botTurnOrigin, type BotAccess, type BotSkillRef, type BotTurnOrigin } from "../../shared/bots.ts";
-import type { CallRecord } from "../../shared/calls.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_CONTRIBUTION, triggersTool } from "./durable-bot-triggers.ts";
 
 export type { BotAccess, BotSkillRef } from "../../shared/bots.ts";
@@ -61,14 +60,6 @@ export const BotDoc = defineDoc<{ bot: string; disabledTools?: string[]; disable
 
 const isSkillRef = (value: unknown): value is BotSkillRef =>
   typeof value === "object" && value !== null && typeof (value as BotSkillRef).name === "string" && typeof (value as BotSkillRef).path === "string";
-
-/**
- * The record of one GPT-Live call with the bot (HUI-18): its summary and its whole transcript (`CallRecord`), written
- * once at hang-up as a passive entry, so no model turn runs for it. It carries no model messages: the chat shows it
- * as one card, OptChat logs it (its transcript and summary, marked `[call]`), and Durable places it at a running
- * turn's next boundary.
- */
-export const CallEntry = defineEntry<CallRecord>("hui.call");
 
 export const MESSAGE_BOT_TOOL = "message_bot";
 export const WRITE_SOUL_TOOL = "write_soul";

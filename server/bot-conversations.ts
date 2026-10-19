@@ -15,12 +15,13 @@ import { callMinutes, parseCallRecord } from "../shared/calls.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { BotConversations, BotStoredMessage } from "./bot-service.ts";
 import { BotInputError, BotNotFoundError } from "./bots.ts";
-import { BotDoc, CallEntry, conversationBotState } from "./runtimes/durable-bots.ts";
+import { BotDoc, conversationBotState } from "./runtimes/durable-bots.ts";
 import { BOT_ALWAYS_ON, offeredSkill } from "./runtimes/durable-bot-access.ts";
 import { ExtensionMessageEntry, isCustomInput } from "./runtimes/durable-extensions.ts";
 import { durableContext, type DurableHost } from "./runtimes/durable-host.ts";
 import { defaultThinking, durableConversationId, durableReference, initialModel, modelRef, textOf } from "./runtimes/durable.ts";
 import { restoreAttachmentNames } from "./runtimes/pi.ts";
+import { CallEntry } from "./runtimes/turn-origins.ts";
 
 /** Where the Tools & skills page says a bot's own skills (`skills/` in its home folder) come from. */
 export const BOT_OWN_SKILLS_SOURCE = "Its own skills";
