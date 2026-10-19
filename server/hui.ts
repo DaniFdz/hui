@@ -35,7 +35,8 @@ import { BotExportService } from "./bot-export.ts";
 import { nameFromUsername } from "./bot-templates/cleanup.ts";
 import { BotTemplateService } from "./bot-template-import.ts";
 import { createBotTemplateRoutes } from "./routes/bot-templates.ts";
-import { CLIENT_HEADER, readBody, routeRequest, sendFile, type RouteResult } from "./http/route.ts";
+import { CLIENT_HEADER, readBody, responseFailures, routeRequest, sendFile, sendJson, type RouteResult } from "./http/route.ts";
+import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
 import { localBotSkills } from "./bot-skills.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
@@ -154,7 +155,6 @@ import { WATCHER_LIMITS } from "../shared/watchers.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
 import { createSessionListHub } from "./session-list.ts";
-import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./http-compression.ts";
 import { attachTerminalTransport, terminalTicket } from "./terminal-transport.ts";
 import { createFileRoutes, FILES_ROUTE } from "./routes/files.ts";
 import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
@@ -248,8 +248,6 @@ const BACKLOG_ITEM = /^\/__hui\/backlog\/items\/([^/]+?)(?:\/(start|branch-name|
 const SESSION_GROUP_ONE = /^\/__hui\/session-groups\/([^/]+)$/;
 const PRESENTED_MEDIA_ROUTE = /^\/__hui\/media\/([0-9a-f-]+)\/([^/]+)$/u;
 
-/** How long an event stream may sit idle before a comment proves it is alive. */
-const HEARTBEAT_MS = 15_000;
 const piMutations = new PiMutationService();
 const workerRoutes = createWorkerRoutes({ service: workers, readRegistry });
 const fileRoutes = createFileRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id) });
@@ -657,47 +655,6 @@ async function browserStatus(): Promise<BrowserStatus> {
 
 /* ── routes ──────────────────────────────────────────────────────────────── */
 
-/** Error text of failed `/__hui/` responses, kept for their request diagnostic. */
-const responseFailures = new WeakMap<ServerResponse, string>();
-
-/** Responses whose body is being compressed: they are answered, just not ended yet. */
-const compressing = new WeakSet<ServerResponse>();
-
-/**
- * A large body (a session's transcript) is compressed when the client accepts
- * it, off the event loop. The first answer wins, as when the body is sent at once.
- */
-function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  if (response.writableEnded || compressing.has(response)) {
-    return;
-  }
-  if (status >= 400 && !responseFailures.has(response)) {
-    const error = (body as { error?: unknown } | null)?.error;
-    if (typeof error === "string") responseFailures.set(response, error);
-  }
-  response.statusCode = status;
-  response.setHeader("content-type", "application/json; charset=utf-8");
-  response.setHeader("cache-control", "no-store");
-  const text = JSON.stringify(body);
-  const encoding = text.length >= COMPRESSION_MIN_BYTES ? negotiateEncoding(response.req?.headers["accept-encoding"]) : undefined;
-  if (!encoding) {
-    response.end(text);
-    return;
-  }
-  response.setHeader("vary", "accept-encoding");
-  compressing.add(response);
-  const raw = Buffer.from(text);
-  void compressBody(raw, encoding, "fast").then((compressed) => {
-    response.setHeader("content-encoding", encoding);
-    return compressed;
-  }, () => raw).then((sent) => {
-    compressing.delete(response);
-    if (response.writableEnded || response.destroyed) return;
-    response.setHeader("content-length", sent.length);
-    response.end(sent);
-  });
-}
-
 /** A page HUI renders itself (a bot's memory). Its text comes from a chat, so it may run nothing, load nothing but its
  * inline styles, submit nothing, and be framed by no page, HUI's own included. */
 const BOT_PAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
@@ -989,53 +946,6 @@ function backlogErrorStatus(error: unknown): number {
   if (error instanceof JiraRequestError) return 502;
   if (error instanceof BacklogStoreError || error instanceof SessionRegistryError) return 500;
   return error instanceof Error ? 400 : 500;
-}
-
-function writeEvent(response: ServerResponse, event: string, data: unknown): void {
-  if (!response.writableEnded) {
-    response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-  }
-}
-
-/**
- * Paints the session once, then forwards everything that happens to it until
- * the returned unsubscribe runs. The caller has already ensured the runtime.
- */
-function watchSessionEvents(
-  id: string,
-  send: (event: string, data: unknown) => void,
-  sessions: Pick<typeof liveSessions, "watch"> = liveSessions,
-): () => void {
-  const watched = sessions.watch(id, (message) => {
-    switch (message.kind) {
-      case "snapshot":
-        send("snapshot", message.snapshot);
-        break;
-      case "transcript":
-        send("transcript", message.entries);
-        break;
-      case "status":
-        send("status", { status: message.status });
-        break;
-      case "event":
-        send("event", message.event);
-        break;
-      case "model":
-        send("model", message.model);
-        break;
-      case "thinking":
-        send("thinking_level", { level: message.level });
-        break;
-      case "fast":
-        send("fast", { fast: message.fast });
-        break;
-      case "closed":
-        send("closed", {});
-        break;
-    }
-  }, { reader: true });
-  send("snapshot", watched.snapshot);
-  return watched.unsubscribe;
 }
 
 /** The SSE form of a session's events, for scripts and other HTTP clients.

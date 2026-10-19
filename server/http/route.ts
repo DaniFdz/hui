@@ -1,10 +1,12 @@
 /**
  * The request and result shape every route module (`server/routes/`) speaks. `hui.ts` turns an incoming message
  * into a `RouteRequest` (`routeRequest`) and writes the module's `RouteResult` back, so a module reads its body and
- * headers and answers JSON, HTML or a file without touching Node's HTTP objects. Also owns reading request bodies and
- * the `x-hui` header name every guard checks.
+ * headers and answers JSON, HTML or a file without touching Node's HTTP objects. Also owns reading request bodies,
+ * writing JSON answers (compressed when large, with the error text a failed answer's diagnostic records) and the
+ * `x-hui` header name every guard checks.
  */
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
+import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "../http-compression.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -74,4 +76,45 @@ export function sendFile(response: ServerResponse, status: number, file: RouteFi
   response.setHeader("x-content-type-options", "nosniff");
   for (const [name, value] of Object.entries(file.headers)) response.setHeader(name, value);
   response.end(file.data);
+}
+
+/** Error text of failed `/__hui/` responses, kept for their request diagnostic. */
+export const responseFailures = new WeakMap<ServerResponse, string>();
+
+/** Responses whose body is being compressed: they are answered, just not ended yet. */
+const compressing = new WeakSet<ServerResponse>();
+
+/**
+ * A large body (a session's transcript) is compressed when the client accepts
+ * it, off the event loop. The first answer wins, as when the body is sent at once.
+ */
+export function sendJson(response: ServerResponse, status: number, body: unknown): void {
+  if (response.writableEnded || compressing.has(response)) {
+    return;
+  }
+  if (status >= 400 && !responseFailures.has(response)) {
+    const error = (body as { error?: unknown } | null)?.error;
+    if (typeof error === "string") responseFailures.set(response, error);
+  }
+  response.statusCode = status;
+  response.setHeader("content-type", "application/json; charset=utf-8");
+  response.setHeader("cache-control", "no-store");
+  const text = JSON.stringify(body);
+  const encoding = text.length >= COMPRESSION_MIN_BYTES ? negotiateEncoding(response.req?.headers["accept-encoding"]) : undefined;
+  if (!encoding) {
+    response.end(text);
+    return;
+  }
+  response.setHeader("vary", "accept-encoding");
+  compressing.add(response);
+  const raw = Buffer.from(text);
+  void compressBody(raw, encoding, "fast").then((compressed) => {
+    response.setHeader("content-encoding", encoding);
+    return compressed;
+  }, () => raw).then((sent) => {
+    compressing.delete(response);
+    if (response.writableEnded || response.destroyed) return;
+    response.setHeader("content-length", sent.length);
+    response.end(sent);
+  });
 }
