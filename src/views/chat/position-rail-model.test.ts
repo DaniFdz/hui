@@ -4,7 +4,7 @@ import { conversationFocusIndex, conversationMarkers, conversationPosition } fro
 import { projectChatTranscript } from "./projection.ts";
 import type { TranscriptItem } from "../../lib/sessions-store.ts";
 
-test("indexes every visible prompt and response but not collapsed assistant activity", () => {
+test("indexes every prompt and assistant message but not the folded activity between them", () => {
   const transcript: TranscriptItem[] = [
     { kind: "message", id: "u1", role: "user", text: "First prompt" },
     { kind: "message", id: "u2", role: "user", text: "Second prompt" },
@@ -13,11 +13,9 @@ test("indexes every visible prompt and response but not collapsed assistant acti
     { kind: "tool", id: "tool", name: "read", status: "succeeded" },
     { kind: "message", id: "final", role: "assistant", text: "Final answer" },
   ];
-  const settled = conversationMarkers(projectChatTranscript(transcript));
-  assert.deepEqual(settled.map((m) => m.id), ["u1", "u2", "final"]);
-  assert.deepEqual(settled.map((m) => m.label), ["User message", "User message", "Assistant message"]);
-  const live = conversationMarkers(projectChatTranscript(transcript, true));
-  assert.deepEqual(live.map((m) => m.id), ["u1", "u2", "intermediate", "final"]);
+  const markers = conversationMarkers(projectChatTranscript(transcript));
+  assert.deepEqual(markers.map((m) => m.id), ["u1", "u2", "intermediate", "final"]);
+  assert.deepEqual(markers.map((m) => m.label), ["User message", "User message", "Assistant message", "Assistant message"]);
 });
 
 test("a message HUI delivered from someone else is labeled by its sender and previewed without its header", () => {

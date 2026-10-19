@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { applyBotsUpdate, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, createBot, isBotSession, isNewBotsFrame, loadBots, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, withLiveChats, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, createBot, isBotSession, isNewBotsFrame, loadBots, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "./sessions-store.ts";
 import { botLook, BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
 
@@ -95,6 +95,16 @@ test("stream frames update bots in place and replace the list when they carry it
   assert.deepEqual(applyBotsUpdate([scout, ledger], { ids: ["b3", "b1"], upserts: [coach] }).map(({ id }) => id), ["b3", "b1"], "ids drop bots no longer listed");
   assert.deepEqual(parseBotsUpdate({ revision: 4, ids: ["b1", 2], upserts: [RECORD, { id: "x" }] }), { revision: 4, ids: ["b1"], upserts: [scout] });
   assert.equal(parseBotsUpdate({ ids: [], upserts: [] }), undefined);
+});
+
+test("the status stream's unread marks and statuses win over a list read before them; the bot on screen is read", () => {
+  const ada = parseBot({ id: "b1", name: "Ada", sessionId: "s1", status: "running", unread: false }) as BotView;
+  const grace = parseBot({ id: "b2", name: "Grace", sessionId: "s2", status: "idle", unread: true }) as BotView;
+  const live = { statuses: new Map([["s1", "idle" as const]]), unread: new Map([["s1", true]]), presented: () => false };
+  assert.deepEqual(withLiveChats([ada, grace], live).map((bot) => [bot.status, bot.unread]), [["idle", true], ["idle", true]], "a list read before Ada's turn ended does not take its unread mark back");
+  assert.deepEqual(withLiveChats([ada, grace], { ...live, unread: new Map([["s1", true], ["s2", false]]) }).map((bot) => bot.unread), [true, false], "a read the stream reported wins too");
+  assert.deepEqual(withLiveChats([ada, grace], { ...live, presented: (id) => id === "s2" }).map((bot) => bot.unread), [true, false]);
+  assert.equal(withLiveChats([grace], { statuses: new Map(), unread: new Map(), presented: () => false })[0], grace, "nothing new keeps the record");
 });
 
 test("a reconnect's cached first frame at the applied revision is a replay, not news", () => {

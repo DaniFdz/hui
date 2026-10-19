@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
 import { botCallsLabel, botModelLabel, botTaggingLabel } from "./bot-settings.ts";
-import { renderBotPanel, type BotPanelProps } from "./bots.ts";
+import { renderBotPanel, renderBotRoster, type BotPanelProps, type BotRosterProps } from "./bots.ts";
+import type { BotView } from "../lib/bots.ts";
 import type { AutomationRun } from "../lib/automation-types.ts";
 import { formatTimestamp } from "./settings-automation.ts";
 
@@ -14,6 +15,11 @@ function markup(value: unknown): string {
   if (value && typeof value === "object" && "strings" in value && "values" in value) {
     const template = value as { strings: readonly string[]; values: unknown[] };
     return template.strings.map((part, i) => part + markup(template.values[i])).join("");
+  }
+  if (value && typeof value === "object" && "_$litDirective$" in value && "values" in value) {
+    const [items, , template] = (value as { values: unknown[] }).values;
+    // repeat(items, key, template) renders each item; other directives show their arguments.
+    return typeof template === "function" ? [...items as Iterable<unknown>].map((item) => markup(template(item))).join("") : markup((value as { values: unknown[] }).values);
   }
   return typeof value === "string" || typeof value === "number" ? String(value) : "";
 }
@@ -60,10 +66,29 @@ test("a bot shows its face, or its emoji while it has one, always decorative bes
   assert.doesNotMatch(source, /botAvatar\(|data-tone=|initial/u, "the letter avatar is gone");
 });
 
-test("roster rows show each bot's state and keep their badges; archived bots sleep", () => {
-  const source = read("./bots.ts");
-  assert.match(between(source, "function botRow(", "function archivedRow("), /renderBotAvatar\(bot, "sm", \{ state: rosterFaceState\(bot\), badge: activityBadge\(bot\) \}\)/u);
-  assert.match(between(source, "function archivedRow(", "function renderRosterToggles("), /renderBotAvatar\(bot, "sm", \{ state: "offline" \}\)/u);
+test("roster rows: a finished turn unread is a green dot, a resting bot sleeps, a working one has no badge, the open one is awake", () => {
+  const bot = (id: string, status: BotView["status"], unread: boolean, lastMessage = "2026-10-19T09:00:00.000Z") => ({
+    id, name: id, handle: id, sessionId: `s-${id}`, cwd: `/bots/${id}`, createdAt: lastMessage, updatedAt: lastMessage, status, unread, soul: false, routines: 0,
+  } as BotView);
+  const bots = [
+    bot("done", "idle", true, "2026-10-19T09:04:00.000Z"),
+    bot("asleep", "idle", false, "2026-10-19T09:03:00.000Z"),
+    bot("working", "running", true, "2026-10-19T09:02:00.000Z"),
+    bot("open", "idle", false, "2026-10-19T09:01:00.000Z"),
+  ];
+  const page = markup(renderBotRoster({ bots, query: "", showHidden: false, showArchived: false, activeBotId: "open", menuFor: "", pendingId: "", now: Date.parse("2026-10-19T09:05:00.000Z") } as unknown as BotRosterProps, { navigate: () => {}, dialog: () => {} }));
+  const row = (id: string) => page.slice(page.indexOf(`data-bot-id=${id}`), page.indexOf("</a>", page.indexOf(`data-bot-id=${id}`)));
+  const badges = (id: string) => [...row(id).matchAll(/bot-avatar__badge--(\w+)/gu)].map((match) => match[1]);
+  assert.deepEqual(badges("done"), ["done"]);
+  assert.match(row("done"), /state=idle/u);
+  assert.deepEqual(badges("asleep"), ["sleeping"]);
+  assert.match(row("asleep"), /state=sleeping/u);
+  assert.deepEqual(badges("working"), []);
+  assert.match(row("working"), /state=thinking/u);
+  assert.deepEqual(badges("open"), []);
+  assert.match(row("open"), /state=idle/u);
+  assert.doesNotMatch(page, /sidebar-session-unread-dot/u, "the green dot is the row's one unread mark");
+  assert.match(read("./bots.ts"), /renderBotAvatar\(bot, "sm", \{ state: "offline" \}\)/u, "archived bots show offline");
 });
 
 test("the Settings page's Look is Face (shape and color) or Emoji, as native radio groups, each choice saved on its own", () => {
@@ -125,7 +150,7 @@ test("faces are decorative, pause when unseen and keep still under reduced motio
   assert.match(reduced, /:is\(\.fx, \.bot-face__shadow, \.bot-face__thoughts circle\) \{ animation: none !important; \}/u);
   assert.match(reduced, /:is\(\.bot-face__gaze, \.bot-face__eyes, \.e-open\) \{ transition: none; \}/u);
   assert.match(reduced, /svg\[data-state="waiting"\] \.bot-face__tilt \{ transform: rotate\(8deg\); \}/u, "waiting keeps its tilt, still");
-  for (const state of ["idle", "thinking", "working", "waiting", "memory", "error", "done", "offline"]) assert.match(styles, new RegExp(`svg\\[data-state="${state}"\\]`, "u"), state);
+  for (const state of ["idle", "sleeping", "thinking", "working", "waiting", "memory", "error", "done", "offline"]) assert.match(styles, new RegExp(`svg\\[data-state="${state}"\\]`, "u"), state);
 });
 
 test("emoji tiles take a face's width in rows, so names line up whichever look a bot has", () => {

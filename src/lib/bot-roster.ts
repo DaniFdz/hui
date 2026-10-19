@@ -161,38 +161,43 @@ export function compactRelativeTime(at: number, now = Date.now()): string {
   return new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export type BotActivity = "running" | "waiting" | "summarizing" | "error" | "away" | "idle";
+export type BotActivity = "running" | "waiting" | "summarizing" | "error" | "away" | "idle" | "done" | "sleeping";
 
 /** What the row's leading indicator says. A pending question outranks
- * everything; memory waits read as thinking because the turn has not started. */
-export function botActivity(bot: Pick<BotView, "status" | "memory">): BotActivity {
+ * everything; memory waits read as thinking because the turn has not started.
+ * At rest, the bot whose chat is open is idle; any other is done while its
+ * finished turn is unread, and sleeps once it has been read. */
+export function botActivity(bot: Pick<BotView, "status" | "memory" | "unread">, open = false): BotActivity {
   if (bot.status === "waiting") return "waiting";
   if (bot.status === "error") return "error";
   if (bot.status === "reconnecting" || bot.status === "disconnected") return "away";
   if (bot.memory?.waiting) return "summarizing";
   if (bot.status === "running" || bot.status === "starting") return "running";
-  return "idle";
+  if (open) return "idle";
+  return bot.unread ? "done" : "sleeping";
 }
 
 const ACTIVITY_LABELS: Record<BotActivity, string> = {
-  running: "active now",
+  running: "working",
   waiting: "waiting for your answer",
   summarizing: "summarizing memory",
   error: "failed",
   away: "unreachable",
   idle: "idle",
+  done: "done",
+  sleeping: "sleeping",
 };
 
-export function botActivityLabel(bot: Pick<BotView, "status" | "memory">): string {
-  return ACTIVITY_LABELS[botActivity(bot)];
+export function botActivityLabel(bot: Pick<BotView, "status" | "memory" | "unread">, open = false): string {
+  return ACTIVITY_LABELS[botActivity(bot, open)];
 }
 
-export function botAccessibleName(bot: BotView): string {
+export function botAccessibleName(bot: BotView, open = false): string {
   return [
     bot.name,
     ...(bot.title ? [bot.title] : []),
     ...(bot.worker ? [`on ${bot.worker.name}`] : []),
-    botActivityLabel(bot),
+    botActivityLabel(bot, open),
     ...(bot.unread ? ["unread"] : []),
     ...(bot.hidden ? ["hidden"] : []),
     ...(bot.memory?.failing ? ["memory summaries failing"] : []),

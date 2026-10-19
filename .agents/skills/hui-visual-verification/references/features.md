@@ -6,6 +6,7 @@ labels from Browser snapshots; older journey notes record historical observation
 
 | Change | Journey / fixture | Required observable result |
 | --- | --- | --- |
+| Messages written mid-turn | `e2e/midturn-messages.browser.md`; default launcher + `E2E_MIDTURN_MESSAGE` | After the turn ends, the mid-turn *What to check* message keeps its own row with working links; only the `read` call folds; same after reload; desktop and 390×844 |
 | Basic SDK/chat/tool rendering | `e2e/sdk-backend.browser.md`; default launcher + `E2E_RICH` | Real read tool, response, second prompt accepted, persisted session after reload |
 | PI extensions in Durable | `e2e/durable-extensions.browser.md`; default launcher + `E2E_EXTENSION_TOOL`, `$check-status`, `$hui-e2e-question`; separate plain-text session + `$fixture-compact` | Extension tool executes, plugin commands appear, question answers settle desktop/mobile, repeated turns and extension-driven compaction work |
 | Compaction / rewind | `e2e/compaction-rewind.browser.md`; default launcher (Durable sessions) + `/compact`, `E2E_SLOW_COMPACT`; PI's worker: `launch … --pi-sessions` + `/fixture-compact` | Earlier turns stay visible with the divider; rewind inside the kept window keeps the summary, behind it sends the original turns; live divider, queued input sent after, failure and Stop-cancel dividers |

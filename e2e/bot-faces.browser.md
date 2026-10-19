@@ -111,6 +111,35 @@ Browser tool only opened the captures to inspect them.
 `set_profile` changing the look is covered by `server/bot-service.test.ts` and
 `server/runtimes/durable-bots.test.ts`; no browser run had the model call it.
 
+## Sleeping, working and done (2026-10-19, `66a873d`, clean checkout; doctor passed before and after)
+
+`visual-verification.mjs launch` (default fixture), bots on in Labs, seven
+bots through `POST /__hui/bots` with a `soul` so no first turn runs: Ada,
+Master (cat ears), Grace, Pedro, Sherlock, Luisma and Maria. Grace, Luisma,
+Maria and Sherlock each got one message with `wait: true`, so their turns ended
+with nobody reading them.
+
+1. Bots tab: the four that answered show a green dot and open eyes; Ada, Master
+   and Pedro, never spoken to, sleep with closed eyes and a *z* badge. Row
+   names read *Grace, done, unread* and *Ada, sleeping*.
+2. Clicking Sherlock, then Maria, then Luisma: the open row has no badge and
+   open eyes (*Luisma, idle*; the header and panel say *Idle*), and each bot
+   left behind sleeps (*Sherlock, sleeping*).
+3. `E2E_REPLAY` on Ada, a held memory summary on Master and
+   `/hui-e2e-question confirm` on Pedro: Ada thinks and Master shows
+   *Summarizing memory…*, both without a badge; Pedro shows the hand.
+4. `POST <providerUrl>/control/release-replay`: Ada and Master turn green,
+   awake. A second headless Chrome on the same instance logged Ada's face and
+   badge from a MutationObserver (observation only): *thinking* with no badge,
+   then the done badge and the hop in the same frame as the status stream's
+   *idle* and *unread*, then *idle* 1.15 s later; never *sleeping*. Earlier
+   runs of the same probe on the branch, before the status stream's unread
+   marks won over the bot list, caught a list frame read before the unread
+   write putting a finished bot to sleep for about a second.
+5. 390×844: the drawer's roster shows the same badges. Dark theme: the green
+   dot and the *z* badge stay legible.
+6. Console: Lit's development-mode warnings only.
+
 ## Limits and gaps
 
 - A roster row knows only the bot's status: a running tool reads *thinking*
@@ -120,3 +149,5 @@ Browser tool only opened the captures to inspect them.
   shows it, but no disconnect was forced.
 - Headless Chromium; screenshots cannot show motion, so motion is asserted
   through transforms and animation state, plus a screencast kept with the PR.
+- A row that moves while its bot hops (another bot had newer activity) ends
+  the hop; it shows the green dot at once.
