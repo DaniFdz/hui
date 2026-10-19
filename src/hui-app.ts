@@ -26,7 +26,6 @@ import {
   createSessionGroup,
   reorderSessionGroups,
   continueSession,
-  sessionGroupLabel,
   deleteSession,
   deleteSessionGroup,
   followUpSession,
@@ -50,7 +49,6 @@ import {
   setSessionModel,
   subscribeSession,
   subscribeSessionStatuses,
-  transcriptAsMarkdown,
   updateSessionGroup,
   type Attachment,
   type RuntimeEvent,
@@ -73,6 +71,7 @@ import {
   type GitCheckoutInfo,
   type WorktreeProgress,
 } from "./api/sessions.ts";
+import { sessionGroupLabel, transcriptAsMarkdown } from "./lib/session/sessions.ts";
 import { readAttachment, validateAttachmentTotal } from "./lib/attachments.ts";
 import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
@@ -189,7 +188,7 @@ import { loadJiraConnection } from "./api/jira.ts";
 import { VoiceController } from "./controllers/voice-controller.ts";
 import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { liveCallPlatform } from "./lib/voice/live-call-platform.ts";
-import { loadCallsStatus } from "./api/calls.ts";
+import { deleteCall, loadCallsStatus, postCallDelegation, postCallHeartbeat, postCallLines, postCallTask, startBotCall } from "./api/calls.ts";
 import { callsReady, type CallsStatus } from "../shared/calls.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./api/workers.ts";
@@ -653,7 +652,7 @@ export class HuiApp extends HuiElement {
   @property(paneCallback) onPaneCall: (() => void) | undefined;
   /** The app's calls (top-level only): the one call with a bot, on GPT-Live. */
   private readonly voice = new VoiceController(this, {
-    platform: liveCallPlatform,
+    platform: (bot) => liveCallPlatform(bot, { startBotCall, postCallDelegation, postCallTask, postCallLines, postCallHeartbeat, deleteCall, subscribeSession }),
     now: () => Date.now(),
     setInterval: (callback, ms) => { const timer = window.setInterval(callback, ms); return () => window.clearInterval(timer); },
   });

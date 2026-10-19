@@ -15,7 +15,8 @@ import {
   type KanbanColumn,
   type SessionStage,
 } from "../../shared/session-stages.ts";
-import { sessionGroupLabel, type SessionGroup, type SessionView } from "../api/sessions.ts";
+import type { SessionGroup, SessionView } from "../api/sessions.ts";
+import { sessionGroupLabel } from "./session/sessions.ts";
 
 /** Top to bottom inside a cell: what needs attention first. */
 export const KANBAN_STATUSES = ["error", "waiting", "done", "working", "idle"] as const;

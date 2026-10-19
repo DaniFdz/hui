@@ -10,7 +10,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { renderPaneMoveHandle } from "./pane-move-handle.ts";
 import { matchesModelSearch, modelSearchText } from "../lib/model-selection.ts";
-import { sessionGroupLabel, unreachableHost } from "../api/sessions.ts";
+import { sessionGroupLabel, unreachableHost } from "../lib/session/sessions.ts";
 import type {
   Attachment,
   RuntimeModel,

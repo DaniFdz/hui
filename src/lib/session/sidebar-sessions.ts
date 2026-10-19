@@ -4,7 +4,8 @@
  * registry's groups and order are changed only through its API.
  */
 import { DEFAULT_SESSION_STAGE, isSessionStage, stageRank } from "../../../shared/session-stages.ts";
-import { sessionGroupLabel, type SessionGroup, type SessionStatus, type SessionView } from "../../api/sessions.ts";
+import type { SessionGroup, SessionStatus, SessionView } from "../../api/sessions.ts";
+import { sessionGroupLabel } from "./sessions.ts";
 
 export type SidebarSessionOptions = {
   groupBy: "custom" | "project" | "none";

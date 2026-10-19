@@ -8,7 +8,7 @@ import type { QuestionnaireQuestion } from "../../server/questionnaires.ts";
 
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
 export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
-import { callMinutes, callTranscriptText, type CallRecord } from "../../shared/calls.ts";
+import type { CallRecord } from "../../shared/calls.ts";
 import type { ProgressCard } from "../lib/progress-card.ts";
 import type { SessionPullRequest } from "../../shared/pull-requests.ts";
 import type { SessionJiraIssue } from "../../shared/jira.ts";
@@ -153,17 +153,6 @@ export type SessionGroup = {
   baseRef?: string;
   sessions: SessionView[];
 };
-
-/** Labels are presentation, not registry identifiers. Preserve stored spelling. */
-export function sessionGroupLabel(label: string): string {
-  return !label || label === "ungrouped" ? "OTHER" : label.toLocaleUpperCase();
-}
-
-/** The API stores ungrouped sessions as an empty string while group projections
- * expose the stable `ungrouped` key used by the sidebar. */
-export function storedSessionGroup(label: string): string {
-  return !label || label === "ungrouped" ? "" : label;
-}
 
 /** `url` is an opaque gateway route (or a local data URL while pending) for images. */
 export type TranscriptAttachment = { name: string; kind?: "image" | "file"; mimeType?: string; url?: string };
@@ -319,59 +308,6 @@ export type RuntimeCompaction = {
   blocking?: false;
   background?: true;
 };
-
-export function toTranscriptItems(entries: readonly TranscriptEntry[]): TranscriptItem[] {
-  return entries.map((entry, index) => ({ ...entry, id: entry.id ?? `history-${index}` })) as TranscriptItem[];
-}
-
-/** OpenClaw's Copy → Conversation as Markdown action, adapted to HUI's
- * normalized transcript. Pending rows are included because they are visible. */
-export function transcriptAsMarkdown(items: readonly TranscriptItem[]): string {
-  return items.map((item) => {
-    if (item.kind === "message") return `## ${item.role === "user" ? "User" : "Assistant"}\n\n${item.text}`;
-    if (item.kind === "thinking") return `### Thinking\n\n${item.text}`;
-    if (item.kind === "error") return `### Error\n\n${item.text}`;
-    if (item.kind === "compaction") return `### Context compacted\n\n${item.summary}`;
-    if (item.kind === "call") return `### Call · ${callMinutes(item)} min\n\n${item.summary ?? "Summary unavailable."}\n\n${callTranscriptText(item.lines, item.bot ?? "Bot", "You")}`;
-    const details = item.output || (item.args === undefined ? "" : JSON.stringify(item.args, null, 2));
-    return `### Tool: ${item.name}${details ? `\n\n\`\`\`\n${details}\n\`\`\`` : ""}`;
-  }).join("\n\n").trim();
-}
-
-export function statusCounts(groups: readonly SessionGroup[]): {
-  running: number;
-  starting: number;
-  total: number;
-} {
-  let running = 0;
-  let starting = 0;
-  let total = 0;
-  for (const group of groups) {
-    for (const session of group.sessions) {
-      total += 1;
-      if (session.status === "running" || session.status === "waiting") {
-        running += 1;
-      }
-      if (session.status === "starting") {
-        starting += 1;
-      }
-    }
-  }
-  return { running, starting, total };
-}
-
-/** How a session on a machine HUI cannot reach reads: its status and the
- * notice that explains it. Undefined while the session is reachable. */
-export function unreachableHost(session: Pick<SessionView, "status" | "worker">): { status: string; notice: string } | undefined {
-  const name = session.worker?.name ?? "its machine";
-  if (session.status === "reconnecting") {
-    return { status: `Reconnecting to ${name}…`, notice: `Connection to ${name} lost — the session keeps running there. HUI reconnects automatically.` };
-  }
-  if (session.status === "disconnected") {
-    return { status: `Disconnected from ${name}`, notice: `Disconnected from ${name}. The session may still be running there.` };
-  }
-  return undefined;
-}
 
 /** `revision` orders this full list against the status stream's changes. */
 export type SessionList = { revision: number; groups: SessionGroup[] };

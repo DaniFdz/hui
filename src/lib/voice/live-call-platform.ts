@@ -3,12 +3,13 @@
  * echo cancellation, a native RTCPeerConnection carrying it to ChatGPT with
  * the call's data channel, the bot's voice on a hidden audio element, both
  * levels from analysers (for activity and the bot's face), over the gateway's
- * call routes in src/api/calls.ts. No dependencies; `LiveCall` (live-call.ts) holds the logic.
+ * call routes (src/api/calls.ts), whose requests its creator passes in. No dependencies; `LiveCall` (live-call.ts)
+ * holds the logic.
  */
 import type { CallDelegationResult, CallLine, CallTaskResult } from "../../../shared/calls.ts";
 import type { LiveCallPlatform, LiveConnection, LiveMicrophone } from "./live-call.ts";
-import { subscribeSession } from "../../api/sessions.ts";
-import { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postCallTask, startBotCall } from "../../api/calls.ts";
+import type { subscribeSession } from "../../api/sessions.ts";
+import type { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postCallTask, startBotCall } from "../../api/calls.ts";
 import { frameLevel } from "./level.ts";
 import { microphoneContext, microphoneErrorMessage } from "./voice.ts";
 
@@ -26,8 +27,18 @@ function analyse(context: AudioContext, stream: MediaStream): () => number {
   return () => analyserLevel(analyser, buffer);
 }
 
+type LiveCallApi = {
+  startBotCall: typeof startBotCall;
+  postCallDelegation: typeof postCallDelegation;
+  postCallTask: typeof postCallTask;
+  postCallLines: typeof postCallLines;
+  postCallHeartbeat: typeof postCallHeartbeat;
+  deleteCall: typeof deleteCall;
+  subscribeSession: typeof subscribeSession;
+};
+
 /** A GPT-Live call with one bot, through the gateway's call routes. */
-export function liveCallPlatform(bot: { id: string; sessionId: string }): LiveCallPlatform {
+export function liveCallPlatform(bot: { id: string; sessionId: string }, api: LiveCallApi): LiveCallPlatform {
   let context: AudioContext | undefined;
   let microphoneStream: MediaStream | undefined;
   const audio = () => (context ??= new AudioContext());
@@ -95,7 +106,7 @@ export function liveCallPlatform(bot: { id: string; sessionId: string }): LiveCa
       try {
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
-        const started = await startBotCall(bot.id, offer.sdp ?? "");
+        const started = await api.startBotCall(bot.id, offer.sdp ?? "");
         await peer.setRemoteDescription({ type: "answer", sdp: started.answer });
         return {
           callId: started.callId,
@@ -116,27 +127,27 @@ export function liveCallPlatform(bot: { id: string; sessionId: string }): LiveCa
     },
 
     async delegate(callId, id, request, signal): Promise<CallDelegationResult> {
-      return postCallDelegation(bot.id, callId, id, request, signal);
+      return api.postCallDelegation(bot.id, callId, id, request, signal);
     },
 
     async waitTask(callId, task, signal): Promise<CallTaskResult> {
-      return postCallTask(bot.id, callId, task, signal);
+      return api.postCallTask(bot.id, callId, task, signal);
     },
 
     async writeLines(callId, lines: readonly (CallLine & { at: number })[]) {
-      await postCallLines(bot.id, callId, lines);
+      await api.postCallLines(bot.id, callId, lines);
     },
 
     async heartbeat(callId) {
-      await postCallHeartbeat(bot.id, callId);
+      await api.postCallHeartbeat(bot.id, callId);
     },
 
     async end(callId, leaving) {
-      await deleteCall(bot.id, callId, leaving);
+      await api.deleteCall(bot.id, callId, leaving);
     },
 
     watchTools(onTool) {
-      return subscribeSession(bot.sessionId, {
+      return api.subscribeSession(bot.sessionId, {
         onSnapshot: () => undefined,
         onStatus: () => undefined,
         onEvent: (event) => {

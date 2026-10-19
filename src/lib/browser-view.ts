@@ -4,7 +4,7 @@
  * views supply the state.
  */
 import type { BrowserViewState } from "../../shared/browser.ts";
-import type { PickerOption } from "../views/settings-picker.ts";
+import type { PickerOption } from "./picker-options.ts";
 
 export type Size = { width: number; height: number };
 

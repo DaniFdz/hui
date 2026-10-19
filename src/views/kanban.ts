@@ -33,7 +33,8 @@ import {
   type KanbanMove,
   type KanbanOptions,
 } from "../lib/kanban.ts";
-import { sessionGroupLabel, storedSessionGroup, type SessionGroup, type SessionView } from "../api/sessions.ts";
+import { type SessionGroup, type SessionView } from "../api/sessions.ts";
+import { sessionGroupLabel, storedSessionGroup } from "../lib/session/sessions.ts";
 import { formatUpdated } from "./sessions.ts";
 import { taskSuggestionLocation, taskSuggestionPreview } from "../../shared/task-suggestions.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
