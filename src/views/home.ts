@@ -217,6 +217,9 @@ export type HomeProps = {
   fileLinks?: boolean;
   mobileNavLayout?: boolean;
   groups: readonly SessionGroup[];
+  /** Any session by id, a bot's chat and subagents included (session lists leave those out): names and links the
+   * session a message came from. */
+  findSession: (id: string) => SessionView | undefined;
   transcript: readonly TranscriptItem[];
   subagents: readonly SubagentTaskView[];
   /** Waiting on the server to open or start the runtime. */
@@ -1098,11 +1101,11 @@ function senderView(props: HomeProps, sender: MessageSender): SenderView {
   if (sender.kind === "routine") return { name: sender.name, avatar: senderIcon(icons.calendarClock), source: "Routine" };
   if (sender.kind === "trigger") return { name: sender.name, avatar: senderIcon(icons.radio), source: sender.summary || "Trigger" };
   const id = sender.kind === "parent" ? props.session?.parentId : sender.id;
-  const session = id ? props.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === id) : undefined;
+  const session = id ? props.findSession(id) : undefined;
   return {
     name: session?.title ?? (sender.kind === "parent" ? "Parent session" : sender.title),
     avatar: senderIcon(icons.messageSquare),
-    ...(session ? { link: { href: navigationPath({ kind: "session", id: session.id }), open: () => props.onSelectSubagent(session.id) } } : {}),
+    ...(session ? { link: { href: navigationPath(session.bot ? { kind: "bot", id: session.bot.id } : { kind: "session", id: session.id }), open: () => props.onSelectSubagent(session.id) } } : {}),
   };
 }
 

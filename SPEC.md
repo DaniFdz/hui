@@ -1852,9 +1852,10 @@ everything the Bots tab can, through the same routes.
   on, an **Agents | Bots** switch fills the sidebar's top row after the collapse
   toggle (arrow keys, Home/End; the browser remembers the tab): Agents is the
   sidebar as before, and Bots shows only the roster, without the navigation.
-  Bot chats, and the
-  subagents a bot spawns (with theirs), never appear in the Sessions list, its
-  search, Kanban, the Sessions page, the command palette or session pickers; Automations labels their routines
+  Bot chats, the
+  subagents a bot spawns and their own subagents never appear in the Sessions
+  list, its search, Kanban, the Sessions page, the command palette or session
+  pickers; a message from one still names and links it; Automations labels their routines
   *Bot · name* and words
   their schedules as the bot's panel does (*Daily at 08:00*), and shows who
   made a task when a bot did and a temporary one's limits. The roster

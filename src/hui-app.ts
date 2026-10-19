@@ -5657,6 +5657,7 @@ export class HuiApp extends HuiElement {
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
       groups: this.listedGroups,
+      findSession: (id) => this.listedSession(id),
       ...(this.paneBot && this.onPaneBotPanel ? { bot: {
         ...this.paneBot,
         onTogglePanel: () => this.onPaneBotPanel?.(),
