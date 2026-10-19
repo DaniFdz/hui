@@ -158,6 +158,7 @@ import { createFileRoutes, FILES_ROUTE } from "./routes/files.ts";
 import { createDiffRoutes, DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE, createAttachmentRoutes } from "./routes/attachments.ts";
 import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
+import { createPowerRoutes } from "./routes/power.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
 import {
@@ -192,8 +193,6 @@ const PI_PACKAGE_REMOVE_ROUTE = `${PI_ROUTE}/packages/remove`;
 const PI_SKILL_INSTALL_ROUTE = `${PI_ROUTE}/skills/install`;
 const PI_RESOURCE_READ_ROUTE = /^\/__hui\/pi\/resources\/(skill|plugin)\/([a-f0-9]{24})$/;
 const HEALTH_ROUTE = `${PREFIX}health`;
-/** macOS sleep prevention status (GET) and the lid switch (PUT { lidAwake }). */
-const POWER_ROUTE = `${PREFIX}power`;
 const WORKSPACES_ROUTE = `${PREFIX}workspaces`;
 const WORKTREES_ROUTE = `${PREFIX}worktrees`;
 const WORKTREES_REMOVE_ROUTE = `${PREFIX}worktrees/remove`;
@@ -443,6 +442,7 @@ const vscode = new VscodeService({
 });
 /** macOS sleep prevention lives and dies with this gateway process. */
 const macPower = process.platform === "darwin" ? new MacPower() : undefined;
+const powerRoutes = createPowerRoutes({ macPower });
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
 liveSessions.setWatcherProvider((id) => watchers.list(id));
 const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
@@ -633,6 +633,11 @@ function sendRouteResult(response: ServerResponse, path: string, result: RouteRe
     if (result.etag) response.setHeader("etag", `"${result.etag}"`);
     sendJson(response, result.status, result.body);
   }
+}
+
+function answered(response: ServerResponse, path: string, result: RouteResult | undefined): boolean {
+  if (result) sendRouteResult(response, path, result);
+  return Boolean(result);
 }
 
 /* ── sessions ────────────────────────────────────────────────────────────── */
@@ -1215,6 +1220,7 @@ async function handleRequest(
       detail: responseFailures.get(response),
     });
   });
+  const routed = routeRequest(request, response, path);
 
   if (path === `${PREFIX}update` || path === `${PREFIX}update/check`) {
     try {
@@ -1461,30 +1467,7 @@ async function handleRequest(
     return;
   }
 
-  if (path === POWER_ROUTE) {
-    if (request.method === "GET") {
-      sendJson(response, 200, { power: macPower?.status() ?? null });
-      return;
-    }
-    if (request.method === "PUT") {
-      const body = await readBody(request);
-      const lidAwake = typeof body === "object" && body !== null ? (body as Record<string, unknown>)["lidAwake"] : undefined;
-      if (typeof lidAwake !== "boolean") {
-        sendJson(response, 400, { error: "lidAwake must be a boolean" });
-        return;
-      }
-      if (!macPower) {
-        sendJson(response, 404, { error: "sleep prevention is only available on macOS" });
-        return;
-      }
-      // Not awaited: turning it on waits on a macOS password dialog.
-      void macPower.setLidAwake(lidAwake);
-      sendJson(response, 200, { power: macPower.status() });
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
+  if (answered(response, path, await powerRoutes.handle(routed))) return;
 
   if (path === HEALTH_ROUTE) {
     if (request.method === "GET") {
@@ -1624,7 +1607,7 @@ async function handleRequest(
   }
 
   if (path.startsWith(THEMES_ROUTE)) {
-    const result = await themeRoutes.handle(routeRequest(request, response, path));
+    const result = await themeRoutes.handle(routed);
     if (result) {
       sendRouteResult(response, path, result);
       return;

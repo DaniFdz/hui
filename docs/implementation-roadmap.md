@@ -680,7 +680,7 @@ one administrator prompt per enable, never saved, so every gateway start begins
 off without prompting). Both end with the gateway, including a crash; a reboot's
 leftover shows as on until turned off. A top notice reminds while the lid is
 held awake. Proof: `server/power.test.ts` (real watcher script against fake
-macOS commands), `server/power-routes.test.ts`, `src/lib/settings.test.ts`,
+macOS commands), `server/routes/power.test.ts`, `src/lib/settings.test.ts`,
 `src/views/settings-gateway.test.ts` and `e2e/power-settings.browser.md`.
 
 ### HUI-17 — Background watchers
