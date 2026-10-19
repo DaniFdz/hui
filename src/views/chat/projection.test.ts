@@ -40,7 +40,7 @@ test("user rows group by sender, and what the agent sends a bot stays in sight",
   ]);
 });
 
-test("a widget call keeps a row of its own once its turn settles", () => {
+test("a widget call keeps a row of its own between assistant messages", () => {
   const items = [
     { kind: "message" as const, id: "u", role: "user" as const, text: "show me" },
     { kind: "tool" as const, id: "r", name: "read", status: "succeeded" as const, output: "ok" },
@@ -48,15 +48,13 @@ test("a widget call keeps a row of its own once its turn settles", () => {
     { kind: "tool" as const, id: "w", name: "show_widget", status: "succeeded" as const, args: { title: "Dial", widget_code: "<svg/>" }, details: { widget: { title: "Dial" } } },
     { kind: "message" as const, id: "a", role: "assistant" as const, text: "Shown above." },
   ];
-  for (const live of [true, false]) {
-    const rows = projectChatTranscript(items, live);
-    const widget = rows.find((row) => row.kind === "activity" && row.items.some((item) => item.kind === "tool" && item.name === "show_widget"));
-    assert.equal(widget?.kind === "activity" && widget.items.length, 1, live ? "live" : "settled");
-    assert.equal(rows.at(-1)?.kind === "messages" && rows.at(-1)?.id, "a");
-  }
+  const rows = projectChatTranscript(items);
+  const widget = rows.find((row) => row.kind === "activity" && row.items.some((item) => item.kind === "tool" && item.name === "show_widget"));
+  assert.equal(widget?.kind === "activity" && widget.items.length, 1);
+  assert.equal(rows.at(-1)?.kind === "messages" && rows.at(-1)?.id, "a");
 });
 
-test("groups assistant context into one disclosure and leaves only the final answer visible", () => {
+test("keeps every assistant message in sight and folds only the thinking and tools between them", () => {
   const rows = projectChatTranscript([
     { kind: "message", id: "u1", role: "user", text: "one" },
     { kind: "message", id: "u2", role: "user", text: "two" },
@@ -67,12 +65,14 @@ test("groups assistant context into one disclosure and leaves only the final ans
   ]);
   assert.deepEqual(rows.map((row) => [row.kind, row.kind === "messages" ? row.role : "items" in row ? row.items.length : 0]), [
     ["messages", "user"],
-    ["activity", 3],
+    ["messages", "assistant"],
+    ["activity", 2],
     ["messages", "assistant"],
   ]);
   assert.equal(rows[0]?.kind === "messages" && rows[0].messages.length, 2);
-  assert.equal(rows[1]?.kind === "activity" && rows[1].items[0]?.kind, "message");
-  assert.equal(rows[2]?.kind === "messages" && rows[2].messages[0]?.text, "done");
+  assert.equal(rows[1]?.kind === "messages" && rows[1].messages[0]?.text, "I will check.");
+  assert.deepEqual(rows[2]?.kind === "activity" && rows[2].items.map((item) => item.kind), ["thinking", "tool"]);
+  assert.equal(rows[3]?.kind === "messages" && rows[3].messages[0]?.text, "done");
 });
 
 test("HUI's kickoff of a new bot is a note row, never the operator's message, and the bot's opener follows it", () => {
@@ -109,33 +109,23 @@ test("interleaves live assistant updates with collapsed tool batches", () => {
     { kind: "message", id: "checkpoint", role: "assistant", text: "I found the cause." },
     { kind: "thinking", id: "r", text: "verify the fix" },
     { kind: "tool", id: "t3", name: "bash", status: "running" },
-  ], true);
+  ]);
   assert.deepEqual(rows.map((row) => row.kind === "messages" ? `${row.role}:${row.messages[0]?.text}` : "items" in row ? `activity:${row.items.length}` : row.kind), [
     "user:check", "assistant:Checking.", "activity:2", "assistant:I found the cause.", "activity:2",
   ]);
 });
 
-test("settling the same turn hides intermediate updates and leaves the final response", () => {
+test("a finished turn still shows what the agent wrote mid-turn, as it did live", () => {
   const transcript = [
     { kind: "message" as const, id: "u", role: "user" as const, text: "check" },
     { kind: "message" as const, id: "preamble", role: "assistant" as const, text: "Checking." },
     { kind: "tool" as const, id: "t1", name: "read", status: "succeeded" as const },
-    { kind: "message" as const, id: "checkpoint", role: "assistant" as const, text: "I found the cause." },
+    { kind: "message" as const, id: "checkpoint", role: "assistant" as const, text: "What to check: the dashboard." },
     { kind: "tool" as const, id: "t2", name: "bash", status: "succeeded" as const },
     { kind: "message" as const, id: "final", role: "assistant" as const, text: "Fixed." },
   ];
-
-  const live = projectChatTranscript(transcript, true);
-  const settled = projectChatTranscript(transcript, false);
-  assert.deepEqual(live.map((row) => row.kind), ["messages", "messages", "activity", "messages", "activity", "messages"]);
-  assert.deepEqual(settled.map((row) => row.kind), ["messages", "activity", "messages"]);
-  assert.equal(settled[1]?.kind === "activity" && settled[1].items.length, 4);
-  assert.equal(settled[2]?.kind === "messages" && settled[2].messages[0]?.text, "Fixed.");
-
-  // Once PI's history holds the reply, the turn stays folded while the session is busy again
-  // (a compaction, or a run whose prompt has not reached this screen yet).
-  const persisted = transcript.map((item) => item.kind === "message" ? { ...item, entryId: `e-${item.id}` } : item);
-  assert.deepEqual(projectChatTranscript(persisted, true), projectChatTranscript(persisted, false));
+  const rows = projectChatTranscript(transcript);
+  assert.deepEqual(rows.map((row) => row.kind === "messages" ? row.messages[0]?.id : row.kind), ["u", "preamble", "activity", "checkpoint", "activity", "final"]);
 });
 
 test("keeps presented media visible outside collapsed run details", () => {
@@ -151,17 +141,19 @@ test("keeps presented media visible outside collapsed run details", () => {
   ]);
 });
 
-test("starts a fresh grouped run after every user message", () => {
+test("starts a fresh grouped run after every user message, and an earlier turn keeps its mid-turn messages", () => {
   const rows = projectChatTranscript([
     { kind: "message", id: "u1", role: "user", text: "one" },
+    { kind: "message", id: "m1", role: "assistant", text: "what to check" },
+    { kind: "tool", id: "t0", name: "bash", status: "succeeded" },
     { kind: "tool", id: "t1", name: "read", status: "succeeded" },
     { kind: "message", id: "a1", role: "assistant", text: "first" },
     { kind: "message", id: "u2", role: "user", text: "two" },
     { kind: "tool", id: "t2", name: "write", status: "succeeded" },
     { kind: "message", id: "a2", role: "assistant", text: "second" },
   ]);
-  assert.deepEqual(rows.map((row) => row.kind === "messages" ? `${row.role}:${row.messages[0]?.text}` : "activity"), [
-    "user:one", "activity", "assistant:first", "user:two", "activity", "assistant:second",
+  assert.deepEqual(rows.map((row) => row.kind === "messages" ? `${row.role}:${row.messages[0]?.text}` : `activity:${row.kind === "activity" ? row.items.length : 0}`), [
+    "user:one", "assistant:what to check", "activity:2", "assistant:first", "user:two", "activity:1", "assistant:second",
   ]);
 });
 
@@ -200,10 +192,9 @@ test("collapses a long tool-heavy run into one activity row", () => {
     { kind: "message", id: "answer", role: "assistant", text: "Done." },
   ]);
 
-  assert.equal(rows.length, 3);
-  assert.equal(rows[1]?.kind, "activity");
-  assert.equal(rows[1]?.kind === "activity" && rows[1].items.length, 18);
-  assert.equal(rows[1]?.kind === "activity" && activityLabel(rows[1].items, false), "Ran 17 commands, edited 5 files");
+  assert.deepEqual(rows.map((row) => row.kind), ["messages", "messages", "activity", "messages"]);
+  assert.equal(rows[2]?.kind === "activity" && rows[2].items.length, 17);
+  assert.equal(rows[2]?.kind === "activity" && activityLabel(rows[2].items, false), "Ran 17 commands, edited 5 files");
 });
 
 test("the browser preview sits under the latest browser activity and knows whether its turn is current", () => {
@@ -224,7 +215,7 @@ test("the browser preview sits under the latest browser activity and knows wheth
     { kind: "message", id: "note", role: "assistant", text: "Checking the second page." },
     { kind: "tool", id: "b2", name: "browser", status: "succeeded" },
     { kind: "tool", id: "b3", name: "browser", status: "running" },
-  ], true);
+  ]);
   assert.deepEqual(browserPreviewRow(live), { index: 3, pending: true, currentTurn: true }, "only the newest browser batch carries it");
 
   const subagent = projectChatTranscript([
@@ -241,7 +232,7 @@ test("the browser preview sits under the latest browser activity and knows wheth
     { kind: "message", id: "a1", role: "assistant", text: "one" },
     { kind: "message", id: "u2", role: "user", text: "again" },
     { kind: "tool", id: "same", name: "browser", status: "running" },
-  ], true);
+  ]);
   assert.deepEqual(browserPreviewRow(repeated), { index: 4, pending: true, currentTurn: true });
   assert.equal(repeated[1]?.id, repeated[4]?.id, "both rows share an id; the index tells them apart");
   assert.equal(browserPreviewRow(projectChatTranscript([

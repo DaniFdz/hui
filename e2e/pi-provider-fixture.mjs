@@ -600,6 +600,16 @@ const server = createServer(async (request, response) => {
     text(response, "I flagged two follow-ups as suggestion cards instead of doing them now.");
     return finish(response);
   }
+  // Text, a tool call, then the final answer, in one turn.
+  if (!naming && source.includes("E2E_MIDTURN_MESSAGE")) {
+    text(response, "**What to check** for the checkout alert\n\n1. Is the error rate up on every host or only a few? Look at the [service dashboard](https://example.com/dashboard/checkout).\n2. Any new error patterns in the [error logs](https://example.com/logs?query=status%3Aerror).", 0);
+    toolUse(response, "tool-e2e-midturn", "read", { path: `${workspace}/fixture.txt` }, 1);
+    return finish(response, "tool_use");
+  }
+  if (latestToolResult?.id === "tool-e2e-midturn") {
+    text(response, "Started two helpers in the background; I'll report when they're back.");
+    return finish(response);
+  }
   if (source.includes("tool_result")) {
     text(response, "# Tool complete\n\n- output received\n- **Markdown verified**\n\n```text\nfixture-ok\n```\n\n| Check | Result |\n| --- | --- |\n| Tool | Passed |");
     return finish(response);
