@@ -1,7 +1,7 @@
 /**
  * Triggers in the gateway (HUI-18): the service and the route its listeners report to, wired to the gateway's bots and
- * settings, and the GitHub CLI that reads the pull requests a delivery links to. `hui.ts` makes one of these, starts
- * and stops it with the backend, and routes `/__hui/bots/:id/triggers…` and `POST /__hui/hooks/<token>` to it.
+ * settings, and the GitHub CLI that reads the pull requests a delivery links to. `services.ts` makes one of these,
+ * `backend.ts` starts and stops it, and `hui.ts` routes `/__hui/bots/:id/triggers…` and `POST /__hui/hooks/<token>` to it.
  */
 import type { IncomingMessage } from "node:http";
 

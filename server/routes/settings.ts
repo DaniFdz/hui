@@ -1,5 +1,5 @@
 /**
- * `GET/PUT /__hui/settings`: the gateway's HUI settings. Saving goes through `hui.ts`'s `writeSettings`, which also
+ * `GET/PUT /__hui/settings`: the gateway's HUI settings. Saving goes through `services.ts`'s `writeSettings`, which also
  * applies the changed settings to the running services. `hui.ts` applies the `x-hui` guard before dispatching here.
  */
 import type { JsonResult, RouteRequest } from "../http/route.ts";

@@ -11,7 +11,7 @@
  * the operator accepted Microsoft's license in HUI; its first start downloads the matching VS Code server build,
  * whose progress the status reports. A crash is reported and only an explicit open starts it again; nothing restarts
  * it in a loop. Nothing here blocks a gateway stop. Carrying HTTP and WebSocket traffic to it is vscode-proxy.ts's
- * job; the routes live in hui.ts.
+ * job; the routes live in routes/vscode.ts.
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";

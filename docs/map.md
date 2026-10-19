@@ -65,8 +65,9 @@ R13 is not checked yet.
 2. **Client API** (`src/api/sessions.ts`) posts it to
    `/__hui/sessions/:id/prompt` (or `steer`, `follow-up`, `queue`) with a
    request id (`src/lib/composer/send-requests.ts`) that a resend after a failure reuses.
-3. **Route** (`server/hui.ts`) validates the request and hands it to the live
-   session; `server/recent-requests.ts` answers a resent id with the first
+3. **Route** (`server/routes/session-actions.ts`, reached through
+   `server/hui.ts`) validates the request and hands it to the live session;
+   `server/recent-requests.ts` answers a resent id with the first
    send's outcome instead of sending it again.
 4. **Live session** (`server/live-sessions.ts`) keeps exactly one runtime per
    session and forwards the prompt through the generic contract in
@@ -84,7 +85,7 @@ R13 is not checked yet.
 
 | Area | Start here |
 |---|---|
-| HTTP entry and routing | `hui.ts` (all `/__hui/` routes), `services.ts` (the gateway's services and route modules, built at import time), `backend.ts` (backend start, startup recovery and stop), `server/routes/` (the route modules; `order.test.ts`: which handler answers each route family, in dispatch order), `server/http/` (`route.ts`: the request and result every route module speaks, request body reading and JSON answers; `events.ts`: server-sent events and the session event feed), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
+| HTTP entry and routing | `hui.ts` (the `/__hui/` dispatch: the `x-hui` gate, the diagnostics hook, route modules in order, the session and bot event streams), `services.ts` (the gateway's services and route modules, built at import time), `backend.ts` (backend start, startup recovery and stop), `vite-plugin.ts` (`huiConfig`: the API, backend and upgrades inside Vite's dev and preview servers), `server/routes/` (one `createXRoutes(deps)` module per area; `order.test.ts`: which handler answers each route family, in dispatch order), `server/http/` (`route.ts`: the request and result every route module speaks, request body reading and JSON answers; `events.ts`: server-sent events and the session event feed), `gateway.ts` (process start), `host.ts` (bind address), `static-files.ts`, `http-compression.ts` (Brotli/gzip for files and JSON) |
 | Published API schema | `server/api/` (TypeBox payloads and route metadata; `index.ts`: area catalog and JSON Schema document), `docs/api.schema.json` (generated contract), `scripts/api-schema.ts` (publication and browser type generation), `server/test-support/api-schema.ts` (test-only conformance checks) |
 | Session registry and lifecycle | `sessions.ts` (HUI registry), `server/sessions/` (`session-tree.ts`: a session's tree root; `lifecycle.ts`: create, fork, worktree launch, update and delete; `views.ts`: the `SessionView` wire shape and the session list; `attachments.ts`: prompt attachment limits, decoding and the attachment store; `stages.ts`: an agent's `set_stage`), `live-sessions.ts` (running sessions), `session-list.ts`, `session-transport.ts`, `routes/attachments.ts` (`GET /__hui/sessions/:id/attachments/…`), `routes/sessions.ts` (the session list and groups, `POST /__hui/sessions`, `PATCH/DELETE /__hui/sessions/:id`), `routes/session-actions.ts` (`/__hui/sessions/:id/<action>`: open, prompt, queue, model, fork and the rest) |
 | Runtimes | `runtimes/types.ts` (contract), `runtimes/durable*.ts` (Pi Durable: host, adapter, prompt, tools, PI extensions, questions; `durable-offer.ts`: the tool offer every conversation shares), `runtimes/turn-origins.ts` (history entries every conversation may hold), `runtimes/pi*.ts` (PI SDK worker and CLI fallback), `runtimes/pi-import.ts` (moves PI sessions to Durable for `hui doctor --fix`), `runtimes/model-controls.ts` (a model's reasoning levels, fast mode and the level HUI's Ultra is sent) |

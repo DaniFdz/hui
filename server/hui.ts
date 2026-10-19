@@ -1,19 +1,11 @@
 /**
- * HUI's local backend.
- *
- * Everything the app remembers lives in one directory: `~/.config/hui`, or
- * `$XDG_CONFIG_HOME/hui` when that is set.
- *
- *   settings.json    theme, color mode, interface/chat fonts, text size
- *   themes/*.json    shadcn/tweakcn themes; drop one in and it shows up
- *
- * Registered as a Vite plugin so the dev server and `vite preview` both serve
- * it, and the app needs no second process. Built-in themes stay in the repo and
- * are merged with the user's, so they keep receiving fixes; a user theme with
- * the same id wins.
- *
- * A theme file carries both modes, so there is no pairing to describe and no
- * manifest to keep in step.
+ * The `/__hui/` HTTP entry: `middleware` hands every `/__hui/` request to the dispatch, which tries each route
+ * module (`server/routes/`) in a fixed order and answers 404 when none claims the path. Order is behavior and
+ * `routes/order.test.ts` pins it: the routes a browser cannot send `x-hui` to (widget sandbox, presented media,
+ * attachments, a bot's memory page, VS Code entry and proxy, trigger hooks) come before the `x-hui` gate; terminals,
+ * files, diff, VS Code tickets and browser connect run before the diagnostics hook and are never recorded; every other
+ * route is. Also owns the streams no route module writes yet (session events, session statuses, bots), the bots-off
+ * refusal, theme file reads and the upgrade handlers in `attachLiveStreams`. Services come from `services.ts`.
  */
 import { readFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";

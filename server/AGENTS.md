@@ -5,9 +5,16 @@ reads, long-lived session lifecycle, and runtime adapters.
 
 ## Boundaries
 
-- `hui.ts` owns `/__hui/` routing and transport concerns. Keep parsing, validation,
-  and status mapping near the route; move lifecycle and persistence rules to their
-  owning modules.
+- `hui.ts` owns `/__hui/` dispatch: the `x-hui` gate, the diagnostics hook and the
+  order in which route modules are tried. Order is behavior; `routes/order.test.ts`
+  pins it. `services.ts` builds the services at import time, in dependency order;
+  `backend.ts` starts and stops them; `vite-plugin.ts` serves all of it from Vite.
+- Each area's routes live in `routes/<area>.ts` as `createXRoutes(deps)`, returning
+  `{ handle(request: RouteRequest) }` (`http/route.ts`). `deps` names only what the
+  module uses, passed in by `services.ts`. `handle` returns `undefined` when the path
+  is not its own, or a `RouteResult` (JSON through `reply(schema, body)`, HTML or a
+  file) that `hui.ts` writes. Keep parsing, validation and status mapping in the
+  route module; move lifecycle and persistence rules to their owning modules.
 - `sessions.ts` owns HUI registry persistence. `live-sessions.ts` owns the one-live-
   runtime-per-session invariant. `runtimes/` translates a harness protocol into the
   generic types in `runtimes/types.ts`.
