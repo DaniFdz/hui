@@ -4,7 +4,7 @@
  * the model as a prompt.
  */
 import { commandReference } from "./command-references.ts";
-import type { RuntimeCommand } from "./sessions-store.ts";
+import type { RuntimeCommand } from "../api/sessions.ts";
 import { skillIsEnabled, type PiSkill } from "./pi.ts";
 
 export type ComposerCommand = Omit<RuntimeCommand, "source"> & { source: RuntimeCommand["source"] | "hui" };

@@ -4,7 +4,7 @@
  * local-client header and turns refusals into errors, except a save conflict, which is an answer.
  */
 import type { FileEntry, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "../../shared/files.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
+import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 
 const base = (sessionId: string, action = "") => `/__hui/sessions/${encodeURIComponent(sessionId)}/files${action ? `/${action}` : ""}`;
 const withQuery = (url: string, query: Record<string, string>) => `${url}?${new URLSearchParams(query)}`;

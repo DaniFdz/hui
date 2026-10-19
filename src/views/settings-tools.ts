@@ -3,7 +3,7 @@
  * one session's tools and assembled prompt. Owns only this read-only surface; runtime protocol never enters the view.
  */
 import { LitElement, html, nothing } from "lit";
-import type { SessionView } from "../lib/sessions-store.ts";
+import type { SessionView } from "../api/sessions.ts";
 import type { SessionTools, ToolsCatalog } from "../lib/tools-types.ts";
 import { inspectSessionTools, loadToolsCatalog } from "../lib/tools-store.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";

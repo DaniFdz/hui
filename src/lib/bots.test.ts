@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { applyBotsUpdate, withLiveChats, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, createBot, isBotSession, isNewBotsFrame, loadBots, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
-import type { SessionGroup, SessionView } from "./sessions-store.ts";
+import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { botLook, BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
 
 const RECORD = {

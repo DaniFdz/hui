@@ -6,7 +6,7 @@
  * which imports `node:fs`. The HTTP payload is the contract between them.
  */
 import { fetchJson } from "../api/request.ts";
-import type { RuntimeModel } from "./sessions-store.ts";
+import type { RuntimeModel } from "../api/sessions.ts";
 
 export type PiTool = {
   name: string;

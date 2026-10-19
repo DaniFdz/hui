@@ -5,7 +5,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { until } from "lit/directives/until.js";
 import { icons } from "../../lib/icons.ts";
 import { openMessageContextMenu } from "../../lib/message-context-menu.ts";
-import type { TranscriptItem } from "../../lib/sessions-store.ts";
+import type { TranscriptItem } from "../../api/sessions.ts";
 import { renderToolFileReference, syncToolOverflow } from "./read-tool-card.ts";
 import { shouldToggleToolDisclosure } from "./command-tool-card.ts";
 

@@ -9,7 +9,7 @@
  * hovercard, the Files view's own Markdown preview) a reference stays plain. A plain custom element, not Lit: it
  * lives inside Markdown HTML and holds no template of its own.
  */
-import { resolveFilePaths, FilesRequestError } from "../lib/files-store.ts";
+import { resolveFilePaths, FilesRequestError } from "../api/files.ts";
 import { createFileLinkResolver, OPEN_FILE_EVENT, type OpenFileDetail } from "../lib/file-link-store.ts";
 import { TURN_END_EVENT, type TurnEndDetail } from "../lib/session-turn-end.ts";
 import type { FileLocation } from "../../shared/files.ts";

@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import { test } from "vitest";
 import { WebSocket as NodeWebSocket } from "ws";
 import { attachSessionTransport, sessionStreamTicket } from "./session-transport.ts";
-import { subscribeSession, type SessionConnection, type SessionStatus } from "../src/lib/sessions-store.ts";
+import { subscribeSession, type SessionConnection, type SessionStatus } from "../src/api/sessions.ts";
 
 test("session views stream over one-use, same-origin WebSocket tickets", { timeout: 10_000 }, async (t) => {
   let emit: (event: string, data: unknown) => void = () => {};

@@ -6,7 +6,7 @@ import { icons as openclawIcons } from "../components/openclaw/icons.ts";
 import { sessionMenuShortcuts } from "../lib/session-menu-shortcuts.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
-import { sessionGroupLabel, storedSessionGroup, unreachableHost, type SessionGroup, type SessionView } from "../lib/sessions-store.ts";
+import { sessionGroupLabel, storedSessionGroup, unreachableHost, type SessionGroup, type SessionView } from "../api/sessions.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";

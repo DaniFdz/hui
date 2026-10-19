@@ -4,7 +4,7 @@
  * contents never leave the browser.
  */
 import { attachmentBytes, validateAttachmentTotal } from "./attachments.ts";
-import type { Attachment } from "./sessions-store.ts";
+import type { Attachment } from "../api/sessions.ts";
 
 export type ComposerDraft = { text: string; attachments: readonly Attachment[] };
 

@@ -25,7 +25,7 @@ import {
   type ChatFaceInput,
 } from "./bot-face.ts";
 import { initialLiveCallState } from "./live-call.ts";
-import type { TranscriptItem } from "./sessions-store.ts";
+import type { TranscriptItem } from "../api/sessions.ts";
 
 const PALETTE: ReadonlySet<string> = new Set(BOT_FACE_COLORS.map((color) => color.hex));
 const SHAPES: ReadonlySet<string> = new Set(BOT_FACE_SHAPES);

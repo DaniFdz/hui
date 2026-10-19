@@ -1,6 +1,6 @@
 /**
  * The Files view's wire shapes: what `/__hui/sessions/:id/files…` answers and accepts. The gateway
- * (`server/files.ts`, `server/file-routes.ts`) produces them; the browser (`src/lib/files-store.ts`) consumes them.
+ * (`server/files.ts`, `server/file-routes.ts`) produces them; the browser (`src/api/files.ts`) consumes them.
  * Every `path` is relative to the conversation's working directory, `/`-separated, and `""` names that directory.
  */
 

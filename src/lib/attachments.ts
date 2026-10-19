@@ -5,7 +5,7 @@
  * `images` field want. Images are also kept as data URLs so the composer can
  * show a thumbnail without a second read.
  */
-import type { Attachment, TranscriptAttachment } from "./sessions-store.ts";
+import type { Attachment, TranscriptAttachment } from "../api/sessions.ts";
 
 /** pi accepts these natively as image content. */
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);

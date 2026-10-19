@@ -8,7 +8,7 @@ import { LitElement, html, nothing } from "lit";
 import { fallbackBranchName } from "../../shared/branch-names.ts";
 import { icons } from "../lib/icons.ts";
 import { ensureModal } from "../lib/modal-dialog.ts";
-import { forkSession, loadGitCheckout, type GitCheckoutInfo, type SessionView } from "../lib/sessions-store.ts";
+import { forkSession, loadGitCheckout, type GitCheckoutInfo, type SessionView } from "../api/sessions.ts";
 // The radio cards and hints are the backlog Start dialog's.
 import "../styles/kanban.css";
 

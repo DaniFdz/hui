@@ -72,7 +72,7 @@ import {
   type TranscriptItem,
   type GitCheckoutInfo,
   type WorktreeProgress,
-} from "./lib/sessions-store.ts";
+} from "./api/sessions.ts";
 import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
@@ -256,7 +256,7 @@ import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import { matchesShortcut } from "./lib/shortcut-binding.ts";
 import "./components/work-pane.ts";
 import type { WorkPane } from "./components/work-pane.ts";
-import { createTerminal, listTerminals } from "./lib/terminals-store.ts";
+import { createTerminal, listTerminals } from "./api/terminals.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
 import { announceTurnEnd } from "./lib/session-turn-end.ts";

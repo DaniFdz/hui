@@ -1,7 +1,7 @@
 /** Browser half of the Jira integration. The server owns the credential; this
  * module only moves credential-free views and explicit user input. */
 import type { JiraConnection, JiraDraft, JiraIssueMatch, JiraProject } from "../../shared/jira.ts";
-import type { SessionView } from "./sessions-store.ts";
+import type { SessionView } from "../api/sessions.ts";
 import { fetchJson } from "../api/request.ts";
 
 const JIRA_URL = "/__hui/jira";

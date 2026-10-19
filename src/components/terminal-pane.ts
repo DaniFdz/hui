@@ -17,7 +17,7 @@ import callbacksWasm from "@gespenst/core/ghostty-callbacks.wasm?url";
 import { DEFAULT_TERMINAL_FONT, loadTerminalFont, terminalFontFaces, terminalFontStack, type FontSheet } from "../lib/terminal-font.ts";
 import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
-import { connectTerminal, endTerminal } from "../lib/terminals-store.ts";
+import { connectTerminal, endTerminal } from "../api/terminals.ts";
 import type { TerminalView } from "../lib/terminal-types.ts";
 import type { TerminalInput } from "../../shared/terminal-stream.ts";
 import { createTerminalStreamReader } from "../lib/terminal-stream.ts";

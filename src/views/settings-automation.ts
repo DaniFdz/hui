@@ -11,7 +11,7 @@ import type {
   AutomationTask,
   AutomationTaskInput,
 } from "../lib/automation-types.ts";
-import type { SessionView } from "../lib/sessions-store.ts";
+import type { SessionView } from "../api/sessions.ts";
 import { routineCadenceSummary, routineFacts } from "../lib/bot-routines.ts";
 import { automationRunLabel, automationRunRecoveryDetail } from "../lib/automation-recovery.ts";
 import { icons } from "../lib/icons.ts";

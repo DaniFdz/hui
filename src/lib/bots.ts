@@ -11,7 +11,7 @@ import { botLook, isBotFaceEars, isBotFaceShape, isBotTagging, storedTagging, ty
 import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
-import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
+import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "../api/sessions.ts";
 import { sessionTreeIds } from "./session-tree.ts";
 
 export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../shared/bots.ts";

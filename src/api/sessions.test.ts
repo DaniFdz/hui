@@ -9,7 +9,7 @@ import {
   unreachableHost,
   type RuntimeEvent,
   type SessionStatusUpdate,
-} from "./sessions-store.ts";
+} from "./sessions.ts";
 
 test("the browser runtime contract includes settled", () => {
   const event: RuntimeEvent = { type: "settled" };

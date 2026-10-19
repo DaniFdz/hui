@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 import { File } from "node:buffer";
 import { attachmentBytes, readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./attachments.ts";
-import type { Attachment } from "./sessions-store.ts";
+import type { Attachment } from "../api/sessions.ts";
 
 const attachment = (dataBase64: string): Attachment => ({ kind: "file", name: "a", mimeType: "text/plain", dataBase64 });
 

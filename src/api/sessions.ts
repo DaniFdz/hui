@@ -9,12 +9,12 @@ import type { QuestionnaireQuestion } from "../../server/questionnaires.ts";
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
 export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
 import { callMinutes, callTranscriptText, type CallRecord } from "../../shared/calls.ts";
-import type { ProgressCard } from "./progress-card.ts";
+import type { ProgressCard } from "../lib/progress-card.ts";
 import type { SessionPullRequest } from "../../shared/pull-requests.ts";
 import type { SessionJiraIssue } from "../../shared/jira.ts";
 import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
 import type { Watcher } from "../../shared/watchers.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
+import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 import type { SessionStage, SessionStageOrigin } from "../../shared/session-stages.ts";
 import type { SessionListUpdate } from "../../shared/session-list.ts";
 

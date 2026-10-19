@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
 import { formatBootDuration, formatRuntimeMemory, groupSessionRows, matchingSessions } from "./sessions.ts";
-import type { SessionGroup } from "../lib/sessions-store.ts";
+import type { SessionGroup } from "../api/sessions.ts";
 
 const groups: SessionGroup[] = [
   {

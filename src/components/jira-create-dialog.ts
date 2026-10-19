@@ -21,7 +21,7 @@ import {
   type JiraDraftFields,
 } from "../lib/jira.ts";
 import { ensureModal } from "../lib/modal-dialog.ts";
-import type { SessionView } from "../lib/sessions-store.ts";
+import type { SessionView } from "../api/sessions.ts";
 import { taskSuggestionJiraDescription, type TaskSuggestion } from "../lib/task-suggestions.ts";
 import { createBacklogJira, draftBacklogJira, type BacklogItem } from "../lib/backlog.ts";
 import { renderPicker } from "../views/settings-picker.ts";

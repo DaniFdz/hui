@@ -4,7 +4,7 @@
  * activity between them folded, compactions, calls, subagent events and bot kickoffs, plus the working labels and where
  * the live browser preview goes. Presentation only; PI's transcript keeps the order and the data.
  */
-import type { TranscriptItem } from "../../lib/sessions-store.ts";
+import type { TranscriptItem } from "../../api/sessions.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../../lib/subagent-completion.ts";
 import { agentReplyTo, botKickoffName, botTurnOrigin } from "../../../shared/bots.ts";
 

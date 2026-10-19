@@ -22,7 +22,7 @@ import {
   SETTINGS_DRAWER_DEFAULT_OPEN,
   SETTINGS_PAGES,
 } from "./settings.ts";
-import type { SessionGroup, SessionView } from "../lib/sessions-store.ts";
+import type { SessionGroup, SessionView } from "../api/sessions.ts";
 
 function session(
   id: string,

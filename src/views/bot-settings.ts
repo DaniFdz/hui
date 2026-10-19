@@ -10,7 +10,7 @@
 import { html, nothing, svg, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
 import { botSettingOf, type BotSettingKey, type BotSettingValue, type BotView } from "../lib/bots.ts";
-import type { RuntimeModel } from "../lib/sessions-store.ts";
+import type { RuntimeModel } from "../api/sessions.ts";
 import {
   BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botColorName,
   isBotFaceEars, isBotFaceShape, type BotAvatar, type BotFaceEars, type BotFaceShape, type BotTagging,

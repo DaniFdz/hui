@@ -5,7 +5,7 @@
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import type { BrowserStatus, BrowserTabView } from "../../shared/browser.ts";
 import { browserStatusLabel, browserVersionLabel } from "../lib/browser-status.ts";
-import { controlBrowser, loadBrowserStatus, previewBrowserTab } from "../lib/browser-store.ts";
+import { controlBrowser, loadBrowserStatus, previewBrowserTab } from "../api/browser.ts";
 import { DEFAULT_BROWSER_SETTINGS, type BrowserSettings } from "../lib/settings.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import { latestRunError } from "./run-error.ts";
-import type { TranscriptItem } from "./sessions-store.ts";
+import type { TranscriptItem } from "../api/sessions.ts";
 
 const user: TranscriptItem = { kind: "message", id: "u", role: "user", text: "rebase" };
 const tool: TranscriptItem = { kind: "tool", id: "t", name: "bash", status: "succeeded", output: "ok" };

@@ -4,7 +4,7 @@
  * into errors the view shows.
  */
 import type { DiffChanges, DiffComparison, DiffFile, DiffFileChanges, DiffInfo } from "../../shared/diff.ts";
-import { CLIENT_HEADERS, trackedFetch } from "../api/request.ts";
+import { CLIENT_HEADERS, trackedFetch } from "./request.ts";
 
 const base = (sessionId: string, action = "") => `/__hui/sessions/${encodeURIComponent(sessionId)}/diff${action ? `/${action}` : ""}`;
 

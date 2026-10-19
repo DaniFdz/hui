@@ -8,7 +8,7 @@ import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { keyed } from "lit/directives/keyed.js";
 import { HuiElement } from "../lit/hui-element.ts";
-import { connectBrowserView } from "../lib/browser-store.ts";
+import { connectBrowserView } from "../api/browser.ts";
 import { BrowserViewController } from "../lib/browser-view-controller.ts";
 import { browserTabOptions, browserViewEmptyMessage, browserViewStatus, fitFrame, relativeTime, type Size } from "../lib/browser-view.ts";
 import { renderPicker } from "../views/settings-picker.ts";

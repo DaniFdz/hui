@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { diffQuery } from "./diff-store.ts";
+import { diffQuery } from "./diff.ts";
 
 test("the query sends a picked branch and the uncommitted choice only where they apply", () => {
   assert.equal(diffQuery({ comparison: "uncommitted", parent: "refs/heads/main", uncommitted: false }), "compare=uncommitted");

@@ -12,7 +12,7 @@ import type {
   SessionGroup,
   SessionStatus,
   TranscriptItem,
-} from "./sessions-store.ts";
+} from "../api/sessions.ts";
 
 /** A multiplex snapshot is complete for live runtimes. Any registry row it
  * omits is cold, so its process-local status is idle. */

@@ -9,7 +9,7 @@ import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
 import { HuiElement } from "../lit/hui-element.ts";
 import { renderMarkdown } from "../lib/markdown.ts";
-import type { QuestionResponse, RuntimeQuestion } from "../lib/sessions-store.ts";
+import type { QuestionResponse, RuntimeQuestion } from "../api/sessions.ts";
 import type { QuestionnaireQuestion } from "../../server/questionnaires.ts";
 
 type Draft = { selected: string[]; custom: string; customChosen: boolean };

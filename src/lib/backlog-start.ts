@@ -8,7 +8,7 @@
  *    `worktree`: keeps that ref and additionally asks for a branch suffix.
  */
 import type { BacklogStartInput } from "../../shared/backlog.ts";
-import type { GitCheckoutInfo } from "./sessions-store.ts";
+import type { GitCheckoutInfo } from "../api/sessions.ts";
 
 export type BacklogStartMode = "branch" | "worktree";
 export type BacklogStartStep = "folder" | "plain" | "branch" | "worktree";

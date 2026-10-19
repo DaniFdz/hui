@@ -27,7 +27,7 @@ import {
 } from "../lib/backlog-start.ts";
 import { icons } from "../lib/icons.ts";
 import { ensureModal } from "../lib/modal-dialog.ts";
-import { loadGitCheckout, sessionGroupLabel, type GitCheckoutInfo, type SessionView } from "../lib/sessions-store.ts";
+import { loadGitCheckout, sessionGroupLabel, type GitCheckoutInfo, type SessionView } from "../api/sessions.ts";
 import { loadWorkingDirectorySuggestions } from "../lib/working-directories.ts";
 import { renderPicker } from "../views/settings-picker.ts";
 import { renderDirectoryPicker } from "../views/directory-picker.ts";

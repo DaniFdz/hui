@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { SendRequests } from "./send-requests.ts";
-import type { Attachment } from "./sessions-store.ts";
+import type { Attachment } from "../api/sessions.ts";
 
 const image: Attachment = { kind: "image", name: "shot.png", mimeType: "image/png", dataBase64: "AAAA" };
 

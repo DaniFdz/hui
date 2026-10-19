@@ -10,7 +10,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { renderPaneMoveHandle } from "./pane-move-handle.ts";
 import { matchesModelSearch, modelSearchText } from "../lib/model-selection.ts";
-import { sessionGroupLabel, unreachableHost } from "../lib/sessions-store.ts";
+import { sessionGroupLabel, unreachableHost } from "../api/sessions.ts";
 import type {
   Attachment,
   RuntimeModel,
@@ -30,7 +30,7 @@ import type {
   TranscriptItem,
   GitCheckoutInfo,
   WorktreeProgress,
-} from "../lib/sessions-store.ts";
+} from "../api/sessions.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";

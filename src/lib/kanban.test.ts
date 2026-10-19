@@ -14,7 +14,7 @@ import {
   normalizeKanbanOptions,
   toggleKanbanColumn,
 } from "./kanban.ts";
-import type { SessionGroup, SessionView } from "./sessions-store.ts";
+import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import type { BacklogItem } from "../../shared/backlog.ts";
 
 function item(id: string, patch: Partial<BacklogItem> = {}): BacklogItem {

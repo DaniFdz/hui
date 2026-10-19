@@ -34,7 +34,7 @@ import {
   saveFile,
   searchFiles,
   uploadFile,
-} from "../lib/files-store.ts";
+} from "../api/files.ts";
 import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesViewState, type FilesViewReveal, type MarkdownDisplayMode } from "../lib/files-view-state.ts";
 import { onTurnEnd } from "../lib/session-turn-end.ts";
 import type { FileEditorHandle } from "../lib/file-editor.ts";

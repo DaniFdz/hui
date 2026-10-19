@@ -4,7 +4,7 @@
  * sessions.
  */
 import type { TaskSuggestion, TaskSuggestionStartMode } from "../../shared/task-suggestions.ts";
-import type { SessionView } from "./sessions-store.ts";
+import type { SessionView } from "../api/sessions.ts";
 import { fetchJson } from "../api/request.ts";
 
 export type { TaskSuggestionStartMode } from "../../shared/task-suggestions.ts";

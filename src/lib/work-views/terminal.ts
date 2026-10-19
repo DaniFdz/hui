@@ -5,7 +5,7 @@
  * belong to the gateway (`server/terminals.ts`).
  */
 import { html, svg } from "lit";
-import { createTerminal, listTerminals } from "../terminals-store.ts";
+import { createTerminal, listTerminals } from "../../api/terminals.ts";
 import type { TerminalView } from "../terminal-types.ts";
 import type { WorkViewKind } from "../work-pane.ts";
 import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
