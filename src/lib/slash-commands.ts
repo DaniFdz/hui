@@ -62,12 +62,16 @@ export function parseCompactCommand(text: string): { instructions?: string } | u
   return instructions ? { instructions } : {};
 }
 
-/** Discover leading commands; nested paths and prose use other completion modes. */
-export function slashCommandQuery(text: string, caret: number, selectionEnd = caret): string | null {
-  if (caret !== selectionEnd || caret < 1 || !/^[/$]/u.test(text)) return null;
-  const token = /^[/$]([^\s]*)/u.exec(text)?.[1] ?? "";
-  if (token.includes("/")) return null;
-  return caret <= token.length + 1 ? (text.startsWith("$") ? text.slice(0, caret) : text.slice(1, caret)).toLocaleLowerCase() : null;
+/** The command word at the caret. The message's first word may be any command; a later `$` or `/` word names a skill. */
+export type CommandQuery = { text: string; start: number };
+
+export function slashCommandQuery(text: string, caret: number, selectionEnd = caret): CommandQuery | null {
+  if (caret !== selectionEnd || caret < 1) return null;
+  const start = text.slice(0, caret).search(/\S*$/u);
+  const token = /^[/$][^\s/]*(?=\s|$)/u.exec(text.slice(start))?.[0];
+  if (!token) return null;
+  const typed = text.slice(start, caret);
+  return { text: (start === 0 && typed.startsWith("/") ? typed.slice(1) : typed).toLocaleLowerCase(), start };
 }
 
 export function filterSlashCommands(commands: readonly ComposerCommand[], query: string): ComposerCommand[] {
@@ -78,17 +82,9 @@ export function filterSlashCommands(commands: readonly ComposerCommand[], query:
   ).sort((a, b) => order[a.source] - order[b.source] || a.name.localeCompare(b.name));
 }
 
-/** Preserve existing arguments when completing a command edited in place. */
-export function completeSlashCommand(text: string, name: string): { text: string; caret: number } {
-  const rest = text.replace(/^\/[^\s]*/u, "");
-  const suffix = rest || " ";
-  const command = `/${name}`;
-  return { text: command + suffix, caret: command.length + (suffix.startsWith(" ") ? 1 : 0) };
-}
-
-/** Both discovery menus insert the same stable alias; templates keep their slash syntax. */
-export function completeCommandReference(text: string, command: ComposerCommand, catalog: readonly ComposerCommand[]): { text: string; caret: number } {
-  const rest = text.replace(/^[/$][^\s]*/u, "") || " ";
+/** Both discovery menus insert the same stable alias in place of the word at `start`; templates keep their slash syntax. */
+export function completeCommandReference(text: string, command: ComposerCommand, catalog: readonly ComposerCommand[], start = 0): { text: string; caret: number } {
+  const rest = text.slice(start).replace(/^[/$][^\s]*/u, "") || " ";
   const reference = commandReference(command, catalog);
-  return { text: reference + rest, caret: reference.length + (rest.startsWith(" ") ? 1 : 0) };
+  return { text: text.slice(0, start) + reference + rest, caret: start + reference.length + (rest.startsWith(" ") ? 1 : 0) };
 }

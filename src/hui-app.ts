@@ -75,7 +75,7 @@ import {
 } from "./lib/sessions-store.ts";
 import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, completeSlashCommand, skillCommands, slashCommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./views/list-filter.ts";
 import {
   applyBotsUpdate,
@@ -505,7 +505,7 @@ export class HuiApp extends HuiElement {
   @state() private commands: readonly RuntimeCommand[] = [];
   @state() private commandsLoading = false;
   @state() private commandsError = "";
-  @state() private slashQuery: string | null = null;
+  @state() private slashQuery: CommandQuery | null = null;
   @state() private slashActiveIndex = 0;
   @state() private localPathQuery: LocalPathQuery | null = null;
   @state() private localPaths: readonly LocalPathSuggestion[] = [];
@@ -2864,8 +2864,13 @@ export class HuiApp extends HuiElement {
     this.localPathCwd = "";
   }
 
+  /** The New Session page keeps the last chat selected, but its composer drafts a session that does not exist yet. */
+  private composerSession(): SessionView | undefined {
+    return this.view === "surface" && this.activePage?.id === "new-session" ? undefined : this.selected;
+  }
+
   private requestCommands = () => {
-    const session = this.selected;
+    const session = this.composerSession();
     if (!session || session.status === "starting" || session.status === "error" || this.commandsLoading) return;
     const request = ++this.commandsRequest;
     const current = () => this.selected?.id === session.id && request === this.commandsRequest;
@@ -2889,20 +2894,22 @@ export class HuiApp extends HuiElement {
 
   /** A draft has no runtime yet: offer the local PI skills it will start with. */
   private runtimeCommands(): readonly RuntimeCommand[] {
-    if (this.selected) return this.commands;
+    if (this.composerSession()) return this.commands;
     return this.launchWorker ? [] : skillCommands(this.pi?.skills ?? [], this.settings.disabledSkills);
   }
 
   private menuCommands(): ComposerCommand[] {
-    const query = this.slashQuery ?? "";
+    const query = this.slashQuery ?? { text: "", start: 0 };
     const runtime = this.runtimeCommands();
-    return filterSlashCommands(query.startsWith("$") ? runtime : composerCommands(runtime, !!this.selected, Boolean(this.selected?.bot)), query);
+    if (query.start > 0) return filterSlashCommands(runtime.filter((command) => command.source === "skill"), query.text.slice(1));
+    const session = this.composerSession();
+    return filterSlashCommands(query.text.startsWith("$") ? runtime : composerCommands(runtime, !!session, Boolean(session?.bot)), query.text);
   }
 
-  private setCommandQuery = (query: string | null) => {
+  private setCommandQuery = (query: CommandQuery | null) => {
     // Assigning an equal value still schedules a Lit update, and this runs on
     // every keystroke: only a changed query may schedule one.
-    if (query !== this.slashQuery) {
+    if (query?.text !== this.slashQuery?.text || query?.start !== this.slashQuery?.start) {
       this.slashActiveIndex = 0;
       this.slashQuery = query;
     }
@@ -2910,10 +2917,7 @@ export class HuiApp extends HuiElement {
   };
 
   private selectSlashCommand = (command: ComposerCommand) => {
-    // A draft's catalog lacks the extension commands a short `$name` could later collide with: insert `/skill:name`.
-    const completed = this.selected || command.source !== "skill"
-      ? completeCommandReference(this.draft, command, this.commands)
-      : completeSlashCommand(this.draft.replace(/^\$/u, "/"), command.name);
+    const completed = completeCommandReference(this.draft, command, this.runtimeCommands(), this.slashQuery?.start ?? 0);
     this.updateDraft(completed.text);
     this.resetLocalPaths();
     this.slashQuery = null;
@@ -2965,7 +2969,7 @@ export class HuiApp extends HuiElement {
       this.resetLocalPaths();
       return;
     }
-    const workspace = this.selected?.cwd || cwd?.trim() || this.launchDefaults?.cwd || "~/";
+    const workspace = this.composerSession()?.cwd || cwd?.trim() || this.launchDefaults?.cwd || "~/";
     const sameQuery = this.localPathQuery?.input === query.input
       && this.localPathQuery.start === query.start
       && this.localPathQuery.end === query.end
@@ -5742,7 +5746,7 @@ export class HuiApp extends HuiElement {
       onDraftChange: this.updateDraft,
       onDraftInput: this.typeDraft,
       commandMenu: {
-        open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.selected || this.connection === "live"),
+        open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.composerSession() || this.connection === "live"),
         commands: this.menuCommands(),
         catalog: this.runtimeCommands(),
         paths: this.localPathQuery ? this.localPaths : undefined,
