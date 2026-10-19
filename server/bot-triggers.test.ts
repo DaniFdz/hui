@@ -117,7 +117,7 @@ test("triggers are created, listed, changed and removed per bot, with their inpu
   await f.send(created.hook.token, [listened("compact")]);
   await f.settled(1);
   assert.deepEqual(f.prs.read, [], "compact notices do not make automatic GitHub reads");
-  assert.ok(f.delivered[0]?.text.split("\n").includes(PR42), "the complete PR URL is retained on its own line");
+  assert.ok(f.delivered[0]?.text.split("\n").some((line) => line === PR42), "the complete PR URL is retained on its own line");
   assert.ok(!f.delivered[0]?.text.includes("From Rodrigo"), "raw listener details are omitted");
   assert.equal((await f.service.update("ada", created.trigger.id, { delivery: "followUp" })).delivery, "followUp");
   await assert.rejects(f.service.update("ada", created.trigger.id, { delivery: "interrupt" }), /delivery must be followUp or steer/u);
