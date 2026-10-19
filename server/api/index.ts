@@ -1,6 +1,7 @@
 /** Catalogs the public API areas and builds their portable JSON Schema document without loading services. */
 import type { TSchema } from "typebox";
 import * as power from "./power.ts";
+import * as apiSchema from "./api-schema.ts";
 
 export type RouteSchema = {
   method: string;
@@ -10,7 +11,7 @@ export type RouteSchema = {
   events?: TSchema;
 };
 
-export const apiAreas = { power };
+export const apiAreas = { "api-schema": apiSchema, power };
 
 export function buildApiSchema(version: string) {
   const definitions = new Map<string, unknown>();
@@ -29,6 +30,12 @@ export function buildApiSchema(version: string) {
     return { $ref: `#/$defs/${id}` };
   }
 
+  function reference(schema: TSchema): { $ref: string } {
+    const ref = hoist(schema);
+    if (ref && typeof ref === "object" && "$ref" in ref && typeof ref.$ref === "string") return { $ref: ref.$ref };
+    throw new Error("Every route payload must have a named schema with $id");
+  }
+
   const routes = [];
   for (const [area, module] of Object.entries(apiAreas)) {
     const names = [];
@@ -39,18 +46,19 @@ export function buildApiSchema(version: string) {
       }
     }
     areas.set(area, names.sort());
-    for (const route of module.routeSchemas satisfies RouteSchema[]) {
+    const routeSchemas: RouteSchema[] = module.routeSchemas;
+    for (const route of routeSchemas) {
       routes.push({
         method: route.method,
         path: route.path,
-        ...("request" in route && route.request ? { request: hoist(route.request) } : {}),
-        response: hoist(route.response),
-        ...("events" in route && route.events ? { events: hoist(route.events) } : {}),
+        ...(route.request ? { request: reference(route.request) } : {}),
+        response: reference(route.response),
+        ...(route.events ? { events: reference(route.events) } : {}),
       });
     }
   }
   return {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $schema: "https://json-schema.org/draft/2020-12/schema" as const,
     $defs: Object.fromEntries([...definitions].sort(([a], [b]) => a.localeCompare(b))),
     "x-hui-api-version": version,
     "x-hui-areas": Object.fromEntries([...areas].map(([area, names]) => [area, names.sort()])),

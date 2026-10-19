@@ -140,6 +140,7 @@ import { createThemeRoutes, THEMES_ROUTE } from "./routes/themes.ts";
 import { createLocalPathRoutes } from "./routes/local-paths.ts";
 import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
+import { handleApiSchemaRoute } from "./routes/api-schema.ts";
 import { createProviderRoutes } from "./routes/providers.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createWorktreeRoutes } from "./routes/worktrees.ts";
@@ -1036,6 +1037,7 @@ async function handleRequest(
   if (answered(response, path, await providerRoutes.handle(routed))) return;
 
   if (answered(response, path, await powerRoutes.handle(routed))) return;
+  if (answered(response, path, await handleApiSchemaRoute(routed))) return;
 
   if (answered(response, path, await diagnosticsRoutes.handle(routed, response))) return;
 

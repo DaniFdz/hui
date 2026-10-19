@@ -68,6 +68,7 @@ const CASES: Case[] = [
   ["GET /__hui/providers/a/b/c/d", 405, ["error"], true],
   ["POST /__hui/pi", 405, ["error"], true],
   ["PUT /__hui/power", 400, ["error"], true],
+  ["POST /__hui/api-schema", 405, ["error"], true],
   ["POST /__hui/health", 405, ["error"], false],
   ["POST /__hui/worktrees", 405, ["error"], true],
   ["POST /__hui/worktrees/remove", 400, ["error"], true],

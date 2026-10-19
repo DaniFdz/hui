@@ -1,6 +1,95 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "ApiSchemaDocument": {
+      "type": "object",
+      "required": [
+        "$schema",
+        "$defs",
+        "x-hui-api-version",
+        "x-hui-areas",
+        "x-hui-routes"
+      ],
+      "properties": {
+        "$schema": {
+          "type": "string",
+          "const": "https://json-schema.org/draft/2020-12/schema"
+        },
+        "$defs": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {}
+          }
+        },
+        "x-hui-api-version": {
+          "type": "string"
+        },
+        "x-hui-areas": {
+          "type": "object",
+          "patternProperties": {
+            "^.*$": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "x-hui-routes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ApiSchemaRoute"
+          }
+        }
+      }
+    },
+    "ApiSchemaError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "ApiSchemaReference": {
+      "type": "object",
+      "required": [
+        "$ref"
+      ],
+      "properties": {
+        "$ref": {
+          "type": "string"
+        }
+      }
+    },
+    "ApiSchemaRoute": {
+      "type": "object",
+      "required": [
+        "method",
+        "path",
+        "response"
+      ],
+      "properties": {
+        "method": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "request": {
+          "$ref": "#/$defs/ApiSchemaReference"
+        },
+        "response": {
+          "$ref": "#/$defs/ApiSchemaReference"
+        },
+        "events": {
+          "$ref": "#/$defs/ApiSchemaReference"
+        }
+      }
+    },
     "PowerError": {
       "type": "object",
       "required": [
@@ -95,6 +184,12 @@
   },
   "x-hui-api-version": "0.1.4",
   "x-hui-areas": {
+    "api-schema": [
+      "ApiSchemaDocument",
+      "ApiSchemaError",
+      "ApiSchemaReference",
+      "ApiSchemaRoute"
+    ],
     "power": [
       "PowerError",
       "PowerRequest",
@@ -104,6 +199,13 @@
     ]
   },
   "x-hui-routes": [
+    {
+      "method": "GET",
+      "path": "/__hui/api-schema",
+      "response": {
+        "$ref": "#/$defs/ApiSchemaDocument"
+      }
+    },
     {
       "method": "GET",
       "path": "/__hui/power",

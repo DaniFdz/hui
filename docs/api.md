@@ -7,6 +7,28 @@ All routes live under `/__hui/` and require the `x-hui: 1` header. Expected
 client errors use `{ "error": "message worth showing the user" }` with a 4xx
 status; storage/backend failures use the same shape with 500.
 
+## Published schema
+
+### `GET /__hui/api-schema`
+
+Returns the running gateway's JSON Schema 2020-12 document, built from the
+in-memory public payload schemas. It requires `x-hui: 1`, uses `no-store`, and
+returns the same document committed as `docs/api.schema.json` for that package
+version. Other methods return 405.
+
+`$defs` contains named payloads, with local `#/$defs/<Name>` references.
+`x-hui-routes` lists each described route's `method`, `path`, and `response`,
+plus `request` or `events` when present, as schema references.
+`x-hui-api-version` is the gateway package version. `x-hui-areas` maps API area
+names to their payload names for browser type generation. The power API is the
+first described area; remaining routes are added during the schema migration.
+Internal records and credentials are not published.
+
+Run `npm run api:schema` to update the committed document and generated browser
+types. The browser types are generated from the JSON document, not imported
+from the server. This document remains the prose contract for behavior, errors
+and ordering.
+
 ## Desktop shell boundary
 
 The Electron renderer uses the same HTTP/SSE contract. Its main process invokes
