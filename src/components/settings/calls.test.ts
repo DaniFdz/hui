@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "vitest";
 
-import { callsReady } from "../../shared/calls.ts";
-import { chatGptLoginSummary } from "./settings-calls.ts";
+import { callsReady } from "../../../shared/calls.ts";
+import { chatGptLoginSummary } from "./calls.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -25,12 +25,12 @@ test("calls are offered whenever GPT-Live can run: with a ChatGPT login", () => 
 });
 
 test("Settings → Models → Calls has no engine to choose, and Integrations no VoiceStudio", () => {
-  const calls = read("./settings-calls.ts");
+  const calls = read("./calls.ts");
   assert.doesNotMatch(calls, /Conversation model|engine|VoiceStudio/u, "GPT-Live is the only way calls run");
   assert.match(calls, /renderSettingsPicker\("Default GPT-Live voice"/u);
   assert.match(calls, /<span class="settings-row__title">ChatGPT login<\/span>/u);
   assert.match(calls, /GPT-Live's audio goes to OpenAI under your ChatGPT account/u, "where call audio goes stays said");
-  const settings = read("./settings.ts");
+  const settings = read("../../views/settings.ts");
   assert.doesNotMatch(settings, /VoiceStudio|settings-voice|hui-voice-settings|onChangeVoice/u);
   const integrations = settings.slice(settings.indexOf("function renderIntegrationsPage("), settings.indexOf("function renderToolsPage("));
   assert.deepEqual([...integrations.matchAll(/<hui-([a-z]+)-settings>/gu)].map((match) => match[1]), ["jira", "github", "datadog"]);

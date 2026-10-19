@@ -6,9 +6,9 @@
  */
 import { html, svg } from "lit";
 import { createTerminal, listTerminals } from "../../api/terminals.ts";
-import type { TerminalView } from "../terminal-types.ts";
-import type { WorkViewKind } from "../work-pane.ts";
-import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
+import type { TerminalView } from "../../lib/terminal-types.ts";
+import type { WorkViewKind } from "../../lib/work-pane.ts";
+import { WORK_SHORTCUTS } from "../../lib/work-shortcuts.ts";
 
 export type TerminalWorkViewRef = { kind: "terminal"; terminalId: string };
 

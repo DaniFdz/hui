@@ -3,14 +3,14 @@
  * process, its tabs and previews, which this page polls and captures while it is open.
  */
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import type { BrowserStatus, BrowserTabView } from "../../shared/browser.ts";
-import { browserStatusLabel, browserVersionLabel } from "../lib/browser-status.ts";
-import { controlBrowser, loadBrowserStatus, previewBrowserTab } from "../api/browser.ts";
-import { DEFAULT_BROWSER_SETTINGS, type BrowserSettings } from "../lib/settings.ts";
-import { renderSettingsToggle } from "./settings-toggle.ts";
-import { loadViewAssets } from "../lib/view-assets.ts";
+import type { BrowserStatus, BrowserTabView } from "../../../shared/browser.ts";
+import { browserStatusLabel, browserVersionLabel } from "../../lib/browser-status.ts";
+import { controlBrowser, loadBrowserStatus, previewBrowserTab } from "../../api/browser.ts";
+import { DEFAULT_BROWSER_SETTINGS, type BrowserSettings } from "../../lib/settings.ts";
+import { renderSettingsToggle } from "../../views/settings-toggle.ts";
+import { loadViewAssets } from "../../lib/view-assets.ts";
 
-loadViewAssets(() => import("../styles/tools.css"));
+loadViewAssets(() => import("../../styles/tools.css"));
 
 /** Tabs and state change as agents work; this page is the only reader. */
 const POLL_MS = 4_000;

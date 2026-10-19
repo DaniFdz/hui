@@ -6,12 +6,12 @@
  */
 import { LitElement, html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
-import { DATADOG_APP_HOSTS, DATADOG_CLI_URL, DEFAULT_DATADOG_SITE, type DatadogConnection, type DatadogOrg, type DatadogOrgStatus } from "../../shared/datadog.ts";
-import { datadogOrgLabel, datadogStatusLabel } from "../lib/datadog.ts";
-import { DATADOG_CHANGED, notifyDatadogChanged } from "../lib/datadog-store.ts";
-import { addDatadogOrg, cancelDatadogLogin, loadDatadogConnection, removeDatadogOrg, startDatadogLogin } from "../api/datadog.ts";
-import { icons } from "../lib/icons.ts";
-import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
+import { DATADOG_APP_HOSTS, DATADOG_CLI_URL, DEFAULT_DATADOG_SITE, type DatadogConnection, type DatadogOrg, type DatadogOrgStatus } from "../../../shared/datadog.ts";
+import { datadogOrgLabel, datadogStatusLabel } from "../../lib/datadog.ts";
+import { DATADOG_CHANGED, notifyDatadogChanged } from "../../lib/datadog-store.ts";
+import { addDatadogOrg, cancelDatadogLogin, loadDatadogConnection, removeDatadogOrg, startDatadogLogin } from "../../api/datadog.ts";
+import { icons } from "../../lib/icons.ts";
+import { closeModal, ensureModal } from "../../lib/modal-dialog.ts";
 
 const POLL_MS = 1_500;
 /** The site picker's choice for a host it does not list (a vanity host, say). */

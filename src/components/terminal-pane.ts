@@ -6,7 +6,7 @@
  * resizes the PTY only once a measurable size has settled. It also owns the terminal's HUI theme colors (recolored
  * live), its fonts in the worker, link clicks, clipboard shortcuts, touch scrolling, the narrow/touch key bar and the
  * jump-to-bottom affordance. Hiding the tab or the pane leaves the terminal running; only "End terminal" stops it.
- * Tabs, closing and launching belong to the Work pane (`components/work-pane.ts`, `lib/work-views/terminal.ts`).
+ * Tabs, closing and launching belong to the Work pane (`components/work-pane.ts`, `views/work/terminal.ts`).
  */
 import { html, nothing, type PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";

@@ -843,7 +843,7 @@ requests:
    `server/bot-service.test.ts`, `server/routes/bots.test.ts`, `server/bots.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
    `src/lib/voice/live-call.test.ts`, `src/lib/voice/*.test.ts`, `src/lib/settings.test.ts`,
-   `src/lib/bots/bots.test.ts`, `src/views/bots.test.ts`, `src/views/settings-calls.test.ts`,
+   `src/lib/bots/bots.test.ts`, `src/views/bots.test.ts`, `src/components/settings/calls.test.ts`,
    `cli/*.test.ts` and a real call run (both calls of the e2e in the pull request).
 6. **Bots on remote workers** (implemented 2026-10-06; the owner's request, SPEC.md
    "Bots run on remote workers"): `BotInput.worker` (an id or name, at creation

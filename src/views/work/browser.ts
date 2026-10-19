@@ -4,8 +4,8 @@
  * itself belongs to the gateway (`server/browser/`).
  */
 import { html, svg } from "lit";
-import type { WorkViewKind } from "../work-pane.ts";
-import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
+import type { WorkViewKind } from "../../lib/work-pane.ts";
+import { WORK_SHORTCUTS } from "../../lib/work-shortcuts.ts";
 
 export type BrowserWorkViewRef = { kind: "browser" };
 

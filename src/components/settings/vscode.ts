@@ -6,17 +6,17 @@
  * by the gateway is never overwritten; the status comes from the gateway, polled while this section is open.
  */
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "../lib/settings.ts";
-import { currentSettings } from "../lib/settings/settings-store.ts";
-import { loadVscodeStatus, vscodeAction } from "../lib/vscode-store.ts";
+import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "../../lib/settings.ts";
+import { currentSettings } from "../../lib/settings/settings-store.ts";
+import { loadVscodeStatus, vscodeAction } from "../../lib/vscode-store.ts";
 import {
   formatVscodeBytes, OPENVSCODE_SERVER_LICENSE_URL, VSCODE_SERVER_LICENSE_URL, vscodeProviderSource,
   type VscodeAction, type VscodeProvider, type VscodeProviderPreference, type VscodeStatus,
-} from "../../shared/vscode.ts";
-import { renderPicker } from "./settings-picker.ts";
-import { loadViewAssets } from "../lib/view-assets.ts";
+} from "../../../shared/vscode.ts";
+import { renderPicker } from "../../views/settings-picker.ts";
+import { loadViewAssets } from "../../lib/view-assets.ts";
 
-loadViewAssets(() => import("../styles/tools.css"));
+loadViewAssets(() => import("../../styles/tools.css"));
 
 const POLL_MS = 4_000;
 const TASK_POLL_MS = 1_000;

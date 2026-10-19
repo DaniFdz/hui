@@ -10,7 +10,7 @@ import type { HuiPage } from "../lib/pages.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import { icons } from "../lib/icons.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
-import { renderListFilter } from "./list-filter.ts";
+import { renderListFilter } from "../components/list-filter.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 
 export type PiSurfaceProps = {

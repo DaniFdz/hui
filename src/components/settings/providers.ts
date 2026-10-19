@@ -5,13 +5,13 @@
  */
 import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../../shared/providers.ts";
-import { loadProviderQuota, loadProviders, providerRequest } from "../api/providers.ts";
-import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
-import { connectionMethods, connectionName, providerBrand, providerBrands } from "../lib/provider-choices.ts";
-import { loadViewAssets } from "../lib/view-assets.ts";
+import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../../../shared/providers.ts";
+import { loadProviderQuota, loadProviders, providerRequest } from "../../api/providers.ts";
+import { renderProviderBrandIcon } from "../../lib/provider-icons.ts";
+import { connectionMethods, connectionName, providerBrand, providerBrands } from "../../lib/provider-choices.ts";
+import { loadViewAssets } from "../../lib/view-assets.ts";
 
-loadViewAssets(() => import("../styles/providers.css"));
+loadViewAssets(() => import("../../styles/providers.css"));
 type AccountDrag = { provider: string; id: string; name: string; order: string[]; from: number; to: number; handle: HTMLElement; pointer?: number; y: number; startY: number; moved: boolean };
 type ModelDraft = { models: Set<string>; query: string };
 

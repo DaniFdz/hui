@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { vscodeWorkViewKind } from "./vscode.ts";
-import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
+import { WORK_SHORTCUTS } from "../../lib/work-shortcuts.ts";
 
 test("the VS Code kind is one view per conversation with a stable key and title, and is always available", async () => {
   assert.equal(vscodeWorkViewKind.kind, "vscode");

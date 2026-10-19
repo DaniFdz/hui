@@ -77,7 +77,7 @@ import { readAttachment, validateAttachmentTotal } from "./lib/attachments.ts";
 import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
-import { isListFilterShortcut } from "./views/list-filter.ts";
+import { isListFilterShortcut } from "./components/list-filter.ts";
 import { applyBotsUpdate, withLiveChats, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { archiveBot, deleteBot, createBot, loadBots, restoreBot, subscribeBots, updateBot } from "./api/bots.ts";
 import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
@@ -173,7 +173,7 @@ import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } fr
 import { renderHome, renderNewSession, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
-import "./views/contributions.ts";
+import "./components/contributions.ts";
 import { worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
 import { loadWorktrees, removeWorktrees } from "./api/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
@@ -218,13 +218,13 @@ import {
   WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_KEY, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
 } from "./lib/work-pane.ts";
 import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
-import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
-import { browserWorkViewKind } from "./lib/work-views/browser.ts";
-import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "./lib/work-views/files.ts";
-import { diffWorkViewKind } from "./lib/work-views/diff.ts";
+import { terminalWorkViewKind } from "./views/work/terminal.ts";
+import { browserWorkViewKind } from "./views/work/browser.ts";
+import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "./views/work/files.ts";
+import { diffWorkViewKind } from "./views/work/diff.ts";
 import { requestFilesViewReveal } from "./lib/files/view-state.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
-import { vscodeWorkViewKind } from "./lib/work-views/vscode.ts";
+import { vscodeWorkViewKind } from "./views/work/vscode.ts";
 import { OPEN_SETTINGS_EVENT, type OpenSettingsDetail } from "./lib/open-settings.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import { matchesShortcut } from "./lib/shortcut-binding.ts";

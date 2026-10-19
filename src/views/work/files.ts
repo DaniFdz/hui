@@ -7,9 +7,9 @@
  * (`filesViewToReveal`), else a new one.
  */
 import { html } from "lit";
-import { clearFilesViewState, filesViewTitle } from "../files/view-state.ts";
-import { workViewKey, type SessionWorkPane, type WorkViewKind } from "../work-pane.ts";
-import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
+import { clearFilesViewState, filesViewTitle } from "../../lib/files/view-state.ts";
+import { workViewKey, type SessionWorkPane, type WorkViewKind } from "../../lib/work-pane.ts";
+import { WORK_SHORTCUTS } from "../../lib/work-shortcuts.ts";
 
 export type FilesWorkViewRef = { kind: "files"; id: string };
 

@@ -3,11 +3,11 @@
  * never sees a token. While `gh` waits for the device approval, the section keeps polling for the result.
  */
 import { LitElement, html, nothing } from "lit";
-import { GITHUB_CLI_URL, type GitHubConnection } from "../../shared/github.ts";
-import { writeClipboardText } from "../lib/clipboard.ts";
-import { gitHubStatusLabel } from "../lib/github.ts";
-import { cancelGitHubLogin, loadGitHubConnection, startGitHubLogin } from "../api/github.ts";
-import { icons } from "../lib/icons.ts";
+import { GITHUB_CLI_URL, type GitHubConnection } from "../../../shared/github.ts";
+import { writeClipboardText } from "../../lib/clipboard.ts";
+import { gitHubStatusLabel } from "../../lib/github.ts";
+import { cancelGitHubLogin, loadGitHubConnection, startGitHubLogin } from "../../api/github.ts";
+import { icons } from "../../lib/icons.ts";
 
 const POLL_MS = 2_000;
 

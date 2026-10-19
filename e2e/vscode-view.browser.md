@@ -1,6 +1,6 @@
 # VS Code view journey
 
-The Work pane's VS Code view (`<hui-vscode-view>`, `src/lib/work-views/vscode.ts`)
+The Work pane's VS Code view (`<hui-vscode-view>`, `src/views/work/vscode.ts`)
 in the real app, opened from a conversation's Work pane, with each provider:
 the openvscode-server HUI installs (Linux), VS Code desktop through
 `code serve-web`, and Settings switching between them. Keep screenshots outside Git.

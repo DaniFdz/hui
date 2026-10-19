@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { DIFF_WORK_VIEW_SHORTCUT, diffWorkViewKind, newDiffViewId } from "./diff.ts";
-import { readDiffViewState, writeDiffViewState } from "../diff/view-state.ts";
-import { defaultWorkViewKey, parseWorkViewRef } from "../work-pane.ts";
-import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
+import { readDiffViewState, writeDiffViewState } from "../../lib/diff/view-state.ts";
+import { defaultWorkViewKey, parseWorkViewRef } from "../../lib/work-pane.ts";
+import { WORK_SHORTCUTS } from "../../lib/work-shortcuts.ts";
 
 test("each Diff launch is a new view keyed by its id", async () => {
   const first = await diffWorkViewKind.create("session-a");

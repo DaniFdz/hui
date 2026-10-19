@@ -3,12 +3,12 @@
  * one session's tools and assembled prompt. Owns only this read-only surface; runtime protocol never enters the view.
  */
 import { LitElement, html, nothing } from "lit";
-import type { SessionView } from "../api/sessions.ts";
-import type { SessionTools, ToolsCatalog } from "../lib/tools-types.ts";
-import { inspectSessionTools, loadToolsCatalog } from "../api/tools.ts";
-import { loadViewAssets } from "../lib/view-assets.ts";
+import type { SessionView } from "../../api/sessions.ts";
+import type { SessionTools, ToolsCatalog } from "../../lib/tools-types.ts";
+import { inspectSessionTools, loadToolsCatalog } from "../../api/tools.ts";
+import { loadViewAssets } from "../../lib/view-assets.ts";
 
-loadViewAssets(() => import("../styles/tools.css"));
+loadViewAssets(() => import("../../styles/tools.css"));
 
 export class HuiToolsSettings extends LitElement {
   static override properties = { sessions: { attribute: false } };
