@@ -171,7 +171,7 @@ import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
+import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
   retainWorkSessions, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, workPaneMaximized, workViewKey, workViewKind,
@@ -439,12 +439,10 @@ export class HuiApp extends HuiElement {
   @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
   /** The bot header's ⋯ menu, handled by the app that owns the bot dialogs. */
   @property(paneCallback) onPaneBotAction: ((action: BotHeaderAction) => void) | undefined;
-  /** Browser-owned presentation state; each pane still owns its own runtime state. */
-  @state() private sessionLayout: SessionLayout | undefined;
   private readonly work = new WorkLayoutController(this, {
     followedSession: () => this.workSessionId(),
-    layout: () => this.sessionLayout,
-    commitLayout: (layout) => this.commitSessionLayout(layout),
+    showSession: (id) => this.showSession(id),
+    activePane: () => this.activePaneApp(),
     focusComposer: () => this.focusActiveComposer(),
     paletteOpen: () => this.commandPaletteOpen,
     terminalFont: () => this.control.settings.fontTerminal,
@@ -822,16 +820,16 @@ export class HuiApp extends HuiElement {
     const ids = new Set(groups.flatMap((group) => group.sessions.map(({ id }) => id)));
     // Removed conversations take their Work pane record with them (their terminals end with them).
     if (!this.embeddedPane) this.work.commit(pruneWorkPaneStore(this.work.panes, ids));
-    if (!this.sessionLayout) return;
-    for (const pane of sessionPanes(this.sessionLayout)) {
-      if (!ids.has(pane.sessionId)) this.sessionLayout = closeSessionPane(this.sessionLayout, pane.id);
+    if (!this.work.layout) return;
+    for (const pane of sessionPanes(this.work.layout)) {
+      if (!ids.has(pane.sessionId)) this.work.layout = closeSessionPane(this.work.layout, pane.id);
     }
-    const active = activeSessionPane(this.sessionLayout);
+    const active = activeSessionPane(this.work.layout);
     if (!ids.has(active.sessionId)) {
-      this.sessionLayout = undefined;
-      this.persistSessionLayout();
+      this.work.layout = undefined;
+      this.work.persistLayout();
       if (this.view === "home" && this.selected) this.navigate({ kind: "home" }, true);
-    } else if (this.view === "home" && this.selected && !this.settingsOpen) this.commitSessionLayout(this.sessionLayout);
+    } else if (this.view === "home" && this.selected && !this.settingsOpen) this.work.commitLayout(this.work.layout);
   }
 
   override willUpdate(changed: PropertyValues) {
@@ -984,18 +982,18 @@ export class HuiApp extends HuiElement {
         if (migrated.moved) {
           saved = migrated.layout;
           this.work.commit(migrated.store);
-          this.sessionLayout = saved;
-          this.persistSessionLayout();
+          this.work.layout = saved;
+          this.work.persistLayout();
           window.history.replaceState({ ...window.history.state, huiSessionLayout: saved }, "");
         }
       }
-      this.sessionLayout = saved ?? singleSessionLayout(resolved.target.id);
-      if (activeSessionPane(this.sessionLayout).sessionId !== resolved.target.id) this.sessionLayout = replacePaneSession(this.sessionLayout, this.sessionLayout.activePaneId, resolved.target.id);
+      this.work.layout = saved ?? singleSessionLayout(resolved.target.id);
+      if (activeSessionPane(this.work.layout).sessionId !== resolved.target.id) this.work.layout = replacePaneSession(this.work.layout, this.work.layout.activePaneId, resolved.target.id);
     }
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     const canonical = resolved.path;
     if (current !== canonical) {
-      window.history.replaceState({ ...window.history.state, huiSessionLayout: this.sessionLayout }, "", canonical);
+      window.history.replaceState({ ...window.history.state, huiSessionLayout: this.work.layout }, "", canonical);
     }
     this.applyNavigation(resolved.target);
   }
@@ -1007,14 +1005,14 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (target.kind === "session") {
-      const layout = this.sessionLayout ?? singleSessionLayout(target.id);
-      this.sessionLayout = replacePaneSession(layout, layout.activePaneId, target.id);
-      this.persistSessionLayout();
+      const layout = this.work.layout ?? singleSessionLayout(target.id);
+      this.work.layout = replacePaneSession(layout, layout.activePaneId, target.id);
+      this.work.persistLayout();
     }
     const path = navigationPath(target);
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     if (current !== path) {
-      window.history[replace ? "replaceState" : "pushState"]({ huiSessionLayout: this.sessionLayout }, "", path);
+      window.history[replace ? "replaceState" : "pushState"]({ huiSessionLayout: this.work.layout }, "", path);
     }
     this.applyNavigation(target);
   }
@@ -1025,9 +1023,9 @@ export class HuiApp extends HuiElement {
   private isSessionPresented(id: string): boolean {
     if (this.embeddedPane) return this.paneVisible && this.paneSessionId === id;
     if (this.view === "bot") return !this.settingsOpen && this.activeBot()?.sessionId === id;
-    if (this.view === "home" && !this.settingsOpen && this.sessionLayout) {
+    if (this.view === "home" && !this.settingsOpen && this.work.layout) {
       const narrow = this.renderRoot.querySelector<SessionMultiplexer>("hui-session-multiplexer")?.narrow;
-      return visibleSessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.sessionLayout?.activePaneId));
+      return visibleSessionPanes(this.work.layout).some((pane) => isChatPane(pane) && pane.sessionId === id && (!narrow || pane.id === this.work.layout?.activePaneId));
     }
     const target = resolveNavigation(window.location.pathname).target;
     return target.kind === "session" && target.id === id;
@@ -1276,11 +1274,11 @@ export class HuiApp extends HuiElement {
           this.scheduleArchiveToast();
         }
         const tree = sessionTreeIds(this.groups.flatMap((group) => group.sessions), updated.id);
-        if (patch.archived === true && this.sessionLayout) {
-          for (const pane of sessionPanes(this.sessionLayout)) {
-            if (tree.has(pane.sessionId)) this.sessionLayout = closeSessionPane(this.sessionLayout, pane.id);
+        if (patch.archived === true && this.work.layout) {
+          for (const pane of sessionPanes(this.work.layout)) {
+            if (tree.has(pane.sessionId)) this.work.layout = closeSessionPane(this.work.layout, pane.id);
           }
-          this.persistSessionLayout();
+          this.work.persistLayout();
         }
         if (patch.archived === true && this.selected && tree.has(this.selected.id)) {
           this.clearSessionState();
@@ -1556,54 +1554,31 @@ export class HuiApp extends HuiElement {
     }
     // Choosing a conversation shows its chat; its Work pane stays one selector choice away on narrow screens.
     this.work.hideNarrow();
-    const existing = this.sessionLayout && sessionPanes(this.sessionLayout).find((pane) => isChatPane(pane) && pane.sessionId === session.id);
-    if (existing && this.sessionLayout) this.sessionLayout = focusSessionPane(this.sessionLayout, existing.id);
+    const existing = this.work.layout && sessionPanes(this.work.layout).find((pane) => isChatPane(pane) && pane.sessionId === session.id);
+    if (existing && this.work.layout) this.work.layout = focusSessionPane(this.work.layout, existing.id);
     this.navigate({ kind: "session", id: session.id });
   };
 
   private openSplitSession = (session: SessionView) => {
     if (this.embeddedPane || !this.selected) return;
-    const layout = this.sessionLayout ?? singleSessionLayout(this.selected.id);
-    this.commitSessionLayout(splitSessionPane(layout, layout.activePaneId, session.id, "right"));
+    const layout = this.work.layout ?? singleSessionLayout(this.selected.id);
+    this.work.commitLayout(splitSessionPane(layout, layout.activePaneId, session.id, "right"));
   };
 
-  private persistSessionLayout() {
-    try {
-      if (this.sessionLayout && (sessionPanes(this.sessionLayout).length > 1 || sessionPanes(this.sessionLayout).some((pane) => !isChatPane(pane)))) {
-        localStorage.setItem(SESSION_LAYOUT_KEY, JSON.stringify(this.sessionLayout));
-      } else localStorage.removeItem(SESSION_LAYOUT_KEY);
-    } catch { /* The current view still works if browser storage is unavailable. */ }
-  }
-
-  private commitSessionLayout(layout: SessionLayout, replace = true) {
-    this.sessionLayout = layout;
-    const id = activeSessionPane(layout).sessionId;
+  private showSession(id: string) {
     this.selected = this.groups.flatMap((group) => group.sessions).find((session) => session.id === id);
     this.pendingSessionId = this.selected ? "" : id;
     this.view = "home";
     this.activePage = undefined;
     this.settingsOpen = false;
-    this.persistSessionLayout();
-    window.history[replace ? "replaceState" : "pushState"](
-      { ...window.history.state, huiSessionLayout: layout }, "", navigationPath({ kind: "session", id }),
-    );
   }
-
-  private focusSessionPane = (id: string) => {
-    if (!this.sessionLayout || this.sessionLayout.activePaneId === id) return;
-    this.commitSessionLayout(focusSessionPane(this.sessionLayout, id));
-  };
-
-  private splitPane = (pane: SessionPane, direction: SplitDirection) => {
-    if (this.sessionLayout) this.commitSessionLayout(splitSessionPane(this.sessionLayout, pane.id, pane.sessionId, direction));
-  };
 
   /* ── Work pane ────────────────────────────────────────────────────────── */
 
   /** The conversation the Work pane follows: the focused chat pane's. */
   private workSessionId(): string | undefined {
-    if (this.embeddedPane || this.view !== "home" || this.settingsOpen || !this.selected || !this.sessionLayout) return undefined;
-    return activeSessionPane(this.sessionLayout).sessionId;
+    if (this.embeddedPane || this.view !== "home" || this.settingsOpen || !this.selected || !this.work.layout) return undefined;
+    return activeSessionPane(this.work.layout).sessionId;
   }
 
   /**
@@ -1613,8 +1588,8 @@ export class HuiApp extends HuiElement {
    */
   private readonly onOpenFileRequest = (event: Event) => {
     const detail = (event as CustomEvent<OpenFileDetail>).detail;
-    if (this.embeddedPane || !detail?.sessionId || !this.sessionLayout) return;
-    if (!sessionPanes(this.sessionLayout).some((pane) => isChatPane(pane) && pane.sessionId === detail.sessionId)) return;
+    if (this.embeddedPane || !detail?.sessionId || !this.work.layout) return;
+    if (!sessionPanes(this.work.layout).some((pane) => isChatPane(pane) && pane.sessionId === detail.sessionId)) return;
     event.stopPropagation();
     void this.work.openFile(detail);
   };
@@ -1635,35 +1610,14 @@ export class HuiApp extends HuiElement {
     finally { this.terminalOpening = false; }
   };
 
-  private closePane = (paneId: string) => {
-    if (!this.sessionLayout) return;
-    const next = closeSessionPane(this.sessionLayout, paneId);
-    if (next === this.sessionLayout) return;
-    this.commitSessionLayout(next);
-    void this.updateComplete.then(() => this.renderRoot.querySelector<SessionMultiplexer>("hui-session-multiplexer")?.updateComplete).then(() => {
-      this.activePaneApp()?.querySelector<HTMLElement>(".chat-pane__header")?.focus({ preventScroll: true });
-    });
-  };
-
   private dropSession = (id: string, paneId: string, zone: DropZone) => {
-    if (!this.sessionLayout || !this.groups.some((group) => group.sessions.some((session) => session.id === id))) return;
+    if (!this.work.layout || !this.groups.some((group) => group.sessions.some((session) => session.id === id))) return;
     this.draggingSessionId = "";
-    this.commitSessionLayout(zone.kind === "center"
-      ? replacePaneSession(focusSessionPane(this.sessionLayout, paneId), paneId, id)
-      : zone.kind === "tab" ? addSessionTab(this.sessionLayout, paneId, id)
-        : splitSessionPane(this.sessionLayout, paneId, id, zone.edge));
-  };
-
-  private movePane = (sourceId: string, targetId: string, zone: DropZone) => {
-    if (this.sessionLayout) this.commitSessionLayout(moveSessionPane(this.sessionLayout, sourceId, targetId, zone));
-  };
-
-  private changePaneSession = (paneId: string, id: string) => {
-    if (this.sessionLayout) this.commitSessionLayout(replacePaneSession(focusSessionPane(this.sessionLayout, paneId), paneId, id), false);
+    this.work.dropSession(id, paneId, zone);
   };
 
   private activePaneApp(): HuiApp | undefined {
-    const id = this.sessionLayout?.activePaneId;
+    const id = this.work.layout?.activePaneId;
     return id ? this.renderRoot.querySelector<HuiApp>(
       `[data-session-pane="${CSS.escape(id)}"] .chat-pane-cache__pane--visible > hui-app`,
     ) ?? undefined : undefined;
@@ -1684,7 +1638,7 @@ export class HuiApp extends HuiElement {
     if (!this.embeddedPane) {
       this.selected = session;
       this.view = "home";
-      this.sessionLayout ??= singleSessionLayout(session.id);
+      this.work.layout ??= singleSessionLayout(session.id);
       return;
     }
     if (session.id === this.selected?.id) {
@@ -4405,7 +4359,9 @@ export class HuiApp extends HuiElement {
   }
 
   /** Chat panes only: terminals and the browser view live in the Work pane. */
-  private renderSessionPane = (pane: SessionPane, state: PanePresentation) => html`
+  private renderSessionPane = (pane: SessionPane, state: PanePresentation) => {
+    const controls = this.work.paneControls(pane, state);
+    return html`
     <hui-app
       class="chat-split-view__pane hui-session-pane-app"
       embedded-pane
@@ -4416,11 +4372,11 @@ export class HuiApp extends HuiElement {
       .paneVisible=${state.visible}
       .paneNarrow=${state.narrow}
       .paneMobileNav=${this.mobileNavLayout}
-      .onPaneClose=${state.split ? () => this.closePane(pane.id) : undefined}
-      .onPaneSplit=${!state.narrow ? (direction: SplitDirection) => this.splitPane(pane, direction) : undefined}
+      .onPaneClose=${controls.close}
+      .onPaneSplit=${controls.split}
       .onPaneTerminal=${() => this.work.openTerminal(pane)}
       .onPaneBrowser=${() => this.work.openBrowser(pane)}
-      .onPaneNavigate=${(id: string) => this.changePaneSession(pane.id, id)}
+      .onPaneNavigate=${(id: string) => this.work.changePaneSession(pane.id, id)}
       .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
       .paneCreating=${this.listedSession(pane.sessionId)?.creating}
       .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
@@ -4431,6 +4387,7 @@ export class HuiApp extends HuiElement {
       .paneBots=${this.mentionable()}
       .onPaneOpenBot=${this.openBot}
     ></hui-app>`;
+  };
 
   private paneLabel = (pane: SessionPane) => this.listedSession(pane.sessionId)?.title ?? "Session";
 
@@ -4439,9 +4396,9 @@ export class HuiApp extends HuiElement {
   }
 
   private renderSessionMultiplex() {
-    if (!this.selected || !this.sessionLayout) return renderHome(this.homeProps());
-    const panes = sessionPanes(this.sessionLayout);
-    const workSessionId = activeSessionPane(this.sessionLayout).sessionId;
+    if (!this.selected || !this.work.layout) return renderHome(this.homeProps());
+    const panes = sessionPanes(this.work.layout);
+    const workSessionId = activeSessionPane(this.work.layout).sessionId;
     const work = sessionWorkPane(this.work.panes, workSessionId);
     this.work.retained = retainWorkSessions(this.work.retained, workSessionId, this.work.panes);
     const workShown = this.work.narrow && this.work.narrowShown;
@@ -4451,7 +4408,7 @@ export class HuiApp extends HuiElement {
     return html`<div class="hui-workspace-panels ${workShown ? "hui-workspace-panels--work" : ""} ${maximized ? "hui-workspace-panels--maximized" : ""}">
     ${renderPanelSelector({
       panes,
-      activePaneId: this.sessionLayout.activePaneId,
+      activePaneId: this.work.layout.activePaneId,
       sessionTitle: (sessionId) => this.groups.flatMap((group) => group.sessions).find(({ id }) => id === sessionId)?.title,
       workViews: work.views.flatMap((ref) => {
         const kind = workViewKind(ref.kind);
@@ -4464,7 +4421,7 @@ export class HuiApp extends HuiElement {
         this.work.hideNarrow();
         // Choosing a chat while maximized restores it beside the pane.
         if (maximized) this.work.commit(setWorkPaneMaximized(this.work.panes, workSessionId, false));
-        this.focusSessionPane(id);
+        this.work.focusPane(id);
         if (maximized) this.focusActiveComposer();
       },
       onSelectWork: (key) => { this.work.commit(activateWorkView(this.work.panes, workSessionId, key, false)); this.work.showNarrow(); },
@@ -4474,22 +4431,22 @@ export class HuiApp extends HuiElement {
     <div class="hui-workspace-row">
     <hui-session-multiplexer
       ?inert=${maximized}
-      .layout=${this.sessionLayout}
+      .layout=${this.work.layout}
       .sessionIds=${new Set(this.groups.flatMap((group) => group.sessions.map(({ id }) => id)))}
       .draggingSessionId=${this.draggingSessionId}
       .renderPane=${this.renderSessionPane}
-      .onFocusPane=${this.focusSessionPane}
+      .onFocusPane=${this.work.focusPane}
       .onDropSession=${this.dropSession}
-      .onMovePane=${this.movePane}
-      .onClosePane=${this.closePane}
+      .onMovePane=${this.work.movePane}
+      .onClosePane=${this.work.closePane}
       .paneLabel=${this.paneLabel}
       .columnMinimum=${!this.work.narrow && work.open ? WORK_PANE_CHAT_MIN_WIDTH : PANE_COLUMN_MIN_WIDTH}
       .onResize=${(columnId: string | undefined, index: number, ratio: number) => {
-        if (this.sessionLayout) this.sessionLayout = resizeSessionLayout(this.sessionLayout, columnId, index, ratio);
+        if (this.work.layout) this.work.layout = resizeSessionLayout(this.work.layout, columnId, index, ratio);
       }}
       .onResizeEnd=${() => {
-        this.persistSessionLayout();
-        window.history.replaceState({ ...window.history.state, huiSessionLayout: this.sessionLayout }, "");
+        this.work.persistLayout();
+        window.history.replaceState({ ...window.history.state, huiSessionLayout: this.work.layout }, "");
       }}
     ></hui-session-multiplexer>
     <hui-work-pane
@@ -4497,7 +4454,7 @@ export class HuiApp extends HuiElement {
       .sessionId=${workSessionId}
       .retained=${this.work.retained}
       .narrow=${this.work.narrow}
-      .chatColumns=${this.sessionLayout.columns.length}
+      .chatColumns=${this.work.layout.columns.length}
       .narrowShown=${this.work.narrowShown}
       .launchedKey=${this.work.launchedKey}
       .launching=${this.work.launching}
@@ -4602,7 +4559,7 @@ export class HuiApp extends HuiElement {
       activePage: this.activePage,
       selectedSessionId: this.view === "bot" ? "" : this.selected?.id ?? "",
       splitSessionId: "",
-      openSessionIds: new Set(this.sessionLayout && sessionPanes(this.sessionLayout).length > 1 ? sessionPanes(this.sessionLayout).map(({ sessionId }) => sessionId) : []),
+      openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),
       groups: this.listedGroups,
       bots: this.shellBotsProps(),
       draftSessionIds: this.draftSessionIds,

@@ -1,15 +1,21 @@
 /**
- * `WorkLayoutController` owns the Work pane outside `hui-app.ts`: the browser-local record of each conversation's
- * Work views (`WORK_PANE_KEY`), the narrow breakpoint and the narrow Work destination, launching, revealing, hiding
- * and maximizing views, files opened from the chat, and the Alt shortcuts. The shell decides which conversation the
- * pane follows and renders it from these fields.
+ * `WorkLayoutController` owns the split layout and the Work pane outside `hui-app.ts`: the chat panes' layout
+ * (`SESSION_LAYOUT_KEY`, mirrored in the history entry) and committing, focusing, splitting, closing, dropping,
+ * moving and retargeting its panes; the browser-local record of each conversation's Work views (`WORK_PANE_KEY`),
+ * the narrow breakpoint and the narrow Work destination, launching, revealing, hiding and maximizing views, files
+ * opened from the chat, and the Alt shortcuts. The shell routes navigation through these and renders from them.
  */
 import type { ReactiveControllerHost } from "lit";
 import { createTerminal, listTerminals } from "../api/terminals.ts";
+import type { PanePresentation, SessionMultiplexer } from "../components/session-multiplexer.ts";
 import type { WorkPane } from "../components/work-pane.ts";
 import { requestFilesViewReveal } from "../lib/files/view-state.ts";
 import type { OpenFileDetail } from "../lib/files/file-link-store.ts";
-import { focusSessionPane, isChatPane, activeSessionPane, sessionPanes, SESSION_SPLIT_MEDIA, type SessionLayout, type SessionPane } from "../lib/session/multiplexer.ts";
+import { navigationPath } from "../lib/navigation.ts";
+import {
+  activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, replacePaneSession, SESSION_LAYOUT_KEY,
+  SESSION_SPLIT_MEDIA, sessionPanes, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection,
+} from "../lib/session/multiplexer.ts";
 import { matchesShortcut } from "../lib/shortcut-binding.ts";
 import {
   activateWorkView, closeWorkView, closingLastWorkView, openWorkView, parseWorkPaneStore, registerWorkViewKind, serializeWorkPaneStore, sessionWorkPane,
@@ -26,8 +32,8 @@ type WorkLayoutHost = ReactiveControllerHost & { readonly renderRoot: HTMLElemen
 
 type WorkLayoutDeps = {
   followedSession: () => string | undefined;
-  layout: () => SessionLayout | undefined;
-  commitLayout: (layout: SessionLayout) => void;
+  showSession: (sessionId: string) => void;
+  activePane: () => HTMLElement | undefined;
   focusComposer: () => void;
   paletteOpen: () => boolean;
   terminalFont: () => string;
@@ -36,6 +42,7 @@ type WorkLayoutDeps = {
 };
 
 export class WorkLayoutController {
+  #layout: SessionLayout | undefined;
   /** Browser-local Work pane record per conversation (`lib/work-pane.ts`); top-level app only. */
   panes: WorkPaneStore = {};
   /** Below 1100px the Work pane is a full-screen destination instead of a side pane. */
@@ -56,6 +63,73 @@ export class WorkLayoutController {
   constructor(host: WorkLayoutHost, deps: WorkLayoutDeps) {
     this.#host = host;
     this.#deps = deps;
+  }
+
+  /** Browser-owned presentation state; each pane still owns its own runtime state. */
+  get layout(): SessionLayout | undefined { return this.#layout; }
+  set layout(layout: SessionLayout | undefined) {
+    this.#layout = layout;
+    this.#host.requestUpdate();
+  }
+
+  persistLayout(): void {
+    try {
+      if (this.layout && (sessionPanes(this.layout).length > 1 || sessionPanes(this.layout).some((pane) => !isChatPane(pane)))) {
+        localStorage.setItem(SESSION_LAYOUT_KEY, JSON.stringify(this.layout));
+      } else localStorage.removeItem(SESSION_LAYOUT_KEY);
+    } catch { /* The current view still works if browser storage is unavailable. */ }
+  }
+
+  commitLayout(layout: SessionLayout, replace = true): void {
+    this.layout = layout;
+    const id = activeSessionPane(layout).sessionId;
+    this.#deps.showSession(id);
+    this.persistLayout();
+    window.history[replace ? "replaceState" : "pushState"](
+      { ...window.history.state, huiSessionLayout: layout }, "", navigationPath({ kind: "session", id }),
+    );
+  }
+
+  focusPane = (id: string) => {
+    if (!this.layout || this.layout.activePaneId === id) return;
+    this.commitLayout(focusSessionPane(this.layout, id));
+  };
+
+  splitPane = (pane: SessionPane, direction: SplitDirection) => {
+    if (this.layout) this.commitLayout(splitSessionPane(this.layout, pane.id, pane.sessionId, direction));
+  };
+
+  paneControls(pane: SessionPane, state: PanePresentation): { close?: () => void; split?: (direction: SplitDirection) => void } {
+    return {
+      ...(state.split ? { close: () => this.closePane(pane.id) } : {}),
+      ...(!state.narrow ? { split: (direction: SplitDirection) => this.splitPane(pane, direction) } : {}),
+    };
+  }
+
+  closePane = (paneId: string) => {
+    if (!this.layout) return;
+    const next = closeSessionPane(this.layout, paneId);
+    if (next === this.layout) return;
+    this.commitLayout(next);
+    void this.#host.updateComplete.then(() => this.#host.renderRoot.querySelector<SessionMultiplexer>("hui-session-multiplexer")?.updateComplete).then(() => {
+      this.#deps.activePane()?.querySelector<HTMLElement>(".chat-pane__header")?.focus({ preventScroll: true });
+    });
+  };
+
+  dropSession(id: string, paneId: string, zone: DropZone): void {
+    if (!this.layout) return;
+    this.commitLayout(zone.kind === "center"
+      ? replacePaneSession(focusSessionPane(this.layout, paneId), paneId, id)
+      : zone.kind === "tab" ? addSessionTab(this.layout, paneId, id)
+        : splitSessionPane(this.layout, paneId, id, zone.edge));
+  }
+
+  movePane = (sourceId: string, targetId: string, zone: DropZone) => {
+    if (this.layout) this.commitLayout(moveSessionPane(this.layout, sourceId, targetId, zone));
+  };
+
+  changePaneSession(paneId: string, id: string): void {
+    if (this.layout) this.commitLayout(replacePaneSession(focusSessionPane(this.layout, paneId), paneId, id), false);
   }
 
   /** Registers the built-in Work view kinds, reads the browser-local record, follows the narrow breakpoint and the
@@ -130,7 +204,7 @@ export class WorkLayoutController {
   };
 
   resize(sessionId: string, width: number, available: number, done: boolean): void {
-    this.panes = setWorkPaneWidth(this.panes, sessionId, width, available, this.#deps.layout()?.columns.length ?? 1);
+    this.panes = setWorkPaneWidth(this.panes, sessionId, width, available, this.layout?.columns.length ?? 1);
     if (done) this.persist();
     this.#host.requestUpdate();
   }
@@ -154,10 +228,10 @@ export class WorkLayoutController {
   /** Shows `ref` in its conversation's Work pane, focusing that conversation's chat pane and expanding the pane (or,
    * on narrow screens, opening the Work destination). */
   showView(sessionId: string, ref: WorkViewRef, launched = false): void {
-    const layout = this.#deps.layout();
+    const layout = this.layout;
     if (layout && activeSessionPane(layout).sessionId !== sessionId) {
       const chat = sessionPanes(layout).find((pane) => isChatPane(pane) && pane.sessionId === sessionId);
-      if (chat) this.#deps.commitLayout(focusSessionPane(layout, chat.id));
+      if (chat) this.commitLayout(focusSessionPane(layout, chat.id));
     }
     const key = workViewKey(ref);
     if (launched) this.launchedKey = key;
