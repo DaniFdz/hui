@@ -18,7 +18,7 @@
 import { readFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
 
-import type { Connect, Plugin } from "vite";
+import type { Connect } from "vite";
 import { WORKERS_ROUTE } from "./routes/workers.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE } from "./routes/bots.ts";
 import { BOT_TRIGGERS_ROUTE } from "./routes/bot-triggers.ts";
@@ -39,7 +39,6 @@ import { servePresentedMedia } from "./presented-media.ts";
 import { serveWidgetSandbox } from "./widget-sandbox.ts";
 import { WIDGET_SANDBOX_PATH } from "../shared/widgets.ts";
 import { attachSessionTransport } from "./session-transport.ts";
-import { attachTerminalTransport } from "./terminal-transport.ts";
 import { FILES_ROUTE } from "./routes/files.ts";
 import { DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE } from "./routes/attachments.ts";
@@ -87,7 +86,6 @@ import {
   workerRoutes,
   worktreeRoutes,
 } from "./services.ts";
-import { startBackend, stopBackend } from "./backend.ts";
 
 const PREFIX = "/__hui/";
 const SESSIONS_ROUTE = `${PREFIX}sessions`;
@@ -482,56 +480,4 @@ export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlyS
     return liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
   }, allowedHosts);
   return () => { detachBrowser(); detachVscode(); detachSessions(); };
-}
-
-const GESPENST_NODE_STUB = "\0hui:gespenst-node-builtin";
-
-export function huiConfig(): Plugin {
-  return {
-    name: "hui-config",
-    // Gespenst (the terminal renderer) loads its worker and WebAssembly relative to its own module; pre-bundling
-    // would move the module away from them. Every entry point (vite.config.ts, hui-dev, the visual-verification
-    // server) shares this plugin.
-    config: () => ({ optimizeDeps: { exclude: ["@gespenst/core"] }, worker: { format: "es" as const } }),
-    // Its WebAssembly loader reads file: URLs through node:fs/promises and node:url when it runs under Node; the
-    // browser only fetches. An empty module replaces those two imports instead of Vite's externalization warning.
-    resolveId: {
-      order: "pre",
-      handler(id, importer) {
-        if ((id === "node:fs/promises" || id === "node:url") && importer?.includes("/node_modules/@gespenst/core/")) return GESPENST_NODE_STUB;
-        return undefined;
-      },
-    },
-    load(id) { return id === GESPENST_NODE_STUB ? "export {};" : undefined; },
-    configureServer(server) {
-      if (server.httpServer) {
-        // Vite restarts by creating this server, closing the previous one (its
-        // `closeBundle` stops that backend and releases the Durable store) and
-        // only then listening. Starting here keeps the two backends apart.
-        server.httpServer.once("listening", () => { void startBackend(); });
-        const detach = attachTerminalTransport(server.httpServer);
-        const detachStreams = attachLiveStreams(server.httpServer);
-        server.httpServer.once("close", () => { detach(); detachStreams(); });
-      } else {
-        void startBackend();
-      }
-      server.middlewares.use(middleware);
-    },
-    configurePreviewServer(server) {
-      void startBackend();
-      const detach = attachTerminalTransport(server.httpServer);
-      const detachStreams = attachLiveStreams(server.httpServer);
-      server.httpServer.once("close", () => { detach(); detachStreams(); });
-      server.middlewares.use(middleware);
-    },
-    // Called once per Vite environment; the calls share one store close. Vite
-    // discards a failed hook, so the failure is reported instead.
-    async closeBundle() {
-      await stopBackend().catch((error: unknown) => recordDiagnosticEvent({
-        area: "gateway", level: "error", action: "stop_failed",
-        summary: "The development backend did not stop cleanly",
-        detail: error instanceof Error ? error.message : String(error),
-      }));
-    },
-  };
 }
