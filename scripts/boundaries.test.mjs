@@ -386,6 +386,7 @@ const ALLOWED = [
   "server/routes/files.test.ts -> shared/files.ts (R3)",
   "server/routes/files.ts -> shared/files.ts (R3)",
   "server/routes/github.ts -> shared/github-links.ts (R3)",
+  "server/routes/jira.ts -> shared/task-suggestions.ts (R3)",
   "server/routes/vscode.ts -> shared/vscode.ts (R3)",
   "server/routes/worktrees.ts -> shared/worktrees.ts (R3)",
   "server/runtimes/durable-bot-access.test.ts -> shared/bots.ts (R3)",

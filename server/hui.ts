@@ -84,23 +84,19 @@ import { existingDirectory, resolveWorkingDirectory } from "./working-directorie
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { answerSideQuestion, suggestWorktreeName } from "./model-routing.ts";
-import { sessionDigest } from "./session-digest.ts";
 import { runPiUtilityPrompt } from "./runtimes/pi.ts";
 import type { SessionJiraIssue } from "../shared/jira.ts";
 import {
   draftJiraWorkItem,
-  findJiraIssues,
   JiraClient,
   jiraKeyFromInput,
   JiraConfigStore,
-  jiraConnectionView,
   JiraInputError,
   jiraIssuesFromTranscript,
   JiraIssueStatuses,
   jiraIssueUrl,
   JiraRequestError,
   mergeJiraRefs,
-  normalizeJiraSite,
   normalizeProjectKey,
   parentCandidates,
   validateCreateInput,
@@ -155,6 +151,7 @@ import { createBrowserRoutes } from "./routes/browser.ts";
 import { createVscodeRoutes } from "./routes/vscode.ts";
 import { createGitHubRoutes } from "./routes/github.ts";
 import { createDatadogRoutes } from "./routes/datadog.ts";
+import { createJiraRoutes } from "./routes/jira.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
@@ -194,11 +191,6 @@ const SESSION_ACTION =
   /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork)$/;
 /** The session itself, for changing it rather than acting on it. */
 const SESSION_ONE = /^\/__hui\/sessions\/([^/]+)$/;
-const JIRA_ROUTE = `${PREFIX}jira`;
-const JIRA_PROJECTS_ROUTE = `${JIRA_ROUTE}/projects`;
-/** Create (POST) or draft (POST …/draft) a Jira work item for one session. */
-const SESSION_JIRA = /^\/__hui\/sessions\/([^/]+)\/jira(?:\/(draft|link))?$/;
-const JIRA_ISSUES_ROUTE = `${JIRA_ROUTE}/issues`;
 /** Dismiss (DELETE), start (POST …/start) or save to the backlog (POST
  * …/backlog) one pending `suggest_task` card. */
 const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;
@@ -743,12 +735,6 @@ function jiraClient(): JiraClient {
   return new JiraClient(jiraConfig);
 }
 
-function jiraErrorStatus(error: unknown): number {
-  if (error instanceof JiraInputError) return 400;
-  if (error instanceof JiraRequestError) return 502;
-  return 500;
-}
-
 /**
  * Creates a work item from the dialog body and assigns it to the connected
  * account unless `assignToMe: false`. Connections saved before accountId was
@@ -789,6 +775,18 @@ async function createAssignedJiraIssue(client: JiraClient, body: Record<string, 
   void client.issue(key).then((details) => jiraStatuses.remember(ref, details), () => undefined);
   return { ref, input, warning };
 }
+
+const jiraRoutes = createJiraRoutes({
+  jiraStore,
+  jiraConfig: () => jiraConfig,
+  setJiraConfig: (config) => { jiraConfig = config; },
+  jiraConfigReady,
+  jiraStatuses,
+  jiraClient,
+  createAssignedJiraIssue,
+  toView,
+  taskSuggestions,
+});
 
 function sessionJiraIssues(record: SessionRecord, transcript: readonly TranscriptEntry[]): SessionJiraIssue[] {
   const refs = mergeJiraRefs(record.jiraIssues ?? [], jiraIssuesFromTranscript(transcript));
@@ -1201,174 +1199,7 @@ async function handleRequest(
 
   if (answered(response, path, await datadogRoutes.handle(routed))) return;
 
-  if (path === JIRA_ROUTE) {
-    await jiraConfigReady;
-    if (request.method === "GET") {
-      sendJson(response, 200, jiraConnectionView(jiraConfig));
-      return;
-    }
-    if (request.method === "PUT") {
-      try {
-        const body = (await readBody(request)) as Record<string, unknown>;
-        const site = normalizeJiraSite(body["site"]);
-        const email = typeof body["email"] === "string" ? body["email"].trim() : "";
-        if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+$/u.test(email)) throw new JiraInputError("Enter the email address of your Atlassian account.");
-        const entered = typeof body["token"] === "string" ? body["token"].trim() : "";
-        // An empty token keeps the stored one, but only for the same site and account.
-        const token = entered || (jiraConfig && jiraConfig.site === site && jiraConfig.email === email ? jiraConfig.token : "");
-        if (!token) throw new JiraInputError("Paste an Atlassian API token.");
-        if (token.length > 1_000) throw new JiraInputError("That API token is too long.");
-        const defaultProject = normalizeProjectKey(body["defaultProject"]);
-        const client = new JiraClient({ site, email, token });
-        const me = await client.myself();
-        const next: JiraConfig = {
-          site, email, token, defaultProject,
-          ...(me.displayName ? { accountName: me.displayName } : {}),
-          ...(me.accountId ? { accountId: me.accountId } : {}),
-        };
-        await jiraStore.write(next);
-        if (jiraConfig?.site !== site || jiraConfig?.email !== email) jiraStatuses.clear();
-        jiraConfig = next;
-        sendJson(response, 200, jiraConnectionView(next));
-      } catch (error) {
-        sendJson(response, jiraErrorStatus(error), { error: error instanceof Error ? error.message : "Could not connect Jira." });
-      }
-      return;
-    }
-    if (request.method === "PATCH") {
-      try {
-        if (!jiraConfig) throw new JiraInputError("Connect Jira in Settings → Integrations first.");
-        const body = (await readBody(request)) as Record<string, unknown>;
-        const next = { ...jiraConfig, defaultProject: normalizeProjectKey(body["defaultProject"]) };
-        await jiraStore.write(next);
-        jiraConfig = next;
-        sendJson(response, 200, jiraConnectionView(next));
-      } catch (error) {
-        sendJson(response, jiraErrorStatus(error), { error: error instanceof Error ? error.message : "Could not save the default project." });
-      }
-      return;
-    }
-    if (request.method === "DELETE") {
-      await jiraStore.remove();
-      jiraConfig = undefined;
-      jiraStatuses.clear();
-      sendJson(response, 200, jiraConnectionView(undefined));
-      return;
-    }
-    sendJson(response, 405, { error: "method not allowed" });
-    return;
-  }
-
-  if (path === JIRA_PROJECTS_ROUTE) {
-    await jiraConfigReady;
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      const query = new URL(request.url ?? "/", "http://localhost").searchParams.get("query") ?? "";
-      if (query.length > 100) throw new JiraInputError("A project search must be at most 100 characters.");
-      sendJson(response, 200, await jiraClient().projects(query));
-    } catch (error) {
-      sendJson(response, jiraErrorStatus(error), { error: error instanceof Error ? error.message : "Could not list Jira projects." });
-    }
-    return;
-  }
-
-  if (path === JIRA_ISSUES_ROUTE) {
-    await jiraConfigReady;
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      const query = new URL(request.url ?? "/", "http://localhost").searchParams.get("query") ?? "";
-      if (query.length > 200) throw new JiraInputError("A work item search must be at most 200 characters.");
-      const client = jiraClient();
-      sendJson(response, 200, { issues: await findJiraIssues(client, jiraConfig!.site, query) });
-    } catch (error) {
-      sendJson(response, jiraErrorStatus(error), { error: error instanceof Error ? error.message : "Could not search Jira." });
-    }
-    return;
-  }
-
-  const jiraSession = path.match(SESSION_JIRA);
-  if (jiraSession) {
-    await jiraConfigReady;
-    if (request.method !== "POST") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    const id = decodeURIComponent(jiraSession[1] ?? "");
-    const record = (await readRegistry()).find((session) => session.id === id);
-    if (!record) {
-      sendJson(response, 404, { error: `unknown session: ${id}` });
-      return;
-    }
-    try {
-      const body = (await readBody(request)) as Record<string, unknown>;
-      const client = jiraClient();
-      if (jiraSession[2] === "link") {
-        const key = typeof body["key"] === "string" ? jiraKeyFromInput(body["key"]) : undefined;
-        if (!key) throw new JiraInputError("Enter a Jira work item key such as CI-123.");
-        // Confirm it exists and is visible before storing the reference.
-        const details = await client.issue(key);
-        const ref = { key, url: jiraIssueUrl(jiraConfig!.site, key) };
-        const records = await updateRegistry((sessions) => sessions.map((session) => session.id === id
-          ? { ...session, jiraIssues: mergeJiraRefs((session.jiraIssues ?? []).filter((item) => item.key !== key), [ref]) }
-          : session));
-        jiraStatuses.remember(ref, details);
-        const next = records.find((session) => session.id === id);
-        sendJson(response, 200, { issue: ref, ...(next ? { session: toView(next, liveSessions.status(id)) } : {}) });
-        return;
-      }
-      if (jiraSession[2] === "draft") {
-        const project = normalizeProjectKey(body["project"]) || jiraConfig!.defaultProject;
-        if (!project) throw new JiraInputError("Choose a Jira project.");
-        const { parents } = await parentCandidates(client, project);
-        // A suggestion card is drafted from its own text, not the whole session.
-        const suggestion = typeof body["suggestionId"] === "string" && body["suggestionId"]
-          ? taskSuggestions.get(id, body["suggestionId"])
-          : undefined;
-        // A session is drafted from a goal-anchored digest, not a tail slice.
-        const digest = suggestion ? undefined : sessionDigest(liveSessions.transcript(id));
-        const draft = await draftJiraWorkItem({
-          project,
-          parents,
-          title: suggestion?.title ?? record.title,
-          // Utility calls run on this machine, even for remote sessions.
-          cwd: record.worker ? homedir() : record.cwd,
-          context: suggestion ? taskSuggestionJiraDescription(suggestion) : digest?.text ?? "",
-          ...(digest?.goal ? { goal: digest.goal } : {}),
-          model: (await readHuiSettings()).models.utility,
-          run: runPiUtilityPrompt,
-        });
-        sendJson(response, 200, { draft });
-        return;
-      }
-      const { ref, warning: assignWarning } = await createAssignedJiraIssue(client, body);
-      // Filing a suggestion resolves its card; it may already have been dismissed.
-      if (typeof body["suggestionId"] === "string" && body["suggestionId"]) {
-        try { taskSuggestions.remove(id, body["suggestionId"]); } catch (error) { if (!(error instanceof TaskSuggestionNotFoundError)) throw error; }
-      }
-      const records = await updateRegistry((sessions) => sessions.map((session) => session.id === id
-        ? { ...session, jiraIssues: mergeJiraRefs(session.jiraIssues ?? [], [ref]) }
-        : session));
-      const next = records.find((session) => session.id === id);
-      sendJson(response, 200, {
-        issue: ref,
-        ...(next ? { session: toView(next, liveSessions.status(id)) } : {}),
-        ...(assignWarning ? { warning: assignWarning } : {}),
-      });
-    } catch (error) {
-      if (error instanceof TaskSuggestionNotFoundError) {
-        sendJson(response, 404, { error: error.message });
-        return;
-      }
-      sendJson(response, jiraErrorStatus(error), { error: error instanceof Error ? error.message : "Could not create the Jira work item." });
-    }
-    return;
-  }
+  if (answered(response, path, await jiraRoutes.handle(routed))) return;
 
   if (path === SESSION_STATUSES_ROUTE) {
     if (request.method === "GET") {
