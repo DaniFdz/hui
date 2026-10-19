@@ -53,7 +53,7 @@ import { isThinkingLevel } from "../shared/thinking.ts";
 import { PullRequestStatuses } from "./pull-requests.ts";
 
 
-import { HUI_SETTINGS_FILE, readHuiSettings } from "./hui-settings.ts";
+import { readHuiSettings, writeHuiSettings } from "./hui-settings.ts";
 import { CONFIG_DIR, ATTACHMENTS_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, USER_THEME_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeError, VscodeService } from "./vscode.ts";
 import { VscodeInstaller } from "./vscode-install.ts";
@@ -65,7 +65,7 @@ import { MacPower } from "./power.ts";
 import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
 import type { EventEmitter } from "node:events";
 import type { BrowserStatus } from "../shared/browser.ts";
-import { botsEnabled, normalizeSettings, type Settings } from "../src/lib/settings.ts";
+import { botsEnabled, type Settings } from "../src/lib/settings.ts";
 import { mapTheme, type ShadcnTheme } from "../src/lib/shadcn-theme.ts";
 import { ProviderService, ProviderInputError } from "./providers.ts";
 import { readPiConfig, invalidateModelCatalog } from "./pi-config.ts";
@@ -671,11 +671,10 @@ async function ensureConfigDir(): Promise<void> {
 }
 
 async function writeSettings(raw: unknown): Promise<Settings> {
-  const settings = normalizeSettings(raw);
   const before = await readHuiSettings();
   const botsWereOn = botsEnabled(before);
   await ensureConfigDir();
-  await writeFile(HUI_SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  const settings = await writeHuiSettings(raw);
   // A changed browser mode or executable must not leave the old process running.
   await managedBrowser.applySettings(settings.browser);
   // Off withdraws every VS Code frame's access and stops the server; a new executable applies to the next start.

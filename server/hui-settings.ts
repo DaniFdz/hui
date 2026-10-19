@@ -1,8 +1,8 @@
 /**
- * Read access to HUI's own settings file in its config directory. A missing or malformed file yields the
- * normalized defaults instead of an error.
+ * HUI's own settings file in its config directory: reading and writing it, always normalized. A missing or
+ * malformed file reads as the defaults instead of an error.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { normalizeSettings, type Settings } from "../src/lib/settings.ts";
@@ -20,4 +20,10 @@ export async function readHuiSettingsAt(path: string): Promise<Settings> {
 
 export function readHuiSettings(): Promise<Settings> {
   return readHuiSettingsAt(HUI_SETTINGS_FILE);
+}
+
+export async function writeHuiSettings(raw: unknown): Promise<Settings> {
+  const settings = normalizeSettings(raw);
+  await writeFile(HUI_SETTINGS_FILE, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  return settings;
 }
