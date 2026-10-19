@@ -1,11 +1,11 @@
 /**
  * Keeps the code map honest: every source module opens with a header comment saying what it owns, and every
- * directory holding source modules is named in docs/map.md. Whether a header is still true is a review matter;
- * this only catches a missing one.
+ * directory holding source modules is named in docs/map.md by its full path. Whether a header is still true is a
+ * review matter; this only catches a missing one.
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 
@@ -42,6 +42,6 @@ test("every source module starts with a header comment", async () => {
 test("docs/map.md names every directory that holds source modules", async () => {
   const map = await readFile(join(root, "docs/map.md"), "utf8");
   const directories = [...new Set(files.map((file) => relative(root, join(root, dirname(file)))))];
-  const unnamed = directories.filter((directory) => !map.includes(`${basename(directory)}/`));
+  const unnamed = directories.filter((directory) => !map.includes(`${directory}/`));
   assert.deepEqual(unnamed, [], "add the directory to docs/map.md");
 });
