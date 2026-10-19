@@ -12,6 +12,7 @@ import { gptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguage } from "../../shared/voice.ts";
 import { CLIENT_HEADERS, fetchJson } from "./settings-store.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS, type SessionGroup, type SessionView } from "./sessions-store.ts";
+import { sessionTreeIds } from "./session-tree.ts";
 import { trackedFetch } from "./ui-errors.ts";
 
 export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../shared/bots.ts";
@@ -482,13 +483,17 @@ export function isBotSession(session: Pick<SessionView, "bot">): boolean {
 }
 
 /** Bot chats live in the Bots tab, never in session lists, search, the board
- * or session pickers. Configured groups stay even when emptied, as they would
- * without the bot; OTHER exists only for listed sessions, so it goes when bot
- * chats were all it held. Groups without bot chats keep their identity. */
+ * or session pickers, and neither do the subagents a bot spawns, nor theirs:
+ * they are the bot's work, which its chat's cards list and open. Configured
+ * groups stay even when emptied, as they would without the bot; OTHER exists
+ * only for listed sessions, so it goes when a bot's sessions were all it held.
+ * Groups without them keep their identity. */
 export function withoutBotSessions(groups: readonly SessionGroup[]): SessionGroup[] {
+  const all = groups.flatMap((group) => group.sessions);
+  const ofBots = new Set(all.filter(isBotSession).flatMap((chat) => [...sessionTreeIds(all, chat.id)]));
   return groups.flatMap((group) => {
-    if (!group.sessions.some(isBotSession)) return [group];
-    const sessions = group.sessions.filter((session) => !isBotSession(session));
+    if (!group.sessions.some((session) => ofBots.has(session.id))) return [group];
+    const sessions = group.sessions.filter((session) => !ofBots.has(session.id));
     return sessions.length || (group.label && group.label !== "ungrouped") ? [{ ...group, sessions }] : [];
   });
 }

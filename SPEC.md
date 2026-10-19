@@ -1307,7 +1307,9 @@ transcript. A batch that all succeeded folds into a single "N completed" row. Th
 card stays for an hour after the batch finished (OpenClaw's retention). Child
 sessions nest below their parent in the sidebar, except collected children, which
 have no sidebar row (as in OpenClaw): the card lists and opens them, and the parent
-row still shows their work as background activity. Each parent with visible children has a separate keyboard-accessible
+row still shows their work as background activity. A bot's subagents, and anything
+below them, have no row either: like the bot's chat, which is never listed, they
+stay out of every session list, and the bot chat's cards list and open them. Each parent with visible children has a separate keyboard-accessible
 disclosure button that folds its entire subtree without changing the open session.
 Folding is kept in memory for the current page; search and status filters reveal
 matches without clearing the fold choices. PI remains the sole transcript writer. HUI persists only lineage,
@@ -1849,9 +1851,9 @@ everything the Bots tab can, through the same routes.
   on, an **Agents | Bots** switch fills the sidebar's top row after the collapse
   toggle (arrow keys, Home/End; the browser remembers the tab): Agents is the
   sidebar as before, and Bots shows only the roster, without the navigation.
-  Bot chats never
-  appear in the Sessions list, its search, Kanban, the Sessions page, the
-  command palette or session pickers; Automations labels their routines
+  Bot chats, and the
+  subagents a bot spawns (with theirs), never appear in the Sessions list, its
+  search, Kanban, the Sessions page, the command palette or session pickers; Automations labels their routines
   *Bot · name* and words
   their schedules as the bot's panel does (*Daily at 08:00*), and shows who
   made a task when a bot did and a temporary one's limits. The roster
