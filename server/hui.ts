@@ -52,7 +52,7 @@ import { isThinkingLevel } from "../shared/thinking.ts";
 import { PullRequestStatuses } from "./pull-requests.ts";
 
 
-import { readHuiSettings, writeHuiSettings } from "./hui-settings.ts";
+import { botsOn, readHuiSettings, writeHuiSettings } from "./hui-settings.ts";
 import { CONFIG_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeError, VscodeService } from "./vscode.ts";
 import { VscodeInstaller } from "./vscode-install.ts";
@@ -329,10 +329,6 @@ const bots = new BotService({
   statuses: liveSessions,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
-/** Settings → Labs → Bots, read at each use, so turning bots on or off applies without a restart. */
-async function botsOn(): Promise<boolean> {
-  return botsEnabled(await readHuiSettings());
-}
 /** Open `GET /__hui/bots/events` streams, ended as bots are turned off so every screen hears it. */
 const botStreams = new Set<ServerResponse>();
 const botRoutes = createBotRoutes({
