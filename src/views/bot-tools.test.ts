@@ -13,7 +13,7 @@ test("Tools is a page of the panel, opened from the overview's Setup, self-conta
   assert.match(between(panel, "function renderPanelView(", "/* ── size"), /case "tools": return keyed\(props\.bot\.id, renderBotToolsTab\(\{ bot: props\.bot, \.\.\.props\.tools \}\)\);/u, "another bot's page starts afresh");
   const app = read("../hui-app.ts");
   assert.match(app, /private botTools = new BotToolsController\(this\);/u);
-  assert.match(app, /this\.botPanelExpanded = false;\n\s+this\.botTools\.reset\(target\.id\);/u, "another bot starts clean");
+  assert.match(app, /this\.bots\.resetPanel\(\);\n\s+this\.botTools\.reset\(target\.id\);/u, "another bot starts clean");
   assert.match(app, /onFrame: \(\) => \{\n\s+this\.followBotTools\(\);/u, "on every bots frame");
   assert.match(app, /const toolsBot = this\.botPanelShows\("tools"\) \? this\.activeBot\(\) : undefined;\n\s+if \(toolsBot\) void this\.botTools\.refresh\(toolsBot\);/u, "on opening the page");
   assert.match(app, /tools: this\.botTools\.props\(bot\),/u);

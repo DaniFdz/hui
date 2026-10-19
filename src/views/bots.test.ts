@@ -265,8 +265,7 @@ test("the Settings page: Profile, Tagging, Model, Calls and Workspace, each chan
   assert.match(between(source, "function renderRow(", "function sectionHead("), /<p class="bot-setting__error" role="alert">/u, "and so does a refusal");
   assert.doesNotMatch(source, /type="submit"|>Save</u, "no Save button");
   const app = read("../hui-app.ts");
-  assert.match(app, /this\.botSettingsQueue = this\.botSettingsQueue\.then\(\(\) => this\.sendBotSetting\(botId, key\)\);/u, "one PATCH per change, in order");
-  assert.match(between(app, "private async sendBotSetting(", "private dismissBotSetting("), /updateBot\(botId, patch\)/u, "through PATCH /__hui/bots/:id");
+  assert.match(app, /onChange: \(key, value\) => this\.bots\.changeSetting\(bot\.id, key, value\),/u, "one PATCH per change, in order, through PATCH /__hui/bots/:id (bots-controller.test.ts)");
   assert.match(between(app, "private botSettingsCall(", "private botSettingsSavesOf("),
     /return \{ defaultVoice: this\.control\.settings\.calls\.voice, \.\.\.\(this\.callsStatus \? \{ ready: callsReady\(this\.callsStatus\) \} : \{\}\) \};/u,
     "Settings' voice, and whether calls can run once the gateway has said (callsReady, as Call uses)");
@@ -280,8 +279,7 @@ test("the roster's Edit opens the bot's chat with its panel on Settings, docked 
   assert.match(between(app, "private openEditBot = ", "private showBotSettings("), /this\.showBotSettings\(bot\.id\);/u);
   const show = between(app, "private showBotSettings(", "private toggleBotSettings(");
   assert.match(show, /this\.navigate\(\{ kind: "bot", id: botId \}\)/u);
-  assert.match(show, /if \(this\.mobileNavLayout\) this\.botSheetOpen = true;/u, "the sheet on narrow screens");
-  assert.match(show, /this\.botPanel = \{ \.\.\.this\.botPanel, open: true \};/u, "docked, it opens at the width it had");
+  assert.match(show, /this\.bots\.openPanel\(this\.mobileNavLayout\);/u, "the sheet on narrow screens; docked, it opens at the width it had (bots-controller.test.ts)");
   assert.match(show, /this\.selectBotPanelView\("settings"\);/u);
   assert.doesNotMatch(app, /mode: "edit"/u, "the old Edit dialog is gone");
 });
@@ -295,8 +293,8 @@ test("the panel opens on the bot's overview, whose rows open its pages with a wa
   assert.doesNotMatch(between(source, "/* ── side panel", "/* ── archive confirmation"), /role="tab"|SOUL\.md/iu, "no tabs or Soul editor");
   const app = read("../hui-app.ts");
   assert.match(app, /if \(isBotSettingsShortcut\(event\)\) \{\n\s+if \(this\.view !== "bot" \|\| this\.settingsOpen \|\| this\.commandPaletteOpen \|\| document\.querySelector\("dialog\[open\]"\)\) return;/u);
-  assert.match(between(app, "private toggleBotSettings(", "private utilityModelName("), /if \(this\.botPanelVisible\(\) && this\.botPanelView === "settings"\) this\.closeBotPanel\(\);\n\s+else this\.showBotSettings\(bot\.id\);/u);
-  assert.match(app, /if \(this\.view !== "bot" \|\| this\.activeBotId !== target\.id\) \{\n\s+this\.botSheetOpen = false;\n\s+this\.botPanelView = "overview";\n\s+this\.botPanelOpenedFrom = "";\n\s+this\.botPanelExpanded = false;/u, "a bot opens on its overview, docked, also when it is opened again");
+  assert.match(between(app, "private toggleBotSettings(", "private utilityModelName("), /if \(this\.botPanelVisible\(\) && this\.bots\.panelView === "settings"\) this\.closeBotPanel\(\);\n\s+else this\.showBotSettings\(bot\.id\);/u);
+  assert.match(app, /if \(this\.view !== "bot" \|\| this\.activeBotId !== target\.id\) \{\n\s+this\.bots\.resetPanel\(\);/u, "a bot opens on its overview, docked, also when it is opened again (bots-controller.test.ts)");
 });
 
 test("an expanded panel keeps the chat mounted underneath, and Escape brings the chat back instead of stopping its turn", () => {

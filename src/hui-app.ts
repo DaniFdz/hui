@@ -77,9 +77,9 @@ import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
-import { withLiveChats, botChangePatch, botSettingChange, upsertBot, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
+import { withLiveChats, upsertBot, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { archiveBot, deleteBot, createBot, restoreBot, updateBot } from "./api/bots.ts";
-import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
+import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
 import { BotToolsController } from "./controllers/bot-tools-controller.ts";
@@ -87,7 +87,7 @@ import { BotTriggersController } from "./controllers/bot-triggers-controller.ts"
 import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder } from "./views/bots.ts";
 import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
 import { BotImportController } from "./controllers/bot-import-controller.ts";
-import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "./views/bot-settings.ts";
+import type { BotSettingsProps } from "./views/bot-settings.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
@@ -233,13 +233,6 @@ const paneCallback = { attribute: false, hasChanged: (value: unknown, old: unkno
 /** A bot pane's Call button (HUI-18): offered while calls can run (GPT-Live, with a ChatGPT login). Compared by value. */
 type PaneCall = { botId: string; inCall: boolean };
 const paneCallProperty = { attribute: false, hasChanged: (value: unknown, old: unknown) => JSON.stringify(value) !== JSON.stringify(old) };
-
-/** A bot's Settings page: a row's saves or refusals without that row's. */
-function withoutSetting<Value>(record: Partial<Record<BotSettingKey, Value>>, key: BotSettingKey): Partial<Record<BotSettingKey, Value>> {
-  const next = { ...record };
-  delete next[key];
-  return next;
-}
 
 /** The bot pane's header data, without its callback (passed separately as a
  * pane callback). Compared by value: the parent rebuilds it on every render. */
@@ -462,29 +455,14 @@ export class HuiApp extends HuiElement {
     },
   });
   @state() private botSearch = "";
-  /** The sidebar's Agents | Bots choice, remembered by the browser. */
-  @state() private sidebarTab: SidebarTab = readSidebarTab();
   @state() private showHiddenBots = false;
   @state() private showArchivedBots = false;
   @state() private botMenuFor = "";
   @state() private botPendingId = "";
   /** The bot whose chat the bot route shows. */
   @state() private activeBotId = "";
-  @state() private botPanel: BotPanelState = readBotPanel();
-  /** The page the panel shows: the bot's overview, or one its rows opened. Each bot opens on its overview. */
-  @state() private botPanelView: BotPanelView = "overview";
-  /** The overview row that opened the page showing (its `data-panel-link`): going back puts the focus on it again. */
-  private botPanelOpenedFrom = "";
-  /** Wide screens: the panel fills the bot's view, its chat hidden underneath. Never remembered. */
-  @state() private botPanelExpanded = false;
-  /** Narrow layouts open the panel as a sheet only on request; never remembered. */
-  @state() private botSheetOpen = false;
   /** + is creating a bot; another press waits for it. */
   @state() private botCreating = false;
-  /** The Settings page's saves, per bot: each change is one PATCH, sent in order, and a newer change to the same row
-   * replaces a value still waiting. Kept per bot, so leaving a bot never drops a change on its way. */
-  @state() private botSettingsSaves: ReadonlyMap<string, BotSettingsSaves> = new Map();
-  private botSettingsQueue: Promise<void> = Promise.resolve();
   /** The ChatGPT login GPT-Live calls use (`/__hui/calls`), read on a bot's page. */
   @state() private callsStatus: CallsStatus | undefined;
   private callsStatusLoading: Promise<void> | undefined;
@@ -680,7 +658,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (!this.embeddedPane && this.view === "bot") {
-      if (this.mobileNavLayout && this.botSheetOpen) {
+      if (this.mobileNavLayout && this.bots.sheetOpen) {
         event.preventDefault();
         this.closeBotPanel();
         return;
@@ -784,7 +762,7 @@ export class HuiApp extends HuiElement {
         void this.control.refreshGatewayHealth();
       }
       // Roster times ("2m") age while nothing else re-renders the sidebar.
-      if (!this.embeddedPane && !document.hidden && botsEnabled(this.control.settings) && this.sidebarTab === "bots" && ++this.botRosterTick % 10 === 0) {
+      if (!this.embeddedPane && !document.hidden && botsEnabled(this.control.settings) && this.bots.tab === "bots" && ++this.botRosterTick % 10 === 0) {
         this.requestUpdate();
       }
     }, 3000);
@@ -1172,10 +1150,7 @@ export class HuiApp extends HuiElement {
       this.pendingSessionId = "";
       this.activePage = undefined;
       if (this.view !== "bot" || this.activeBotId !== target.id) {
-        this.botSheetOpen = false;
-        this.botPanelView = "overview";
-        this.botPanelOpenedFrom = "";
-        this.botPanelExpanded = false;
+        this.bots.resetPanel();
         this.botTools.reset(target.id);
         this.botTriggers.reset(target.id);
         this.botFacts.reset(target.id);
@@ -3842,10 +3817,7 @@ export class HuiApp extends HuiElement {
 
   private setSidebarTab = (tab: SidebarTab) => {
     this.botMenuFor = "";
-    if (this.sidebarTab === tab) return;
-    this.sidebarTab = tab;
-    writeSidebarTab(tab);
-    if (tab === "bots") this.ensureBots();
+    if (this.bots.selectTab(tab) && tab === "bots") this.ensureBots();
   };
 
   private selectBot = (bot: BotView) => {
@@ -3870,7 +3842,7 @@ export class HuiApp extends HuiElement {
     }
     this.bots.sync();
     this.botMenuFor = "";
-    this.botSheetOpen = false;
+    this.bots.closeSheet();
     this.botImports.close();
     if (this.voice.call) this.voice.hangUp();
     // A bot's page goes home, and so does a bot's chat open as a session.
@@ -3882,7 +3854,7 @@ export class HuiApp extends HuiElement {
   private shellBotsProps(): ShellBotsProps | undefined {
     if (!botsEnabled(this.control.settings)) return undefined;
     return {
-      tab: this.sidebarTab,
+      tab: this.bots.tab,
       onTab: this.setSidebarTab,
       search: this.botSearch,
       onSearch: (value) => { this.botSearch = value; },
@@ -3967,11 +3939,7 @@ export class HuiApp extends HuiElement {
     if (this.view !== "bot" || this.activeBotId !== botId || this.settingsOpen) this.navigate({ kind: "bot", id: botId });
     // Without the Bots tab the bot route goes home instead.
     if (this.view !== "bot" || this.activeBotId !== botId) return;
-    if (this.mobileNavLayout) this.botSheetOpen = true;
-    else if (!this.botPanel.open) {
-      this.botPanel = { ...this.botPanel, open: true };
-      writeBotPanel(this.botPanel);
-    }
+    this.bots.openPanel(this.mobileNavLayout);
     this.automation.clearErrors();
     this.selectBotPanelView("settings");
   }
@@ -3980,7 +3948,7 @@ export class HuiApp extends HuiElement {
   private toggleBotSettings() {
     const bot = this.activeBot();
     if (!bot || bot.archived || !this.listedSession(bot.sessionId)) return;
-    if (this.botPanelVisible() && this.botPanelView === "settings") this.closeBotPanel();
+    if (this.botPanelVisible() && this.bots.panelView === "settings") this.closeBotPanel();
     else this.showBotSettings(bot.id);
   }
 
@@ -3995,53 +3963,6 @@ export class HuiApp extends HuiElement {
    * calls run. That is left out until the gateway has said, so a signed-in operator never sees the hint flash. */
   private botSettingsCall(): BotSettingsProps["call"] {
     return { defaultVoice: this.control.settings.calls.voice, ...(this.callsStatus ? { ready: callsReady(this.callsStatus) } : {}) };
-  }
-
-  private botSettingsSavesOf(botId: string): BotSettingsSaves {
-    return this.botSettingsSaves.get(botId) ?? NO_BOT_SETTINGS_SAVES;
-  }
-
-  private updateBotSettingsSaves(botId: string, update: (saves: BotSettingsSaves) => BotSettingsSaves) {
-    this.botSettingsSaves = new Map(this.botSettingsSaves).set(botId, update(this.botSettingsSavesOf(botId)));
-  }
-
-  /** A Settings page change: shown at once as saving, then sent as its own PATCH after the ones before it. */
-  private changeBotSetting(botId: string, key: BotSettingKey, value: BotSettingValue) {
-    if (this.botSettingsSavesOf(botId).pending[key] === value) return;
-    this.updateBotSettingsSaves(botId, (saves) => ({ pending: { ...saves.pending, [key]: value }, errors: withoutSetting(saves.errors, key) }));
-    this.botSettingsQueue = this.botSettingsQueue.then(() => this.sendBotSetting(botId, key));
-  }
-
-  /** Sends the newest value a row waits on. The gateway's answer replaces the bot; a refusal stays on the row. A value
-   * already sent, or replaced by a newer change meanwhile, is not sent again. */
-  private async sendBotSetting(botId: string, key: BotSettingKey) {
-    const value = this.botSettingsSavesOf(botId).pending[key];
-    if (value === undefined) return;
-    const settle = (error?: string) => this.updateBotSettingsSaves(botId, (saves) => saves.pending[key] !== value ? saves : {
-      pending: withoutSetting(saves.pending, key),
-      errors: error ? { ...saves.errors, [key]: error } : withoutSetting(saves.errors, key),
-    });
-    const bot = this.bots.list.find((candidate) => candidate.id === botId);
-    if (!bot) {
-      settle("This bot is gone.");
-      return;
-    }
-    const patch = botChangePatch(bot, botSettingChange(key, value));
-    if (!patch) {
-      settle();
-      return;
-    }
-    try {
-      this.bots.adopt(upsertBot(this.bots.list, await updateBot(botId, patch)));
-      settle();
-    } catch (error) {
-      settle(error instanceof Error ? error.message : "Could not save that change.");
-    }
-  }
-
-  private dismissBotSetting(botId: string, key: BotSettingKey) {
-    if (!this.botSettingsSavesOf(botId).errors[key]) return;
-    this.updateBotSettingsSaves(botId, (saves) => ({ ...saves, errors: withoutSetting(saves.errors, key) }));
   }
 
   private setBotHidden = (bot: BotView, hidden: boolean) => {
@@ -4203,16 +4124,16 @@ export class HuiApp extends HuiElement {
 
   private botPanelVisible(): boolean {
     // An archived bot's page is a placeholder without the panel.
-    return this.view === "bot" && !this.settingsOpen && !this.activeBot()?.archived && (this.mobileNavLayout ? this.botSheetOpen : this.botPanel.open);
+    return this.view === "bot" && !this.settingsOpen && !this.activeBot()?.archived && (this.mobileNavLayout ? this.bots.sheetOpen : this.bots.panel.open);
   }
 
   /** The panel fills the bot's view: open, expanded and docked (a sheet never expands). */
   private botPanelShownExpanded(): boolean {
-    return this.botPanelExpanded && !this.mobileNavLayout && this.botPanelVisible();
+    return this.bots.panelExpanded && !this.mobileNavLayout && this.botPanelVisible();
   }
 
   private botPanelShows(...views: BotPanelView[]): boolean {
-    return this.botPanelVisible() && views.includes(this.botPanelView);
+    return this.botPanelVisible() && views.includes(this.bots.panelView);
   }
 
   /** The overview lists the bot's triggers and its Triggers page manages them. */
@@ -4279,25 +4200,14 @@ export class HuiApp extends HuiElement {
   }
 
   private toggleBotPanel = () => {
-    if (this.mobileNavLayout) {
-      this.botSheetOpen = !this.botSheetOpen;
-    } else {
-      this.botPanel = { ...this.botPanel, open: !this.botPanel.open };
-      writeBotPanel(this.botPanel);
-      if (!this.botPanel.open) this.botPanelExpanded = false;
-    }
+    this.bots.togglePanel(this.mobileNavLayout);
     this.automation.clearErrors();
     this.syncBotPanelData();
     if (this.botPanelVisible()) this.focusBotPanel();
   };
 
   private closeBotPanel = () => {
-    if (this.mobileNavLayout) this.botSheetOpen = false;
-    else {
-      this.botPanel = { ...this.botPanel, open: false };
-      writeBotPanel(this.botPanel);
-    }
-    this.botPanelExpanded = false;
+    this.bots.closePanel(this.mobileNavLayout);
     this.syncBotPanelData();
     void this.updateComplete.then(() => this.botPaneApp()?.updateComplete).then(() => {
       this.renderRoot.querySelector<HTMLElement>(".bot-panel-toggle")?.focus();
@@ -4306,22 +4216,17 @@ export class HuiApp extends HuiElement {
 
   /** Opens one of the panel's pages from a row of its overview (`from`, the row's `data-panel-link`), or goes back. */
   private selectBotPanelView = (view: BotPanelView, from = "") => {
-    const returnTo = view === "overview" ? this.botPanelOpenedFrom : from;
-    this.botPanelOpenedFrom = view === "overview" ? "" : from;
-    this.botPanelView = view;
+    const returnTo = this.bots.showPanelView(view, from);
     this.syncBotPanelData();
     this.focusBotPanel(returnTo);
   };
 
-  private resizeBotPanel = (width: number) => {
-    this.botPanel = { ...this.botPanel, width };
-    writeBotPanel(this.botPanel);
-  };
+  private resizeBotPanel = (width: number) => this.bots.resizePanel(width);
 
   /** Expanded, the panel fills the bot's view and its chat stays mounted underneath, hidden, so a reply streaming in,
    * a draft and the scroll position are all there when it comes back. */
   private expandBotPanel = (expanded: boolean) => {
-    this.botPanelExpanded = expanded;
+    this.bots.expandPanel(expanded);
     void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-panel__expand")?.focus());
   };
 
@@ -4350,7 +4255,7 @@ export class HuiApp extends HuiElement {
         : placeholder(bot.name, `Opening ${bot.name}'s chat…`, "status");
     }
     const sheet = this.mobileNavLayout;
-    const panelOpen = sheet ? this.botSheetOpen : this.botPanel.open;
+    const panelOpen = sheet ? this.bots.sheetOpen : this.bots.panel.open;
     const panelId = `bot-panel-${bot.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
     const paneBot: PaneBot = {
       bot: {
@@ -4404,12 +4309,12 @@ export class HuiApp extends HuiElement {
       ${panelOpen ? renderBotPanel({
         bot,
         id: panelId,
-        view: this.botPanelView,
-        ...(this.botPanelOpenedFrom ? { openedFrom: this.botPanelOpenedFrom } : {}),
+        view: this.bots.panelView,
+        ...(this.bots.panelOpenedFrom ? { openedFrom: this.bots.panelOpenedFrom } : {}),
         sheet,
         expandable: !sheet && !call,
         expanded,
-        width: this.botPanel.width,
+        width: this.bots.panel.width,
         timezone: localTimezone(),
         ...(paneCall ? { call: renderCallButton({ botName: bot.name, inCall: paneCall.inCall, onCall: this.paneCallAction(bot) }) } : {}),
         onView: this.selectBotPanelView,
@@ -4435,9 +4340,9 @@ export class HuiApp extends HuiElement {
         settings: {
           models: this.control.pi?.model.catalog ?? [],
           ...(utilityDefault ? { utilityDefault } : {}),
-          saves: this.botSettingsSavesOf(bot.id),
-          onChange: (key, value) => this.changeBotSetting(bot.id, key, value),
-          onDismiss: (key) => this.dismissBotSetting(bot.id, key),
+          saves: this.bots.savesOf(bot.id),
+          onChange: (key, value) => this.bots.changeSetting(bot.id, key, value),
+          onDismiss: (key) => this.bots.dismissSetting(bot.id, key),
           call: settingsCall,
           workersExist: this.launchWorkers.length > 0,
           // A bot on a worker works in a folder there: its folders come from that worker, never from this machine.
@@ -4481,7 +4386,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     // The call shows over the chat, which an expanded panel hides.
-    this.botPanelExpanded = false;
+    this.bots.expandPanel(false);
     if (this.view !== "bot" || this.activeBotId !== bot.id || this.settingsOpen) this.navigate({ kind: "bot", id: bot.id });
     void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>(".bot-call__control--hangup, .bot-call__close")?.focus());
   };

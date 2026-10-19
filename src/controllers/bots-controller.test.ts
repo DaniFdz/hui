@@ -11,6 +11,7 @@ const fake = vi.hoisted(() => ({
   list: [] as BotView[],
   written: [] as (() => void)[],
   refreshed: undefined as Settings | undefined,
+  patches: [] as { id: string; patch: Record<string, unknown>; answer: (outcome: BotView | Error) => void }[],
 }));
 
 vi.mock("../api/bots.ts", () => ({
@@ -20,6 +21,9 @@ vi.mock("../api/bots.ts", () => ({
     return () => { stream.stopped = true; };
   },
   loadBots: async () => { fake.reads += 1; return fake.list; },
+  updateBot: (id: string, patch: Record<string, unknown>) => new Promise<BotView>((resolve, reject) => {
+    fake.patches.push({ id, patch, answer: (outcome) => outcome instanceof Error ? reject(outcome) : resolve(outcome) });
+  }),
 }));
 vi.mock("../lib/settings/settings-store.ts", () => ({
   settingsWritten: () => new Promise<void>((resolve) => fake.written.push(resolve)),
@@ -32,10 +36,13 @@ beforeEach(() => {
   fake.list = [];
   fake.written = [];
   fake.refreshed = undefined;
+  fake.patches = [];
+  const stored = new Map<string, string>();
+  vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
 });
 
 const ON: Settings = { ...DEFAULT_SETTINGS, labs: { ...DEFAULT_SETTINGS.labs, bots: true } };
-const ADA: BotView = { id: "ada", name: "Ada", sessionId: "s-ada" } as BotView;
+const ADA: BotView = { id: "ada", name: "Ada", sessionId: "s-ada", cwd: "/work" } as BotView;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function setup(settings: Settings = ON, embeddedPane = false) {
@@ -158,4 +165,80 @@ test("disconnecting stops the stream", () => {
   controller.hostDisconnected();
   assert.equal(fake.streams[0]!.stopped, true);
   assert.equal(controller.streamLive, false);
+});
+
+test("the Agents | Bots choice and the panel's open state and width are remembered by the browser; the rest is not", () => {
+  const { controller, host } = setup();
+  assert.equal(controller.tab, "sessions");
+  assert.equal(controller.selectTab("bots"), true);
+  assert.equal(controller.selectTab("bots"), false, "already showing");
+  assert.equal(localStorage.getItem("hui.sidebar-tab"), "bots");
+  controller.closePanel(false);
+  controller.resizePanel(420);
+  const width = controller.panel.width;
+  controller.openPanel(false);
+  assert.deepEqual(JSON.parse(localStorage.getItem("hui.bot-panel")!), { open: true, width }, "docked, it opens at the width it had");
+  const next = setup().controller;
+  assert.equal(next.tab, "bots");
+  assert.deepEqual(next.panel, { open: true, width });
+  controller.openPanel(true);
+  controller.expandPanel(true);
+  assert.equal(controller.sheetOpen, true, "the sheet on narrow screens");
+  assert.equal(next.sheetOpen || next.panelExpanded, false, "never remembered");
+  assert.ok(host.updates > 0);
+});
+
+test("toggling or closing the docked panel ends its expanded view; a sheet keeps the docked state", () => {
+  const { controller } = setup();
+  controller.expandPanel(true);
+  controller.togglePanel(false);
+  assert.equal(controller.panel.open, false);
+  assert.equal(controller.panelExpanded, false);
+  controller.togglePanel(true);
+  assert.equal(controller.sheetOpen, true);
+  assert.equal(controller.panel.open, false);
+  controller.expandPanel(true);
+  controller.closePanel(true);
+  assert.equal(controller.sheetOpen, false);
+  assert.equal(controller.panelExpanded, false);
+  controller.togglePanel(true);
+  controller.closeSheet();
+  assert.equal(controller.sheetOpen, false);
+});
+
+test("a page opened from an overview row goes back to that row, and another bot opens on its overview, docked", () => {
+  const { controller } = setup();
+  assert.equal(controller.showPanelView("tools", "setup-tools"), "setup-tools");
+  assert.equal(controller.panelView, "tools");
+  assert.equal(controller.showPanelView("overview"), "setup-tools", "back to the row that opened it");
+  assert.equal(controller.panelOpenedFrom, "");
+  controller.showPanelView("settings", "settings-model");
+  controller.openPanel(true);
+  controller.expandPanel(true);
+  controller.resetPanel();
+  assert.deepEqual([controller.panelView, controller.panelOpenedFrom, controller.sheetOpen, controller.panelExpanded], ["overview", "", false, false]);
+});
+
+test("each Settings change shows as saving at once and is one PATCH, sent in order; a newer value replaces one still waiting", async () => {
+  const { controller } = setup();
+  controller.adopt([ADA]);
+  controller.changeSetting("ada", "name", "Grace");
+  controller.changeSetting("ada", "title", "Pilot");
+  controller.changeSetting("ada", "title", "Captain");
+  assert.deepEqual(controller.savesOf("ada").pending, { name: "Grace", title: "Captain" });
+  await settle();
+  assert.deepEqual(fake.patches.map(({ id, patch }) => [id, patch]), [["ada", { name: "Grace" }]], "one at a time");
+  fake.patches[0]!.answer({ ...ADA, name: "Grace" });
+  await settle();
+  assert.deepEqual(controller.list, [{ ...ADA, name: "Grace" }], "the gateway's answer replaces the bot");
+  assert.deepEqual(fake.patches.map(({ patch }) => patch), [{ name: "Grace" }, { title: "Captain" }], "the newest value, sent once");
+  fake.patches[1]!.answer(new Error("Too long."));
+  await settle();
+  assert.deepEqual(controller.savesOf("ada"), { pending: {}, errors: { title: "Too long." } }, "a refusal stays on its row");
+  controller.dismissSetting("ada", "title");
+  assert.deepEqual(controller.savesOf("ada"), { pending: {}, errors: {} });
+  controller.changeSetting("gone", "name", "X");
+  await settle();
+  assert.deepEqual(controller.savesOf("gone").errors, { name: "This bot is gone." });
+  assert.equal(fake.patches.length, 2);
 });

@@ -1,13 +1,16 @@
 /**
  * `BotsController` keeps the bot roster outside `hui-app.ts`: the list, its loading and error state, and the gateway's
  * bot stream that pushes it while Settings → Labs → Bots is on, with reads by GET as the fallback for a gateway without
- * the stream. A top-level app only: an embedded pane never reads bots.
+ * the stream. It also owns the sidebar's Agents | Bots choice, the bot panel's state with the browser-remembered open
+ * state and width, and the Settings page's saves. A top-level app only: an embedded pane never reads bots.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
-import { loadBots, subscribeBots } from "../api/bots.ts";
-import { applyBotsUpdate, isNewBotsFrame, type BotView } from "../lib/bots/bots.ts";
+import { loadBots, subscribeBots, updateBot } from "../api/bots.ts";
+import { applyBotsUpdate, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, type BotView } from "../lib/bots/bots.ts";
+import { readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "../lib/bots/roster.ts";
 import { botsEnabled } from "../lib/settings.ts";
 import { refreshSettings, settingsWritten } from "../lib/settings/settings-store.ts";
+import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsSaves, type BotSettingValue } from "../views/bot-settings.ts";
 import type { SettingsController } from "./settings-controller.ts";
 
 type BotsHost = ReactiveControllerHost & { embeddedPane: boolean };
@@ -20,12 +23,34 @@ type BotsDeps = {
   onFrame: () => void;
 };
 
+/** A bot's Settings page: a row's saves or refusals without that row's. */
+function withoutSetting<Value>(record: Partial<Record<BotSettingKey, Value>>, key: BotSettingKey): Partial<Record<BotSettingKey, Value>> {
+  const next = { ...record };
+  delete next[key];
+  return next;
+}
+
 export class BotsController implements ReactiveController {
   list: readonly BotView[] = [];
   loading = false;
   loaded = false;
   error = "";
   streamLive = false;
+  /** The sidebar's Agents | Bots choice, remembered by the browser. */
+  tab: SidebarTab = readSidebarTab();
+  panel: BotPanelState = readBotPanel();
+  /** The page the panel shows: the bot's overview, or one its rows opened. Each bot opens on its overview. */
+  panelView: BotPanelView = "overview";
+  /** The overview row that opened the page showing (its `data-panel-link`): going back puts the focus on it again. */
+  panelOpenedFrom = "";
+  /** Wide screens: the panel fills the bot's view, its chat hidden underneath. Never remembered. */
+  panelExpanded = false;
+  /** Narrow layouts open the panel as a sheet only on request; never remembered. */
+  sheetOpen = false;
+  /** The Settings page's saves, per bot: each change is one PATCH, sent in order, and a newer change to the same row
+   * replaces a value still waiting. Kept per bot, so leaving a bot never drops a change on its way. */
+  #saves: ReadonlyMap<string, BotSettingsSaves> = new Map();
+  #savesQueue: Promise<void> = Promise.resolve();
   readonly #host: BotsHost;
   readonly #deps: BotsDeps;
   #inFlight: Promise<void> | undefined;
@@ -151,5 +176,125 @@ export class BotsController implements ReactiveController {
       }
     })();
     return this.#inFlight;
+  }
+
+  /** False when the tab was already showing. */
+  selectTab(tab: SidebarTab): boolean {
+    if (this.tab === tab) return false;
+    this.tab = tab;
+    writeSidebarTab(tab);
+    this.#host.requestUpdate();
+    return true;
+  }
+
+  #setPanel(next: Partial<BotPanelState>): void {
+    this.panel = { ...this.panel, ...next };
+    writeBotPanel(this.panel);
+  }
+
+  /** Another bot opens on its overview, docked. */
+  resetPanel(): void {
+    this.sheetOpen = false;
+    this.panelView = "overview";
+    this.panelOpenedFrom = "";
+    this.panelExpanded = false;
+    this.#host.requestUpdate();
+  }
+
+  /** The sheet on narrow layouts; docked, it opens at the width it had. */
+  openPanel(sheet: boolean): void {
+    if (sheet) this.sheetOpen = true;
+    else if (!this.panel.open) this.#setPanel({ open: true });
+    this.#host.requestUpdate();
+  }
+
+  togglePanel(sheet: boolean): void {
+    if (sheet) {
+      this.sheetOpen = !this.sheetOpen;
+    } else {
+      this.#setPanel({ open: !this.panel.open });
+      if (!this.panel.open) this.panelExpanded = false;
+    }
+    this.#host.requestUpdate();
+  }
+
+  closePanel(sheet: boolean): void {
+    if (sheet) this.sheetOpen = false;
+    else this.#setPanel({ open: false });
+    this.panelExpanded = false;
+    this.#host.requestUpdate();
+  }
+
+  closeSheet(): void {
+    this.sheetOpen = false;
+    this.#host.requestUpdate();
+  }
+
+  /** Opens a page from a row of the overview (`from`, the row's `data-panel-link`), or goes back; returns the row the
+   * focus goes back to. */
+  showPanelView(view: BotPanelView, from = ""): string {
+    const returnTo = view === "overview" ? this.panelOpenedFrom : from;
+    this.panelOpenedFrom = view === "overview" ? "" : from;
+    this.panelView = view;
+    this.#host.requestUpdate();
+    return returnTo;
+  }
+
+  resizePanel(width: number): void {
+    this.#setPanel({ width });
+    this.#host.requestUpdate();
+  }
+
+  expandPanel(expanded: boolean): void {
+    this.panelExpanded = expanded;
+    this.#host.requestUpdate();
+  }
+
+  savesOf(botId: string): BotSettingsSaves {
+    return this.#saves.get(botId) ?? NO_BOT_SETTINGS_SAVES;
+  }
+
+  #updateSaves(botId: string, update: (saves: BotSettingsSaves) => BotSettingsSaves): void {
+    this.#saves = new Map(this.#saves).set(botId, update(this.savesOf(botId)));
+    this.#host.requestUpdate();
+  }
+
+  /** A Settings page change: shown at once as saving, then sent as its own PATCH after the ones before it. */
+  changeSetting(botId: string, key: BotSettingKey, value: BotSettingValue): void {
+    if (this.savesOf(botId).pending[key] === value) return;
+    this.#updateSaves(botId, (saves) => ({ pending: { ...saves.pending, [key]: value }, errors: withoutSetting(saves.errors, key) }));
+    this.#savesQueue = this.#savesQueue.then(() => this.#sendSetting(botId, key));
+  }
+
+  /** Sends the newest value a row waits on. The gateway's answer replaces the bot; a refusal stays on the row. A value
+   * already sent, or replaced by a newer change meanwhile, is not sent again. */
+  async #sendSetting(botId: string, key: BotSettingKey): Promise<void> {
+    const value = this.savesOf(botId).pending[key];
+    if (value === undefined) return;
+    const settle = (error?: string) => this.#updateSaves(botId, (saves) => saves.pending[key] !== value ? saves : {
+      pending: withoutSetting(saves.pending, key),
+      errors: error ? { ...saves.errors, [key]: error } : withoutSetting(saves.errors, key),
+    });
+    const bot = this.list.find((candidate) => candidate.id === botId);
+    if (!bot) {
+      settle("This bot is gone.");
+      return;
+    }
+    const patch = botChangePatch(bot, botSettingChange(key, value));
+    if (!patch) {
+      settle();
+      return;
+    }
+    try {
+      this.adopt(upsertBot(this.list, await updateBot(botId, patch)));
+      settle();
+    } catch (error) {
+      settle(error instanceof Error ? error.message : "Could not save that change.");
+    }
+  }
+
+  dismissSetting(botId: string, key: BotSettingKey): void {
+    if (!this.savesOf(botId).errors[key]) return;
+    this.#updateSaves(botId, (saves) => ({ ...saves, errors: withoutSetting(saves.errors, key) }));
   }
 }
