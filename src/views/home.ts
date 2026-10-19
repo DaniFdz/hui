@@ -112,6 +112,8 @@ const STATUS_TEXT: Record<SessionStatus, string> = {
 };
 
 const SEND_LONG_PRESS_MS = 450;
+export const TRANSCRIPT_SCROLLER_SELECTOR = ".chat-thread";
+export const QUESTION_FOCUS_SELECTOR = '.session-question-card :is([role="radio"], [role="checkbox"])[tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea';
 const sendLongPressTimers = new WeakMap<HTMLElement, number>();
 const consumedSendLongPresses = new WeakSet<HTMLElement>();
 const composerDragDepth = new WeakMap<HTMLElement, number>();

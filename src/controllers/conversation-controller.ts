@@ -1,10 +1,11 @@
 /**
- * `ConversationController` owns the open conversation's runtime choices outside `hui-app.ts`: the models the session
+ * `ConversationController` owns the open conversation's runtime state outside `hui-app.ts`: the models the session
  * can switch to and the one it runs on, its context usage, thinking level and fast mode, with the requests that change
- * them and the once-per-selection model list request. The shell feeds it the stream's frames and reads its props.
+ * them and the once-per-selection model list request; the pending question with the focus it returns to; and the live
+ * compaction. The shell feeds it the stream's frames and reads its props.
  */
-import type { ReactiveControllerHost } from "lit";
-import { loadModels, setSessionFast, setSessionModel, setSessionThinking, type RuntimeModel, type RuntimeUsage, type SessionSnapshot, type SessionStatus, type SessionView } from "../api/sessions.ts";
+import type { LitElement, ReactiveControllerHost } from "lit";
+import { loadModels, setSessionFast, setSessionModel, setSessionThinking, type RuntimeCompaction, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionSnapshot, type SessionStatus, type SessionView } from "../api/sessions.ts";
 import { isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels } from "../lib/session/ui-state.ts";
 import type { HomeProps } from "../views/home.ts";
 
@@ -15,6 +16,8 @@ type ConversationDeps = {
   refreshSessions: () => Promise<void>;
 };
 
+type ConversationHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
+
 export class ConversationController {
   /** Models the open session can switch to, and the one it is running on. */
   models: readonly RuntimeModel[] = [];
@@ -23,12 +26,15 @@ export class ConversationController {
   thinking = "medium";
   /** Fast mode; undefined while the runtime cannot change speed. */
   fast: boolean | undefined;
-  readonly #host: ReactiveControllerHost;
+  question: RuntimeQuestion | undefined;
+  compaction: RuntimeCompaction | undefined;
+  readonly #host: ConversationHost;
   readonly #deps: ConversationDeps;
   /** Session whose model list has already been requested for this selection. */
   #modelsRequestedFor = "";
+  #questionReturnFocus: HTMLElement | undefined;
 
-  constructor(host: ReactiveControllerHost, deps: ConversationDeps) {
+  constructor(host: ConversationHost, deps: ConversationDeps) {
     this.#host = host;
     this.#deps = deps;
   }
@@ -41,10 +47,52 @@ export class ConversationController {
   }
 
   adoptSnapshot(snapshot: SessionSnapshot): void {
+    // The open question stays while it is pending, whatever else arrives meanwhile.
+    const question = snapshot.questions.find(({ id }) => id === this.question?.id) ?? snapshot.questions[0];
+    if (question) this.showQuestion(question);
+    else if (this.question) {
+      this.question = undefined;
+      this.restoreQuestionFocus();
+    }
     if (snapshot.model) this.currentModel = snapshot.model;
     this.usage = snapshot.usage;
+    this.compaction = snapshot.compaction;
     if (snapshot.thinking) this.thinking = snapshot.thinking;
     this.fast = snapshot.fast;
+    this.#host.requestUpdate();
+  }
+
+  showQuestion(question: RuntimeQuestion): void {
+    // Every snapshot re-sends the open question: keep it, and the operator's focus in it.
+    if (this.question?.id === question.id) return;
+    if (!this.question) {
+      const composer = this.#host.renderRoot.querySelector?.(".agent-chat__composer-combobox textarea");
+      this.#questionReturnFocus = composer instanceof HTMLElement
+        ? composer
+        : document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : undefined;
+    }
+    this.question = question;
+    this.#host.requestUpdate();
+  }
+
+  restoreQuestionFocus(): void {
+    const target = this.#questionReturnFocus;
+    this.#questionReturnFocus = undefined;
+    void this.#host.updateComplete.then(() => {
+      if (target?.isConnected) {
+        target.focus();
+        return;
+      }
+      const composer = this.#host.renderRoot.querySelector?.(".agent-chat__composer-combobox textarea");
+      if (composer instanceof HTMLTextAreaElement) composer.focus();
+    });
+  }
+
+  dropQuestion(): void {
+    this.question = undefined;
+    this.#questionReturnFocus = undefined;
     this.#host.requestUpdate();
   }
 

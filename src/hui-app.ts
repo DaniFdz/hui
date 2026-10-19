@@ -124,7 +124,7 @@ import { settingsWritten } from "./lib/settings/settings-store.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
-import { renderHome, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
+import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import "./components/contributions.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { dedicatedPageRenderer, type DedicatedPageProps } from "./views/pages.ts";
@@ -276,7 +276,6 @@ export class HuiApp extends HuiElement {
   @state() private queue: QueueSnapshot = EMPTY_QUEUE;
   @state() private queueEditingId = "";
   @state() private queueEditingText = "";
-  @state() private question: RuntimeQuestion | undefined;
   @state() private connection: SessionConnection = "live";
   @state() private copiedId = "";
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
@@ -311,6 +310,8 @@ export class HuiApp extends HuiElement {
     },
   });
   private renderedSettings: Settings | undefined;
+  private renderedQuestion: RuntimeQuestion | undefined;
+  private renderedCompaction: RuntimeCompaction | undefined;
   private groupActionReturnFocus: HTMLElement | undefined;
 
   @state() private settingsOpen = false;
@@ -335,7 +336,6 @@ export class HuiApp extends HuiElement {
   private pendingCommandBrowse = false;
   @state() private updateSessionCreating = false;
   private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
-  @state() private compaction: RuntimeCompaction | undefined;
   @state() private draftSessionIds: ReadonlySet<string> = new Set();
   /** Picked but not yet sent; cleared on send and on switching session. */
   @state() private attachments: readonly Attachment[] = [];
@@ -449,7 +449,6 @@ export class HuiApp extends HuiElement {
   private settingsReturnTarget: NavigationTarget = { kind: "home" };
   private deleteReturnFocus: HTMLElement | undefined;
   private deleteNeedsFocus = false;
-  private questionReturnFocus: HTMLElement | undefined;
   /** Monotonic ownership token for open responses from the selected session. */
   private openRequestToken = 0;
   private autoFollow = true;
@@ -779,9 +778,11 @@ export class HuiApp extends HuiElement {
       const cancel = this.renderRoot.querySelector?.(".delete-session-cancel");
       if (cancel instanceof HTMLButtonElement) cancel.focus();
     }
-    if (changed.has("question") && this.question && (!this.embeddedPane || this.paneVisible)) {
+    const questionChanged = this.renderedQuestion !== this.conversation.question;
+    this.renderedQuestion = this.conversation.question;
+    if (questionChanged && this.conversation.question && (!this.embeddedPane || this.paneVisible)) {
       const focus = () => {
-        const questionControl = this.renderRoot.querySelector?.('.session-question-card :is([role="radio"], [role="checkbox"])[tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
+        const questionControl = this.renderRoot.querySelector?.(QUESTION_FOCUS_SELECTOR);
         if (questionControl instanceof HTMLElement) questionControl.focus();
       };
       // The questionnaire card renders its controls in its own update, after this one.
@@ -804,7 +805,9 @@ export class HuiApp extends HuiElement {
       }
     }
     // The live compaction divider sits below the transcript rows, so its changes follow too.
-    if ((changed.has("transcript") || changed.has("compaction") || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
+    const compactionChanged = this.renderedCompaction !== this.conversation.compaction;
+    this.renderedCompaction = this.conversation.compaction;
+    if ((changed.has("transcript") || compactionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
@@ -1464,7 +1467,7 @@ export class HuiApp extends HuiElement {
     this.noteLevel = "info";
     this.connectionNote = "";
     this.conversation.resetModels();
-    this.compaction = undefined;
+    this.conversation.compaction = undefined;
     this.resetCommands();
     // Nothing to open until the gateway has created the worktree session.
     if (this.paneCreating || this.paneCreationError) {
@@ -1576,15 +1579,7 @@ export class HuiApp extends HuiElement {
     const nextTasks = this.subagents.map((task) => `${task.sessionId}:${task.status}:${task.updatedAt}`).join("|");
     this.backlog.adoptSnapshot(snapshot.suggestions, snapshot.watchers);
     if (previousTasks !== nextTasks) void this.refreshSessions();
-    // The open question stays while it is pending, whatever else arrives meanwhile.
-    const question = snapshot.questions.find(({ id }) => id === this.question?.id) ?? snapshot.questions[0];
-    if (question) this.showQuestion(question);
-    else if (this.question) {
-      this.question = undefined;
-      this.restoreQuestionFocus();
-    }
     this.conversation.adoptSnapshot(snapshot);
-    this.compaction = snapshot.compaction;
     this.setStatus(snapshot.status);
   }
 
@@ -1614,7 +1609,7 @@ export class HuiApp extends HuiElement {
     }
     if (event.type === "question") {
       // Another one waits for the snapshot after the open one is answered.
-      if (!this.question) this.showQuestion(event.question);
+      if (!this.conversation.question) this.conversation.showQuestion(event.question);
       return;
     }
     if (event.type === "thinking_level") {
@@ -1645,20 +1640,23 @@ export class HuiApp extends HuiElement {
         break;
       case "turn_start":
         this.streaming = streamingAfterEvent(this.streaming, event.type);
-        if (this.compaction?.status !== "running") this.compaction = undefined;
+        if (this.conversation.compaction?.status !== "running") this.conversation.compaction = undefined;
+        this.requestUpdate();
         break;
       case "compaction_start":
-        this.compaction = {
+        this.conversation.compaction = {
           status: "running",
           reason: event.reason,
           ...(event.blocking === false ? { blocking: false as const } : {}),
           ...(event.background ? { background: true as const } : {}),
         };
+        this.requestUpdate();
         break;
       case "compaction_end":
         // A written summary arrives with the refreshed history as a marker.
-        this.compaction = event.outcome === "done" ? undefined
+        this.conversation.compaction = event.outcome === "done" ? undefined
           : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
+        this.requestUpdate();
         break;
       case "turn_end":
         // pi emits turn_end before agent_end. The following status frame is
@@ -2367,7 +2365,7 @@ export class HuiApp extends HuiElement {
       this.noteLevel = "error";
       return;
     }
-    if (this.compaction?.status === "running") {
+    if (this.conversation.compaction?.status === "running") {
       this.note = "A compaction is already running.";
       this.noteLevel = "error";
       return;
@@ -2499,48 +2497,23 @@ export class HuiApp extends HuiElement {
 
   private answerQuestion = (answer: QuestionResponse) => {
     const session = this.selected;
-    const question = this.question;
+    const question = this.conversation.question;
     if (!session || !question) return;
-    this.question = undefined;
+    this.conversation.question = undefined;
+    this.requestUpdate();
     void answerQuestion(session.id, question.id, answer)
       .then(() => {
         // The next question may already be showing (parallel calls): leave focus in it.
-        if (isSelectedSession(session.id, this.selected?.id) && !this.question) this.restoreQuestionFocus();
+        if (isSelectedSession(session.id, this.selected?.id) && !this.conversation.question) this.conversation.restoreQuestionFocus();
       })
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.selected?.id)) return;
-        this.question = question;
+        this.conversation.question = question;
+        this.requestUpdate();
         this.note = error instanceof Error ? error.message : "Could not answer pi.";
         this.noteLevel = "error";
       });
   };
-
-  private showQuestion(question: RuntimeQuestion) {
-    // Every snapshot re-sends the open question: keep it, and the operator's focus in it.
-    if (this.question?.id === question.id) return;
-    if (!this.question) {
-      const composer = this.renderRoot.querySelector?.(".agent-chat__composer-combobox textarea");
-      this.questionReturnFocus = composer instanceof HTMLElement
-        ? composer
-        : document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : undefined;
-    }
-    this.question = question;
-  }
-
-  private restoreQuestionFocus() {
-    const target = this.questionReturnFocus;
-    this.questionReturnFocus = undefined;
-    void this.updateComplete.then(() => {
-      if (target?.isConnected) {
-        target.focus();
-        return;
-      }
-      const composer = this.renderRoot.querySelector?.(".agent-chat__composer-combobox textarea");
-      if (composer instanceof HTMLTextAreaElement) composer.focus();
-    });
-  }
 
   private toggleWatcher = (watcher: Watcher, open: boolean) => {
     this.setActivityExpanded(`watcher:${watcher.id}`, open);
@@ -2588,7 +2561,7 @@ export class HuiApp extends HuiElement {
       // Measuring a pane out of sight would lay out its whole transcript on
       // every streamed token; it follows once it is shown again.
       if (!this.autoFollow || !this.paneVisible) return;
-      const scroller = this.renderRoot.querySelector?.(".chat-thread");
+      const scroller = this.renderRoot.querySelector?.(TRANSCRIPT_SCROLLER_SELECTOR);
       if (scroller instanceof HTMLElement) {
         const inner = scroller.querySelector(":scope > .chat-thread-inner");
         // Only the app that renders this thread follows it (the shell's selector also finds its panes').
@@ -2780,14 +2753,13 @@ export class HuiApp extends HuiElement {
     this.noteLevel = empty.noteLevel;
     this.connectionNote = empty.connectionNote;
     this.conversation.resetModels();
-    this.compaction = undefined;
+    this.conversation.compaction = undefined;
     this.sending = false;
     this.stopping = false;
     this.continuing = false;
     this.rewindPending = false;
     this.queue = EMPTY_QUEUE;
-    this.question = undefined;
-    this.questionReturnFocus = undefined;
+    this.conversation.dropQuestion();
     this.connection = "live";
     this.showScrollToBottom = false;
     this.autoFollow = true;
@@ -2806,8 +2778,7 @@ export class HuiApp extends HuiElement {
     this.sending = false;
     this.stopping = false;
     this.queue = EMPTY_QUEUE;
-    this.question = undefined;
-    this.questionReturnFocus = undefined;
+    this.conversation.dropQuestion();
     this.note = "";
     this.noteLevel = "info";
     this.connectionNote = "";
@@ -3603,14 +3574,14 @@ export class HuiApp extends HuiElement {
       draft: this.draft,
       chatPreferences: this.control.settings.chat,
       queue: this.queue,
-      question: this.question,
+      question: this.conversation.question,
       connection: this.connection,
       copiedId: this.copiedId,
       ...(this.paneCall && this.onPaneCall ? { call: { inCall: this.paneCall.inCall, onCall: this.onPaneCall } } : {}),
       expandedActivityIds: this.expandedActivityIds,
       showScrollToBottom: this.showScrollToBottom,
       ...this.conversation.props(),
-      compaction: this.compaction,
+      compaction: this.conversation.compaction,
       attachments: this.attachments,
       launching: this.launching,
       note: this.note,

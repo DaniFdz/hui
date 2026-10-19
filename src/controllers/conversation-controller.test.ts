@@ -28,7 +28,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 function conversation(state: { selected?: SessionView; streaming?: boolean } = {}) {
   const errors: string[] = [];
   let updates = 0;
-  const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => { updates += 1; }, updateComplete: Promise.resolve(true) };
+  const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => { updates += 1; }, updateComplete: Promise.resolve(true), renderRoot: { querySelector: () => null } as unknown as HTMLElement };
   const controller = new ConversationController(host, {
     selected: () => state.selected,
     streaming: () => state.streaming ?? false,

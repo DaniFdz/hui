@@ -25,22 +25,23 @@ test("chat notifications of every level render as the shell toast, not an inline
   assert.match(styles, /\.chat-operation-toast\[data-level="error"\] \.app-toast__icon \{ color: var\(--danger\); \}/);
 });
 
-test("auto-follow and scroll-to-latest target the real reference transcript scroller", () => {
+test("auto-follow and scroll-to-latest target the real reference transcript scroller", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(app, /querySelector\?\.\("\.chat-thread"\)/);
-  assert.doesNotMatch(app, /querySelector\?\.\("\.transcript__scroll"\)/);
+  const { TRANSCRIPT_SCROLLER_SELECTOR } = await import("./home.ts");
+  assert.equal(TRANSCRIPT_SCROLLER_SELECTOR, ".chat-thread");
+  assert.match(await renderWorkerSession("idle"), /<div class="chat-thread chat-thread--direct" role="log"/u);
   assert.match(source, /class="chat-scroll-to-bottom"[^>]*\?inert=\$\{!props\.showScrollToBottom\}/);
   assert.match(source, /aria-label="Scroll to latest">\$\{icons\.arrowDown\}/);
 });
 
-test("PI choices use the original question option buttons and focus visible controls", () => {
+test("PI choices use the original question option buttons and focus visible controls", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
+  const { QUESTION_FOCUS_SELECTOR } = await import("./home.ts");
   assert.match(source, /class="chat-question-panel__option" role="radio" aria-checked="false"/);
   assert.match(source, /class="chat-question-panel__option-marker"/);
   assert.match(source, /option\.setAttribute\("aria-checked", String\(selected\)\)/);
-  assert.ok(app.includes('.session-question-card input:not([type="hidden"])'));
+  assert.equal(QUESTION_FOCUS_SELECTOR, '.session-question-card :is([role="radio"], [role="checkbox"])[tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
+  assert.match(await renderWorkerSession("waiting", { question: { id: "q", method: "input", title: "Name?" } }), /<form class="session-question-card chat-question-panel"/u);
   assert.doesNotMatch(source, /input type="radio" name="answer"/);
 });
 
@@ -315,7 +316,7 @@ test("the launch directory picker uses the themed combobox instead of a native d
 test("the thread follows the live compaction divider like new transcript rows", () => {
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
-  assert.match(app, /if \(\(changed\.has\("transcript"\) \|\| changed\.has\("compaction"\) \|\| changed\.has\("paneVisible"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/);
+  assert.match(app, /const compactionChanged = this\.renderedCompaction !== this\.conversation\.compaction;\s*this\.renderedCompaction = this\.conversation\.compaction;\s*if \(\(changed\.has\("transcript"\) \|\| compactionChanged \|\| changed\.has\("paneVisible"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/u);
 });
 
 test("the composer exposes PI context usage beside the model", () => {
