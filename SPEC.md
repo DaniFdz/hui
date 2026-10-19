@@ -1860,10 +1860,14 @@ everything the Bots tab can, through the same routes.
   their schedules as the bot's panel does (*Daily at 08:00*), and shows who
   made a task when a bot did and a temporary one's limits. The roster
   lists bots by latest activity: the bot's animated face (or its emoji), the
-  name, the latest message or role, a short time, an activity badge (active,
-  waiting for an answer, summarizing memory, failed), an unread dot (also on the
-  Bots tab while Agents shows) and a warning while memory summaries keep
-  failing. Search matches name, handle and title. The toolbar's + (and an
+  name, the latest message or role, a short time, a status badge and a warning
+  while memory summaries keep failing. A green dot means the bot finished a turn
+  nobody has read (an unread bot also marks the Bots tab while Agents shows). A
+  bot with nothing running and nothing unread sleeps, eyes closed, with a small
+  *z*. A bot at work, on a turn or a memory summary, has no badge. A hand, a
+  warning sign or a plug mean it waits for an answer, failed or can't be
+  reached. The bot whose chat is open stays awake, with no badge (decision
+  below). Search matches name, handle and title. The toolbar's + (and an
   empty roster's New bot) creates a bot at once, with no form and no name: the
   gateway calls it *New Bot* until its first conversation asks for one, its
   chat opens once the gateway has created it, everything else starts on the
@@ -1951,6 +1955,28 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Resting bots sleep, and a green dot means done (2026-10-19)
+
+The owner found the roster's status unclear: a pulsing green dot meant *active
+now*, so a bot at work looked finished. "Maybe those that aren't doing anything
+can be 'sleeping', then working has nothing, and the green pill only when
+they're done."
+
+- **Done is a finished turn nobody has read.** The gateway already marks a
+  bot's chat unread when a turn ends while no one reads it, so the roster needs
+  no new state. Opening the chat reads it, and the bot sleeps once you leave.
+  The green dot replaces the row's separate unread dot.
+- **Sleeping is a face state.** The faces get an eleventh state, *sleeping*:
+  closed eyes and slow breathing in the bot's own color (offline also greys
+  it). The *z* badge says the same for a bot with an emoji.
+- **Work has no badge.** The thinking and summarizing faces show it; the
+  pulsing green and orange dots are gone.
+- **The open bot stays awake**, as its chat header and panel show it.
+- **The status stream's unread marks win**, as its statuses already did, so a
+  bot list read just before a turn ended never puts a finished bot back to
+  sleep. Rows are keyed by bot, so a reordered list never shows one bot's state
+  or hop on another's face; a face that moves ends its hop.
 
 ### Every assistant message stays in sight (2026-10-19)
 

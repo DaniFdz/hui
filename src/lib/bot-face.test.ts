@@ -119,17 +119,19 @@ test("only a running tool of the latest turn counts as working", () => {
   assert.equal(hasRunningTool([tool("old", "running"), user("1")]), false, "a stale tool before the latest prompt is not this turn's");
 });
 
-test("a roster entry maps the bot's activity, archived bots sleep", () => {
+test("a roster entry maps the bot's activity: resting bots sleep unless open or done, archived bots go offline", () => {
   const usage = { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 };
   const memory = { messages: 1, built: 0, pending: 0, viewBytes: 0, viewLines: 0, usage };
-  assert.equal(rosterFaceState({ status: "idle" }), "idle");
-  assert.equal(rosterFaceState({ status: "running" }), "thinking");
-  assert.equal(rosterFaceState({ status: "starting" }), "thinking");
-  assert.equal(rosterFaceState({ status: "waiting" }), "waiting");
-  assert.equal(rosterFaceState({ status: "running", memory: { ...memory, waiting: true } }), "memory");
-  assert.equal(rosterFaceState({ status: "error" }), "error");
-  assert.equal(rosterFaceState({ status: "disconnected" }), "offline");
-  assert.equal(rosterFaceState({ status: "running", archived: true }), "offline");
+  assert.equal(rosterFaceState({ status: "idle", unread: false }), "sleeping");
+  assert.equal(rosterFaceState({ status: "idle", unread: true }), "idle", "done, awake until read");
+  assert.equal(rosterFaceState({ status: "idle", unread: false }, true), "idle", "the open bot is awake");
+  assert.equal(rosterFaceState({ status: "running", unread: false }), "thinking");
+  assert.equal(rosterFaceState({ status: "starting", unread: false }), "thinking");
+  assert.equal(rosterFaceState({ status: "waiting", unread: false }), "waiting");
+  assert.equal(rosterFaceState({ status: "running", unread: false, memory: { ...memory, waiting: true } }), "memory");
+  assert.equal(rosterFaceState({ status: "error", unread: false }), "error");
+  assert.equal(rosterFaceState({ status: "disconnected", unread: false }), "offline");
+  assert.equal(rosterFaceState({ status: "running", unread: false, archived: true }), "offline");
 });
 
 test("a call's face listens while the microphone is open and speaks while the bot's voice plays", () => {
@@ -153,6 +155,8 @@ test("a turn that ends hops once; other changes do not", () => {
   assert.equal(settlesWithDone("thinking", "idle"), true);
   assert.equal(settlesWithDone("working", "idle"), true);
   assert.equal(settlesWithDone("memory", "idle"), true);
+  assert.equal(settlesWithDone("thinking", "sleeping"), true, "a turn someone else read ends asleep");
+  assert.equal(settlesWithDone("sleeping", "idle"), false, "waking up is not a finished turn");
   assert.equal(settlesWithDone("waiting", "idle"), false, "an answered question is not a finished turn");
   assert.equal(settlesWithDone("idle", "idle"), false);
   assert.equal(settlesWithDone("thinking", "error"), false);
@@ -169,6 +173,7 @@ test("every state has the prototype's expression: eyes, resting gaze, blinking o
   assert.equal(FACE_EYES.error, "sad");
   assert.equal(FACE_EYES.done, "happy");
   assert.equal(FACE_EYES.offline, "closed");
+  assert.equal(FACE_EYES.sleeping, "closed");
   assert.equal(eyesBlink("open"), true);
   assert.equal(eyesBlink("closed"), false);
   assert.equal(eyesBlink("happy"), false);

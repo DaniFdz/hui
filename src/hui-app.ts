@@ -90,6 +90,7 @@ import {
   subscribeBots,
   updateBot,
   upsertBot,
+  withLiveChats,
   withoutBotSessions,
   type BotView,
 } from "./lib/bots.ts";
@@ -695,6 +696,7 @@ export class HuiApp extends HuiElement {
   /** One lightweight connection keeps background session lifecycle visible. */
   private statusStreamStop: (() => void) | undefined;
   private sessionStatuses = new Map<string, SessionStatus>();
+  private sessionUnread = new Map<string, boolean>();
   private hasSessionStatusSnapshot = false;
   /** Revision of the gateway session list in `groups`; older lists lose. */
   private sessionListRevision = 0;
@@ -970,6 +972,7 @@ export class HuiApp extends HuiElement {
     this.sessionStatuses = new Map(updates.map(({ id, status }) => [id, status]));
     const unread = new Map(updates.flatMap((update) =>
       update.unread === undefined ? [] : [[update.id, update.unread] as const]));
+    this.sessionUnread = new Map(updates.map((update) => [update.id, update.unread === true]));
     this.hasSessionStatusSnapshot = true;
     const selected = this.embeddedPane && this.selected && this.isSessionPresented(this.selected.id)
       ? this.selected
@@ -986,19 +989,13 @@ export class HuiApp extends HuiElement {
       }),
     }));
     // Bot chats are sessions too: their roster rows follow the same stream.
-    if (this.bots.length) {
-      this.bots = this.bots.map((bot) => {
-        const status = this.sessionStatuses.get(bot.sessionId);
-        const isUnread = unread.get(bot.sessionId);
-        if (status === undefined && isUnread === undefined) return bot;
-        return { ...bot, ...(status ? { status } : {}), ...(isUnread !== undefined ? { unread: isUnread && !this.isSessionPresented(bot.sessionId) } : {}) };
-      });
-    }
+    if (this.bots.length) this.bots = this.withLiveBotState(this.bots);
   };
 
   private applySessionStatusUpdate = ({ id, status, unread, creating, creationError, title }: SessionStatusUpdate) => {
     const presented = this.isSessionPresented(id);
     this.sessionStatuses.set(id, status);
+    if (unread !== undefined) this.sessionUnread.set(id, unread);
     // A settled worktree session now has its real title and directory, or its error.
     const created = Boolean(this.listedSession(id)?.creating) && !creating;
     this.groups = this.groups.map((group) => ({
@@ -1019,9 +1016,7 @@ export class HuiApp extends HuiElement {
     if (created) void this.refreshSessions(true);
     const bot = this.bots.find((candidate) => candidate.sessionId === id);
     if (bot) {
-      this.bots = this.bots.map((candidate) => candidate.sessionId === id
-        ? { ...candidate, status, unread: presented ? false : unread === undefined ? candidate.unread : unread }
-        : candidate);
+      this.bots = this.withLiveBotState(this.bots);
       // A turn started or settled: its latest message moved. The bot stream
       // pushes that itself; without it (an older gateway) read the list again.
       if (bot.status !== status && !this.botsStreamLive) void this.refreshBots();
@@ -4074,14 +4069,8 @@ export class HuiApp extends HuiElement {
     return this.renderRoot.querySelector<HuiApp>(".bot-workspace__pane") ?? undefined;
   }
 
-  /** Session statuses arrive on their own stream and win over a list's
-   * snapshot; the bot on screen is read, as its detailed stream says. */
   private withLiveBotState(bots: readonly BotView[]): BotView[] {
-    return bots.map((bot) => {
-      const status = this.sessionStatuses.get(bot.sessionId);
-      const presented = bot.unread && this.isSessionPresented(bot.sessionId);
-      return status || presented ? { ...bot, ...(status ? { status } : {}), ...(presented ? { unread: false } : {}) } : bot;
-    });
+    return withLiveChats(bots, { statuses: this.sessionStatuses, unread: this.sessionUnread, presented: (id) => this.isSessionPresented(id) });
   }
 
   /** The gateway's bot stream while the Bots tab is enabled. It starts with the

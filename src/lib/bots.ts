@@ -234,6 +234,19 @@ export function applyBotsUpdate(bots: readonly BotView[], update: Pick<BotsUpdat
   return [...bots.map((bot) => byId.get(bot.id) ?? bot), ...update.upserts.filter((bot) => !known.has(bot.id))];
 }
 
+/** The session status stream wins over a bot list read before it, its unread marks as its statuses; the bot on screen
+ * is read. The maps are keyed by session id. */
+export function withLiveChats(
+  bots: readonly BotView[],
+  live: { statuses: ReadonlyMap<string, BotSessionStatus>; unread: ReadonlyMap<string, boolean>; presented: (sessionId: string) => boolean },
+): BotView[] {
+  return bots.map((bot) => {
+    const status = live.statuses.get(bot.sessionId);
+    const unread = (live.unread.get(bot.sessionId) ?? bot.unread) && !live.presented(bot.sessionId);
+    return status || unread !== bot.unread ? { ...bot, ...(status ? { status } : {}), unread } : bot;
+  });
+}
+
 export type BotsStreamHandlers = {
   /** `first` marks the complete list each (re)connect starts with. */
   onUpdate: (update: BotsUpdate, first: boolean) => void;

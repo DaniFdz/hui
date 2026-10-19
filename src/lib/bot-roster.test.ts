@@ -102,17 +102,27 @@ test("chat-list times are compact", () => {
 });
 
 test("the row indicator puts a pending question first and memory waits before running", () => {
-  assert.equal(botActivity({ status: "waiting", memory: { messages: 1, built: 1, pending: 0, viewBytes: 1, viewLines: 1, waiting: true, usage: NO_USAGE } }), "waiting");
-  assert.equal(botActivity({ status: "running", memory: { messages: 1, built: 0, pending: 1, viewBytes: 1, viewLines: 1, waiting: true, usage: NO_USAGE } }), "summarizing");
-  assert.equal(botActivity({ status: "running" }), "running");
-  assert.equal(botActivity({ status: "starting" }), "running");
-  assert.equal(botActivity({ status: "error" }), "error");
-  assert.equal(botActivity({ status: "disconnected" }), "away");
-  assert.equal(botActivity({ status: "idle" }), "idle");
+  assert.equal(botActivity({ status: "waiting", unread: false, memory: { messages: 1, built: 1, pending: 0, viewBytes: 1, viewLines: 1, waiting: true, usage: NO_USAGE } }), "waiting");
+  assert.equal(botActivity({ status: "running", unread: false, memory: { messages: 1, built: 0, pending: 1, viewBytes: 1, viewLines: 1, waiting: true, usage: NO_USAGE } }), "summarizing");
+  assert.equal(botActivity({ status: "running", unread: false }), "running");
+  assert.equal(botActivity({ status: "starting", unread: false }), "running");
+  assert.equal(botActivity({ status: "error", unread: false }), "error");
+  assert.equal(botActivity({ status: "disconnected", unread: false }), "away");
   assert.equal(
     botAccessibleName(bot("scout", { name: "Scout", title: "Researcher", status: "running", unread: true, hidden: true, memory: { messages: 2, built: 1, pending: 1, viewBytes: 9, viewLines: 2, failing: { node: "0+1", error: "429", since: "2026-10-05T09:00:00.000Z" }, usage: NO_USAGE } })),
-    "Scout, Researcher, active now, unread, hidden, memory summaries failing",
+    "Scout, Researcher, working, unread, hidden, memory summaries failing",
   );
+});
+
+test("a bot at rest is done while its finished turn is unread, then sleeps; the open bot stays awake", () => {
+  assert.equal(botActivity({ status: "idle", unread: true }), "done");
+  assert.equal(botActivity({ status: "idle", unread: false }), "sleeping");
+  assert.equal(botActivity({ status: "idle", unread: false }, true), "idle");
+  assert.equal(botActivity({ status: "idle", unread: true }, true), "idle", "its chat is being read");
+  assert.equal(botActivity({ status: "running", unread: true }), "running", "a new turn is work, whatever is unread");
+  assert.equal(botAccessibleName(bot("ada", { name: "Ada" })), "Ada, sleeping");
+  assert.equal(botAccessibleName(bot("ada", { name: "Ada", unread: true })), "Ada, done, unread");
+  assert.equal(botAccessibleName(bot("ada", { name: "Ada" }), true), "Ada, idle");
 });
 
 test("tab strips move with arrows, Home and End and ignore other keys", () => {

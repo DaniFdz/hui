@@ -14,13 +14,14 @@ import type { SessionStatus, TranscriptItem } from "./sessions-store.ts";
 
 /* ── states ───────────────────────────────────────────────────────────── */
 
-export const BOT_FACE_STATES = ["idle", "thinking", "working", "speaking", "listening", "waiting", "memory", "error", "done", "offline"] as const;
+export const BOT_FACE_STATES = ["idle", "sleeping", "thinking", "working", "speaking", "listening", "waiting", "memory", "error", "done", "offline"] as const;
 export type BotFaceState = (typeof BOT_FACE_STATES)[number];
 
 /** What each state means, in the prototype's words. Faces are decorative: the
  * views keep their own status text, so these name the states in tests and docs. */
 export const BOT_FACE_STATE_LABELS: Readonly<Record<BotFaceState, string>> = {
   idle: "Idle",
+  sleeping: "Sleeping",
   thinking: "Thinking…",
   working: "Using tools…",
   speaking: "Speaking",
@@ -46,16 +47,19 @@ export function isLiveFaceSize(size: BotFaceSize): boolean {
   return size === "lg" || size === "xl";
 }
 
-/** A roster entry knows only the bot's view: a running turn reads as thinking. */
-export function rosterFaceState(bot: Pick<BotView, "status" | "memory" | "archived">): BotFaceState {
+/** A roster entry knows only the bot's view: a running turn reads as thinking, and a bot with nothing to do or show
+ * sleeps. */
+export function rosterFaceState(bot: Pick<BotView, "status" | "memory" | "unread" | "archived">, open = false): BotFaceState {
   if (bot.archived) return "offline";
-  switch (botActivity(bot)) {
+  switch (botActivity(bot, open)) {
     case "waiting": return "waiting";
     case "error": return "error";
     case "away": return "offline";
     case "summarizing": return "memory";
     case "running": return "thinking";
-    case "idle": return "idle";
+    case "idle":
+    case "done": return "idle";
+    case "sleeping": return "sleeping";
   }
 }
 
@@ -114,7 +118,7 @@ export function callLevelSource(state: BotFaceState): "microphone" | "voice" | u
 
 /** A turn that ends plays the one-shot "done" hop before the face rests again. */
 export function settlesWithDone(previous: BotFaceState, next: BotFaceState): boolean {
-  return next === "idle" && (previous === "thinking" || previous === "working" || previous === "memory");
+  return (next === "idle" || next === "sleeping") && (previous === "thinking" || previous === "working" || previous === "memory");
 }
 
 /* ── expression ───────────────────────────────────────────────────────── */
@@ -122,7 +126,7 @@ export function settlesWithDone(previous: BotFaceState, next: BotFaceState): boo
 export type FaceEyes = "open" | "squint" | "wide" | "sad" | "closed" | "happy" | "sleepy";
 
 export const FACE_EYES: Readonly<Record<BotFaceState, FaceEyes>> = {
-  idle: "open", thinking: "squint", working: "squint", speaking: "open", listening: "wide",
+  idle: "open", sleeping: "closed", thinking: "squint", working: "squint", speaking: "open", listening: "wide",
   waiting: "open", memory: "sleepy", error: "sad", done: "happy", offline: "closed",
 };
 
@@ -142,7 +146,7 @@ export const FACE_EYE_POSITION: Readonly<Record<BotFaceShape, readonly [number, 
 
 /** Where each state rests its gaze (view-box units). */
 export const FACE_GAZE: Readonly<Record<BotFaceState, readonly [number, number]>> = {
-  idle: [0, 0], thinking: [5, -4.2], working: [1.5, 2.6], speaking: [0, 0], listening: [0, -0.6],
+  idle: [0, 0], sleeping: [0, 1], thinking: [5, -4.2], working: [1.5, 2.6], speaking: [0, 0], listening: [0, -0.6],
   waiting: [3, -3.4], memory: [0, 1], error: [0, 1.6], done: [0, -1], offline: [0, 1],
 };
 
