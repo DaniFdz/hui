@@ -52,14 +52,14 @@ import { PullRequestStatuses } from "./pull-requests.ts";
 
 import { botsOn, readHuiSettings, writeHuiSettings } from "./hui-settings.ts";
 import { CONFIG_DIR, AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
-import { VscodeError, VscodeService } from "./vscode.ts";
+import { VscodeService } from "./vscode.ts";
 import { VscodeInstaller } from "./vscode-install.ts";
 import { verifyVscodeServer } from "./vscode-providers.ts";
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode-proxy.ts";
-import { normalizeVscodeTheme, VSCODE_ACTIONS, VSCODE_ENTER_PATH, VSCODE_STATUS_ROUTE, type VscodeAction } from "../shared/vscode.ts";
+import { VSCODE_ENTER_PATH } from "../shared/vscode.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
-import { attachBrowserTransport, browserViewTicket } from "./browser-transport.ts";
+import { attachBrowserTransport } from "./browser-transport.ts";
 import type { EventEmitter } from "node:events";
 import type { BrowserStatus } from "../shared/browser.ts";
 import { botsEnabled, type Settings } from "../src/lib/settings.ts";
@@ -154,6 +154,8 @@ import { createUpdateRoutes } from "./routes/updates.ts";
 import { createWorktreeRoutes } from "./routes/worktrees.ts";
 import { createSettingsRoutes } from "./routes/settings.ts";
 import { createTerminalRoutes } from "./routes/terminals.ts";
+import { createBrowserRoutes } from "./routes/browser.ts";
+import { createVscodeRoutes } from "./routes/vscode.ts";
 import { createDiagnosticsRoutes, DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { ensureConfigDir, listThemes, THEME_FILE_ROUTE } from "./themes.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "./sessions/attachments.ts";
@@ -179,9 +181,6 @@ import { setAgentStage } from "./sessions/stages.ts";
 import { createSessionViews, pendingSessions, pendingStatus, pendingStatusSubscribers, type PendingStatusUpdate } from "./sessions/views.ts";
 
 const PREFIX = "/__hui/";
-const BROWSER_ROUTE = `${PREFIX}browser`;
-/** An operator preview of one managed-browser tab, as a data URL. */
-const BROWSER_TAB_PREVIEW = /^\/__hui\/browser\/tabs\/(t\d{1,6})\/preview$/u;
 const AUTOMATION_ROUTE = `${PREFIX}automation`;
 const AUTOMATION_TASKS_ROUTE = `${AUTOMATION_ROUTE}/tasks`;
 const AUTOMATION_TASK_ONE = /^\/__hui\/automation\/tasks\/([^/]+)$/;
@@ -428,6 +427,8 @@ const vscode = new VscodeService({
     ...(process.env["HUI_OPENVSCODE_SERVER_MIRROR"] ? { downloads: process.env["HUI_OPENVSCODE_SERVER_MIRROR"] } : {}),
   }),
 });
+const browserRoutes = createBrowserRoutes({ managedBrowser, browserStatus, readRegistry });
+const vscodeRoutes = createVscodeRoutes({ vscode, readRegistry });
 /** macOS sleep prevention lives and dies with this gateway process. */
 const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 const powerRoutes = createPowerRoutes({ macPower });
@@ -1077,75 +1078,9 @@ async function handleRequest(
     return;
   }
 
-  // A VS Code view on the conversation's folder: starts the shared server and mints the frame's one-use ticket.
-  const vscodeRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/vscode\/connect$/u);
-  if (vscodeRoute) {
-    try {
-      if (request.method !== "POST") throw new VscodeError("Method not allowed.", 405);
-      let body: unknown;
-      try { body = await readBody(request); } catch { throw new VscodeError("VS Code request body must be JSON.", 400); }
-      const owner = decodeURIComponent(vscodeRoute[1] ?? "");
-      const session = (await readRegistry()).find((record) => record.id === owner);
-      if (!session) throw new VscodeError("Conversation not found.", 404);
-      if (session.worker) throw new VscodeError("This conversation runs on a remote worker. VS Code runs on the gateway's machine, which does not have its files.", 409, "remote");
-      const folder = await stat(session.cwd).then((info) => info.isDirectory(), () => false);
-      if (!folder) throw new VscodeError(`The conversation's folder no longer exists: ${session.cwd}`, 409, "folder");
-      const theme = body && typeof body === "object" && !Array.isArray(body) ? normalizeVscodeTheme((body as Record<string, unknown>)["theme"]) : undefined;
-      const connection = await vscode.connect(session.cwd, theme);
-      // Still starting (serve-web downloading its first build): the view follows the status and asks again.
-      if ("pending" in connection) sendJson(response, 202, { pending: true, status: await vscode.status() });
-      else sendJson(response, 200, connection);
-    } catch (error) {
-      sendJson(response, error instanceof VscodeError ? error.status : 500, {
-        error: error instanceof Error ? error.message : "VS Code could not open.",
-        code: error instanceof VscodeError ? error.code : "failed",
-      });
-    }
-    return;
-  }
+  if (answered(response, path, await vscodeRoutes.handle(routed))) return;
 
-  if (path === VSCODE_STATUS_ROUTE) {
-    try {
-      if (request.method === "GET") {
-        sendJson(response, 200, await vscode.status());
-        return;
-      }
-      if (request.method !== "POST") throw new VscodeError("Method not allowed.", 405);
-      let body: unknown;
-      try { body = await readBody(request); } catch { throw new VscodeError("VS Code request body must be JSON.", 400); }
-      const action = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>)["action"] : undefined;
-      if (!VSCODE_ACTIONS.includes(action as VscodeAction)) throw new VscodeError(`action must be one of ${VSCODE_ACTIONS.join(", ")}.`, 400);
-      switch (action as VscodeAction) {
-        case "stop": await vscode.stop(); break;
-        case "accept-license": await vscode.acceptLicense(); break;
-        case "revoke-license": await vscode.revokeLicense(); break;
-        case "install": vscode.startInstall(); break;
-        case "cancel-install": await vscode.cancelInstall(); break;
-        case "uninstall": await vscode.uninstall(); break;
-      }
-      sendJson(response, 200, await vscode.status());
-    } catch (error) {
-      sendJson(response, error instanceof VscodeError ? error.status : 500, {
-        error: error instanceof Error ? error.message : "The VS Code request failed.",
-        code: error instanceof VscodeError ? error.code : "failed",
-      });
-    }
-    return;
-  }
-
-  // A browser pane's live view of its conversation's managed-browser tabs.
-  const browserViewRoute = path.match(/^\/__hui\/sessions\/([^/]+)\/browser\/connect$/u);
-  if (browserViewRoute) {
-    try {
-      if (request.method !== "POST") throw new BrowserToolError("Method not allowed.", 405);
-      const owner = browserViewRoute[1]!;
-      if (!(await readRegistry()).some((record) => record.id === owner)) throw new BrowserToolError("Conversation not found.", 404);
-      sendJson(response, 200, { url: browserViewTicket(owner) });
-    } catch (error) {
-      sendJson(response, error instanceof BrowserToolError ? error.status : 500, { error: error instanceof Error ? error.message : "Browser view request failed." });
-    }
-    return;
-  }
+  if (answered(response, path, await browserRoutes.connect(routed))) return;
 
   const started = performance.now();
   response.once("finish", () => {
@@ -1167,47 +1102,7 @@ async function handleRequest(
 
   if (answered(response, path, await localPathRoutes.handle(routed))) return;
 
-  if (path === BROWSER_ROUTE) {
-    try {
-      if (request.method === "GET") {
-        sendJson(response, 200, await browserStatus());
-        return;
-      }
-      if (request.method !== "POST") {
-        sendJson(response, 405, { error: "method not allowed" });
-        return;
-      }
-      let body: unknown;
-      try { body = await readBody(request); } catch { throw new BrowserToolError("Browser request body must be JSON."); }
-      const action = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>)["action"] : undefined;
-      if (action === "start") await managedBrowser.start();
-      else if (action === "stop") await managedBrowser.stop();
-      else throw new BrowserToolError("action must be start or stop.");
-      sendJson(response, 200, await browserStatus());
-    } catch (error) {
-      sendJson(response, error instanceof BrowserToolError ? error.status : 500, {
-        error: error instanceof Error ? error.message : "The browser request failed.",
-      });
-    }
-    return;
-  }
-
-  const browserPreview = path.match(BROWSER_TAB_PREVIEW);
-  if (browserPreview) {
-    if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method not allowed" });
-      return;
-    }
-    try {
-      const image = await managedBrowser.preview(browserPreview[1] ?? "");
-      sendJson(response, 200, { image: `data:${image.mimeType};base64,${image.data}` });
-    } catch (error) {
-      sendJson(response, error instanceof BrowserToolError ? error.status : 500, {
-        error: error instanceof Error ? error.message : "The tab could not be captured.",
-      });
-    }
-    return;
-  }
+  if (answered(response, path, await browserRoutes.handle(routed))) return;
 
   if (answered(response, path, await settingsRoutes.handle(routed))) return;
 

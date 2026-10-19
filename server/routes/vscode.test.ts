@@ -8,7 +8,7 @@ import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 
-const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", import.meta.url));
+const FAKE = fileURLToPath(new URL("../test-support/fake-vscode-server.mjs", import.meta.url));
 
 test("VS Code routes: x-hui still guards every other route, the cookie opens only the proxy", { timeout: 90_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-vscode-routes-"));
@@ -28,7 +28,7 @@ test("VS Code routes: x-hui still guards every other route, the cookie opens onl
     { id: "remote", title: "Remote", tool: "pi", cwd: "/srv/remote", worker: "w1", createdAt: now, updatedAt: now },
     { id: "gone", title: "Gone", tool: "pi", cwd: join(dir, "deleted"), createdAt: now, updatedAt: now },
   ], groups: [] }));
-  const { middleware, stopBackend, attachLiveStreams } = await import("./hui.ts");
+  const { middleware, stopBackend, attachLiveStreams } = await import("../hui.ts");
   const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
   const detach = attachLiveStreams(server);
   server.listen(0, "127.0.0.1");

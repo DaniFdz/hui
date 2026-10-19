@@ -90,5 +90,5 @@ staging then atomic rename, a server that does not run left uninstalled,
 cancel, the gateway's HTTP proxy honoured), `server/vscode-proxy.test.ts` (path
 and header rewriting, cookie scoping including the WebSocket's 101, the
 workbench patch for both providers, cookie and WebSocket guards against fake
-servers) and `server/vscode-routes.test.ts` (the routes through HUI's middleware,
+servers) and `server/routes/vscode.test.ts` (the routes through HUI's middleware,
 the license actions, a legacy settings file).

@@ -651,7 +651,7 @@ conversation; agents act on accessibility-snapshot refs with real input events.
 Settings → Tools → Browser turns the tool off, switches to a visible window, sets
 the executable, starts/stops the process and previews open tabs. Proof:
 `server/browser/*.test.ts` (including a real headless browser when one is
-installed), `server/browser-routes.test.ts`, `server/runtimes/pi-sdk.test.ts`,
+installed), `server/routes/browser.test.ts`, `server/runtimes/pi-sdk.test.ts`,
 `src/lib/browser-status.test.ts` and `e2e/browser-tool.browser.md`.
 
 Follow-up 2026-09-28: while the agent browses, the chat shows a live preview of
