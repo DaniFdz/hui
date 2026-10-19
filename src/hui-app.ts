@@ -132,11 +132,7 @@ import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
 import { renderHome, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
-import { DEFAULT_SESSIONS_PAGE_FILTERS, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
-import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./components/contributions.ts";
-import { worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
-import { loadWorktrees, removeWorktrees } from "./api/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { dedicatedPageRenderer, type DedicatedPageProps } from "./views/pages.ts";
 import { renderKanbanPage } from "./views/kanban.ts";
@@ -219,25 +215,6 @@ export class HuiApp extends HuiElement {
   @state() private view: NavId = "home";
   @state() private activePage: HuiPage | undefined;
   @state() private search = "";
-  @state() private sessionsPageState: SessionsPageState = "all";
-  @state() private sessionsPageFilters: SessionsPageFilters = { ...DEFAULT_SESSIONS_PAGE_FILTERS };
-  @state() private sessionsSelected: ReadonlySet<string> = new Set();
-  @state() private sessionsDeleteConfirm = false;
-  @state() private sessionsDeleting = false;
-  @state() private worktreeInventory: WorktreeInventory | undefined;
-  @state() private worktreesLoading = false;
-  @state() private worktreesError = "";
-  @state() private worktreeQuery = "";
-  @state() private worktreeFilter: WorktreeFilter = "all";
-  @state() private worktreeConfirm = "";
-  /** Paths sent for removal whose request has not answered yet. */
-  @state() private worktreeRemovals: ReadonlySet<string> = new Set();
-  /** Sizes of everything sent for removal since the queue was last empty,
-   * so the total progress still counts rows that are already gone. */
-  @state() private worktreeRemovalSizes: ReadonlyMap<string, number> = new Map();
-  @state() private worktreeResults: readonly WorktreeRemovalResult[] = [];
-  private worktreePoll?: number;
-  private worktreeRemovalQueue: Promise<unknown> = Promise.resolve();
   private readonly sessions = new SessionsController(this, {
     presented: (id) => this.isSessionPresented(id),
     listReceived: (ids) => this.followSessionList(ids),
@@ -249,6 +226,8 @@ export class HuiApp extends HuiElement {
     statusApplied: (update) => this.followSessionStatus(update),
     reportError: (error, message) => this.reportOperationError(error, message),
     refreshSessions: () => this.refreshSessions(),
+    sessionsDeleted: (ids) => { if (this.selected && ids.has(this.selected.id)) this.clearSessionState(); },
+    worktreesShown: () => this.settingsOpen && this.settingsPage === "worktrees",
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
   @state() private kanbanMovePendingId = "";
@@ -612,7 +591,6 @@ export class HuiApp extends HuiElement {
     void this.persistComposerDraft();
     super.disconnectedCallback();
     window.clearInterval(this.sessionProgressPoll);
-    window.clearTimeout(this.worktreePoll);
     this.mobileNavMedia?.removeEventListener("change", this.onMobileNavChange);
     this.mobileNavMedia = undefined;
     if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
@@ -790,12 +768,12 @@ export class HuiApp extends HuiElement {
     this.botImports.showDialogs(this.renderRoot);
     // A selector that matches nothing walks the whole open transcript, and
     // this runs on every keystroke: query a dialog only while its state shows it.
-    const worktreeDialog = this.worktreeConfirm && this.worktreeConfirm !== "merged" ? this.renderRoot.querySelector?.(".worktree-remove-dialog") : null;
+    const worktreeDialog = this.sessions.worktreeConfirm && this.sessions.worktreeConfirm !== "merged" ? this.renderRoot.querySelector?.(".worktree-remove-dialog") : null;
     if (worktreeDialog instanceof HTMLDialogElement && !worktreeDialog.open) {
       ensureModal(worktreeDialog);
       worktreeDialog.querySelector<HTMLButtonElement>(".worktree-remove-cancel")?.focus();
     }
-    const sessionsDeleteDialog = this.sessionsDeleteConfirm ? this.renderRoot.querySelector?.(".sessions-delete-dialog") : null;
+    const sessionsDeleteDialog = this.sessions.deleteConfirm ? this.renderRoot.querySelector?.(".sessions-delete-dialog") : null;
     if (sessionsDeleteDialog instanceof HTMLDialogElement) ensureModal(sessionsDeleteDialog);
     const backlogRemoveDialog = this.backlog.removing ? this.renderRoot.querySelector?.(".backlog-remove-dialog") : null;
     if (backlogRemoveDialog instanceof HTMLDialogElement) ensureModal(backlogRemoveDialog);
@@ -919,11 +897,7 @@ export class HuiApp extends HuiElement {
       this.settingsOpen = true;
       this.loadSettingsData();
       if (target.page === "diagnostics") this.loadOperationalData();
-      if (target.page === "worktrees") {
-        this.worktreeConfirm = "";
-        this.worktreeResults = [];
-        this.loadWorktreeInventory();
-      }
+      if (target.page === "worktrees") this.sessions.openWorktrees();
       if (target.page === "automation") this.automation.startPolling();
       else this.automation.stopPolling();
       return;
@@ -3497,131 +3471,6 @@ export class HuiApp extends HuiElement {
     }
   };
 
-  /** Slow facts (size, local changes, GitHub) arrive in the background; poll
-   * briefly while the server reports them pending and the page is open. */
-  private loadWorktreeInventory = () => {
-    window.clearTimeout(this.worktreePoll);
-    this.worktreePoll = undefined;
-    if (this.worktreesLoading) return;
-    this.worktreesLoading = true;
-    this.worktreesError = "";
-    void loadWorktrees()
-      .then((inventory) => { this.worktreeInventory = inventory; })
-      .catch((error: unknown) => { this.worktreesError = error instanceof Error ? error.message : "Could not read worktrees."; })
-      .finally(() => {
-        this.worktreesLoading = false;
-        if ((this.worktreeInventory?.pending || this.worktreeRemovals.size > 0) && this.settingsOpen && this.settingsPage === "worktrees") {
-          this.worktreePoll = window.setTimeout(this.loadWorktreeInventory, 1500);
-        }
-      });
-  };
-
-  /** Git deletes a large worktree file by file, which can take minutes, so the
-   * confirmation closes at once and the rows show progress while polling. */
-  private removeWorktreePaths = (paths: readonly string[], mode: "single" | "merged", acknowledged: readonly WorktreeRisk[] = []) => {
-    if (paths.length === 0) return;
-    this.closeWorktreeDialog();
-    this.worktreeConfirm = "";
-    void this.requestWorktreeRemoval(paths, mode, acknowledged).then((results) => {
-      this.worktreeResults = [...this.worktreeResults, ...results];
-    });
-    this.loadWorktreeInventory();
-  };
-
-  /** Sends one removal request at a time: each can stay open for minutes and
-   * browsers allow only a few connections per host. Never rejects. */
-  private requestWorktreeRemoval(paths: readonly string[], mode: "single" | "merged", acknowledged: readonly WorktreeRisk[] = []) {
-    const sizes = new Map(this.worktreeRemovals.size ? this.worktreeRemovalSizes : []);
-    for (const path of paths) sizes.set(path, this.worktreeInventory?.worktrees.find((row) => row.path === path)?.bytes ?? 0);
-    this.worktreeRemovalSizes = sizes;
-    this.worktreeRemovals = new Set([...this.worktreeRemovals, ...paths]);
-    const next = this.worktreeRemovalQueue
-      .then(() => removeWorktrees(paths, mode, acknowledged))
-      .then(({ results, inventory }) => {
-        this.worktreeInventory = inventory;
-        return results;
-      }, (error: unknown) => paths.map((path): WorktreeRemovalResult => ({
-        path,
-        label: this.worktreeInventory?.worktrees.find((row) => row.path === path)?.branch || path.split("/").pop() || path,
-        removed: false,
-        branchDeleted: false,
-        error: error instanceof Error ? error.message : "Could not remove it.",
-      })))
-      .finally(() => {
-        this.worktreeRemovals = new Set([...this.worktreeRemovals].filter((path) => !paths.includes(path)));
-      });
-    this.worktreeRemovalQueue = next;
-    return next;
-  }
-
-  private selectSessions = (ids: readonly string[], checked: boolean) => {
-    const next = new Set(this.sessionsSelected);
-    for (const id of ids) {
-      if (checked) next.add(id);
-      else next.delete(id);
-    }
-    this.sessionsSelected = next;
-  };
-
-  private closeSessionsDeleteDialog = () => {
-    if (this.sessionsDeleting) return;
-    closeModal(this.renderRoot.querySelector?.(".sessions-delete-dialog") as HTMLDialogElement | undefined);
-    this.sessionsDeleteConfirm = false;
-  };
-
-  /** Deletes each selected tree, then removes worktrees only those sessions used.
-   * Worktree removal never forces: local changes or a non-HUI worktree keep it.
-   * It can take minutes, so it runs after the dialog closes. */
-  private deleteSelectedSessions = async (ids: readonly string[], withWorktrees: boolean) => {
-    if (this.sessionsDeleting || ids.length === 0) return;
-    this.sessionsDeleting = true;
-    const all = this.sessions.groups.flatMap((group) => group.sessions);
-    const deleted = new Set<string>();
-    const failures: string[] = [];
-    let worktrees: string[] | undefined;
-    try {
-      // Read links before deleting: the inventory forgets a deleted session.
-      if (withWorktrees) this.worktreeInventory = await loadWorktrees();
-      const rows = withWorktrees ? this.worktreeInventory?.worktrees : undefined;
-      for (const id of ids) {
-        if (deleted.has(id)) continue; // Already gone with its parent.
-        try {
-          await deleteSession(id);
-          for (const member of sessionTreeIds(all, id)) deleted.add(member);
-        } catch (error) {
-          failures.push(error instanceof Error ? error.message : `Could not delete ${id}.`);
-        }
-      }
-      if (this.selected && deleted.has(this.selected.id)) this.clearSessionState();
-      if (rows) worktrees = worktreesOnlyUsedBy(rows, deleted);
-    } catch (error) {
-      failures.push(error instanceof Error ? error.message : "Could not read worktrees.");
-    }
-    const count = ids.filter((id) => deleted.has(id)).length;
-    const notice = `Deleted ${count} session${count === 1 ? "" : "s"}.${failures.length ? ` Failed: ${failures.join("; ")}` : ""}`;
-    // A message ending in "…" stays until replaced.
-    const shown = worktrees?.length ? `${notice} Removing ${worktrees.length} worktree${worktrees.length === 1 ? "" : "s"}…` : notice;
-    this.sessions.notify(shown, failures.length > 0);
-    this.sessionsSelected = new Set([...this.sessionsSelected].filter((id) => !deleted.has(id)));
-    this.sessionsDeleting = false;
-    this.closeSessionsDeleteDialog();
-    void this.refreshSessions();
-    if (!worktrees) return;
-
-    const results = await Promise.all(worktrees.map((path) => this.requestWorktreeRemoval([path], "single").then(([result]) => result)));
-    if (this.sessions.actionToast?.message !== shown) return; // Dismissed or replaced meanwhile.
-    const removed = results.filter((result) => result?.removed).length;
-    const kept = results.filter((result) => !result?.removed).map((result) => result?.label ?? "");
-    this.sessions.notify(`${notice} Removed ${removed} worktree${removed === 1 ? "" : "s"}.${kept.length
-      ? ` Kept ${kept.join(", ")} (local changes or not created by HUI); review ${kept.length === 1 ? "it" : "them"} in Settings → Worktrees.`
-      : ""}`, failures.length > 0);
-  };
-
-  private closeWorktreeDialog() {
-    const dialog = this.renderRoot.querySelector?.(".worktree-remove-dialog");
-    if (dialog instanceof HTMLDialogElement) closeModal(dialog);
-  }
-
   /** Copy a full path from a table row and confirm on the trigger itself. */
   private copyPath = (path: string, trigger: HTMLElement) => {
     void writeClipboardText(path).then((copied) => {
@@ -4198,23 +4047,13 @@ export class HuiApp extends HuiElement {
         loading: this.sessions.loading,
         error: this.sessions.error,
         query: this.search,
-        state: this.sessionsPageState,
-        filters: this.sessionsPageFilters,
         onQuery: this.updateSearch,
-        onState: (state) => { this.sessionsPageState = state; },
-        onFilters: (filters) => { this.sessionsPageFilters = filters; },
         onOpen: this.selectSession,
         onRestore: (session) => this.setSessionMetadata(session, { archived: false }, "Session restored."),
         onCopyPath: this.copyPath,
         onNew: () => this.openPageById("new-session"),
         onRefresh: () => void this.refreshSessions(),
-        selected: this.sessionsSelected,
-        onSelect: this.selectSessions,
-        confirmingDelete: this.sessionsDeleteConfirm,
-        deleting: this.sessionsDeleting,
-        onDeleteSelected: () => { this.sessionsDeleteConfirm = true; },
-        onCancelDelete: this.closeSessionsDeleteDialog,
-        onConfirmDelete: (ids, withWorktrees) => void this.deleteSelectedSessions(ids, withWorktrees),
+        ...this.sessions.sessionsPageProps(),
       }),
       onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),
       onOpenSession: (id) => this.navigate({ kind: "session", id }),
@@ -4231,26 +4070,9 @@ export class HuiApp extends HuiElement {
         ${renderSettingsPage({
           page: this.settingsPage,
           worktrees: {
-            inventory: this.worktreeInventory,
-            loading: this.worktreesLoading,
-            error: this.worktreesError,
-            query: this.worktreeQuery,
-            filter: this.worktreeFilter,
-            confirm: this.worktreeConfirm,
-            removing: this.worktreeRemovals,
-            removalSizes: this.worktreeRemovalSizes,
-            results: this.worktreeResults,
-            onQuery: (value) => { this.worktreeQuery = value; },
-            onFilter: (filter) => { this.worktreeFilter = filter; },
-            onRefresh: this.loadWorktreeInventory,
+            ...this.sessions.worktreesProps(),
             onOpenSession: (id) => this.navigate({ kind: "session", id }),
-            onRequestRemove: (path) => { this.worktreeConfirm = path; this.worktreeResults = []; },
-            onRequestCleanup: () => { this.worktreeConfirm = "merged"; this.worktreeResults = []; },
-            onCancel: () => { this.closeWorktreeDialog(); this.worktreeConfirm = ""; },
-            onDismissResults: () => { this.worktreeResults = []; },
             onCopyPath: this.copyPath,
-            onConfirmRemove: (path, acknowledged) => this.removeWorktreePaths([path], "single", acknowledged),
-            onConfirmCleanup: (paths) => this.removeWorktreePaths(paths, "merged"),
           },
           ...this.control.props(),
           onRefreshObservability: () => this.loadOperationalData(true),

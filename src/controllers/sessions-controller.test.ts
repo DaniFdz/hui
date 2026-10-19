@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import type { SessionGroup, SessionStatusUpdate, SessionView } from "../api/sessions.ts";
+import type { WorktreeInventory } from "../lib/worktrees.ts";
 import { SessionsController } from "./sessions-controller.ts";
 
 type Handlers = {
@@ -11,13 +12,25 @@ type Handlers = {
 const fake = vi.hoisted(() => ({
   streams: [] as { handlers: Handlers; stopped: boolean }[],
   list: { revision: 0, groups: [] as SessionGroup[] },
+  deleted: [] as string[],
+  inventoryReads: 0,
+  inventory: { worktrees: [] } as unknown as WorktreeInventory,
+  removed: [] as string[][],
 }));
 vi.mock("../api/sessions.ts", () => ({
   loadSessions: async () => fake.list,
+  deleteSession: async (id: string) => { fake.deleted.push(id); },
   subscribeSessionStatuses: (handlers: Handlers) => {
     const stream = { handlers, stopped: false };
     fake.streams.push(stream);
     return () => { stream.stopped = true; };
+  },
+}));
+vi.mock("../api/worktrees.ts", () => ({
+  loadWorktrees: async () => { fake.inventoryReads += 1; return fake.inventory; },
+  removeWorktrees: async (paths: string[]) => {
+    fake.removed.push(paths);
+    return { results: paths.map((path) => ({ path, label: path, removed: true, branchDeleted: true })), inventory: fake.inventory };
   },
 }));
 
@@ -26,6 +39,10 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
   fake.streams = [];
   fake.list = { revision: 0, groups: [] };
+  fake.deleted = [];
+  fake.inventoryReads = 0;
+  fake.inventory = { worktrees: [] } as unknown as WorktreeInventory;
+  fake.removed = [];
 });
 
 afterEach(() => { vi.useRealTimers(); });
@@ -34,8 +51,8 @@ const host = { addController: () => {}, removeController: () => {}, requestUpdat
 const session = (id: string, extra: Partial<SessionView> = {}) => ({ id, title: id, status: "idle", ...extra }) as SessionView;
 const group = (...sessions: SessionView[]) => ({ label: "ungrouped", sessions }) as unknown as SessionGroup;
 
-function controller(presented = "") {
-  const calls = { received: [] as string[][], settled: 0, statuses: [] as string[] };
+function controller(presented = "", worktreesShown = true) {
+  const calls = { received: [] as string[][], settled: 0, statuses: [] as string[], deleted: [] as string[][] };
   const sessions = new SessionsController(host, {
     presented: (id) => id === presented,
     listReceived: (ids) => calls.received.push([...ids]),
@@ -44,6 +61,8 @@ function controller(presented = "") {
     statusApplied: ({ id }) => calls.statuses.push(id),
     reportError: () => {},
     refreshSessions: async () => {},
+    sessionsDeleted: (ids) => calls.deleted.push([...ids]),
+    worktreesShown: () => worktreesShown,
   });
   return { sessions, calls };
 }
@@ -110,4 +129,42 @@ test("an archive toast dismisses itself after 15 s", () => {
   assert.equal(sessions.archiveToast?.session.id, "a");
   vi.advanceTimersByTime(1);
   assert.equal(sessions.archiveToast, undefined);
+});
+
+test("the worktree inventory polls every 1.5 s while its facts are pending and the page shows, until stopped", async () => {
+  vi.useFakeTimers();
+  fake.inventory = { pending: true, worktrees: [] } as unknown as WorktreeInventory;
+  const { sessions } = controller();
+  sessions.openWorktrees();
+  await vi.advanceTimersByTimeAsync(1_500);
+  assert.equal(fake.inventoryReads, 2);
+  sessions.stop();
+  await vi.advanceTimersByTimeAsync(3_000);
+  assert.equal(fake.inventoryReads, 2, "stopping the controller ends the poll");
+
+  const hidden = controller("", false).sessions;
+  hidden.loadWorktreeInventory();
+  await vi.advanceTimersByTimeAsync(3_000);
+  assert.equal(fake.inventoryReads, 3, "a closed Worktrees page does not poll");
+});
+
+test("deleting selected sessions removes their trees and the worktrees only they used", async () => {
+  const child = session("child", { parentId: "parent" } as Partial<SessionView>);
+  fake.inventory = { worktrees: [
+    { path: "/wt/only", branch: "only", sessions: [{ id: "parent" }, { id: "child" }] },
+    { path: "/wt/shared", branch: "shared", sessions: [{ id: "parent" }, { id: "other" }] },
+  ] } as unknown as WorktreeInventory;
+  const { sessions, calls } = controller();
+  sessions.receive(1, [group(session("parent"), child, session("other"))]);
+  sessions.selectSessions(["parent", "other"], true);
+  sessions.selectSessions(["other"], false);
+  assert.deepEqual([...sessions.pageSelected], ["parent"]);
+
+  await sessions.deleteSelected(["parent"], true);
+  assert.deepEqual(fake.deleted, ["parent"]);
+  assert.deepEqual(calls.deleted, [["parent", "child"]]);
+  assert.deepEqual(fake.removed, [["/wt/only"]]);
+  assert.equal(sessions.pageSelected.size, 0);
+  assert.equal(sessions.deleting, false);
+  assert.deepEqual(sessions.actionToast, { message: "Deleted 1 session. Removed 1 worktree.", failed: false });
 });
