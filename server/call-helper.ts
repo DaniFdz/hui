@@ -6,7 +6,8 @@
  * and the call so far; what needs tools or real work is handed to the bot's own
  * chat instead. At hang-up the same utility model writes what happened.
  *
- * The model call is injected (`CallCompletion`), so these run under test.
+ * The model call is injected (`CallCompletion`), so these run under test;
+ * `callCompletion` is the gateway's own, through its durable host's models.
  */
 import { orderedBotFacts, type BotFact } from "../shared/bot-facts.ts";
 import { randomUUID } from "node:crypto";
@@ -15,6 +16,11 @@ import type { BotRecord, BotReply } from "../shared/bots.ts";
 import type { ActiveCall } from "./calls.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
 import { boundBytes, memorySlice } from "./calls.ts";
+import { clampThinkingLevel } from "@earendil-works/pi-ai";
+import { lowestThinkingLevel, withUpstreamThinkingMap } from "./runtimes/thinking-level.ts";
+import { readHuiSettings } from "./hui-settings.ts";
+import { recordDiagnosticEvent } from "./observability.ts";
+import { durableHost } from "./runtimes/durable-host.ts";
 
 /** One model completion: the reply's text. Throws when the model fails or the signal aborts. `least` reasons as little as
  * the model allows, for a quick retry (a gateway's DeepSeek answers in 6 s instead of almost two minutes at "low"). */
@@ -246,3 +252,31 @@ export async function buildCallRecord(input: {
   }
   return record;
 }
+
+/** One completion through the gateway's models (HUI's provider accounts included), at low thinking, or with `least` at the
+ * least the model allows (a gateway model without levels of its own takes its upstream's): the call's helper and its
+ * record use the bot's utility model, the export reviewer's retry `least`. */
+export const callCompletion: CallCompletion = async (ref, { system, prompt, signal, least }) => {
+  const host = durableHost();
+  await host.open();
+  const slash = ref.indexOf("/");
+  let model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
+  if (!model) {
+    await host.refreshModels();
+    model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
+  }
+  if (!model) throw new Error(`Unknown model: ${ref}`);
+  const sent = least ? withUpstreamThinkingMap(model, (provider, id) => host.models.getModel(provider, id)) : model;
+  const level = least ? lowestThinkingLevel(sent) : clampThinkingLevel(model, "low");
+  const reply = await host.models.completeSimple(sent, {
+    systemPrompt: system,
+    messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
+  }, { signal, ...(level === "off" ? {} : { reasoning: level }) });
+  if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error(reply.errorMessage || `The model stopped: ${reply.stopReason}`);
+  return reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
+};
+export const callSettings = async () => {
+  const settings = await readHuiSettings();
+  return { utility: settings.models.utility, operator: operatorName(settings.profileName) };
+};
+export const reportCall = (summary: string, detail?: string) => recordDiagnosticEvent({ area: "runtime", level: "warning", action: "call_helper", summary, ...(detail ? { detail } : {}) });

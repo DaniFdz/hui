@@ -42,12 +42,10 @@ import { localBotSkills } from "./bot-skills.ts";
 import { durableBotConversations } from "./bot-conversations.ts";
 import { CallBroker, providerCallAccounts } from "./calls.ts";
 import { CALLS_ROUTE, createCallRoutes } from "./routes/calls.ts";
-import { buildCallRecord, createCallDelegate, operatorName, type CallCompletion } from "./call-helper.ts";
+import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./call-helper.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
 import { BOTS_OFF_MESSAGE, type BotReply, type BotsUpdate, type BotView } from "../shared/bots.ts";
-import { clampThinkingLevel } from "@earendil-works/pi-ai";
-import { lowestThinkingLevel, withUpstreamThinkingMap } from "./runtimes/thinking-level.ts";
 import { isThinkingLevel } from "../shared/thinking.ts";
 import { PullRequestStatuses } from "./pull-requests.ts";
 
@@ -546,34 +544,6 @@ function initializeWatchers(): void {
 const MAX_PROMPT_BYTES = 24 * 1024 * 1024;
 
 const providerService = new ProviderService(undefined, invalidateModelCatalog);
-
-/** One completion through the gateway's models (HUI's provider accounts included), at low thinking, or with `least` at the
- * least the model allows (a gateway model without levels of its own takes its upstream's): the call's helper and its
- * record use the bot's utility model, the export reviewer's retry `least`. */
-const callCompletion: CallCompletion = async (ref, { system, prompt, signal, least }) => {
-  const host = durableHost();
-  await host.open();
-  const slash = ref.indexOf("/");
-  let model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
-  if (!model) {
-    await host.refreshModels();
-    model = host.models.getModel(ref.slice(0, slash), ref.slice(slash + 1));
-  }
-  if (!model) throw new Error(`Unknown model: ${ref}`);
-  const sent = least ? withUpstreamThinkingMap(model, (provider, id) => host.models.getModel(provider, id)) : model;
-  const level = least ? lowestThinkingLevel(sent) : clampThinkingLevel(model, "low");
-  const reply = await host.models.completeSimple(sent, {
-    systemPrompt: system,
-    messages: [{ role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
-  }, { signal, ...(level === "off" ? {} : { reasoning: level }) });
-  if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error(reply.errorMessage || `The model stopped: ${reply.stopReason}`);
-  return reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
-};
-const callSettings = async () => {
-  const settings = await readHuiSettings();
-  return { utility: settings.models.utility, operator: operatorName(settings.profileName) };
-};
-const reportCall = (summary: string, detail?: string) => recordDiagnosticEvent({ area: "runtime", level: "warning", action: "call_helper", summary, ...(detail ? { detail } : {}) });
 
 /** GPT-Live calls with bots over the ChatGPT login (HUI-18): the credential stays here, audio goes browser ↔ ChatGPT.
  * A call's quick questions go to the bot's helper (its utility model); its record goes to the bot's chat at the end. */
