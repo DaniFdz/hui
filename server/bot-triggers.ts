@@ -10,6 +10,10 @@
  * and what waited goes out as one delivery that lists it all once they allow. Each delivery, and each event that
  * could not be delivered, is recorded as a run.
  *
+ * A listener that reported since the gateway started and then says nothing for five minutes gets its bot one notice
+ * from HUI, `[trigger: <name> · its listener went quiet]`, outside the cooldown and the cap; its next call ends the
+ * silence. Time the machine slept doesn't count, and while HUI refuses its reports the notice waits.
+ *
  * Bots off (Settings → Labs → Bots): reports are refused with 409 and nothing is kept, so a listener sends them again
  * later; what waited for a cooldown is recorded as skipped when it comes due.
  */
@@ -31,6 +35,8 @@ const HOUR_MS = 3_600_000;
 const RESYNC_MS = 60_000;
 /** Runs one bot's list returns. */
 const LISTED_RUNS = 50;
+/** A silence check this late slept with the machine: the listener gets a fresh window from waking. */
+const SLEPT_MS = 60_000;
 
 /** The bots triggers wake, as the gateway's `BotService` and registry answer. */
 export type TriggerBots = {
@@ -131,6 +137,16 @@ export function triggerMessage(
   return { text, summary };
 }
 
+/** HUI's own notice that a trigger's listener went quiet. Not the listener's words: no prompt, no INTRO. */
+function silenceMessage(trigger: Pick<BotTriggerRecord, "name">, lastCall: number, now: number): { text: string; summary: string } {
+  const summary = "its listener went quiet";
+  const minutes = Math.round((now - lastCall) / 60_000);
+  return {
+    text: `${BOT_TRIGGER_MARKER}${trigger.name} · ${summary}]\n\nFrom HUI, not the listener: nothing has reported to this trigger for ${minutes} min (the last report came at ${iso(lastCall)}). Until its listener reports again, what it watches doesn't reach you. HUI says this once per silence.`,
+    summary,
+  };
+}
+
 /** A sample event, for `test`. */
 function sampleEvent(now: number): PendingEvent {
   return { summary: "a sample event", details: "A sample event sent by the operator's test, not by the listener.", at: iso(now) };
@@ -145,6 +161,8 @@ export class BotTriggerService {
   /** The last state read or written. */
   #state?: TriggerState;
   readonly #timers = new Map<string, () => void>();
+  /** Trigger id → the cancel of the check that tells its bot when its listener went quiet. */
+  readonly #silences = new Map<string, () => void>();
   #resync?: () => void;
   /** From `stop` until the next `start`: nothing new is scheduled. */
   #stopping = false;
@@ -184,8 +202,9 @@ export class BotTriggerService {
     this.#stopping = true;
     this.#resync?.();
     this.#resync = undefined;
-    for (const cancel of this.#timers.values()) cancel();
+    for (const cancel of [...this.#timers.values(), ...this.#silences.values()]) cancel();
     this.#timers.clear();
+    this.#silences.clear();
     await this.#work.settled();
   }
 
@@ -339,7 +358,11 @@ export class BotTriggerService {
     const state = await this.#read();
     const trigger = state.triggers.find((candidate) => sameHash(candidate.tokenHash, hash));
     // A listener that calls is alive, even when HUI refuses its report below: its trigger never says it went silent.
-    if (trigger) this.#heard.set(trigger.id, { ...this.#heard.get(trigger.id), at: this.#now() });
+    if (trigger) {
+      const at = this.#now();
+      this.#heard.set(trigger.id, { ...this.#heard.get(trigger.id), at });
+      this.#checkSilenceAt(trigger.id, at + LISTENER_SILENT_MS);
+    }
     if (!await this.#deps.active()) return { status: 409, body: { error: BOTS_OFF_MESSAGE } };
     const bot = trigger && (await this.#deps.bots.list()).find((candidate) => candidate.id === trigger.botId);
     if (!trigger || !bot) return { status: 404, body: { error: "No trigger has this URL." } };
@@ -457,12 +480,14 @@ export class BotTriggerService {
     if (plan.kind === "fire") await this.#deliver(plan.trigger, plan.events, plan.more, { catchUp: plan.catchUp });
   }
 
-  /** Puts the delivery in the bot's chat and records its run: `fired` for one event, `coalesced` for several, `skipped`
-   * when bots went off or the bot was archived meanwhile, `failed` otherwise. */
   async #deliver(trigger: BotTriggerRecord, events: readonly PendingEvent[], more: number, options: { catchUp?: boolean; test?: boolean }): Promise<BotTriggerRun> {
     const shown = await this.#withPullRequests(events);
-    const { text, summary } = triggerMessage(trigger, shown, more, options);
-    const count = events.length + more;
+    return this.#send(trigger, triggerMessage(trigger, shown, more, options), events.length + more, options);
+  }
+
+  /** Puts a message in the bot's chat and records its run: `fired` for one event, `coalesced` for several, `skipped`
+   * when bots went off or the bot was archived meanwhile, `failed` otherwise. */
+  async #send(trigger: BotTriggerRecord, { text, summary }: { text: string; summary: string }, count: number, options: { catchUp?: boolean; test?: boolean }): Promise<BotTriggerRun> {
     let status: BotTriggerRunStatus = count > 1 ? "coalesced" : "fired";
     let reason: string | undefined;
     try {
@@ -528,6 +553,31 @@ export class BotTriggerService {
   #cancelFlush(id: string): void {
     this.#timers.get(id)?.();
     this.#timers.delete(id);
+  }
+
+  /** At `due`, unless the listener calls first, its bot hears once that it went quiet. */
+  #checkSilenceAt(id: string, due: number): void {
+    this.#silences.get(id)?.();
+    this.#silences.delete(id);
+    if (this.#stopping) return;
+    this.#silences.set(id, this.#schedule(() => {
+      this.#silences.delete(id);
+      const now = this.#now();
+      if (now - due >= SLEPT_MS) return this.#checkSilenceAt(id, now + LISTENER_SILENT_MS);
+      void this.#work.track(this.#tellSilence(id, now).catch((error: unknown) => this.#deps.report?.("warning", "trigger_silence_unsent", "A bot could not be told that its listener went quiet", error instanceof Error ? error.message : String(error))));
+    }, due - this.#now()));
+  }
+
+  /** A call that came in meanwhile armed its own check. While HUI refuses the listener's reports (its trigger off, its
+   * bot archived, bots off) the silence is HUI's own: the check waits for HUI to take them again. */
+  async #tellSilence(id: string, now: number): Promise<void> {
+    const heard = this.#heard.get(id);
+    const [state, bots, active] = await Promise.all([this.#read(), this.#deps.bots.list(), this.#deps.active()]);
+    const trigger = state.triggers.find((each) => each.id === id);
+    const bot = trigger && bots.find((candidate) => candidate.id === trigger.botId);
+    if (!trigger || !bot || !heard || this.#heard.get(id) !== heard) return;
+    if (!trigger.enabled || bot.archived || !active) return this.#checkSilenceAt(id, now + LISTENER_SILENT_MS);
+    await this.#send(trigger, silenceMessage(trigger, heard.at, now), 1, {});
   }
 
   /* ── state ───────────────────────────────────────────────────────────── */

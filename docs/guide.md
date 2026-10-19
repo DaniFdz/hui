@@ -629,8 +629,9 @@ sessions' schedules work as always.
 Triggers wake a bot when something happens elsewhere, the way routines wake it
 on a schedule. HUI doesn't watch other services itself: a program you run, a
 **listener**, watches what you care about (a Slack you reach through its MCP
-server, a Jira board, a repo, a queue) and, after every check, tells the
-trigger what it found. Each event the trigger lets through wakes the bot once.
+server, a Jira board, a repo, a queue) and, after every check and at least
+every five minutes, tells the trigger what it found. Each event the trigger lets
+through wakes the bot once.
 
 Triggers sit in the bot's **Routines** tab, under its routines: each shows what
 it lets through, when it last fired, when its listener last reported, its
@@ -676,7 +677,11 @@ being dropped. Each delivery shows under **Latest trigger runs**.
   reported.
 - **When it stops.** A listener that hasn't reported for five minutes, or since
   the gateway started, shows as *No report from the listener…* on its trigger;
-  one that hit a problem says so with `"error": "…"` in its report.
+  one that hit a problem says so with `"error": "…"` in its report. When a
+  listener that was reporting goes quiet for five minutes, HUI also tells the
+  bot once, as *its listener went quiet* from the trigger, so a bot that
+  depends on it knows its watching stopped. A listener that checks less often
+  than that still sends `{ "events": [] }` at least every five minutes.
 - **What wakes the bot.** Every event, unless the trigger narrows it: a field
   (`--match fields.channel=G01ABC`, or `summary~review` for contains), only
   events that link a GitHub pull request (`--pr-links`), and events the listener

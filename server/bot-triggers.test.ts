@@ -419,6 +419,53 @@ test("a listener's reports show on its trigger: when it last reported and its pr
   assert.deepEqual([f.delivered.length, (await f.runs()).length], [0, 0], "check-ins wake nobody and leave no run");
 });
 
+test("a listener that goes quiet: its bot hears it once from HUI, outside the cooldown and the cap, again after it reports; never before it reported, for time the machine slept or while HUI refuses its reports", async (t) => {
+  const f = await fixture(t, { perHour: 1 });
+  await f.service.start();
+  const { hook, trigger } = await f.service.create("ada", { name: "Pings", source: "listener", cooldownSeconds: 3_600 });
+  const notices = () => f.delivered.filter(({ text }) => text.startsWith("[trigger: Pings · its listener went quiet]\n"));
+  const minutes = async (count: number) => { for (let minute = 0; minute < count; minute += 1) await f.advance(MINUTE); };
+  await minutes(10);
+
+  await f.send(hook.token, [listened("ping", { links: [] })]);
+  await f.settled(1);
+  const last = new Date(f.clock.now).toISOString();
+  await minutes(5);
+  await waitFor(() => notices().length === 1, "the notice");
+  assert.equal(notices()[0]!.text, `[trigger: Pings · its listener went quiet]\n\nFrom HUI, not the listener: nothing has reported to this trigger for 5 min (the last report came at ${last}). Until its listener reports again, what it watches doesn't reach you. HUI says this once per silence.`);
+  await f.settled(2);
+  const listed = await f.service.list("ada");
+  assert.deepEqual([listed.runs[0]?.status, listed.runs[0]?.summary], ["fired", "its listener went quiet"]);
+  assert.deepEqual([listed.deliveries.lastHour, listed.triggers[0]?.lastFiredAt], [1, last], "neither the cap nor the cooldown moves");
+  await minutes(30);
+  await f.service.stop();
+  assert.equal(notices().length, 1, "once per silence");
+  await f.service.start();
+
+  await f.send(hook.token, []);
+  await minutes(5);
+  await waitFor(() => notices().length === 2, "the next silence's notice");
+
+  await f.send(hook.token, []);
+  await f.advance(60 * MINUTE);
+  await minutes(5);
+  await waitFor(() => notices().length === 3, "the notice after waking");
+  assert.match(notices()[2]!.text, / for 65 min /u, "the hour asleep didn't count: five quiet minutes after waking");
+
+  await f.send(hook.token, []);
+  await f.service.update("ada", trigger.id, { enabled: false });
+  await minutes(5);
+  const again = f.clock.now + 5 * MINUTE;
+  await waitFor(() => f.scheduled.some((entry) => !entry.cancelled && entry.at === again), "the check waiting for the trigger to be on");
+  assert.equal(notices().length, 3, "a trigger that is off refuses its listener: that silence is HUI's own");
+  await f.service.update("ada", trigger.id, { enabled: true });
+  await minutes(5);
+  await waitFor(() => notices().length === 4, "the notice once the trigger is on again");
+  assert.match(notices()[3]!.text, / for 10 min /u);
+  await f.service.stop();
+  assert.equal(notices().length, 4, "none before the first report");
+});
+
 test("a listener's filter: a field it reports, PR links, and events it marks as from bots or outsiders only when allowed; a catch-up goes as one delivery", async (t) => {
   const f = await fixture(t);
   await f.service.start();

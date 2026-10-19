@@ -1997,7 +1997,8 @@ once when the scheduler starts.
 A trigger wakes a bot when a program the operator runs, a listener, reports
 something, as a routine wakes it on a schedule. The listener watches what HUI
 doesn't read itself (a Slack through its MCP server, a Jira board, a repo) and,
-after every check, reports what it found to the trigger's URL. Each bot has its
+after every check and at least every five minutes, reports what it found to the
+trigger's URL (an empty report is a check-in). Each bot has its
 own triggers, at most 20 (409 past that); HUI keeps them in `bot-triggers.json`
 in its configuration directory, written like `bots.json` (owner-only, a
 temporary file and a rename, every change serialized, a record that does not
@@ -2080,7 +2081,18 @@ listener since the gateway started." or "No report from the listener for N
 min." (not while the trigger is off: then HUI is the one refusing; a report HUI
 refuses still counts as the listener's call), so a listener that stopped never
 looks like one that watches. HUI keeps when it last heard from each listener in
-memory only.
+memory only. A listener heard from since the gateway started that then calls
+nothing for five minutes wakes its bot once with HUI's own notice, `[trigger:
+<name> · its listener went quiet]`, a blank line and "From HUI, not the
+listener: nothing has reported to this trigger for N min (the last report came
+at <time>). Until its listener reports again, what it watches doesn't reach you.
+HUI says this once per silence." (no prompt, no listener line). It goes like a
+test, outside the cooldown and the cap (neither moves), and records its run like
+any delivery. Its next call ends the silence. While HUI refuses the listener's
+reports (the trigger off, the bot archived, bots off) the notice waits, and goes
+within five minutes of HUI taking them again if the listener is still quiet.
+Time the machine slept doesn't count: a check that comes due a minute or more
+late waits five minutes from then.
 
 **Delivery.** An event that passes an enabled trigger reaches the bot's chat as
 `[trigger: <name> · <summary>] <prompt>` (just the marker without a prompt), a

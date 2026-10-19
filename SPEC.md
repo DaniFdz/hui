@@ -2239,6 +2239,34 @@ Soul and Memory leaving the panel rather than shrinking to a row each.
 - **Browser-only.** No route, record or stored format on the gateway changes,
   so no `hui doctor` check is needed.
 
+### A listener that goes quiet tells its bot (2026-10-19)
+
+A bot's pull-request listener stopped and its bot heard nothing for two hours:
+the trigger only showed the silence on the bot's panel, which nobody opened.
+Asked which fix to build, the owner chose alerting the bot when its listener
+goes quiet. This extends *Silence shows* in [Listeners report what HUI doesn't
+read itself](#listeners-report-what-hui-doesnt-read-itself-2026-10-08) and
+narrows its *as often as it likes*: a listener now reports at least every five
+minutes, an empty check-in counting. The contract is
+[docs/api.md#triggers](docs/api.md#triggers).
+
+- **Once per silence.** A listener that called its trigger's URL since the
+  gateway started and then says nothing for five minutes wakes the bot with
+  HUI's own notice, `[trigger: <name> · its listener went quiet]`, saying how
+  long and when it last reported. Its next call ends the silence, and the next
+  silence is told again. A listener that stops on purpose, or checks less often
+  without checking in, gets the notice too: the bot can tell from its own state
+  whether anything was left to watch.
+- **HUI's own silence waits.** While HUI refuses the listener's reports (its
+  trigger off, its bot archived, bots off), nobody is told; once HUI takes them
+  again, a listener still quiet is told within five minutes. Time the machine
+  slept doesn't count: a check that comes due a minute or more late gives the
+  listener five minutes from waking. A listener not heard from since the
+  gateway started is only shown silent, as before.
+- **Outside the cooldown and the cap.** The notice is a delivery with its own
+  run; neither the cooldown nor the hourly cap moves, so it never delays an
+  event.
+
 ### Listeners are the only triggers (2026-10-09)
 
 Asked whether the listener was now the only way to add a trigger, the owner
