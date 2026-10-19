@@ -144,12 +144,10 @@ import { loadWorktrees, removeWorktrees } from "./api/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { dedicatedPageRenderer, type DedicatedPageProps } from "./views/pages.ts";
 import { renderKanbanPage } from "./views/kanban.ts";
-import { readKanbanOptions, writeKanbanOptions, type KanbanMove, type KanbanOptions } from "./lib/kanban.ts";
+import type { KanbanMove } from "./lib/kanban.ts";
 import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS, type SessionStage } from "../shared/session-stages.ts";
-import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
+import type { SessionCardAction } from "./views/kanban.ts";
 import type { ForkTarget } from "./components/fork-dialog.ts";
-import { addSuggestionToBacklog, backlogItemMarkdown, type BacklogItem } from "./api/backlog.ts";
-import { loadJiraConnection } from "./api/jira.ts";
 import { VoiceController } from "./controllers/voice-controller.ts";
 import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { liveCallPlatform } from "./lib/voice/live-call-platform.ts";
@@ -160,10 +158,8 @@ import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
-import type { JiraCreatedDetail } from "./components/jira-create-dialog.ts";
-import { clampSuggestionIndex, parseTaskSuggestions, taskSuggestionPrompt, type TaskSuggestion, type TaskSuggestionStartMode } from "./lib/task-suggestions.ts";
-import { dismissTaskSuggestion, startTaskSuggestion } from "./api/task-suggestions.ts";
-import { dismissWatcher as dismissWatcherRequest, parseWatchers, readWatcherLog, restartWatcher as restartWatcherRequest, stopWatcher as stopWatcherRequest, type Watcher } from "./api/watchers.ts";
+import { clampSuggestionIndex, taskSuggestionPrompt } from "./lib/task-suggestions.ts";
+import type { Watcher } from "./api/watchers.ts";
 import {
   isCommandPaletteShortcut,
   renderCommandPalette,
@@ -272,30 +268,22 @@ export class HuiApp extends HuiElement {
   @state() private collapsed: ReadonlySet<string> = readCollapsed();
   @state() private toggledSessionTrees: ReadonlySet<string> = new Set();
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
-  @state() private kanbanOptions: KanbanOptions = readKanbanOptions();
-  @state() private kanbanQuery = "";
   @state() private kanbanMovePendingId = "";
-  @state() private kanbanDraggingId = "";
-  @state() private kanbanDropTarget = "";
   @state() private draggingSessionId = "";
   @state() private sessionDropTarget = "";
   @state() private sessionMovePendingId = "";
   /** Outcome of a sidebar, Kanban, Sessions or bot action, shown as the shell toast. */
   @state() private actionToast: { message: string; failed: boolean } | undefined;
   @state() private archiveToast: { session: SessionView; restoring: boolean; error?: string } | undefined;
-  /** Session whose "Create Jira work item" dialog is open. */
-  @state() private jiraCreateSession: SessionView | undefined;
-  /** Session whose "Link Jira work item" dialog is open. */
-  @state() private jiraLinkSession: SessionView | undefined;
-  /** Local backlog task whose Jira create/link dialog is open. */
-  @state() private jiraCreateBacklogItem: BacklogItem | undefined;
-  @state() private jiraLinkBacklogItem: BacklogItem | undefined;
   private readonly backlog = new BacklogController(this, {
     notify: (message, failed) => this.notify(message, failed),
-    refreshSessions: () => void this.refreshSessions(true),
+    showNote: (message, level) => { this.note = message; this.noteLevel = level; },
+    refreshSessions: () => this.refreshSessions(true),
+    paneRegistryChanged: () => void this.onPaneRegistryChange?.(),
+    selected: () => this.selected,
+    selectSession: (session) => this.selectSession(session),
+    kanbanOpen: () => this.view === "kanban",
   });
-  /** Whether Jira is connected, for the suggestion card's actions; unknown until loaded. */
-  @state() private jiraConfigured: boolean | undefined;
   private archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
   private actionToastTimer: ReturnType<typeof setTimeout> | undefined;
   @state() private draggingGroup = "";
@@ -304,16 +292,6 @@ export class HuiApp extends HuiElement {
   @state() private selected: SessionView | undefined;
   @state() private transcript: readonly TranscriptItem[] = [];
   @state() private subagents: readonly SubagentTaskView[] = [];
-  /** Pending `suggest_task` cards for the open session, from its snapshot. */
-  @state() private taskSuggestions: readonly TaskSuggestion[] = [];
-  @state() private taskSuggestionIndex = 0;
-  @state() private taskSuggestionPendingId = "";
-  @state() private jiraCreateSuggestion: TaskSuggestion | undefined;
-  /** HUI-run background watchers for the open session, from its snapshot. */
-  @state() private watchers: readonly Watcher[] = [];
-  @state() private watcherPendingId = "";
-  /** The watcher log the operator opened; one at a time. */
-  @state() private watcherLog: { id: string; lines: readonly string[]; truncated: boolean; loading: boolean } | null = null;
   @state() private opening = false;
   /** Why the selected session's open request failed; its view offers a retry. */
   @state() private openError = "";
@@ -1422,79 +1400,33 @@ export class HuiApp extends HuiElement {
 
   private openJiraCreate = (session: SessionView) => {
     this.menuFor = "";
-    void import("./components/jira-create-dialog.ts").then(() => { this.jiraCreateSession = session; });
-  };
-
-  private closeJiraCreate = () => {
-    this.jiraCreateSession = undefined;
-    this.jiraCreateSuggestion = undefined;
-    this.jiraCreateBacklogItem = undefined;
-  };
-
-  private jiraCreated = (detail: JiraCreatedDetail) => {
-    this.jiraCreateSession = undefined;
-    this.jiraCreateSuggestion = undefined;
-    if (detail.backlogItemId) {
-      this.jiraCreateBacklogItem = undefined;
-      this.notify(detail.warning ?? `Created Jira work item ${detail.key} for the backlog task.`, Boolean(detail.warning));
-      void this.backlog.refresh();
-      return;
-    }
-    if (detail.suggestionId) {
-      // Filing resolves the card now; the server snapshot confirms it.
-      this.taskSuggestions = this.taskSuggestions.filter(({ id }) => id !== detail.suggestionId);
-      this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
-      void this.onPaneRegistryChange?.();
-    }
-    this.notify(detail.warning ?? `Created Jira work item ${detail.key}.`, Boolean(detail.warning));
-    void this.refreshSessions(true);
+    this.backlog.openJiraCreate(session);
   };
 
   private openJiraLink = (session: SessionView) => {
     this.menuFor = "";
-    void import("./components/jira-link-dialog.ts").then(() => { this.jiraLinkSession = session; });
-  };
-
-  private closeJiraLink = () => {
-    this.jiraLinkSession = undefined;
-    this.jiraLinkBacklogItem = undefined;
-  };
-
-  private jiraLinked = (detail: JiraCreatedDetail) => {
-    this.jiraLinkSession = undefined;
-    if (detail.backlogItemId) {
-      this.jiraLinkBacklogItem = undefined;
-      this.notify(`Linked Jira work item ${detail.key} to the backlog task.`);
-      void this.backlog.refresh();
-      return;
-    }
-    if (this.view === "kanban") {
-      this.notify(`Linked Jira work item ${detail.key}.`);
-      void this.backlog.refresh();
-    }
-    this.notify(`Linked Jira work item ${detail.key}.`);
-    void this.refreshSessions(true);
+    this.backlog.openJiraLink(session);
   };
 
   private renderJiraLinkDialog() {
-    if (!this.jiraLinkSession && !this.jiraLinkBacklogItem) return null;
+    if (!this.backlog.jiraLinkSession && !this.backlog.jiraLinkBacklogItem) return null;
     return html`<hui-jira-link-dialog
-      .session=${this.jiraLinkSession}
-      .backlogItem=${this.jiraLinkBacklogItem}
-      .onClose=${this.closeJiraLink}
-      .onLinked=${this.jiraLinked}
+      .session=${this.backlog.jiraLinkSession}
+      .backlogItem=${this.backlog.jiraLinkBacklogItem}
+      .onClose=${this.backlog.closeJiraLink}
+      .onLinked=${this.backlog.jiraLinked}
       .onOpenSettings=${() => this.openSurfaceSettings("integrations")}
     ></hui-jira-link-dialog>`;
   }
 
   private renderJiraCreateDialog() {
-    if (!this.jiraCreateSession && !this.jiraCreateBacklogItem) return null;
+    if (!this.backlog.jiraCreateSession && !this.backlog.jiraCreateBacklogItem) return null;
     return html`<hui-jira-create-dialog
-      .session=${this.jiraCreateSession}
-      .backlogItem=${this.jiraCreateBacklogItem}
-      .suggestion=${this.jiraCreateSuggestion}
-      .onClose=${this.closeJiraCreate}
-      .onCreated=${this.jiraCreated}
+      .session=${this.backlog.jiraCreateSession}
+      .backlogItem=${this.backlog.jiraCreateBacklogItem}
+      .suggestion=${this.backlog.jiraCreateSuggestion}
+      .onClose=${this.backlog.closeJiraCreate}
+      .onCreated=${this.backlog.jiraCreated}
       .onOpenSettings=${() => this.openSurfaceSettings("integrations")}
     ></hui-jira-create-dialog>`;
   }
@@ -1563,22 +1495,6 @@ export class HuiApp extends HuiElement {
     ></hui-backlog-start-dialog>`;
   }
 
-  private backlogCardAction = (item: BacklogItem, action: BacklogCardAction) => {
-    if (action === "open:jira") {
-      if (item.jira) window.open(item.jira.url, "_blank", "noopener,noreferrer");
-    } else if (action === "copy") {
-      void writeClipboardText(backlogItemMarkdown(item)).then((copied) => {
-        this.notify(copied ? `Copied “${item.title}”.` : "Could not copy to the clipboard.", !copied);
-      });
-    } else if (action === "remove") {
-      this.backlog.askRemove(item);
-    } else if (action === "jira:create") {
-      void import("./components/jira-create-dialog.ts").then(() => { this.jiraCreateBacklogItem = item; });
-    } else if (action === "jira:link") {
-      void import("./components/jira-link-dialog.ts").then(() => { this.jiraLinkBacklogItem = item; });
-    }
-  };
-
   private renderBacklogRemoveDialog() {
     const item = this.backlog.removing;
     if (!item) return null;
@@ -1606,37 +1522,6 @@ export class HuiApp extends HuiElement {
     } else if (action === "jira:create") this.openJiraCreate(session);
     else this.openJiraLink(session);
   };
-
-  private saveSuggestionToBacklog = (suggestion: TaskSuggestion) => {
-    const source = this.selected;
-    if (!source || this.taskSuggestionPendingId) return;
-    this.taskSuggestionPendingId = suggestion.id;
-    void addSuggestionToBacklog(source.id, suggestion.id)
-      .then((suggestions) => {
-        if (this.selected?.id === source.id) {
-          this.taskSuggestions = parseTaskSuggestions(suggestions);
-          this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
-        }
-        this.note = `Added “${suggestion.title}” to the Kanban backlog.`;
-        this.noteLevel = "info";
-      })
-      .catch((error: unknown) => {
-        this.note = error instanceof Error ? error.message : "Could not add that suggestion to the backlog.";
-        this.noteLevel = "error";
-      })
-      .finally(() => { this.taskSuggestionPendingId = ""; });
-  };
-
-  /** The suggestion card needs to know whether Jira is connected; checked
-   * once per page load, and again after the Integrations page changes it. */
-  private ensureJiraConnectionKnown() {
-    if (this.jiraConfigured !== undefined) return;
-    this.jiraConfigured = false;
-    void loadJiraConnection().then(
-      (connection) => { this.jiraConfigured = connection.configured; },
-      () => { this.jiraConfigured = false; },
-    );
-  }
 
   /** Reorders custom groups. OTHER as the target means "move to the end",
    * because it always renders last. The confirmed server order replaces the
@@ -2042,11 +1927,7 @@ export class HuiApp extends HuiElement {
     this.streaming = false;
     this.transcript = [];
     this.subagents = [];
-    this.taskSuggestions = [];
-    this.taskSuggestionIndex = 0;
-    this.watchers = [];
-    this.watcherPendingId = "";
-    this.watcherLog = null;
+    this.backlog.clearSession();
     this.note = "";
     this.noteLevel = "info";
     this.connectionNote = "";
@@ -2157,20 +2038,7 @@ export class HuiApp extends HuiElement {
     this.subagents = snapshot.subagents ?? [];
     this.scheduleSubagentExpiry();
     const nextTasks = this.subagents.map((task) => `${task.sessionId}:${task.status}:${task.updatedAt}`).join("|");
-    const previousFirst = this.taskSuggestions[0]?.id;
-    this.taskSuggestions = parseTaskSuggestions(snapshot.suggestions);
-    if (this.taskSuggestions.length) this.ensureJiraConnectionKnown();
-    this.watchers = parseWatchers(snapshot.watchers);
-    const logged = this.watchers.find(({ id }) => id === this.watcherLog?.id);
-    if (this.watcherLog && !logged) this.watcherLog = null;
-    // An opened row follows new output without a refresh button.
-    else if (logged && !this.watcherLog?.loading && logged.lastLine !== (this.watcherLog?.lines.findLast((line) => line.trim()) ?? "").trim()) {
-      this.viewWatcherLog(logged);
-    }
-    // A newly flagged follow-up is shown first; otherwise keep the operator's place.
-    this.taskSuggestionIndex = this.taskSuggestions[0]?.id !== previousFirst
-      ? 0
-      : clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
+    this.backlog.adoptSnapshot(snapshot.suggestions, snapshot.watchers);
     if (previousTasks !== nextTasks) void this.refreshSessions();
     // The open question stays while it is pending, whatever else arrives meanwhile.
     const question = snapshot.questions.find(({ id }) => id === this.question?.id) ?? snapshot.questions[0];
@@ -3172,97 +3040,9 @@ export class HuiApp extends HuiElement {
     });
   }
 
-  private startSuggestion = (suggestion: TaskSuggestion, mode: TaskSuggestionStartMode = "session") => {
-    const source = this.selected;
-    if (!source || this.taskSuggestionPendingId) return;
-    this.taskSuggestionPendingId = suggestion.id;
-    void startTaskSuggestion(source.id, suggestion.id, mode)
-      .then(async (session) => {
-        this.taskSuggestions = this.taskSuggestions.filter(({ id }) => id !== suggestion.id);
-        this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
-        await this.refreshSessions(true);
-        void this.onPaneRegistryChange?.();
-        // "This session" stays put; the transcript shows the new turn.
-        if (session.id !== source.id) this.selectSession(session);
-      })
-      .catch((error: unknown) => {
-        this.note = error instanceof Error ? error.message : "Could not start that suggestion.";
-        this.noteLevel = "error";
-      })
-      .finally(() => { this.taskSuggestionPendingId = ""; });
-  };
-
-  private dismissSuggestion = (suggestion: TaskSuggestion) => {
-    const source = this.selected;
-    if (!source || this.taskSuggestionPendingId) return;
-    this.taskSuggestionPendingId = suggestion.id;
-    void dismissTaskSuggestion(source.id, suggestion.id)
-      .then((suggestions) => {
-        if (this.selected?.id !== source.id) return;
-        this.taskSuggestions = parseTaskSuggestions(suggestions);
-        this.taskSuggestionIndex = clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length);
-      })
-      .catch((error: unknown) => {
-        this.note = error instanceof Error ? error.message : "Could not dismiss that suggestion.";
-        this.noteLevel = "error";
-      })
-      .finally(() => { this.taskSuggestionPendingId = ""; });
-  };
-
-  /** One watcher mutation at a time; the card disables its buttons while a
-   * request is in flight, and a response for another session is dropped. */
-  private watcherAction = (watcher: Watcher, request: (sessionId: string, watcherId: string) => Promise<Watcher[]>, failure: string) => {
-    const session = this.selected;
-    if (!session || this.watcherPendingId) return;
-    this.watcherPendingId = watcher.id;
-    void request(session.id, watcher.id)
-      .then((watchers) => {
-        if (this.selected?.id !== session.id) return;
-        this.watchers = watchers;
-        if (this.watcherLog && !watchers.some(({ id }) => id === this.watcherLog!.id)) this.watcherLog = null;
-      })
-      .catch((error: unknown) => {
-        this.note = error instanceof Error ? error.message : failure;
-        this.noteLevel = "error";
-      })
-      .finally(() => { this.watcherPendingId = ""; });
-  };
-
-  private stopWatcher = (watcher: Watcher) => {
-    this.watcherAction(watcher, stopWatcherRequest, "Could not stop that watcher.");
-  };
-
-  private restartWatcher = (watcher: Watcher) => {
-    this.watcherAction(watcher, restartWatcherRequest, "Could not restart that watcher.");
-  };
-
-  private dismissWatcher = (watcher: Watcher) => {
-    this.watcherAction(watcher, dismissWatcherRequest, "Could not dismiss that watcher.");
-  };
-
-  private viewWatcherLog = (watcher: Watcher) => {
-    const session = this.selected;
-    if (!session) return;
-    const previous = this.watcherLog?.id === watcher.id ? this.watcherLog : undefined;
-    this.watcherLog = { id: watcher.id, lines: previous?.lines ?? [], truncated: previous?.truncated ?? false, loading: true };
-    void readWatcherLog(session.id, watcher.id)
-      .then((log) => {
-        if (this.selected?.id !== session.id || this.watcherLog?.id !== watcher.id) return;
-        this.watcherLog = { id: log.id, lines: log.lines, truncated: log.truncated, loading: false };
-      })
-      .catch((error: unknown) => {
-        if (this.watcherLog?.id !== watcher.id) return;
-        this.watcherLog = null;
-        this.note = error instanceof Error ? error.message : "Could not read that watcher log.";
-        this.noteLevel = "error";
-      });
-  };
-
-  /** Opening a watcher's row fetches its log tail; closing it drops the tail. */
   private toggleWatcher = (watcher: Watcher, open: boolean) => {
     this.setActivityExpanded(`watcher:${watcher.id}`, open);
-    if (open) this.viewWatcherLog(watcher);
-    else if (this.watcherLog?.id === watcher.id) this.watcherLog = null;
+    this.backlog.toggleWatcherLog(watcher, open);
   };
 
   private setActivityExpanded = (id: string, expanded: boolean) => {
@@ -3270,15 +3050,6 @@ export class HuiApp extends HuiElement {
     if (expanded) next.add(id);
     else next.delete(id);
     this.expandedActivityIds = next;
-  };
-
-  private fileSuggestionInJira = (suggestion: TaskSuggestion) => {
-    const session = this.selected;
-    if (!session) return;
-    void import("./components/jira-create-dialog.ts").then(() => {
-      this.jiraCreateSuggestion = suggestion;
-      this.jiraCreateSession = session;
-    });
   };
 
   private copyTranscript = (text: string, id: string) => {
@@ -3585,11 +3356,7 @@ export class HuiApp extends HuiElement {
     const empty = emptySessionPresentation();
     this.transcript = empty.transcript;
     this.subagents = [];
-    this.taskSuggestions = [];
-    this.taskSuggestionIndex = 0;
-    this.watchers = [];
-    this.watcherPendingId = "";
-    this.watcherLog = null;
+    this.backlog.clearSession();
     if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
     this.subagentExpiryTimer = undefined;
     this.opening = empty.opening;
@@ -4647,28 +4414,28 @@ export class HuiApp extends HuiElement {
         });
       },
       taskSuggestions: {
-        suggestions: this.taskSuggestions,
-        index: this.taskSuggestionIndex,
-        pendingId: this.taskSuggestionPendingId,
-        copied: this.copiedId === `suggestion:${this.taskSuggestions[clampSuggestionIndex(this.taskSuggestionIndex, this.taskSuggestions.length)]?.id ?? ""}`,
-        onIndex: (index) => { this.taskSuggestionIndex = clampSuggestionIndex(index, this.taskSuggestions.length); },
-        onStart: this.startSuggestion,
-        jiraConfigured: this.jiraConfigured === true,
-        onCreateJira: this.fileSuggestionInJira,
-        onAddToBacklog: this.saveSuggestionToBacklog,
+        suggestions: this.backlog.taskSuggestions,
+        index: this.backlog.taskSuggestionIndex,
+        pendingId: this.backlog.taskSuggestionPendingId,
+        copied: this.copiedId === `suggestion:${this.backlog.taskSuggestions[clampSuggestionIndex(this.backlog.taskSuggestionIndex, this.backlog.taskSuggestions.length)]?.id ?? ""}`,
+        onIndex: this.backlog.setSuggestionIndex,
+        onStart: this.backlog.startSuggestion,
+        jiraConfigured: this.backlog.jiraConfigured === true,
+        onCreateJira: this.backlog.fileSuggestionInJira,
+        onAddToBacklog: this.backlog.saveSuggestionToBacklog,
         onCopy: (suggestion) => { void this.copyTranscript(taskSuggestionPrompt(suggestion), `suggestion:${suggestion.id}`); },
-        onDismiss: this.dismissSuggestion,
+        onDismiss: this.backlog.dismissSuggestion,
       },
-      watchers: this.watchers.length ? {
-        watchers: this.watchers,
-        pendingId: this.watcherPendingId,
-        log: this.watcherLog,
+      watchers: this.backlog.watchers.length ? {
+        watchers: this.backlog.watchers,
+        pendingId: this.backlog.watcherPendingId,
+        log: this.backlog.watcherLog,
         expanded: this.expandedActivityIds,
         onGroupToggle: (open) => this.setActivityExpanded("watchers", open),
         onToggle: this.toggleWatcher,
-        onStop: this.stopWatcher,
-        onRestart: this.restartWatcher,
-        onDismiss: this.dismissWatcher,
+        onStop: this.backlog.stopWatcher,
+        onRestart: this.backlog.restartWatcher,
+        onDismiss: this.backlog.dismissWatcher,
       } : undefined,
       onDraftChange: this.updateDraft,
       onDraftInput: this.typeDraft,
@@ -5182,18 +4949,18 @@ export class HuiApp extends HuiElement {
                 groups: this.listedGroups,
                 loading: this.sessionsLoading,
                 error: this.sessionsError,
-                query: this.kanbanQuery,
-                options: this.kanbanOptions,
+                query: this.backlog.query,
+                options: this.backlog.options,
                 movePendingId: this.kanbanMovePendingId,
-                draggingId: this.kanbanDraggingId,
-                dropTarget: this.kanbanDropTarget,
-                onQuery: (value) => { this.kanbanQuery = value; },
-                onOptions: (options) => { this.kanbanOptions = options; writeKanbanOptions(options); },
+                draggingId: this.backlog.draggingId,
+                dropTarget: this.backlog.dropTarget,
+                onQuery: this.backlog.setQuery,
+                onOptions: this.backlog.setOptions,
                 onOpen: this.selectSession,
                 onMove: this.moveKanbanSession,
-                onDragStart: (id) => { this.kanbanDraggingId = id; this.kanbanDropTarget = ""; },
-                onDragEnd: () => { this.kanbanDraggingId = ""; this.kanbanDropTarget = ""; },
-                onDragOver: (cell) => { this.kanbanDropTarget = cell; },
+                onDragStart: this.backlog.dragStart,
+                onDragEnd: this.backlog.dragEnd,
+                onDragOver: this.backlog.dragOver,
                 onRefresh: () => { void this.refreshSessions(); void this.backlog.refresh(true); },
                 backlog: this.backlog.items,
                 backlogLoading: this.backlog.loading,
@@ -5202,7 +4969,7 @@ export class HuiApp extends HuiElement {
                 backlogPendingId: this.backlog.pendingId,
                 onBacklogGroup: this.backlog.setGroup,
                 onBacklogStart: this.backlog.openStart,
-                onBacklogAction: this.backlogCardAction,
+                onBacklogAction: this.backlog.cardAction,
                 onSessionAction: this.kanbanSessionAction,
               })
             : this.view === "surface" && this.activePage
