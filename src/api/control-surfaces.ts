@@ -4,7 +4,7 @@
  * and types the results.
  */
 import type { PowerStatus } from "../../shared/power.ts";
-import { fetchJson } from "../api/request.ts";
+import { fetchJson } from "./request.ts";
 
 export type GatewayHealth = {
   status: "online";

@@ -15,7 +15,7 @@ import { LitElement, html, nothing } from "lit";
 import { SESSION_STAGE_LABELS, type SessionStage } from "../../shared/session-stages.ts";
 import type { BacklogItem } from "../../shared/backlog.ts";
 import { fallbackBranchName } from "../../shared/branch-names.ts";
-import { startBacklogItem, suggestBacklogBranchName } from "../lib/backlog.ts";
+import { startBacklogItem, suggestBacklogBranchName } from "../api/backlog.ts";
 import {
   backlogBranchOptions,
   backlogStartRequest,
@@ -28,7 +28,7 @@ import {
 import { icons } from "../lib/icons.ts";
 import { ensureModal } from "../lib/modal-dialog.ts";
 import { loadGitCheckout, sessionGroupLabel, type GitCheckoutInfo, type SessionView } from "../api/sessions.ts";
-import { loadWorkingDirectorySuggestions } from "../lib/working-directories.ts";
+import { loadWorkingDirectorySuggestions } from "../api/working-directories.ts";
 import { renderPicker } from "../views/settings-picker.ts";
 import { renderDirectoryPicker } from "../views/directory-picker.ts";
 

@@ -7,8 +7,8 @@ import type {
   AutomationSnapshot,
   AutomationTask,
   AutomationTaskInput,
-} from "./automation-types.ts";
-import { trackedFetch } from "../api/request.ts";
+} from "../lib/automation-types.ts";
+import { trackedFetch } from "./request.ts";
 
 const AUTOMATION_URL = "/__hui/automation";
 const HEADERS = { "x-hui": "1" } as const;
@@ -77,4 +77,4 @@ export async function cancelAutomationRun(id: string): Promise<void> {
   );
 }
 
-export type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "./automation-types.ts";
+export type { AutomationRun, AutomationSchedule, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../lib/automation-types.ts";

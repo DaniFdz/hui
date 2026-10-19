@@ -102,7 +102,7 @@ R13 and R16 are not checked yet.
 | Area | Start here |
 |---|---|
 | App shell | `main.ts` (styles, boot, mount), `lib/boot-screen.ts` (index.html's boot screen), `lib/view-assets.ts` (view stylesheets loaded together before the first paint), `hui-app.ts` (navigation and cross-view state), `src/lit/hui-element.ts` |
-| Client stores and API | `src/api/` (requests to `/__hui/`: `request.ts` (fetch boundary, `x-hui` header, response deadline), `settings.ts`, `ui-errors.ts` (browser errors batched to the gateway), `sessions.ts` (session API), `terminals.ts`, `browser.ts`, `files.ts`, `diff.ts`), `lib/settings-store.ts` (settings cache and write queue), other `lib/*-store.ts` |
+| Client stores and API | `src/api/` (requests to `/__hui/`: `request.ts` (fetch boundary, `x-hui` header, response deadline), `settings.ts`, `ui-errors.ts` (browser errors batched to the gateway), `sessions.ts` (session API), `terminals.ts`, `browser.ts`, `files.ts`, `diff.ts`, and one client per area: `automation.ts`, `backlog.ts`, `bots.ts`, `bot-templates.ts`, `jira.ts`, `github.ts`, `pi.ts`, `providers.ts`, `workers.ts`, …), `lib/settings-store.ts` (settings cache and write queue), other `lib/*-store.ts` |
 | Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file) |
 | Chat | `views/chat/` (projection, tool cards, position rail), `lib/markdown*.ts`, `lib/composer-*.ts`; file references that open in the Files view: `lib/file-references.ts` (which text is a path), `lib/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
 | Sidebar and sessions | `lib/sidebar-sessions.ts`, `lib/session-tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |

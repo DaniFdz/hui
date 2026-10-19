@@ -6,7 +6,8 @@
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { BotView } from "./bots.ts";
-import { BotExportError, downloadBotExport, importBot, importSource, pickedFile, pickedFolder, previewBotImport, reviewBotExport, type BotExportGroup, type BotExportReview, type BotImportPreview, type BotImportTab, type PickedSource } from "./bot-templates.ts";
+import { importSource, pickedFile, pickedFolder, type BotExportGroup, type BotExportReview, type BotImportPreview, type BotImportTab, type PickedSource } from "./bot-templates.ts";
+import { BotExportError, downloadBotExport, importBot, previewBotImport, reviewBotExport } from "../api/bot-templates.ts";
 import { ensureModal } from "./modal-dialog.ts";
 import { additionChange, buildExport, picksWithoutAddition, withAdditions, type BotExportAddition } from "../../shared/bot-export.ts";
 import type { BotExportDialogProps, BotExportDraft, BotImportDialogProps } from "../views/bot-import.ts";

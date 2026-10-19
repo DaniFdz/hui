@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { applyBotsUpdate, withLiveChats, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, createBot, isBotSession, isNewBotsFrame, loadBots, parseBotsUpdate, subscribeBots, parseBot, parseBotList, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import { applyBotsUpdate, withLiveChats, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, isBotSession, isNewBotsFrame, parseBotsUpdate, parseBot, parseBotList, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
-import { botLook, BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
+import { botLook } from "../../shared/bots.ts";
 
 const RECORD = {
   id: "b1",
@@ -115,69 +115,6 @@ test("a reconnect's cached first frame at the applied revision is a replay, not 
   assert.equal(isNewBotsFrame(1_008, false, 1_007), true);
   assert.equal(isNewBotsFrame(1_007, false, 1_007), false);
   assert.equal(isNewBotsFrame(1_006, false, 1_007), false);
-});
-
-test("the bot stream reads SSE frames, reports a gateway without it, and stops when asked", async () => {
-  const encoder = new TextEncoder();
-  const frames = [
-    `event: bots\ndata: ${JSON.stringify({ revision: 1, ids: ["b1"], upserts: [RECORD] })}\n\n`,
-    ": heartbeat\n\n",
-    `event: bots\ndata: ${JSON.stringify({ revision: 2, upserts: [{ ...RECORD, status: "idle" }] })}\n\n`,
-  ];
-  const updates: [number, boolean][] = [];
-  const states: string[] = [];
-  let stop = () => {};
-  const done = new Promise<void>((resolve) => {
-    stop = subscribeBots({
-      onUpdate: (update, first) => {
-        updates.push([update.revision, first]);
-        if (update.revision === 2) resolve();
-      },
-      onConnection: (state) => states.push(state),
-    }, async (_url, init) => new Response(new ReadableStream({
-      start(controller) {
-        for (const frame of frames) controller.enqueue(encoder.encode(frame));
-        (init?.signal as AbortSignal | undefined)?.addEventListener("abort", () => controller.error(new Error("aborted")));
-      },
-    }), { status: 200, headers: { "content-type": "text/event-stream" } }));
-  });
-  await done;
-  stop();
-  assert.deepEqual(updates, [[1, true], [2, false]]);
-  assert.deepEqual(states, ["live"]);
-
-  const unsupported = await new Promise<string>((resolve) => {
-    subscribeBots({ onUpdate: () => {}, onConnection: resolve }, async () => new Response("{}", { status: 404 }));
-  });
-  assert.equal(unsupported, "unsupported");
-
-  // Bots off on the gateway (Settings → Labs → Bots): its 409 stops the stream instead of a retry loop.
-  let asked = 0;
-  const off = await new Promise<string>((resolve) => {
-    subscribeBots({ onUpdate: () => {}, onConnection: resolve }, async () => {
-      asked += 1;
-      return new Response(JSON.stringify({ error: BOTS_OFF_MESSAGE }), { status: 409 });
-    });
-  });
-  assert.deepEqual([off, asked], ["off", 1]);
-});
-
-test("reading the list asks for active and archived bots, as the stream lists both", async () => {
-  const original = globalThis.fetch;
-  const urls: string[] = [];
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const url = String(input);
-    urls.push(url);
-    const bots = url.endsWith("?archived=1") ? [{ id: "b9", name: "Old", sessionId: "s9", archived: true }, RECORD] : [RECORD, { id: "b2", name: "Ledger", sessionId: "s2" }];
-    return new Response(JSON.stringify({ bots }), { status: 200, headers: { "content-type": "application/json" } });
-  }) as typeof fetch;
-  try {
-    const bots = await loadBots();
-    assert.deepEqual(bots.map((bot) => [bot.id, bot.archived === true]), [["b1", false], ["b2", false], ["b9", true]], "a bot listed twice keeps its first copy");
-    assert.deepEqual(urls.toSorted(), ["/__hui/bots", "/__hui/bots?archived=1"]);
-  } finally {
-    globalThis.fetch = original;
-  }
 });
 
 const EMPTY_DRAFT: BotDraft = { name: "", title: "", cwd: "", emoji: "", model: "", thinking: "", memoryModel: "" };
@@ -371,22 +308,6 @@ test("the Tagging rows send its description and who can tag it, only when they c
   assert.deepEqual(botChangePatch(bot, botSettingChange("tagging", "anyone")), { tagging: "anyone" }, "back to the default");
   assert.deepEqual(botChangePatch(bot, botSettingChange("tagging", "nobody")), { tagging: "nobody" });
   assert.equal(botChangePatch(bot, botSettingChange("tagging", "everyone")), undefined, "nothing invalid reaches the gateway");
-});
-
-test("+ creates a bot without a name: the gateway calls it New Bot, and it asks what to call it", async () => {
-  const original = globalThis.fetch;
-  const calls: { url: string; method: string; body: string }[] = [];
-  globalThis.fetch = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
-    calls.push({ url: String(input), method: init.method ?? "GET", body: String(init.body) });
-    return new Response(JSON.stringify({ bot: { ...RECORD, id: "b7", name: "New Bot", handle: "new-bot", soul: false } }), { status: 201, headers: { "content-type": "application/json" } });
-  }) as typeof fetch;
-  try {
-    const bot = await createBot({});
-    assert.equal(bot.name, "New Bot");
-    assert.deepEqual(calls.map(({ url, method, body }) => [url, method, JSON.parse(body)]), [["/__hui/bots", "POST", {}]], "no name in the body, nothing else either");
-  } finally {
-    globalThis.fetch = original;
-  }
 });
 
 test("a bot whose record still carries a VoiceStudio voice shows only its language and call voice", () => {

@@ -5,7 +5,7 @@
  */
 import { html, nothing, type TemplateResult } from "lit";
 
-import type { GatewayHealth, WorkspaceInspection } from "../lib/control-surfaces.ts";
+import type { GatewayHealth, WorkspaceInspection } from "../api/control-surfaces.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import { icons } from "../lib/icons.ts";

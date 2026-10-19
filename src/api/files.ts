@@ -1,7 +1,8 @@
 /**
  * Browser client for the Files view's routes (`/__hui/sessions/:id/files…`, see docs/api.md). The gateway owns the
  * disk and resolves every path inside the conversation's working directory; this only sends requests with the
- * local-client header and turns refusals into errors, except a save conflict, which is an answer.
+ * local-client header and turns refusals into errors, except a save conflict, which is an answer. It also downloads
+ * the blobs behind media and file previews.
  */
 import type { FileEntry, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "../../shared/files.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
@@ -84,6 +85,16 @@ export async function fetchRawFile(sessionId: string, path: string, signal?: Abo
   const response = await request(withQuery(base(sessionId, "raw"), { path }), signal ? { signal } : {});
   if (!response.ok) throw await failure(response);
   return await response.blob();
+}
+
+export async function fetchBlob(src: string): Promise<Blob> {
+  const response = await fetch(src);
+  if (!response.ok) throw new Error(`The image could not be downloaded (HTTP ${response.status}).`);
+  return response.blob();
+}
+
+export async function fetchPreviewBlob(url: string): Promise<Blob> {
+  return (await fetch(url)).blob();
 }
 
 export async function createEntry(sessionId: string, path: string, kind: "file" | "directory"): Promise<FileEntry> {

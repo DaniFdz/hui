@@ -1,30 +1,11 @@
 /**
- * Browser client for the worktree inventory in Settings: loading it, removing worktrees with acknowledged
- * risks, and helpers for sizes and for worktrees only the given sessions use. Git work happens in the gateway.
+ * Helpers for the worktree inventory in Settings: sizes and the worktrees only the given sessions use. Its requests
+ * live in src/api/worktrees.ts.
  */
-import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../../shared/worktrees.ts";
-import { fetchJson } from "../api/request.ts";
+import type { WorktreeRow } from "../../shared/worktrees.ts";
 
 export type { WorktreeInventory, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../../shared/worktrees.ts";
 export { isMergedCleanupCandidate } from "../../shared/worktrees.ts";
-
-export function loadWorktrees(): Promise<WorktreeInventory> {
-  return fetchJson<WorktreeInventory>("/__hui/worktrees", { signal: AbortSignal.timeout(30_000) });
-}
-
-export function removeWorktrees(
-  paths: readonly string[],
-  mode: WorktreeRemovalMode,
-  acknowledged: readonly WorktreeRisk[] = [],
-): Promise<{ results: WorktreeRemovalResult[]; inventory: WorktreeInventory }> {
-  return fetchJson("/__hui/worktrees/remove", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ paths, mode, acknowledged }),
-    // Removing large checkouts can take a while; the server serializes removals.
-    signal: AbortSignal.timeout(15 * 60_000),
-  });
-}
 
 /** Binary units, one decimal from MiB up, matching `du -h` intuition. */
 export function formatBytes(bytes: number | undefined): string {

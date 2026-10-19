@@ -3,7 +3,7 @@
  * page adds, edits, removes and acts on workers, and polls faster while a worker is changing state.
  */
 import { LitElement, html, nothing } from "lit";
-import { createWorker, loadWorkers, removeWorker, updateWorker, workerAction, type WorkerView } from "../lib/workers.ts";
+import { createWorker, loadWorkers, removeWorker, updateWorker, workerAction, type WorkerView } from "../api/workers.ts";
 
 const POLL_FAST_MS = 1_500;
 const POLL_MS = 10_000;

@@ -5,7 +5,7 @@
 import { LitElement, html, nothing } from "lit";
 import type { SessionView } from "../api/sessions.ts";
 import type { SessionTools, ToolsCatalog } from "../lib/tools-types.ts";
-import { inspectSessionTools, loadToolsCatalog } from "../lib/tools-store.ts";
+import { inspectSessionTools, loadToolsCatalog } from "../api/tools.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
 loadViewAssets(() => import("../styles/tools.css"));

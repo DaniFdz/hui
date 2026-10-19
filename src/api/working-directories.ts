@@ -2,7 +2,7 @@
  * Directory suggestions for choosing a session's working directory, locally or on a worker. The gateway
  * lists the directories; the browser never touches the filesystem.
  */
-import { fetchJson } from "../api/request.ts";
+import { fetchJson } from "./request.ts";
 
 export async function loadWorkingDirectorySuggestions(input: string, worker?: string): Promise<string[]> {
   const body = await fetchJson<{ directories?: string[] }>(

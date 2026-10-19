@@ -2,7 +2,6 @@
  * Weeks start Monday; days run from 5 AM to 5 AM, so late-night work stays
  * on the day it began. */
 import type { ActivityBlock, ActivitySession, SessionActivity } from "../../shared/session-activity.ts";
-import { fetchJson } from "../api/request.ts";
 
 const MINUTE = 60_000;
 const DAY_START_HOUR = 5;
@@ -56,10 +55,6 @@ export type CalendarPeriod = {
    * every block. Past 24 is the next morning. */
   hours: [number, number];
 };
-
-export function loadSessionActivity(start: Date, end: Date): Promise<SessionActivity> {
-  return fetchJson<SessionActivity>(`/__hui/session-activity?from=${start.valueOf()}&to=${end.valueOf()}`);
-}
 
 /** Local 5 AM on or before `date`, including early mornings across DST changes. */
 export function dayStart(date: Date): Date {

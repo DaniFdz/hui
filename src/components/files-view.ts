@@ -26,6 +26,7 @@ import { draftKey, draftStatus, existingDraft, forgetDraft, hasUnsavedDrafts, op
 import {
   createEntry,
   deleteEntry,
+  fetchPreviewBlob,
   fetchRawFile,
   FilesRequestError,
   listDirectory,
@@ -822,7 +823,7 @@ export class HuiFilesView extends HuiElement {
     const file = this.file;
     if (!file) return;
     try {
-      const blob = this.previewUrl ? await (await fetch(this.previewUrl)).blob() : await fetchRawFile(this.sessionId, file.path);
+      const blob = this.previewUrl ? await fetchPreviewBlob(this.previewUrl) : await fetchRawFile(this.sessionId, file.path);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;

@@ -5,16 +5,8 @@
 import { LitElement, html, nothing, svg } from "lit";
 
 import type { GitHubContributions } from "../../shared/github.ts";
-import {
-  contributionLevels,
-  contributionRange,
-  contributionWeeks,
-  contributionYears,
-  loadGitHubContributions,
-  metricLabel,
-  type ContributionMetric,
-  type ContributionWeek,
-} from "../lib/github-contributions.ts";
+import { contributionLevels, contributionRange, contributionWeeks, contributionYears, metricLabel, type ContributionMetric, type ContributionWeek } from "../lib/github-contributions.ts";
+import { loadGitHubContributions } from "../api/github-contributions.ts";
 import { icons } from "../lib/icons.ts";
 import { renderPicker } from "./settings-picker.ts";
 import "./session-calendar.ts";

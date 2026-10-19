@@ -2,8 +2,8 @@
  * Browser client for the tools catalog and the tools available to one session. The gateway and PI decide
  * what is available; this module only reads it.
  */
-import { fetchJson } from "../api/request.ts";
-import type { SessionTools, ToolsCatalog } from "./tools-types.ts";
+import { fetchJson } from "./request.ts";
+import type { SessionTools, ToolsCatalog } from "../lib/tools-types.ts";
 
 export function loadToolsCatalog(): Promise<ToolsCatalog> {
   return fetchJson("/__hui/tools");

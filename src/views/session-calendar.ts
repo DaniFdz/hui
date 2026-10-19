@@ -5,20 +5,8 @@
 import { LitElement, html, nothing } from "lit";
 
 import { icons } from "../lib/icons.ts";
-import {
-  addDays,
-  calendarPeriod,
-  dayStart,
-  formatDuration,
-  loadSessionActivity,
-  localHour,
-  MIN_DRAWN_MS,
-  weekStart,
-  type CalendarBlock,
-  type CalendarGrouping,
-  type CalendarUnit,
-  type CalendarPeriod,
-} from "../lib/session-calendar.ts";
+import { addDays, calendarPeriod, dayStart, formatDuration, localHour, MIN_DRAWN_MS, weekStart, type CalendarBlock, type CalendarGrouping, type CalendarUnit, type CalendarPeriod } from "../lib/session-calendar.ts";
+import { loadSessionActivity } from "../api/session-calendar.ts";
 import type { SessionActivity } from "../../shared/session-activity.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 

@@ -5,7 +5,8 @@
 import { LitElement, html, nothing } from "lit";
 import { JIRA_API_TOKEN_URL, type JiraConnection, type JiraProject } from "../../shared/jira.ts";
 import { icons } from "../lib/icons.ts";
-import { connectJira, disconnectJira, jiraProjectSearch, loadJiraConnection, loadJiraProjects, mergeJiraProjects, setJiraDefaultProject } from "../lib/jira.ts";
+import { mergeJiraProjects } from "../lib/jira.ts";
+import { connectJira, disconnectJira, jiraProjectSearch, loadJiraConnection, loadJiraProjects, setJiraDefaultProject } from "../api/jira.ts";
 import { renderPicker } from "./settings-picker.ts";
 
 export class HuiJiraSettings extends LitElement {

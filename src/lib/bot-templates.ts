@@ -1,22 +1,13 @@
 /**
- * Client half of importing and exporting bots (`/__hui/bots/import`, `/__hui/bots/:id/export…`; the contract is in
- * docs/api.md#importing-and-exporting-bots). The browser never reads a template itself: it sends the picked file, folder,
- * link or text to the gateway, shows the preview it answers, and sends that preview's template back to create the bot.
- * An export asks the gateway for its review, shows it, and sends back only the operator's picks for the zip.
+ * Browser half of importing and exporting bots (contract in docs/api.md#importing-and-exporting-bots). The browser
+ * never reads a template itself: it packs the picked file, folder, link or text for the gateway and narrows the
+ * preview and export review it answers. The requests live in src/api/bot-templates.ts.
  */
-import type { BotExportAddition, BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
-import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportResult, type BotImportSource, type BotTemplate } from "../../shared/bot-templates.ts";
-import { parseBot } from "./bots.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
+import type { BotExportReview } from "../../shared/bot-export.ts";
+import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportSource } from "../../shared/bot-templates.ts";
 
 export type { BotImportPreview, BotImportResult, BotImportSource } from "../../shared/bot-templates.ts";
 export type { BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
-
-const JSON_HEADERS = { "content-type": "application/json" } as const;
-/** A preview may fetch a page or unpack an archive; creating starts a chat, its memory and maybe its first turn. */
-const IMPORT_TIMEOUT_MS = 90_000;
-/** A review has the utility model read every part of the bot (the gateway stops at six minutes). */
-const REVIEW_TIMEOUT_MS = 7 * 60_000;
 
 /** Where an import's source comes from, as the dialog's tabs name them. */
 export type BotImportTab = "file" | "link" | "paste";
@@ -71,29 +62,6 @@ export function parseBotImportPreview(body: unknown): BotImportPreview {
   return body as unknown as BotImportPreview;
 }
 
-/** `POST /__hui/bots/import/preview`: what creating the source's bot would do. Nothing is created. */
-export async function previewBotImport(request: { source: BotImportSource; pick?: string; worker?: string }): Promise<BotImportPreview> {
-  return parseBotImportPreview(await fetchJson<unknown>("/__hui/bots/import/preview", {
-    method: "POST", headers: JSON_HEADERS, body: JSON.stringify(request), signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
-  }));
-}
-
-/** `POST /__hui/bots/import`: creates the bot a preview showed. */
-export async function importBot(template: BotTemplate, worker?: string): Promise<BotImportResult> {
-  const body = await fetchJson<unknown>("/__hui/bots/import", {
-    method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ template, ...(worker ? { worker } : {}) }), signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
-  });
-  const bot = isRecord(body) ? parseBot(body["bot"]) : undefined;
-  if (!isRecord(body) || !bot) throw new Error("The bot was imported but could not be read back.");
-  return {
-    bot,
-    skills: Array.isArray(body["skills"]) ? body["skills"].filter((name): name is string => typeof name === "string") : [],
-    routines: typeof body["routines"] === "number" ? body["routines"] : 0,
-    opener: body["opener"] === true,
-    warnings: Array.isArray(body["warnings"]) ? body["warnings"].filter((line): line is string => typeof line === "string") : [],
-  };
-}
-
 /** The file name a download's Content-Disposition gives, else `fallback`. */
 export function downloadName(disposition: string | null, fallback: string): string {
   const encoded = /filename\*=UTF-8''([^;]+)/iu.exec(disposition ?? "")?.[1];
@@ -110,42 +78,4 @@ export function parseBotExportReview(body: unknown): BotExportReview {
   const lists = ["parts", "cleanup", "changes", "files", "needs", "leftOut"];
   if (!isRecord(body) || typeof body["id"] !== "string" || !isRecord(body["meta"]) || lists.some((key) => !Array.isArray(body[key]))) throw new Error("The export review did not come back.");
   return body as unknown as BotExportReview;
-}
-
-/** `POST /__hui/bots/:id/export/review`: the bot cleaned and read by Settings' utility model; nothing leaves yet. */
-export async function reviewBotExport(id: string): Promise<BotExportReview> {
-  return parseBotExportReview(await fetchJson<unknown>(`/__hui/bots/${encodeURIComponent(id)}/export/review`, { method: "POST", signal: AbortSignal.timeout(REVIEW_TIMEOUT_MS) }));
-}
-
-/** A refused download: 409 when the review is gone or the bot changed since, which another review fixes. */
-export class BotExportError extends Error {
-  override name = "BotExportError";
-  constructor(message: string, readonly status: number) {
-    super(message);
-  }
-}
-
-/** `POST /__hui/bots/:id/export` with the review's id and the operator's picks, saved as a download. Resolves with the file's name. */
-export async function downloadBotExport(id: string, request: { review: string; picks: Record<string, BotExportGroup>; added?: readonly BotExportAddition[] }, options: { fallbackName: string }): Promise<string> {
-  const response = await trackedFetch(`/__hui/bots/${encodeURIComponent(id)}/export`, {
-    method: "POST", headers: { ...CLIENT_HEADERS, ...JSON_HEADERS }, body: JSON.stringify(request), cache: "no-store", signal: AbortSignal.timeout(IMPORT_TIMEOUT_MS),
-  });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => undefined) as { error?: string } | undefined;
-    throw new BotExportError(detail?.error ?? `The export returned HTTP ${response.status}.`, response.status);
-  }
-  const name = downloadName(response.headers.get("content-disposition"), options.fallbackName);
-  const url = URL.createObjectURL(await response.blob());
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = name;
-    link.rel = "noopener";
-    document.body.append(link);
-    link.click();
-    link.remove();
-  } finally {
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  }
-  return name;
 }

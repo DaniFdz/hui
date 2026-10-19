@@ -3,8 +3,8 @@
 import { parseBacklogView, type BacklogStartInput, type BacklogView } from "../../shared/backlog.ts";
 import type { JiraDraft } from "../../shared/jira.ts";
 import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
-import type { SessionView } from "../api/sessions.ts";
-import { fetchJson } from "../api/request.ts";
+import type { SessionView } from "./sessions.ts";
+import { fetchJson } from "./request.ts";
 
 export { backlogItemMarkdown, backlogItemPrompt, parseBacklogView, type BacklogItem, type BacklogJiraState, type BacklogView } from "../../shared/backlog.ts";
 

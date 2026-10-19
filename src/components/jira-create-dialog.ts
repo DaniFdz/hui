@@ -9,21 +9,12 @@
 import { LitElement, html, nothing } from "lit";
 import type { JiraConnection, JiraDraft, JiraProject } from "../../shared/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
-import {
-  applyJiraDraft,
-  createJiraWorkItem,
-  draftJiraWorkItem,
-  loadJiraConnection,
-  jiraParentHint,
-  jiraProjectSearch,
-  loadJiraProjects,
-  mergeJiraProjects,
-  type JiraDraftFields,
-} from "../lib/jira.ts";
+import { applyJiraDraft, jiraParentHint, mergeJiraProjects, type JiraDraftFields } from "../lib/jira.ts";
+import { createJiraWorkItem, draftJiraWorkItem, loadJiraConnection, jiraProjectSearch, loadJiraProjects } from "../api/jira.ts";
 import { ensureModal } from "../lib/modal-dialog.ts";
 import type { SessionView } from "../api/sessions.ts";
 import { taskSuggestionJiraDescription, type TaskSuggestion } from "../lib/task-suggestions.ts";
-import { createBacklogJira, draftBacklogJira, type BacklogItem } from "../lib/backlog.ts";
+import { createBacklogJira, draftBacklogJira, type BacklogItem } from "../api/backlog.ts";
 import { renderPicker } from "../views/settings-picker.ts";
 
 export type JiraCreatedDetail = { key: string; url: string; session?: SessionView; warning?: string; suggestionId?: string; backlogItemId?: string };

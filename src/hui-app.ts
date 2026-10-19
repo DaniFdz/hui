@@ -73,27 +73,13 @@ import {
   type GitCheckoutInfo,
   type WorktreeProgress,
 } from "./api/sessions.ts";
-import { readAttachment, readTranscriptAttachments, validateAttachmentTotal } from "./lib/attachments.ts";
+import { readAttachment, validateAttachmentTotal } from "./lib/attachments.ts";
+import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./views/list-filter.ts";
-import {
-  applyBotsUpdate,
-  archiveBot,
-  deleteBot,
-  botChangePatch,
-  botSettingChange,
-  isNewBotsFrame,
-  createBot,
-  loadBots,
-  restoreBot,
-  subscribeBots,
-  updateBot,
-  upsertBot,
-  withLiveChats,
-  withoutBotSessions,
-  type BotView,
-} from "./lib/bots.ts";
+import { applyBotsUpdate, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, withLiveChats, withoutBotSessions, type BotView } from "./lib/bots.ts";
+import { archiveBot, deleteBot, createBot, loadBots, restoreBot, subscribeBots, updateBot } from "./api/bots.ts";
 import { archivedBotCount, hiddenBotCount, isBotSettingsShortcut, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "./lib/bot-roster.ts";
 import { BotFactsController } from "./lib/bot-facts.ts";
 import { BotToolsController } from "./lib/bot-tools.ts";
@@ -102,19 +88,14 @@ import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBo
 import { renderBotExportDialog, renderBotImportDialog } from "./views/bot-import.ts";
 import { BotImportController } from "./lib/bot-import-controller.ts";
 import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "./views/bot-settings.ts";
-import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./lib/update-store.ts";
+import { checkUpdate, checkUpdateInBackground, installUpdate, loadUpdate } from "./api/update.ts";
 import { availableUpdate, watchUpdateAvailability } from "./lib/update-notice.ts";
 import type { UpdateSnapshot } from "./lib/update-types.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
-import {
-  botMentionSuggestions,
-  completeLocalPath,
-  loadLocalPathSuggestions,
-  type LocalPathQuery,
-  type LocalPathSuggestion,
-} from "./lib/local-paths.ts";
+import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "./lib/local-paths.ts";
+import { loadLocalPathSuggestions } from "./api/local-paths.ts";
 import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer-textarea.ts";
 import {
@@ -164,19 +145,9 @@ import {
   selectedThemeVariant,
 } from "./lib/theme-store.ts";
 import type { ThemePreview } from "./lib/theme-store.ts";
-import {
-  installPiPackage,
-  installPiSkill,
-  loadPiConfig,
-  loadPiResource,
-  removePiPackage,
-  skillPreferencePath,
-  type PiMutationKind,
-  type PiMutationResult,
-  type PiMutationState,
-  type PiSnapshot,
-} from "./lib/pi.ts";
-import { loadWorkingDirectorySuggestions } from "./lib/working-directories.ts";
+import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "./lib/pi.ts";
+import { installPiPackage, installPiSkill, loadPiConfig, loadPiResource, removePiPackage } from "./api/pi.ts";
+import { loadWorkingDirectorySuggestions } from "./api/working-directories.ts";
 import {
   cancelAutomationRun,
   createAutomationTask,
@@ -188,7 +159,7 @@ import {
   type AutomationSnapshot,
   type AutomationTask,
   type AutomationTaskInput,
-} from "./lib/automation.ts";
+} from "./api/automation.ts";
 import {
   loadGatewayHealth,
   loadPower,
@@ -196,14 +167,15 @@ import {
   setLidAwake,
   type GatewayHealth,
   type WorkspaceInspection,
-} from "./lib/control-surfaces.ts";
+} from "./api/control-surfaces.ts";
 import type { PowerStatus } from "../shared/power.ts";
-import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./lib/observability.ts";
+import { downloadDiagnostics, loadObservability, type ObservabilitySnapshot } from "./api/observability.ts";
 import { renderHome, renderNewSession, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, renderSessionsPage, type SessionsPageFilters, type SessionsPageState } from "./views/sessions.ts";
 import type { WorktreeFilter } from "./views/worktrees.ts";
 import "./views/contributions.ts";
-import { loadWorktrees, removeWorktrees, worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
+import { worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "./lib/worktrees.ts";
+import { loadWorktrees, removeWorktrees } from "./api/worktrees.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { renderAutomationSurface } from "./views/automation.ts";
 import { renderKanbanPage } from "./views/kanban.ts";
@@ -212,21 +184,22 @@ import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS, type SessionStage } from "
 import type { BacklogCardAction, SessionCardAction } from "./views/kanban.ts";
 import type { BacklogStartTarget } from "./components/backlog-start-dialog.ts";
 import type { ForkTarget } from "./components/fork-dialog.ts";
-import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./lib/backlog.ts";
-import { loadJiraConnection } from "./lib/jira.ts";
+import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklogItem, setBacklogItemGroup, type BacklogItem, type BacklogJiraState } from "./api/backlog.ts";
+import { loadJiraConnection } from "./api/jira.ts";
 import { VoiceController } from "./lib/voice-controller.ts";
 import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { liveCallPlatform, loadCallsStatus } from "./lib/live-call-platform.ts";
 import { callsReady, type CallsStatus } from "../shared/calls.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
-import { loadWorkers, workerAction, type WorkerView } from "./lib/workers.ts";
+import { loadWorkers, workerAction, type WorkerView } from "./api/workers.ts";
 import { hasOpenWebAwesomePopup } from "./lib/web-awesome.ts";
 import { APP_SHELL_DRAWER_MEDIA, closeDrawerOnEscape, renderMain, renderSidebar, toggleNavigationDrawer, type GroupDropTarget, type GroupMenuAction, type NavId, type SessionCopyAction, type SessionOpenAction, type ShellBotsProps } from "./views/shell.ts";
 import { writeClipboardText } from "./lib/clipboard.ts";
 import { renderSettingsPage, SETTINGS_PAGES, type SettingsPage } from "./views/settings.ts";
 import type { JiraCreatedDetail } from "./components/jira-create-dialog.ts";
-import { clampSuggestionIndex, dismissTaskSuggestion, parseTaskSuggestions, startTaskSuggestion, taskSuggestionPrompt, type TaskSuggestion, type TaskSuggestionStartMode } from "./lib/task-suggestions.ts";
-import { dismissWatcher as dismissWatcherRequest, parseWatchers, readWatcherLog, restartWatcher as restartWatcherRequest, stopWatcher as stopWatcherRequest, type Watcher } from "./lib/watchers.ts";
+import { clampSuggestionIndex, parseTaskSuggestions, taskSuggestionPrompt, type TaskSuggestion, type TaskSuggestionStartMode } from "./lib/task-suggestions.ts";
+import { dismissTaskSuggestion, startTaskSuggestion } from "./api/task-suggestions.ts";
+import { dismissWatcher as dismissWatcherRequest, parseWatchers, readWatcherLog, restartWatcher as restartWatcherRequest, stopWatcher as stopWatcherRequest, type Watcher } from "./api/watchers.ts";
 import {
   isCommandPaletteShortcut,
   renderCommandPalette,

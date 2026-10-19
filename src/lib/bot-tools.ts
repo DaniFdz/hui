@@ -15,7 +15,7 @@ import {
   BOT_ACCESS_ANSWERS,
   type BotAccessRequest, type BotCatalog, type BotCatalogSkill, type BotCatalogTool, type BotSkillRef, type BotToolGroup, type BotView,
 } from "../../shared/bots.ts";
-import { updateBot } from "./bots.ts";
+import { updateBot } from "../api/bots.ts";
 import { answerQuestion } from "../api/sessions.ts";
 import { fetchJson } from "../api/request.ts";
 

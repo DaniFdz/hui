@@ -6,13 +6,12 @@
 import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../../shared/providers.ts";
-import { fetchJson } from "../api/request.ts";
+import { loadProviderQuota, loadProviders, providerRequest } from "../api/providers.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { connectionMethods, connectionName, providerBrand, providerBrands } from "../lib/provider-choices.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
 loadViewAssets(() => import("../styles/providers.css"));
-const API = "/__hui/providers";
 type AccountDrag = { provider: string; id: string; name: string; order: string[]; from: number; to: number; handle: HTMLElement; pointer?: number; y: number; startY: number; moved: boolean };
 type ModelDraft = { models: Set<string>; query: string };
 
@@ -55,7 +54,7 @@ export class HuiProviderSettings extends LitElement {
   async #refresh() {
     const generation = this.#generation;
     try {
-      const next = await fetchJson<ProviderSnapshot>(API, { signal: AbortSignal.timeout(20_000) });
+      const next = await loadProviders();
       if (generation !== this.#generation || !this.isConnected) return;
       this.#snapshot = next;
       this.#error = "";
@@ -78,15 +77,12 @@ export class HuiProviderSettings extends LitElement {
     } catch (error) { if (generation === this.#generation) this.#error = error instanceof Error ? error.message : "Providers could not be loaded."; }
     finally { if (generation === this.#generation && this.isConnected) { this.#schedule(); this.requestUpdate(); } }
   }
-  async #request(path: string, method: string, body?: unknown) {
-    return fetchJson(`${API}/${path}`, { method, ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }), signal: AbortSignal.timeout(25_000) });
-  }
   async #mutate(path: string, method: string, body?: unknown, notice = "") {
     clearTimeout(this.#poll);
     this.#busy = true; this.#error = ""; this.#notice = ""; this.requestUpdate();
     let success = false;
     try {
-      await this.#request(path, method, body);
+      await providerRequest(path, method, body);
       this.#notice = notice;
       await this.#refresh();
       this.#changed();
@@ -114,8 +110,8 @@ export class HuiProviderSettings extends LitElement {
   async #finish(provider: ProviderSummary) {
     // Auth and adding the connection are separate writes. Keep an explicit retry
     // in the modal if selection persistence fails; never announce optimistic success.
-    await this.#request(provider.id, "PUT", { models: provider.selected });
-    this.#snapshot = await fetchJson<ProviderSnapshot>(API, { signal: AbortSignal.timeout(20_000) });
+    await providerRequest(provider.id, "PUT", { models: provider.selected });
+    this.#snapshot = await loadProviders();
     this.#quotas.clear();
     this.#notice = `${connectionName(provider)} added. Choose the models you want to use.`;
     this.#changed(); this.#dismiss();
@@ -131,7 +127,7 @@ export class HuiProviderSettings extends LitElement {
     const generation = this.#generation;
     this.#quotaLoading.add(id); this.requestUpdate();
     try {
-      const quota = await fetchJson<ProviderQuota>(`${API}/${id}/quota`, { signal: AbortSignal.timeout(20_000) });
+      const quota = await loadProviderQuota(id);
       if (generation === this.#generation) { this.#quotas.set(id, quota); await this.#refresh(); }
     } catch {
       if (generation === this.#generation) this.#quotas.set(id, { status: "unavailable", checkedAt: Date.now(), windows: [], message: "Usage could not be retrieved. Try refreshing limits." });
