@@ -7,7 +7,7 @@
  */
 import { html, nothing } from "lit";
 import { callLineSpeaker, callMinutes, type CallRecord, type CallRecordLine } from "../../shared/calls.ts";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import { voiceIcons } from "./bot-voice.ts";
 
 /** "3 min", or seconds for a short one. */

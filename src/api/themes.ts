@@ -1,5 +1,5 @@
 /** Browser client for themes: the list the gateway merges from built-ins and `~/.config/hui/themes/`, one theme's
- * file, and a tweakcn import. Applying a theme is lib/theme-store.ts's job. */
+ * file, and a tweakcn import. Applying a theme is lib/theme/theme-store.ts's job. */
 import type { ShadcnTheme } from "../lib/shadcn-theme.ts";
 import { fetchJson } from "./request.ts";
 

@@ -30,7 +30,7 @@ Verified 2026-09-24 using the real HUI gateway and PI 0.73.1.
 
 ## Automated checks and scope
 
-`npm test -- src/lib/markdown.test.ts`: 11 passed. Full `npm test`: 415 passed.
+`npm test -- src/lib/markdown/markdown.test.ts`: 11 passed. Full `npm test`: 415 passed.
 `npm run typecheck`, `npm run build`, and `git diff --check`: passed.
 
 Unit coverage includes escaped pipes, optional outer pipes, missing/extra cells,

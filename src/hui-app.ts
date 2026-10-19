@@ -96,7 +96,7 @@ import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "./lib/local-paths.ts";
 import { loadLocalPathSuggestions } from "./api/local-paths.ts";
-import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/sidebar-sessions.ts";
+import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
 import {
   EMPTY_QUEUE,
@@ -129,11 +129,11 @@ import {
   streamingAfterEvent,
   streamingForStatus,
   type NoteLevel,
-} from "./lib/session-ui-state.ts";
+} from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
 import { botsEnabled, type Settings } from "./lib/settings.ts";
-import { currentSettings, patchSettings, refreshSettings, settingsWritten } from "./lib/settings-store.ts";
+import { currentSettings, patchSettings, refreshSettings, settingsWritten } from "./lib/settings/settings-store.ts";
 import type { ThemeMode, ThemeVariant } from "./lib/theme.ts";
 import {
   applyAccent,
@@ -143,8 +143,8 @@ import {
   loadThemePreviews,
   selectedThemeId,
   selectedThemeVariant,
-} from "./lib/theme-store.ts";
-import type { ThemePreview } from "./lib/theme-store.ts";
+} from "./lib/theme/theme-store.ts";
+import type { ThemePreview } from "./lib/theme/theme-store.ts";
 import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "./lib/pi.ts";
 import { installPiPackage, installPiSkill, loadPiConfig, loadPiResource, removePiPackage } from "./api/pi.ts";
 import { loadWorkingDirectorySuggestions } from "./api/working-directories.ts";
@@ -188,7 +188,7 @@ import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklog
 import { loadJiraConnection } from "./api/jira.ts";
 import { VoiceController } from "./controllers/voice-controller.ts";
 import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
-import { liveCallPlatform } from "./lib/live-call-platform.ts";
+import { liveCallPlatform } from "./lib/voice/live-call-platform.ts";
 import { loadCallsStatus } from "./api/calls.ts";
 import { callsReady, type CallsStatus } from "../shared/calls.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
@@ -211,19 +211,19 @@ import { renderPiResourceReader, type PiResourceReaderState } from "./views/pi-r
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
 import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
-import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, SESSION_SPLIT_MEDIA, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session-multiplexer.ts";
+import { activeSessionPane, addSessionTab, closeSessionPane, focusSessionPane, isChatPane, moveSessionPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, SESSION_SPLIT_MEDIA, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionLayout, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, closeWorkView, closingLastWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, openWorkView, parseWorkPaneStore, pruneWorkPaneStore, registerWorkViewKind, reorderWorkView,
   retainWorkSessions, serializeWorkPaneStore, sessionWorkPane, setWorkPaneMaximized, setWorkPaneOpen, setWorkPaneWidth, workPaneMaximized, workViewKey, workViewKind, workViewKinds,
   WORK_PANE_CHAT_MIN_WIDTH, WORK_PANE_KEY, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_TOGGLE_SHORTCUT, type WorkPaneStore, type WorkViewRef,
 } from "./lib/work-pane.ts";
-import { PANE_COLUMN_MIN_WIDTH } from "./lib/session-pane-geometry.ts";
+import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
 import { terminalWorkViewKind } from "./lib/work-views/terminal.ts";
 import { browserWorkViewKind } from "./lib/work-views/browser.ts";
 import { filesViewToReveal, filesWorkViewKind, type FilesWorkViewRef } from "./lib/work-views/files.ts";
 import { diffWorkViewKind } from "./lib/work-views/diff.ts";
-import { requestFilesViewReveal } from "./lib/files-view-state.ts";
-import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/file-link-store.ts";
+import { requestFilesViewReveal } from "./lib/files/view-state.ts";
+import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
 import { vscodeWorkViewKind } from "./lib/work-views/vscode.ts";
 import { OPEN_SETTINGS_EVENT, type OpenSettingsDetail } from "./lib/open-settings.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
@@ -233,7 +233,7 @@ import type { WorkPane } from "./components/work-pane.ts";
 import { createTerminal, listTerminals } from "./api/terminals.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
-import { announceTurnEnd } from "./lib/session-turn-end.ts";
+import { announceTurnEnd } from "./lib/session/turn-end.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
 import {
   isRoutablePage,

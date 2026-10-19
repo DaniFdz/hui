@@ -18,7 +18,7 @@ import {
 import { FACE_LEAF_COLOR, faceEars, facePath, faceViewBox } from "../lib/bots/face.ts";
 import { callVoice, GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
 import { voiceLanguageName } from "../../shared/voice.ts";
-import { languageOptions } from "../lib/voice.ts";
+import { languageOptions } from "../lib/voice/voice.ts";
 import { renderPicker } from "./settings-picker.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { THINKING_LABELS } from "../../shared/thinking.ts";

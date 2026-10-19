@@ -8,7 +8,7 @@
 import { html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
 import { HuiElement } from "../lit/hui-element.ts";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import type { QuestionResponse, RuntimeQuestion } from "../api/sessions.ts";
 import type { QuestionnaireQuestion } from "../../server/questionnaires.ts";
 

@@ -5,7 +5,7 @@
  * name and the session menu offers "Open in Jira" for keyboard users.
  */
 import { html, nothing } from "lit";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { BadgeHovercardController } from "./badge-hovercard.ts";
 import { jiraStatusLabel, type SessionJiraIssue } from "../../shared/jira.ts";

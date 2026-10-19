@@ -2,12 +2,12 @@
  * The Files kind of Work view: what the Work pane needs to launch, name and render a Files view. Each launch is a new
  * view (a new id) with its own selection; the tab shows the selected file's name. The `<hui-files-view>` element
  * loads the first time a Files view renders, so neither it nor its editor weighs on the main bundle. Closing the tab
- * forgets the view's remembered selection; a file's unsaved text is kept by its File draft (`lib/file-draft.ts`).
+ * forgets the view's remembered selection; a file's unsaved text is kept by its File draft (`lib/files/draft.ts`).
  * A file reference clicked in the chat reveals its file in the conversation's active Files view, else its first one
  * (`filesViewToReveal`), else a new one.
  */
 import { html } from "lit";
-import { clearFilesViewState, filesViewTitle } from "../files-view-state.ts";
+import { clearFilesViewState, filesViewTitle } from "../files/view-state.ts";
 import { workViewKey, type SessionWorkPane, type WorkViewKind } from "../work-pane.ts";
 import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 

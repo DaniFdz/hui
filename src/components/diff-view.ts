@@ -17,12 +17,12 @@ import { icons } from "../lib/icons.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 import { renderPicker } from "../views/settings-picker.ts";
 import { DIFF_COLLAPSE_LINES, type DiffBranch, type DiffChanges, type DiffComparison, type DiffFile, type DiffInfo } from "../../shared/diff.ts";
-import { mixedLineEndings, parseHunks, patchLineCount, splitRows, type DiffHunk, type DiffLine } from "../lib/diff-hunks.ts";
-import { highlightHunks, type LineHighlights } from "../lib/diff-highlight.ts";
+import { mixedLineEndings, parseHunks, patchLineCount, splitRows, type DiffHunk, type DiffLine } from "../lib/diff/hunks.ts";
+import { highlightHunks, type LineHighlights } from "../lib/diff/highlight.ts";
 import { DiffRequestError, loadDiffChanges, loadDiffFile, loadDiffInfo, type DiffQuery } from "../api/diff.ts";
-import { chosenParent, initialComparison, readDiffViewState, writeDiffViewState, type DiffLayout } from "../lib/diff-view-state.ts";
-import { OPEN_FILE_EVENT, type OpenFileDetail } from "../lib/file-link-store.ts";
-import { onTurnEnd } from "../lib/session-turn-end.ts";
+import { chosenParent, initialComparison, readDiffViewState, writeDiffViewState, type DiffLayout } from "../lib/diff/view-state.ts";
+import { OPEN_FILE_EVENT, type OpenFileDetail } from "../lib/files/file-link-store.ts";
+import { onTurnEnd } from "../lib/session/turn-end.ts";
 
 loadViewAssets(() => import("../styles/diff-view.css"));
 

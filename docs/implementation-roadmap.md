@@ -627,7 +627,7 @@ on approval) and reports a missing `gh` as required. Proof:
 
 Follow-up 2026-09-25: chat messages unfurl up to three GitHub repository, pull
 request and issue previews through `gh api`, and PR badges use the same lookup.
-Proof: `server/github-previews.test.ts`, `src/lib/github-links.test.ts`,
+Proof: `server/github-previews.test.ts`, `src/lib/markdown/github-links.test.ts`,
 `src/lib/github-previews.test.ts`, and `e2e/github-embeds.browser.md`.
 
 Follow-up 2026-09-30: removed the chat's changes card, its `propose_changes`
@@ -639,7 +639,7 @@ dashboard links, with widget graphs drawn by Datadog's graph snapshots, through
 several Datadog orgs: Settings → Integrations → Datadog keeps a list of `pup`
 sessions and sites, and runs `pup auth login` from Settings or a card. Proof:
 `server/datadog.test.ts`, `server/datadog-previews.test.ts`,
-`src/lib/datadog-links.test.ts`, `src/lib/datadog.test.ts`, and
+`src/lib/markdown/datadog-links.test.ts`, `src/lib/datadog.test.ts`, and
 `e2e/datadog-embeds.browser.md`.
 
 ### HUI-15 — Managed browser tool
@@ -660,7 +660,7 @@ clicks and naming each action), and a browser panel beside the chat opens from
 it; both stream from a CDP screencast only while watched. Proof:
 `server/browser/manager.test.ts`, `server/browser-transport.test.ts`,
 `src/lib/browser-view.test.ts`, `src/lib/browser-view-controller.test.ts`,
-`src/views/chat/projection.test.ts`, `src/lib/session-multiplexer.test.ts` and
+`src/views/chat/projection.test.ts`, `src/lib/session/multiplexer.test.ts` and
 the live view section of `e2e/browser-tool.browser.md`.
 
 Follow-up 2026-09-29: the managed browser survives being killed behind the
@@ -831,7 +831,7 @@ requests:
    `--language`). The gateway's broker
    (`server/calls.ts`, `server/routes/calls.ts`) sets each WebRTC call up over
    the ChatGPT login without the browser seeing a token, picking accounts as
-   model turns do. The browser's `LiveCall` (`src/lib/live-call.ts`) carries
+   model turns do. The browser's `LiveCall` (`src/lib/voice/live-call.ts`) carries
    the audio and data channel. OpenDots-style: GPT-Live's one tool asks the bot's
    call helper on its utility model (`server/call-helper.ts`). The helper hands
    real work to the chat as `[call task]` messages, whose replies are spoken
@@ -842,7 +842,7 @@ requests:
    fields out. Proof: `server/call*.test.ts`, `server/calls.test.ts`,
    `server/bot-service.test.ts`, `server/routes/bots.test.ts`, `server/bots.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
-   `src/lib/live-call.test.ts`, `src/lib/voice*.test.ts`, `src/lib/settings.test.ts`,
+   `src/lib/voice/live-call.test.ts`, `src/lib/voice/*.test.ts`, `src/lib/settings.test.ts`,
    `src/lib/bots/bots.test.ts`, `src/views/bots.test.ts`, `src/views/settings-calls.test.ts`,
    `cli/*.test.ts` and a real call run (both calls of the e2e in the pull request).
 6. **Bots on remote workers** (implemented 2026-10-06; the owner's request, SPEC.md
@@ -952,7 +952,7 @@ requests:
    live through `PUT /__hui/settings`, a routine skipped then run, a bot stream
    ended), `src/views/hui-owned-surfaces.test.ts`, `src/views/bots.test.ts`,
    `src/views/settings-automation.test.ts`, `src/lib/bots/bots.test.ts`,
-   `src/lib/live-call.test.ts`, `cli/*.test.ts`, and an isolated gateway driven
+   `src/lib/voice/live-call.test.ts`, `cli/*.test.ts`, and an isolated gateway driven
    in a browser ([`e2e/bots-labs.browser.md`](../e2e/bots-labs.browser.md),
    screens in the pull request).
 10. **Schedules as a CLI, and bots that schedule their own routines**
@@ -1211,7 +1211,7 @@ on load); chat splits and tabs are unchanged. `src/lib/work-pane.ts` is the Work
 view contract that the Files (F) and VS Code (V) views register against. Proof:
 `src/lib/work-pane.test.ts` (state transitions, tolerant loading, retention,
 migration), `src/lib/shortcut-binding.test.ts`, `src/views/panel-selector.test.ts`,
-`src/lib/session-multiplexer.test.ts` (the old format stays readable) and the
+`src/lib/session/multiplexer.test.ts` (the old format stays readable) and the
 Browser-tool journey.
 
 ## Recommended implementation order

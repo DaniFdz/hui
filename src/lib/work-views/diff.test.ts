@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { DIFF_WORK_VIEW_SHORTCUT, diffWorkViewKind, newDiffViewId } from "./diff.ts";
-import { readDiffViewState, writeDiffViewState } from "../diff-view-state.ts";
+import { readDiffViewState, writeDiffViewState } from "../diff/view-state.ts";
 import { defaultWorkViewKey, parseWorkViewRef } from "../work-pane.ts";
 import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 

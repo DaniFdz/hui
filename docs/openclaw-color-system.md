@@ -96,7 +96,7 @@ it follow (`--muted-foreground`, `--accent-muted`, `--accent-2`, `--danger`,
 `--text-strong`, `--chat-text`); roles the theme set itself do not. A color
 written in a syntax only the browser converts (`lab()`, `color()`, names) is
 left as written. A user accent from Appearance is solved per mode against `--bg`
-and `--card` by `src/lib/theme-store.ts`. The native Claw, Rose and Miami
+and `--card` by `src/lib/theme/theme-store.ts`. The native Claw, Rose and Miami
 palettes come from OpenClaw's pinned stylesheets and are not rewritten; a bundled
 theme test runs every `themes/*.json` through the rules.
 

@@ -9,7 +9,7 @@
 import type { BotFaceEars, BotFaceShape } from "../../../shared/bots.ts";
 import type { BotView } from "./bots.ts";
 import { botActivity } from "./roster.ts";
-import type { CallView } from "../live-call.ts";
+import type { CallView } from "../voice/live-call.ts";
 import type { SessionStatus, TranscriptItem } from "../../api/sessions.ts";
 
 /* ── states ───────────────────────────────────────────────────────────── */

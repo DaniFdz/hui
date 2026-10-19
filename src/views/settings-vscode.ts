@@ -7,7 +7,7 @@
  */
 import { LitElement, html, nothing, type PropertyValues } from "lit";
 import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "../lib/settings.ts";
-import { currentSettings } from "../lib/settings-store.ts";
+import { currentSettings } from "../lib/settings/settings-store.ts";
 import { loadVscodeStatus, vscodeAction } from "../lib/vscode-store.ts";
 import {
   formatVscodeBytes, OPENVSCODE_SERVER_LICENSE_URL, VSCODE_SERVER_LICENSE_URL, vscodeProviderSource,

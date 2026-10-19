@@ -5,7 +5,7 @@
  * highlighter weighs on the main bundle.
  */
 import { html } from "lit";
-import { clearDiffViewState } from "../diff-view-state.ts";
+import { clearDiffViewState } from "../diff/view-state.ts";
 import type { WorkViewKind } from "../work-pane.ts";
 import { WORK_SHORTCUTS } from "../work-shortcuts.ts";
 

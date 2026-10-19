@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { LiveCallPlatform, LiveConnectionHandlers } from "../lib/live-call.ts";
+import type { LiveCallPlatform, LiveConnectionHandlers } from "../lib/voice/live-call.ts";
 import { VoiceController } from "./voice-controller.ts";
 
 const settle = async () => { for (let round = 0; round < 5; round++) await new Promise<void>((resolve) => setImmediate(resolve)); };

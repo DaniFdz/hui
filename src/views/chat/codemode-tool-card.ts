@@ -94,7 +94,7 @@ function renderScript(code: string) {
   let pending = highlighted.get(code);
   if (!pending) {
     if (highlighted.size >= 20) highlighted.delete(highlighted.keys().next().value!);
-    pending = Promise.all([import("../../lib/code-languages.ts"), import("../../lib/diff-highlight.ts")])
+    pending = Promise.all([import("../../lib/code-languages.ts"), import("../../lib/diff/highlight.ts")])
       .then(async ([languages, { highlightBlock }]) => {
         const parser = await languages.loadLanguageParser("javascript");
         if (!parser) return code;

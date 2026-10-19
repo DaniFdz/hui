@@ -4,7 +4,7 @@
  * through src/api/vscode.ts; HUI's colors for it come from vscode-theme.ts. The gateway runs and guards the server
  * (server/vscode.ts).
  */
-import { refreshSettings } from "./settings-store.ts";
+import { refreshSettings } from "./settings/settings-store.ts";
 import { fetchVscodeStatus, postVscodeAction, postVscodeConnect } from "../api/vscode.ts";
 import type { VscodeAction, VscodeConnection, VscodeStatus, VscodeTheme } from "../../shared/vscode.ts";
 

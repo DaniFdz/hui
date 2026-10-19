@@ -12,7 +12,7 @@ import { icons } from "../lib/icons.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { connectVscode, loadVscodeStatus, onVscodeStatus, vscodeAction } from "../lib/vscode-store.ts";
 import { VscodeConnectError } from "../api/vscode.ts";
-import { readVscodeTheme } from "../lib/vscode-theme.ts";
+import { readVscodeTheme } from "../lib/theme/vscode-theme.ts";
 import {
   formatVscodeBytes, MICROSOFT_PRIVACY_URL, OPENVSCODE_SERVER_LICENSE_URL, OPENVSCODE_SERVER_URL, VSCODE_DOWNLOAD_URL, VSCODE_SERVER_LICENSE_URL,
   type VscodeConnection, type VscodeStatus,

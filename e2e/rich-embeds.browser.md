@@ -45,7 +45,7 @@ stored in the repository.
 ## Automated coverage
 
 - Markdown recognition, strict allowlist behavior and escaping:
-  `src/lib/markdown.test.ts`.
+  `src/lib/markdown/markdown.test.ts`.
 - Agent-visible presentation guidance through the real PI SDK:
   `server/runtimes/pi-sdk.test.ts`.
 - Production dependency audit: `npm audit --omit=dev` reported zero

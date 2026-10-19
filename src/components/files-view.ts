@@ -18,11 +18,11 @@ import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { isMarkdownPath, type FileEntry, type FileRead, type FilesInfo, type FilesSearch } from "../../shared/files.ts";
 import { editFileText, editorText, type FileTextChange } from "../lib/editable-text.ts";
-import { draftKey, draftStatus, existingDraft, forgetDraft, hasUnsavedDrafts, openDraft, releaseDraft, type DraftFile, type FileDraft } from "../lib/file-draft.ts";
+import { draftKey, draftStatus, existingDraft, forgetDraft, hasUnsavedDrafts, openDraft, releaseDraft, type DraftFile, type FileDraft } from "../lib/files/draft.ts";
 import {
   createEntry,
   deleteEntry,
@@ -36,9 +36,9 @@ import {
   searchFiles,
   uploadFile,
 } from "../api/files.ts";
-import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesViewState, type FilesViewReveal, type MarkdownDisplayMode } from "../lib/files-view-state.ts";
-import { onTurnEnd } from "../lib/session-turn-end.ts";
-import type { FileEditorHandle } from "../lib/file-editor.ts";
+import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesViewState, type FilesViewReveal, type MarkdownDisplayMode } from "../lib/files/view-state.ts";
+import { onTurnEnd } from "../lib/session/turn-end.ts";
+import type { FileEditorHandle } from "../lib/files/editor.ts";
 
 loadViewAssets(() => import("../styles/files-view.css"));
 
@@ -95,9 +95,9 @@ function guardUnload(): void {
   });
 }
 
-let loadEditor: Promise<typeof import("../lib/file-editor.ts")> | undefined;
+let loadEditor: Promise<typeof import("../lib/files/editor.ts")> | undefined;
 function editorModule() {
-  loadEditor ??= import("../lib/file-editor.ts").catch((error: unknown) => { loadEditor = undefined; throw error; });
+  loadEditor ??= import("../lib/files/editor.ts").catch((error: unknown) => { loadEditor = undefined; throw error; });
   return loadEditor;
 }
 
@@ -486,7 +486,7 @@ export class HuiFilesView extends HuiElement {
     this.draft = draft;
     this.draftKeyValue = key;
     draft.listeners.add(this.draftListener);
-    let module: typeof import("../lib/file-editor.ts");
+    let module: typeof import("../lib/files/editor.ts");
     try {
       module = await editorModule();
     } catch (error) {

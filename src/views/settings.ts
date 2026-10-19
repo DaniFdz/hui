@@ -9,7 +9,7 @@ import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearan
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme.ts";
 import { botsEnabled, QUESTION_TIMEOUTS, type Settings } from "../lib/settings.ts";
 import type { PowerState, PowerStatus } from "../../shared/power.ts";
-import type { ThemePreview } from "../lib/theme-store.ts";
+import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/shadcn-theme.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import type { GatewayHealth, WorkspaceInspection } from "../api/control-surfaces.ts";

@@ -142,13 +142,13 @@ test("page handlers report uncaught errors and rejections, skipping noise", asyn
   dispatch("error", { message: "Script error.", filename: "" });
   dispatch("error", { message: "ResizeObserver loop completed with undelivered notifications." });
   const rejected = new Error("save failed");
-  rejected.stack = "Error: save failed\n    at save (http://localhost:5173/src/lib/settings-store.ts:80:11)";
+  rejected.stack = "Error: save failed\n    at save (http://localhost:5173/src/lib/settings/settings-store.ts:80:11)";
   dispatch("unhandledrejection", { reason: rejected });
   dispatch("unhandledrejection", { reason: new DOMException("The user aborted a request.", "AbortError") });
   await clock.advance(2_000);
   assert.deepEqual(batches[0]?.reports.map(({ kind, message, location }) => ({ kind, message, location })), [
     { kind: "uncaught_error", message: "TypeError: x is not a function", location: "http://localhost:5173/src/hui-app.ts:10:5" },
-    { kind: "unhandled_rejection", message: "Error: save failed", location: "http://localhost:5173/src/lib/settings-store.ts:80:11" },
+    { kind: "unhandled_rejection", message: "Error: save failed", location: "http://localhost:5173/src/lib/settings/settings-store.ts:80:11" },
   ]);
 });
 

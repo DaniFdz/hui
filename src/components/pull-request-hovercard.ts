@@ -9,7 +9,7 @@
  * paths. Touch pointers keep the native tap-to-open behavior only.
  */
 import { html, nothing } from "lit";
-import { renderMarkdown } from "../lib/markdown.ts";
+import { renderMarkdown } from "../lib/markdown/markdown.ts";
 import { icons } from "./openclaw/icons.ts";
 import { BadgeHovercardController } from "./badge-hovercard.ts";
 import {

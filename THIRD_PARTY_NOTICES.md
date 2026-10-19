@@ -86,11 +86,11 @@ the same commit: its vocabulary
 (`CONTEXT.md`: Files, Files view, File draft, Markdown display mode, Files
 navigator); the File draft's serialized saves, conflict and retained-draft
 rules and its localStorage backup (`src/file-draft.ts`,
-`src/client/file-editor.ts` → `src/lib/file-draft.ts`); the separator-preserving
+`src/client/file-editor.ts` → `src/lib/files/draft.ts`); the separator-preserving
 editor text helpers, copied with their tests (`src/editable-text.ts` →
 `src/lib/editable-text.ts`); the CodeMirror extension set, highlight mapping
 and language loading (`src/client/file-editor.ts`,
-`src/client/editor-language.ts` → `src/lib/file-editor.ts`, with the language
+`src/client/editor-language.ts` → `src/lib/files/editor.ts`, with the language
 loading now in `src/lib/code-languages.ts`, which the Diff view shares); and the read,
 save, upload and delete rules of `src/server/editable-file.ts` and
 `src/server/files.ts` (`server/files.ts`). HUI reimplements the view in Lit,

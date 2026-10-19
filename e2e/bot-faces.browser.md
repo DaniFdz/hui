@@ -81,7 +81,7 @@ the old dialog.
 That run also checked the face on a call, through a VoiceStudio fixture HUI no
 longer has. On GPT-Live calls the face listens with the microphone's level and
 speaks with the bot's audio: `src/lib/bots/face.test.ts`,
-`src/lib/voice-controller.test.ts` and `src/lib/live-call.test.ts` check it, as
+`src/lib/voice-controller.test.ts` and `src/lib/voice/live-call.test.ts` check it, as
 did the real calls of the calls pull request.
 
 ## More shapes and ears (2026-10-08, `f2a2753`, clean checkout; doctor passed before and after)

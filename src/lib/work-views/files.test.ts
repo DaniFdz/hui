@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { filesViewToReveal, filesWorkViewKind, newFilesViewId } from "./files.ts";
-import { readFilesViewState, writeFilesViewState } from "../files-view-state.ts";
+import { readFilesViewState, writeFilesViewState } from "../files/view-state.ts";
 import { defaultWorkViewKey } from "../work-pane.ts";
 
 test("each Files launch is a new view keyed by its id", async () => {
