@@ -463,7 +463,7 @@ test("a listener that goes quiet: its bot hears it once from HUI, outside the co
   await waitFor(() => notices().length === 4, "the notice once the trigger is on again");
   assert.match(notices()[3]!.text, / for 10 min /u);
   await f.service.stop();
-  assert.equal(notices().length, 4, "none before the first report");
+  assert.equal(notices().length, 4, "nothing more: once per silence");
 });
 
 test("a listener's filter: a field it reports, PR links, and events it marks as from bots or outsiders only when allowed; a catch-up goes as one delivery", async (t) => {

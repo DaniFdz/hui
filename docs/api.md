@@ -2086,13 +2086,14 @@ nothing for five minutes wakes its bot once with HUI's own notice, `[trigger:
 <name> · its listener went quiet]`, a blank line and "From HUI, not the
 listener: nothing has reported to this trigger for N min (the last report came
 at <time>). Until its listener reports again, what it watches doesn't reach you.
-HUI says this once per silence." (no prompt, no listener line). It goes like a
-test, outside the cooldown and the cap (neither moves), and records its run like
-any delivery. Its next call ends the silence. While HUI refuses the listener's
-reports (the trigger off, the bot archived, bots off) the notice waits, and goes
-within five minutes of HUI taking them again if the listener is still quiet.
-Time the machine slept doesn't count: a check that comes due a minute or more
-late waits five minutes from then.
+HUI says this once per silence." (without the trigger's prompt or the line on
+where a listener's events come from). It goes like a test, outside the cooldown
+and the cap (neither moves), and records its run like any delivery. Its next
+call ends the silence. While HUI refuses the listener's reports (the trigger
+off, the bot archived, bots off) the notice waits, and goes within five minutes
+of HUI taking them again if the listener is still quiet. Time the machine slept
+doesn't count: a check that comes due a minute or more late waits five minutes
+from then.
 
 **Delivery.** An event that passes an enabled trigger reaches the bot's chat as
 `[trigger: <name> · <summary>] <prompt>` (just the marker without a prompt), a
