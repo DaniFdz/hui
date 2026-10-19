@@ -15,6 +15,9 @@
  * - While something is off, `request_access` asks the operator for it through
  *   HUI's question flow: Allow turns it back on from the run's next request.
  *
+ * `createDurableBots` gathers the bots' Durable parts into the one hook the
+ * Durable core reaches them through (`DurableBots`, `durable-host.ts`).
+ *
  * Tools are the boundary, nothing more: a bot with bash or read reaches what
  * the user's account can, the files of turned-off skills included. Isolation
  * is a worker in a container.
@@ -26,9 +29,12 @@ import { defineTool, section, type ConversationId, type PromptSection, type Tool
 import type { Skill } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { BOT_ACCESS_ANSWERS, botTurnOrigin, type BotAccess, type BotSkillRef, type BotToolGroup } from "../../shared/bots.ts";
+import { botSkillsDir } from "../bot-skills.ts";
 import { bundledSkills } from "../bundled-skills.ts";
-import { BotDoc, conversationBotState, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL } from "./durable-bots.ts";
-import { ROUTINES_TOOL } from "./durable-bot-routines.ts";
+import { recordDiagnosticEvent } from "../observability.ts";
+import { BOT_TOOL_CONTRIBUTIONS, BotDoc, conversationBotState, huiBotsExtensions, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, type BotSoulHost, type BotState } from "./durable-bots.ts";
+import { BOT_ROUTINES_CONTRIBUTION, botRoutinesTool, ROUTINES_TOOL } from "./durable-bot-routines.ts";
+import { durableContext, modelCallable, type DurableBots, type DurableHost } from "./durable-host.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-bot-triggers.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import { skillBlock, type BotChat, type OfferedSkill, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";
@@ -473,4 +479,65 @@ async function skillFile(skill: Pick<Skill, "name" | "baseDir">, path: string): 
   const data = await readFile(target);
   if (data.includes(0)) return { error: `${path} is not a text file.` };
   return { text: data.toString("utf8") };
+}
+
+export type DurableBotsDeps = {
+  /** The `bots` section of a bot's chat, or with no bot of a session's (the bots it may tag); the gateway answers, a
+   * worker's host asks the gateway. */
+  section?(botId: string | undefined, conversationId: ConversationId): Promise<string | undefined>;
+  /** Where bots' SOUL.md files are on this host, for the `soul` section and a bot's own skills; the gateway's are each
+   * bot's home folder in HUI's configuration, and a host without one leaves the section out. */
+  souls?: BotSoulHost | undefined;
+  /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests. */
+  recorded?(botId: string, access: BotAccess): Promise<void>;
+};
+
+/** The bots `host` runs (`DurableHost.configureDurableBots`): `message_bot`, `write_soul`, `set_profile`,
+ * `request_access`, `load_skill` and `routines`, their sections and what a bot's chat may use. */
+export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): DurableBots {
+  return {
+    extensions(invoke) {
+      const access = botAccessParts({
+        chat: (conversationId) => host.chatFor(conversationId),
+        whenChat: (conversationId, signal) => host.whenChat(conversationId, signal),
+        skills: async (cwd, conversationId) => (await host.prompt.loader(cwd, conversationId === undefined ? [] : await host.skillDirsFor(conversationId))).getSkills().skills,
+        agentDir: host.agentDir,
+        gatewayOnly: host.gatewayOnlyTools,
+        recorded: async (botId, lists) => { await deps.recorded?.(botId, lists); },
+        report: (step, error) => recordDiagnosticEvent({
+          area: "runtime", level: "warning", action: step === "roster" ? "bot_access_mirror_failed" : "bot_access_offer_failed",
+          summary: step === "roster"
+            ? "A bot's chat turned tools back on that HUI's roster does not show yet"
+            : "A bot's chat turned tools back on, but its tool offer was not refreshed",
+          detail: error instanceof Error ? error.message : String(error),
+        }),
+      });
+      return huiBotsExtensions({
+        chat: (conversationId) => host.chatFor(conversationId),
+        invoke, section: async (botId, conversationId) => deps.section?.(botId, conversationId), souls: () => deps.souls,
+        tools: [...access.tools, botRoutinesTool({ invoke })], sections: access.sections,
+      });
+    },
+    state: (reader, conversationId) => conversationBotState(reader, conversationId, durableContext),
+    mayCall: (state: BotState, action) => botMayCall(state, action),
+    skillsDir(state) {
+      const home = deps.souls?.home(state.bot);
+      return home ? botSkillsDir(home) : undefined;
+    },
+    skills: <T extends { readonly name: string; readonly filePath: string }>(skills: readonly T[], state: BotState) => botSkills(skills, state.disabledSkills),
+    planOffer(offer, state: BotState, context) {
+      const on = botSkills(context.skills, state.disabledSkills).length;
+      const plan = planBotTools(offer, state, { memory: context.memory, skillsOn: on, skillsOff: context.skills.length - on });
+      return { offer: plan.listable.map(({ tool, origin }) => describeTool(tool, origin)), removed: plan.removed };
+    },
+    promptContributions: { ...BOT_TOOL_CONTRIBUTIONS, ...BOT_ACCESS_CONTRIBUTIONS, [ROUTINES_TOOL]: BOT_ROUTINES_CONTRIBUTION },
+    skillsPrompt: (skills, selectedTools) => selectedTools.includes(LOAD_SKILL_TOOL) ? botSkillsPrompt(skills) : undefined,
+  };
+}
+
+/** The tools every bot's chat on `host` has before extensions that the operator can turn off: what a chat that isn't
+ * running there is checked against. Never the ones that act on another machine (`gatewayOnlyTools`). */
+export async function builtinBotOffer(host: DurableHost): Promise<OfferedTool[]> {
+  const codemode = (await host.settings()).codemode.enabled ? modelCallable(host.codemode) : [];
+  return builtinOffer(host.codingTools, host.huiTools.filter((tool) => !host.gatewayOnlyTools.includes(tool.name)), host.botTools, codemode);
 }

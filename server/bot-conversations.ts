@@ -16,7 +16,7 @@ import type { BotMemory } from "./bot-memory.ts";
 import type { BotConversations, BotStoredMessage } from "./bot-service.ts";
 import { BotInputError, BotNotFoundError } from "./bots.ts";
 import { BotDoc, conversationBotState } from "./runtimes/durable-bots.ts";
-import { BOT_ALWAYS_ON, offeredSkill } from "./runtimes/durable-bot-access.ts";
+import { BOT_ALWAYS_ON, builtinBotOffer, offeredSkill } from "./runtimes/durable-bot-access.ts";
 import { ExtensionMessageEntry, isCustomInput } from "./runtimes/durable-extensions.ts";
 import { durableContext, type DurableHost } from "./runtimes/durable-host.ts";
 import { defaultThinking, durableConversationId, durableReference, initialModel, modelRef, textOf } from "./runtimes/durable.ts";
@@ -132,7 +132,7 @@ export function durableBotConversations(host: DurableHost, memory: BotMemory, op
       const own = id === undefined ? [] : await host.skillDirsFor(id);
       const skills = chat ? await chat.availableSkills() : (await host.prompt.loader(cwd, own)).getSkills().skills;
       return {
-        tools: chat ? [...chat.botOffer()] : await host.builtinBotOffer(),
+        tools: chat ? [...chat.botOffer()] : await builtinBotOffer(host),
         skills: skills.map((skill) => own.some((dir) => skill.filePath.startsWith(`${dir}/`)) ? { ...offeredSkill(skill), source: BOT_OWN_SKILLS_SOURCE } : offeredSkill(skill)),
         alwaysOn: [...BOT_ALWAYS_ON],
         live: Boolean(chat),

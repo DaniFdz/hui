@@ -81,6 +81,7 @@ import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
 import { existingDirectory, resolveWorkingDirectory } from "./working-directories.ts";
 import { diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
+import { createDurableBots } from "./runtimes/durable-bot-access.ts";
 import { suggestWorktreeName } from "./model-routing.ts";
 import { runPiUtilityPrompt } from "./runtimes/pi.ts";
 import type { SessionJiraIssue } from "../shared/jira.ts";
@@ -347,20 +348,22 @@ const botTemplateRoutes = createBotTemplateRoutes({
 // worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
 // SOUL.md (or has its first conversation) in its `soul` section, from its home folder in HUI's configuration; a worker's
 // host reads the home folders it keeps itself.
-durableHost().botSection = (botId) => bots.section(botId);
+durableHost().configureDurableBots(createDurableBots(durableHost(), {
+  section: (botId) => bots.section(botId),
+  souls: {
+    home: (botId) => botHome(botId),
+    operator: async () => soulOperatorName((await readHuiSettings()).profileName),
+    // From the last registry read: a bot still called "New Bot" asks for a name first.
+    name: (botId) => bots.identity(botId)?.name,
+  },
+  // A bot's chat that turns tools back on (the operator allowed a request there) updates the roster's copy of its lists.
+  recorded: (botId, access) => bots.accessRecorded(botId, access),
+}));
 workers.serve("bot.section", async (workerId, params) => {
   const botId = typeof params["botId"] === "string" ? params["botId"] : undefined;
   const section = await bots.workerSection(workerId, botId);
   return { section: section ?? null, name: botId === undefined ? null : bots.identity(botId)?.name ?? null };
 });
-durableHost().botSouls = {
-  home: (botId) => botHome(botId),
-  operator: async () => soulOperatorName((await readHuiSettings()).profileName),
-  // From the last registry read: a bot still called "New Bot" asks for a name first.
-  name: (botId) => bots.identity(botId)?.name,
-};
-// A bot's chat that turns tools back on (the operator allowed a request there) updates the roster's copy of its lists.
-durableHost().botAccessRecorded = (botId, access) => bots.accessRecorded(botId, access);
 /** The bot list every Bots screen shares, recomputed while one listens, like the session list. */
 const botList = createSessionListHub<BotView>(async () => [{ label: "bots", sessions: await bots.list({ archived: "all" }) }]);
 const subagents = new SubagentService(liveSessions);

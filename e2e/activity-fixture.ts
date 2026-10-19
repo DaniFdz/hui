@@ -98,6 +98,7 @@ function entries(model: string, [start, minutes, first]: Block) {
 }
 
 const host = new DurableHost({ dir: join(CONFIG_DIR, "durable"), agentDir, resume: false, lookupCaller: async () => undefined });
+host.configureDurableBots(null);
 const harness = await host.open();
 const created = new Date(at(0, 8)).toISOString();
 const sessions: Record<string, unknown>[] = [];

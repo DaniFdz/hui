@@ -22,6 +22,7 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
+const { createDurableBots } = await import("./durable-bot-access.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;
@@ -80,6 +81,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
       invokeTool: options.invokeTool ?? (async (invocation) => { invocations.push(invocation); return { ok: true }; }),
       lookupCaller: async () => undefined,
     });
+    created.configureDurableBots(createDurableBots(created, {}));
     hosts.push(created);
     return created;
   };
@@ -180,6 +182,14 @@ test("resume references round-trip Durable's integer conversation IDs only", () 
   for (const reference of [undefined, "/home/me/.pi/session.jsonl", "durable:", "durable:4x", "durable:-1"]) {
     assert.equal(durableConversationId(reference), undefined, String(reference));
   }
+});
+
+test("a host whose bots were never configured refuses to open its store, so no conversation runs without bot policy", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-durable-unconfigured-"));
+  const host = new DurableHost({ dir: join(dir, "store"), agentDir: dir, resume: false });
+  await assert.rejects(host.open(), /before its bots were configured/u);
+  assert.equal(existsSync(join(dir, "store")), false);
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("the live view streams an answer Durable sends whole, exactly once", { timeout: 45_000 }, async (t) => {
@@ -374,6 +384,7 @@ test("a gateway killed mid-tool resumes the run without replaying bash", { timeo
     const { normalizeSettings } = await import(${JSON.stringify(settingsUrl)});
     const host = new DurableHost({ dir: ${JSON.stringify(f.store)}, agentDir: ${JSON.stringify(f.agentDir)},
       readSettings: async () => normalizeSettings(undefined), invokeTool: async () => ({}), lookupCaller: async () => undefined });
+    host.configureDurableBots(null);
     const session = await startDurable({ cwd: ${JSON.stringify(f.cwd)}, huiSessionId: "crash" }, host);
     process.stdout.write("REF " + session.sessionFile + "\\n");
     await session.prompt("E2E_COMMAND_RUNNING hold the command", undefined, { requestId: "routine-crash" });
@@ -1260,6 +1271,7 @@ test("interrupted runs wait for their extensions even when another session's sta
     const { normalizeSettings } = await import(${JSON.stringify(settingsUrl)});
     const host = new DurableHost({ dir: ${JSON.stringify(f.store)}, agentDir: ${JSON.stringify(f.agentDir)},
       readSettings: async () => normalizeSettings(undefined), invokeTool: async () => ({}), lookupCaller: async () => undefined });
+    host.configureDurableBots(null);
     const session = await startDurable({ cwd: ${JSON.stringify(f.cwd)}, huiSessionId: "crash-extensions" }, host);
     process.stdout.write("REF " + session.sessionFile + "\\n");
     await session.prompt("E2E_COMMAND_RUNNING hold the command");

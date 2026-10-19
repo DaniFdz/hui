@@ -1655,7 +1655,7 @@ and, when the operator asks for a change, rewrites it with `write_soul` (the
 whole file, at most 20,000 characters, only in the operator's own turns) and
 says what it changed; then the file. It is read
 from disk on every request of the host that runs the conversation, through
-the resolver that host sets (`DurableHost.botSouls`: the gateway's resolves
+the resolver that host configures (`createDurableBots`' `souls`: the gateway's resolves
 each bot's home folder; a host without one leaves the section out), so it is
 byte-identical while the file is. Past 20,000 characters it is cut, with a
 note giving the file's length. Bots never use Durable `instructions`.
@@ -1791,7 +1791,7 @@ optional fields of the document's version 1: absent means nothing is off, so a
 document from before them needs no upgrade, and an older HUI reads the ones this
 one writes and ignores the lists (a rollback keeps every bot's chat). `bots.json`
 keeps a copy in each record for the roster and the bots stream, which reads no
-Durable state; it follows grants made in the chat (`DurableHost.botAccessRecorded`;
+Durable state; it follows grants made in the chat (`createDurableBots`' `recorded`;
 a worker's host reports them, [below](#bots-on-a-worker)), is repaired by every
 catalog read, and is checked against each chat's document: this gateway's bots at
 its start, a worker's bots at each connection to it (diagnostic

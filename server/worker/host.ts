@@ -136,25 +136,20 @@ export class WorkerHost {
       // The gateway's bridge refuses these for every session here; a bot's chat isn't offered them.
       gatewayOnlyTools: GATEWAY_ONLY_TOOLS,
     });
-    // A bot's chat here lists the other bots as the gateway that owns them says, and a session the bots it may tag.
-    this.#durable.botSection = (botId, conversationId) => this.#botSection(botId, conversationId);
     this.#bots = hostBots({
       durable: this.#durable, home: paths.home, botsDir: join(paths.dataDir, "bots"),
       // A bot without a model of its own starts on Settings' primary model, as on the gateway.
       primaryModel: async () => (await readHuiSettings()).models.primary || undefined,
-    });
-    // Its SOUL.md (or its first conversation) from its home here, and write_soul writes it there. The operator's name
-    // comes from the Settings the gateway mirrors here, as the gateway reads its own.
-    this.#durable.botSouls = {
-      home: (botId) => this.#bots.home(botId),
+      // A bot's chat here lists the other bots as the gateway that owns them says, and a session the bots it may tag.
+      section: (botId, conversationId) => this.#botSection(botId, conversationId),
+      // The operator's name comes from the Settings the gateway mirrors here, as the gateway reads its own.
       operator: async () => operatorName((await readHuiSettings()).profileName),
-      name: (botId) => this.#bots.nameOf(botId),
-    };
-    // The operator allowed a bot's request here: its lists are already in its document, which this host enforces; every
-    // connected gateway hears of them, and the one whose bot it is updates its roster.
-    this.#durable.botAccessRecorded = async (botId, access) => {
-      for (const peer of [...this.#peers]) if (!peer.closed) peer.send({ t: BOT_ACCESS_FRAME, botId, access });
-    };
+      // The operator allowed a bot's request here: its lists are already in its document, which this host enforces;
+      // every connected gateway hears of them, and the one whose bot it is updates its roster.
+      recorded: async (botId, access) => {
+        for (const peer of [...this.#peers]) if (!peer.closed) peer.send({ t: BOT_ACCESS_FRAME, botId, access });
+      },
+    });
   }
 
   info(): HostInfo {

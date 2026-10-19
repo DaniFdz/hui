@@ -13,6 +13,7 @@ import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
 import type { BotMemoryStatus } from "../../shared/bots.ts";
 import type { BotMemory } from "../bot-memory.ts";
 import type { DurableSession } from "./durable.ts";
+import type { DurableBotsDeps } from "./durable-bot-access.ts";
 import type { TranscriptEntry } from "./types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 
@@ -22,6 +23,7 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext } = await import("./durable-host.ts");
+const { createDurableBots } = await import("./durable-bot-access.ts");
 const { startDurable, durableConversationId, durableReference } = await import("./durable.ts");
 const { BotDoc, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, firstConversationSection, readSoulFile, soulSection, soulToolText } = await import("./durable-bots.ts");
 const { OptChatDoc } = await import("./durable-optchat.ts");
@@ -95,13 +97,16 @@ async function fixture(t: TestContext, options: { bots?: { on: boolean } } = {})
     },
     lookupCaller: async () => undefined,
   });
-  // As the gateway answers: a session's list only while bots are on.
-  host.botSection = async (botId) => botId ? `Roster for ${botId}: @bob (Bob).` : options.bots?.on ? "Bots you can tag: @bob (Bob)." : undefined;
   const homes = join(dir, "homes");
-  host.botSouls = { home: (botId) => join(homes, botId), operator: async () => "Alex" };
+  const bots: DurableBotsDeps = {
+    // As the gateway answers: a session's list only while bots are on.
+    section: async (botId) => botId ? `Roster for ${botId}: @bob (Bob).` : options.bots?.on ? "Bots you can tag: @bob (Bob)." : undefined,
+    souls: { home: (botId) => join(homes, botId), operator: async () => "Alex" },
+  };
+  host.configureDurableBots(createDurableBots(host, bots));
   hosts.push(host);
   const control = (path: string, init?: RequestInit) => fetch(`${baseUrl}/control/${path}`, init);
-  return { dir, cwd, log, host, invocations, homes, control };
+  return { dir, cwd, log, host, bots, invocations, homes, control };
 }
 
 type ProviderRequest = { model?: string; system?: unknown; tools?: Array<{ name?: string }>; messages?: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }> };
@@ -387,7 +392,7 @@ test("SOUL.md is read trimmed, as none when missing or blank, and at most 256 Ki
 
 test("a host with no SOUL.md resolver (a worker, until it has one) leaves the soul section out", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
-  f.host.botSouls = undefined;
+  f.bots.souls = undefined;
   const reference = await durableBotConversations(f.host, fakeMemory()).create({ botId: "bot-ada", cwd: f.cwd, memory: { name: "Ada" } });
   const session = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "ada-chat" }, f.host);
   await session.prompt("plain turn");
@@ -442,10 +447,10 @@ test("write_soul replaces a bot's whole SOUL.md atomically in its home folder, w
   assert.equal(await readFile(file, "utf8"), "# Who I am\nAda, thorough.\n", "a refusal changes nothing");
   const notABot = { conversationId: 7 as unknown as ConversationId, snapshot: async () => undefined } as unknown as ToolExecutionApi;
   assert.match(JSON.stringify((await tool.execute({ soul: "x" } as never, notABot, BACKGROUND_CONTEXT)).output), /only available in a bot's chat/u);
-  const souls = f.host.botSouls;
-  f.host.botSouls = undefined;
+  const souls = f.bots.souls;
+  f.bots.souls = undefined;
   assert.match(text(await run("x")), /This host cannot keep a SOUL\.md yet/u);
-  f.host.botSouls = souls;
+  f.bots.souls = souls;
   assert.equal(soulToolText("  a\r\nb "), "a\nb");
 
   // In a turn: the model calls it, and the very next request carries the new soul.

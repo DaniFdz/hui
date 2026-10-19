@@ -93,6 +93,7 @@ test("a Durable conversation's stored messages become its blocks", async (t) => 
   const agentDir = join(dir, "agent");
   await mkdir(agentDir);
   const host = new DurableHost({ dir: join(dir, "store"), agentDir, resume: false, lookupCaller: async () => undefined });
+  host.configureDurableBots(null);
   t.onTestFinished(async () => { await host.close(); await rm(dir, { recursive: true, force: true }); });
   const harness = await host.open();
   // The day before is history the scan must stop at: newest entries come first.

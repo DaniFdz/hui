@@ -335,10 +335,12 @@ async function fixture(t: TestContext, hostOptions: { gatewayOnlyTools?: readonl
     ...hostOptions,
   };
   const host = new DurableHost(options);
+  host.configureDurableBots(access.createDurableBots(host, {}));
   hosts.push(host);
   /** The gateway started again on the same store, after `host` closed. */
   const reopen = () => {
     const next = new DurableHost(options);
+    next.configureDurableBots(access.createDurableBots(next, {}));
     hosts.push(next);
     durableBotConversations(next, fakeMemory());
     return next;
@@ -587,9 +589,9 @@ test("request_access refuses unknown names with the ones that are off, and asks 
 test("on a worker's host a bot's chat is never offered the tools that stay on the gateway's machine: not in its requests, its offer or what it can ask for; other sessions there keep them", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, { gatewayOnlyTools: GATEWAY_ONLY_TOOLS });
   const gatewayOnly = (tools: readonly (string | undefined)[]) => tools.filter((name) => name !== undefined && GATEWAY_ONLY_TOOLS.includes(name));
-  assert.deepEqual(gatewayOnly(names((await f.host.builtinBotOffer()))), [], "what a chat that isn't running yet is checked against");
+  assert.deepEqual(gatewayOnly(names((await access.builtinBotOffer(f.host)))), [], "what a chat that isn't running yet is checked against");
   // A secret's card is answered on the gateway and its file written here (the host's secret-request), so it stays.
-  assert.ok(names((await f.host.builtinBotOffer())).includes("secret_request"));
+  assert.ok(names((await access.builtinBotOffer(f.host))).includes("secret_request"));
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   assert.deepEqual(gatewayOnly(names((await plain.inspect()).tools)).sort(), [...GATEWAY_ONLY_TOOLS].sort(), "an ordinary session keeps them, and the gateway's bridge refuses their calls");
   // bash off, and terminal in its list too, as a list written before its host left terminal out could hold it.

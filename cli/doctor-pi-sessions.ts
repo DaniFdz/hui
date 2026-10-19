@@ -109,6 +109,7 @@ export const piSessionsCheck: DoctorCheck = {
     const { resolvePiAgentDir } = await import("../server/pi-paths.ts");
     // Never resumes a run: the store is only written in commits. Opening fails while a gateway owns it.
     const host = new DurableHost({ dir: DURABLE_DIR, agentDir: resolvePiAgentDir(), resume: false });
+    host.configureDurableBots(null);
     const items: DoctorItem[] = [];
     let backup: string;
     try {

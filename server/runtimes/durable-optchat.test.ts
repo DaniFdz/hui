@@ -23,6 +23,7 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, modelCallable } = await import("./durable-host.ts");
+const { createDurableBots } = await import("./durable-bot-access.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {
   configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry,
@@ -168,6 +169,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
       dir: store, agentDir, invokeTool: async () => ({ ok: true }), lookupCaller: async () => undefined,
       ...(tuning ? { optchat: tuning } : {}),
     });
+    created.configureDurableBots(createDurableBots(created, {}));
     hosts.push(created);
     return created;
   };

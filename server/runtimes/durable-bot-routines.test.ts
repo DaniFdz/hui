@@ -18,7 +18,7 @@ const { DurableHost, durableContext } = await import("./durable-host.ts");
 const { startDurable, durableConversationId } = await import("./durable.ts");
 const { BotDoc } = await import("./durable-bots.ts");
 const { durableBotConversations } = await import("../bot-conversations.ts");
-const { describeTool, POWERFUL_TOOLS } = await import("./durable-bot-access.ts");
+const { builtinBotOffer, createDurableBots, describeTool, POWERFUL_TOOLS } = await import("./durable-bot-access.ts");
 const { ROUTINES_TOOL } = await import("./durable-bot-routines.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
@@ -50,6 +50,7 @@ async function fixture(t: TestContext, answer: (invocation: AgentToolInvocation)
     invokeTool: async (invocation) => { invocations.push(invocation); return answer(invocation); },
     lookupCaller: async () => undefined,
   });
+  host.configureDurableBots(createDurableBots(host, {}));
   t.onTestFinished(async () => {
     await host.close().catch(() => {});
     await rm(dir, { recursive: true, force: true });
@@ -106,7 +107,7 @@ test("the Tools catalog offers it as a normal switch, Manage its own routines, o
   const f = await fixture(t);
   const entry = { name: ROUTINES_TOOL, label: "Manage its own routines", description: "List, add, change and remove its own routines, temporary ones included", group: "bots", source: "HUI", powerful: false };
   assert.deepEqual(describeTool({ name: ROUTINES_TOOL }, { kind: "bot" }), entry);
-  assert.deepEqual((await f.host.builtinBotOffer()).find((tool) => tool.name === ROUTINES_TOOL), entry, "listed while its chat isn't running too");
+  assert.deepEqual((await builtinBotOffer(f.host)).find((tool) => tool.name === ROUTINES_TOOL), entry, "listed while its chat isn't running too");
   assert.equal(POWERFUL_TOOLS.has(ROUTINES_TOOL), false);
   const on = await f.bot([], "on-chat");
   assert.deepEqual(on.session.botOffer().find((tool) => tool.name === ROUTINES_TOOL), entry, "on, and the operator's to turn off");

@@ -73,10 +73,12 @@ const piCheck = (report: Awaited<ReturnType<typeof runDoctor>>) => report.checks
 const statuses = (report: Awaited<ReturnType<typeof runDoctor>>) => piCheck(report).items.map((item) => [item.id, item.status]);
 
 function inspector() {
-  return new DurableHost({
+  const host = new DurableHost({
     dir: store, agentDir, readSettings: async () => normalizeSettings(undefined),
     invokeTool: async () => ({}), lookupCaller: async () => undefined, resume: false,
   });
+  host.configureDurableBots(null);
+  return host;
 }
 
 test("the report lists sessions still on PI, changes nothing, and --fix waits for the gateway to stop", async () => {

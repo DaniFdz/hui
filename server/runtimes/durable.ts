@@ -23,7 +23,6 @@ import { resolveCommandReference } from "../../src/lib/command-references.ts";
 import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
 import { durableContext as context, durableHost, modelCallable, type DurableHost } from "./durable-host.ts";
 import { CallEntry } from "./turn-origins.ts";
-import { botSkills, describeTool, planBotTools } from "./durable-bot-access.ts";
 import { skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
@@ -339,6 +338,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   async applyTools(): Promise<void> {
     const { browser, codemode, labs } = await this.#host.settings();
     const browserEnabled = browser.enabled !== false;
+    const bots = this.#host.bots;
     const bot = await this.#host.botStateFor(this.#conversation.id);
     // A session tags bots while they are on; a bot's chat has message_bot among its own tools.
     const tag = !bot && labs.bots ? this.#host.botTag : undefined;
@@ -356,7 +356,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     let withCodemode = codemode.enabled;
     const remove = [...inactive.values()];
     this.#botOffer = [];
-    if (bot) {
+    if (bot && bots) {
       // What a session here is offered, in Durable's order: the coding tools, HUI's, the extensions' and the added ones.
       const offered = this.#composed([
         [this.#host.codingTools, () => ({ kind: "coding" })],
@@ -366,10 +366,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         [optchat?.tools ?? [], () => ({ kind: "hui" })],
         [botTools?.tools ?? [], () => ({ kind: "bot" })],
       ]).filter(({ name }) => !inactive.has(name));
-      const skills = await this.availableSkills();
-      const on = botSkills(skills, bot.disabledSkills).length;
-      const plan = planBotTools(offered, bot, { memory: (optchat?.tools ?? []).map((tool) => tool.name), skillsOn: on, skillsOff: skills.length - on });
-      this.#botOffer = plan.listable.map(({ tool, origin }) => describeTool(tool, origin));
+      const plan = bots.planOffer(offered, bot, { memory: (optchat?.tools ?? []).map((tool) => tool.name), skills: await this.availableSkills() });
+      this.#botOffer = plan.offer;
       // Removed by name, so a tool that appears later is on until the operator turns it off.
       remove.push(...plan.removed.map(({ tool }) => tool));
       // Without its tool, the chat goes without codemode's prompt section too.
@@ -494,8 +492,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
    * chat. */
   async #skills(loader: { getSkills(): { skills: Skill[] } }): Promise<readonly Skill[]> {
     const all = loader.getSkills().skills;
+    const bots = this.#host.bots;
     const bot = await this.#host.botStateFor(this.#conversation.id);
-    return bot ? botSkills(all, bot.disabledSkills) : all;
+    return bot && bots ? bots.skills(all, bot) : all;
   }
 
   /** Entries since the latest reset, oldest first: what the extensions' PI session view holds. */

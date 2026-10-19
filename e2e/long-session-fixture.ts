@@ -33,6 +33,7 @@ for (let turn = 0; turn < turns; turn++) {
 
 await mkdir(workspace, { recursive: true });
 const host = new DurableHost({ dir: join(CONFIG_DIR, "durable"), agentDir, resume: false, lookupCaller: async () => undefined });
+host.configureDurableBots(null);
 const harness = await host.open();
 const conversation = await harness.createConversation({ ownership: { kind: "ownerless" }, agent: { cwd: workspace }, init: async (tx, id) => {
   for (const entry of entries) await tx.appendEntry(id, entry as never);

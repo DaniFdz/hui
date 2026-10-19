@@ -30,6 +30,7 @@ import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bot-skills.
 import { caseClash, skillFilePath } from "../bot-templates/common.ts";
 import { localBotSouls } from "../bot-souls.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, accessField, normalizeSoul } from "../bots.ts";
+import { createDurableBots, type DurableBotsDeps } from "../runtimes/durable-bot-access.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId } from "../runtimes/durable.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";
@@ -64,6 +65,12 @@ export type HostBotsOptions = {
   botsDir: string;
   /** The model a bot without one of its own starts on: Settings' primary model, as the gateway mirrors it here. */
   primaryModel?: () => Promise<string | undefined>;
+  /** A chat's `bots` section, as a connected gateway gives it. */
+  section: DurableBotsDeps["section"];
+  /** Settings' profile name, for a bot's first conversation. */
+  operator: () => Promise<string | undefined>;
+  /** The operator allowed a bot's request here: what its lists are now. */
+  recorded: DurableBotsDeps["recorded"];
 };
 
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
@@ -155,6 +162,11 @@ export function hostBots(options: HostBotsOptions) {
   /** Each bot's name as its gateway last gave it (the create, then every `bots` section): a bot still called "New Bot"
    * asks for a real one in its first conversation. */
   const names = new Map<string, string>();
+  // Its SOUL.md (or its first conversation) from its home here, and write_soul writes it there.
+  options.durable.configureDurableBots(createDurableBots(options.durable, {
+    section: options.section, recorded: options.recorded,
+    souls: { home, operator: options.operator, name: (id) => names.get(id) },
+  }));
 
   /** A directory chosen for the bot that lies inside its home here: deleting the home would take it along. */
   const chosenInsideHome = async (id: string, cwd: unknown): Promise<boolean> => {
@@ -355,9 +367,6 @@ export function hostBots(options: HostBotsOptions) {
 
   return {
     handlers,
-    home,
-    /** The bot's name as its gateway last gave it; undefined until one did since this host started. */
-    nameOf: (id: string): string | undefined => names.get(id),
     /** What a gateway's `bots` section reply says the bot is called now. */
     named(id: string, name: string): void {
       if (ID.test(id) && name) names.set(id, name.slice(0, BOT_LIMITS.name));
