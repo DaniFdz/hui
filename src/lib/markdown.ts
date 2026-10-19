@@ -7,7 +7,8 @@
  * The agent's own replies render through a second instance (`renderAgentMarkdown`) that also wraps file references
  * — inline code spans and link targets shaped like paths (`file-references.ts`) — in `<hui-file-ref>`, which
  * becomes a link to the Files view once the gateway confirms the path (`components/file-link.ts`). Fenced code,
- * prose and other Markdown (hovercards, the Files view's preview, user messages) are never wrapped.
+ * prose and other Markdown (hovercards, the Files view's preview, user messages) are never wrapped. It draws Slack
+ * and X links as cards only when asked: the chat does so on its latest messages and leaves older ones plain links.
  */
 import MarkdownIt, { type MarkdownIt as MarkdownItParser, type StateBlock, type StateCore, type StateInline, type Token } from "markdown-it";
 import markdownItCjkFriendly from "markdown-it-cjk-friendly";
@@ -434,6 +435,8 @@ function installFileReferences(parser: MarkdownItParser): void {
 export type MarkdownParserOptions = {
   /** Wrap file references for the Files view (the agent's replies only). */
   fileReferences?: boolean;
+  /** `false` keeps isolated Slack and X links as links instead of cards. */
+  linkCards?: boolean;
 };
 
 export function createMarkdownParser(options: MarkdownParserOptions = {}): MarkdownItParser {
@@ -445,6 +448,7 @@ export function createMarkdownParser(options: MarkdownParserOptions = {}): Markd
   installLinkRules(parser);
   if (options.fileReferences) installFileReferences(parser);
   installRichEmbeds(parser);
+  if (options.linkCards === false) parser.core.ruler.disable("hui_rich_url_embeds");
   installAlerts(parser);
   parser.use(markdownItTaskLists, { enabled: false, label: false });
 
@@ -534,10 +538,12 @@ export function renderMarkdown(source: string) {
 }
 
 const agentMarkdownParser = createMarkdownParser({ fileReferences: true });
+const agentLinksParser = createMarkdownParser({ fileReferences: true, linkCards: false });
 
 /** The agent's replies: `markdownToHtml` plus file references (see the module header). */
 export const agentMarkdownToHtml = createMarkdownCache((source) => agentMarkdownParser.render(source));
+const agentLinksToHtml = createMarkdownCache((source) => agentLinksParser.render(source));
 
-export function renderAgentMarkdown(source: string) {
-  return unsafeHTML(agentMarkdownToHtml(source));
+export function renderAgentMarkdown(source: string, linkCards = false) {
+  return unsafeHTML((linkCards ? agentMarkdownToHtml : agentLinksToHtml)(source));
 }

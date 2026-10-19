@@ -71,3 +71,13 @@ test("serves cached facts without waiting and never invents state after a failur
   assert.deepEqual(statuses.view(unknown), unknown);
   assert.equal(calls.length, 3, "failures back off instead of retrying on every refresh");
 });
+
+test("one listing starts every due lookup at once, so the previews can batch them into one gh call", () => {
+  const started: string[] = [];
+  const statuses = new PullRequestStatuses((url) => {
+    started.push(url);
+    return new Promise(() => {});
+  });
+  for (const number of [1, 2, 3]) statuses.view({ repository: "acme/web", number, url: `https://github.com/acme/web/pull/${number}` });
+  assert.equal(started.length, 3);
+});

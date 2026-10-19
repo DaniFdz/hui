@@ -998,7 +998,9 @@ unpkg, Google and Bunny fonts), which then see your IP address.
 ## Datadog links in the chat
 
 Paste a Datadog link in a message, or let the agent write one, and HUI shows it
-as a card under the message, like Slack does: up to three per message.
+as a card under the message, like Slack does: up to three per message. As with
+GitHub, Slack and X links, cards show on your latest message and the agent's
+latest reply; older messages keep the plain link.
 
 - **Share links** (`app.datadoghq.com/s/…`, from a widget's *Share* menu) show
   the widget's title and graph straight away; they are public, so no sign-in is

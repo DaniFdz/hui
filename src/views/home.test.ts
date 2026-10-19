@@ -204,7 +204,7 @@ test("user messages preserve explicit line breaks", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /item\.role === "user" \? renderUserText\(props, item\)/);
+  assert.match(source, /item\.role === "user" \? renderUserText\(props, item, embeds\)/);
   assert.match(source, /class="chat-text chat-text--plain"/);
   assert.match(styles, /\.chat-text--plain\s*\{\s*white-space:\s*pre-wrap;\s*\}/);
 });
@@ -623,6 +623,33 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
   assert.match(handoff, /<details class="chat-tool-msg-collapse chat-handoff" data-status=succeeded style=--chat-sender-color: #2fc49a/u);
   assert.match(handoff, /<span class="chat-tool-msg-summary__label">Sent to <strong>Grace<\/strong><\/span> <span class="chat-tool-msg-summary__preview">Babysit PR #7\. Keep 3 retries\.<\/span>/u);
   assert.doesNotMatch(handoff, /Ran 1 command/u);
+});
+
+test("link previews and cards render on the latest user message and the latest reply only", async () => {
+  const slack = "https://acme.slack.com/archives/C01234567/p1723456789012345";
+  const html = await renderWorkerSession("idle", {
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true },
+    transcript: [
+      { kind: "message", id: "u1", role: "user", text: slack },
+      { kind: "message", id: "a1", role: "assistant", text: "https://x.com/openai/status/123456789" },
+      { kind: "message", id: "u2", role: "user", text: "Review https://github.com/acme/web/pull/12" },
+      { kind: "message", id: "u3", role: "user", text: "and https://github.com/acme/web/pull/14" },
+      { kind: "message", id: "a2", role: "assistant", text: `Opened https://github.com/acme/web/pull/13\n\n${slack}` },
+      { kind: "message", id: "u4", role: "user", text: slack, failed: true },
+      { kind: "message", id: "u5", role: "user", text: slack, pending: true },
+    ],
+  });
+  const message = (id: string) => html.slice(html.indexOf(`data-message-id=${id}`), html.indexOf("data-message-id=", html.indexOf(`data-message-id=${id}`) + 1));
+  const previews = /<hui-github-embeds .*<hui-datadog-embeds /u;
+  const cards = /<hui-(?:github-embeds|datadog-embeds|slack-link|tweet-embed)/u;
+
+  assert.ok(message("u1").includes(`<div class="chat-text chat-text--plain">${slack}</div>`), "an older Slack link stays text");
+  assert.match(message("a1"), /<p><a href="https:\/\/x\.com\/openai\/status\/123456789"/u, "an older X post stays a link");
+  for (const old of ["u1", "a1", "u2"]) assert.doesNotMatch(message(old), cards);
+  assert.match(message("u3"), previews, "the last message of its group, and the latest one sent");
+  assert.match(message("a2"), previews);
+  assert.match(message("a2"), /<hui-slack-link data-url="https:\/\/acme\.slack\.com/u);
+  for (const unsent of ["u4", "u5"]) assert.doesNotMatch(message(unsent), cards, "a message not sent (yet) leaves the cards to the one before it");
 });
 
 test("what an agent sends shows its target: a bot by handle or name, the calling agent's session, or why it wasn't sent", async () => {

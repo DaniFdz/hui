@@ -13,7 +13,7 @@
 import { execFile } from "node:child_process";
 
 import type { GitHubContributionAccount, GitHubContributions } from "../shared/github.ts";
-import { GH_ENV, GITHUB_HOST, spawnFailure } from "./github.ts";
+import { GH_ENV, GITHUB_HOST, parseAccounts, spawnFailure } from "./github.ts";
 
 const DAY_MS = 86_400_000;
 /** Covers the 53 calendar weeks the page draws in any browser time zone. */
@@ -51,17 +51,6 @@ type PullRequestPage = { issueCount: number; pageInfo: { hasNextPage: boolean; e
 
 /** The latest year any browser may be in: local time runs up to UTC+14. */
 export const latestYear = (now = Date.now()) => new Date(now + 14 * 3_600_000).getUTCFullYear();
-
-/** `gh auth status --json hosts` → the github.com logins, active first. */
-function parseAccounts(stdout: string): { login: string; active: boolean }[] {
-  const hosts = (JSON.parse(stdout) as { hosts?: Record<string, unknown> }).hosts;
-  const entries = hosts?.[GITHUB_HOST];
-  if (!Array.isArray(entries)) return [];
-  return entries
-    .map((entry: { login?: unknown; active?: unknown }) => ({ login: typeof entry?.login === "string" ? entry.login : "", active: entry?.active === true }))
-    .filter((account) => /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/u.test(account.login))
-    .sort((a, b) => Number(b.active) - Number(a.active));
-}
 
 export class GitHubContributionsReader {
   readonly #run: Run;

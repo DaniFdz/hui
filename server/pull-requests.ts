@@ -4,10 +4,10 @@
  * The reference comes from the live runtime transcript: a tool call that ran
  * `gh pr create` (or a dedicated create-pull-request tool) and printed a GitHub
  * pull request URL. Nothing is persisted. GitHub state, title and description
- * come from the shared GitHub previews (`gh api` with the Settings →
- * Integrations → GitHub login), cached in memory,
- * and refreshed in the background so that listing sessions never waits on the
- * network. Until GitHub answers, a pull request carries only its reference.
+ * come from the shared GitHub previews (`gh api graphql` with the Settings →
+ * Integrations → GitHub login), which batch the lookups a listing starts, cached
+ * in memory, and refreshed in the background so that listing sessions never
+ * waits on the network. Until GitHub answers, a pull request carries only its reference.
  */
 import type { PullRequestState, SessionPullRequest } from "../shared/pull-requests.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
@@ -88,7 +88,7 @@ export function pullRequestBodyPreview(body: string): string {
   return `${cut.slice(0, boundary > MAX_BODY * 0.6 ? boundary : MAX_BODY).trimEnd()}…`;
 }
 
-type CacheEntry = { details?: PullRequestDetails; freshUntil: number; queued: boolean };
+type CacheEntry = { details?: PullRequestDetails; freshUntil: number; refreshing: boolean };
 
 export type PullRequestStatusOptions = {
   now?: () => number;
@@ -98,7 +98,6 @@ export type PullRequestStatusOptions = {
   settledTtlMs?: number;
   /** A failed lookup (signed out, no access, offline) is retried slowly. */
   failureTtlMs?: number;
-  concurrency?: number;
   maxEntries?: number;
 };
 
@@ -109,10 +108,8 @@ export class PullRequestStatuses {
   readonly #activeTtl: number;
   readonly #settledTtl: number;
   readonly #failureTtl: number;
-  readonly #concurrency: number;
   readonly #maxEntries: number;
   readonly #entries = new Map<string, CacheEntry>();
-  readonly #queue: string[] = [];
   #running = 0;
   #idle: (() => void)[] = [];
 
@@ -122,7 +119,6 @@ export class PullRequestStatuses {
     this.#activeTtl = options.activeTtlMs ?? 60_000;
     this.#settledTtl = options.settledTtlMs ?? 15 * 60_000;
     this.#failureTtl = options.failureTtlMs ?? 5 * 60_000;
-    this.#concurrency = Math.max(1, options.concurrency ?? 2);
     this.#maxEntries = Math.max(1, options.maxEntries ?? 500);
   }
 
@@ -130,42 +126,31 @@ export class PullRequestStatuses {
     const key = ref.url.toLowerCase();
     let entry = this.#entries.get(key);
     if (!entry) {
-      entry = { freshUntil: 0, queued: false };
+      entry = { freshUntil: 0, refreshing: false };
       this.#entries.set(key, entry);
       this.#evict();
     }
-    if (!entry.queued && entry.freshUntil <= this.#now()) {
-      entry.queued = true;
-      this.#queue.push(ref.url);
-      this.#drain();
+    if (!entry.refreshing && entry.freshUntil <= this.#now()) {
+      entry.refreshing = true;
+      this.#running += 1;
+      void this.#refresh(ref.url).finally(() => {
+        this.#running -= 1;
+        if (this.#running === 0) for (const resolve of this.#idle.splice(0)) resolve();
+      });
     }
     return entry.details ? { ...ref, ...entry.details } : { ...ref };
   }
 
-  /** Resolves once no lookup is queued or running. Test and shutdown helper. */
+  /** Resolves once no lookup is running. Test and shutdown helper. */
   whenIdle(): Promise<void> {
-    if (this.#running === 0 && this.#queue.length === 0) return Promise.resolve();
+    if (this.#running === 0) return Promise.resolve();
     return new Promise((resolve) => this.#idle.push(resolve));
   }
 
   #evict(): void {
     for (const [key, entry] of this.#entries) {
       if (this.#entries.size <= this.#maxEntries) return;
-      if (!entry.queued) this.#entries.delete(key);
-    }
-  }
-
-  #drain(): void {
-    while (this.#running < this.#concurrency && this.#queue.length) {
-      const url = this.#queue.shift()!;
-      this.#running += 1;
-      void this.#refresh(url).finally(() => {
-        this.#running -= 1;
-        this.#drain();
-        if (this.#running === 0 && this.#queue.length === 0) {
-          for (const resolve of this.#idle.splice(0)) resolve();
-        }
-      });
+      if (!entry.refreshing) this.#entries.delete(key);
     }
   }
 
@@ -177,13 +162,13 @@ export class PullRequestStatuses {
       if (!entry) return;
       entry.details = details;
       entry.freshUntil = this.#now() + (details.state === "open" || details.state === "draft" ? this.#activeTtl : this.#settledTtl);
-      entry.queued = false;
+      entry.refreshing = false;
     } catch {
       // Keep the last confirmed facts; never invent a state for a failure.
       const entry = this.#entries.get(key);
       if (!entry) return;
       entry.freshUntil = this.#now() + this.#failureTtl;
-      entry.queued = false;
+      entry.refreshing = false;
     }
   }
 }

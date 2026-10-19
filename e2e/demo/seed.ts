@@ -103,11 +103,12 @@ await writeFile(join(CONFIG_DIR, "settings.json"), JSON.stringify({
 await writeFile(join(CONFIG_DIR, "datadog.json"), JSON.stringify({ version: 1, orgs: [{ name: "acme", site: "app.datadoghq.com" }] }));
 // Pull requests the fake GitHub CLI describes, for link cards in the chat.
 const pull = (number: number, title: string, body: string, patch: Record<string, unknown> = {}) => ({
-  number, title, body, state: "open", draft: false, merged: false, user: { login: "dana" }, additions: 86, deletions: 12, changed_files: 4, comments: 3, review_comments: 2, ...patch,
+  __typename: "PullRequest", number, title, body, state: "OPEN", isDraft: false, author: { login: "dana" }, additions: 86, deletions: 12, changedFiles: 4,
+  comments: { totalCount: 3 }, reviewThreads: { totalCount: 2 }, ...patch,
 });
-await writeFile(join(ghDir, "api.json"), JSON.stringify({
-  "repos/acme/storefront/pulls/482": pull(482, "Fix double submit on the signup form", "Disables **Create account** while the request is in flight, so a double click no longer creates two trials.", { state: "closed", merged: true, additions: 41, deletions: 9, changed_files: 3 }),
-  "repos/acme/payments-api/pulls/142": pull(142, "Partial refunds endpoint", "Adds `POST /refunds` with per-line refunds and an over-refund guard."),
+await writeFile(join(ghDir, "previews.json"), JSON.stringify({
+  "acme/storefront#482": pull(482, "Fix double submit on the signup form", "Disables **Create account** while the request is in flight, so a double click no longer creates two trials.", { state: "MERGED", additions: 41, deletions: 9, changedFiles: 3 }),
+  "acme/payments-api#142": pull(142, "Partial refunds endpoint", "Adds `POST /refunds` with per-line refunds and an over-refund guard."),
 }));
 // VS Code's serve-web downloads its server build into the cli folder; a link keeps it between demo runs.
 if (process.env["HUI_DEMO_CACHE"]) {

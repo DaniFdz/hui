@@ -52,6 +52,17 @@ export function parseDeviceCode(output: string): string | undefined {
   return /one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})\b/u.exec(stripAnsi(output))?.[1];
 }
 
+/** `gh auth status --json hosts` → the github.com logins, active first. */
+export function parseAccounts(stdout: string): { login: string; active: boolean }[] {
+  const hosts = (JSON.parse(stdout) as { hosts?: Record<string, unknown> }).hosts;
+  const entries = hosts?.[GITHUB_HOST];
+  if (!Array.isArray(entries)) return [];
+  return entries
+    .map((entry: { login?: unknown; active?: unknown }) => ({ login: typeof entry?.login === "string" ? entry.login : "", active: entry?.active === true }))
+    .filter((account) => /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/u.test(account.login))
+    .sort((a, b) => Number(b.active) - Number(a.active));
+}
+
 /** Maps `gh auth status --hostname github.com --json hosts` to a credential-free status. */
 export function parseAuthStatus(stdout: string): Pick<GitHubConnection, "status" | "account" | "message"> {
   let parsed: unknown;
