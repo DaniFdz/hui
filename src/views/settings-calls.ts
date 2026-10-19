@@ -6,7 +6,7 @@
 import { LitElement, html, nothing } from "lit";
 import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type CallsStatus, type GptLiveVoice } from "../../shared/calls.ts";
 import type { Settings } from "../lib/settings.ts";
-import { loadCallsStatus } from "../lib/live-call-platform.ts";
+import { loadCallsStatus } from "../api/calls.ts";
 import { renderSettingsPicker } from "./settings-picker.ts";
 
 /** "Signed in as Account 2 (dani@example.com)", or why calls cannot use ChatGPT now. */

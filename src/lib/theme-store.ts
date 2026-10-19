@@ -5,21 +5,11 @@
  * active theme, its lightness solved per mode so it reads on that theme's page.
  */
 import { currentSettings } from "./settings-store.ts";
-import { fetchJson } from "../api/request.ts";
+import { fetchThemeFile, fetchThemeList, postThemeImport, type ThemeRef } from "../api/themes.ts";
 import { applyThemeMode, type ThemeMode, type ThemeVariant } from "./theme.ts";
 import { mapTheme, swatchesFor, themeColor, type ShadcnTheme, type ThemeSwatches, type ThemeTokens } from "./shadcn-theme.ts";
 import { controlUiAccentInk } from "./accent-contrast.ts";
 import { parseColor, readableOn, toHex, TEXT_CONTRAST, type Rgb } from "./color-contrast.ts";
-
-const THEMES_URL = "/__hui/themes";
-const IMPORT_URL = "/__hui/themes/import";
-
-export type ThemeRef = {
-  id: string;
-  name: string;
-  /** URL served by the backend. */
-  url: string;
-};
 
 export type ThemePreview = { id: string; name: string } & ThemeSwatches;
 
@@ -69,7 +59,7 @@ export function builtinPalette(theme: ThemeRef): "claw" | "rose" | "miami" | und
 
 async function readTheme(theme: ThemeRef): Promise<ShadcnTheme | undefined> {
   try {
-    return await fetchJson<ShadcnTheme>(theme.url);
+    return await fetchThemeFile(theme);
   } catch {
     return undefined;
   }
@@ -151,7 +141,7 @@ function acceptList(body: { themes?: ThemeRef[] }): readonly ThemeRef[] {
 
 export async function loadThemes(): Promise<readonly ThemeRef[]> {
   try {
-    acceptList(await fetchJson<{ themes?: ThemeRef[] }>(THEMES_URL));
+    acceptList(await fetchThemeList());
   } catch {
     themes = [];
   }
@@ -218,11 +208,7 @@ export async function loadThemePreviews(): Promise<ThemePreview[]> {
  * with a message worth showing, because the user typed the link.
  */
 export async function importTheme(url: string): Promise<string> {
-  const body = await fetchJson<{ id?: string; themes?: ThemeRef[] }>(IMPORT_URL, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ url }),
-  });
+  const body = await postThemeImport(url);
   if (!body.id) {
     throw new Error("The theme was imported but could not be read back.");
   }

@@ -1,21 +1,15 @@
-/** The explicit-memory page's confirmed server state; no extraction, optimistic saves or cross-bot leakage. */
+/** The explicit-memory page's confirmed server state, read and changed through src/api/bot-facts.ts; no extraction,
+ * optimistic saves or cross-bot leakage. */
 import type { ReactiveControllerHost } from "lit";
 import type { BotFact, BotFactInput, BotFactPatch } from "../../shared/bot-facts.ts";
-import { fetchJson } from "../api/request.ts";
+import { botFactsApi, type BotFactsApi } from "../api/bot-facts.ts";
 export type BotFactsState = { botId: string; facts: BotFact[]; loading: boolean; loaded: boolean; pending: boolean; error: string; editing?: BotFact; removing?: BotFact };
-export type BotFactsApi = (botId: string, method?: string, id?: string, value?: BotFactInput | BotFactPatch | number) => Promise<BotFact[]>;
-const api: BotFactsApi = async (botId, method = "GET", id = "", value) => {
-  const url = `/__hui/bots/${encodeURIComponent(botId)}/facts${id ? `/${encodeURIComponent(id)}` : ""}${method === "DELETE" ? `?revision=${value}` : ""}`;
-  const result = await fetchJson<{ facts: BotFact[] }>(url, { method, ...(value !== undefined && method !== "DELETE" ? { body: JSON.stringify(value), headers: { "content-type": "application/json" } } : {}) });
-  if (!Array.isArray(result.facts)) throw new Error("The bot's memories did not come back.");
-  return result.facts;
-};
 export class BotFactsController {
   state: BotFactsState = { botId: "", facts: [], loading: false, loaded: false, pending: false, error: "" };
   #host: Pick<ReactiveControllerHost, "requestUpdate">;
   #api: BotFactsApi;
   #request = 0;
-  constructor(host: Pick<ReactiveControllerHost, "requestUpdate">, client: BotFactsApi = api) { this.#host = host; this.#api = client; }
+  constructor(host: Pick<ReactiveControllerHost, "requestUpdate">, client: BotFactsApi = botFactsApi) { this.#host = host; this.#api = client; }
   #set(change: Partial<BotFactsState>) { this.state = { ...this.state, ...change }; this.#host.requestUpdate(); }
   reset(botId: string) { this.#request++; this.state = { botId, facts: [], loading: false, loaded: false, pending: false, error: "" }; this.#host.requestUpdate(); }
   async load(botId: string, force = false): Promise<void> {

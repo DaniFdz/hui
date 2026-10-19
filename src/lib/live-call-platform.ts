@@ -2,29 +2,15 @@
  * A GPT-Live call's capabilities in the browser (HUI-18): the microphone with
  * echo cancellation, a native RTCPeerConnection carrying it to ChatGPT with
  * the call's data channel, the bot's voice on a hidden audio element, both
- * levels from analysers (for activity and the bot's face), and the gateway's
- * call routes. No dependencies; `LiveCall` (live-call.ts) holds the logic.
+ * levels from analysers (for activity and the bot's face), over the gateway's
+ * call routes in src/api/calls.ts. No dependencies; `LiveCall` (live-call.ts) holds the logic.
  */
-import type { CallDelegationResult, CallLine, CallStarted, CallsStatus, CallTaskResult } from "../../shared/calls.ts";
+import type { CallDelegationResult, CallLine, CallTaskResult } from "../../shared/calls.ts";
 import type { LiveCallPlatform, LiveConnection, LiveMicrophone } from "./live-call.ts";
 import { subscribeSession } from "../api/sessions.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "../api/request.ts";
+import { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postCallTask, startBotCall } from "../api/calls.ts";
 import { frameLevel } from "./voice-level.ts";
 import { microphoneContext, microphoneErrorMessage } from "./voice.ts";
-
-const JSON_HEADERS = { "content-type": "application/json" } as const;
-const callsUrl = (botId: string, callId?: string, action?: string) =>
-  `/__hui/bots/${encodeURIComponent(botId)}/calls${callId ? `/${encodeURIComponent(callId)}${action ? `/${action}` : ""}` : ""}`;
-
-/** The ChatGPT login and the account calls use, for Settings and for offering Call. */
-export function loadCallsStatus(): Promise<CallsStatus> {
-  return fetchJson<CallsStatus>("/__hui/calls", { signal: AbortSignal.timeout(15_000) });
-}
-
-/** The gateway exchanges the offer with ChatGPT; the answer is all that comes back. */
-export function startBotCall(botId: string, sdp: string, signal?: AbortSignal): Promise<CallStarted> {
-  return fetchJson<CallStarted>(callsUrl(botId), { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ sdp }), signal: signal ?? AbortSignal.timeout(45_000) });
-}
 
 /** The level (0–1) of what an analyser hears now. */
 function analyserLevel(analyser: AnalyserNode, buffer: Float32Array<ArrayBuffer>): number {
@@ -130,24 +116,23 @@ export function liveCallPlatform(bot: { id: string; sessionId: string }): LiveCa
     },
 
     async delegate(callId, id, request, signal): Promise<CallDelegationResult> {
-      return fetchJson<CallDelegationResult>(callsUrl(bot.id, callId, "delegations"), { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ id, request }), signal });
+      return postCallDelegation(bot.id, callId, id, request, signal);
     },
 
     async waitTask(callId, task, signal): Promise<CallTaskResult> {
-      return fetchJson<CallTaskResult>(callsUrl(bot.id, callId, `tasks/${encodeURIComponent(task)}`), { method: "POST", signal });
+      return postCallTask(bot.id, callId, task, signal);
     },
 
     async writeLines(callId, lines: readonly (CallLine & { at: number })[]) {
-      await fetchJson(callsUrl(bot.id, callId, "lines"), { method: "POST", headers: JSON_HEADERS, body: JSON.stringify({ lines }), signal: AbortSignal.timeout(20_000) });
+      await postCallLines(bot.id, callId, lines);
     },
 
     async heartbeat(callId) {
-      await fetchJson(callsUrl(bot.id, callId, "heartbeat"), { method: "POST", signal: AbortSignal.timeout(10_000) });
+      await postCallHeartbeat(bot.id, callId);
     },
 
     async end(callId, leaving) {
-      // A page going away keeps the request alive past it.
-      await trackedFetch(callsUrl(bot.id, callId), { method: "DELETE", headers: CLIENT_HEADERS, cache: "no-store", ...(leaving ? { keepalive: true } : { signal: AbortSignal.timeout(10_000) }) });
+      await deleteCall(bot.id, callId, leaving);
     },
 
     watchTools(onTool) {

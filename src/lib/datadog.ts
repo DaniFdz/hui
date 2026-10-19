@@ -1,7 +1,7 @@
-/** Browser half of the Datadog integration: the org list and sign-in (`/__hui/datadog`), and chat previews, one
- * request per message for its (at most three) links, remembered per URL for the page so re-renders do not refetch.
- * `pup` on the gateway owns every credential; this module only moves credential-free views. A finished sign-in or
- * an org change drops what the page remembers and tells every card on it to load again. */
+/** Browser half of the Datadog integration: a card's sign-in, which waits on pup's sign-in through src/api/datadog.ts,
+ * and chat previews, one request per message for its (at most three) links, remembered per URL for the page so
+ * re-renders do not refetch. A finished sign-in or an org change drops what the page remembers and tells every card
+ * on it to load again. */
 import {
   MAX_DATADOG_EMBEDS,
   type DatadogConnection,
@@ -10,6 +10,7 @@ import {
   type DatadogRef,
 } from "../../shared/datadog.ts";
 import { fetchJson } from "../api/request.ts";
+import { loadDatadogConnection, startDatadogLogin } from "../api/datadog.ts";
 
 const DATADOG_URL = "/__hui/datadog";
 /** Fired on `window` after a Datadog sign-in succeeds or the org list changes; cards listen and load again. */
@@ -22,35 +23,6 @@ const SUCCESS_TTL_MS = 5 * 60_000;
 const CACHE_LIMIT = 60;
 
 const sameOrg = (a: DatadogOrg, b: DatadogOrg) => a.name === b.name && a.site === b.site;
-
-const json = (method: string, body: unknown): RequestInit => ({
-  method,
-  headers: { "content-type": "application/json" },
-  body: JSON.stringify(body),
-  signal: AbortSignal.timeout(25_000),
-});
-
-export function loadDatadogConnection(): Promise<DatadogConnection> {
-  return fetchJson<DatadogConnection>(DATADOG_URL, { signal: AbortSignal.timeout(25_000) });
-}
-
-/** Adds an org; the gateway starts its sign-in when pup has no session for it. */
-export function addDatadogOrg(org: DatadogOrg): Promise<DatadogConnection> {
-  return fetchJson<DatadogConnection>(`${DATADOG_URL}/orgs`, json("POST", org));
-}
-
-export function removeDatadogOrg(org: DatadogOrg): Promise<DatadogConnection> {
-  const query = new URLSearchParams({ name: org.name, site: org.site });
-  return fetchJson<DatadogConnection>(`${DATADOG_URL}/orgs?${query}`, { method: "DELETE", signal: AbortSignal.timeout(25_000) });
-}
-
-export function startDatadogLogin(org: DatadogOrg): Promise<DatadogConnection> {
-  return fetchJson<DatadogConnection>(`${DATADOG_URL}/login`, json("POST", org));
-}
-
-export function cancelDatadogLogin(): Promise<DatadogConnection> {
-  return fetchJson<DatadogConnection>(`${DATADOG_URL}/login`, { method: "DELETE", signal: AbortSignal.timeout(25_000) });
-}
 
 /** After a sign-in succeeds or an org is added or removed: the page forgets its previews (the gateway already
  * has) and every card loads again. */

@@ -188,7 +188,8 @@ import { addSuggestionToBacklog, backlogItemMarkdown, loadBacklog, removeBacklog
 import { loadJiraConnection } from "./api/jira.ts";
 import { VoiceController } from "./lib/voice-controller.ts";
 import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
-import { liveCallPlatform, loadCallsStatus } from "./lib/live-call-platform.ts";
+import { liveCallPlatform } from "./lib/live-call-platform.ts";
+import { loadCallsStatus } from "./api/calls.ts";
 import { callsReady, type CallsStatus } from "../shared/calls.ts";
 import { localTimezone, type AutomationProps } from "./views/settings-automation.ts";
 import { loadWorkers, workerAction, type WorkerView } from "./api/workers.ts";

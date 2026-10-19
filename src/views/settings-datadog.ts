@@ -7,17 +7,8 @@
 import { LitElement, html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
 import { DATADOG_APP_HOSTS, DATADOG_CLI_URL, DEFAULT_DATADOG_SITE, type DatadogConnection, type DatadogOrg, type DatadogOrgStatus } from "../../shared/datadog.ts";
-import {
-  addDatadogOrg,
-  cancelDatadogLogin,
-  DATADOG_CHANGED,
-  datadogOrgLabel,
-  datadogStatusLabel,
-  loadDatadogConnection,
-  notifyDatadogChanged,
-  removeDatadogOrg,
-  startDatadogLogin,
-} from "../lib/datadog.ts";
+import { DATADOG_CHANGED, datadogOrgLabel, datadogStatusLabel, notifyDatadogChanged } from "../lib/datadog.ts";
+import { addDatadogOrg, cancelDatadogLogin, loadDatadogConnection, removeDatadogOrg, startDatadogLogin } from "../api/datadog.ts";
 import { icons } from "../lib/icons.ts";
 import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
 
