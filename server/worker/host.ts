@@ -34,6 +34,7 @@ import { agentsWaitTransportMs } from "../runtimes/agent-tools-extension.mjs";
 import { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
+import { searchTranscripts } from "../runtimes/transcript-search.ts";
 import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
 import { completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
@@ -243,6 +244,9 @@ export class WorkerHost {
       if (hosted && hosted.peer === peer) this.#stop(hosted);
       return { ok: true };
     });
+    peer.handle("sessions.search", (params, signal) => searchTranscripts(this.#durable,
+      Array.isArray(params["sessionFiles"]) ? params["sessionFiles"].filter((file): file is string => typeof file === "string") : [],
+      String(params["q"] ?? ""), signal).then((hits) => ({ hits })));
     peer.handle("directories", async (params) => ({ directories: await completeWorkingDirectories(String(params["q"] ?? "~/")) }));
     // Bots whose chats run here: their conversations and memories in this host's store.
     for (const [op, handler] of Object.entries(this.#bots.handlers(peer))) peer.handle(op, handler);

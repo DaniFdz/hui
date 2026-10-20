@@ -38,6 +38,7 @@ import { parseRunOrigins } from "./runtimes/turn-origins.ts";
 import { invokeAgentTool } from "./agent-tools/bridge.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import { readRegistry } from "./sessions/sessions.ts";
+import type { TranscriptHit } from "./runtimes/transcript-search.ts";
 
 export const WORKERS_FILE = join(CONFIG_DIR, "workers.json");
 const MAX_WORKERS = 32;
@@ -308,8 +309,8 @@ class WorkerConnection {
     this.#transport?.kill();
   }
 
-  request<T>(op: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<T> {
-    return this.#peer.request<T>(op, params, timeoutMs);
+  request<T>(op: string, params: Record<string, unknown> = {}, timeoutMs?: number, signal?: AbortSignal): Promise<T> {
+    return this.#peer.request<T>(op, params, timeoutMs, signal);
   }
 
   /** Answers `op` from the host with `handler`, as this worker. */
@@ -827,6 +828,12 @@ export class WorkerService {
     if (this.#disconnectedByUser.has(id)) return [];
     const connection = await this.connect(id);
     return (await connection.request<{ directories: string[] }>("directories", { q: query })).directories;
+  }
+
+  async searchTranscripts(id: string, sessionFiles: readonly string[], query: string, signal?: AbortSignal): Promise<TranscriptHit[]> {
+    if (this.#disconnectedByUser.has(id)) throw new WorkerOfflineError(`Disconnected from ${this.nameOf(id) ?? "the worker"}.`);
+    const connection = await this.connect(id);
+    return (await connection.request<{ hits: TranscriptHit[] }>("sessions.search", { sessionFiles: [...sessionFiles], q: query }, 60_000, signal)).hits;
   }
 
   async putFile(id: string, name: string, data: Buffer): Promise<string> {

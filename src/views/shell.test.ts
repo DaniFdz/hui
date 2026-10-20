@@ -95,7 +95,7 @@ test("the primary sidebar lists work destinations and ends with Settings", () =>
   assert.match(nav, /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>\s*<\/a>\s*$/u);
 });
 
-test("settings navigation contains only the fourteen accepted regions", () => {
+test("settings navigation contains only the thirteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),
     [
@@ -110,7 +110,6 @@ test("settings navigation contains only the fourteen accepted regions", () => {
       "memory",
       "automation",
       "security",
-      "sessions",
       "worktrees",
       "diagnostics",
     ],
@@ -516,10 +515,9 @@ test("accepted settings describe implementation status without reopening product
   assert.doesNotMatch(`${connection.summary} ${connection.description}`, /approval/i);
 });
 
-test("sessions and security render implemented settings instead of placeholders", () => {
+test("security renders implemented settings instead of placeholders", () => {
   const source = readFileSync(new URL("./settings.ts", import.meta.url), "utf8");
 
-  assert.match(source, /props\.page === "sessions"\s*\? renderSessionsSettingsPage\(props\)/);
   assert.match(source, /props\.page === "security"\s*\? renderSecurityPage\(props\)/);
   assert.doesNotMatch(source, /sessions: "Session defaults/);
   assert.doesNotMatch(source, /security: "Secrets, audit history/);

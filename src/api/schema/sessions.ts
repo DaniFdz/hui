@@ -39,6 +39,8 @@ export type SessionQueueRequest = ({ "operation": "edit"; "itemId": string; "tex
 
 export type SessionResponse = { "session": SessionView; };
 
+export type SessionSearchResult = { "hits": Array<{ "id": string; "snippet": string; "matches": number; }>; "unsearched": Array<{ "worker": string; "error": string; }>; };
+
 export type SessionStage = ("investigation") | ("implementation") | ("testing") | ("done");
 
 export type SessionStageOrigin = (SessionStageSource) | ("default");

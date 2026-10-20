@@ -3,20 +3,20 @@
  * session list with its revision, loading and error, the one status stream that keeps every session's status and
  * unread mark current, the collapsed groups (`COLLAPSED_KEY`), the subagent trees toggled open and the open group
  * menu, and the shell's action toast and session archive toast with their timers. It also owns the Sessions page
- * (state, filters, selection and bulk delete) and the Settings → Worktrees inventory with its removal queue and the
- * poll that runs while facts are pending. The shell decides when the stream starts and follows each list into its
- * layout and selection.
+ * (state, filters, selection, bulk delete and transcript search) and the Settings → Worktrees inventory with its
+ * removal queue and the poll that runs while facts are pending. The shell decides when the stream starts and follows
+ * each list into its layout and selection.
  */
 import type { ReactiveControllerHost } from "lit";
 import { applySessionListUpdate } from "../api/session-list.ts";
 import type { SessionListUpdate } from "../api/schema/sessions.ts";
-import { deleteSession, loadSessions, renameSession, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
+import { deleteSession, loadSessions, renameSession, searchSessionTranscripts, subscribeSessionStatuses, type SessionGroup, type SessionStatus, type SessionStatusUpdate, type SessionView } from "../api/sessions.ts";
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import { mergeSessionStatuses } from "../lib/session/ui-state.ts";
 import { sessionTreeIds } from "../lib/session/tree.ts";
 import { worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "../lib/worktrees.ts";
-import { DEFAULT_SESSIONS_PAGE_FILTERS, type SessionsPageFilters, type SessionsPageProps, type SessionsPageState } from "../views/sessions.ts";
+import { DEFAULT_SESSIONS_PAGE_FILTERS, type SessionsPageFilters, type SessionsPageProps, type SessionsPageState, type TranscriptSearchState } from "../views/sessions.ts";
 import type { WorktreeFilter, WorktreesPageProps } from "../views/worktrees.ts";
 
 const COLLAPSED_KEY = "hui.collapsed-groups";
@@ -64,6 +64,8 @@ export class SessionsController {
   pageSelected: ReadonlySet<string> = new Set();
   deleteConfirm = false;
   deleting = false;
+  transcriptSearch: TranscriptSearchState = { query: "", searching: false, searched: "" };
+  #transcriptSearchRun: AbortController | undefined;
   worktreeInventory: WorktreeInventory | undefined;
   worktreesLoading = false;
   worktreesError = "";
@@ -254,9 +256,34 @@ export class SessionsController {
     this.#host.requestUpdate();
   }
 
+  #searchTranscripts = () => {
+    this.#transcriptSearchRun?.abort();
+    const run = new AbortController();
+    this.#transcriptSearchRun = run;
+    const query = this.transcriptSearch.query.trim();
+    const settle = (outcome: Pick<TranscriptSearchState, "result" | "error">) => {
+      if (this.#transcriptSearchRun !== run) return;
+      this.transcriptSearch = { query: this.transcriptSearch.query, searching: false, searched: query, ...outcome };
+      this.#host.requestUpdate();
+    };
+    this.transcriptSearch = { ...this.transcriptSearch, searching: true };
+    this.#host.requestUpdate();
+    void searchSessionTranscripts(query, run.signal).then(
+      (result) => settle({ result }),
+      (error: unknown) => settle({ error: error instanceof Error ? error.message : "Could not search the transcripts." }),
+    );
+  };
+
   sessionsPageProps(): Pick<SessionsPageProps, "state" | "filters" | "onState" | "onFilters" | "selected" | "onSelect"
-    | "confirmingDelete" | "deleting" | "onDeleteSelected" | "onCancelDelete" | "onConfirmDelete"> {
+    | "confirmingDelete" | "deleting" | "onDeleteSelected" | "onCancelDelete" | "onConfirmDelete"
+    | "transcriptSearch" | "onTranscriptQuery" | "onTranscriptSearch"> {
     return {
+      transcriptSearch: this.transcriptSearch,
+      onTranscriptQuery: (query) => {
+        this.transcriptSearch = { ...this.transcriptSearch, query };
+        this.#host.requestUpdate();
+      },
+      onTranscriptSearch: this.#searchTranscripts,
       state: this.pageState,
       filters: this.pageFilters,
       onState: (pageState) => this.#set({ pageState }),

@@ -1319,7 +1319,9 @@ with the optional `RuntimeSession` methods it offers), `session.call
 a `followUp` that arrives once the run has settled starts the next run, as a
 `prompt`), `session.transcript {key,seq,offset}` (one page of at most 8 MB of
 the transcript a frame with that `seq` left behind, `{entries,total}`),
-`session.dispose {key}`, `forget {keys}`,
+`session.dispose {key}`, `forget {keys}`, `sessions.search {sessionFiles,q}`
+(`{hits}`: the transcript search of `GET /__hui/sessions/search` over those
+conversations in the host's own store and files, without starting them),
 `put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. A host whose
 `hello` lists the `bots` feature also answers the bot operations of
 [bots on a worker](#bots-on-a-worker), against its own store: `bot.create
@@ -2947,6 +2949,23 @@ the same routes, `DELETE` included, answer 409. Attachment, Jira, suggestion
 and change routes answer 404 until the record exists. A gateway restart forgets
 unfinished sessions. Parallel creations that pick the same branch name take the
 next free suffix.
+
+### `GET /__hui/sessions/search`
+
+Transcript search for the Sessions page. `?q=` is 2-200 characters; anything
+else answers 400. The gateway reads every session's conversation where it is
+stored, without starting a runtime: its own Durable store, a PI session file,
+or, for a session on a remote worker, that worker's host (one `sessions.search`
+request per worker, 60 seconds at most). Bots' chats and subagents are left out.
+A user or assistant message matches when it contains `q`, case-insensitively;
+a Durable conversation is read from its latest reset on, as the chat shows it.
+
+Answers `{ hits: { id, snippet, matches }[], unsearched: { worker, error }[] }`:
+one hit per matching session with its newest matching message cut around the
+match and the number of matching messages, and each worker that could not be
+searched (disconnected by the operator, unreachable, or on a release without
+the request) with the reason. A session whose conversation cannot be read is
+left out.
 
 ### `GET /__hui/sessions/events`
 

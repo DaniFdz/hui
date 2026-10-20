@@ -8814,6 +8814,55 @@
         }
       }
     },
+    "SessionSearchResult": {
+      "type": "object",
+      "required": [
+        "hits",
+        "unsearched"
+      ],
+      "properties": {
+        "hits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "snippet",
+              "matches"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "snippet": {
+                "type": "string"
+              },
+              "matches": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "unsearched": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "worker",
+              "error"
+            ],
+            "properties": {
+              "worker": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
     "SessionSnapshot": {
       "type": "object",
       "required": [
@@ -12872,6 +12921,7 @@
       "SessionPromptResponse",
       "SessionQueueRequest",
       "SessionResponse",
+      "SessionSearchResult",
       "SessionStage",
       "SessionStageOrigin",
       "SessionStageSource",
@@ -14475,6 +14525,13 @@
       },
       "events": {
         "$ref": "#/$defs/SessionStatusStreamFrame"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/search",
+      "response": {
+        "$ref": "#/$defs/SessionSearchResult"
       }
     },
     {
