@@ -263,7 +263,6 @@ const scripts: Script[] = [
     when: "[routine: Morning digest]",
     turns: [{ wait: 900, say: "Good morning! Today's digest:\n\n- Refunds go to 10% of stores today; Priya owns the rollback.\n- #142 Partial refunds endpoint is merged and CI is green.\n- #482 Signup double-submit fix is live on staging.\n\nNothing is blocked." }],
   },
-  // Teamwork: an agent hands its pull request to Piper, who brings a reviewer's question back; a page wakes Owl, who hands Piper the revert.
   {
     when: "ask @piper to watch it",
     turns: [
@@ -275,7 +274,7 @@ const scripts: Script[] = [
     when: "Please watch acme/payments-api#151",
     turns: [
       { wait: 3_500, think: "CI is green. Lee left a question only the agent can answer.", calls: (_, prompt) => [{ name: "message_bot", input: { to: replyTo(prompt), message: "Watching #151: CI is green. Lee asks whether 7 days is long enough to keep event ids, since Stripe retries for up to 3 days. Your call?" } }] },
-      { say: "Watching #151, and asked its agent Lee's question." },
+      { say: "Watching #151. I passed Lee's question to its agent." },
     ],
   },
   {
@@ -293,29 +292,28 @@ const scripts: Script[] = [
     when: "[trigger: Pages · High error rate on POST /refunds]",
     turns: [
       { wait: 1_200, think: "Errors started at 14:02. What shipped just before?", calls: [{ name: "bash", input: { command: `git -C ${workspace}/payments-api log --oneline -3`, timeout: 30 } }] },
-      { wait: 1_500, say: "The errors started right after **#142, Partial refunds endpoint**, went out. I'm asking Piper to revert it.", calls: [{ name: "message_bot", input: { to: "@piper", message: "Please revert acme/payments-api#142: since it deployed, 12% of POST /refunds requests fail. Watch the revert until it merges, and tell me." } }] },
-      { say: "Piper is reverting #142. I'll confirm once errors are back to normal." },
+      { wait: 1_500, say: "The errors started right after **#148, Partial refunds endpoint**, went out. I'm asking Piper to revert it.", calls: [{ name: "message_bot", input: { to: "@piper", message: "Please revert acme/payments-api#148: since it deployed, 12% of POST /refunds requests fail. Watch the revert until it merges, and tell me." } }] },
+      { say: "Piper is reverting #148. I'll confirm once errors are back to normal." },
     ],
   },
   {
-    when: "Please revert acme/payments-api#142",
+    when: "Please revert acme/payments-api#148",
     turns: [
-      { wait: 1_500, calls: [{ name: "bash", input: { command: `git -C ${workspace}/payments-api -c user.name=Piper -c user.email=piper@acme.test -c commit.gpgsign=false -c core.hooksPath=/dev/null revert --no-edit HEAD`, timeout: 30 } }] },
-      { wait: 2_500, calls: [{ name: "message_bot", input: { to: "@owl", message: "Reverted acme/payments-api#142 in #152. CI is green, and it's merged." } }] },
-      { say: "Reverted #142 and told Owl." },
+      { wait: 1_500, calls: [{ name: "bash", input: { command: `git -C ${workspace}/payments-api revert --no-edit HEAD`, timeout: 30 } }] },
+      { wait: 2_500, calls: [{ name: "message_bot", input: { to: "@owl", message: "Reverted acme/payments-api#148 in #152. CI is green, and it's merged." } }] },
+      { say: "Reverted #148 and told Owl." },
     ],
   },
   {
-    when: "Reverted acme/payments-api#142",
-    turns: [{ wait: 900, say: "Resolved: #142 is reverted, and POST /refunds is back to 0.1% errors. Closing the page." }],
+    when: "Reverted acme/payments-api#148",
+    turns: [{ wait: 900, say: "Resolved: #148 is reverted, and POST /refunds is back to 0.1% errors. Closing the page." }],
   },
-  // Effort: on Ultra the agent makes the easy calls itself and asks only before a risky rollout.
   {
     when: "fail open when Redis is down",
     turns: [
       { wait: 1_500, think: "Failing open is the safe default for a rate limiter, and a small in-memory window covers the gap. Both are easy calls, so I won't ask.", calls: [{ name: "write", input: { path: "src/rate-limit.js", content: "/** Requests per minute per store; a short in-memory window while Redis is down. */\nconst local = new Map();\n\nexport async function allow(redis, store, limit = 600) {\n  try {\n    return (await redis.incr(`rate:${store}`)) <= limit;\n  } catch {\n    const count = (local.get(store) ?? 0) + 1;\n    local.set(store, count);\n    return count <= limit;\n  }\n}\n" } }] },
       { wait: 900, calls: [{ name: "bash", input: { command: "node --test test/", timeout: 60 } }] },
-      { wait: 700, say: "The limiter now fails open: while Redis is down, it falls back to a short in-memory window. Tests pass.\n\nRolling it out is the risky part, so that call is yours.", calls: [{ name: "ask_user_question", input: { questions: [{ header: "Rollout", question: "This changes rate limiting for every store. How should it roll out?", options: [
+      { wait: 700, say: "I decided two things myself: the limiter fails open, and it falls back to a short in-memory window while Redis is down. Tests pass.\n\nRolling it out is the risky part, so that call is yours.", calls: [{ name: "ask_user_question", input: { questions: [{ header: "Rollout", question: "This changes rate limiting for every store. How should it roll out?", options: [
         { label: "10% of stores first (Recommended)", description: "Watch error rates for an hour, then go to everyone." },
         { label: "Every store now", description: "Faster, but a bug would hit every store at once." },
       ] }] } }] },

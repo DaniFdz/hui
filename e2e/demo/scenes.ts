@@ -73,6 +73,7 @@ function drawSignupGraph(now: number): Promise<string> {
 }
 
 let pagesHook = "";
+const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
 const link = (text: string): Target => ({ css: "a", text });
 
@@ -297,7 +298,7 @@ export const scenes: Scene[] = [
     path: "/sessions/demo-5",
     ready: { contains: "load testing it" },
     narration: {
-      effort: "Each session chooses how hard its agent thinks: now up to Maximum, and Ultra.",
+      effort: "Pick how hard each session's agent thinks: now up to Maximum, and Ultra.",
       ultra: "On Ultra, the agent makes the easy calls itself, and stops to ask only before something risky.",
       answer: "Answer once, and it carries on.",
     },
@@ -400,10 +401,9 @@ export const scenes: Scene[] = [
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
     async setup({ api }) {
-      const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
       const { bot } = await api("POST", "/__hui/bots", { name: "Scout", title: "Release captain", avatar: { shape: "blob", color: "#5b8cff" }, soul: soul("Scout, the team's release captain.") });
       await api("POST", "/__hui/bots", { name: "Pixel", title: "Design reviewer", avatar: { shape: "heart", color: "#ff7a6b", ears: "cat" }, soul: soul("Pixel, who reviews UI changes.") });
-      await api("POST", "/__hui/bots", { name: "Owl", title: "On-call buddy", avatar: { emoji: "🦉" }, soul: soul("Owl, who watches the pager overnight.") });
+      await api("POST", "/__hui/bots", { name: "Owl", title: "On-call SRE", avatar: { emoji: "🦉" }, soul: soul("Owl, the on-call SRE who watches the pager overnight.") });
       await api("POST", `/__hui/bots/${bot.id}/messages`, { text: "Heads-up: refunds roll out to 10% of stores on Monday, and Priya owns the rollback.", wait: true });
     },
     narration: {
@@ -478,7 +478,6 @@ export const scenes: Scene[] = [
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
     async setup({ api }) {
-      const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
       await api("POST", "/__hui/bots", { name: "Piper", title: "PR shepherd", avatar: { shape: "blob", color: "#34c38f" }, soul: soul("Piper, who watches pull requests until they merge.") });
       const { bot: owl } = await api("POST", "/__hui/bots", { name: "Owl", title: "On-call SRE", avatar: { emoji: "🦉" }, soul: soul("Owl, the on-call SRE for payments.") });
       await api("POST", "/__hui/bots", { name: "Pixel", title: "Design reviewer", avatar: { shape: "heart", color: "#ff7a6b", ears: "cat" }, soul: soul("Pixel, who reviews UI changes.") });
@@ -492,7 +491,7 @@ export const scenes: Scene[] = [
     narration: {
       team: "Bots don't work alone. They take work from agents, and from each other.",
       handoff: "When an agent opens a pull request, it hands it to Piper, the P R shepherd.",
-      question: "Piper keeps C I green, and brings the reviewer's question back to the agent that wrote the code.",
+      question: "Piper watches C I, and brings the reviewer's question back to the agent that wrote the code.",
       answer: "The agent makes the call, and Piper takes it from there.",
       trigger: "Triggers wake a bot when something happens elsewhere. Here, a small listener watches the on-call channel for Owl.",
       page: "A page comes in, and Owl starts digging right away.",

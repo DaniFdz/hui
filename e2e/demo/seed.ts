@@ -39,7 +39,7 @@ const repos: Record<string, Record<string, string>> = {
   docs: { "README.md": "# Acme docs\n" },
 };
 
-const gitIn = (root: string) => (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Acme", "-c", "user.email=dev@acme.test", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { stdio: "ignore" });
+const gitIn = (root: string) => (...args: string[]) => execFileSync("git", ["-C", root, ...args], { stdio: "ignore" });
 for (const [name, files] of Object.entries(repos)) {
   const root = join(workspace, name);
   for (const [path, content] of Object.entries(files)) {
@@ -48,11 +48,12 @@ for (const [name, files] of Object.entries(repos)) {
   }
   const git = gitIn(root);
   git("init", "-q", "-b", "main");
+  for (const [key, value] of [["user.name", "Acme"], ["user.email", "dev@acme.test"], ["commit.gpgsign", "false"], ["core.hooksPath", "/dev/null"]]) git("config", key!, value!);
   git("add", ".");
   git("commit", "-q", "-m", "Initial commit");
 }
 await appendFile(join(workspace, "payments-api", "src/refunds/route.js"), "\nexport const PARTIAL_REFUNDS = true;\n");
-gitIn(join(workspace, "payments-api"))("commit", "-q", "-a", "-m", "Partial refunds endpoint (#142)");
+gitIn(join(workspace, "payments-api"))("commit", "-q", "-a", "-m", "Partial refunds endpoint (#148)");
 
 type Seed = { title: string; repo: string; group: string; stage: string; ago: number; ask: string; answer: string; unread?: boolean };
 const seeds: Seed[] = [
@@ -113,6 +114,7 @@ const pull = (number: number, title: string, body: string, patch: Record<string,
 await writeFile(join(ghDir, "previews.json"), JSON.stringify({
   "acme/storefront#482": pull(482, "Fix double submit on the signup form", "Disables **Create account** while the request is in flight, so a double click no longer creates two trials.", { state: "MERGED", additions: 41, deletions: 9, changedFiles: 3 }),
   "acme/payments-api#142": pull(142, "Partial refunds endpoint", "Adds `POST /refunds` with per-line refunds and an over-refund guard."),
+  "acme/payments-api#148": pull(148, "Partial refunds endpoint", "Adds per-line refunds to `POST /refunds`.", { state: "MERGED" }),
   "acme/payments-api#151": pull(151, "Retry-safe Stripe webhooks", "Stores processed event ids for 7 days, so Stripe's retries are ignored.", { additions: 64, deletions: 7, changedFiles: 3 }),
 }));
 // VS Code's serve-web downloads its server build into the cli folder; a link keeps it between demo runs.
