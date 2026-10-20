@@ -1,6 +1,6 @@
 /**
  * Keeps skills the user disabled in HUI out of PI sessions: it strips their entries from the system prompt and
- * refuses their `/skill:` commands. The disabled list arrives in HUI_DISABLED_SKILLS; PI's skill files and
+ * refuses their `/skill:name` and `$name` commands. The disabled list arrives in HUI_DISABLED_SKILLS; PI's skill files and
  * other context stay untouched. Durable sessions refuse those commands with the same notice.
  */
 const disabledEntries = disabledSkillsFrom(process.env.HUI_DISABLED_SKILLS);

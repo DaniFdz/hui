@@ -577,7 +577,7 @@ The SDK worker filters packages and direct extensions from a process-local
 settings view before PI discovers resources, so their executable code and
 bundled skills/prompts never load. Durable sessions load extensions, skills and
 prompts through the same filtered view. Individual disabled skills are removed before
-prompt and command assembly, and a `/skill:name` naming one is refused with the
+prompt and command assembly, and a `/skill:name` or `$name` naming one is refused with the
 warning `notice` `Skill “name” is disabled for HUI sessions.` before it reaches the
 model. Existing live runtimes are not killed or restarted.
 When `HUI_PI_BACKEND=cli`, an active plugin policy fails startup explicitly rather
