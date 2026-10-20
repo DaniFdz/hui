@@ -77,7 +77,7 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.match(source, /aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
   assert.doesNotMatch(app, /loadSessionCheckpoints/u);
-  assert.doesNotMatch(app, /!session \|\| this\.streaming \|\| this\.opening \|\| this\.rewindPending/u);
+  assert.doesNotMatch(app, /!session \|\| this\.conversation\.streaming \|\| this\.conversation\.opening \|\| this\.rewindPending/u);
   assert.match(app, /rewindSession\(session\.id, target, true\)/u);
   assert.match(app, /this\.setDraft\(text\)/u);
   assert.match(app, /this\.attachments = attachments/u);
@@ -316,7 +316,7 @@ test("the launch directory picker uses the themed combobox instead of a native d
 test("the thread follows the live compaction divider like new transcript rows", () => {
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
-  assert.match(app, /const compactionChanged = this\.renderedCompaction !== this\.conversation\.compaction;\s*this\.renderedCompaction = this\.conversation\.compaction;\s*if \(\(changed\.has\("transcript"\) \|\| compactionChanged \|\| changed\.has\("paneVisible"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/u);
+  assert.match(app, /const compactionChanged = this\.renderedCompaction !== this\.conversation\.compaction;\s*this\.renderedCompaction = this\.conversation\.compaction;\s*const transcriptChanged = this\.renderedTranscript !== this\.conversation\.transcript;\s*this\.renderedTranscript = this\.conversation\.transcript;\s*if \(\(transcriptChanged \|\| compactionChanged \|\| changed\.has\("paneVisible"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/u);
 });
 
 test("the composer exposes PI context usage beside the model", () => {

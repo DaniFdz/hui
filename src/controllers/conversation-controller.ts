@@ -1,24 +1,51 @@
 /**
- * `ConversationController` owns the open conversation's runtime state outside `hui-app.ts`: the session on screen;
+ * `ConversationController` owns the open conversation outside `hui-app.ts`: the session on screen, its transcript,
+ * subagents, opening and connection state, with the request that opens it and the event stream that keeps it current;
  * the models it can switch to and the one it runs on, its context usage, thinking level and fast mode, with the
  * requests that change them and the once-per-selection model list request; the pending question with the focus it
- * returns to; and the live compaction. The shell feeds it the stream's frames and reads its props.
+ * returns to; the live compaction; and the copied-message mark. The shell reads its props and receives the stream's
+ * frames that belong to the composer, the backlog and the sidebar.
  */
-import type { LitElement, ReactiveControllerHost } from "lit";
-import { loadModels, setSessionFast, setSessionModel, setSessionThinking, type RuntimeCompaction, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionSnapshot, type SessionStatus, type SessionView } from "../api/sessions.ts";
-import { isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels } from "../lib/session/ui-state.ts";
+import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
+import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionSnapshot, type SessionStatus, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
+import { writeClipboardText } from "../lib/clipboard.ts";
+import { EMPTY_QUEUE } from "../lib/composer/state.ts";
+import { announceTurnEnd } from "../lib/session/turn-end.ts";
+import { emptySessionPresentation, isCurrentSessionRequest, isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels, streamingAfterEvent, streamingForStatus } from "../lib/session/ui-state.ts";
+import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "../lib/subagent-activity.ts";
+import { keepSentPreviews, normalizeTranscript, reduceTranscript } from "../lib/transcript-state.ts";
 import type { HomeProps } from "../views/home.ts";
 
 type ConversationDeps = {
-  streaming: () => boolean;
   showError: (message: string) => void;
   refreshSessions: () => Promise<void>;
+  paneCreating: () => boolean;
+  paneCreationFailed: () => boolean;
+  resetSession: () => void;
+  connectionLost: () => void;
+  adoptSnapshot: (snapshot: SessionSnapshot) => void;
+  adoptEvent: (event: RuntimeEvent) => void;
+  statusChanged: (id: string, status: SessionStatus, interrupted: SessionView["interrupted"]) => void;
+  flushLaunchPrompt: () => void;
 };
 
 type ConversationHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
 
-export class ConversationController {
+export class ConversationController implements ReactiveController {
   selected: SessionView | undefined;
+  transcript: readonly TranscriptItem[] = [];
+  subagents: readonly SubagentTaskView[] = [];
+  opening = false;
+  /** Why the selected session's open request failed; its view offers a retry. */
+  openError = "";
+  streaming = false;
+  /** `sessionId\0errorKey` of run errors the operator dismissed this page load. */
+  dismissedRunErrors: ReadonlySet<string> = new Set();
+  stopping = false;
+  connection: SessionConnection = "live";
+  /** Empty while the stream is live; otherwise a muted line saying why. */
+  connectionNote = "";
+  copiedId = "";
   /** Models the open session can switch to, and the one it is running on. */
   models: readonly RuntimeModel[] = [];
   currentModel: RuntimeModel | undefined;
@@ -33,11 +60,299 @@ export class ConversationController {
   /** Session whose model list has already been requested for this selection. */
   #modelsRequestedFor = "";
   #questionReturnFocus: HTMLElement | undefined;
+  /** Ends the current event stream; replaced on every session switch. */
+  #streamStop: (() => void) | undefined;
+  /** Monotonic ownership token for open responses from the selected session. */
+  #openRequestToken = 0;
+  #subagentExpiryTimer: number | undefined;
+  #copyTimer: number | undefined;
 
   constructor(host: ConversationHost, deps: ConversationDeps) {
     this.#host = host;
     this.#deps = deps;
+    host.addController(this);
   }
+
+  hostDisconnected(): void {
+    this.#streamStop?.();
+    this.#streamStop = undefined;
+    this.#clearSubagentExpiry();
+  }
+
+  get streamOpen(): boolean {
+    return this.#streamStop !== undefined;
+  }
+
+  /** Background rows use the lightweight status stream. A detailed stream is
+   * also the server's read receipt, so it must exist only while chat is shown. */
+  suspend(): void {
+    this.#openRequestToken += 1;
+    this.#streamStop?.();
+    this.#streamStop = undefined;
+    this.opening = false;
+    this.#host.requestUpdate();
+  }
+
+  clear(): void {
+    // Invalidates an open response even if it resolves after the selection is
+    // cleared and before another session is chosen.
+    this.#openRequestToken += 1;
+    this.#streamStop?.();
+    this.#streamStop = undefined;
+    this.selected = undefined;
+    const empty = emptySessionPresentation();
+    this.transcript = empty.transcript;
+    this.subagents = [];
+    this.#clearSubagentExpiry();
+    this.opening = empty.opening;
+    this.openError = "";
+    this.streaming = empty.streaming;
+    this.connectionNote = empty.connectionNote;
+    this.resetModels();
+    this.compaction = undefined;
+    this.stopping = false;
+    this.dropQuestion();
+    this.connection = "live";
+  }
+
+  /** Opens (starting a runtime if needed) and begins streaming. */
+  async open(id: string): Promise<void> {
+    const requestToken = ++this.#openRequestToken;
+    this.#streamStop?.();
+    this.#streamStop = undefined;
+    this.opening = true;
+    this.openError = "";
+    this.streaming = false;
+    this.transcript = [];
+    this.subagents = [];
+    this.connectionNote = "";
+    this.resetModels();
+    this.compaction = undefined;
+    this.#deps.resetSession();
+    this.#host.requestUpdate();
+    // Nothing to open until the gateway has created the worktree session.
+    if (this.#deps.paneCreating() || this.#deps.paneCreationFailed()) {
+      if (this.#deps.paneCreationFailed() && this.selected) this.selected = { ...this.selected, status: "error" };
+      this.opening = false;
+      return;
+    }
+    try {
+      const opened = await openSession(id);
+      if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
+        // A different session or a newer retry won while this was starting.
+        return;
+      }
+      this.selected = opened.session;
+      this.applySnapshot(opened.snapshot ?? {
+        transcript: opened.transcript,
+        status: opened.session.status,
+        queue: EMPTY_QUEUE,
+        questions: [],
+        subagents: [],
+      });
+      this.thinking = opened.snapshot?.thinking ?? opened.session.thinking ?? "medium";
+      this.streaming = streamingForStatus(opened.session.status);
+      this.connection = "live";
+      this.#startStream(id);
+      this.requestModelsWhenReady(id, opened.session.status);
+    } catch (error) {
+      if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
+        // In place of the conversation, which never arrived: an empty transcript
+        // would read as a session with nothing in it.
+        this.openError = error instanceof Error ? error.message : "Could not open that session.";
+      }
+    } finally {
+      if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
+        this.opening = false;
+        this.#host.requestUpdate();
+        this.#deps.flushLaunchPrompt();
+      }
+    }
+  }
+
+  #startStream(id: string): void {
+    // An older attempt may have installed a stream while a newer open request
+    // was pending. Replacing it is an ownership transfer, so close it first.
+    this.#streamStop?.();
+    const current = () => this.selected?.id === id;
+    this.#streamStop = subscribeSession(id, {
+      onSnapshot: (snapshot) => {
+        if (current()) this.applySnapshot(snapshot);
+      },
+      onTranscript: (entries) => {
+        if (current()) {
+          this.transcript = normalizeTranscript(entries);
+          this.#host.requestUpdate();
+        }
+      },
+      onEvent: (event) => {
+        if (current()) {
+          this.#applyEvent(event);
+        }
+      },
+      onStatus: (status) => {
+        if (current()) {
+          this.#setStatus(status);
+        }
+      },
+      onModel: (model) => {
+        if (current()) {
+          this.currentModel = model;
+          this.#host.requestUpdate();
+        }
+      },
+      onThinking: (level) => {
+        if (current()) {
+          this.thinking = level;
+          this.#host.requestUpdate();
+        }
+      },
+      onFast: (fast) => {
+        if (current()) {
+          this.fast = fast;
+          this.#host.requestUpdate();
+        }
+      },
+      onConnection: (state, detail) => {
+        if (!current()) {
+          return;
+        }
+        this.connection = state;
+        if (state !== "live") this.#deps.connectionLost();
+        this.connectionNote = state === "live" ? "" : detail || "Reconnecting…";
+        if (state === "stopped") {
+          this.streaming = false;
+        }
+        this.#host.requestUpdate();
+      },
+    });
+  }
+
+  applySnapshot(snapshot: SessionSnapshot): void {
+    this.transcript = keepSentPreviews(normalizeTranscript(snapshot.transcript, {
+      streaming: streamingForStatus(snapshot.status),
+    }), this.transcript);
+    const previousTasks = this.subagents.map((task) => `${task.sessionId}:${task.status}:${task.updatedAt}`).join("|");
+    this.subagents = snapshot.subagents ?? [];
+    this.#scheduleSubagentExpiry();
+    const nextTasks = this.subagents.map((task) => `${task.sessionId}:${task.status}:${task.updatedAt}`).join("|");
+    this.#deps.adoptSnapshot(snapshot);
+    if (previousTasks !== nextTasks) void this.#deps.refreshSessions();
+    this.adoptSnapshot(snapshot);
+    this.#setStatus(snapshot.status);
+  }
+
+  #clearSubagentExpiry(): void {
+    if (this.#subagentExpiryTimer !== undefined) window.clearTimeout(this.#subagentExpiryTimer);
+    this.#subagentExpiryTimer = undefined;
+  }
+
+  /** OpenClaw keeps a finished batch of subagents visible for a while. Schedule
+   * the render that removes it even if the session stays idle. */
+  #scheduleSubagentExpiry(): void {
+    this.#clearSubagentExpiry();
+    const now = Date.now();
+    const nextExpiry = this.subagents
+      .filter((task) => !isSubagentActive(task.status))
+      .map((task) => Date.parse(task.endedAt ?? task.updatedAt) + FINISHED_BATCH_VISIBLE_MS)
+      .filter((expiry) => Number.isFinite(expiry) && expiry > now)
+      .sort((a, b) => a - b)[0];
+    if (nextExpiry === undefined) return;
+    this.#subagentExpiryTimer = window.setTimeout(() => {
+      this.#subagentExpiryTimer = undefined;
+      this.#host.requestUpdate();
+      this.#scheduleSubagentExpiry();
+    }, nextExpiry - now + 16);
+  }
+
+  #applyEvent(event: RuntimeEvent): void {
+    this.#deps.adoptEvent(event);
+    if (event.type === "question") {
+      // Another one waits for the snapshot after the open one is answered.
+      if (!this.question) this.showQuestion(event.question);
+      return;
+    }
+    if (event.type === "thinking_level") {
+      this.thinking = event.level;
+      this.#host.requestUpdate();
+      return;
+    }
+    // Views of what the agent may have changed (the Files view) refresh once its turn is over.
+    if (event.type === "settled" && this.selected) announceTurnEnd(this.selected.id);
+    switch (event.type) {
+      case "text":
+      case "thinking":
+      case "tool_start":
+      case "tool_update":
+      case "tool_end":
+      case "error":
+        this.transcript = reduceTranscript(this.transcript, event);
+        break;
+      case "turn_start":
+        this.streaming = streamingAfterEvent(this.streaming, event.type);
+        if (this.compaction?.status !== "running") this.compaction = undefined;
+        break;
+      case "compaction_start":
+        this.compaction = {
+          status: "running",
+          reason: event.reason,
+          ...(event.blocking === false ? { blocking: false as const } : {}),
+          ...(event.background ? { background: true as const } : {}),
+        };
+        break;
+      case "compaction_end":
+        // A written summary arrives with the refreshed history as a marker.
+        this.compaction = event.outcome === "done" ? undefined
+          : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
+        break;
+      case "turn_end":
+        // pi emits turn_end before agent_end. The following status frame is
+        // authoritative; unlocking here would accept a prompt PI still rejects.
+        this.streaming = streamingAfterEvent(this.streaming, event.type);
+        break;
+      case "settled":
+        // `settled` explains why the next status may become idle, but the
+        // status SSE remains the single authority that unlocks the composer.
+        this.streaming = streamingAfterEvent(this.streaming, event.type);
+        break;
+    }
+    this.#host.requestUpdate();
+  }
+
+  #setStatus(status: SessionStatus): void {
+    if (!this.selected) {
+      return;
+    }
+    const id = this.selected.id;
+    const interrupted = status === "running" || status === "waiting"
+      ? undefined
+      : this.selected.interrupted;
+    this.selected = { ...this.selected, status, interrupted };
+    // The stream is the source of truth for a resumed or reconnected session,
+    // so the composer lock follows the status rather than only turn events.
+    this.streaming = streamingForStatus(status);
+    if (status !== "running" && status !== "waiting") this.stopping = false;
+    this.#host.requestUpdate();
+    this.requestModelsWhenReady(id, status);
+    this.#deps.statusChanged(id, status, interrupted);
+  }
+
+  copy = (text: string, id: string): Promise<boolean> => {
+    return writeClipboardText(text).then((copied) => {
+      if (!copied) throw new Error("Clipboard write failed");
+      this.copiedId = id;
+      this.#host.requestUpdate();
+      if (this.#copyTimer !== undefined) window.clearTimeout(this.#copyTimer);
+      this.#copyTimer = window.setTimeout(() => {
+        this.copiedId = "";
+        this.#host.requestUpdate();
+      }, 1_500);
+      return true;
+    }).catch(() => {
+      this.#deps.showError("Could not copy to the clipboard.");
+      return false;
+    });
+  };
 
   select(session: SessionView | undefined): void {
     this.selected = session;
@@ -157,7 +472,7 @@ export class ConversationController {
 
   #selectThinking = (level: string) => {
     const session = this.selected;
-    if (!session || this.#deps.streaming()) return;
+    if (!session || this.streaming) return;
     void setSessionThinking(session.id, level)
       .then((authoritative) => {
         if (isSelectedSession(session.id, this.selected?.id)) {
@@ -176,7 +491,7 @@ export class ConversationController {
 
   #selectFast = (fast: boolean) => {
     const session = this.selected;
-    if (!session || this.#deps.streaming()) return;
+    if (!session || this.streaming) return;
     void setSessionFast(session.id, fast)
       .then((authoritative) => {
         if (isSelectedSession(session.id, this.selected?.id)) {

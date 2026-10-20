@@ -7,7 +7,6 @@
 import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
-import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "./lib/subagent-activity.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
@@ -30,7 +29,6 @@ import {
   loadGitCheckout,
   loadCommands,
   mutateQueuedMessage,
-  openSession,
   renameSession,
   resumeSession,
   rewindSession,
@@ -50,9 +48,6 @@ import {
   type QuestionResponse,
   type PromptMode,
   type QueueSnapshot,
-  type SessionConnection,
-  type SessionSnapshot,
-  type SubagentTaskView,
   type SessionGroup,
   type SessionStatus,
   type SessionStatusUpdate,
@@ -104,17 +99,14 @@ import {
   writeComposerDraft,
 } from "./lib/composer/drafts.ts";
 import { attachmentPreview } from "./lib/attachments.ts";
-import { appendPendingUser, keepSentPreviews, localTranscriptId, normalizeTranscript, reduceTranscript, settlePendingUser } from "./lib/transcript-state.ts";
+import { appendPendingUser, localTranscriptId, settlePendingUser } from "./lib/transcript-state.ts";
 import { SendRequests } from "./lib/composer/send-requests.ts";
 import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts";
 import {
   emptySessionPresentation,
-  isCurrentSessionRequest,
   isSelectedSession,
   noteAfterRunOutcome,
   shouldFlushLaunchPrompt,
-  streamingAfterEvent,
-  streamingForStatus,
   type NoteLevel,
 } from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
@@ -169,7 +161,6 @@ import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
 import "./components/terminal-pane.ts";
 import "./components/browser-pane.ts";
-import { announceTurnEnd } from "./lib/session/turn-end.ts";
 import { SessionMultiplexer, type PanePresentation } from "./components/session-multiplexer.ts";
 import {
   isRoutablePage,
@@ -224,12 +215,31 @@ export class HuiApp extends HuiElement {
     worktreesShown: () => this.settingsOpen && this.settingsPage === "worktrees",
   });
   private readonly conversation = new ConversationController(this, {
-    streaming: () => this.streaming,
     showError: (message) => {
       this.note = message;
       this.noteLevel = "error";
     },
     refreshSessions: () => this.refreshSessions(),
+    paneCreating: () => Boolean(this.paneCreating),
+    paneCreationFailed: () => Boolean(this.paneCreationError),
+    resetSession: () => {
+      this.backlog.clearSession();
+      this.note = "";
+      this.noteLevel = "info";
+      this.resetCommands();
+    },
+    connectionLost: () => this.resetCommands(),
+    adoptSnapshot: (snapshot) => {
+      this.queue = snapshot.queue;
+      if (this.queueEditingId && !snapshot.queue.items?.some((item) => item.id === this.queueEditingId)) {
+        this.queueEditingId = "";
+        this.queueEditingText = "";
+      }
+      this.backlog.adoptSnapshot(snapshot.suggestions, snapshot.watchers);
+    },
+    adoptEvent: (event) => this.adoptRunEvent(event),
+    statusChanged: (id, status, interrupted) => this.followConversationStatus(id, status, interrupted),
+    flushLaunchPrompt: () => this.flushPendingLaunchPrompt(),
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
   @state() private kanbanMovePendingId = "";
@@ -248,18 +258,9 @@ export class HuiApp extends HuiElement {
   @state() private draggingGroup = "";
   @state() private groupDropTarget: GroupDropTarget | undefined;
   @state() private groupReorderPending = false;
-  @state() private transcript: readonly TranscriptItem[] = [];
-  @state() private subagents: readonly SubagentTaskView[] = [];
-  @state() private opening = false;
-  /** Why the selected session's open request failed; its view offers a retry. */
-  @state() private openError = "";
-  @state() private streaming = false;
-  /** `sessionId\0errorKey` of run errors the operator dismissed this page load. */
-  @state() private dismissedRunErrors: ReadonlySet<string> = new Set();
   @state() private sending = false;
   /** Request ids for composer sends, so resending one the gateway already took never runs it twice. */
   private readonly sendRequests = new SendRequests();
-  @state() private stopping = false;
   @state() private continuing = false;
   @state() private rewindPending = false;
   /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
@@ -275,8 +276,6 @@ export class HuiApp extends HuiElement {
   @state() private queue: QueueSnapshot = EMPTY_QUEUE;
   @state() private queueEditingId = "";
   @state() private queueEditingText = "";
-  @state() private connection: SessionConnection = "live";
-  @state() private copiedId = "";
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
   @state() private showScrollToBottom = false;
   @state() private launching = false;
@@ -284,8 +283,6 @@ export class HuiApp extends HuiElement {
   @state() private noteLevel: NoteLevel = "info";
   /** The runtime warning (provider retry, model fallback) the current run is narrating. */
   private recoveryNotice = "";
-  /** Empty while the stream is live; otherwise a muted line saying why. */
-  @state() private connectionNote = "";
   @state() private importNote = "";
   @state() private importFailed = false;
   @state() private groupAction: { action: "new" } | { action: Exclude<GroupMenuAction, "new">; group: SessionGroup } | undefined;
@@ -312,6 +309,7 @@ export class HuiApp extends HuiElement {
   private updatingSelectedId: string | undefined;
   private renderedSelected: SessionView | undefined;
   private renderedQuestion: RuntimeQuestion | undefined;
+  private renderedTranscript: readonly TranscriptItem[] = [];
   private renderedCompaction: RuntimeCompaction | undefined;
   private groupActionReturnFocus: HTMLElement | undefined;
 
@@ -442,16 +440,12 @@ export class HuiApp extends HuiElement {
     this.syncBotPanelData();
   };
 
-  /** Ends the current event stream; replaced on every session switch. */
-  private streamStop: (() => void) | undefined;
   /** Direct session route waiting for the registry to finish loading. */
   private pendingSessionId = "";
   /** Route that opened Settings. Direct Settings URLs deliberately fall home. */
   private settingsReturnTarget: NavigationTarget = { kind: "home" };
   private deleteReturnFocus: HTMLElement | undefined;
   private deleteNeedsFocus = false;
-  /** Monotonic ownership token for open responses from the selected session. */
-  private openRequestToken = 0;
   private autoFollow = true;
   /** Rows grow after they render (link previews, images, diagrams): a followed thread stays at its end. */
   private readonly followResize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(([entry]) => {
@@ -459,8 +453,6 @@ export class HuiApp extends HuiElement {
     if (this.autoFollow && this.paneVisible && thread) thread.scrollTop = thread.scrollHeight;
   });
   private followed: Element | undefined;
-  private copyTimer: number | undefined;
-  private subagentExpiryTimer: number | undefined;
   /** First prompt composed on New Session, released only after PI reports idle. */
   private pendingLaunchPrompt = "";
   private pendingLaunchAttachments: readonly Attachment[] = [];
@@ -546,7 +538,7 @@ export class HuiApp extends HuiElement {
       this.activePaneApp()?.handleGlobalEscape(event);
       return;
     }
-    if (this.view === "home" && this.conversation.selected && this.streaming && !this.stopping) {
+    if (this.view === "home" && this.conversation.selected && this.conversation.streaming && !this.conversation.stopping) {
       event.preventDefault();
       this.abort();
     }
@@ -595,10 +587,6 @@ export class HuiApp extends HuiElement {
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     this.work.stop();
     if (!this.embeddedPane) this.voice.dispose();
-    this.streamStop?.();
-    this.streamStop = undefined;
-    if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
-    this.subagentExpiryTimer = undefined;
     this.followResize?.disconnect();
     this.followed = undefined;
     this.sessions.stop();
@@ -610,7 +598,7 @@ export class HuiApp extends HuiElement {
     this.sessionProgressPoll = window.setInterval(() => {
       // Not on macOS stays not on macOS; otherwise the banner follows the gateway.
       if (!this.embeddedPane && !document.hidden && this.control.power !== null) void this.control.refreshPower();
-      if (!document.hidden && this.transcript.length) this.requestUpdate();
+      if (!document.hidden && this.conversation.transcript.length) this.requestUpdate();
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.control.refreshGatewayHealth();
       }
@@ -647,8 +635,8 @@ export class HuiApp extends HuiElement {
   /** The gateway restarted a runtime whose stream had ended: a remote session
    * reattached after a lost connection, or a retry from another screen. */
   private reopenIfRestarted(id: string, status: SessionStatus) {
-    if (this.conversation.selected?.id !== id || this.opening || this.connection !== "stopped") return;
-    if (this.conversation.selected.status === "error" && status !== "error") void this.openSelected(id);
+    if (this.conversation.selected?.id !== id || this.conversation.opening || this.conversation.connection !== "stopped") return;
+    if (this.conversation.selected.status === "error" && status !== "error") void this.conversation.open(id);
   }
 
   private async refreshSessions(background = false) {
@@ -683,7 +671,7 @@ export class HuiApp extends HuiElement {
       this.sessions.toggledSessionTrees = new Set();
     }
     if (changed.has("paneCreating") && !this.paneCreating && changed.get("paneCreating") && this.conversation.selected?.id === this.paneSessionId) {
-      void this.openSelected(this.conversation.selected.id);
+      void this.conversation.open(this.conversation.selected.id);
     }
     if (this.embeddedPane && changed.has("paneGroups") && this.paneGroups) {
       // The shell's list can trail this pane's own detailed stream; keep the
@@ -737,7 +725,7 @@ export class HuiApp extends HuiElement {
       // code replaced under it needs a measuring pass after the render.
       scheduleTextareaHeightAdjustment(textarea);
     }
-    if (this.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.opening && textarea) {
+    if (this.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.conversation.opening && textarea) {
       this.pendingCommandBrowse = false;
       textarea.focus();
       textarea.setSelectionRange(this.draft.length, this.draft.length);
@@ -811,7 +799,9 @@ export class HuiApp extends HuiElement {
     // The live compaction divider sits below the transcript rows, so its changes follow too.
     const compactionChanged = this.renderedCompaction !== this.conversation.compaction;
     this.renderedCompaction = this.conversation.compaction;
-    if ((changed.has("transcript") || compactionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
+    const transcriptChanged = this.renderedTranscript !== this.conversation.transcript;
+    this.renderedTranscript = this.conversation.transcript;
+    if ((transcriptChanged || compactionChanged || changed.has("paneVisible")) && this.autoFollow) this.scrollToBottom();
     if (!this.renamingFor) {
       return;
     }
@@ -882,15 +872,6 @@ export class HuiApp extends HuiElement {
     return target.kind === "session" && target.id === id;
   }
 
-  /** Background rows use the lightweight status stream. A detailed stream is
-   * also the server's read receipt, so it must exist only while chat is shown. */
-  private suspendSelectedSessionView() {
-    this.openRequestToken += 1;
-    this.streamStop?.();
-    this.streamStop = undefined;
-    this.opening = false;
-  }
-
   private applyNavigation(target: NavigationTarget) {
     if (target.kind === "settings") {
       this.settingsPage = target.page;
@@ -911,7 +892,7 @@ export class HuiApp extends HuiElement {
         this.navigate({ kind: "home" }, true);
         return;
       }
-      this.suspendSelectedSessionView();
+      this.conversation.suspend();
       this.resetSessionEphemeral();
       this.pendingSessionId = "";
       this.activePage = undefined;
@@ -929,7 +910,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (target.kind === "kanban") {
-      this.suspendSelectedSessionView();
+      this.conversation.suspend();
       this.resetSessionEphemeral();
       this.pendingSessionId = "";
       this.activePage = undefined;
@@ -939,7 +920,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     if (target.kind === "page") {
-      this.suspendSelectedSessionView();
+      this.conversation.suspend();
       this.resetSessionEphemeral();
       if (target.page.id === "new-session") {
         this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
@@ -967,7 +948,7 @@ export class HuiApp extends HuiElement {
         // New session keeps the selection but owns the composer; returning to
         // the same session must restore that session's draft key.
         this.switchComposerDraft(sessionDraftKey(target.id));
-        if (this.embeddedPane && !this.streamStop) void this.openSelected(target.id);
+        if (this.embeddedPane && !this.conversation.streamOpen) void this.conversation.open(target.id);
         return;
       }
       this.openPendingSession();
@@ -1150,7 +1131,7 @@ export class HuiApp extends HuiElement {
       : action === "link"
         ? new URL(navigationPath({ kind: "session", id: session.id }), window.location.href).href
         : this.conversation.selected?.id === session.id
-          ? transcriptAsMarkdown(this.transcript)
+          ? transcriptAsMarkdown(this.conversation.transcript)
           : "";
     if (!text) {
       this.sessions.notify("Open the conversation before copying it as Markdown.", true);
@@ -1453,242 +1434,23 @@ export class HuiApp extends HuiElement {
     this.switchComposerDraft(sessionDraftKey(session.id));
     this.view = "home";
     this.conversation.select(session);
-    void this.openSelected(session.id);
+    void this.conversation.open(session.id);
   }
 
-  /** Opens (starting a runtime if needed) and begins streaming. */
-  private async openSelected(id: string) {
-    const requestToken = ++this.openRequestToken;
-    this.streamStop?.();
-    this.streamStop = undefined;
-    this.opening = true;
-    this.openError = "";
-    this.streaming = false;
-    this.transcript = [];
-    this.subagents = [];
-    this.backlog.clearSession();
-    this.note = "";
-    this.noteLevel = "info";
-    this.connectionNote = "";
-    this.conversation.resetModels();
-    this.conversation.compaction = undefined;
-    this.resetCommands();
-    // Nothing to open until the gateway has created the worktree session.
-    if (this.paneCreating || this.paneCreationError) {
-      if (this.paneCreationError && this.conversation.selected) this.conversation.select({ ...this.conversation.selected, status: "error" });
-      this.opening = false;
-      return;
-    }
-    try {
-      const opened = await openSession(id);
-      if (!isCurrentSessionRequest(id, this.conversation.selected?.id, requestToken, this.openRequestToken)) {
-        // A different session or a newer retry won while this was starting.
-        return;
-      }
-      this.conversation.select(opened.session);
-      this.applySnapshot(opened.snapshot ?? {
-        transcript: opened.transcript,
-        status: opened.session.status,
-        queue: EMPTY_QUEUE,
-        questions: [],
-        subagents: [],
-      });
-      this.conversation.thinking = opened.snapshot?.thinking ?? opened.session.thinking ?? "medium";
-      this.streaming = streamingForStatus(opened.session.status);
-      this.connection = "live";
-      this.startStream(id);
-      this.conversation.requestModelsWhenReady(id, opened.session.status);
-    } catch (error) {
-      if (isCurrentSessionRequest(id, this.conversation.selected?.id, requestToken, this.openRequestToken)) {
-        // In place of the conversation, which never arrived: an empty transcript
-        // would read as a session with nothing in it.
-        this.openError = error instanceof Error ? error.message : "Could not open that session.";
-      }
-    } finally {
-      if (isCurrentSessionRequest(id, this.conversation.selected?.id, requestToken, this.openRequestToken)) {
-        this.opening = false;
-        this.flushPendingLaunchPrompt();
-      }
-    }
-  }
-
-  private startStream(id: string) {
-    // An older attempt may have installed a stream while a newer open request
-    // was pending. Replacing it is an ownership transfer, so close it first.
-    this.streamStop?.();
-    const current = () => this.conversation.selected?.id === id;
-    this.streamStop = subscribeSession(id, {
-      onSnapshot: (snapshot) => {
-        if (current()) this.applySnapshot(snapshot);
-      },
-      onTranscript: (entries) => {
-        if (current()) {
-          this.transcript = normalizeTranscript(entries);
-        }
-      },
-      onEvent: (event) => {
-        if (current()) {
-          this.applyEvent(event);
-        }
-      },
-      onStatus: (status) => {
-        if (current()) {
-          this.setStatus(status);
-        }
-      },
-      onModel: (model) => {
-        if (current()) {
-          this.conversation.currentModel = model;
-          this.requestUpdate();
-        }
-      },
-      onThinking: (level) => {
-        if (current()) {
-          this.conversation.thinking = level;
-          this.requestUpdate();
-        }
-      },
-      onFast: (fast) => {
-        if (current()) {
-          this.conversation.fast = fast;
-          this.requestUpdate();
-        }
-      },
-      onConnection: (state, detail) => {
-        if (!current()) {
-          return;
-        }
-        this.connection = state;
-        if (state !== "live") this.resetCommands();
-        this.connectionNote = state === "live" ? "" : detail || "Reconnecting…";
-        if (state === "stopped") {
-          this.streaming = false;
-        }
-      },
-    });
-  }
-
-  private applySnapshot(snapshot: SessionSnapshot) {
-    this.transcript = keepSentPreviews(normalizeTranscript(snapshot.transcript, {
-      streaming: streamingForStatus(snapshot.status),
-    }), this.transcript);
-    this.queue = snapshot.queue;
-    if (this.queueEditingId && !snapshot.queue.items?.some((item) => item.id === this.queueEditingId)) {
-      this.queueEditingId = "";
-      this.queueEditingText = "";
-    }
-    const previousTasks = this.subagents.map((task) => `${task.sessionId}:${task.status}:${task.updatedAt}`).join("|");
-    this.subagents = snapshot.subagents ?? [];
-    this.scheduleSubagentExpiry();
-    const nextTasks = this.subagents.map((task) => `${task.sessionId}:${task.status}:${task.updatedAt}`).join("|");
-    this.backlog.adoptSnapshot(snapshot.suggestions, snapshot.watchers);
-    if (previousTasks !== nextTasks) void this.refreshSessions();
-    this.conversation.adoptSnapshot(snapshot);
-    this.setStatus(snapshot.status);
-  }
-
-  /** OpenClaw keeps a finished batch of subagents visible for a while. Schedule
-   * the render that removes it even if the session stays idle. */
-  private scheduleSubagentExpiry(): void {
-    if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
-    this.subagentExpiryTimer = undefined;
-    const now = Date.now();
-    const nextExpiry = this.subagents
-      .filter((task) => !isSubagentActive(task.status))
-      .map((task) => Date.parse(task.endedAt ?? task.updatedAt) + FINISHED_BATCH_VISIBLE_MS)
-      .filter((expiry) => Number.isFinite(expiry) && expiry > now)
-      .sort((a, b) => a - b)[0];
-    if (nextExpiry === undefined) return;
-    this.subagentExpiryTimer = window.setTimeout(() => {
-      this.subagentExpiryTimer = undefined;
-      this.requestUpdate();
-      this.scheduleSubagentExpiry();
-    }, nextExpiry - now + 16);
-  }
-
-  private applyEvent(event: RuntimeEvent) {
-    if (event.type === "queue_update") {
-      this.queue = event.queue;
-      return;
-    }
-    if (event.type === "question") {
-      // Another one waits for the snapshot after the open one is answered.
-      if (!this.conversation.question) this.conversation.showQuestion(event.question);
-      return;
-    }
-    if (event.type === "thinking_level") {
-      this.conversation.thinking = event.level;
-      this.requestUpdate();
-      return;
-    }
+  private adoptRunEvent(event: RuntimeEvent) {
+    if (event.type === "queue_update") this.queue = event.queue;
     if (event.type === "notice") {
       this.note = event.message;
       this.noteLevel = event.level ?? "info";
       this.recoveryNotice = this.noteLevel === "warning" ? event.message : "";
-      return;
     }
     if (event.type === "settled" || event.type === "error") {
       ({ note: this.note, noteLevel: this.noteLevel } = noteAfterRunOutcome({ note: this.note, noteLevel: this.noteLevel }, this.recoveryNotice));
       this.recoveryNotice = "";
     }
-    // Views of what the agent may have changed (the Files view) refresh once its turn is over.
-    if (event.type === "settled" && this.conversation.selected) announceTurnEnd(this.conversation.selected.id);
-    switch (event.type) {
-      case "text":
-      case "thinking":
-      case "tool_start":
-      case "tool_update":
-      case "tool_end":
-      case "error":
-        this.transcript = reduceTranscript(this.transcript, event);
-        break;
-      case "turn_start":
-        this.streaming = streamingAfterEvent(this.streaming, event.type);
-        if (this.conversation.compaction?.status !== "running") this.conversation.compaction = undefined;
-        this.requestUpdate();
-        break;
-      case "compaction_start":
-        this.conversation.compaction = {
-          status: "running",
-          reason: event.reason,
-          ...(event.blocking === false ? { blocking: false as const } : {}),
-          ...(event.background ? { background: true as const } : {}),
-        };
-        this.requestUpdate();
-        break;
-      case "compaction_end":
-        // A written summary arrives with the refreshed history as a marker.
-        this.conversation.compaction = event.outcome === "done" ? undefined
-          : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
-        this.requestUpdate();
-        break;
-      case "turn_end":
-        // pi emits turn_end before agent_end. The following status frame is
-        // authoritative; unlocking here would accept a prompt PI still rejects.
-        this.streaming = streamingAfterEvent(this.streaming, event.type);
-        break;
-      case "settled":
-        // `settled` explains why the next status may become idle, but the
-        // status SSE remains the single authority that unlocks the composer.
-        this.streaming = streamingAfterEvent(this.streaming, event.type);
-        break;
-    }
   }
 
-  private setStatus(status: SessionStatus) {
-    if (!this.conversation.selected) {
-      return;
-    }
-    const id = this.conversation.selected.id;
-    const interrupted = status === "running" || status === "waiting"
-      ? undefined
-      : this.conversation.selected.interrupted;
-    this.conversation.select({ ...this.conversation.selected, status, interrupted });
-    // The stream is the source of truth for a resumed or reconnected session,
-    // so the composer lock follows the status rather than only turn events.
-    this.streaming = streamingForStatus(status);
-    if (status !== "running" && status !== "waiting") this.stopping = false;
-    this.conversation.requestModelsWhenReady(id, status);
+  private followConversationStatus(id: string, status: SessionStatus, interrupted: SessionView["interrupted"]) {
     if (status === "idle") {
       this.flushPendingLaunchPrompt();
     } else if ((status === "error" || status === "reconnecting" || status === "disconnected") && this.pendingLaunchPrompt) {
@@ -2082,7 +1844,7 @@ export class HuiApp extends HuiElement {
 
   private flushPendingLaunchPrompt() {
     const prompt = this.pendingLaunchPrompt;
-    if (!shouldFlushLaunchPrompt(prompt, this.conversation.selected?.status, this.connection, this.opening)) {
+    if (!shouldFlushLaunchPrompt(prompt, this.conversation.selected?.status, this.conversation.connection, this.conversation.opening)) {
       return;
     }
     const attachments = this.pendingLaunchAttachments;
@@ -2096,7 +1858,7 @@ export class HuiApp extends HuiElement {
     const session = this.conversation.selected;
     const trimmed = text.trim();
     const hasImage = attachments.some((item) => item.kind === "image");
-    if (!session || (!trimmed && !hasImage) || this.opening || this.sending || this.connection !== "live") {
+    if (!session || (!trimmed && !hasImage) || this.conversation.opening || this.sending || this.conversation.connection !== "live") {
       return;
     }
     // The gateway refuses these for a bot's permanent chat; say why without a round trip.
@@ -2115,7 +1877,7 @@ export class HuiApp extends HuiElement {
         this.noteLevel = "error";
         return;
       }
-      if (mode !== "prompt" || this.streaming || session.status !== "idle") {
+      if (mode !== "prompt" || this.conversation.streaming || session.status !== "idle") {
         this.note = `Finish or stop active work before ${command}ing the session.`;
         this.noteLevel = "error";
         return;
@@ -2130,7 +1892,7 @@ export class HuiApp extends HuiElement {
       const run = command === "clear"
         ? clearSession(session.id).then((snapshot) => {
           if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-          this.applySnapshot(snapshot);
+          this.conversation.applySnapshot(snapshot);
           this.sideChat = undefined;
           this.note = "Session context cleared.";
         })
@@ -2204,16 +1966,17 @@ export class HuiApp extends HuiElement {
     this.setDraft("");
     this.attachments = [];
     void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
-    this.streaming = streamingAfterSubmission(
-      this.streaming,
+    this.conversation.streaming = streamingAfterSubmission(
+      this.conversation.streaming,
       mode,
       "started",
       session.status,
     );
     const sentAttachments = attachments.map((item) => ({ name: item.name, kind: item.kind, mimeType: item.mimeType, ...(attachmentPreview(item) ? { url: attachmentPreview(item) } : {}) }));
     if (mode === "prompt") {
-      this.transcript = appendPendingUser(this.transcript, pendingId, trimmed, sentAttachments);
+      this.conversation.transcript = appendPendingUser(this.conversation.transcript, pendingId, trimmed, sentAttachments);
     }
+    this.requestUpdate();
     const request = mode === "steer" ? steerSession : mode === "followUp" ? followUpSession : sendPrompt;
     // A resend of a send that failed on the way keeps its id, whatever the mode is now: a prompt the gateway took
     // started a run, so its resend comes back as a steer or follow-up.
@@ -2222,21 +1985,23 @@ export class HuiApp extends HuiElement {
       .then(({ duplicate }) => {
         if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
         // The gateway had the first attempt all along: its message is in the session, so drop the local copies.
-        if (duplicate) this.transcript = this.transcript.filter((item) => item.id !== pendingId && item.id !== earlierRow);
-        else if (mode === "prompt") this.transcript = settlePendingUser(this.transcript, pendingId, true);
-        this.streaming = streamingAfterSubmission(
-          this.streaming,
+        if (duplicate) this.conversation.transcript = this.conversation.transcript.filter((item) => item.id !== pendingId && item.id !== earlierRow);
+        else if (mode === "prompt") this.conversation.transcript = settlePendingUser(this.conversation.transcript, pendingId, true);
+        this.conversation.streaming = streamingAfterSubmission(
+          this.conversation.streaming,
           mode,
           duplicate ? "duplicate" : "accepted",
           this.conversation.selected?.status ?? session.status,
         );
+        this.requestUpdate();
       })
       .catch(async (error: unknown) => {
         this.sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
         const stillSelected = isSelectedSession(session.id, this.conversation.selected?.id);
         // The gateway's snapshots may have replaced the local row and then withdrawn theirs: show it failed again.
-        if (stillSelected && mode === "prompt") this.transcript = settlePendingUser(this.transcript.some((item) => item.id === pendingId)
-          ? this.transcript : appendPendingUser(this.transcript, pendingId, trimmed, sentAttachments), pendingId, false);
+        if (stillSelected && mode === "prompt") this.conversation.transcript = settlePendingUser(this.conversation.transcript.some((item) => item.id === pendingId)
+          ? this.conversation.transcript : appendPendingUser(this.conversation.transcript, pendingId, trimmed, sentAttachments), pendingId, false);
+        this.requestUpdate();
         const stored = stillSelected
           ? { text: this.draft, attachments: this.attachments }
           : await readComposerDraft(sessionDraftKey(session.id));
@@ -2246,12 +2011,13 @@ export class HuiApp extends HuiElement {
         this.composerDraftEdit += 1;
         this.setDraft(restored.text);
         this.attachments = restored.attachments;
-        this.streaming = streamingAfterSubmission(
-          this.streaming,
+        this.conversation.streaming = streamingAfterSubmission(
+          this.conversation.streaming,
           mode,
           "rejected",
           this.conversation.selected?.status ?? session.status,
         );
+        this.requestUpdate();
         this.note = error instanceof Error ? error.message : "Could not send that prompt.";
         this.noteLevel = "error";
       })
@@ -2262,8 +2028,8 @@ export class HuiApp extends HuiElement {
 
   private currentRunError() {
     const session = this.conversation.selected;
-    const error = session ? latestRunError(this.transcript, this.streaming) : undefined;
-    if (!session || !error || this.dismissedRunErrors.has(`${session.id}\0${error.key}`)) return undefined;
+    const error = session ? latestRunError(this.conversation.transcript, this.conversation.streaming) : undefined;
+    if (!session || !error || this.conversation.dismissedRunErrors.has(`${session.id}\0${error.key}`)) return undefined;
     return error;
   }
 
@@ -2271,7 +2037,8 @@ export class HuiApp extends HuiElement {
     const session = this.conversation.selected;
     const error = this.currentRunError();
     if (!session || !error) return;
-    this.dismissedRunErrors = new Set([...this.dismissedRunErrors, `${session.id}\0${error.key}`]);
+    this.conversation.dismissedRunErrors = new Set([...this.conversation.dismissedRunErrors, `${session.id}\0${error.key}`]);
+    this.requestUpdate();
   };
 
   private continueAfterError = () => {
@@ -2281,7 +2048,7 @@ export class HuiApp extends HuiElement {
 
   private continueInterrupted = () => {
     const session = this.conversation.selected;
-    if (!session?.interrupted || this.sending || this.opening || this.connection !== "live") return;
+    if (!session?.interrupted || this.sending || this.conversation.opening || this.conversation.connection !== "live") return;
     this.note = "";
     this.noteLevel = "info";
     this.sending = true;
@@ -2334,10 +2101,11 @@ export class HuiApp extends HuiElement {
 
   private abort = () => {
     const session = this.conversation.selected;
-    if (!session || this.stopping) {
+    if (!session || this.conversation.stopping) {
       return;
     }
-    this.stopping = true;
+    this.conversation.stopping = true;
+    this.requestUpdate();
     void abortSession(session.id)
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
@@ -2345,7 +2113,9 @@ export class HuiApp extends HuiElement {
         this.noteLevel = "error";
       })
       .finally(() => {
-        if (isSelectedSession(session.id, this.conversation.selected?.id)) this.stopping = false;
+        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
+        this.conversation.stopping = false;
+        this.requestUpdate();
       });
   };
 
@@ -2364,7 +2134,7 @@ export class HuiApp extends HuiElement {
   private compactNow(instructions?: string, typed?: string) {
     const session = this.conversation.selected;
     if (!session || this.sending) return;
-    if (this.streaming || session.status !== "idle") {
+    if (this.conversation.streaming || session.status !== "idle") {
       this.note = "Finish or stop active work before compacting the session.";
       this.noteLevel = "error";
       return;
@@ -2411,7 +2181,7 @@ export class HuiApp extends HuiElement {
 
   private rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
     const session = this.conversation.selected;
-    if (!session || this.opening || this.rewindPending) return;
+    if (!session || this.conversation.opening || this.rewindPending) return;
     this.rewindPending = true;
     this.note = "";
     this.noteLevel = "info";
@@ -2445,7 +2215,7 @@ export class HuiApp extends HuiElement {
    * the copy. The source session is left running or idle as it was. */
   private forkFromMessage = (entryId: string) => {
     const session = this.conversation.selected;
-    if (!session || this.opening || this.forkTarget) return;
+    if (!session || this.conversation.opening || this.forkTarget) return;
     void import("./components/fork-dialog.ts").then(() => { this.forkTarget = { session, entryId }; });
   };
 
@@ -2467,7 +2237,7 @@ export class HuiApp extends HuiElement {
 
   private continueRun = () => {
     const session = this.conversation.selected;
-    if (!session || this.streaming || this.opening || this.continuing) return;
+    if (!session || this.conversation.streaming || this.conversation.opening || this.continuing) return;
     this.continuing = true;
     this.note = "";
     this.noteLevel = "info";
@@ -2529,20 +2299,6 @@ export class HuiApp extends HuiElement {
     if (expanded) next.add(id);
     else next.delete(id);
     this.expandedActivityIds = next;
-  };
-
-  private copyTranscript = (text: string, id: string) => {
-    return writeClipboardText(text).then((copied) => {
-      if (!copied) throw new Error("Clipboard write failed");
-      this.copiedId = id;
-      if (this.copyTimer !== undefined) window.clearTimeout(this.copyTimer);
-      this.copyTimer = window.setTimeout(() => { this.copiedId = ""; }, 1_500);
-      return true;
-    }).catch(() => {
-      this.note = "Could not copy to the clipboard.";
-      this.noteLevel = "error";
-      return false;
-    });
   };
 
   private transcriptScrolled = (element: HTMLElement) => {
@@ -2658,7 +2414,7 @@ export class HuiApp extends HuiElement {
 
   private retrySelected = () => {
     const id = this.conversation.selected?.id;
-    if (id && !this.opening) void this.openSelected(id);
+    if (id && !this.conversation.opening) void this.conversation.open(id);
   };
 
   /** The worker's own connect: once it is up, the gateway reattaches its sessions. */
@@ -2735,36 +2491,18 @@ export class HuiApp extends HuiElement {
   };
 
   private clearSessionState() {
-    // Invalidates an open response even if it resolves after the selection is
-    // cleared and before another session is chosen.
-    this.openRequestToken += 1;
+    this.conversation.clear();
     this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
-    this.streamStop?.();
-    this.streamStop = undefined;
     this.pendingLaunchPrompt = "";
     this.pendingLaunchAttachments = [];
-    this.conversation.select(undefined);
-    const empty = emptySessionPresentation();
-    this.transcript = empty.transcript;
-    this.subagents = [];
     this.backlog.clearSession();
-    if (this.subagentExpiryTimer !== undefined) window.clearTimeout(this.subagentExpiryTimer);
-    this.subagentExpiryTimer = undefined;
-    this.opening = empty.opening;
-    this.openError = "";
-    this.streaming = empty.streaming;
+    const empty = emptySessionPresentation();
     this.note = empty.note;
     this.noteLevel = empty.noteLevel;
-    this.connectionNote = empty.connectionNote;
-    this.conversation.resetModels();
-    this.conversation.compaction = undefined;
     this.sending = false;
-    this.stopping = false;
     this.continuing = false;
     this.rewindPending = false;
     this.queue = EMPTY_QUEUE;
-    this.conversation.dropQuestion();
-    this.connection = "live";
     this.showScrollToBottom = false;
     this.autoFollow = true;
     this.resetSessionEphemeral();
@@ -2780,12 +2518,12 @@ export class HuiApp extends HuiElement {
     this.deleteReturnFocus = undefined;
     this.deleteNeedsFocus = false;
     this.sending = false;
-    this.stopping = false;
+    this.conversation.stopping = false;
     this.queue = EMPTY_QUEUE;
     this.conversation.dropQuestion();
     this.note = "";
     this.noteLevel = "info";
-    this.connectionNote = "";
+    this.conversation.connectionNote = "";
     this.sideChat = undefined;
   }
 
@@ -3563,15 +3301,15 @@ export class HuiApp extends HuiElement {
         onTogglePanel: () => this.onPaneBotPanel?.(),
         ...(this.onPaneBotAction ? { onAction: (action: BotHeaderAction) => this.onPaneBotAction?.(action) } : {}),
       } } : {}),
-      transcript: this.transcript,
+      transcript: this.conversation.transcript,
       bots: this.mentionable(),
       onOpenBot: this.embeddedPane ? this.onPaneOpenBot : this.openBot,
-      subagents: this.subagents,
-      opening: this.opening,
-      openError: this.openError,
-      streaming: this.streaming,
+      subagents: this.conversation.subagents,
+      opening: this.conversation.opening,
+      openError: this.conversation.openError,
+      streaming: this.conversation.streaming,
       sending: this.sending,
-      stopping: this.stopping,
+      stopping: this.conversation.stopping,
       continuing: this.continuing,
       rewindPending: this.rewindPending,
       forkPending: Boolean(this.forkTarget),
@@ -3579,8 +3317,8 @@ export class HuiApp extends HuiElement {
       chatPreferences: this.control.settings.chat,
       queue: this.queue,
       question: this.conversation.question,
-      connection: this.connection,
-      copiedId: this.copiedId,
+      connection: this.conversation.connection,
+      copiedId: this.conversation.copiedId,
       ...(this.paneCall && this.onPaneCall ? { call: { inCall: this.paneCall.inCall, onCall: this.onPaneCall } } : {}),
       expandedActivityIds: this.expandedActivityIds,
       showScrollToBottom: this.showScrollToBottom,
@@ -3591,14 +3329,14 @@ export class HuiApp extends HuiElement {
       note: this.note,
       noteLevel: this.noteLevel,
       onDismissNote: () => { this.note = ""; this.noteLevel = "info"; },
-      connectionNote: this.connectionNote,
+      connectionNote: this.conversation.connectionNote,
       onLaunch: this.launch,
       onSelectSession: this.selectSession,
       onClosePane: this.onPaneClose,
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
       onSplitPane: this.paneNarrow ? undefined : this.onPaneSplit,
       onOpenTerminal: this.onPaneTerminal ? this.openTerminal : undefined,
-      onOpenBrowser: this.onPaneBrowser && this.control.settings.browser.enabled && this.transcript.some((item) => item.kind === "tool" && item.name === "browser")
+      onOpenBrowser: this.onPaneBrowser && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
         ? () => this.onPaneBrowser?.()
         : undefined,
       browserPreview: this.control.settings.browser.enabled
@@ -3622,13 +3360,13 @@ export class HuiApp extends HuiElement {
         suggestions: this.backlog.taskSuggestions,
         index: this.backlog.taskSuggestionIndex,
         pendingId: this.backlog.taskSuggestionPendingId,
-        copied: this.copiedId === `suggestion:${this.backlog.taskSuggestions[clampSuggestionIndex(this.backlog.taskSuggestionIndex, this.backlog.taskSuggestions.length)]?.id ?? ""}`,
+        copied: this.conversation.copiedId === `suggestion:${this.backlog.taskSuggestions[clampSuggestionIndex(this.backlog.taskSuggestionIndex, this.backlog.taskSuggestions.length)]?.id ?? ""}`,
         onIndex: this.backlog.setSuggestionIndex,
         onStart: this.backlog.startSuggestion,
         jiraConfigured: this.backlog.jiraConfigured === true,
         onCreateJira: this.backlog.fileSuggestionInJira,
         onAddToBacklog: this.backlog.saveSuggestionToBacklog,
-        onCopy: (suggestion) => { void this.copyTranscript(taskSuggestionPrompt(suggestion), `suggestion:${suggestion.id}`); },
+        onCopy: (suggestion) => { void this.conversation.copy(taskSuggestionPrompt(suggestion), `suggestion:${suggestion.id}`); },
         onDismiss: this.backlog.dismissSuggestion,
       },
       watchers: this.backlog.watchers.length ? {
@@ -3645,7 +3383,7 @@ export class HuiApp extends HuiElement {
       onDraftChange: this.updateDraft,
       onDraftInput: this.typeDraft,
       commandMenu: {
-        open: this.slashQuery !== null && !this.sending && !this.opening && !this.launching && (!this.composerSession() || this.connection === "live"),
+        open: this.slashQuery !== null && !this.sending && !this.conversation.opening && !this.launching && (!this.composerSession() || this.conversation.connection === "live"),
         commands: this.menuCommands(),
         catalog: this.runtimeCommands(),
         paths: this.localPathQuery ? this.localPaths : undefined,
@@ -3656,14 +3394,14 @@ export class HuiApp extends HuiElement {
         activeIndex: this.slashActiveIndex,
         loading: this.commandsLoading,
         error: this.commandsError,
-        streaming: this.streaming,
+        streaming: this.conversation.streaming,
         onSelect: this.selectSlashCommand,
         onRetry: this.requestCommands,
       },
       onCommandQuery: this.setCommandQuery,
       onCommandKeydown: this.commandKeydown,
       localPathMenu: {
-        open: this.localPathQuery !== null && this.slashQuery === null && !this.sending && !this.opening && this.connection === "live",
+        open: this.localPathQuery !== null && this.slashQuery === null && !this.sending && !this.conversation.opening && this.conversation.connection === "live",
         paths: this.localPaths,
         activeIndex: this.localPathActiveIndex,
         loading: this.localPathsLoading,
@@ -3711,7 +3449,7 @@ export class HuiApp extends HuiElement {
       onCancelCompaction: () => this.cancelCompactionNow(),
       onAddAttachments: this.addAttachments,
       onRemoveAttachment: this.removeAttachment,
-      onCopy: this.copyTranscript,
+      onCopy: this.conversation.copy,
       onActivityExpanded: this.setActivityExpanded,
       onAnswerQuestion: this.answerQuestion,
       onTranscriptScroll: this.transcriptScrolled,
