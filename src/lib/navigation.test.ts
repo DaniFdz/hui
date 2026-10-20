@@ -7,8 +7,24 @@ import {
   ROUTABLE_SETTINGS_PAGES,
   settingsCloseNavigation,
   settingsReturnTarget,
+  type NavigationTarget,
 } from "./navigation.ts";
 import { HUI_PAGES } from "./pages.ts";
+import routes from "./navigation.fixture.json";
+
+test("every route kind, page and settings area is covered by the production reload fixture", () => {
+  const targets: { [K in NavigationTarget["kind"]]: readonly Extract<NavigationTarget, { kind: K }>[] } = {
+    home: [{ kind: "home" }],
+    kanban: [{ kind: "kanban" }],
+    page: HUI_PAGES.map((page) => ({ kind: "page", page })),
+    settings: ROUTABLE_SETTINGS_PAGES.map((page) => ({ kind: "settings", page })),
+    session: [{ kind: "session", id: "fixture" }, { kind: "session", id: "4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f" }],
+    bot: [{ kind: "bot", id: "4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f" }, { kind: "bot", id: "scout" }, { kind: "bot", id: "4f0c bot?#" }],
+  };
+  assert.deepEqual(Object.values(targets).flat().map(navigationPath).sort(), [...routes.app].sort());
+  for (const path of routes.app) assert.equal(resolveNavigation(path).path, path);
+  for (const path of routes.files) assert.deepEqual(resolveNavigation(path), { target: { kind: "home" }, path: "/" });
+});
 
 test("home has a stable canonical route", () => {
   assert.deepEqual(resolveNavigation("/"), { target: { kind: "home" }, path: "/" });

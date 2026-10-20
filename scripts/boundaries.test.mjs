@@ -189,6 +189,7 @@ test("no import breaks a dependency rule", () => {
 });
 
 test.each([
+  ["src/lib/navigation.fixture.json", "server/http/static-files.fixture.json"],
   ["src/lib/settings/settings.fixture.json", "server/hui-settings.fixture.json"],
   ["src/lib/theme/shadcn-theme.fixture.json", "server/themes.fixture.json"],
   ["src/lib/composer/slash-commands.fixture.json", "server/sessions/slash-commands.fixture.json"],
