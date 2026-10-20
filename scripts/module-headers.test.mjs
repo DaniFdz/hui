@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, relative, win32 } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 
@@ -19,7 +19,7 @@ const SKIPPED = /\.(?:test|d)\.(?:ts|mjs|cjs|js)$/u;
 async function sources(directory) {
   const found = [];
   for (const entry of await readdir(join(root, directory), { withFileTypes: true })) {
-    const path = join(directory, entry.name);
+    const path = posix.join(directory, entry.name);
     if (entry.isDirectory()) {
       if (entry.name !== "node_modules") found.push(...await sources(path));
     } else if (SOURCE.test(entry.name) && !SKIPPED.test(entry.name) && !path.startsWith(PINNED)) found.push(path);
@@ -39,12 +39,9 @@ test("every source module starts with a header comment", async () => {
   assert.deepEqual(missing, [], "add a header comment saying what the module owns (see docs/map.md)");
 });
 
-test.each([
-  ["native", { dirname, join, relative }],
-  ["Windows", win32],
-])("docs/map.md names every directory that holds source modules (%s paths)", async (_name, path) => {
+test("docs/map.md names every directory that holds source modules", async () => {
   const map = await readFile(join(root, "docs/map.md"), "utf8");
-  const directories = [...new Set(files.map((file) => path.relative(root, path.join(root, path.dirname(file)))))];
-  const unnamed = directories.filter((directory) => !map.includes(`${directory.replaceAll("\\", "/")}/`));
+  const directories = [...new Set(files.map((file) => posix.dirname(file)))];
+  const unnamed = directories.filter((directory) => !map.includes(`${directory}/`));
   assert.deepEqual(unnamed, [], "add the directory to docs/map.md");
 });
