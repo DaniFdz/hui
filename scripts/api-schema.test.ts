@@ -52,7 +52,7 @@ test("the converter handles every supported schema keyword and cross-area refere
   assert.throws(() => generateBrowserTypes({ $defs: { Missing: { $ref: "#/$defs/Absent" } }, "x-hui-areas": { test: ["Missing"] } }), /Unknown API schema reference: Absent/u);
 });
 
-test("schema coverage only has the areas explicitly left for the remaining migration", async () => {
+test("every JSON route module and documented route has a published schema", async () => {
   const gaps = [];
   for (const name of await readdir(new URL("server/routes/", root))) {
     if (!name.endsWith(".ts") || name.endsWith(".test.ts")) continue;
@@ -64,22 +64,5 @@ test("schema coverage only has the areas explicitly left for the remaining migra
   const published = new Set(buildApiSchema("test")["x-hui-routes"].map((route) => `${route.method} ${route.path}`));
   for (const route of documented) if (!published.has(route)) gaps.push(`missing: ${route}`);
   for (const route of published) if (!documented.has(route)) gaps.push(`undocumented: ${route}`);
-  assert.deepEqual(gaps.sort(), ALLOWED, "add routeSchemas and document each route; remove fixed entries from ALLOWED");
+  assert.deepEqual(gaps.sort(), [], "add routeSchemas and a docs/api.md heading for every JSON route");
 });
-
-const ALLOWED = [
-  "missing: GET /__hui/diagnostics/export",
-  "missing: GET /__hui/directories",
-  "missing: GET /__hui/git-checkout",
-  "missing: GET /__hui/health",
-  "missing: GET /__hui/local-paths",
-  "missing: GET /__hui/observability",
-  "missing: GET /__hui/sessions/events",
-  "missing: POST /__hui/diagnostics/ui-errors",
-  "module: attachments",
-  "module: diagnostics",
-  "module: local-paths",
-  "module: themes",
-  "undocumented: GET /__hui/power",
-  "undocumented: PUT /__hui/power",
-];

@@ -4,7 +4,7 @@
  * the registry and the contract is fixed in `docs/api.md`; this module holds no session state of its own.
  */
 import type {
-  QuestionnaireQuestion, SessionList, SessionListUpdate, SessionStage, SessionStatus, SessionView, TranscriptMetrics, WorktreeProgress,
+  QuestionnaireQuestion, SessionList, SessionListUpdate, SessionStage, SessionStatus, SessionView, TranscriptMetrics,
 } from "./schema/sessions.ts";
 
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
@@ -26,23 +26,10 @@ const CREATE_SESSION_TIMEOUT_MS = 120_000;
 const SESSION_STREAM_GONE = 4404;
 const SESSION_STATUSES_URL = `${SESSIONS_URL}/events`;
 
-export type SessionStatusUpdate = {
-  id: string;
-  status: SessionStatus;
-  unread?: boolean;
-  creating?: WorktreeProgress;
-  creationError?: string;
-  /** Present when the gateway renamed the session, e.g. its generated title. */
-  title?: string;
-};
-
-export type GitCheckoutInfo = {
-  available: boolean;
-  headBranch: string;
-  defaultBranch: string;
-  branches: readonly string[];
-  branchesUnavailable?: boolean;
-};
+import type { SessionQueueRequest, SessionStatusUpdate } from "./schema/sessions.ts";
+import type { GitCheckoutInfo, GitCheckoutResponse } from "./schema/local-paths.ts";
+export type { SessionStatusUpdate } from "./schema/sessions.ts";
+export type { GitCheckoutInfo } from "./schema/local-paths.ts";
 
 /** `url` is an opaque gateway route (or a local data URL while pending) for images. */
 export type TranscriptAttachment = { name: string; kind?: "image" | "file"; mimeType?: string; url?: string };
@@ -245,7 +232,7 @@ export async function createSession(input: {
 }
 
 export async function loadGitCheckout(cwd: string): Promise<GitCheckoutInfo> {
-  const body = await fetchJson<{ checkout?: GitCheckoutInfo }>(
+  const body = await fetchJson<GitCheckoutResponse>(
     `/__hui/git-checkout?cwd=${encodeURIComponent(cwd || "~/")}`,
   );
   return body.checkout ?? {
@@ -391,11 +378,7 @@ export const followUpSession = (id: string, text: string, attachments: readonly 
 
 export async function mutateQueuedMessage(
   id: string,
-  mutation:
-    | { operation: "edit"; itemId: string; text: string }
-    | { operation: "remove"; itemId: string }
-    | { operation: "move"; itemId: string; toIndex: number }
-    | { operation: "steer"; itemId: string },
+  mutation: SessionQueueRequest,
 ): Promise<void> {
   await fetchJson<{ ok?: boolean }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/queue`, {
     method: "POST",

@@ -12,7 +12,7 @@ import type { BotIO } from "../../cli/gateway-client.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
-import { BotCatalog as BotCatalogSchema, BotResponse, BotsResponse } from "../api/bots.ts";
+import { BotCatalog as BotCatalogSchema, BotResponse, BotsResponse, BotsStreamFrame } from "../api/bots.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory and a deterministic provider, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-routes-"));
@@ -415,7 +415,12 @@ test("the bot list streams: the whole list first, then the bots that changed", {
       if (end >= 0) {
         const frame = buffer.slice(0, end);
         buffer = buffer.slice(end + 2);
-        if (frame.startsWith("event: bots")) return JSON.parse(frame.slice(frame.indexOf("data: ") + 6)) as BotsUpdate;
+        if (frame.startsWith("event: bots")) {
+          const data: unknown = JSON.parse(frame.slice(frame.indexOf("data: ") + 6));
+          const message = { event: "bots", data };
+          expectSchema(BotsStreamFrame, message);
+          return message.data;
+        }
         continue;
       }
       const { value, done } = await reader.read();

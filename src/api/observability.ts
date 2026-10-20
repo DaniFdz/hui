@@ -2,46 +2,9 @@
  * Browser client for the gateway's diagnostics: recent activity and logs, usage totals and runtime details,
  * plus a download of the redacted diagnostics export. The gateway collects and retains the events in memory.
  */
+import type { ObservabilitySnapshot } from "./schema/diagnostics.ts";
+export type { DiagnosticEvent, ObservabilitySnapshot } from "./schema/diagnostics.ts";
 import { fetchJson } from "./request.ts";
-
-export type DiagnosticEvent = {
-  id: number;
-  timestamp: string;
-  area: "gateway" | "session" | "runtime" | "automation" | "ui";
-  level: "info" | "warning" | "error";
-  action: string;
-  summary: string;
-  /** Redacted cause of a warning or error. */
-  detail?: string;
-  sessionId?: string;
-};
-
-export type ObservabilitySnapshot = {
-  generatedAt: string;
-  retention: { kind: "memory"; maximum: number; since: string };
-  activity: readonly DiagnosticEvent[];
-  logs: readonly DiagnosticEvent[];
-  usage: {
-    sessions: number;
-    filesRead: number;
-    records: number;
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadTokens: number;
-    cacheWriteTokens: number;
-    totalTokens: number;
-    costUsd: number | null;
-    models: readonly { model: string; tokens: number }[];
-    unavailable: readonly string[];
-  };
-  debug: {
-    node: string;
-    platform: string;
-    uptimeSeconds: number;
-    memory: { rssBytes: number; heapUsedBytes: number; heapTotalBytes: number };
-    eventCount: number;
-  };
-};
 
 export function loadObservability(): Promise<ObservabilitySnapshot> {
   return fetchJson<ObservabilitySnapshot>("/__hui/observability");

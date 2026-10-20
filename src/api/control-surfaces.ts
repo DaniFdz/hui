@@ -7,23 +7,8 @@ import type { PowerResponse, PowerStatus } from "./schema/power.ts";
 import type { WorkspaceInspection } from "./schema/worktrees.ts";
 import { fetchJson } from "./request.ts";
 
-export type GatewayHealth = {
-  status: "online";
-  transport: "HTTP + SSE";
-  uptimeSeconds: number;
-  access: "Full Access";
-  sessions: {
-    registered: number;
-    starting: number;
-    idle: number;
-    running: number;
-    waiting: number;
-    error: number;
-    reconnecting: number;
-    disconnected: number;
-    processes: number;
-  };
-};
+import type { GatewayHealth } from "./schema/diagnostics.ts";
+export type { GatewayHealth } from "./schema/diagnostics.ts";
 
 export type { MemorySource, WorktreeView, WorkspaceInspection } from "./schema/worktrees.ts";
 

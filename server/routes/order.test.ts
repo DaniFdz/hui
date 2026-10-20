@@ -16,8 +16,11 @@ import { TaskSuggestionError } from "../api/task-suggestions.ts";
 import { WatcherError } from "../api/watchers.ts";
 import { WorktreeError, WorktreeInventory, WorkspaceInspection, WorktreeRemovalResponse } from "../api/worktrees.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
+import { DiagnosticsError, GatewayHealth, ObservabilitySnapshot, UiErrorReceipt } from "../api/diagnostics.ts";
+import { DirectoriesResponse, GitCheckoutResponse, LocalPathError, LocalPathsResponse } from "../api/local-paths.ts";
+import { ThemeFile, ThemeError, ThemesResponse } from "../api/themes.ts";
 import { once } from "node:events";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -150,6 +153,9 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
   let body: unknown;
   try { body = JSON.parse(text); } catch { body = undefined; }
   if (response.status >= 400) {
+    if (["/__hui/health", "/__hui/observability", "/__hui/diagnostics/export", "/__hui/diagnostics/ui-errors"].includes(path)) expectSchema(DiagnosticsError, body);
+    if (["/__hui/directories", "/__hui/local-paths", "/__hui/git-checkout"].includes(path)) expectSchema(LocalPathError, body);
+    if (path.startsWith("/__hui/themes")) expectSchema(ThemeError, body);
     if (path.startsWith("/__hui/backlog")) expectSchema(BacklogError, body);
     if (/\/suggestions\//u.test(path)) expectSchema(TaskSuggestionError, body);
     if (/\/watchers\//u.test(path)) expectSchema(WatcherError, body);
@@ -168,6 +174,13 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
     if (/^\/__hui\/(?:session-groups(?:\/[^/]+)?|sessions(?:\/[^/]+(?:\/(?:prompt|steer|follow-up|continue|compact|reload|abort|rewind|resume|question|fork|fast|connect))?)?)$/u.test(path)) expectSchema(SessionError, body);
   }
   if (response.status === 200) {
+    if (path === "/__hui/health") expectSchema(GatewayHealth, body);
+    if (path === "/__hui/observability" || path === "/__hui/diagnostics/export") expectSchema(ObservabilitySnapshot, body);
+    if (path.startsWith("/__hui/directories")) expectSchema(DirectoriesResponse, body);
+    if (path.startsWith("/__hui/local-paths")) expectSchema(LocalPathsResponse, body);
+    if (path.startsWith("/__hui/git-checkout")) expectSchema(GitCheckoutResponse, body);
+    if (path === "/__hui/themes") expectSchema(ThemesResponse, body);
+    if (path.startsWith("/__hui/themes/file/")) expectSchema(ThemeFile, body);
     if (path === "/__hui/worktrees") expectSchema(WorktreeInventory, body);
     if (path === "/__hui/workspaces") expectSchema(WorkspaceInspection, body);
     if (path === "/__hui/worktrees/remove") expectSchema(WorktreeRemovalResponse, body);
@@ -177,6 +190,44 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
   }
   return [response.status, body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).sort() : null];
 }
+
+test("diagnostics, path lookups and themes publish their existing payloads", async () => {
+  for (const path of ["/__hui/health", "/__hui/observability", "/__hui/diagnostics/export", "/__hui/directories?q=~/", `/__hui/local-paths?cwd=${encodeURIComponent(root)}&q=`, `/__hui/git-checkout?cwd=${encodeURIComponent(root)}`, "/__hui/themes"]) {
+    assert.equal((await answer(`GET ${path}`))[0], 200);
+  }
+  const response = await fetch(`${base}/__hui/diagnostics/ui-errors`, {
+    method: "POST", headers: { "x-hui": "1", "content-type": "application/json" },
+    body: JSON.stringify({ reports: [{ kind: "uncaught_error", message: "schema fixture" }] }),
+  });
+  assert.equal(response.status, 202);
+  const receipt = await response.json();
+  expectSchema(UiErrorReceipt, receipt);
+  assert.deepEqual(receipt, { recorded: 1, dropped: 0 });
+  const exported = await fetch(`${base}/__hui/diagnostics/export`, { headers: { "x-hui": "1" } });
+  assert.match(exported.headers.get("content-disposition") ?? "", /^attachment; filename="hui-diagnostics-.*\.json"$/u);
+  expectSchema(ObservabilitySnapshot, await exported.json());
+  const themes = await fetch(`${base}/__hui/themes`, { headers: { "x-hui": "1" } });
+  const listing = await themes.json();
+  expectSchema(ThemesResponse, listing);
+  assert.ok(listing.themes.length > 0);
+  assert.equal((await answer(`GET ${listing.themes[0]!.url}`))[0], 200);
+});
+
+test("theme files keep author-supplied fields even when cssVars is not an object", async () => {
+  const directory = join(root, "config", "hui", "themes");
+  await mkdir(directory, { recursive: true });
+  const theme: Record<string, unknown> = JSON.parse(await readFile(new URL("../../themes/miami.json", import.meta.url), "utf8"));
+  const document = { ...theme, name: "Open theme", cssVars: null };
+  await writeFile(join(directory, "schema-open.json"), JSON.stringify(document));
+  const response = await fetch(`${base}/__hui/themes`, { headers: { "x-hui": "1" } });
+  const listing = await response.json();
+  expectSchema(ThemesResponse, listing);
+  const entry = listing.themes.find((item) => item.id === "schema-open");
+  assert.ok(entry, "the theme mapper accepts the top-level color blocks");
+  assert.equal((await answer(`GET ${entry.url}`))[0], 200);
+  const file = await fetch(base + entry.url, { headers: { "x-hui": "1" } });
+  assert.deepEqual(await file.json(), document);
+});
 
 test("worktree and workspace routes publish their existing payloads", async () => {
   assert.equal((await answer("GET /__hui/worktrees"))[0], 200);

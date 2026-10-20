@@ -187,6 +187,9 @@ export const BotsUpdate = Type.Object({
 }, { $id: "BotsUpdate" });
 export type BotsUpdate = Static<typeof BotsUpdate>;
 
+export const BotsStreamFrame = Type.Object({ event: Type.Literal("bots"), data: BotsUpdate }, { $id: "BotsStreamFrame" });
+export type BotsStreamFrame = Static<typeof BotsStreamFrame>;
+
 export const BotToolGroup = Type.Enum(["files", "shell", "hui", "extension", "bots"] as const, { $id: "BotToolGroup" });
 export type BotToolGroup = Static<typeof BotToolGroup>;
 
@@ -269,6 +272,7 @@ export const BotFactsResponse = Type.Object({ facts: Type.Array(BotFact) }, { $i
 export type BotFactsResponse = Static<typeof BotFactsResponse>;
 
 export const routeSchemas = [
+  { method: "GET", path: "/__hui/bots/events", response: BotsStreamFrame, events: BotsStreamFrame },
   { method: "GET", path: "/__hui/bots", response: BotsResponse },
   { method: "POST", path: "/__hui/bots", request: BotInput, response: BotResponse },
   { method: "GET", path: "/__hui/bots/:id", response: BotResponse },

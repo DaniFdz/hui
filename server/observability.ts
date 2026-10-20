@@ -14,51 +14,8 @@ const MAX_SUMMARY_CHARS = 240;
 const MAX_DETAIL_CHARS = 600;
 const MAX_TRANSCRIPT_BYTES = 32 * 1024 * 1024;
 
-export type DiagnosticLevel = "info" | "warning" | "error";
-export type DiagnosticArea = "gateway" | "session" | "runtime" | "automation" | "ui";
-
-export type DiagnosticEvent = {
-  id: number;
-  timestamp: string;
-  area: DiagnosticArea;
-  level: DiagnosticLevel;
-  action: string;
-  summary: string;
-  /** Reported cause of a warning or error, such as a runtime's start-up error
-   * or a provider's HTTP error. Redacted, whitespace-collapsed and bounded;
-   * info events never carry one. */
-  detail?: string;
-  sessionId?: string;
-};
-
-export type UsageTotals = {
-  sessions: number;
-  filesRead: number;
-  records: number;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  totalTokens: number;
-  costUsd: number | null;
-  models: readonly { model: string; tokens: number }[];
-  unavailable: readonly string[];
-};
-
-export type ObservabilitySnapshot = {
-  generatedAt: string;
-  retention: { kind: "memory"; maximum: number; since: string };
-  activity: readonly DiagnosticEvent[];
-  logs: readonly DiagnosticEvent[];
-  usage: UsageTotals;
-  debug: {
-    node: string;
-    platform: string;
-    uptimeSeconds: number;
-    memory: { rssBytes: number; heapUsedBytes: number; heapTotalBytes: number };
-    eventCount: number;
-  };
-};
+import type { DiagnosticEvent, ObservabilitySnapshot, UsageTotals } from "./api/diagnostics.ts";
+export type { DiagnosticArea, DiagnosticEvent, DiagnosticLevel, ObservabilitySnapshot, UsageTotals } from "./api/diagnostics.ts";
 
 let nextId = 1;
 const startedAt = new Date().toISOString();

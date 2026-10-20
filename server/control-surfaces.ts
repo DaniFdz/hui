@@ -10,7 +10,6 @@ import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
 import { liveSessions } from "./live-sessions.ts";
-import type { SessionStatus } from "./api/sessions.ts";
 import type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
 import { readRegistry, type SessionRecord } from "./sessions.ts";
 
@@ -19,13 +18,8 @@ const COMMAND_TIMEOUT_MS = 5_000;
 const MAX_COMMAND_OUTPUT = 512 * 1024;
 const MAX_MEMORY_FILES = 200;
 
-export type GatewayHealth = {
-  status: "online";
-  transport: "HTTP + SSE";
-  uptimeSeconds: number;
-  access: "Full Access";
-  sessions: Record<SessionStatus | "registered" | "processes", number>;
-};
+import type { GatewayHealth } from "./api/diagnostics.ts";
+export type { GatewayHealth } from "./api/diagnostics.ts";
 
 export type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
 

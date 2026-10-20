@@ -3,9 +3,10 @@
  * mention suggests and splicing a chosen suggestion back in. The gateway lists matching paths (src/api/local-paths.ts).
  */
 import type { BotView } from "../api/schema/bots.ts";
+import type { LocalPathSuggestion as PathSuggestion } from "../api/schema/local-paths.ts";
 
 export type LocalPathSuggestion =
-  | { path: string; kind: "directory" | "file" }
+  | PathSuggestion
   /** A bot an `@` mention tags: `path` is its handle. */
   | { path: string; kind: "bot"; bot: Pick<BotView, "id" | "name" | "title" | "avatar"> };
 

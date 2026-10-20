@@ -35,6 +35,8 @@ export type SessionOk = { "ok": true; };
 
 export type SessionPromptResponse = { "ok": true; "duplicate"?: true; };
 
+export type SessionQueueRequest = ({ "operation": "edit"; "itemId": string; "text": string; }) | ({ "operation": "remove"; "itemId": string; }) | ({ "operation": "move"; "itemId": string; "toIndex": number; }) | ({ "operation": "steer"; "itemId": string; });
+
 export type SessionResponse = { "session": SessionView; };
 
 export type SessionStage = ("investigation") | ("implementation") | ("testing") | ("done");
@@ -44,6 +46,10 @@ export type SessionStageOrigin = (SessionStageSource) | ("default");
 export type SessionStageSource = ("operator") | ("agent") | ("pullRequest");
 
 export type SessionStatus = ("idle") | ("running") | ("waiting") | ("starting") | ("error") | ("reconnecting") | ("disconnected");
+
+export type SessionStatusStreamFrame = ({ "event": "snapshot"; "data": { "statuses": Array<SessionStatusUpdate>; }; }) | ({ "event": "status"; "data": SessionStatusUpdate; }) | ({ "event": "sessions"; "data": SessionListUpdate; });
+
+export type SessionStatusUpdate = { "id": string; "status": SessionStatus; "unread"?: boolean; "creating"?: WorktreeProgress; "creationError"?: string; "title"?: string; };
 
 export type SessionSubagent = { "taskId": string; "task": string; "label"?: string; "status": SubagentStatus; "startedAt": string; "updatedAt": string; "endedAt"?: string; "summary"?: string; "error"?: string; "completionDelivery"?: ("pending") | ("delivered"); "collect"?: true; };
 

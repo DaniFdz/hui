@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { USER_THEME_DIR } from "./paths.ts";
+import type { ThemeRef } from "./api/themes.ts";
 
 export const THEME_FILE_ROUTE = "/__hui/themes/file/";
 
@@ -32,7 +33,7 @@ export type ThemeEntry = {
 };
 
 type ThemeListing = {
-  themes: { id: string; name: string; url: string }[];
+  themes: ThemeRef[];
   /** Route key -> absolute path. Only files we discovered are ever served, so a
    * request can never name a path of its own. */
   files: Map<string, string>;

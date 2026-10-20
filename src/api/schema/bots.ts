@@ -78,6 +78,8 @@ export type BotVoicePatch = { "language"?: (VoiceLanguage) | (""); "live"?: (Gpt
 
 export type BotsResponse = { "bots": Array<BotView>; };
 
+export type BotsStreamFrame = { "event": "bots"; "data": BotsUpdate; };
+
 export type BotsUpdate = { "revision": number; "ids"?: Array<string>; "upserts": Array<BotView>; };
 
 export type GptLiveVoice = "cove" | "arbor" | "breeze" | "ember" | "juniper" | "maple" | "sol" | "spruce" | "vale";

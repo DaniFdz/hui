@@ -174,7 +174,29 @@ export type SessionFastResponse = Static<typeof SessionFastResponse>;
 export const SessionConnectResponse = Type.Object({ url: Type.String() }, { $id: "SessionConnectResponse" });
 export type SessionConnectResponse = Static<typeof SessionConnectResponse>;
 
+export const SessionQueueRequest = Type.Union([
+  Type.Object({ operation: Type.Literal("edit"), itemId: Type.String(), text: Type.String() }),
+  Type.Object({ operation: Type.Literal("remove"), itemId: Type.String() }),
+  Type.Object({ operation: Type.Literal("move"), itemId: Type.String(), toIndex: Type.Number() }),
+  Type.Object({ operation: Type.Literal("steer"), itemId: Type.String() }),
+], { $id: "SessionQueueRequest" });
+export type SessionQueueRequest = Static<typeof SessionQueueRequest>;
+
+export const SessionStatusUpdate = Type.Object({
+  id: Type.String(), status: SessionStatus, unread: Type.Optional(Type.Boolean()), creating: Type.Optional(WorktreeProgress),
+  creationError: Type.Optional(Type.String()), title: Type.Optional(Type.String()),
+}, { $id: "SessionStatusUpdate" });
+export type SessionStatusUpdate = Static<typeof SessionStatusUpdate>;
+
+export const SessionStatusStreamFrame = Type.Union([
+  Type.Object({ event: Type.Literal("snapshot"), data: Type.Object({ statuses: Type.Array(SessionStatusUpdate) }) }),
+  Type.Object({ event: Type.Literal("status"), data: SessionStatusUpdate }),
+  Type.Object({ event: Type.Literal("sessions"), data: SessionListUpdate }),
+], { $id: "SessionStatusStreamFrame" });
+export type SessionStatusStreamFrame = Static<typeof SessionStatusStreamFrame>;
+
 export const sessionRouteSchemas = [
+  { method: "GET", path: "/__hui/sessions/events", response: SessionStatusStreamFrame, events: SessionStatusStreamFrame },
   { method: "GET", path: "/__hui/sessions", response: SessionList },
   { method: "POST", path: "/__hui/sessions", response: SessionResponse },
   { method: "PATCH", path: "/__hui/sessions/:id", response: SessionResponse },
@@ -191,6 +213,7 @@ export const sessionActionRouteSchemas = [
   { method: "DELETE", path: "/__hui/sessions/:id/compact", response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/fork", response: SessionResponse },
   { method: "POST", path: "/__hui/sessions/:id/fast", response: SessionFastResponse },
+  { method: "POST", path: "/__hui/sessions/:id/queue", request: SessionQueueRequest, response: SessionOk },
 ];
 
 export const routeSchemas = [...sessionRouteSchemas, ...sessionActionRouteSchemas];

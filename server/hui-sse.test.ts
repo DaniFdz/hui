@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 import { waitFor } from "./test-support/wait-for.ts";
+import { SessionStatusStreamFrame } from "./api/sessions.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
 
 // Keep all filesystem-backed module state isolated, including on a failed
 // assertion. The registry and attachment paths are captured at import time.
@@ -239,6 +241,12 @@ test("the gateway status stream multiplexes tagged session lifecycle updates", (
     /event: status\ndata: \{"id":"session-a","status":"idle"\}\n\n/,
   );
   assert.match(response.chunks.join(""), /event: sessions\ndata: \{"revision":1,"groups":\[\{"label":"work","ids":\[\]\}\],"upserts":\[\]\}\n\n/);
+  for (const block of response.chunks.join("").trim().split("\n\n")) {
+    const event = block.match(/^event: (.+)$/mu)?.[1];
+    const data = block.match(/^data: (.+)$/mu)?.[1];
+    assert.ok(event && data);
+    expectSchema(SessionStatusStreamFrame, { event, data: JSON.parse(data) });
+  }
   assert.equal(unsubscribed, true);
   assert.equal(unlisted, true);
 });

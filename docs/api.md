@@ -20,9 +20,18 @@ version. Other methods return 405.
 `x-hui-routes` lists each described route's `method`, `path`, and `response`,
 plus `request` or `events` when present, as schema references.
 `x-hui-api-version` is the gateway package version. `x-hui-areas` maps API area
-names to their payload names for browser type generation. The power API is the
-first described area; remaining routes are added during the schema migration.
+names to their payload names for browser type generation. Every JSON route has
+a schema and a route heading in this document; the coverage check rejects gaps.
 Internal records and credentials are not published.
+
+File and HTML responses stay outside the payload catalog: prompt attachment
+images and downloads, presented media, the widget sandbox, bot memory HTML,
+file previews and downloads, browser tab preview images, and VS Code entry and
+proxy responses. Their JSON errors do not turn the successful byte response
+into a JSON payload. Terminal and browser binary frames remain described in
+prose; their JSON control messages have schemas. External trigger hooks, the
+worker protocol and the loopback agent-tools bridge are not browser contracts.
+Theme files are JSON consumed by the browser, so their payload shape is included.
 
 Run `npm run api:schema` to update the committed document and generated browser
 types. The browser types are generated from the JSON document, not imported
@@ -678,6 +687,9 @@ Returns gateway uptime, `HTTP + SSE`, the fixed `Full Access` product mode and
 registered/live PI runtime counts per session status. This endpoint is diagnostic and read-only.
 
 ### macOS power
+
+### `GET /__hui/power`
+### `PUT /__hui/power`
 
 `Settings.power.keepAwake` (default `true`; only an explicit `false` turns it
 off) is the one saved power choice. On macOS the gateway applies it at startup
@@ -1679,6 +1691,12 @@ failures; other methods answer 405.
 Optional query parameter `archived=1`.
 
 200 `{ bots: BotView[] }`. Active bots, or with `archived=1` only archived ones, sorted by name
+
+### `GET /__hui/bots/events`
+
+An SSE stream of `BotsStreamFrame` payloads. The `bots` event carries `BotsUpdate`.
+The first update contains the complete ordered `ids` list and bot views; later
+updates contain changed views and an `ids` list only when the layout changes.
 
 ### `POST /__hui/bots`
 
@@ -3164,6 +3182,12 @@ cached command catalog so newly added skills and commands appear.
 Uses the prompt body and attachment rules. Queues an instruction before PI's
 next model call while the current run is active.
 
+### `POST /__hui/sessions/:id/queue`
+
+Edits the follow-up queue using an `operation` of `edit`, `remove`, `move` or
+`steer` and an `itemId`. Editing also sends `text`; moving sends `toIndex`.
+Returns `{ ok: true }` after the operation, or the existing 400 or 409 error.
+
 ### `POST /__hui/sessions/:id/follow-up`
 
 Uses the prompt body and attachment rules. Queues work for after the current
@@ -3668,6 +3692,23 @@ two seconds after the first. While the gateway is unreachable, up to 20 distinct
 reports wait in memory and are retried with backoff (5–60 s), or at once when a
 `/__hui/` request succeeds; a page reload discards them. Cross-origin
 `Script error.`, ResizeObserver loop notices and aborted requests are ignored.
+
+### `GET /__hui/themes`
+
+Returns `ThemesResponse`, the merged built-in and user theme list. Each `ThemeRef`
+has its id, name and gateway file URL. A user theme wins when its id matches a
+built-in theme.
+
+### `POST /__hui/themes/import`
+
+Accepts `ThemeImportRequest` with a tweakcn URL and returns `ThemeImportResponse`
+with the imported id and refreshed theme list. Import errors return 400.
+
+### `GET /__hui/themes/file/:key`
+
+Returns the theme author's JSON document for a discovered theme key. The
+`ThemeFile` shape is an open JSON object because the gateway sends the author's
+fields unchanged. Mapping and contrast adjustment happen when HUI applies the theme. An unknown key returns 404.
 
 ### `GET /__hui/settings`
 

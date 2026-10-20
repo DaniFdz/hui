@@ -22,13 +22,8 @@ export type GitRunner = (
   onProgress?: (progress: WorktreeProgress) => void,
 ) => Promise<GitResult>;
 
-export type GitCheckoutInfo = {
-  available: boolean;
-  headBranch: string;
-  defaultBranch: string;
-  branches: readonly string[];
-  branchesUnavailable?: boolean;
-};
+import type { GitCheckoutInfo } from "./api/local-paths.ts";
+export type { GitCheckoutInfo } from "./api/local-paths.ts";
 
 export type CreatedSessionWorktree = {
   branch: string;

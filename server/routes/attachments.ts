@@ -5,8 +5,11 @@
  * same-origin fetch and refuses everything cross-site.
  */
 import { CLIENT_HEADER, type RouteRequest, type RouteResult } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
 import type { LiveSessions } from "../live-sessions.ts";
 import { readStoredAttachment } from "../sessions/attachments.ts";
+
+export const routeSchemas: RouteSchema[] = [];
 
 export const ATTACHMENT_ROUTE = /^\/__hui\/sessions\/([^/]+)\/attachments\/(\d{1,9})\/(files\/)?(\d{1,4})$/u;
 

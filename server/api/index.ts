@@ -27,6 +27,9 @@ import * as worktrees from "./worktrees.ts";
 import * as watchers from "./watchers.ts";
 import * as vscode from "./vscode.ts";
 import * as calls from "./calls.ts";
+import * as diagnostics from "./diagnostics.ts";
+import * as localPaths from "./local-paths.ts";
+import * as themes from "./themes.ts";
 
 export type RouteSchema = {
   method: string;
@@ -36,7 +39,7 @@ export type RouteSchema = {
   events?: TSchema;
 };
 
-export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings, pi, providers, tools, sessions, "session-events": sessionEvents, automation, updates, workers, terminals, files, diff, browser, bots, "bot-triggers": botTriggers, backlog, "task-suggestions": taskSuggestions, worktrees, watchers, "bot-templates": botTemplates, vscode, calls };
+export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings, pi, providers, tools, sessions, "session-events": sessionEvents, automation, updates, workers, terminals, files, diff, browser, bots, "bot-triggers": botTriggers, backlog, "task-suggestions": taskSuggestions, worktrees, watchers, "bot-templates": botTemplates, vscode, calls, diagnostics, "local-paths": localPaths, themes };
 
 export function buildApiSchema(version: string) {
   const definitions = new Map<string, unknown>();

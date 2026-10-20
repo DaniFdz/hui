@@ -4,7 +4,9 @@
  * `GET /__hui/git-checkout` (what Git checkout a folder is). `hui.ts` applies the `x-hui` guard before dispatching
  * here.
  */
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import { DirectoriesResponse, GitCheckoutResponse, LocalPathError, LocalPathsResponse } from "../api/local-paths.ts";
+export { routeSchemas } from "../api/local-paths.ts";
 import { completeLocalPaths, completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
 import type { WorkerService } from "../workers.ts";
 import { inspectGitCheckout } from "../worktrees.ts";
@@ -22,25 +24,25 @@ export function createLocalPathRoutes(deps: { workers: WorkerService }) {
         const worker = request.query.get("worker");
         // An unreachable worker just offers no suggestions; launching reports why.
         const directories = worker ? await deps.workers.directories(worker, query).catch(() => []) : await completeWorkingDirectories(query);
-        return { status: 200, body: { directories } };
+        return reply(DirectoriesResponse, { directories });
       }
-      return { status: 405, body: { error: "method not allowed" } };
+      return reply(LocalPathError, { error: "method not allowed" }, 405);
     }
     if (path === LOCAL_PATHS_ROUTE) {
       if (method === "GET") {
         const input = request.query.get("q") ?? "";
         const cwd = request.query.get("cwd") ?? "~/";
-        if (input.length > 4_096 || cwd.length > 4_096) return { status: 400, body: { error: "path query is too long" } };
-        return { status: 200, body: { paths: await completeLocalPaths(input, resolveWorkingDirectory(cwd)) } };
+        if (input.length > 4_096 || cwd.length > 4_096) return reply(LocalPathError, { error: "path query is too long" }, 400);
+        return reply(LocalPathsResponse, { paths: await completeLocalPaths(input, resolveWorkingDirectory(cwd)) });
       }
-      return { status: 405, body: { error: "method not allowed" } };
+      return reply(LocalPathError, { error: "method not allowed" }, 405);
     }
     if (path === GIT_CHECKOUT_ROUTE) {
       if (method === "GET") {
         const query = request.query.get("cwd") ?? "~/";
-        return { status: 200, body: { checkout: await inspectGitCheckout(resolveWorkingDirectory(query)) } };
+        return reply(GitCheckoutResponse, { checkout: await inspectGitCheckout(resolveWorkingDirectory(query)) });
       }
-      return { status: 405, body: { error: "method not allowed" } };
+      return reply(LocalPathError, { error: "method not allowed" }, 405);
     }
     return undefined;
   }

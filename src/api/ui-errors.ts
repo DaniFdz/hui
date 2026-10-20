@@ -7,18 +7,10 @@
  * a HUI request succeeds again; a page reload discards them.
  */
 
-export type UiErrorKind = "uncaught_error" | "unhandled_rejection" | "request_failed";
+import type { UiErrorReport as WireUiErrorReport } from "./schema/diagnostics.ts";
+export type { UiErrorKind } from "./schema/diagnostics.ts";
 
-export type UiErrorReport = {
-  kind: UiErrorKind;
-  message: string;
-  count: number;
-  firstAt: string;
-  lastAt: string;
-  location?: string;
-  page?: string;
-  request?: { method: string; path: string };
-};
+export type UiErrorReport = WireUiErrorReport & Required<Pick<WireUiErrorReport, "firstAt" | "lastAt">>;
 
 export type NewUiErrorReport = Omit<UiErrorReport, "count" | "firstAt" | "lastAt">;
 export type SendOutcome = "sent" | "retry" | "drop";
