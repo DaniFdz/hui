@@ -19,9 +19,9 @@ import { writeClipboardText } from "../lib/clipboard.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
-import type { Settings } from "../lib/settings.ts";
+import type { Settings } from "../lib/settings/settings.ts";
 import { currentSettings, patchSettings } from "../lib/settings/settings-store.ts";
-import type { ThemeMode, ThemeVariant } from "../lib/theme.ts";
+import type { ThemeMode, ThemeVariant } from "../lib/theme/theme.ts";
 import {
   applyAccent,
   applyMode,

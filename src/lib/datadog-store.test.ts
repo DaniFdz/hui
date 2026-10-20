@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 
-import { parseDatadogUrl } from "./datadog-links.ts";
+import { parseDatadogUrl } from "./markdown/datadog-links.ts";
 import type { DatadogConnection, DatadogPreviewResult } from "../api/schema/datadog.ts";
-import type { DatadogRef } from "./datadog-links.ts";
+import type { DatadogRef } from "./markdown/datadog-links.ts";
 import { clearDatadogPreviewCache, DATADOG_CHANGED, loadDatadogPreviews, settledDatadogPreview, signInToDatadog } from "./datadog-store.ts";
 
 const ref = (url: string) => parseDatadogUrl(url)!;

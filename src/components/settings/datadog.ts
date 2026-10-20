@@ -6,7 +6,7 @@
  */
 import { LitElement, html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
-import { DATADOG_APP_HOSTS, DATADOG_CLI_URL, DEFAULT_DATADOG_SITE } from "../../lib/datadog-links.ts";
+import { DATADOG_APP_HOSTS, DATADOG_CLI_URL, DEFAULT_DATADOG_SITE } from "../../lib/markdown/datadog-links.ts";
 import type { DatadogConnection, DatadogOrg, DatadogOrgStatus } from "../../api/schema/datadog.ts";
 import { datadogOrgLabel, datadogStatusLabel } from "../../lib/datadog.ts";
 import { DATADOG_CHANGED, notifyDatadogChanged } from "../../lib/datadog-store.ts";

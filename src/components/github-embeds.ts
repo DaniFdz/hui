@@ -4,9 +4,9 @@
  * come from the gateway's `gh` login and stay absent until it answers.
  */
 import { LitElement, html, nothing, svg, type TemplateResult } from "lit";
-import { githubRefKey, githubRefsInText } from "../lib/github-links.ts";
+import { githubRefKey, githubRefsInText } from "../lib/markdown/github-links.ts";
 import type { GitHubPreview, GitHubPreviewResult } from "../api/schema/github.ts";
-import type { GitHubRef } from "../lib/github-links.ts";
+import type { GitHubRef } from "../lib/markdown/github-links.ts";
 import { pullRequestStateLabel } from "../lib/pull-requests.ts";
 import { compactCount, previewErrorLabel } from "../lib/github-previews.ts";
 import { loadGitHubPreviews, settledGitHubPreview } from "../lib/github-previews-store.ts";

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { contrastRatio, parseColor } from "../color-contrast.ts";
-import { mapTheme } from "../shadcn-theme.ts";
+import { contrastRatio, parseColor } from "./color-contrast.ts";
+import { mapTheme } from "./shadcn-theme.ts";
 import { accentOverrideTokens, accentSurfaces, builtinPalette } from "./theme-store.ts";
 
 const LIGHT_PAGE = [parseColor("#faf9f7")!, parseColor("#ffffff")!];

@@ -75,7 +75,7 @@ import { renderCallButton } from "./bot-voice.ts";
 import { renderCallCard } from "./chat-call.ts";
 import { botLook, previewLine, type BotView } from "../lib/bots/bots.ts";
 import { navigationPath } from "../lib/navigation.ts";
-import { slashCommandQuery, type CommandQuery } from "../lib/slash-commands.ts";
+import { slashCommandQuery, type CommandQuery } from "../lib/composer/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
 import { localPathQuery, type LocalPathQuery } from "../lib/local-paths.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";

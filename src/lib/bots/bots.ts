@@ -14,7 +14,7 @@ import type { BotAvatar, BotAvatarPatch, BotFaceEars, BotFaceShape, BotInput, Bo
 import { gptLiveVoice } from "../voice/calls.ts";
 import { voiceLanguage } from "../voice/languages.ts";
 import type { SessionGroup, SessionView } from "../../api/sessions.ts";
-import { sessionTreeIds } from "../session-tree.ts";
+import { sessionTreeIds } from "../session/tree.ts";
 
 export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../api/schema/bots.ts";
 

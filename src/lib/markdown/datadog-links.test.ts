@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "vitest";
 
-import { datadogRefsInText, normalizeDatadogSite, parseDatadogUrl, pupSite } from "../datadog-links.ts";
+import { DATADOG_APP_HOSTS, datadogRefsInText, MAX_DATADOG_EMBEDS, normalizeDatadogSite, parseDatadogUrl, pupSite } from "./datadog-links.ts";
 
 const SHARE = "https://app.datadoghq.com/s/yB5yjZ/dgj-s33-htg";
 const WIDGET = "https://app.datadoghq.com/dashboard/ict-mcm-a8d/home-server?from_ts=1792170000000&live=true&tile_focus=7104162830770254&to_ts=1792173600000";
@@ -58,4 +59,14 @@ test("normalizes the site typed for an org and maps it to pup's site", () => {
   assert.equal(pupSite("app.datad0g.com"), "datad0g.com");
   assert.equal(pupSite("dd.datad0g.com"), "dd.datad0g.com");
   assert.equal(pupSite("us5.datadoghq.com"), "us5.datadoghq.com");
+});
+
+test("Datadog link parsing and site normalization match the portable fixtures", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./datadog-links.fixture.json", import.meta.url), "utf8"));
+  assert.equal(MAX_DATADOG_EMBEDS, fixture.maxEmbeds);
+  assert.deepEqual(DATADOG_APP_HOSTS, fixture.appHosts);
+  for (const item of fixture.urls) assert.deepEqual(parseDatadogUrl(item.input) ?? null, item.expected, item.input);
+  for (const item of fixture.sites) assert.equal(normalizeDatadogSite(item.input) ?? null, item.expected, String(item.input));
+  assert.equal(normalizeDatadogSite(undefined), "app.datadoghq.com");
+  for (const item of fixture.pupSites) assert.equal(pupSite(item.input), item.expected, item.input);
 });

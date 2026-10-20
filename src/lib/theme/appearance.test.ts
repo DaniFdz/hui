@@ -64,12 +64,12 @@ test("ships the complete OpenClaw font catalogue and loads every webface", () =>
     "jetbrains-mono",
     "system",
   ]);
-  const tokens = readFileSync(new URL("../styles/tokens.css", import.meta.url), "utf8");
+  const tokens = readFileSync(new URL("../../styles/tokens.css", import.meta.url), "utf8");
   for (const face of TYPEFACES) {
     assert.ok(face.stack.length > 10, `${face.id} has no stack`);
     assert.ok(!face.stack.includes(";"), `${face.id} stack would break out of a CSS value`);
     if (face.id === "system") continue;
-    const css = readFileSync(new URL(`../../public/fonts/${face.id}.css`, import.meta.url), "utf8");
+    const css = readFileSync(new URL(`../../../public/fonts/${face.id}.css`, import.meta.url), "utf8");
     assert.match(css, /@font-face/u, `${face.id} has no bundled face`);
     assert.ok(tokens.includes(`/fonts/${face.id}.css`), `${face.id} is not loaded`);
     const assets = [...css.matchAll(/src: url\("([^"?]+)(?:\?[^"]*)?"\)/gu)];
@@ -77,7 +77,7 @@ test("ships the complete OpenClaw font catalogue and loads every webface", () =>
     for (const match of assets) {
       const filename = match[1];
       assert.ok(filename);
-      assert.ok(readFileSync(new URL(`../../public/fonts/${filename}`, import.meta.url)).byteLength > 0);
+      assert.ok(readFileSync(new URL(`../../../public/fonts/${filename}`, import.meta.url)).byteLength > 0);
     }
   }
 });

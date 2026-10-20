@@ -3,7 +3,7 @@ import { beforeEach, test, vi } from "vitest";
 import type { ReactiveController } from "lit";
 import type { WorkerView } from "../api/workers.ts";
 import type { BotsStreamHandlers, BotView } from "../lib/bots/bots.ts";
-import { DEFAULT_SETTINGS, type Settings } from "../lib/settings.ts";
+import { DEFAULT_SETTINGS, type Settings } from "../lib/settings/settings.ts";
 import { BotsController } from "./bots-controller.ts";
 
 const fake = vi.hoisted(() => ({

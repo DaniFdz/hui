@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "vitest";
 
 import { HUI_PAGES } from "../lib/pages.ts";
-import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../lib/settings.ts";
+import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../lib/settings/settings.ts";
 import { BOTS_LABS_HINT, renderOwnedSurface } from "./hui-owned-surfaces.ts";
 
 const source = await readFile(new URL("./hui-owned-surfaces.ts", import.meta.url), "utf8");

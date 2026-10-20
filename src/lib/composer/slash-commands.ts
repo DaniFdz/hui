@@ -4,8 +4,8 @@
  * the model as a prompt.
  */
 import { commandReference } from "./command-references.ts";
-import type { RuntimeCommand } from "../api/sessions.ts";
-import { skillIsEnabled, type PiSkill } from "./pi.ts";
+import type { RuntimeCommand } from "../../api/sessions.ts";
+import { skillIsEnabled, type PiSkill } from "../pi.ts";
 
 export type ComposerCommand = Omit<RuntimeCommand, "source"> & { source: RuntimeCommand["source"] | "hui" };
 export const HUI_COMMANDS: readonly ComposerCommand[] = [{ name: "update", description: "Check for HUI updates and install the latest release", source: "hui" }];

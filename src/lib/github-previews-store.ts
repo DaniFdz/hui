@@ -2,8 +2,8 @@
  * most three) references through src/api/github-previews.ts, remembered per URL
  * for the page lifetime so re-renders and streaming updates do not refetch. */
 import type { GitHubPreviewResult } from "../api/schema/github.ts";
-import type { GitHubRef } from "./github-links.ts";
-import { MAX_GITHUB_EMBEDS } from "./github-links.ts";
+import type { GitHubRef } from "./markdown/github-links.ts";
+import { MAX_GITHUB_EMBEDS } from "./markdown/github-links.ts";
 import { fetchGitHubPreviews } from "../api/github-previews.ts";
 
 /** Page-lifetime cache: settled results stay; failures retry after this long. */

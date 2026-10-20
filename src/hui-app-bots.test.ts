@@ -8,7 +8,7 @@ import type { BotExportReview, BotImportPreview } from "./api/schema/bot-templat
 import * as botViews from "./views/bots.ts";
 import type { BotView } from "./lib/bots/bots.ts";
 import type { SessionView } from "./api/sessions.ts";
-import { DEFAULT_SETTINGS } from "./lib/settings.ts";
+import { DEFAULT_SETTINGS } from "./lib/settings/settings.ts";
 
 const written = vi.hoisted(() => ({ finish: undefined as (() => void) | undefined }));
 vi.mock("./lib/settings/settings-store.ts", async (original) => ({

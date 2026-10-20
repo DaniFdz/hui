@@ -3,13 +3,13 @@
  * out, so a stale or hand-edited file degrades to defaults instead of reaching CSS or the gateway. Loading
  * and saving them through the gateway is `settings/settings-store.ts`'s job.
  */
-import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "./voice/calls.ts";
-import { normalizeAppearance, DEFAULT_APPEARANCE } from "./appearance.ts";
-import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
-import { normalizeThemeMode } from "./theme.ts";
-import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../api/schema/settings.ts";
+import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "../voice/calls.ts";
+import { normalizeAppearance, DEFAULT_APPEARANCE } from "../theme/appearance.ts";
+import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "../terminal/font.ts";
+import { normalizeThemeMode } from "../theme/theme.ts";
+import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../../api/schema/settings.ts";
 
-export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../api/schema/settings.ts";
+export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../../api/schema/settings.ts";
 
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 

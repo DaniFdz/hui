@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { parseGitHubUrl } from "./github-links.ts";
+import { parseGitHubUrl } from "./markdown/github-links.ts";
 import type { GitHubPreviewResult } from "../api/schema/github.ts";
-import type { GitHubRef } from "./github-links.ts";
+import type { GitHubRef } from "./markdown/github-links.ts";
 import { clearGitHubPreviewCache, loadGitHubPreviews, settledGitHubPreview } from "./github-previews-store.ts";
 
 const ref = (url: string) => parseGitHubUrl(url)!;

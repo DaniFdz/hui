@@ -16,7 +16,7 @@ import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
 import type { NavigationTarget } from "../lib/navigation.ts";
 import { applyBotsUpdate, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, type BotView } from "../lib/bots/bots.ts";
 import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "../lib/bots/roster.ts";
-import { botsEnabled } from "../lib/settings.ts";
+import { botsEnabled } from "../lib/settings/settings.ts";
 import { refreshSettings, settingsWritten } from "../lib/settings/settings-store.ts";
 import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "../views/bot-settings.ts";
 import type { SettingsController } from "./settings-controller.ts";

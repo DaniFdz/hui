@@ -1,6 +1,6 @@
 /** Browser client for GitHub chat previews (`GET /__hui/github/previews`): one request for a message's references. */
 import type { GitHubPreviewsResponse, GitHubPreviewResult } from "./schema/github.ts";
-import type { GitHubRef } from "../lib/github-links.ts";
+import type { GitHubRef } from "../lib/markdown/github-links.ts";
 import { fetchJson } from "./request.ts";
 
 export async function fetchGitHubPreviews(refs: readonly GitHubRef[]): Promise<GitHubPreviewResult[]> {

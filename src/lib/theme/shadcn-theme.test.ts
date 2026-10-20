@@ -90,17 +90,17 @@ test("always resolves the complete OpenClaw semantic color contract", () => {
 });
 
 test("the default token layer defines every theme-controlled color", () => {
-  const css = readFileSync(new URL("../styles/tokens.css", import.meta.url), "utf8")
-    + readFileSync(new URL("../styles/openclaw-reference/base.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../../styles/tokens.css", import.meta.url), "utf8")
+    + readFileSync(new URL("../../styles/openclaw-reference/base.css", import.meta.url), "utf8");
   for (const token of THEME_COLOR_TOKENS) {
     assert.ok(css.includes(`${token}:`), `${token} must have a default`);
   }
 });
 
 test("component color roles match OpenClaw instead of collapsing into accent", () => {
-  const tokens = readFileSync(new URL("../styles/openclaw-reference/base.css", import.meta.url), "utf8");
-  const workspaces = readFileSync(new URL("../styles/openclaw-reference/components.css", import.meta.url), "utf8");
-  const chat = ["composer-surface", "grouped"].map((name) => readFileSync(new URL(`../styles/openclaw-reference/chat/${name}.css`, import.meta.url), "utf8")).join("\n");
+  const tokens = readFileSync(new URL("../../styles/openclaw-reference/base.css", import.meta.url), "utf8");
+  const workspaces = readFileSync(new URL("../../styles/openclaw-reference/components.css", import.meta.url), "utf8");
+  const chat = ["composer-surface", "grouped"].map((name) => readFileSync(new URL(`../../styles/openclaw-reference/chat/${name}.css`, import.meta.url), "utf8")).join("\n");
 
   assert.match(tokens, /--menu-selected:\s*color-mix\(in srgb, var\(--text\) 8%, transparent\)/);
   assert.match(tokens, /--overlay-border:\s*color-mix\(in srgb, var\(--border-strong\) 64%, transparent\)/);
@@ -178,7 +178,7 @@ test("preserves explicit OpenClaw semantic roles in built-in themes", () => {
 
 test("bundled Catppuccin matches the tweakcn payload consumed by OpenClaw", () => {
   const theme = JSON.parse(
-    readFileSync(new URL("../../themes/catppuccin.json", import.meta.url), "utf8"),
+    readFileSync(new URL("../../../themes/catppuccin.json", import.meta.url), "utf8"),
   ) as ShadcnTheme;
   const dark = modeTokens(theme, "dark");
   assert.equal(dark?.["--bg"], "oklch(0.2155 0.0254 284.0647)");
@@ -191,7 +191,7 @@ test("bundled Catppuccin matches the tweakcn payload consumed by OpenClaw", () =
 
 test("bundled Claw preserves OpenClaw's complete semantic palette", () => {
   const theme = JSON.parse(
-    readFileSync(new URL("../../themes/claw.json", import.meta.url), "utf8"),
+    readFileSync(new URL("../../../themes/claw.json", import.meta.url), "utf8"),
   ) as ShadcnTheme;
   const dark = modeTokens(theme, "dark");
   assert.equal(dark?.["--bg"], "#0e1015");
@@ -250,7 +250,7 @@ test("derives whatever a partial theme leaves out", () => {
 
 test("every bundled theme meets the contrast rules in each mode it carries", async () => {
   const { readdirSync } = await import("node:fs");
-  const root = new URL("../../themes/", import.meta.url);
+  const root = new URL("../../../themes/", import.meta.url);
   const files = readdirSync(root).filter((name) => name.endsWith(".json"));
   assert.ok(files.length >= 6);
   for (const file of files) {
@@ -263,7 +263,7 @@ test("every bundled theme meets the contrast rules in each mode it carries", asy
 });
 
 test("bundled Catppuccin and Dracula keep their hues where their own colors fall short", () => {
-  const read = (name: string) => JSON.parse(readFileSync(new URL(`../../themes/${name}.json`, import.meta.url), "utf8")) as ShadcnTheme;
+  const read = (name: string) => JSON.parse(readFileSync(new URL(`../../../themes/${name}.json`, import.meta.url), "utf8")) as ShadcnTheme;
   const catppuccin = read("catppuccin");
   const dracula = read("dracula");
   // Latte's sky accent (2.5:1 on its page) darkens; its mauve primary already reads and stays exactly as written.
@@ -358,7 +358,7 @@ test("swatches prefer the dark block and come from the real mapping", () => {
 
 test("stylesheets use only OpenClaw semantic color roles, not retired HUI aliases", async () => {
   const { readdirSync } = await import("node:fs");
-  const root = new URL("../styles/", import.meta.url);
+  const root = new URL("../../styles/", import.meta.url);
   const files = readdirSync(root, { recursive: true, encoding: "utf8" }).filter((name) => name.endsWith(".css"));
   assert.ok(files.length > 10);
   for (const file of files) {

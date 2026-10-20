@@ -69,7 +69,7 @@ export async function compareOriginalTheme(oracle = "http://127.0.0.1:43130") {
     await loaded;
     const doc = frame.contentDocument;
     const selection = await applyOriginalTheme(doc, oracle);
-    const { THEME_COLOR_TOKENS } = await import("/src/lib/shadcn-theme.ts");
+    const { THEME_COLOR_TOKENS } = await import("/src/lib/theme/shadcn-theme.ts");
     // HUI-only hover tokens are not upstream roles.
     const excluded = ["--primary-hover", "--destructive-hover"];
     const colors = THEME_COLOR_TOKENS.filter((token) => !excluded.includes(token));

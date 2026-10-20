@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test, vi } from "vitest";
 import type { ReactiveController } from "lit";
-import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../lib/settings.ts";
+import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../lib/settings/settings.ts";
 import type { PiResourceDocument } from "../lib/pi.ts";
 import { SettingsController } from "./settings-controller.ts";
 

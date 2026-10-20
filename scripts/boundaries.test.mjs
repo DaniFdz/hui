@@ -174,15 +174,15 @@ test("every allowlisted violation still occurs", () => {
 });
 
 test.each([
-  ["src/lib/settings.fixture.json", "server/hui-settings.fixture.json"],
-  ["src/lib/shadcn-theme.fixture.json", "server/themes.fixture.json"],
-  ["src/lib/slash-commands.fixture.json", "server/sessions/slash-commands.fixture.json"],
-  ["src/lib/command-references.fixture.json", "server/runtimes/command-references.fixture.json"],
-  ["src/lib/session-tree.fixture.json", "server/sessions/session-tree.fixture.json"],
+  ["src/lib/settings/settings.fixture.json", "server/hui-settings.fixture.json"],
+  ["src/lib/theme/shadcn-theme.fixture.json", "server/themes.fixture.json"],
+  ["src/lib/composer/slash-commands.fixture.json", "server/sessions/slash-commands.fixture.json"],
+  ["src/lib/composer/command-references.fixture.json", "server/runtimes/command-references.fixture.json"],
+  ["src/lib/session/tree.fixture.json", "server/sessions/session-tree.fixture.json"],
   ["src/lib/subagent-completion.fixture.json", "server/agent-tools/subagent-completion.fixture.json"],
   ["src/lib/run-error.fixture.json", "server/session-digest.fixture.json"],
-  ["src/lib/github-links.fixture.json", "server/integrations/github-links.fixture.json"],
-  ["src/lib/datadog-links.fixture.json", "server/integrations/datadog-links.fixture.json"],
+  ["src/lib/markdown/github-links.fixture.json", "server/integrations/github-links.fixture.json"],
+  ["src/lib/markdown/datadog-links.fixture.json", "server/integrations/datadog-links.fixture.json"],
   ["src/lib/session-stages.fixture.json", "server/sessions/session-stages.fixture.json"],
   ["src/lib/transcript-metrics.fixture.json", "server/runtimes/transcript-metrics.fixture.json"],
   ["src/api/session-list.fixture.json", "server/session-list.fixture.json"],

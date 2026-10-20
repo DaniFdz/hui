@@ -680,7 +680,7 @@ one administrator prompt per enable, never saved, so every gateway start begins
 off without prompting). Both end with the gateway, including a crash; a reboot's
 leftover shows as on until turned off. A top notice reminds while the lid is
 held awake. Proof: `server/power.test.ts` (real watcher script against fake
-macOS commands), `server/routes/power.test.ts`, `src/lib/settings.test.ts`,
+macOS commands), `server/routes/power.test.ts`, `src/lib/settings/settings.test.ts`,
 `src/views/settings-gateway.test.ts` and `e2e/power-settings.browser.md`.
 
 ### HUI-17 — Background watchers
@@ -803,7 +803,7 @@ requests:
    page as in the panel. Proof: `src/lib/bots/bots.test.ts`,
    `src/lib/bots/roster.test.ts`, `src/lib/bots/routines.test.ts`,
    `src/lib/bot-memory.test.ts`, `src/lib/navigation.test.ts`,
-   `src/lib/settings.test.ts`, `src/lib/slash-commands.test.ts`,
+   `src/lib/settings/settings.test.ts`, `src/lib/composer/slash-commands.test.ts`,
    `src/views/settings-automation.test.ts` and the Browser-tool journey
    `e2e/bots.browser.md` (create, chat, routine with Run now, real OptChat
    memory live in the panel with *Summarizing memory…*, zoom to a message, the
@@ -842,7 +842,7 @@ requests:
    fields out. Proof: `server/call*.test.ts`, `server/calls.test.ts`,
    `server/bot-service.test.ts`, `server/routes/bots.test.ts`, `server/bots.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
-   `src/lib/voice/live-call.test.ts`, `src/lib/voice/*.test.ts`, `src/lib/settings.test.ts`,
+   `src/lib/voice/live-call.test.ts`, `src/lib/voice/*.test.ts`, `src/lib/settings/settings.test.ts`,
    `src/lib/bots/bots.test.ts`, `src/views/bots.test.ts`, `src/components/settings/calls.test.ts`,
    `cli/*.test.ts` and a real call run (both calls of the e2e in the pull request).
 6. **Bots on remote workers** (implemented 2026-10-06; the owner's request, SPEC.md
@@ -947,7 +947,7 @@ requests:
    tab* folds into it (a file where that was on keeps bots on). **Bots stay
    behind Labs until HUI-18 is done**: the flag (and this
    item's refusals) go only once the owner calls bots finished, in their own
-   change. Proof: `src/lib/settings.test.ts`, `server/bot-service.test.ts`,
+   change. Proof: `src/lib/settings/settings.test.ts`, `server/bot-service.test.ts`,
    `server/routes/bots.test.ts` (a real gateway: every refusal while off, toggled
    live through `PUT /__hui/settings`, a routine skipped then run, a bot stream
    ended), `src/views/hui-owned-surfaces.test.ts`, `src/views/bots.test.ts`,

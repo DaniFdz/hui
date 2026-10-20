@@ -4,8 +4,8 @@
  * loading the catalog.
  */
 import { html, nothing } from "lit";
-import type { ComposerCommand } from "../lib/slash-commands.ts";
-import { commandReference } from "../lib/command-references.ts";
+import type { ComposerCommand } from "../lib/composer/slash-commands.ts";
+import { commandReference } from "../lib/composer/command-references.ts";
 import type { LocalPathSuggestion } from "../lib/local-paths.ts";
 import { icons } from "../lib/icons.ts";
 

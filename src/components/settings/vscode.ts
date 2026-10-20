@@ -6,7 +6,7 @@
  * by the gateway is never overwritten; the status comes from the gateway, polled while this section is open.
  */
 import { LitElement, html, nothing, type PropertyValues } from "lit";
-import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "../../lib/settings.ts";
+import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "../../lib/settings/settings.ts";
 import { currentSettings } from "../../lib/settings/settings-store.ts";
 import { loadVscodeStatus, vscodeAction } from "../../lib/vscode-store.ts";
 import {

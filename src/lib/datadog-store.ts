@@ -2,9 +2,9 @@
  * and chat previews, one request per message for its (at most three) links, remembered per URL for the page so
  * re-renders do not refetch. A finished sign-in or an org change drops what the page remembers and tells every card
  * on it to load again. */
-import { MAX_DATADOG_EMBEDS } from "./datadog-links.ts";
+import { MAX_DATADOG_EMBEDS } from "./markdown/datadog-links.ts";
 import type { DatadogConnection, DatadogOrg, DatadogPreviewResult } from "../api/schema/datadog.ts";
-import type { DatadogRef } from "./datadog-links.ts";
+import type { DatadogRef } from "./markdown/datadog-links.ts";
 import { fetchDatadogPreviews, loadDatadogConnection, startDatadogLogin } from "../api/datadog.ts";
 
 /** Fired on `window` after a Datadog sign-in succeeds or the org list changes; cards listen and load again. */

@@ -5,8 +5,8 @@
  * Every call degrades rather than throws: with the backend unreachable the app
  * runs on defaults from tokens.css and simply does not remember anything.
  */
-import { applyAppearance } from "../appearance.ts";
-import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../settings.ts";
+import { applyAppearance } from "../theme/appearance.ts";
+import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "./settings.ts";
 import { fetchSettings, saveSettings } from "../../api/settings.ts";
 
 let settings: Settings = DEFAULT_SETTINGS;

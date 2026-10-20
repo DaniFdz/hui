@@ -7,7 +7,7 @@ import { LitElement, html, nothing } from "lit";
 import { GPT_LIVE_VOICES, gptLiveVoiceLabel } from "../../lib/voice/calls.ts";
 import type { CallsStatus } from "../../api/schema/calls.ts";
 import type { GptLiveVoice } from "../../api/schema/bots.ts";
-import type { Settings } from "../../lib/settings.ts";
+import type { Settings } from "../../lib/settings/settings.ts";
 import { loadCallsStatus } from "../../api/calls.ts";
 import { renderSettingsPicker } from "../../views/settings-picker.ts";
 

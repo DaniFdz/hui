@@ -5,7 +5,7 @@
  * read on the actual pane, as Pi's system theme does (`color-contrast.ts`). The terminal pane resolves the CSS colors
  * and reapplies this whenever the theme, mode or accent changes, so open terminals recolor live.
  */
-import { luminance, parseColor, readableOn, toHex, TEXT_CONTRAST, UI_CONTRAST, type Rgb } from "../color-contrast.ts";
+import { luminance, parseColor, readableOn, toHex, TEXT_CONTRAST, UI_CONTRAST, type Rgb } from "../theme/color-contrast.ts";
 
 export { luminance, type Rgb };
 export type TerminalThemeColors = { background: Rgb; foreground: Rgb; accent: Rgb };

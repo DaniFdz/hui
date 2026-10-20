@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { parseDatadogUrl } from "../lib/datadog-links.ts";
+import { parseDatadogUrl } from "../lib/markdown/datadog-links.ts";
 import { fetchDatadogPreviews } from "./datadog.ts";
 
 test("one previews request carries every link of the message", async () => {

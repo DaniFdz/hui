@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
-import { parseGitHubUrl } from "../lib/github-links.ts";
+import { parseGitHubUrl } from "../lib/markdown/github-links.ts";
 import { fetchGitHubPreviews } from "./github-previews.ts";
 
 test("one request carries every reference of the message", async () => {

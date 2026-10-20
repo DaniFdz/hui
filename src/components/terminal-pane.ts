@@ -14,7 +14,7 @@ import type { GespenstTerminal, TerminalBufferRow } from "@gespenst/core";
 import "@gespenst/core/style.css";
 import ghosttyWasm from "@gespenst/core/ghostty-vt.wasm?url";
 import callbacksWasm from "@gespenst/core/ghostty-callbacks.wasm?url";
-import { DEFAULT_TERMINAL_FONT, loadTerminalFont, terminalFontFaces, terminalFontStack, type FontSheet } from "../lib/terminal-font.ts";
+import { DEFAULT_TERMINAL_FONT, loadTerminalFont, terminalFontFaces, terminalFontStack, type FontSheet } from "../lib/terminal/font.ts";
 import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
 import { connectTerminal, endTerminal } from "../api/terminals.ts";

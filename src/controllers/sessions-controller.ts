@@ -14,7 +14,7 @@ import { deleteSession, loadSessions, renameSession, subscribeSessionStatuses, t
 import { loadWorktrees, removeWorktrees } from "../api/worktrees.ts";
 import { closeModal } from "../lib/modal-dialog.ts";
 import { mergeSessionStatuses } from "../lib/session/ui-state.ts";
-import { sessionTreeIds } from "../lib/session-tree.ts";
+import { sessionTreeIds } from "../lib/session/tree.ts";
 import { worktreesOnlyUsedBy, type WorktreeInventory, type WorktreeRemovalResult, type WorktreeRisk } from "../lib/worktrees.ts";
 import { DEFAULT_SESSIONS_PAGE_FILTERS, type SessionsPageFilters, type SessionsPageProps, type SessionsPageState } from "../views/sessions.ts";
 import type { WorktreeFilter, WorktreesPageProps } from "../views/worktrees.ts";

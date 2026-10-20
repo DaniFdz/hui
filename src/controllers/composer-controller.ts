@@ -20,7 +20,7 @@ import { SendRequests } from "../lib/composer/send-requests.ts";
 import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
 import { appendPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";

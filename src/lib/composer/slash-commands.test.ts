@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
-import type { RuntimeCommand } from "../api/sessions.ts";
+import type { RuntimeCommand } from "../../api/sessions.ts";
 
 test("slash suggestions follow the command word at the caret", () => {
   assert.deepEqual(slashCommandQuery("/", 1), { text: "", start: 0 });

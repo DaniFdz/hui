@@ -8,7 +8,7 @@
 import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { renderSessionPane } from "./views/session-pane.ts";
-import { sessionTreeIds } from "./lib/session-tree.ts";
+import { sessionTreeIds } from "./lib/session/tree.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
@@ -40,7 +40,7 @@ import {
 } from "./api/sessions.ts";
 import { sessionGroupLabel, transcriptAsMarkdown } from "./lib/session/sessions.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { parseUpdateCommand, skillCommands } from "./lib/slash-commands.ts";
+import { parseUpdateCommand, skillCommands } from "./lib/composer/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
@@ -79,7 +79,7 @@ import {
 } from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
-import { botsEnabled, type Settings } from "./lib/settings.ts";
+import { botsEnabled, type Settings } from "./lib/settings/settings.ts";
 import { settingsWritten } from "./lib/settings/settings-store.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";

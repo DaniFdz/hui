@@ -6,10 +6,10 @@
  */
 import { currentSettings } from "../settings/settings-store.ts";
 import { fetchThemeFile, fetchThemeList, postThemeImport, type ThemeRef } from "../../api/themes.ts";
-import { applyThemeMode, type ThemeMode, type ThemeVariant } from "../theme.ts";
-import { mapTheme, swatchesFor, themeColor, type ShadcnTheme, type ThemeSwatches, type ThemeTokens } from "../shadcn-theme.ts";
+import { applyThemeMode, type ThemeMode, type ThemeVariant } from "./theme.ts";
+import { mapTheme, swatchesFor, themeColor, type ShadcnTheme, type ThemeSwatches, type ThemeTokens } from "./shadcn-theme.ts";
 import { controlUiAccentInk } from "./accent-contrast.ts";
-import { parseColor, readableOn, toHex, TEXT_CONTRAST, type Rgb } from "../color-contrast.ts";
+import { parseColor, readableOn, toHex, TEXT_CONTRAST, type Rgb } from "./color-contrast.ts";
 
 export type ThemePreview = { id: string; name: string } & ThemeSwatches;
 
