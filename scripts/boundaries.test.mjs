@@ -1,8 +1,7 @@
 /**
  * Enforces the dependency rules listed in docs/map.md: which areas may import which, where network calls and
  * custom elements live, no cycles, a worker release that ships what it imports, and installed entry paths that
- * never move. ALLOWED holds today's violations: a fixed one must leave the list, a move may rename an entry, and a
- * commit never adds a new kind of violation.
+ * never move. There are no exceptions: a violation fails the test.
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -165,12 +164,8 @@ test("every relative production import resolves", () => {
   assert.deepEqual(unresolved, []);
 });
 
-test("no import breaks a dependency rule beyond the allowlist", () => {
-  assert.deepEqual(found.filter((violation) => !ALLOWED.includes(violation)), [], "fix these (rules in docs/map.md)");
-});
-
-test("every allowlisted violation still occurs", () => {
-  assert.deepEqual(ALLOWED.filter((violation) => !found.includes(violation)), [], "fixed: delete these from ALLOWED");
+test("no import breaks a dependency rule", () => {
+  assert.deepEqual(found, [], "fix these (rules in docs/map.md)");
 });
 
 test.each([
@@ -206,6 +201,3 @@ test.each([
 ])("runtime fixtures stay byte-identical: %s and %s", async (browser, server) => {
   assert.equal(await readFile(join(root, browser), "utf8"), await readFile(join(root, server), "utf8"));
 });
-
-const ALLOWED = [
-];

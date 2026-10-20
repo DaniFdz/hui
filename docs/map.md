@@ -22,9 +22,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 
 ## Dependency rules
 
-`scripts/boundaries.test.mjs` checks these in `npm test`. Its allowlist holds
-the exceptions that exist today: delete an entry when you fix it. A move may
-rename an entry; a commit never adds a new kind of violation.
+`scripts/boundaries.test.mjs` checks these in `npm test`, with no exceptions.
 
 - R1. `src/` imports only `src/` and npm packages; production `src/` code
   imports no Node module.
