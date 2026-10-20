@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import type { JiraDraft } from "../../server/api/jira.ts";
 import { draftJiraWorkItem } from "../../server/integrations/jira.ts";
-import { visibleContext } from "../../server/model-routing.ts";
+import { visibleContext } from "../../server/pi/model-routing.ts";
 import { runPiUtilityPrompt } from "../../server/runtimes/pi.ts";
 import { sessionDigest } from "../../server/session-digest.ts";
 import { DRAFT_CASES, type DraftCase } from "./cases.ts";

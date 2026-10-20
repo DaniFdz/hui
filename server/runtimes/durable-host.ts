@@ -23,7 +23,7 @@ import { CodemodeSandbox } from "@earendil-works/pi-codemode";
 import { SettingsManager, type ModelRuntime, type ResourceLoader, type Skill } from "@earendil-works/pi-coding-agent";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { CONFIG_DIR } from "../paths.ts";
-import { resolvePiAgentDir } from "../pi-paths.ts";
+import { resolvePiAgentDir } from "../pi/paths.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import { createSessionModelRuntime } from "./hui-models.ts";
 import { withFastMode } from "./model-controls.ts";

@@ -9,14 +9,14 @@ import { basename, isAbsolute, join, resolve } from "node:path";
 
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
-import { PI_AGENT_DIR, readConfiguredPackageSourcesAt, readPiConfigAt } from "./pi-config.ts";
-import { configuredResourceId } from "./runtimes/resource-policy.ts";
+import { PI_AGENT_DIR, readConfiguredPackageSourcesAt, readPiConfigAt } from "./config.ts";
+import { configuredResourceId } from "../runtimes/resource-policy.ts";
 
 const MAX_DOCUMENT_BYTES = 256 * 1024;
 const README_NAMES = ["readme.md", "readme.markdown", "readme", "package.json"];
 
-import type { PiResourceDocument } from "./api/pi.ts";
-export type { PiResourceDocument } from "./api/pi.ts";
+import type { PiResourceDocument } from "../api/pi.ts";
+export type { PiResourceDocument } from "../api/pi.ts";
 
 export class PiResourceNotFoundError extends Error {
   override name = "PiResourceNotFoundError";

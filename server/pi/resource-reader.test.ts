@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expectTypeOf, test } from "vitest";
-import { PiResourceDocument } from "./api/pi.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import { PiResourceDocument } from "../api/pi.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 type OriginalPiResourceDocument = {
   id: string;
@@ -18,8 +18,8 @@ type OriginalPiResourceDocument = {
 
 expectTypeOf<PiResourceDocument>().toEqualTypeOf<OriginalPiResourceDocument>();
 
-import { readPiConfigAt } from "./pi-config.ts";
-import { PiResourceNotFoundError, readPiResourceDocumentAt } from "./pi-resource-reader.ts";
+import { readPiConfigAt } from "./config.ts";
+import { PiResourceNotFoundError, readPiResourceDocumentAt } from "./resource-reader.ts";
 
 async function fixture(): Promise<string> {
   const agentDir = await mkdtemp(join(tmpdir(), "hui-pi-reader-"));

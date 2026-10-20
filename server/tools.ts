@@ -5,8 +5,8 @@
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { resolvePiAgentDir } from "./pi-paths.ts";
-import { safeSourceLabel } from "./source-label.ts";
+import { resolvePiAgentDir } from "./pi/paths.ts";
+import { safeSourceLabel } from "./pi/source-label.ts";
 import { shippedTools } from "./runtimes/tool-catalog.ts";
 import { HUI_DEFAULT_PROMPT, HUI_PROMPT_REVISION } from "./runtimes/hui-prompt.ts";
 import { piBackend, PI_SDK_VERSION } from "./runtimes/pi-backend.ts";

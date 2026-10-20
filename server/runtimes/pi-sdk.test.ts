@@ -11,7 +11,7 @@ import type { PiSession } from "./pi.ts";
 import type { RuntimeEvent } from "./types.ts";
 import { shippedTools } from "./tool-catalog.ts";
 import { configuredResourceId } from "./resource-policy.ts";
-import { bundledSkills } from "../bundled-skills.ts";
+import { bundledSkills } from "../pi/bundled-skills.ts";
 import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
 import { SecretFiles, SecretRequests } from "../secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";

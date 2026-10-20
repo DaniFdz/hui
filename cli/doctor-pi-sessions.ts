@@ -106,7 +106,7 @@ export const piSessionsCheck: DoctorCheck = {
       .map(({ record, blocked: detail }): DoctorItem => ({ id: record.id, label: label(record), status: "blocked", detail: detail! }));
     if (!movable.length) return result(found, blocked, []);
     const { DurableHost, DURABLE_DIR } = await import("../server/runtimes/durable-host.ts");
-    const { resolvePiAgentDir } = await import("../server/pi-paths.ts");
+    const { resolvePiAgentDir } = await import("../server/pi/paths.ts");
     // Never resumes a run: the store is only written in commits. Opening fails while a gateway owns it.
     const host = new DurableHost({ dir: DURABLE_DIR, agentDir: resolvePiAgentDir(), resume: false });
     host.configureDurableBots(null);

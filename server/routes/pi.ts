@@ -8,14 +8,14 @@ import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { PiError, PiMutationResult, PiResourceDocument, PiSnapshot, routeSchemas as piRouteSchemas } from "../api/pi.ts";
 import { ToolsCatalog, ToolsError, routeSchemas as toolsRouteSchemas } from "../api/tools.ts";
 
-import { readPiConfig } from "../pi-config.ts";
+import { readPiConfig } from "../pi/config.ts";
 import {
   PiMutationBusyError,
   PiMutationCommandError,
   PiMutationInputError,
   type PiMutationService,
-} from "../pi-mutations.ts";
-import { PiResourceNotFoundError, readPiResourceDocument } from "../pi-resource-reader.ts";
+} from "../pi/mutations.ts";
+import { PiResourceNotFoundError, readPiResourceDocument } from "../pi/resource-reader.ts";
 import { readToolsCatalog } from "../tools.ts";
 
 export const routeSchemas = [...piRouteSchemas, ...toolsRouteSchemas.filter((route) => route.path === "/__hui/tools")];

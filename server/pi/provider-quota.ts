@@ -4,7 +4,7 @@
  * only what the provider said rather than inferring billing state from stored credentials.
  */
 import { providerEmail } from "./provider-identity.ts";
-import type { ProviderQuota } from "./api/providers.ts";
+import type { ProviderQuota } from "../api/providers.ts";
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};

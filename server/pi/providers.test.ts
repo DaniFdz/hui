@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expectTypeOf, test, type TestContext, vi } from "vitest";
-import { ProviderSnapshot, ProviderLogin, ProviderQuota, type ProviderModel, type ProviderSummary } from "./api/providers.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import { ProviderSnapshot, ProviderLogin, ProviderQuota, type ProviderModel, type ProviderSummary } from "../api/providers.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 
 type OriginalProviderModel = { id: string; name: string; contextWindow?: number; maxTokens?: number };
@@ -34,9 +34,9 @@ expectTypeOf<ProviderLogin>().toEqualTypeOf<OriginalProviderLogin>();
 expectTypeOf<ProviderSnapshot>().toEqualTypeOf<OriginalProviderSnapshot>();
 expectTypeOf<ProviderQuota>().toEqualTypeOf<OriginalProviderQuota>();
 import { ProviderService, ProviderInputError } from "./providers.ts";
-import { createSessionModelRuntime, readProviderSelections, writeProviderSelections } from "./runtimes/hui-models.ts";
-import { filterConfiguredModels } from "./runtimes/pi-models.ts";
-import { waitFor } from "./test-support/wait-for.ts";
+import { createSessionModelRuntime, readProviderSelections, writeProviderSelections } from "../runtimes/hui-models.ts";
+import { filterConfiguredModels } from "../runtimes/pi-models.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 async function fixture(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "hui-provider-test-"));

@@ -3,11 +3,11 @@
  * session and its worktree branch, suggesting a branch for a backlog task, and answering /btw side questions.
  * Naming always has a deterministic fallback, so a missing model or failed call never blocks session creation.
  */
-import type { Settings } from "./hui-settings.ts";
-import type { BacklogItem, SuggestedBranchName } from "./api/backlog.ts";
-import { fallbackBranchName, normalizeSuggestedBranchName } from "./git/branch-names.ts";
-import type { TranscriptEntry } from "./runtimes/types.ts";
-import { runPiUtilityPrompt } from "./runtimes/pi.ts";
+import type { Settings } from "../hui-settings.ts";
+import type { BacklogItem, SuggestedBranchName } from "../api/backlog.ts";
+import { fallbackBranchName, normalizeSuggestedBranchName } from "../git/branch-names.ts";
+import type { TranscriptEntry } from "../runtimes/types.ts";
+import { runPiUtilityPrompt } from "../runtimes/pi.ts";
 
 /** Match OpenClaw's dashboard title contract. Presentation truncation belongs
  * to the sidebar; the stored title remains descriptive. */

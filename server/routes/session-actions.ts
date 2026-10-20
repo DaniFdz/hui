@@ -15,7 +15,7 @@ import { SessionClearResponse, SessionCommandsResponse, SessionModelResponse, Se
 
 import { readHuiSettings } from "../hui-settings.ts";
 import { liveSessions, SessionBusyError } from "../live-sessions.ts";
-import { answerSideQuestion } from "../model-routing.ts";
+import { answerSideQuestion } from "../pi/model-routing.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import type { Questionnaires } from "../questionnaires.ts";
 import { REQUEST_ID, RecentRequests } from "../recent-requests.ts";

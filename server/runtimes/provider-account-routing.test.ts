@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { findPackageJSON } from "node:module";
 import { pathToFileURL } from "node:url";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import { ProviderAccounts, credentialStore } from "../provider-accounts.ts";
+import { ProviderAccounts, credentialStore } from "../pi/provider-accounts.ts";
 import { createSessionModelRuntime, writeProviderSelections } from "./hui-models.ts";
 import { quotaFailure, retryAt } from "./provider-account-routing.ts";
 

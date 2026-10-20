@@ -16,17 +16,17 @@
  */
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { piRuntime } from "./runtimes/pi.ts";
-import type { PiTool, PiSkill, PiModel, PiConfiguredResource, PiSnapshot, PiModelCatalogEntry } from "./api/pi.ts";
-import { resolvePiAgentDir } from "./pi-paths.ts";
-import { shippedTools } from "./runtimes/tool-catalog.ts";
+import { piRuntime } from "../runtimes/pi.ts";
+import type { PiTool, PiSkill, PiModel, PiConfiguredResource, PiSnapshot, PiModelCatalogEntry } from "../api/pi.ts";
+import { resolvePiAgentDir } from "./paths.ts";
+import { shippedTools } from "../runtimes/tool-catalog.ts";
 import { safeSourceLabel } from "./source-label.ts";
-import { configuredResourceId } from "./runtimes/resource-policy.ts";
+import { configuredResourceId } from "../runtimes/resource-policy.ts";
 import { bundledSkillRoot, bundledSkills } from "./bundled-skills.ts";
-import { isThinkingLevel } from "./sessions/thinking.ts";
+import { isThinkingLevel } from "../sessions/thinking.ts";
 export { safeSourceLabel } from "./source-label.ts";
 
-export { resolvePiAgentDir } from "./pi-paths.ts";
+export { resolvePiAgentDir } from "./paths.ts";
 
 export const PI_AGENT_DIR = resolvePiAgentDir();
 
@@ -35,7 +35,7 @@ const SKILLS_DIR = "skills";
 const AUTH_FILE = "auth.json";
 
 
-export type { PiTool, PiSkill, PiModel, PiSettingsSummary, PiConfiguredResource, PiSnapshot } from "./api/pi.ts";
+export type { PiTool, PiSkill, PiModel, PiSettingsSummary, PiConfiguredResource, PiSnapshot } from "../api/pi.ts";
 type CatalogEntry = PiModelCatalogEntry;
 type CatalogProbeSession = {
   listModels(): Promise<readonly CatalogEntry[]>;

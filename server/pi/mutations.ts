@@ -5,8 +5,8 @@
  * snapshot.
  */
 import { spawn } from "node:child_process";
-import { piEnvironment } from "./runtimes/pi-environment.ts";
-import { piCommand } from "./runtimes/pi-command.ts";
+import { piEnvironment } from "../runtimes/pi-environment.ts";
+import { piCommand } from "../runtimes/pi-command.ts";
 
 import {
   PI_AGENT_DIR,
@@ -14,7 +14,7 @@ import {
   readPiConfig,
   safeSourceLabel,
   type PiSnapshot,
-} from "./pi-config.ts";
+} from "./config.ts";
 
 const PACKAGE_HOST = "pi.dev";
 const PACKAGE_PREFIX = "/packages/";
@@ -25,8 +25,8 @@ const PACKAGE_TIMEOUT_MS = 120_000;
 const SKILL_TIMEOUT_MS = 300_000;
 const CHEAP_MODEL = /(haiku|flash|mini|nano|small|lite|luna|terra)/iu;
 
-import type { PiMutationKind, PiMutationResult } from "./api/pi.ts";
-export type { PiMutationKind, PiMutationResult } from "./api/pi.ts";
+import type { PiMutationKind, PiMutationResult } from "../api/pi.ts";
+export type { PiMutationKind, PiMutationResult } from "../api/pi.ts";
 
 export class PiMutationInputError extends Error {
   override name = "PiMutationInputError";

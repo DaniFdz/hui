@@ -17,8 +17,8 @@ import { boundText, CALL_LIMITS, callVoice, GPT_LIVE_MODEL, gptLiveVoice, type C
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
 import type { BotRecord, BotReply } from "./bots-format.ts";
 import { voiceLanguage, voiceLanguageName } from "./voice-languages.ts";
-import type { ProviderAccounts } from "./provider-accounts.ts";
-import { credentialEmail } from "./provider-identity.ts";
+import type { ProviderAccounts } from "./pi/provider-accounts.ts";
+import { credentialEmail } from "./pi/provider-identity.ts";
 
 /** ChatGPT's realtime route for GPT-Live (ChatGPT's voice mode). */
 export const GPT_LIVE_CALL_URL = "https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas";

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { DEFAULT_SETTINGS } from "./hui-settings.ts";
+import { DEFAULT_SETTINGS } from "../hui-settings.ts";
 import {
   answerSideQuestion,
   GENERATED_TITLE_LENGTH_MAX,
@@ -111,7 +111,7 @@ test("btw uses bounded reference context and the utility model", async () => {
 });
 
 test("suggested branch names drop the prefix, type words, Jira keys and chatter", async () => {
-  const { fallbackBranchName, normalizeSuggestedBranchName } = await import("./git/branch-names.ts");
+  const { fallbackBranchName, normalizeSuggestedBranchName } = await import("../git/branch-names.ts");
   const prefix = "feature/";
   assert.equal(normalizeSuggestedBranchName("rate-limit-jira-proxy", { prefix }), "rate-limit-jira-proxy");
   assert.equal(normalizeSuggestedBranchName("feature/rate-limit-jira-proxy", { prefix }), "rate-limit-jira-proxy");

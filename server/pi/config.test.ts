@@ -1,7 +1,7 @@
 import { expectTypeOf, test } from "vitest";
-import { PiSnapshot, type PiTool, type PiSkill, type PiModel, type PiSettingsSummary, type PiConfiguredResource, type PiModelCatalogEntry } from "./api/pi.ts";
-import type { RuntimeModel } from "./runtimes/types.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import { PiSnapshot, type PiTool, type PiSkill, type PiModel, type PiSettingsSummary, type PiConfiguredResource, type PiModelCatalogEntry } from "../api/pi.ts";
+import type { RuntimeModel } from "../runtimes/types.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 type OriginalPiTool = {
   name: string;
@@ -83,7 +83,7 @@ import {
   readPiConfigAt,
   resolvePiAgentDir,
   safeSourceLabel,
-} from "./pi-config.ts";
+} from "./config.ts";
 
 test("PI_CODING_AGENT_DIR is canonical with PI_AGENT_DIR compatibility", () => {
   assert.equal(

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { expectTypeOf, test } from "vitest";
-import { PiMutationKind, PiMutationResult, type PiSnapshot } from "./api/pi.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import { PiMutationKind, PiMutationResult, type PiSnapshot } from "../api/pi.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 type OriginalPiMutationKind = "package-install" | "package-remove" | "skill-install";
 
@@ -24,7 +24,7 @@ import {
   selectCheapModel,
   validateSkillUrl,
   type PiCommandResult,
-} from "./pi-mutations.ts";
+} from "./mutations.ts";
 
 function snapshot(overrides: Partial<PiSnapshot> = {}): PiSnapshot {
   return {

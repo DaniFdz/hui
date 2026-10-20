@@ -31,7 +31,7 @@ import { Type } from "typebox";
 import { BOT_ACCESS_ANSWERS, type BotAccess, type BotSkillRef, type BotToolGroup } from "../bots-format.ts";
 import { botTurnOrigin } from "./turn-origins.ts";
 import { botSkillsDir } from "../bot-skills.ts";
-import { bundledSkills } from "../bundled-skills.ts";
+import { bundledSkills } from "../pi/bundled-skills.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { BOT_TOOL_CONTRIBUTIONS, BotDoc, conversationBotState, huiBotsExtensions, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, type BotSoulHost, type BotState } from "./durable-bots.ts";
 import { BOT_ROUTINES_CONTRIBUTION, botRoutinesTool, ROUTINES_TOOL } from "./durable-bot-routines.ts";

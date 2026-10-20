@@ -6,7 +6,7 @@
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { ProviderError, ProviderLogin, ProviderOk, ProviderQuota, ProviderSnapshot } from "../api/providers.ts";
 export { routeSchemas } from "../api/providers.ts";
-import { ProviderInputError, type ProviderService } from "../providers.ts";
+import { ProviderInputError, type ProviderService } from "../pi/providers.ts";
 
 const PROVIDERS_ROUTE = "/__hui/providers";
 

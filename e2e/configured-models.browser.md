@@ -107,7 +107,7 @@ are involved. The actual provider's credentials/access were not tested.
 
 ## Checks
 
-- `npm test -- server/runtimes/pi-models.test.ts server/runtimes/pi.test.ts server/pi-config.test.ts src/lib/model-selection.test.ts`: 34 passed.
+- `npm test -- server/runtimes/pi-models.test.ts server/runtimes/pi.test.ts server/pi/config.test.ts src/lib/model-selection.test.ts`: 34 passed.
 - `npm test`: 360 passed, no skips.
 - `npm run typecheck`: passed.
 - `npm run build`: passed.

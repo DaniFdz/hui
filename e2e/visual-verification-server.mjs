@@ -1,6 +1,6 @@
 /** Test-only Vite entrypoint. Never imported by the product or its build. */
 import { createServer } from "vite";
-import { fetchProviderQuota } from "../server/provider-quota.ts";
+import { fetchProviderQuota } from "../server/pi/provider-quota.ts";
 import { quotaFixture } from "./provider-quota-fixture.mjs";
 import { huiConfig } from "../server/vite-plugin.ts";
 import { readFile } from "node:fs/promises";

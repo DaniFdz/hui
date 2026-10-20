@@ -31,7 +31,7 @@ import {
 } from "../integrations/jira.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import { SessionBusyError } from "../live-sessions.ts";
-import { suggestWorktreeName } from "../model-routing.ts";
+import { suggestWorktreeName } from "../pi/model-routing.ts";
 import { CONFIG_DIR } from "../paths.ts";
 import { runPiUtilityPrompt } from "../runtimes/pi.ts";
 import { SessionRegistryError } from "../sessions.ts";
