@@ -98,7 +98,7 @@ request, not committed here.
   offers to save the value cannot be observed in headless Chrome; the field
   uses `autocomplete="one-time-code"` so browsers treat it as a one-time code.
 - The 15-minute expiry and the 10-minute file deletion are covered by
-  `server/secret-requests.test.ts` with mocked timers, not by waiting in the
+  `server/agent-tools/secret-requests.test.ts` with mocked timers, not by waiting in the
   browser. A PI worker call that waits more than five minutes was checked by
   hand against a loopback server that replied after 310 s: the bridge client
   succeeded where `fetch` failed with `UND_ERR_HEADERS_TIMEOUT` after 301 s.

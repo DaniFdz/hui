@@ -1209,7 +1209,7 @@ route serves widget content and nothing is persisted outside the transcript.
 
 ### `GET|HEAD /__hui/widget-sandbox`
 
-The static outer page of every widget (`server/widget-sandbox.ts`), identical for
+The static outer page of every widget (`server/agent-tools/widget-sandbox.ts`), identical for
 every caller and holding no data, so it needs no x-hui header (an iframe cannot
 send one). Other methods answer 405. Headers:
 

@@ -11,7 +11,7 @@ export const WIDGET_TITLE_MAX_LENGTH = 120;
 /** The chat fits the frame to the reported content height within these bounds. */
 export const WIDGET_MIN_HEIGHT = 48;
 export const WIDGET_MAX_HEIGHT = 8_000;
-/** The static page that hosts every widget; see server/widget-sandbox.ts. */
+/** The static page that hosts every widget; see server/agent-tools/widget-sandbox.ts. */
 export const WIDGET_SANDBOX_PATH = "/__hui/widget-sandbox";
 /** Messages only the sandbox page sends or receives; it drops them from widget code. */
 export const WIDGET_SANDBOX_METHOD_PREFIX = "ui/notifications/sandbox-";

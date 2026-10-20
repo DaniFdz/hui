@@ -33,7 +33,7 @@ import { runPiUtilityPrompt } from "../runtimes/pi.ts";
 import { sessionDigest } from "../session-digest.ts";
 import { readRegistry, type SessionRecord, updateRegistry } from "../sessions.ts";
 import type { SessionStatus, SessionView } from "../api/sessions.ts";
-import { TaskSuggestionNotFoundError, type TaskSuggestionStore } from "../task-suggestions.ts";
+import { TaskSuggestionNotFoundError, type TaskSuggestionStore } from "../agent-tools/task-suggestions.ts";
 import { taskSuggestionJiraDescription } from "../agent-tools/task-suggestions.ts";
 
 export const routeSchemas: RouteSchema[] = jiraRouteSchemas;

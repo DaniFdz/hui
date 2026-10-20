@@ -113,7 +113,7 @@ expected states above before being attached.
 - The fixture's watcher commands are synthetic. No real pull request was
   watched and no `/merge` was posted by this journey.
 - The dead and failed states, PID-reuse reconciliation and stop escalation to
-  `SIGKILL` are covered by `server/watchers.test.ts` (including a process that
+  `SIGKILL` are covered by `server/agent-tools/watchers.test.ts` (including a process that
   traps `SIGTERM`), not by this browser journey.
 - Deleting a conversation with a running watcher is covered by
   `server/routes/watchers.test.ts`.

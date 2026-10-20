@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 
-import { LiveSessions, type SessionStreamMessage } from "./live-sessions.ts";
-import type { SessionRecord } from "./sessions.ts";
+import { LiveSessions, type SessionStreamMessage } from "../live-sessions.ts";
+import type { SessionRecord } from "../sessions.ts";
 import { SubagentService } from "./subagents.ts";
-import { workers, type RemoteSessionSink } from "./workers.ts";
-import { RuntimeUnreachableError } from "./runtimes/types.ts";
+import { workers, type RemoteSessionSink } from "../workers.ts";
+import { RuntimeUnreachableError } from "../runtimes/types.ts";
 import type {
   AgentRuntime,
   RuntimeEvent,
@@ -13,7 +13,7 @@ import type {
   RuntimeSession,
   StartOptions,
   TranscriptEntry,
-} from "./runtimes/types.ts";
+} from "../runtimes/types.ts";
 
 const timestamp = "2026-09-24T10:00:00.000Z";
 

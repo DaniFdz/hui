@@ -8,7 +8,7 @@ export { routeSchemas } from "../api/task-suggestions.ts";
 import type { createBacklogLifecycle } from "../backlog.ts";
 import { SessionBusyError } from "../live-sessions.ts";
 import type { readRegistry } from "../sessions.ts";
-import { TaskSuggestionInputError, TaskSuggestionNotFoundError, type TaskSuggestionStore } from "../task-suggestions.ts";
+import { TaskSuggestionInputError, TaskSuggestionNotFoundError, type TaskSuggestionStore } from "../agent-tools/task-suggestions.ts";
 import { backlogErrorStatus } from "./backlog.ts";
 
 const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;

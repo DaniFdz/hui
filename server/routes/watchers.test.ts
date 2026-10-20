@@ -26,7 +26,7 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
   ], groups: [] }));
   const { middleware } = await import("../hui.ts");
   const { startBackend, stopBackend } = await import("../backend.ts");
-  const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
+  const { agentToolEnvironment } = await import("../agent-tools/bridge.ts");
   const { liveSessions } = await import("../live-sessions.ts");
   await startBackend();
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));

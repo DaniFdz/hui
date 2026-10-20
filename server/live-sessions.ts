@@ -18,8 +18,8 @@ import { interruptedRunPrompt } from "./interrupted-run.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "./api/task-suggestions.ts";
 import type { Watcher } from "./api/watchers.ts";
-import type { SecretQuestion } from "./secret-requests.ts";
-import type { QuestionnairePrompt } from "./questionnaires.ts";
+import type { SecretQuestion } from "./agent-tools/secret-requests.ts";
+import type { QuestionnairePrompt } from "./agent-tools/questionnaires.ts";
 import type { SessionStatus } from "./api/sessions.ts";
 
 /** A question HUI itself asks: a `secret_request` or an `ask_user_question` card. */

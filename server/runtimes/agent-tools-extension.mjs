@@ -43,12 +43,12 @@ function questionnaireText(result) {
   return `User has answered your questions: ${segments.join(" ")} You can now continue with the user's answers in mind.`;
 }
 
-/** Above `agents_wait`'s own timeout (server/subagents.ts), so the wait, not the transport, ends it. */
+/** Above `agents_wait`'s own timeout (server/agent-tools/subagents.ts), so the wait, not the transport, ends it. */
 export function agentsWaitTransportMs(params) {
   return ((params?.timeoutSeconds ?? 600) + 30) * 1_000;
 }
 
-/** A day: the gateway's `QUESTIONNAIRE_WAIT_MS` (server/questionnaires.ts). */
+/** A day: the gateway's `QUESTIONNAIRE_WAIT_MS` (server/agent-tools/questionnaires.ts). */
 const QUESTIONNAIRE_WAIT_MS = 24 * 60 * 60_000;
 
 const questionOption = Type.Object({

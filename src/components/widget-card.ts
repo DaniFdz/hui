@@ -58,7 +58,7 @@ type FrameState = "loading" | "ready" | "failed";
 
 /**
  * One agent widget in the transcript: a titled card whose sandbox page
- * (server/widget-sandbox.ts) hosts the call's fragment in an opaque-origin
+ * (server/agent-tools/widget-sandbox.ts) hosts the call's fragment in an opaque-origin
  * frame. The card fits the frame to the reported height, keeps the widget on
  * HUI's live theme, shows its runtime errors and opens its links in a new tab
  * after a click inside it. Full screen promotes this same card to the top

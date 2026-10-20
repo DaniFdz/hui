@@ -45,7 +45,7 @@ type SessionRecord = import("./sessions.ts").SessionRecord;
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
 type SessionStatusUpdate = import("./live-sessions.ts").SessionStatusUpdate;
-type SecretQuestion = import("./secret-requests.ts").SecretQuestion;
+type SecretQuestion = import("./agent-tools/secret-requests.ts").SecretQuestion;
 
 /** Stands in for a pi subprocess, so the state machine can be driven event by
  * event instead of waiting five seconds for a real boot. */

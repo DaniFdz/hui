@@ -693,7 +693,7 @@ running/done/failed/stopped/dead from the process identity (a reused PID after
 a reboot reads dead), and lists them in the owning conversation as compact
 background-activity rows that open into details, a log tail and stop, restart
 and dismiss controls. The registry survives gateway
-restarts. Proof: `server/watchers.test.ts`, `server/routes/watchers.test.ts`,
+restarts. Proof: `server/agent-tools/watchers.test.ts`, `server/routes/watchers.test.ts`,
 `src/views/chat/watcher-activity.test.ts` and `e2e/watchers.browser.md`.
 
 ### HUI-18 — Bots with OptChat memory
@@ -1168,7 +1168,7 @@ record, and the chat renders it as a titled card in a two-frame opaque-origin
 sandbox (`/__hui/widget-sandbox`, a strict CSP with no connections) on HUI's live
 theme, with fitted height, full screen, error notices and click-only links.
 `sendPrompt` is a follow-up. Proof: `server/runtimes/widget-code.test.ts`,
-`server/widget-sandbox.test.ts`, `src/lib/widgets.test.ts`,
+`server/agent-tools/widget-sandbox.test.ts`, `src/lib/widgets.test.ts`,
 `src/components/widget-card.test.ts`, `src/views/chat/projection.test.ts`,
 `server/runtimes/pi-sdk.test.ts` and `e2e/widgets.browser.md`.
 
@@ -1184,8 +1184,8 @@ path, so the value never reaches the transcript, the model, PI's or Durable's
 stores or diagnostics. Cancel, Stop and a 15-minute expiry end it. The bridge
 now passes a tool call's abort to the gateway handler for PI children and
 Durable alike, and PI children reach it over `node:http`, whose replies may
-take longer than fetch's five minutes. Proof: `server/secret-requests.test.ts`,
-`server/agent-tools-bridge.test.ts`, `server/live-sessions.test.ts`,
+take longer than fetch's five minutes. Proof: `server/agent-tools/secret-requests.test.ts`,
+`server/agent-tools/bridge.test.ts`, `server/live-sessions.test.ts`,
 `server/runtimes/pi-sdk.test.ts`, `server/runtimes/durable.test.ts` and
 `e2e/secret-requests.browser.md`.
 

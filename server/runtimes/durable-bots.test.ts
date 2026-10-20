@@ -9,7 +9,7 @@ import { afterAll, test, type TestContext } from "vitest";
 import { AgentDoc, defineDoc, type ConversationId, type ToolExecutionApi } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { normalizeSettings } from "../hui-settings.ts";
-import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
+import type { AgentToolInvocation } from "../agent-tools/bridge.ts";
 import type { BotMemoryStatus } from "../bots-format.ts";
 import type { BotMemory } from "../bot-memory.ts";
 import type { DurableSession } from "./durable.ts";

@@ -20,7 +20,7 @@ test("suggest_task bridge calls feed guarded dismiss and start routes", async (t
   ], groups: [] }));
   const { middleware } = await import("../hui.ts");
   const { stopBackend } = await import("../backend.ts");
-  const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
+  const { agentToolEnvironment } = await import("../agent-tools/bridge.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

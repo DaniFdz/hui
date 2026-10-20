@@ -12,8 +12,8 @@ import type { RuntimeEvent } from "./types.ts";
 import { shippedTools } from "./tool-catalog.ts";
 import { configuredResourceId } from "./resource-policy.ts";
 import { bundledSkills } from "../pi/bundled-skills.ts";
-import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
-import { SecretFiles, SecretRequests } from "../secret-requests.ts";
+import { registerAgentToolHandler } from "../agent-tools/bridge.ts";
+import { SecretFiles, SecretRequests } from "../agent-tools/secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 import { waitFor } from "../test-support/wait-for.ts";
 

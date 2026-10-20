@@ -8,7 +8,7 @@
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import type { BotTurnOrigin } from "./runtimes/turn-origins.ts";
+import type { BotTurnOrigin } from "../runtimes/turn-origins.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 const TOKENS = new Map<string, string>();

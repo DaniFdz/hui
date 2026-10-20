@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 
 import { Questionnaires } from "./questionnaires.ts";
-import { directHuiBridge } from "./runtimes/bridge-client.mjs";
-import { huiToolDefinitions } from "./runtimes/hui-tools.ts";
+import { directHuiBridge } from "../runtimes/bridge-client.mjs";
+import { huiToolDefinitions } from "../runtimes/hui-tools.ts";
 
 const option = (label: string, extra: Record<string, unknown> = {}) => ({ label, description: `${label} description`, ...extra });
 const ask = {

@@ -64,18 +64,18 @@ import {
   validateCreateInput,
   type JiraConfig,
 } from "./integrations/jira.ts";
-import { registerAgentToolHandler } from "./agent-tools-bridge.ts";
-import { SubagentService } from "./subagents.ts";
-import { presentMediaForSession } from "./presented-media.ts";
+import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
+import { SubagentService } from "./agent-tools/subagents.ts";
+import { presentMediaForSession } from "./agent-tools/presented-media.ts";
 import { GitHubCli } from "./integrations/github.ts";
 import { GitHubContributionsReader } from "./integrations/github-contributions.ts";
 import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./integrations/github-previews.ts";
 import { DatadogOrgs } from "./integrations/datadog.ts";
 import { DatadogPreviews } from "./integrations/datadog-previews.ts";
-import { TaskSuggestionInputError, TaskSuggestionStore } from "./task-suggestions.ts";
-import { WatcherInputError, WatcherService } from "./watchers.ts";
-import { SecretFiles, SecretRequests } from "./secret-requests.ts";
-import { Questionnaires } from "./questionnaires.ts";
+import { TaskSuggestionInputError, TaskSuggestionStore } from "./agent-tools/task-suggestions.ts";
+import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
+import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
+import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription } from "./agent-tools/task-suggestions.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";

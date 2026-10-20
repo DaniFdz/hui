@@ -41,7 +41,7 @@ import type {
   RuntimeUsage,
   TranscriptEntry,
 } from "./types.ts";
-import { agentToolEnvironment } from "../agent-tools-bridge.ts";
+import { agentToolEnvironment } from "../agent-tools/bridge.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 
 const START_TIMEOUT_MS = 30_000;

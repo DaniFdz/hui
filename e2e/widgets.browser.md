@@ -70,7 +70,7 @@ changed.
 
 - Validation, positions and the tool result: `server/runtimes/widget-code.test.ts`.
 - The sandbox page, its headers and route, the policy and the canonical
-  document: `server/widget-sandbox.test.ts`.
+  document: `server/agent-tools/widget-sandbox.test.ts`.
 - Client projection, frame messages, link and height rules:
   `src/lib/widgets.test.ts`; sandbox attributes: `src/components/widget-card.test.ts`.
 - Transcript row: `src/views/chat/projection.test.ts`. Prompt and registration:

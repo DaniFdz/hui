@@ -10,7 +10,7 @@ import { pullRequestsFromTranscript, type PullRequestStatuses } from "../integra
 import { runtimeMemoryByPid } from "../runtimes/resources.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { groupSessions, readSessionRegistry, updateRegistry, type SessionRecord } from "../sessions.ts";
-import type { WatcherService } from "../watchers.ts";
+import type { WatcherService } from "../agent-tools/watchers.ts";
 import { workers } from "../workers.ts";
 import type { SessionJiraIssue, SessionStatus, SessionView, WorktreeProgress } from "../api/sessions.ts";
 import { progressCardFromTranscript } from "./progress-card.ts";

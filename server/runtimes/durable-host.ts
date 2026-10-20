@@ -32,7 +32,7 @@ import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
 import type { BotChat, OfferedTool, ToolOrigin } from "./durable-offer.ts";
-import { invokeAgentTool } from "../agent-tools-bridge.ts";
+import { invokeAgentTool } from "../agent-tools/bridge.ts";
 
 /** The tools of `extension` the model may call: not the ones only other tools call, such as codemode's `models.*`. */
 export const modelCallable = (extension: Extension): ToolRegistration[] =>

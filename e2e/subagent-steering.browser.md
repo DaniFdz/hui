@@ -29,7 +29,7 @@ Keep fresh screenshots outside Git and include them in the PR description.
 
 ## Automated coverage and limits
 
-`server/subagents.test.ts` covers idle delivery, active/waiting steering,
+`server/agent-tools/subagents.test.ts` covers idle delivery, active/waiting steering,
 preservation of a pending question, refused/unsupported steering, settlement
 during rejection, and avoiding duplicate follow-ups or parent aborts. Fallback
 routing is verified at the session-service boundary, not Browser-driven fault

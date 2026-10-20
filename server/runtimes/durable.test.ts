@@ -9,9 +9,9 @@ import { fileURLToPath } from "node:url";
 import { afterAll, test, type TestContext } from "vitest";
 import { normalizeSettings } from "../hui-settings.ts";
 import type { DurableSession } from "./durable.ts";
-import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
+import type { AgentToolInvocation } from "../agent-tools/bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
-import { SecretFiles, SecretRequests } from "../secret-requests.ts";
+import { SecretFiles, SecretRequests } from "../agent-tools/secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default

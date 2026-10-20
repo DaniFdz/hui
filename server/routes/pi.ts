@@ -16,7 +16,7 @@ import {
   type PiMutationService,
 } from "../pi/mutations.ts";
 import { PiResourceNotFoundError, readPiResourceDocument } from "../pi/resource-reader.ts";
-import { readToolsCatalog } from "../tools.ts";
+import { readToolsCatalog } from "../agent-tools/tools.ts";
 
 export const routeSchemas = [...piRouteSchemas, ...toolsRouteSchemas.filter((route) => route.path === "/__hui/tools")];
 

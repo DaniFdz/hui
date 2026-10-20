@@ -9,7 +9,7 @@
  * agent goes on without an answer.
  */
 import { randomUUID } from "node:crypto";
-import type { QuestionnaireAnswer, QuestionnaireOption, QuestionnaireQuestion, QuestionnaireResult } from "./api/sessions.ts";
+import type { QuestionnaireAnswer, QuestionnaireOption, QuestionnaireQuestion, QuestionnaireResult } from "../api/sessions.ts";
 
 const MAX_QUESTIONS = 4;
 const MAX_HEADER = 16;

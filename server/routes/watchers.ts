@@ -6,7 +6,7 @@ import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { WatcherError, WatcherLog, WatchersResponse } from "../api/watchers.ts";
 export { routeSchemas } from "../api/watchers.ts";
 import type { readRegistry } from "../sessions.ts";
-import { WATCHER_LIMITS, WatcherConflictError, WatcherNotFoundError, type WatcherService } from "../watchers.ts";
+import { WATCHER_LIMITS, WatcherConflictError, WatcherNotFoundError, type WatcherService } from "../agent-tools/watchers.ts";
 
 const SESSION_WATCHER = /^\/__hui\/sessions\/([^/]+)\/watchers\/([^/]+?)(?:\/(stop|restart|log))?$/;
 

@@ -15,7 +15,7 @@ import { SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts
 import { DEFAULT_SETTINGS } from "./hui-settings.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { AgentRuntime, PromptAttachment, RuntimeEvent, RuntimeModel, RuntimeQuestion, RuntimeSession, StartOptions, TranscriptEntry } from "./runtimes/types.ts";
-import type { SecretQuestion } from "./secret-requests.ts";
+import type { SecretQuestion } from "./agent-tools/secret-requests.ts";
 
 // Paths are resolved at import time: never the operator's own configuration.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));

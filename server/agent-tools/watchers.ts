@@ -19,7 +19,7 @@ import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
-import type { Watcher, WatcherState, WatcherLog } from "./api/watchers.ts";
+import type { Watcher, WatcherState, WatcherLog } from "../api/watchers.ts";
 
 export const WATCHER_LIMITS = {
   purpose: 200,

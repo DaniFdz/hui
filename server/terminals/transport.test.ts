@@ -22,7 +22,7 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
   ], groups: [] }));
   const { middleware } = await import("../hui.ts");
   const { stopBackend } = await import("../backend.ts");
-  const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
+  const { agentToolEnvironment } = await import("../agent-tools/bridge.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   const detach = attachTerminalTransport(server, new Set(["127.0.0.1"]));
   server.listen(0, "127.0.0.1");

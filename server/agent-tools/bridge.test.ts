@@ -5,8 +5,8 @@ import {
   agentToolEnvironment,
   registerAgentToolHandler,
   stopAgentToolBridge,
-} from "./agent-tools-bridge.ts";
-import { invokeHuiBridge } from "./runtimes/bridge-client.mjs";
+} from "./bridge.ts";
+import { invokeHuiBridge } from "../runtimes/bridge-client.mjs";
 
 afterAll(() => stopAgentToolBridge());
 

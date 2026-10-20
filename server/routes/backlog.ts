@@ -35,7 +35,7 @@ import { suggestWorktreeName } from "../pi/model-routing.ts";
 import { CONFIG_DIR } from "../paths.ts";
 import { runPiUtilityPrompt } from "../runtimes/pi.ts";
 import { SessionRegistryError } from "../sessions.ts";
-import { TaskSuggestionInputError, TaskSuggestionNotFoundError } from "../task-suggestions.ts";
+import { TaskSuggestionInputError, TaskSuggestionNotFoundError } from "../agent-tools/task-suggestions.ts";
 import { existingDirectory } from "../git/working-directories.ts";
 
 const BACKLOG_ROUTE = "/__hui/backlog";

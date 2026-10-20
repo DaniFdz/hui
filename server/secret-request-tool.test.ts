@@ -14,7 +14,7 @@ test("a secret request is only answered over the connection of the machine its s
     { id: "remote", title: "Remote", tool: "durable", cwd: "/home/remote", worker: "w1", createdAt: now, updatedAt: now },
   ], groups: [] }));
   const { stopBackend } = await import("./backend.ts");
-  const { invokeAgentTool } = await import("./agent-tools-bridge.ts");
+  const { invokeAgentTool } = await import("./agent-tools/bridge.ts");
   t.onTestFinished(async () => { await stopBackend(); await rm(dir, { recursive: true, force: true }); });
   // Already stopped, so an accepted request ends at once, cancelled.
   const ask = (callerSessionId: string, fromWorker?: string) => invokeAgentTool({

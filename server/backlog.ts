@@ -39,7 +39,7 @@ import { readRegistry, updateRegistry, type SessionNotFoundError, type SessionRe
 import type { createSessionLifecycle } from "./sessions/lifecycle.ts";
 import type { SessionView } from "./api/sessions.ts";
 import type { createSessionViews } from "./sessions/views.ts";
-import { TaskSuggestionInputError, type TaskSuggestionStore } from "./task-suggestions.ts";
+import { TaskSuggestionInputError, type TaskSuggestionStore } from "./agent-tools/task-suggestions.ts";
 
 export const BACKLOG_LIMITS = {
   title: 200,

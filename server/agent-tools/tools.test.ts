@@ -3,8 +3,8 @@ import { mkdtemp, writeFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expectTypeOf, test } from "vitest";
-import { ToolsCatalog, type ToolCatalogEntry, type RuntimeTool, type RuntimeInspection, type SessionTools } from "./api/tools.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import { ToolsCatalog, type ToolCatalogEntry, type RuntimeTool, type RuntimeInspection, type SessionTools } from "../api/tools.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 
 type OriginalToolCatalogEntry = {
@@ -51,7 +51,7 @@ expectTypeOf<RuntimeInspection>().toEqualTypeOf<OriginalRuntimeInspection>();
 expectTypeOf<SessionTools>().toEqualTypeOf<OriginalSessionTools>();
 expectTypeOf<ToolsCatalog>().toEqualTypeOf<OriginalToolsCatalog>();
 import { readToolsCatalog } from "./tools.ts";
-import { huiToolDefinitions } from "./runtimes/hui-tools.ts";
+import { huiToolDefinitions } from "../runtimes/hui-tools.ts";
 
 test("global tools expose real HUI definitions without loading configured packages or creating sessions", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-tools-"));

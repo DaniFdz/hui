@@ -42,7 +42,7 @@ interaction and rendering, but it is not a successful managed-Browser-tool run.
 ## Automated coverage
 
 - Media staging/classification, opaque URLs, wrong-name rejection and HTTP byte
-  ranges: `server/presented-media.test.ts`.
+  ranges: `server/agent-tools/presented-media.test.ts`.
 - Safe client projection and size labels: `src/lib/presented-media.test.ts`.
 - Streaming and durable PI tool-result details: `server/runtimes/pi.test.ts` and
   `src/lib/transcript-state.test.ts`.
