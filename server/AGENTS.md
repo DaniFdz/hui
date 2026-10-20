@@ -21,6 +21,10 @@ reads, long-lived session lifecycle, and runtime adapters.
   rewrites `docs/api.schema.json` and the browser's generated types;
   `scripts/api-schema.test.ts` fails on a gap or a stale file. Schemas describe
   payloads; they don't validate requests. Internal records never get one.
+- Bots (Labs) live in `bots/`, and the Durable core in `runtimes/` never imports
+  them (R8). `services.ts` and `worker/host-bots.ts` hand their Durable host the
+  bots' extension with `configureDurableBots`; a host without bots passes `null`
+  (`cli/doctor-pi-sessions.ts`), and a host opened before either call throws.
 - `sessions/sessions.ts` owns HUI registry persistence. `sessions/live-sessions.ts` owns
   the one-live-runtime-per-session invariant. `runtimes/` translates a harness protocol into the
   generic types in `runtimes/types.ts`.
