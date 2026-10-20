@@ -253,7 +253,7 @@ export class LiveSessions {
       || live.status === "running" || live.status === "waiting" || live.followUps.length > 0);
   }
   #live = new Map<string, Live>();
-  #revisions = 0;
+  #revisions = Math.floor(Math.random() * 2 ** 40);
   #statusSubscribers = new Set<StatusSubscriber>();
   /** Deleted ids stay tombstoned for this gateway lifetime so a request that
    * read the old row before DELETE committed cannot start it afterwards. */
@@ -1314,6 +1314,7 @@ export class LiveSessions {
       }
       live.runtime = runtime;
       live.transcript = [...runtime.transcript()];
+      live.revision = ++this.#revisions;
       live.thinking = runtime.currentThinking?.();
       // Only a runtime that can change speed reports one.
       live.fast = runtime.setFast ? runtime.currentFast?.() === true : undefined;

@@ -652,6 +652,7 @@ async function connectOnce(
     }
     const address = new URL(((await response.json()) as { url: string }).url, location.href);
     address.protocol = address.protocol === "https:" ? "wss:" : "ws:";
+    address.searchParams.set("slim", "1");
     if (heldRevision !== undefined) address.searchParams.set("revision", String(heldRevision));
     if (signal.aborted) return { kind: "dropped" };
     socket = new WebSocket(address);

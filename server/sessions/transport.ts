@@ -20,7 +20,11 @@ const TICKET_MS = 15_000;
 
 /** Starts forwarding `id`'s frames to `send` and returns its unsubscribe, or
  * undefined when the session no longer exists. */
-export type SessionEventSource = (id: string, send: (event: string, data: unknown) => void, heldRevision?: number) => Promise<(() => void) | undefined>;
+export type SessionEventSource = (
+  id: string,
+  send: (event: string, data: unknown) => void,
+  view: { slim: boolean; heldRevision?: number },
+) => Promise<(() => void) | undefined>;
 
 const tickets = new Map<string, { id: string; expires: number }>();
 
@@ -51,6 +55,7 @@ export function attachSessionTransport(server: EventEmitter, source: SessionEven
     tickets.delete(token);
     if (!ticket || ticket.expires <= Date.now()) { reject(); return; }
     const heldRevision = url.searchParams.get("revision");
+    const view = { slim: url.searchParams.has("slim"), ...(heldRevision === null ? {} : { heldRevision: Number(heldRevision) }) };
     wss.handleUpgrade(request, socket, head, (ws) => {
       let alive = true;
       let stop: (() => void) | undefined;
@@ -63,7 +68,7 @@ export function attachSessionTransport(server: EventEmitter, source: SessionEven
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ event, data }));
         if (event === "closed") ws.close(1000);
-      }, heldRevision === null ? undefined : Number(heldRevision)).then((unsubscribe) => {
+      }, view).then((unsubscribe) => {
         if (!unsubscribe) ws.close(SESSION_STREAM_GONE, "unknown session");
         else if (ws.readyState === WebSocket.OPEN) stop = unsubscribe;
         else unsubscribe();

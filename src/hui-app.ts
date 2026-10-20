@@ -536,7 +536,8 @@ export class HuiApp extends HuiElement {
     this.sessionProgressPoll = window.setInterval(() => {
       // Not on macOS stays not on macOS; otherwise the banner follows the gateway.
       if (!this.embeddedPane && !document.hidden && this.control.power !== null) void this.control.refreshPower();
-      if (!document.hidden && this.conversation.transcript.length && (this.conversation.subagents.some((task) => isSubagentActive(task.status)) || ++this.transcriptClockTick % 10 === 0)) this.requestUpdate();
+      const subagentClockRunning = this.conversation.subagents.some((task) => isSubagentActive(task.status));
+      if (!document.hidden && this.conversation.transcript.length && (subagentClockRunning || ++this.transcriptClockTick % 10 === 0)) this.requestUpdate();
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.control.refreshGatewayHealth();
       }
