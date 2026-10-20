@@ -3874,6 +3874,372 @@
         }
       }
     },
+    "CallDelegationRequest": {
+      "type": "object",
+      "required": [
+        "id",
+        "request"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "request": {
+          "type": "string"
+        }
+      }
+    },
+    "CallDelegationResult": {
+      "type": "object",
+      "required": [
+        "status",
+        "speak"
+      ],
+      "properties": {
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "answered"
+            },
+            {
+              "type": "string",
+              "const": "handed-off"
+            },
+            {
+              "type": "string",
+              "const": "failed"
+            },
+            {
+              "type": "string",
+              "const": "timeout"
+            },
+            {
+              "type": "string",
+              "const": "limit"
+            }
+          ]
+        },
+        "speak": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        }
+      }
+    },
+    "CallEnded": {
+      "type": "object",
+      "required": [
+        "ended"
+      ],
+      "properties": {
+        "ended": {
+          "type": "boolean"
+        }
+      }
+    },
+    "CallHeartbeat": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "CallLine": {
+      "type": "object",
+      "required": [
+        "role",
+        "text"
+      ],
+      "properties": {
+        "role": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "user"
+            },
+            {
+              "type": "string",
+              "const": "assistant"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "CallLinesKept": {
+      "type": "object",
+      "required": [
+        "kept"
+      ],
+      "properties": {
+        "kept": {
+          "type": "number"
+        }
+      }
+    },
+    "CallLinesRequest": {
+      "type": "object",
+      "required": [
+        "lines"
+      ],
+      "properties": {
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "role",
+              "text"
+            ],
+            "properties": {
+              "role": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "user"
+                  },
+                  {
+                    "type": "string",
+                    "const": "assistant"
+                  }
+                ]
+              },
+              "text": {
+                "type": "string"
+              },
+              "at": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      }
+    },
+    "CallRecord": {
+      "type": "object",
+      "required": [
+        "call",
+        "startedAt",
+        "endedAt",
+        "lines"
+      ],
+      "properties": {
+        "call": {
+          "type": "string"
+        },
+        "bot": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "number"
+        },
+        "endedAt": {
+          "type": "number"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "summaryUnavailable": {
+          "type": "boolean",
+          "const": true
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CallRecordLine"
+          }
+        }
+      }
+    },
+    "CallRecordLine": {
+      "type": "object",
+      "required": [
+        "role",
+        "text",
+        "at"
+      ],
+      "properties": {
+        "role": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "user"
+            },
+            {
+              "type": "string",
+              "const": "assistant"
+            },
+            {
+              "type": "string",
+              "const": "helper"
+            },
+            {
+              "type": "string",
+              "const": "handoff"
+            }
+          ]
+        },
+        "text": {
+          "type": "string"
+        },
+        "at": {
+          "type": "number"
+        },
+        "request": {
+          "type": "string"
+        }
+      }
+    },
+    "CallsStatus": {
+      "type": "object",
+      "required": [
+        "model",
+        "voices",
+        "chatgpt",
+        "active",
+        "limit"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "voices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GptLiveVoice"
+          }
+        },
+        "chatgpt": {
+          "type": "object",
+          "required": [
+            "signedIn"
+          ],
+          "properties": {
+            "signedIn": {
+              "type": "boolean"
+            },
+            "account": {
+              "type": "object",
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                }
+              }
+            },
+            "waitingUntil": {
+              "type": "number"
+            }
+          }
+        },
+        "active": {
+          "type": "number"
+        },
+        "limit": {
+          "type": "number"
+        }
+      }
+    },
+    "CallStarted": {
+      "type": "object",
+      "required": [
+        "callId",
+        "answer",
+        "model",
+        "voice",
+        "account",
+        "instructionsBytes",
+        "memoryBytes"
+      ],
+      "properties": {
+        "callId": {
+          "type": "string"
+        },
+        "answer": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "voice": {
+          "$ref": "#/$defs/GptLiveVoice"
+        },
+        "account": {
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "instructionsBytes": {
+          "type": "number"
+        },
+        "memoryBytes": {
+          "type": "number"
+        }
+      }
+    },
+    "CallStartRequest": {
+      "type": "object",
+      "required": [
+        "sdp"
+      ],
+      "properties": {
+        "sdp": {
+          "type": "string"
+        }
+      }
+    },
+    "CallTaskResult": {
+      "type": "object",
+      "required": [
+        "status",
+        "speak"
+      ],
+      "properties": {
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "answered"
+            },
+            {
+              "type": "string",
+              "const": "failed"
+            },
+            {
+              "type": "string",
+              "const": "needs-input"
+            },
+            {
+              "type": "string",
+              "const": "timeout"
+            }
+          ]
+        },
+        "speak": {
+          "type": "string"
+        }
+      }
+    },
     "CompactionReason": {
       "anyOf": [
         {
@@ -9809,43 +10175,7 @@
             "lines": {
               "type": "array",
               "items": {
-                "type": "object",
-                "required": [
-                  "role",
-                  "text",
-                  "at"
-                ],
-                "properties": {
-                  "role": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "const": "user"
-                      },
-                      {
-                        "type": "string",
-                        "const": "assistant"
-                      },
-                      {
-                        "type": "string",
-                        "const": "helper"
-                      },
-                      {
-                        "type": "string",
-                        "const": "handoff"
-                      }
-                    ]
-                  },
-                  "text": {
-                    "type": "string"
-                  },
-                  "at": {
-                    "type": "number"
-                  },
-                  "request": {
-                    "type": "string"
-                  }
-                }
+                "$ref": "#/$defs/CallRecordLine"
               }
             }
           }
@@ -11964,6 +12294,21 @@
       "VscodeState",
       "VscodeStatus",
       "VscodeTheme"
+    ],
+    "calls": [
+      "CallDelegationRequest",
+      "CallDelegationResult",
+      "CallEnded",
+      "CallHeartbeat",
+      "CallLine",
+      "CallLinesKept",
+      "CallLinesRequest",
+      "CallRecord",
+      "CallRecordLine",
+      "CallStartRequest",
+      "CallStarted",
+      "CallTaskResult",
+      "CallsStatus"
     ]
   },
   "x-hui-routes": [
@@ -12135,6 +12480,57 @@
       },
       "response": {
         "$ref": "#/$defs/BotResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/calls",
+      "request": {
+        "$ref": "#/$defs/CallStartRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/CallStarted"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/bots/:id/calls/:callId",
+      "response": {
+        "$ref": "#/$defs/CallEnded"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/calls/:callId/delegations",
+      "request": {
+        "$ref": "#/$defs/CallDelegationRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/CallDelegationResult"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/calls/:callId/heartbeat",
+      "response": {
+        "$ref": "#/$defs/CallHeartbeat"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/calls/:callId/lines",
+      "request": {
+        "$ref": "#/$defs/CallLinesRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/CallLinesKept"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/:id/calls/:callId/tasks/:task",
+      "response": {
+        "$ref": "#/$defs/CallTaskResult"
       }
     },
     {
@@ -12343,6 +12739,13 @@
       "path": "/__hui/browser/tabs/:tab/preview",
       "response": {
         "$ref": "#/$defs/BrowserPreview"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/calls",
+      "response": {
+        "$ref": "#/$defs/CallsStatus"
       }
     },
     {

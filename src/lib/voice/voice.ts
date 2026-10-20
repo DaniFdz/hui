@@ -2,7 +2,8 @@
  * Small rules a bot's calls share in the browser (HUI-18): how a call's time
  * reads, the Language picker's options and what a microphone error means.
  */
-import { VOICE_LANGUAGES, voiceLanguageName, whisperLanguageName, type LanguageNames, type VoiceLanguage } from "../../../shared/voice.ts";
+import { VOICE_LANGUAGES, voiceLanguageName, whisperLanguageName, type LanguageNames } from "./languages.ts";
+import type { VoiceLanguage } from "../../api/schema/bots.ts";
 
 /** `65` seconds → `1:05`; an hour or more → `1:02:05`. */
 export function formatCallTime(ms: number): string {

@@ -10,7 +10,7 @@ import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const ROOTS = ["bin", "cli", "desktop", "scripts", "server", "shared", "src"];
+const ROOTS = ["bin", "cli", "desktop", "scripts", "server", "src"];
 /** A hash-pinned port of OpenClaw source (see its README): edited only by re-porting, never by hand. */
 const PINNED = "src/components/openclaw/";
 const SOURCE = /\.(?:ts|mjs|cjs|js)$/u;

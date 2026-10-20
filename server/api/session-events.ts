@@ -1,5 +1,6 @@
 /** Public session stream payloads: snapshots, transcripts, transmitted runtime events and the open and clear responses. */
 import { Type, type Static } from "typebox";
+import { CallRecord } from "./calls.ts";
 import { QuestionnaireQuestion, SessionConnectResponse, SessionStatus, SessionView, SubagentStatus, TranscriptMetrics } from "./sessions.ts";
 
 export const TranscriptAttachment = Type.Object({
@@ -14,14 +15,7 @@ export const TranscriptEntry = Type.Union([
     ...metrics, kind: Type.Literal("message"), role: Type.Union([Type.Literal("user"), Type.Literal("assistant")]), text: Type.String(),
     entryId: Type.Optional(Type.String()), attachments: Type.Optional(Type.Immutable(Type.Array(TranscriptAttachment))),
   }),
-  Type.Object({
-    ...metrics, kind: Type.Literal("call"), call: Type.String(), bot: Type.Optional(Type.String()), startedAt: Type.Number(), endedAt: Type.Number(),
-    summary: Type.Optional(Type.String()), summaryUnavailable: Type.Optional(Type.Literal(true)),
-    lines: Type.Array(Type.Object({
-      role: Type.Union([Type.Literal("user"), Type.Literal("assistant"), Type.Literal("helper"), Type.Literal("handoff")]),
-      text: Type.String(), at: Type.Number(), request: Type.Optional(Type.String()),
-    })),
-  }),
+  Type.Object({ ...metrics, kind: Type.Literal("call"), ...CallRecord.properties }),
   Type.Object({ ...metrics, kind: Type.Literal("compaction"), summary: Type.String(), tokensBefore: Type.Number() }),
   Type.Object({ ...metrics, kind: Type.Literal("thinking"), text: Type.String() }),
   Type.Object({

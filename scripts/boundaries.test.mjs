@@ -15,7 +15,7 @@ import { test } from "vitest";
 import { workerRelease } from "../server/worker/release.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const AREAS = ["bin", "cli", "desktop", "evals", "e2e", "scripts", "server", "shared", "src"];
+const AREAS = ["bin", "cli", "desktop", "evals", "e2e", "scripts", "server", "src"];
 const CODE = /\.[cm]?[jt]s$/u;
 const TEST = /\.test\.[cm]?[jt]s$/u;
 const ENTRIES = ["bin/hui.mjs", "cli/launch.ts", "cli/main.ts", "cli/gateway-run.ts", "server/runtimes/pi-sdk-worker.ts", "server/worker/main.ts", "index.html"];
@@ -198,83 +198,21 @@ test.each([
   ["src/lib/bots/templates.fixture.json", "server/bot-templates/formats.fixture.json"],
   ["src/lib/bots/export-preview.fixture.json", "server/bot-export-format.fixture.json"],
   ["src/lib/bots/bots.fixture.json", "server/bots-format.fixture.json"],
+  ["src/lib/voice/calls.fixture.json", "server/calls-format.fixture.json"],
+  ["src/lib/voice/languages.fixture.json", "server/voice-languages.fixture.json"],
   ["src/lib/widgets.fixture.json", "server/agent-tools/widget-sandbox.fixture.json"],
 ])("runtime fixtures stay byte-identical: %s and %s", async (browser, server) => {
   assert.equal(await readFile(join(root, browser), "utf8"), await readFile(join(root, server), "utf8"));
 });
 
 const ALLOWED = [
-  "cli/bots.ts -> shared/calls.ts (R3)",
-  "cli/bots.ts -> shared/voice.ts (R3)",
-  "cli/main.ts -> shared/calls.ts (R3)",
-  "cli/main.ts -> shared/voice.ts (R3)",
-
-  "server/bot-conversations.ts -> shared/calls.ts (R3)",
-  "server/bot-service.test.ts -> shared/calls.ts (R3)",
-  "server/bot-service.ts -> shared/calls.ts (R3)",
-  "server/bot-templates/mapping.ts -> shared/calls.ts (R3)",
-  "server/bot-templates/mapping.ts -> shared/voice.ts (R3)",
-  "server/bots.ts -> shared/calls.ts (R3)",
-  "server/bots.ts -> shared/voice.ts (R3)",
-  "server/call-helper.test.ts -> shared/calls.ts (R3)",
-  "server/call-helper.ts -> shared/calls.ts (R3)",
-  "server/call-helper.ts -> shared/voice.ts (R3)",
-  "server/calls.test.ts -> shared/calls.ts (R3)",
-  "server/calls.ts -> shared/calls.ts (R3)",
-  "server/calls.ts -> shared/voice.ts (R3)",
-
-  "server/routes/calls.test.ts -> shared/calls.ts (R3)",
-  "server/routes/calls.ts -> shared/calls.ts (R3)",
-
-
-
-  "server/runtimes/durable-optchat.test.ts -> shared/calls.ts (R3)",
-  "server/runtimes/durable-optchat.ts -> shared/calls.ts (R3)",
-  "server/runtimes/pi.ts -> shared/calls.ts (R3)",
-  "server/runtimes/turn-origins.ts -> shared/calls.ts (R3)",
-  "server/runtimes/types.ts -> shared/calls.ts (R3)",
-
-  "server/worker/host-bots.ts -> shared/calls.ts (R3)",
-
-  "shared/ (R3)",
-
-  "shared/voice.ts -> shared/calls.ts (R3)",
-
-  "src/api/calls.ts -> shared/calls.ts (R3)",
-  "src/api/sessions.ts -> shared/calls.ts (R3)",
-
-
-  "src/components/settings/calls.test.ts -> shared/calls.ts (R3)",
-  "src/components/settings/calls.ts -> shared/calls.ts (R3)",
-  "src/controllers/bots-controller.ts -> shared/calls.ts (R3)",
   "src/lib/attachment-file-icon.test.ts -> src/views/home.ts (R6)",
-
-  "src/lib/bots/bots.ts -> shared/calls.ts (R3)",
-  "src/lib/bots/bots.ts -> shared/voice.ts (R3)",
   "src/lib/jira.test.ts -> src/views/shell.ts (R6)",
-
   "src/lib/message-context-menu.test.ts -> src/views/home.ts (R6)",
-
-  "src/lib/session/sessions.ts -> shared/calls.ts (R3)",
-  "src/lib/settings.ts -> shared/calls.ts (R3)",
   "src/lib/subagent-completion.test.ts -> src/views/chat/projection.ts (R6)",
-
   "src/lib/terminal-font.test.ts -> src/views/settings.ts (R6)",
-  "src/lib/transcript-state.ts -> shared/calls.ts (R3)",
-  "src/lib/voice/live-call-platform.ts -> shared/calls.ts (R3)",
-  "src/lib/voice/live-call.test.ts -> shared/calls.ts (R3)",
-  "src/lib/voice/live-call.ts -> shared/calls.ts (R3)",
-  "src/lib/voice/voice.ts -> shared/voice.ts (R3)",
-
-  "src/views/bot-settings.ts -> shared/calls.ts (R3)",
-
-  "src/views/bot-settings.ts -> shared/voice.ts (R3)",
-  "src/views/bot-voice.ts -> shared/calls.ts (R3)",
-  "src/views/chat-call.ts -> shared/calls.ts (R3)",
   "src/views/home.test.ts -> src/hui-app.ts (R7)",
-
   "src/views/settings-automation.test.ts -> src/hui-app.ts (R7)",
   "src/views/settings-workspaces.test.ts -> src/hui-app.ts (R7)",
   "src/views/shell.test.ts -> src/hui-app.ts (R7)",
-
 ];

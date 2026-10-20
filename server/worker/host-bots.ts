@@ -22,7 +22,7 @@ import { BOT_FACTS_FILE, localBotFacts } from "../bot-facts.ts";
 import { realpath, rm, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../bots-format.ts";
-import { parseCallRecord } from "../../shared/calls.ts";
+import { parseCallRecord } from "../calls-format.ts";
 import { durableBotConversations } from "../bot-conversations.ts";
 import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
 import { BOT_TEMPLATE_LIMITS } from "../bot-templates/formats.ts";

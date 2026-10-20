@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "vitest";
 
-import { callsReady } from "../../../shared/calls.ts";
+import { callsReady } from "../../lib/voice/calls.ts";
 import { chatGptLoginSummary } from "./calls.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");

@@ -6,7 +6,7 @@
 import { html, nothing, svg, type SVGTemplateResult, type TemplateResult } from "lit";
 import { botLook, type BotView } from "../lib/bots/bots.ts";
 import { callStatusLabel, type CallView } from "../lib/voice/live-call.ts";
-import { gptLiveVoiceLabel, isGptLiveVoice } from "../../shared/calls.ts";
+import { gptLiveVoiceLabel, isGptLiveVoice } from "../lib/voice/calls.ts";
 import { formatCallTime } from "../lib/voice/voice.ts";
 import { renderBotAvatar } from "./bots.ts";
 import { callFaceState } from "../lib/bots/face.ts";

@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import type { BotRecord, BotReply } from "../bots-format.ts";
-import { CALL_LIMITS, type CallDelegationResult } from "../../shared/calls.ts";
+import { CALL_LIMITS, type CallDelegationResult } from "../calls-format.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../hui-settings.ts";
 import { BotConflictError, BotNotFoundError } from "../bots.ts";
 import { checkLines, createCallRoutes } from "./calls.ts";
 import type { RouteRequest } from "../http/route.ts";
 import { CallBroker, type ActiveCall, type CallAccounts } from "../calls.ts";
+import { CallsStatus, CallStarted } from "../api/calls.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 const TOKEN = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJyb3V0ZXMifQ.c2lnbmF0dXJl";
 const ACCOUNT_ID = "acct-routes-1";
@@ -75,6 +77,7 @@ test("GET /__hui/calls says whether ChatGPT is signed in and which account calls
     model: "gpt-live-1-codex", voices: ["cove", "arbor", "breeze", "ember", "juniper", "maple", "sol", "spruce", "vale"],
     chatgpt: { signedIn: true, account: { name: "Main", email: "dani@example.com" } }, active: 0, limit: CALL_LIMITS.concurrent,
   });
+  expectSchema(CallsStatus, result?.body);
   assert.doesNotMatch(JSON.stringify(result?.body), /eyJ|acct-/u);
   assert.equal((await f.call("POST", "/__hui/calls"))?.status, 405);
   assert.equal(await f.call("GET", "/__hui/bots/juno"), undefined, "other bot routes are not the call routes'");
@@ -84,6 +87,7 @@ test("starting a call builds the bot's session, returns only the answer and refu
   const f = fixture({ bot: { voice: { language: "es" } } });
   const started = await f.call("POST", "/__hui/bots/juno/calls", { sdp: OFFER });
   assert.equal(started?.status, 201);
+  expectSchema(CallStarted, started?.body);
   const body = started?.body as Record<string, unknown>;
   assert.match(String(body["callId"]), /^[0-9a-f-]{36}$/u);
   assert.equal(body["answer"], ANSWER);

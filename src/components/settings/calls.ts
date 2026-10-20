@@ -4,7 +4,9 @@
  * never carries a token.
  */
 import { LitElement, html, nothing } from "lit";
-import { GPT_LIVE_VOICES, gptLiveVoiceLabel, type CallsStatus, type GptLiveVoice } from "../../../shared/calls.ts";
+import { GPT_LIVE_VOICES, gptLiveVoiceLabel } from "../../lib/voice/calls.ts";
+import type { CallsStatus } from "../../api/schema/calls.ts";
+import type { GptLiveVoice } from "../../api/schema/bots.ts";
 import type { Settings } from "../../lib/settings.ts";
 import { loadCallsStatus } from "../../api/calls.ts";
 import { renderSettingsPicker } from "../../views/settings-picker.ts";

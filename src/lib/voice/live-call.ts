@@ -18,7 +18,9 @@
  * capabilities (the microphone, the WebRTC connection, the gateway), so both
  * run under test.
  */
-import { boundText, CALL_LIMITS, chunkUtf8, type CallDelegationResult, type CallLine, type CallTaskResult, type GptLiveVoice } from "../../../shared/calls.ts";
+import { boundText, CALL_LIMITS, chunkUtf8 } from "./calls.ts";
+import type { CallDelegationResult, CallLine, CallTaskResult } from "../../api/schema/calls.ts";
+import type { GptLiveVoice } from "../../api/schema/bots.ts";
 import { BOTS_OFF_MESSAGE } from "../bots/bots.ts";
 
 /* ── what the call view reads ─────────────────────────────────────────── */

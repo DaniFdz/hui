@@ -5052,7 +5052,7 @@ turning them off ends the calls HUI holds, and a browser whose heartbeat gets
 that answer ends its call saying so ([Bots are a preview](#bots-are-a-preview-settings--labs--bots)). This is the route ChatGPT's own voice mode uses, not a public API: it may
 change. The gateway sets each call up and keeps the credential; the browser
 carries the audio and the call's data channel (`oai-events`) and never sees a
-token or an account id. Shared types are in `shared/calls.ts`:
+token or an account id. The payloads are in `server/api/calls.ts`:
 
 ```ts
 type GptLiveVoice = "cove" | "arbor" | "breeze" | "ember" | "juniper" | "maple" | "sol" | "spruce" | "vale"; // cove: GPT-Live's default
@@ -5073,7 +5073,7 @@ type CallTaskResult = { status: "answered" | "failed" | "needs-input" | "timeout
 ```
 
 A bot's `voice.language` is one of the 100 language codes of Whisper
-(`whisper/tokenizer.py`), `VOICE_LANGUAGES` in `shared/voice.ts`: ISO 639-1 codes plus
+(`whisper/tokenizer.py`), `VOICE_LANGUAGES` in `server/voice-languages.ts`: ISO 639-1 codes plus
 `haw` (Hawaiian), `yue` (Cantonese) and Javanese as Whisper's `jw`, accepted in any
 case and stored lowercase; anything else is 400 at every boundary (the routes,
 `bots.json` drops it, the CLI). The call's instructions ask GPT-Live to speak it,
@@ -5085,15 +5085,39 @@ model and has one tool, which asks the bot. A **call helper** answers it on the
 bot's utility model; work that needs tools goes to the bot's own chat; and the
 call ends as **one record** in the chat.
 
-| Route | Behavior |
-|---|---|
-| `GET /__hui/calls` | `CallsStatus`. The account is the first signed-in ChatGPT account not waiting for its quota, the order model turns use; `waitingUntil` when every one waits |
-| `POST /__hui/bots/:id/calls` `{ sdp }` | 201 `CallStarted`. Refused with 409 for an archived bot. The offer is at most 64 KB, a session description with audio and no video (400 otherwise). The gateway builds the session (below), posts `{ sdp, session }` to `https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas` with `Authorization: Bearer <access>`, `chatgpt-account-id`, `OpenAI-Alpha: quicksilver=v2`, fresh `session-id`, `thread-id` and `x-session-id`, and `originator: pi` (30 s timeout, no redirects), and returns only the answer SDP and HUI's own call id. A 401, 403 or 429 hands the call to the next account; when every account refuses, or ChatGPT fails, the answer is 502 `{ error, upstreamStatus }` with a message written for the browser (401: sign in again; 403: not available on this account or plan, or the voice refused; 429: the voice limit reached). ChatGPT's own body goes only to diagnostics, redacted. No ChatGPT login, or every account waiting, is 409; a third concurrent call is 429 |
-| `POST /__hui/bots/:id/calls/:callId/lines` `{ lines: [{ role, text, at? }] }` | `{ kept }`. What was said, in order: 1–40 lines of 1–4,000 characters; `at` (ms) is when it was said, the gateway's now when missing or implausible. The lines stay with the call in the gateway (its newest 400) until it ends; nothing reaches the chat per line |
-| `POST /__hui/bots/:id/calls/:callId/delegations` `{ id, request }` | `CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/routes/calls.ts`, implemented in `server/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's SOUL.md (or a note that it has none yet), its OptChat view (its newest 16 KB), the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off) and answers 6 questions per call; past them every request is handed off, and a call hands off at most 4 tasks (`limit`). `failed` says why no model answered. A client that leaves ends the wait |
-| `POST /__hui/bots/:id/calls/:callId/tasks/:task` | `CallTaskResult` once the handed-off task's own run ends (never the reply of a turn it queued behind): its reply without markdown and at most 1,800 characters, or what to tell the user when it failed, needs an answer in the chat or is still running after 600 s. The browser gives it to GPT-Live as the delegation's speakable answer if the call is still up; either way the reply stays in the chat. 404 once the call ended |
-| `POST /__hui/bots/:id/calls/:callId/heartbeat` | `{ ok: true }`. A call that sends nothing for 90 s (the browser vanished) ends and is recorded; 404 afterwards |
-| `DELETE /__hui/bots/:id/calls/:callId` | `{ ended }`: the slot frees and the call is recorded. The browser writes its last lines first, then closes its connection to ChatGPT after `{ type: "session.close" }` on the data channel. A call also ends after 15 minutes |
+### `GET /__hui/calls`
+
+`CallsStatus`. The account is the first signed-in ChatGPT account not waiting for its quota, the order model turns use; `waitingUntil` when every one waits
+
+### `POST /__hui/bots/:id/calls`
+
+Request `{ sdp }`.
+
+201 `CallStarted`. Refused with 409 for an archived bot. The offer is at most 64 KB, a session description with audio and no video (400 otherwise). The gateway builds the session (below), posts `{ sdp, session }` to `https://chatgpt.com/backend-api/codex/realtime/calls?intent=quicksilver&architecture=avas` with `Authorization: Bearer <access>`, `chatgpt-account-id`, `OpenAI-Alpha: quicksilver=v2`, fresh `session-id`, `thread-id` and `x-session-id`, and `originator: pi` (30 s timeout, no redirects), and returns only the answer SDP and HUI's own call id. A 401, 403 or 429 hands the call to the next account; when every account refuses, or ChatGPT fails, the answer is 502 `{ error, upstreamStatus }` with a message written for the browser (401: sign in again; 403: not available on this account or plan, or the voice refused; 429: the voice limit reached). ChatGPT's own body goes only to diagnostics, redacted. No ChatGPT login, or every account waiting, is 409; a third concurrent call is 429
+
+### `POST /__hui/bots/:id/calls/:callId/lines`
+
+Request `{ lines: [{ role, text, at? }] }`.
+
+`{ kept }`. What was said, in order: 1–40 lines of 1–4,000 characters; `at` (ms) is when it was said, the gateway's now when missing or implausible. The lines stay with the call in the gateway (its newest 400) until it ends; nothing reaches the chat per line
+
+### `POST /__hui/bots/:id/calls/:callId/delegations`
+
+Request `{ id, request }`.
+
+`CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/routes/calls.ts`, implemented in `server/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's SOUL.md (or a note that it has none yet), its OptChat view (its newest 16 KB), the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off) and answers 6 questions per call; past them every request is handed off, and a call hands off at most 4 tasks (`limit`). `failed` says why no model answered. A client that leaves ends the wait
+
+### `POST /__hui/bots/:id/calls/:callId/tasks/:task`
+
+`CallTaskResult` once the handed-off task's own run ends (never the reply of a turn it queued behind): its reply without markdown and at most 1,800 characters, or what to tell the user when it failed, needs an answer in the chat or is still running after 600 s. The browser gives it to GPT-Live as the delegation's speakable answer if the call is still up; either way the reply stays in the chat. 404 once the call ended
+
+### `POST /__hui/bots/:id/calls/:callId/heartbeat`
+
+`{ ok: true }`. A call that sends nothing for 90 s (the browser vanished) ends and is recorded; 404 afterwards
+
+### `DELETE /__hui/bots/:id/calls/:callId`
+
+`{ ended }`: the slot frees and the call is recorded. The browser writes its last lines first, then closes its connection to ChatGPT after `{ type: "session.close" }` on the data channel. A call also ends after 15 minutes
 
 **The record.** When a call ends (hang-up, 90 s without a heartbeat, or 15
 minutes) the bot's utility model writes a summary in the bot's language, at most

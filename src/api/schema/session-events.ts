@@ -1,4 +1,5 @@
 /** Generated from docs/api.schema.json by scripts/api-schema.ts. Do not edit. */
+import type { CallRecordLine } from "./calls.ts";
 import type { QuestionnaireQuestion, SessionStatus, SessionView, SubagentStatus, TranscriptMetrics } from "./sessions.ts";
 
 export type CompactionReason = ("manual") | ("threshold") | ("overflow");
@@ -33,4 +34,4 @@ export type SubagentTaskView = { "taskId": string; "sessionId": string; "parentS
 
 export type TranscriptAttachment = { "name": string; "kind": ("image") | ("file"); "mimeType"?: string; "url"?: string; };
 
-export type TranscriptEntry = ({ "metrics"?: TranscriptMetrics; "kind": "message"; "role": ("user") | ("assistant"); "text": string; "entryId"?: string; "attachments"?: Array<TranscriptAttachment>; }) | ({ "metrics"?: TranscriptMetrics; "kind": "call"; "call": string; "bot"?: string; "startedAt": number; "endedAt": number; "summary"?: string; "summaryUnavailable"?: true; "lines": Array<{ "role": ("user") | ("assistant") | ("helper") | ("handoff"); "text": string; "at": number; "request"?: string; }>; }) | ({ "metrics"?: TranscriptMetrics; "kind": "compaction"; "summary": string; "tokensBefore": number; }) | ({ "metrics"?: TranscriptMetrics; "kind": "thinking"; "text": string; }) | ({ "metrics"?: TranscriptMetrics; "kind": "tool"; "id": string; "name": string; "args"?: unknown; "output"?: string; "details"?: unknown; "failed"?: boolean; }) | ({ "metrics"?: TranscriptMetrics; "kind": "error"; "message": string; });
+export type TranscriptEntry = ({ "metrics"?: TranscriptMetrics; "kind": "message"; "role": ("user") | ("assistant"); "text": string; "entryId"?: string; "attachments"?: Array<TranscriptAttachment>; }) | ({ "metrics"?: TranscriptMetrics; "kind": "call"; "call": string; "bot"?: string; "startedAt": number; "endedAt": number; "summary"?: string; "summaryUnavailable"?: true; "lines": Array<CallRecordLine>; }) | ({ "metrics"?: TranscriptMetrics; "kind": "compaction"; "summary": string; "tokensBefore": number; }) | ({ "metrics"?: TranscriptMetrics; "kind": "thinking"; "text": string; }) | ({ "metrics"?: TranscriptMetrics; "kind": "tool"; "id": string; "name": string; "args"?: unknown; "output"?: string; "details"?: unknown; "failed"?: boolean; }) | ({ "metrics"?: TranscriptMetrics; "kind": "error"; "message": string; });

@@ -29,8 +29,8 @@ import {
   type BotAccess, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice,
   type BotVoicePatch,
 } from "./bots-format.ts";
-import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
-import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
+import { GPT_LIVE_VOICES, gptLiveVoice } from "./calls-format.ts";
+import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "./voice-languages.ts";
 import { CONFIG_DIR } from "./paths.ts";
 
 export const BOTS_FILE = join(CONFIG_DIR, "bots.json");

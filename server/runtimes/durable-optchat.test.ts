@@ -11,7 +11,7 @@ import type { Message, Models, UserMessage } from "@earendil-works/pi-ai";
 import { AgentDoc, createRegistry, Harness, UserEntry, type ConversationId, type EntryRecord } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { OptChatStatus } from "../optchat/memory.ts";
-import type { CallRecord } from "../../shared/calls.ts";
+import type { CallRecord } from "../calls-format.ts";
 import type { OptChatTuning } from "./durable-optchat.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";

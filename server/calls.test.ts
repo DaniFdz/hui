@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import type { BotRecord } from "./bots-format.ts";
-import { CALL_LIMITS, chunkUtf8, GPT_LIVE_MODEL } from "../shared/calls.ts";
+import { CALL_LIMITS, GPT_LIVE_MODEL } from "./calls-format.ts";
 import {
   boundBytes, buildCallInstructions, buildCallSession, callHeaders, callRequestIds, CallBroker, CallInputError, CallLimitError, CallNotFoundError,
   CallUnavailableError, CallUpstreamError, chatGptStatus, checkOffer, checkRequest, createUpstreamCall, describeCallFailure,
@@ -269,13 +269,7 @@ test("a handed-off task's result is what GPT-Live says: the reply without markdo
   assert.match(taskResult({ status: "failed", error: "provider exploded" }, "Juno").speak, /^Juno's task did not complete: provider exploded\. Tell the user, and offer to try again\.$/u);
 });
 
-test("appends stay within 500 bytes without splitting characters, and byte bounds cut whole characters", () => {
-  assert.deepEqual(chunkUtf8("short"), ["short"]);
-  const text = "ñ".repeat(600);
-  const chunks = chunkUtf8(text);
-  assert.equal(chunks.join(""), text);
-  assert(chunks.every((chunk) => Buffer.byteLength(chunk, "utf8") <= 500));
-  assert.equal(chunks.length, 3);
+test("byte bounds cut whole characters", () => {
   assert.equal(boundBytes("ab", 10), "ab");
   const cut = boundBytes("€".repeat(10), 10);
   assert.equal(cut, "€€…");

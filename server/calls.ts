@@ -13,13 +13,10 @@
  * the fresh session/thread ids and the `{ sdp, session }` body.
  */
 import { randomUUID } from "node:crypto";
-import {
-  boundText, CALL_LIMITS, callVoice, GPT_LIVE_MODEL, gptLiveVoice,
-  type CallRecordLine, type CallsStatus, type CallTaskResult, type GptLiveVoice,
-} from "../shared/calls.ts";
+import { boundText, CALL_LIMITS, callVoice, GPT_LIVE_MODEL, gptLiveVoice, type CallRecordLine, type CallsStatus, type CallTaskResult, type GptLiveVoice } from "./calls-format.ts";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
 import type { BotRecord, BotReply } from "./bots-format.ts";
-import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
+import { voiceLanguage, voiceLanguageName } from "./voice-languages.ts";
 import type { ProviderAccounts } from "./provider-accounts.ts";
 import { credentialEmail } from "./provider-identity.ts";
 

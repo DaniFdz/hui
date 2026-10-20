@@ -6,7 +6,7 @@
  */
 import { defineEntry } from "@earendil-works/pi-durable";
 import { AGENT_TAG, BOT_IMPORTED_KICKOFF_LINE, botKickoffName } from "../bots-format.ts";
-import type { CallRecord } from "../../shared/calls.ts";
+import type { CallRecord } from "../calls-format.ts";
 
 /**
  * The record of one GPT-Live call with the bot (HUI-18): its summary and its whole transcript (`CallRecord`), written

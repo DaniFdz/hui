@@ -1,8 +1,9 @@
 /**
- * A bot's voice on calls (HUI-18): the GPT-Live voice it speaks with and the
- * language it speaks on them. Shared by the gateway, the CLI and the browser.
+ * The language a bot speaks on calls (HUI-18), for the gateway and the CLI: the
+ * codes accepted and the names the call's instructions use. The browser keeps
+ * its own copy in src/lib/voice/languages.ts.
  */
-import type { GptLiveVoice } from "./calls.ts";
+import type { VoiceLanguage } from "./api/bots.ts";
 
 /**
  * The languages a bot can speak on calls: Whisper's 100, with its names and in
@@ -10,7 +11,7 @@ import type { GptLiveVoice } from "./calls.ts";
  * ISO 639-1, except Hawaiian `haw` and Cantonese `yue` (ISO 639-3) and
  * Javanese, which Whisper writes `jw` for ISO's `jv`.
  */
-export const VOICE_LANGUAGES = {
+const VOICE_LANGUAGES = {
   en: "english", zh: "chinese", de: "german", es: "spanish", ru: "russian", ko: "korean", fr: "french",
   ja: "japanese", pt: "portuguese", tr: "turkish", pl: "polish", ca: "catalan", nl: "dutch", ar: "arabic",
   sv: "swedish", it: "italian", id: "indonesian", hi: "hindi", fi: "finnish", vi: "vietnamese", he: "hebrew",
@@ -25,18 +26,12 @@ export const VOICE_LANGUAGES = {
   ht: "haitian creole", ps: "pashto", tk: "turkmen", nn: "nynorsk", mt: "maltese", sa: "sanskrit",
   lb: "luxembourgish", my: "myanmar", bo: "tibetan", tl: "tagalog", mg: "malagasy", as: "assamese", tt: "tatar",
   haw: "hawaiian", ln: "lingala", ha: "hausa", ba: "bashkir", jw: "javanese", su: "sundanese", yue: "cantonese",
-} as const;
-
-export type VoiceLanguage = keyof typeof VOICE_LANGUAGES;
+} as const satisfies Record<VoiceLanguage, string>;
 
 const LANGUAGE_CODES: ReadonlySet<string> = new Set(Object.keys(VOICE_LANGUAGES));
 
 /** Codes a refusal names as examples. */
 export const VOICE_LANGUAGE_EXAMPLES = "en, es, fr, de or ja";
-
-/** A bot's voice on calls: `live` is its GPT-Live voice (absent: the one Settings → Models → Calls chose) and
- * `language` the one it speaks there (absent: Auto, it answers in the language the user speaks). */
-export type BotVoice = { language?: VoiceLanguage; live?: GptLiveVoice };
 
 /** One of Whisper's language codes (trimmed, in any case); undefined for anything else, a name included. */
 export function voiceLanguage(value: unknown): VoiceLanguage | undefined {
@@ -46,7 +41,7 @@ export function voiceLanguage(value: unknown): VoiceLanguage | undefined {
 }
 
 /** Whisper's name for the language, capitalized: `Haitian Creole`. */
-export function whisperLanguageName(code: VoiceLanguage): string {
+function whisperLanguageName(code: VoiceLanguage): string {
   return VOICE_LANGUAGES[code].replace(/(^|\s)\p{Ll}/gu, (initial) => initial.toUpperCase());
 }
 

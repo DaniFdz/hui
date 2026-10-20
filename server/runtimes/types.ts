@@ -17,7 +17,7 @@ export type {
   CompactionReason, QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage,
 } from "../api/session-events.ts";
 import type { CompactionReason, RuntimeCommand, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage } from "../api/session-events.ts";
-import type { CallRecord } from "../../shared/calls.ts";
+import type { CallRecord } from "../calls-format.ts";
 
 export type RuntimeQuestionResponse = { value: string } | { confirmed: boolean };
 

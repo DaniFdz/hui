@@ -6,8 +6,8 @@
 import { BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape, storedTagging } from "../bots-format.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateIntegration } from "./formats.ts";
 import type { AutomationSchedule } from "../automation.ts";
-import { gptLiveVoice } from "../../shared/calls.ts";
-import { voiceLanguage } from "../../shared/voice.ts";
+import { gptLiveVoice } from "../calls-format.ts";
+import { voiceLanguage } from "../voice-languages.ts";
 import { isRecord, oneLine, str, TemplateFormatError } from "./common.ts";
 import { needsList, openPoints, skillFiles, templateTriggers } from "./hui-export.ts";
 

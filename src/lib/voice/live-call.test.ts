@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { CALL_LIMITS, type CallDelegationResult, type CallLine, type CallTaskResult } from "../../../shared/calls.ts";
+import { CALL_LIMITS } from "./calls.ts";
+import type { CallDelegationResult, CallLine, CallTaskResult } from "../../api/schema/calls.ts";
 import { BOTS_OFF_MESSAGE } from "../bots/bots.ts";
 import {
   ActivityGate, CallTranscript, callStatusLabel, delegationAppends, GREETING_FALLBACK_MS, initialLiveCallState, LiveCall, livePhaseOf, MIC_GATE, parseLiveEvent, reduceLiveCall, sessionAppends, VOICE_GATE,

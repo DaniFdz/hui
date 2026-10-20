@@ -3,7 +3,7 @@
  * out, so a stale or hand-edited file degrades to defaults instead of reaching CSS or the gateway. Loading
  * and saving them through the gateway is `settings/settings-store.ts`'s job.
  */
-import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "../../shared/calls.ts";
+import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "./voice/calls.ts";
 import { normalizeAppearance, DEFAULT_APPEARANCE } from "./appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "./terminal-font.ts";
 import { normalizeThemeMode } from "./theme.ts";

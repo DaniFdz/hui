@@ -1,6 +1,6 @@
 /** Browser client for the gateway's GPT-Live call routes: the calls status, starting a call with a bot, and a running
  * call's delegations, tasks, transcript lines, heartbeat and hang-up. The call itself is lib/voice/live-call-platform.ts. */
-import type { CallDelegationResult, CallLine, CallStarted, CallsStatus, CallTaskResult } from "../../shared/calls.ts";
+import type { CallDelegationResult, CallLine, CallStarted, CallsStatus, CallTaskResult } from "./schema/calls.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;

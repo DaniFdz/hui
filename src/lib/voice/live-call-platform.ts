@@ -6,7 +6,7 @@
  * call routes (src/api/calls.ts), whose requests its creator passes in. No dependencies; `LiveCall` (live-call.ts)
  * holds the logic.
  */
-import type { CallDelegationResult, CallLine, CallTaskResult } from "../../../shared/calls.ts";
+import type { CallDelegationResult, CallLine, CallTaskResult } from "../../api/schema/calls.ts";
 import type { LiveCallPlatform, LiveConnection, LiveMicrophone } from "./live-call.ts";
 import type { subscribeSession } from "../../api/sessions.ts";
 import type { deleteCall, postCallDelegation, postCallHeartbeat, postCallLines, postCallTask, startBotCall } from "../../api/calls.ts";

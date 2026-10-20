@@ -2,7 +2,7 @@
  * The browser's pure session logic over the session API's types (src/api/sessions.ts): group labels as the sidebar
  * shows and the API stores them, the transcript as Markdown, status counts and how an unreachable host reads.
  */
-import { callMinutes, callTranscriptText } from "../../../shared/calls.ts";
+import { callMinutes, callTranscriptText } from "../voice/calls.ts";
 import type { SessionGroup, SessionView, TranscriptEntry, TranscriptItem } from "../../api/sessions.ts";
 
 /** Labels are presentation, not registry identifiers. Preserve stored spelling. */

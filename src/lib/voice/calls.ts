@@ -1,22 +1,21 @@
 /**
  * Realtime calls with bots (HUI-18) through GPT-Live, over the operator's
- * ChatGPT subscription: the route ChatGPT's own voice mode uses. Shared by the
- * gateway, the CLI and the browser. The gateway owns the ChatGPT credential and
- * sets each call up; the browser owns the call's WebRTC media and its data
- * channel. The route belongs to ChatGPT and may change without notice.
+ * ChatGPT subscription: the route ChatGPT's own voice mode uses. The browser's
+ * copy of the gateway's call limits, voices and record helpers
+ * (server/calls-format.ts). The gateway owns the ChatGPT credential and sets
+ * each call up; the browser owns the call's WebRTC media and its data channel.
+ * The route belongs to ChatGPT and may change without notice.
  *
  * The shape follows OpenDots (CopilotKit/OpenDots, MIT): a realtime
  * conversation model, one tool that asks the bot (a quick helper on its utility
  * model), real work handed to the bot's chat, and one record of the call at
  * hang-up.
  */
-
-/** The ChatGPT route's GPT-Live model. */
-export const GPT_LIVE_MODEL = "gpt-live-1-codex";
+import type { GptLiveVoice } from "../../api/schema/bots.ts";
+import type { CallRecord, CallRecordLine, CallsStatus } from "../../api/schema/calls.ts";
 
 /** GPT-Live's built-in voices on the ChatGPT route, its default first. */
 export const GPT_LIVE_VOICES = ["cove", "arbor", "breeze", "ember", "juniper", "maple", "sol", "spruce", "vale"] as const;
-export type GptLiveVoice = (typeof GPT_LIVE_VOICES)[number];
 export const DEFAULT_GPT_LIVE_VOICE: GptLiveVoice = "cove";
 
 /** Limits the gateway enforces at its boundary; the browser mirrors them. */
@@ -57,11 +56,6 @@ export const CALL_LIMITS = {
   helperMemoryBytes: 16_000,
 } as const;
 
-/** How a call's record starts in the bot's memory (OptChat's view). */
-export const CALL_RECORD_PREFIX = "[call]";
-/** How a task handed off from a call reaches the bot's chat. */
-export const CALL_TASK_PREFIX = "[call task] ";
-
 export function isGptLiveVoice(value: unknown): value is GptLiveVoice {
   return typeof value === "string" && (GPT_LIVE_VOICES as readonly string[]).includes(value);
 }
@@ -83,83 +77,11 @@ export function callVoice(botVoice: GptLiveVoice | undefined, settingsVoice: Gpt
   return botVoice ?? settingsVoice ?? DEFAULT_GPT_LIVE_VOICE;
 }
 
-/** `GET /__hui/calls`: what Settings → Models → Calls shows. Never a token or an account id. */
-export type CallsStatus = {
-  model: string;
-  voices: readonly GptLiveVoice[];
-  chatgpt: {
-    /** A ChatGPT login (provider `openai-codex`) is saved in HUI. */
-    signedIn: boolean;
-    /** The account calls use now: the first signed-in one not waiting for its quota, as model turns choose. */
-    account?: { name: string; email?: string };
-    /** Every signed-in account waits for its quota until then. */
-    waitingUntil?: number;
-  };
-  /** Calls held now, and how many may be. */
-  active: number;
-  limit: number;
-};
-
 /** Calls are offered whenever GPT-Live can run: with a ChatGPT login (an account waiting for its quota still counts, and
  * the call says why it cannot start). */
 export function callsReady(status: Pick<CallsStatus, "chatgpt"> | undefined): boolean {
   return status?.chatgpt.signedIn === true;
 }
-
-/** `POST /__hui/bots/:id/calls`: the browser's offer. */
-export type CallStartRequest = { sdp: string };
-
-/** Its answer: the call's id in HUI (not the provider's), the answer SDP and what the call uses. */
-export type CallStarted = {
-  callId: string;
-  answer: string;
-  model: string;
-  voice: GptLiveVoice;
-  account: { name: string };
-  /** UTF-8 bytes of the instructions the call started with, and of the memory inside them. */
-  instructionsBytes: number;
-  memoryBytes: number;
-};
-
-/** One line of a call, as it was said: what the operator said or what the voice model said. */
-export type CallLine = { role: "user" | "assistant"; text: string };
-
-/**
- * A line of a call's record: something said (`user`, `assistant`), a question the helper answered (`helper`:
- * `request` is what GPT-Live asked, `text` the answer) or a task handed to the bot's chat (`handoff`: `text` is
- * the task). `at` is when, in ms.
- */
-export type CallRecordLine = { role: "user" | "assistant" | "helper" | "handoff"; text: string; at: number; request?: string };
-
-/** One call as the bot's chat keeps it: a single card with its summary and its whole transcript. */
-export type CallRecord = {
-  call: string;
-  /** The bot's name when the call ended. */
-  bot?: string;
-  startedAt: number;
-  endedAt: number;
-  /** What happened, written by the bot's utility model at hang-up; absent when that failed. */
-  summary?: string;
-  summaryUnavailable?: true;
-  lines: CallRecordLine[];
-};
-
-/** `POST /__hui/bots/:id/calls/:callId/delegations`: a question GPT-Live hands to the bot. `id` is its delegation item. */
-export type CallDelegationRequest = { id: string; request: string };
-
-/**
- * What to tell GPT-Live about a delegation (the speakable result): the helper's answer, a task handed to the bot's
- * chat (`task`: its id, to follow with `/tasks/:task`), or why there is no answer.
- */
-export type CallDelegationResult = {
-  status: "answered" | "handed-off" | "failed" | "timeout" | "limit";
-  /** For GPT-Live to say in its own words; bounded to `CALL_LIMITS.result` characters. */
-  speak: string;
-  task?: string;
-};
-
-/** `POST /__hui/bots/:id/calls/:callId/tasks/:task`: how a handed-off task ended, once it did. */
-export type CallTaskResult = { status: "answered" | "failed" | "needs-input" | "timeout"; speak: string };
 
 /**
  * Text cut into pieces of at most `maxBytes` UTF-8 bytes, without splitting a character, for context appends on the
@@ -228,16 +150,6 @@ export function callTranscriptText(lines: readonly CallRecordLine[], botName: st
 /** Minutes a call lasted, at least one. */
 export function callMinutes(record: Pick<CallRecord, "startedAt" | "endedAt">): number {
   return Math.max(1, Math.round((record.endedAt - record.startedAt) / 60_000));
-}
-
-/** The record as OptChat logs it: its transcript (a user line), then its summary (the bot's), marked as a call. */
-export function callRecordLines(record: CallRecord): { transcript: string; summary?: string } {
-  const bot = record.bot ?? "Bot";
-  const when = new Date(record.startedAt).toISOString().slice(0, 16).replace("T", " ");
-  return {
-    transcript: `${CALL_RECORD_PREFIX} A voice call with ${bot} (${when} UTC, about ${callMinutes(record)} min). Transcript:\n${callTranscriptText(record.lines, bot)}`,
-    ...(record.summary ? { summary: `${CALL_RECORD_PREFIX} ${bot}'s summary of that call: ${record.summary}` } : {}),
-  };
 }
 
 /** At most `max` characters, an ellipsis marking a cut at a word boundary when one is near. */

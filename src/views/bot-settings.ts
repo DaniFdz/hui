@@ -16,8 +16,9 @@ import {
 import type { RuntimeModel } from "../api/sessions.ts";
 import type { BotAvatar, BotFaceEars, BotFaceShape, BotTagging } from "../api/schema/bots.ts";
 import { FACE_LEAF_COLOR, faceEars, facePath, faceViewBox } from "../lib/bots/face.ts";
-import { callVoice, GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";
-import { voiceLanguageName } from "../../shared/voice.ts";
+import { callVoice, GPT_LIVE_VOICES, gptLiveVoiceLabel } from "../lib/voice/calls.ts";
+import type { GptLiveVoice } from "../api/schema/bots.ts";
+import { voiceLanguageName } from "../lib/voice/languages.ts";
 import { languageOptions } from "../lib/voice/voice.ts";
 import { renderPicker } from "./settings-picker.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";

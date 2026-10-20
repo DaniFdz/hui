@@ -13,17 +13,21 @@
  *   POST   /__hui/bots/:id/calls/:callId/heartbeat       { ok: true }; a call quiet for 90 s ends and is recorded
  *   DELETE /__hui/bots/:id/calls/:callId                 { ended }; the call's record goes to the bot's chat
  */
-import { CALL_LIMITS, GPT_LIVE_MODEL, GPT_LIVE_VOICES, type CallDelegationResult, type CallRecordLine, type CallsStatus, type CallStarted } from "../../shared/calls.ts";
+import { CALL_LIMITS, GPT_LIVE_MODEL, GPT_LIVE_VOICES, type CallRecordLine } from "../calls-format.ts";
 import type { Settings } from "../hui-settings.ts";
 import { BotMemoryUnavailableError } from "../bot-memory.ts";
 import type { BotRecord } from "../bots-format.ts";
 import type { BotService } from "../bot-service.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError } from "../bots.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
+import { CallDelegationResult, CallEnded, CallHeartbeat, CallLinesKept, CallsStatus, CallStarted, CallTaskResult, routeSchemas as callRouteSchemas } from "../api/calls.ts";
 import {
   buildCallInstructions, buildCallSession, CallInputError, CallLimitError, CallNotFoundError, CallUnavailableError, CallUpstreamError,
   checkOffer, checkRequest, sessionVoice, taskResult, type ActiveCall, type CallBroker,
 } from "../calls.ts";
+
+export const routeSchemas: RouteSchema[] = callRouteSchemas;
 
 export const CALLS_ROUTE = "/__hui/calls";
 const BOT_CALL_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/calls(?:\/([A-Za-z0-9-]{1,64})(?:\/(lines|delegations|heartbeat|tasks\/[A-Za-z0-9-]{1,64}))?)?$/u;
@@ -115,18 +119,17 @@ export function createCallRoutes(deps: CallRouteDeps) {
     const { instructions, memoryBytes } = buildCallInstructions({ bot, operator: settings.profileName, ...(soul ? { soul } : {}), ...(view ? { view } : {}), ...(timeZone ? { timeZone } : {}) });
     const voice = sessionVoice(bot, settings.calls.voice);
     const started = await broker.start({ botId: bot.id, sdp, session: buildCallSession(instructions, voice), signal: request.signal });
-    const result: CallStarted = {
+    return reply(CallStarted, {
       callId: started.id, answer: started.answer, model: GPT_LIVE_MODEL, voice, account: { name: started.accountName },
       instructionsBytes: Buffer.byteLength(instructions, "utf8"), memoryBytes,
-    };
-    return { status: 201, body: result };
+    }, 201);
   }
 
   async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const { method } = request;
     const notAllowed = { status: 405, body: { error: "method not allowed" } };
     try {
-      if (request.path === CALLS_ROUTE) return method === "GET" ? { status: 200, body: await status() } : notAllowed;
+      if (request.path === CALLS_ROUTE) return method === "GET" ? reply(CallsStatus, await status()) : notAllowed;
       const match = BOT_CALL_ROUTE.exec(request.path);
       if (!match) return undefined;
       const [, target, callId, action] = match;
@@ -134,18 +137,18 @@ export function createCallRoutes(deps: CallRouteDeps) {
       const bot = await bots.resolve(target!);
       if (!action) {
         if (method !== "DELETE") return notAllowed;
-        return { status: 200, body: { ended: broker.end(bot.id, callId) } };
+        return reply(CallEnded, { ended: broker.end(bot.id, callId) });
       }
       if (method !== "POST") return notAllowed;
       if (action === "heartbeat") {
         broker.touch(bot.id, callId);
-        return { status: 200, body: { ok: true } };
+        return reply(CallHeartbeat, { ok: true });
       }
       if (action === "lines") {
         const body = fields(await json(request, LINES_BODY_BYTES), ["lines"], "A transcript");
         const lines = checkLines(body["lines"], now());
         broker.addLines(bot.id, callId, lines);
-        return { status: 200, body: { kept: lines.length } };
+        return reply(CallLinesKept, { kept: lines.length });
       }
       if (action.startsWith("tasks/")) {
         const call = broker.touch(bot.id, callId);
@@ -155,17 +158,17 @@ export function createCallRoutes(deps: CallRouteDeps) {
           request.signal.addEventListener("abort", () => reject(new DOMException("The wait was cancelled.", "AbortError")), { once: true });
         });
         gone.catch(() => {});
-        const reply = await Promise.race([task, gone]).catch((error: unknown) => {
+        const result = await Promise.race([task, gone]).catch((error: unknown) => {
           if (error instanceof DOMException && error.name === "AbortError") throw error;
           return { status: "failed" as const, error: error instanceof Error ? error.message : "The task failed." };
         });
-        return { status: 200, body: taskResult(reply, bot.name) };
+        return reply(CallTaskResult, taskResult(result, bot.name));
       }
       const body = fields(await json(request, DELEGATION_BODY_BYTES), ["id", "request"], "A delegation");
       if (typeof body["id"] !== "string" || !DELEGATION_ID.test(body["id"])) throw new CallInputError("A delegation needs its id.");
       const text = checkRequest(body["request"]);
       const call = broker.touch(bot.id, callId);
-      return { status: 200, body: await deps.delegate({ bot, call, request: text }, request.signal) };
+      return reply(CallDelegationResult, await deps.delegate({ bot, call, request: text }, request.signal));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return { status: 499, body: { error: "The client went away." } };
       const status = callErrorStatus(error);

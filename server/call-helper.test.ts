@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import type { BotRecord, BotReply } from "./bots-format.ts";
-import { CALL_LIMITS, callRecordLines, parseCallRecord, type CallRecordLine } from "../shared/calls.ts";
+import { CALL_LIMITS, callRecordLines, parseCallRecord, type CallRecordLine } from "./calls-format.ts";
 import {
   buildCallRecord, complete, createCallDelegate, CallHelperError, deadline, helperPrompt, operatorName, parseHelperReply, summaryPrompt, utilityCandidates,
   type CallCompletion,

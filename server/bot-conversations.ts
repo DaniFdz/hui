@@ -11,7 +11,7 @@
 import { clampThinkingLevel, type Message, type ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { ResetEntry, SystemEntry, type Conversation, type EntryRecord } from "@earendil-works/pi-durable";
 import { botKickoffName, previewLine } from "./bots-format.ts";
-import { callMinutes, parseCallRecord } from "../shared/calls.ts";
+import { callMinutes, parseCallRecord } from "./calls-format.ts";
 import type { BotMemory } from "./bot-memory.ts";
 import type { BotConversations, BotStoredMessage } from "./bot-service.ts";
 import { BotInputError, BotNotFoundError } from "./bots.ts";

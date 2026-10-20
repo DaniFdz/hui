@@ -11,8 +11,8 @@
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
 import type { BotAvatar, BotAvatarPatch, BotFaceEars, BotFaceShape, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotSessionStatus, BotsUpdate, BotTagging, BotView, BotVoice } from "../../api/schema/bots.ts";
-import { gptLiveVoice } from "../../../shared/calls.ts";
-import { voiceLanguage } from "../../../shared/voice.ts";
+import { gptLiveVoice } from "../voice/calls.ts";
+import { voiceLanguage } from "../voice/languages.ts";
 import type { SessionGroup, SessionView } from "../../api/sessions.ts";
 import { sessionTreeIds } from "../session-tree.ts";
 
