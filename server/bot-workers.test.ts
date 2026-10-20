@@ -16,11 +16,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, test, type TestContext } from "vitest";
 import { fileURLToPath } from "node:url";
-import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "../bots-format.ts";
-import type { TranscriptEntry } from "../runtimes/types.ts";
-import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
+import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "./bots-format.ts";
+import type { TranscriptEntry } from "./runtimes/types.ts";
+import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 
-const repo = fileURLToPath(new URL("../../", import.meta.url));
+const repo = fileURLToPath(new URL("../", import.meta.url));
 const root = await mkdtemp(join(tmpdir(), "hui-bot-workers-"));
 const agentDir = join(root, "gateway", "agent");
 const remoteHome = join(root, "remote");
@@ -62,13 +62,13 @@ await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvide
 await mkdir(join(root, "gateway", "config", "hui"), { recursive: true });
 await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 
-const { middleware } = await import("../hui.ts");
-const { startBackend, stopBackend } = await import("../backend.ts");
-const { workers } = await import("../workers.ts");
-const { liveSessions } = await import("../sessions/live-sessions.ts");
-const { readRegistry } = await import("../sessions/sessions.ts");
-const { workerRelease } = await import("../worker/release.ts");
-const { remoteBots } = await import("./remote.ts");
+const { middleware } = await import("./hui.ts");
+const { startBackend, stopBackend } = await import("./backend.ts");
+const { workers } = await import("./workers.ts");
+const { liveSessions } = await import("./sessions/live-sessions.ts");
+const { readRegistry } = await import("./sessions/sessions.ts");
+const { workerRelease } = await import("./worker/release.ts");
+const { remoteBots } = await import("./bots/remote.ts");
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 let origin = "";
 let workerId = "";

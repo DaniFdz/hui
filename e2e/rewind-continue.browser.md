@@ -35,5 +35,5 @@ Reverified on 2026-09-27 using the disposable real-PI SDK fixture from
 - `server/runtimes/pi.test.ts` proves the shown history follows the active
   branch only, with compactions in place (the checkpoint mapping it once proved
   was replaced by entry-id rewind; see `compaction-rewind.browser.md`).
-- `server/sessions/live-sessions.test.ts` proves transcript refresh, snapshot broadcast,
+- `server/live-sessions.test.ts` proves transcript refresh, snapshot broadcast,
   automatic abort before rewind and the session mutation guard.

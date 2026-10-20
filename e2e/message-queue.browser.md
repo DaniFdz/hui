@@ -16,5 +16,5 @@ Verified on 2026-09-24 against the real HUI render at `http://localhost:5174/`.
   overflow.
 
 Backend delivery and mutation semantics are covered by
-`server/sessions/live-sessions.test.ts`: edit, reorder, remove, steer, and automatic
+`server/live-sessions.test.ts`: edit, reorder, remove, steer, and automatic
 follow-up delivery all operate on the same server-owned queue.

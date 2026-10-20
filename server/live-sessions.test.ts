@@ -17,17 +17,17 @@ import type {
   RuntimeSession,
   StartOptions,
   TranscriptEntry,
-} from "../runtimes/types.ts";
-import { DEFAULT_SETTINGS } from "../hui-settings.ts";
-import { RuntimeOutputError, RuntimeUnreachableError } from "../runtimes/types.ts";
-import { waitFor } from "../test-support/wait-for.ts";
+} from "./runtimes/types.ts";
+import { DEFAULT_SETTINGS } from "./hui-settings.ts";
+import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
+import { waitFor } from "./test-support/wait-for.ts";
 
 // The registry path is read once, at import time, so the throwaway home has to
 // be in place before the module is loaded.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-live-"));
 
-const { LiveSessions, SessionBusyError } = await import("./live-sessions.ts");
-const { createSessionLifecycle } = await import("./lifecycle.ts");
+const { LiveSessions, SessionBusyError } = await import("./sessions/live-sessions.ts");
+const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");
 const cleanedUp = { subagents: [] as string[], taskSuggestions: [] as string[], watchers: [] as string[], managedBrowser: [] as string[] };
 const { deleteSession } = createSessionLifecycle({
   views: { pendingView: () => { throw new Error("No pending sessions here."); } },
@@ -37,15 +37,15 @@ const { deleteSession } = createSessionLifecycle({
   watchers: () => ({ forget: async (ids) => { cleanedUp.watchers.push(...ids); } }),
   managedBrowser: () => ({ closeOwner: (owner) => { cleanedUp.managedBrowser.push(owner); } }),
 });
-const { readRegistry, SessionRegistryError, updateRegistry } = await import("./sessions.ts");
-const { readObservability } = await import("../observability.ts");
-const { workers } = await import("../workers.ts");
-const { terminals } = await import("../terminals/terminals.ts");
-type SessionRecord = import("./sessions.ts").SessionRecord;
-type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
-type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
-type SessionStatusUpdate = import("./live-sessions.ts").SessionStatusUpdate;
-type SecretQuestion = import("../agent-tools/secret-requests.ts").SecretQuestion;
+const { readRegistry, SessionRegistryError, updateRegistry } = await import("./sessions/sessions.ts");
+const { readObservability } = await import("./observability.ts");
+const { workers } = await import("./workers.ts");
+const { terminals } = await import("./terminals/terminals.ts");
+type SessionRecord = import("./sessions/sessions.ts").SessionRecord;
+type SessionStreamMessage = import("./sessions/live-sessions.ts").SessionStreamMessage;
+type SessionSnapshot = import("./sessions/live-sessions.ts").SessionSnapshot;
+type SessionStatusUpdate = import("./sessions/live-sessions.ts").SessionStatusUpdate;
+type SecretQuestion = import("./agent-tools/secret-requests.ts").SecretQuestion;
 
 /** Stands in for a pi subprocess, so the state machine can be driven event by
  * event instead of waiting five seconds for a real boot. */
@@ -700,7 +700,7 @@ test("manual continuation remains available after automatic recovery is exhauste
 test("settled background activity becomes unread and a reader clears it", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
-  const updates: import("./live-sessions.ts").SessionStatusUpdate[] = [];
+  const updates: import("./sessions/live-sessions.ts").SessionStatusUpdate[] = [];
   manager.watchStatuses((update) => updates.push(update));
   manager.ensure(recordFor("unread"));
   await waitForBoot(manager, "unread");
@@ -1608,7 +1608,7 @@ async function bootWithCompaction(id: string, resumed: Extract<RuntimeEvent, { t
       return session;
     },
   });
-  const updates: import("./live-sessions.ts").SessionStatusUpdate[] = [];
+  const updates: import("./sessions/live-sessions.ts").SessionStatusUpdate[] = [];
   manager.watchStatuses((update) => updates.push(update));
   const record = { ...recordFor(id), tool: "durable" };
   manager.ensure(record);

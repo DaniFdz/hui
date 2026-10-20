@@ -762,7 +762,7 @@ requests:
    unchanged; a bot conversation's commit, persona, section and tool; with the
    real adapter, OptChat on in the creating commit, zoom and date beside
    `message_bot`, a fresh second turn and every read),
-   `server/sessions/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
+   `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
    (a fake gateway and a scripted terminal).
    **After review (2026-10-06):** instructions became SOUL.md plus a first
    conversation (SPEC.md, "Bots write their own SOUL.md in a first
@@ -869,7 +869,7 @@ requests:
    (the host's bot operations on a real host), `server/bots/remote.test.ts`,
    `server/bots/service.test.ts` (fake remote ports: routing, offline paths, a
    list that never waits), `server/bots/bots.test.ts`, `server/routes/bots.test.ts`,
-   `server/bots/workers.test.ts` (a real local worker with the fixture provider:
+   `server/bot-workers.test.ts` (a real local worker with the fixture provider:
    the remote store, a reply with the bots section, the utility-model compactor,
    `message_bot` both ways, a routine, a queued message, steering, a question,
    Stop, a call's record, archive, restore, delete and a disconnected worker),
@@ -929,7 +929,7 @@ requests:
    `server/bots/durable-access.test.ts` (a host with `gatewayOnlyTools`: a
    bot's chat never offered them nor able to ask for them, an ordinary session
    keeping them), `server/workers.test.ts` (the bridge still refuses them) and
-   `server/bots/workers.test.ts` (a real local worker: created with lists,
+   `server/bot-workers.test.ts` (a real local worker: created with lists,
    its catalog with a mirrored skill and without the gateway's own tools, what is
    off gone from its requests, a request allowed here and its grant reaching the
    roster, a skill named by the gateway's path, lists naming the gateway's own
@@ -980,7 +980,7 @@ requests:
     refused by the bridge), `server/bots/schedules.test.ts` (a real gateway: a
     bot adds a temporary routine through a real turn, that routine's turn
     removes it, another bot's message can't add one, `hui schedule` with bots
-    off), `server/bots/workers.test.ts` (the tool from a bot on a worker),
+    off), `server/bot-workers.test.ts` (the tool from a bot on a worker),
     `cli/schedules.test.ts`, `cli/*.test.ts`, `src/lib/bots/routines.test.ts`
     and an isolated gateway driven in a browser
     ([`e2e/bot-schedules.browser.md`](../e2e/bot-schedules.browser.md), screens
@@ -1013,7 +1013,7 @@ requests:
    catch-up, the tool's origin checks, the webhook token, filter and size cap,
    bots off), `server/routes/bot-triggers.test.ts` (a real gateway: a webhook and
    a fake GitHub's pull request reaching the bot through the fixture provider,
-   the bot's tool, the CLI, bots off), `server/bots/workers.test.ts` (a real local
+   the bot's tool, the CLI, bots off), `server/bot-workers.test.ts` (a real local
    worker: a webhook's delivery runs on the worker, and the bot's tool there
    reaches the gateway), `server/bots/durable-access.test.ts`,
    `src/lib/bots/triggers.test.ts`, `src/views/bot-triggers.test.ts`,
@@ -1066,7 +1066,7 @@ requests:
    `server/bots/triggers-listener.test.ts`, `server/bots/triggers.test.ts`,
    `server/routes/bot-triggers.test.ts` (a real gateway: reports, the URL's
    checks, the linked pull request read through a fake gh, the gated tools on a
-   trigger's turn, bots off), `server/bots/workers.test.ts` (the same on a
+   trigger's turn, bots off), `server/bot-workers.test.ts` (the same on a
    worker), `cli/doctor-triggers.test.ts`, `cli/bot-triggers.test.ts`,
    `src/lib/bots/triggers.test.ts`, `src/views/bot-triggers.test.ts` and an
    isolated gateway driven in a browser
@@ -1107,7 +1107,7 @@ requests:
    subagents. Proof: `server/bots/service.test.ts` (sessions' tags, the mention
    rule and HUI's own messages, budgets, rosters), `server/bots/bots.test.ts`,
    `server/bots/durable.test.ts` (the tool and section in a session,
-   on and off), `server/bots/workers.test.ts` (a session on a worker),
+   on and off), `server/bot-workers.test.ts` (a session on a worker),
    `server/bots/routines.test.ts`, the template tests, `cli/main.test.ts`,
    `cli/bots.test.ts`, `src/lib/bots/bots.test.ts`, `src/lib/local-paths.test.ts`,
    `src/views/bots.test.ts` and an isolated gateway driven in a browser
@@ -1142,7 +1142,7 @@ requests:
    notifications without opening general cross-session sends. Bot policies,
    budgets, attributed inputs and the hop bound remain in force through agent
    replies. Proof: `server/bots/service.test.ts` (delivery, queues and denial
-   cases), `server/bots/workers.test.ts` (real Durable tools across the worker
+   cases), `server/bot-workers.test.ts` (real Durable tools across the worker
    connection in both directions), `server/bots/durable.test.ts`, and
    an isolated Browser-tool agent → bot → agent journey at desktop/mobile
    ([`e2e/bot-agent-replies.browser.md`](../e2e/bot-agent-replies.browser.md)).
@@ -1153,7 +1153,7 @@ requests:
    separate from OptChat. `facts.json` stays on the bot's execution host and
    each chat request and the call helper read current knowledge. No automatic
    extraction or additional model calls. Proof: `server/bots/facts.test.ts`,
-   `server/routes/bots.test.ts`, `server/bots/workers.test.ts`,
+   `server/routes/bots.test.ts`, `server/bot-workers.test.ts`,
    `server/bots/remote.test.ts`, `server/bots/call-helper.test.ts`,
    `src/lib/bot-facts.test.ts` and the isolated Browser journey
    [`e2e/bot-facts.browser.md`](../e2e/bot-facts.browser.md).
@@ -1185,7 +1185,7 @@ stores or diagnostics. Cancel, Stop and a 15-minute expiry end it. The bridge
 now passes a tool call's abort to the gateway handler for PI children and
 Durable alike, and PI children reach it over `node:http`, whose replies may
 take longer than fetch's five minutes. Proof: `server/agent-tools/secret-requests.test.ts`,
-`server/agent-tools/bridge.test.ts`, `server/sessions/live-sessions.test.ts`,
+`server/agent-tools/bridge.test.ts`, `server/live-sessions.test.ts`,
 `server/runtimes/pi-sdk.test.ts`, `server/runtimes/durable.test.ts` and
 `e2e/secret-requests.browser.md`.
 
