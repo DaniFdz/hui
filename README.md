@@ -58,15 +58,21 @@ https://github.com/user-attachments/assets/96c1f282-71da-4e71-911e-a0df05a5e5c3
 
 ### Subagents and watchers
 
-Parallel reviewers in their own sessions, and a watcher that waits for CI and merges.
+Parallel reviewers tracked on one card, and a watcher that waits for CI and merges.
 
-https://github.com/user-attachments/assets/f6740992-95e7-4bb1-b07b-06e3a17a963c
+https://github.com/user-attachments/assets/f20a20f1-b34e-4654-8e97-6d757e0d4a94
 
 ### Bots
 
 Long-lived agents with a face, one chat, a memory and routines they schedule themselves.
 
 https://github.com/user-attachments/assets/42487a00-26d2-4642-8b1c-a2b47022a767
+
+### Bots working together
+
+Agents hand bots their pull requests and get questions back, triggers wake a bot when a page comes in, and bots tag each other.
+
+https://github.com/user-attachments/assets/fd8bdd23-7932-4b18-b92f-88067b177b6a
 
 ### On your phone
 
