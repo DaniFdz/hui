@@ -28,7 +28,6 @@ import {
   followUpSession,
   loadGitCheckout,
   loadCommands,
-  mutateQueuedMessage,
   renameSession,
   resumeSession,
   rewindSession,
@@ -47,7 +46,6 @@ import {
   type RuntimeQuestion,
   type QuestionResponse,
   type PromptMode,
-  type QueueSnapshot,
   type SessionGroup,
   type SessionStatus,
   type SessionStatusUpdate,
@@ -68,6 +66,7 @@ import { BacklogController } from "./controllers/backlog-controller.ts";
 import { LaunchController } from "./controllers/launch-controller.ts";
 import { SessionsController } from "./controllers/sessions-controller.ts";
 import { ConversationController } from "./controllers/conversation-controller.ts";
+import { ComposerController } from "./controllers/composer-controller.ts";
 import { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
@@ -230,16 +229,16 @@ export class HuiApp extends HuiElement {
     },
     connectionLost: () => this.resetCommands(),
     adoptSnapshot: (snapshot) => {
-      this.queue = snapshot.queue;
-      if (this.queueEditingId && !snapshot.queue.items?.some((item) => item.id === this.queueEditingId)) {
-        this.queueEditingId = "";
-        this.queueEditingText = "";
-      }
+      this.composer.adoptSnapshot(snapshot);
       this.backlog.adoptSnapshot(snapshot.suggestions, snapshot.watchers);
     },
     adoptEvent: (event) => this.adoptRunEvent(event),
     statusChanged: (id, status, interrupted) => this.followConversationStatus(id, status, interrupted),
     flushLaunchPrompt: () => this.flushPendingLaunchPrompt(),
+  });
+  private readonly composer = new ComposerController(this, {
+    selected: () => this.conversation.selected,
+    showNote: (message, level) => { this.note = message; this.noteLevel = level; },
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
   @state() private kanbanMovePendingId = "";
@@ -273,9 +272,6 @@ export class HuiApp extends HuiElement {
   /** Bumped by `setDraft` so `updated()` measures a textarea whose value code
    * replaced, never one the operator is typing into. */
   @state() private draftRevision = 0;
-  @state() private queue: QueueSnapshot = EMPTY_QUEUE;
-  @state() private queueEditingId = "";
-  @state() private queueEditingText = "";
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
   @state() private showScrollToBottom = false;
   @state() private launching = false;
@@ -311,6 +307,7 @@ export class HuiApp extends HuiElement {
   private renderedQuestion: RuntimeQuestion | undefined;
   private renderedTranscript: readonly TranscriptItem[] = [];
   private renderedCompaction: RuntimeCompaction | undefined;
+  private renderedQueueEditingId: string | undefined;
   private groupActionReturnFocus: HTMLElement | undefined;
 
   @state() private settingsOpen = false;
@@ -463,7 +460,7 @@ export class HuiApp extends HuiElement {
   private composerDraftHydrated = false;
   private draftIndicatorRevision = 0;
 
-  get hasQueuedMessageEdit(): boolean { return Boolean(this.queueEditingId); }
+  get hasQueuedMessageEdit(): boolean { return Boolean(this.composer.queueEditingId); }
 
   private readonly onPopState = () => {
     this.syncFromLocation();
@@ -693,7 +690,9 @@ export class HuiApp extends HuiElement {
       this.sessions.loading = false;
       this.openPendingSession();
     }
-    if (changed.has("queueEditingId") && this.embeddedPane) {
+    const queueEditChanged = this.renderedQueueEditingId !== this.composer.queueEditingId;
+    this.renderedQueueEditingId = this.composer.queueEditingId;
+    if (queueEditChanged && this.embeddedPane) {
       this.dispatchEvent(new CustomEvent("hui-queue-edit-retention", { bubbles: true }));
     }
     if (
@@ -1438,7 +1437,7 @@ export class HuiApp extends HuiElement {
   }
 
   private adoptRunEvent(event: RuntimeEvent) {
-    if (event.type === "queue_update") this.queue = event.queue;
+    if (event.type === "queue_update") this.composer.adoptQueue(event.queue);
     if (event.type === "notice") {
       this.note = event.message;
       this.noteLevel = event.level ?? "info";
@@ -2252,23 +2251,6 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  private queueMutation = (
-    mutation: Parameters<typeof mutateQueuedMessage>[1],
-    onSuccess?: () => void,
-  ) => {
-    const session = this.conversation.selected;
-    if (!session) return;
-    void mutateQueuedMessage(session.id, mutation)
-      .then(() => {
-        if (isSelectedSession(session.id, this.conversation.selected?.id)) onSuccess?.();
-      })
-      .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.note = error instanceof Error ? error.message : "Could not update the queue.";
-        this.noteLevel = "error";
-      });
-  };
-
   private answerQuestion = (answer: QuestionResponse) => {
     const session = this.conversation.selected;
     const question = this.conversation.question;
@@ -2502,7 +2484,7 @@ export class HuiApp extends HuiElement {
     this.sending = false;
     this.continuing = false;
     this.rewindPending = false;
-    this.queue = EMPTY_QUEUE;
+    this.composer.adoptQueue(EMPTY_QUEUE);
     this.showScrollToBottom = false;
     this.autoFollow = true;
     this.resetSessionEphemeral();
@@ -2519,7 +2501,7 @@ export class HuiApp extends HuiElement {
     this.deleteNeedsFocus = false;
     this.sending = false;
     this.conversation.stopping = false;
-    this.queue = EMPTY_QUEUE;
+    this.composer.adoptQueue(EMPTY_QUEUE);
     this.conversation.dropQuestion();
     this.note = "";
     this.noteLevel = "info";
@@ -3315,7 +3297,6 @@ export class HuiApp extends HuiElement {
       forkPending: Boolean(this.forkTarget),
       draft: this.draft,
       chatPreferences: this.control.settings.chat,
-      queue: this.queue,
       question: this.conversation.question,
       connection: this.conversation.connection,
       copiedId: this.conversation.copiedId,
@@ -3416,31 +3397,7 @@ export class HuiApp extends HuiElement {
       runError: this.currentRunError(),
       onContinueAfterError: this.continueAfterError,
       onDismissRunError: this.dismissRunError,
-      queueEditingId: this.queueEditingId,
-      queueEditingText: this.queueEditingText,
-      onQueueEdit: (id) => {
-        const item = this.queue.items?.find((candidate) => candidate.id === id);
-        if (!item) return;
-        this.queueEditingId = id;
-        this.queueEditingText = item.text;
-      },
-      onQueueEditChange: (text) => { this.queueEditingText = text; },
-      onQueueEditSubmit: () => {
-        const itemId = this.queueEditingId;
-        const text = this.queueEditingText.trim();
-        if (!itemId || !text) return;
-        this.queueMutation({ operation: "edit", itemId, text }, () => {
-          this.queueEditingId = "";
-          this.queueEditingText = "";
-        });
-      },
-      onQueueEditCancel: () => {
-        this.queueEditingId = "";
-        this.queueEditingText = "";
-      },
-      onQueueRemove: (itemId) => this.queueMutation({ operation: "remove", itemId }),
-      onQueueMove: (itemId, toIndex) => this.queueMutation({ operation: "move", itemId, toIndex }),
-      onQueueSteer: (itemId) => this.queueMutation({ operation: "steer", itemId }),
+      ...this.composer.props(),
       onAbort: this.abort,
       onContinue: this.continueRun,
       onRewind: this.rewindToMessage,
