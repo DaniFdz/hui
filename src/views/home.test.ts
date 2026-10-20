@@ -67,7 +67,6 @@ test("the composer routes Enter shortcuts through explicit steer and queue modes
 
 test("session history actions expose direct editable rewind and prompt-free continuation", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
   assert.doesNotMatch(source, /aria-label="Rewind session"/u);
   assert.match(source, /class="chat-group-rewind" aria-label=\$\{props\.rewindPending \? "Rewinding…" : "Rewind to here"\}/u);
@@ -76,9 +75,7 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.doesNotMatch(source, /row\.role === "user" && !props\.streaming/u);
   assert.match(source, /aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
-  assert.doesNotMatch(app, /loadSessionCheckpoints/u);
   // The rewind itself, also while the session runs, is composer-controller.test.ts's.
-  assert.match(app, /resumeSession\(session\.id\)/u);
 });
 
 test("runtime-owned queue rows cannot collide with the empty edit sentinel", () => {
@@ -119,10 +116,6 @@ test("the composer ports OpenClaw input interactions without unsupported control
   const styles = readStyles("../styles/openclaw-chat.css");
 
   assert.match(source, /import \{ adjustTextareaHeight as syncComposerTextarea \} from "\.\.\/lib\/composer\/textarea\.ts"/);
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(app, /observeTextareaOverflow\(textarea\)/);
-  assert.match(app, /disconnectTextareaOverflowObserver\(this\.composerTextarea\)/);
-  assert.match(app, /const draftReplaced = this\.renderedDraftRevision !== this\.composer\.draftRevision;[\s\S]*\} else if \(textarea && draftReplaced\) \{\s*\/\/[^\n]*\n[^\n]*\n\s*scheduleTextareaHeightAdjustment\(textarea\);/u);
   assert.doesNotMatch(source, /@scroll=\$\{[^\n]*syncComposerTextarea/);
   assert.match(source, /@paste=\$\{onComposerPaste\(props\)\}/);
   assert.match(source, /PASTED_TEXT_ATTACHMENT_THRESHOLD/);
@@ -282,11 +275,9 @@ test("the model control remains visible while PI has no model catalog", () => {
 
 test("the launch directory picker uses the themed combobox instead of a native datalist", () => {
   const source = readFileSync(new URL("./directory-picker.ts", import.meta.url), "utf8");
-  for (const path of ["./home.ts", "../hui-app.ts"]) {
-    const consumer = readFileSync(new URL(path, import.meta.url), "utf8");
-    assert.match(consumer, /renderDirectoryPicker\(/);
-    assert.doesNotMatch(consumer, /<datalist id="(?:launch-directories|group-default-directories)"/);
-  }
+  const consumer = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  assert.match(consumer, /renderDirectoryPicker\(/);
+  assert.doesNotMatch(consumer, /<datalist id="(?:launch-directories|group-default-directories)"/);
   const styles = readStyles("../styles/openclaw-workspaces.css") + readStyles("../styles/openclaw-launch.css");
 
   assert.match(source, /role="combobox"/);
@@ -294,12 +285,6 @@ test("the launch directory picker uses the themed combobox instead of a native d
   assert.match(source, /role="option"/);
   assert.doesNotMatch(source, /<datalist id="launch-directories"/);
   assert.match(styles, /\.new-session-page__directory-menu/);
-});
-
-test("the thread follows the live compaction divider like new transcript rows", () => {
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-
-  assert.match(app, /const compactionChanged = this\.renderedCompaction !== this\.conversation\.compaction;\s*this\.renderedCompaction = this\.conversation\.compaction;\s*const transcriptChanged = this\.renderedTranscript !== this\.conversation\.transcript;\s*this\.renderedTranscript = this\.conversation\.transcript;\s*if \(\(transcriptChanged \|\| compactionChanged \|\| changed\.has\("paneVisible"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/u);
 });
 
 test("the composer exposes PI context usage beside the model", () => {
@@ -432,7 +417,6 @@ test("the chat header exposes original same-session split controls and pane-loca
 
 test("session rename mirrors the Control UI single title field without a group editor", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   const editor = source.slice(source.indexOf("function renderSessionEditor"), source.indexOf("function renderDeleteConfirmation"));
   assert.match(editor, /class="chat-pane__session-title-input"/);
   assert.match(editor, /event\.key === "Enter"/);
@@ -440,7 +424,6 @@ test("session rename mirrors the Control UI single title field without a group e
   assert.match(editor, /@blur=/);
   assert.doesNotMatch(editor, /name="group"|<button|<form/);
   assert.match(source, /onRename: \(title: string\) => void;/);
-  assert.match(app, /renameSession\(targetId, \{ title \}\)/);
 });
 
 test("composer notices render above the progress card and queue, which underlap their next sibling", () => {

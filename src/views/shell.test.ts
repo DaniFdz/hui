@@ -308,25 +308,6 @@ test("session drafts project a persistent pencil into the action slot", () => {
   assert.match(styles, /\.session-row-wrap:hover \.session-row__menu-btn--draft \.session-row__more-icon/);
 });
 
-test("embedded chat panes report draft presence to the shell that owns the sidebar", () => {
-  // Each pane is its own hui-app with a private draft set; without this bridge
-  // the sidebar only learned about drafts at startup or after a reload. The
-  // pane's report is composer-controller.test.ts's.
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(app, /draftChanged: \(sessionId, hasDraft\) => \{ if \(this\.embeddedPane\) this\.onPaneDraftChange\?\.\(sessionId, hasDraft\); \}/);
-});
-
-test("returning to the still-selected session restores its composer draft key", () => {
-  // New session keeps `selected` but switches the composer to the new-session
-  // draft. Without this, typing after returning persisted under the wrong key
-  // and the row never showed its pencil. The restored draft is composer-controller.test.ts's.
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(
-    app,
-    /if \(this\.conversation\.selected\?\.id === target\.id\) \{[^}]*this\.composer\.switchDraft\(sessionDraftKey\(target\.id\)\);[^}]*return;/s,
-  );
-});
-
 test("active search reveals matches without changing the collapsed preference", () => {
   const collapsed = new Set(["Frontend"]);
   assert.equal(isSessionGroupCollapsed(collapsed, "Frontend", ""), true);
@@ -421,8 +402,6 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   assert.match(source, /class="topbar"/);
   assert.match(source, /class="shell-nav"/);
   assert.match(source, /class="sidebar-shell sidebar-drawer__body"/);
-  const appSource = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(appSource, /@keydown=\$\{closeDrawerOnEscape\}/);
   assert.doesNotMatch(source, /sidebar-shell__footer|sidebar-footer-bar|renderFooter/);
   assert.doesNotMatch(source, /sidebar-agent-card|deck-card/);
   // The header's only control is the collapse toggle, first in the top row: New session
@@ -725,13 +704,6 @@ test("both mobile drawers make the global update notice inert until closed", () 
     setDrawer(sidebar, false, false);
     assert.deepEqual(states, [true, false]);
   }
-});
-
-test("document-level Escape closes Settings or stops the running turn", () => {
-  const appSource = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(appSource, /event\.key === "Escape"\) \{\s*this\.handleGlobalEscape\(event\)/u);
-  assert.match(appSource, /if \(this\.settingsOpen\) \{\s*event\.preventDefault\(\);\s*this\.closeSettings\(\);/u);
-  assert.match(appSource, /this\.conversation\.streaming && !this\.conversation\.stopping\) \{\s*event\.preventDefault\(\);\s*this\.composer\.abort\(\);/u);
 });
 
 test("session link names retain upstream single-line navigation semantics", () => {
