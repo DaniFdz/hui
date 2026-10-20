@@ -20,14 +20,6 @@ test("empty, malformed and unbounded font names fall back safely", () => {
   }
 });
 
-test("the terminal font uses the themed settings picker instead of a native datalist", async () => {
-  const { readFileSync } = await import("node:fs");
-  const source = readFileSync(new URL("../views/settings.ts", import.meta.url), "utf8");
-  assert.match(source, /id: "settings-font-terminal"/);
-  assert.match(source, /customOption: \(query\) => normalizeTerminalFont\(query\) === query/);
-  assert.doesNotMatch(source, /<datalist id="terminal-fonts"/);
-});
-
 test("a bundled Nerd Font symbols face backs every terminal font stack", () => {
   const css = readFileSync(new URL("../../public/fonts/symbols-nerd-font-mono.css", import.meta.url), "utf8");
   const tokens = readFileSync(new URL("../styles/tokens.css", import.meta.url), "utf8");

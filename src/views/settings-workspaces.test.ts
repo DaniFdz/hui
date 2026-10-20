@@ -149,3 +149,9 @@ test("Appearance selects interface and chat prose fonts independently", () => {
   assert.match(settingsCss, /\.settings-typography-preview__caption[\s\S]*var\(--font-body\)/);
   assert.match(settingsCss, /\.settings-typography-preview__prose[\s\S]*var\(--font-chat\)/);
 });
+
+test("the terminal font uses the themed settings picker instead of a native datalist", () => {
+  assert.match(settingsSource, /id: "settings-font-terminal"/);
+  assert.match(settingsSource, /customOption: \(query\) => normalizeTerminalFont\(query\) === query/);
+  assert.doesNotMatch(settingsSource, /<datalist id="terminal-fonts"/);
+});

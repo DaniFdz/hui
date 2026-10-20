@@ -206,9 +206,4 @@ test.each([
 });
 
 const ALLOWED = [
-  "src/lib/attachment-file-icon.test.ts -> src/views/home.ts (R6)",
-  "src/lib/jira.test.ts -> src/views/shell.ts (R6)",
-  "src/lib/message-context-menu.test.ts -> src/views/home.ts (R6)",
-  "src/lib/subagent-completion.test.ts -> src/views/chat/projection.ts (R6)",
-  "src/lib/terminal-font.test.ts -> src/views/settings.ts (R6)",
 ];
