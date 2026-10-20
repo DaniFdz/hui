@@ -10,7 +10,7 @@ import type {
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
 export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
 import type { CallRecord } from "./schema/calls.ts";
-import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SubagentTaskView } from "./schema/session-events.ts";
+import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionThinkingResponse, SideQuestionResult, SubagentTaskView } from "./schema/session-events.ts";
 import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
@@ -333,7 +333,7 @@ async function sendMessage(
   return { duplicate: body.duplicate === true };
 }
 
-export type SideQuestionResult = { question: string; answer: string; model: string };
+export type { SideQuestionResult } from "./schema/session-events.ts";
 
 export async function askSideQuestion(id: string, question: string): Promise<SideQuestionResult> {
   return fetchJson<SideQuestionResult>(`${SESSIONS_URL}/${encodeURIComponent(id)}/btw`, {
@@ -405,7 +405,7 @@ export async function mutateQueuedMessage(
 }
 
 export async function setSessionThinking(id: string, level: string): Promise<string> {
-  const body = await fetchJson<{ level?: string }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/thinking`, {
+  const body = await fetchJson<SessionThinkingResponse>(`${SESSIONS_URL}/${encodeURIComponent(id)}/thinking`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ level }),
@@ -436,14 +436,14 @@ export async function answerQuestion(
 
 /** Models this session can switch to. Empty when the tool cannot list any. */
 export async function loadModels(id: string): Promise<RuntimeModel[]> {
-  const body = await fetchJson<{ models?: RuntimeModel[] }>(
+  const body = await fetchJson<SessionModelsResponse>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/models`,
   );
   return body.models ?? [];
 }
 
 export async function loadCommands(id: string): Promise<RuntimeCommand[]> {
-  const body = await fetchJson<{ commands: RuntimeCommand[] }>(
+  const body = await fetchJson<SessionCommandsResponse>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/commands`,
   );
   return body.commands;
@@ -455,7 +455,7 @@ export async function setSessionModel(
   provider: string,
   modelId: string,
 ): Promise<RuntimeModel | undefined> {
-  const body = await fetchJson<{ model?: RuntimeModel | null }>(
+  const body = await fetchJson<SessionModelResponse>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/model`,
     {
       method: "POST",

@@ -7668,6 +7668,17 @@
         }
       }
     },
+    "SessionBtwRequest": {
+      "type": "object",
+      "required": [
+        "question"
+      ],
+      "properties": {
+        "question": {
+          "type": "string"
+        }
+      }
+    },
     "SessionClearResponse": {
       "type": "object",
       "required": [
@@ -7676,6 +7687,20 @@
       "properties": {
         "snapshot": {
           "$ref": "#/$defs/SessionSnapshot"
+        }
+      }
+    },
+    "SessionCommandsResponse": {
+      "type": "object",
+      "required": [
+        "commands"
+      ],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeCommand"
+          }
         }
       }
     },
@@ -8148,6 +8173,52 @@
         }
       }
     },
+    "SessionModelRequest": {
+      "type": "object",
+      "required": [
+        "modelId"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "modelId": {
+          "type": "string"
+        }
+      }
+    },
+    "SessionModelResponse": {
+      "type": "object",
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RuntimeModel"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "SessionModelsResponse": {
+      "type": "object",
+      "required": [
+        "models"
+      ],
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeModel"
+          }
+        }
+      }
+    },
     "SessionOk": {
       "type": "object",
       "required": [
@@ -8344,126 +8415,13 @@
         "suggestions": {
           "type": "array",
           "items": {
-            "type": "object",
-            "required": [
-              "id",
-              "title",
-              "problem",
-              "fix",
-              "cwd",
-              "createdAt"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              },
-              "problem": {
-                "type": "string"
-              },
-              "fix": {
-                "type": "string"
-              },
-              "cwd": {
-                "type": "string"
-              },
-              "worker": {
-                "type": "string"
-              },
-              "createdAt": {
-                "type": "string"
-              }
-            }
+            "$ref": "#/$defs/TaskSuggestion"
           }
         },
         "watchers": {
           "type": "array",
           "items": {
-            "type": "object",
-            "required": [
-              "id",
-              "purpose",
-              "target",
-              "outcome",
-              "command",
-              "logPath",
-              "state",
-              "pid",
-              "startedAt",
-              "lastLine"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "purpose": {
-                "type": "string"
-              },
-              "target": {
-                "type": "string"
-              },
-              "outcome": {
-                "type": "string"
-              },
-              "command": {
-                "type": "string"
-              },
-              "logPath": {
-                "type": "string"
-              },
-              "state": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "const": "running"
-                  },
-                  {
-                    "type": "string",
-                    "const": "done"
-                  },
-                  {
-                    "type": "string",
-                    "const": "failed"
-                  },
-                  {
-                    "type": "string",
-                    "const": "stopped"
-                  },
-                  {
-                    "type": "string",
-                    "const": "dead"
-                  }
-                ]
-              },
-              "pid": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "exitCode": {
-                "type": "number"
-              },
-              "startedAt": {
-                "type": "string"
-              },
-              "endedAt": {
-                "type": "string"
-              },
-              "lastLine": {
-                "type": "string"
-              },
-              "keepRunning": {
-                "type": "boolean",
-                "const": true
-              }
-            }
+            "$ref": "#/$defs/Watcher"
           }
         },
         "compaction": {
@@ -8762,6 +8720,35 @@
         "collect": {
           "type": "boolean",
           "const": true
+        }
+      }
+    },
+    "SessionThinkingRequest": {
+      "type": "object",
+      "required": [
+        "level"
+      ],
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/ThinkingLevel"
+        }
+      }
+    },
+    "SessionThinkingResponse": {
+      "type": "object",
+      "required": [
+        "level"
+      ],
+      "properties": {
+        "level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       }
     },
@@ -9363,6 +9350,25 @@
       }
     },
     "SettingsRequest": {},
+    "SideQuestionResult": {
+      "type": "object",
+      "required": [
+        "question",
+        "answer",
+        "model"
+      ],
+      "properties": {
+        "question": {
+          "type": "string"
+        },
+        "answer": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        }
+      }
+    },
     "SubagentStatus": {
       "anyOf": [
         {
@@ -12042,12 +12048,20 @@
       "RuntimeQuestion",
       "RuntimeQueue",
       "RuntimeUsage",
+      "SessionBtwRequest",
       "SessionClearResponse",
+      "SessionCommandsResponse",
       "SessionEvent",
+      "SessionModelRequest",
+      "SessionModelResponse",
+      "SessionModelsResponse",
       "SessionOpenResponse",
       "SessionQuestion",
       "SessionSnapshot",
       "SessionStreamFrame",
+      "SessionThinkingRequest",
+      "SessionThinkingResponse",
+      "SideQuestionResult",
       "SubagentTaskView",
       "TranscriptAttachment",
       "TranscriptEntry"
@@ -13101,9 +13115,26 @@
     },
     {
       "method": "POST",
+      "path": "/__hui/sessions/:id/btw",
+      "request": {
+        "$ref": "#/$defs/SessionBtwRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/SideQuestionResult"
+      }
+    },
+    {
+      "method": "POST",
       "path": "/__hui/sessions/:id/clear",
       "response": {
         "$ref": "#/$defs/SessionClearResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/commands",
+      "response": {
+        "$ref": "#/$defs/SessionCommandsResponse"
       }
     },
     {
@@ -13293,6 +13324,23 @@
     },
     {
       "method": "POST",
+      "path": "/__hui/sessions/:id/model",
+      "request": {
+        "$ref": "#/$defs/SessionModelRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/SessionModelResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/models",
+      "response": {
+        "$ref": "#/$defs/SessionModelsResponse"
+      }
+    },
+    {
+      "method": "POST",
       "path": "/__hui/sessions/:id/open",
       "response": {
         "$ref": "#/$defs/SessionOpenResponse"
@@ -13362,6 +13410,23 @@
       },
       "response": {
         "$ref": "#/$defs/TaskSuggestionStartResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/thinking",
+      "response": {
+        "$ref": "#/$defs/SessionThinkingResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/thinking",
+      "request": {
+        "$ref": "#/$defs/SessionThinkingRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/SessionThinkingResponse"
       }
     },
     {

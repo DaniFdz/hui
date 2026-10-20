@@ -1,7 +1,9 @@
-/** Public session stream payloads: snapshots, transcripts, transmitted runtime events and the open and clear responses. */
+/** Public session streams, transcripts, runtime catalogs, model and thinking actions, and side question responses. */
 import { Type, type Static } from "typebox";
+import { QuestionnaireQuestion, SessionConnectResponse, SessionStatus, SessionView, SubagentStatus, TranscriptMetrics, ThinkingLevel } from "./sessions.ts";
 import { CallRecord } from "./calls.ts";
-import { QuestionnaireQuestion, SessionConnectResponse, SessionStatus, SessionView, SubagentStatus, TranscriptMetrics } from "./sessions.ts";
+import { TaskSuggestion } from "./task-suggestions.ts";
+import { Watcher } from "./watchers.ts";
 
 export const TranscriptAttachment = Type.Object({
   name: Type.String(), kind: Type.Union([Type.Literal("image"), Type.Literal("file")]), mimeType: Type.Optional(Type.String()), url: Type.Optional(Type.String()),
@@ -97,16 +99,8 @@ export const SessionSnapshot = Type.Object({
   queue: RuntimeQueue,
   questions: Type.Immutable(Type.Array(SessionQuestion)),
   subagents: Type.Immutable(Type.Array(SubagentTaskView)),
-  suggestions: Type.Optional(Type.Immutable(Type.Array(Type.Object({
-    id: Type.String(), title: Type.String(), problem: Type.String(), fix: Type.String(), cwd: Type.String(),
-    worker: Type.Optional(Type.String()), createdAt: Type.String(),
-  })))),
-  watchers: Type.Optional(Type.Immutable(Type.Array(Type.Object({
-    id: Type.String(), purpose: Type.String(), target: Type.String(), outcome: Type.String(), command: Type.String(), logPath: Type.String(),
-    state: Type.Union([Type.Literal("running"), Type.Literal("done"), Type.Literal("failed"), Type.Literal("stopped"), Type.Literal("dead")]),
-    pid: Type.Union([Type.Number(), Type.Null()]), exitCode: Type.Optional(Type.Number()), startedAt: Type.String(), endedAt: Type.Optional(Type.String()),
-    lastLine: Type.String(), keepRunning: Type.Optional(Type.Literal(true)),
-  })))),
+  suggestions: Type.Optional(Type.Immutable(Type.Array(TaskSuggestion))),
+  watchers: Type.Optional(Type.Immutable(Type.Array(Watcher))),
   compaction: Type.Optional(RuntimeCompaction),
 }, { $id: "SessionSnapshot" });
 export type SessionSnapshot = Static<typeof SessionSnapshot>;
@@ -156,7 +150,37 @@ export type SessionOpenResponse = Static<typeof SessionOpenResponse>;
 export const SessionClearResponse = Type.Object({ snapshot: SessionSnapshot }, { $id: "SessionClearResponse" });
 export type SessionClearResponse = Static<typeof SessionClearResponse>;
 
+export const SessionModelsResponse = Type.Object({ models: Type.Immutable(Type.Array(RuntimeModel)) }, { $id: "SessionModelsResponse" });
+export type SessionModelsResponse = Static<typeof SessionModelsResponse>;
+
+export const SessionCommandsResponse = Type.Object({ commands: Type.Immutable(Type.Array(RuntimeCommand)) }, { $id: "SessionCommandsResponse" });
+export type SessionCommandsResponse = Static<typeof SessionCommandsResponse>;
+
+export const SessionModelRequest = Type.Object({ provider: Type.Optional(Type.String()), modelId: Type.String() }, { $id: "SessionModelRequest" });
+export type SessionModelRequest = Static<typeof SessionModelRequest>;
+
+export const SessionModelResponse = Type.Object({ model: Type.Union([RuntimeModel, Type.Null()]) }, { $id: "SessionModelResponse" });
+export type SessionModelResponse = Static<typeof SessionModelResponse>;
+
+export const SessionThinkingRequest = Type.Object({ level: ThinkingLevel }, { $id: "SessionThinkingRequest" });
+export type SessionThinkingRequest = Static<typeof SessionThinkingRequest>;
+
+export const SessionThinkingResponse = Type.Object({ level: Type.Union([Type.String(), Type.Null()]) }, { $id: "SessionThinkingResponse" });
+export type SessionThinkingResponse = Static<typeof SessionThinkingResponse>;
+
+export const SessionBtwRequest = Type.Object({ question: Type.String() }, { $id: "SessionBtwRequest" });
+export type SessionBtwRequest = Static<typeof SessionBtwRequest>;
+
+export const SideQuestionResult = Type.Object({ question: Type.String(), answer: Type.String(), model: Type.String() }, { $id: "SideQuestionResult" });
+export type SideQuestionResult = Static<typeof SideQuestionResult>;
+
 export const routeSchemas = [
+  { method: "GET", path: "/__hui/sessions/:id/models", response: SessionModelsResponse },
+  { method: "GET", path: "/__hui/sessions/:id/commands", response: SessionCommandsResponse },
+  { method: "POST", path: "/__hui/sessions/:id/model", request: SessionModelRequest, response: SessionModelResponse },
+  { method: "GET", path: "/__hui/sessions/:id/thinking", response: SessionThinkingResponse },
+  { method: "POST", path: "/__hui/sessions/:id/thinking", request: SessionThinkingRequest, response: SessionThinkingResponse },
+  { method: "POST", path: "/__hui/sessions/:id/btw", request: SessionBtwRequest, response: SideQuestionResult },
   { method: "GET", path: "/__hui/sessions/:id/events", response: SessionStreamFrame, events: SessionStreamFrame },
   { method: "POST", path: "/__hui/sessions/:id/open", response: SessionOpenResponse },
   { method: "POST", path: "/__hui/sessions/:id/clear", response: SessionClearResponse },

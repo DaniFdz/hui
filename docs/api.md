@@ -3174,7 +3174,8 @@ entry into the live transcript before the next model response. Slow turns and
 reconnecting browsers therefore retain the user instruction that caused them;
 PI's refreshed history replaces the projection at settlement.
 
-### `GET|POST /__hui/sessions/:id/thinking`
+### `GET /__hui/sessions/:id/thinking`
+### `POST /__hui/sessions/:id/thinking`
 
 GET returns `{ "level": string | null }`. POST accepts `{ "level": "off" |
 "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" }`, applies it live and

@@ -11,7 +11,7 @@ import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { SessionTools, ToolsError, routeSchemas as toolsRouteSchemas } from "../api/tools.ts";
 import { SessionConnectResponse, SessionError, SessionFastResponse, SessionOk, SessionPromptResponse, SessionResponse, sessionActionRouteSchemas } from "../api/sessions.ts";
-import { SessionClearResponse, SessionOpenResponse, routeSchemas as sessionEventRouteSchemas } from "../api/session-events.ts";
+import { SessionClearResponse, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionOpenResponse, SessionThinkingResponse, SideQuestionResult, routeSchemas as sessionEventRouteSchemas } from "../api/session-events.ts";
 
 import { readHuiSettings } from "../hui-settings.ts";
 import { liveSessions, SessionBusyError } from "../live-sessions.ts";
@@ -241,7 +241,7 @@ export function createSessionActionRoutes(deps: {
             transcript: liveSessions.transcript(id),
             settings: await readHuiSettings(),
           });
-          return { status: 200, body: { question, ...result } };
+          return reply(SideQuestionResult, { question, ...result });
         } catch (error) {
           return reply(SessionError, {
             error: error instanceof Error ? error.message : "The side question failed.",
@@ -286,9 +286,9 @@ export function createSessionActionRoutes(deps: {
           if (!liveSessions.ensure(record)) {
             return reply(SessionError, { error: `unknown session: ${id}` }, 404);
           }
-          return { status: 200, body: action[2] === "commands"
-            ? { commands: await liveSessions.commands(id) }
-            : { models: await liveSessions.models(id) } };
+          return action[2] === "commands"
+            ? reply(SessionCommandsResponse, { commands: await liveSessions.commands(id) })
+            : reply(SessionModelsResponse, { models: await liveSessions.models(id) });
         } catch (error) {
           return reply(SessionError, {
             error: error instanceof Error ? error.message : `The runtime could not list its ${action[2]}.`,
@@ -304,14 +304,11 @@ export function createSessionActionRoutes(deps: {
         }
         try {
           const model = await liveSessions.setModel(id, provider, modelId);
-          return { status: 200, body: { model: model ?? null } };
+          return reply(SessionModelResponse, { model: model ?? null });
         } catch (error) {
-          return {
-            status: error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error),
-            body: {
-              error: error instanceof Error ? error.message : "pi refused that model.",
-            },
-          };
+          return reply(SessionError, {
+            error: error instanceof Error ? error.message : "pi refused that model.",
+          }, error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error));
         }
       }
       if (action[2] === "abort" && method === "POST") {
@@ -370,7 +367,7 @@ export function createSessionActionRoutes(deps: {
         }
       }
       if (action[2] === "thinking" && method === "GET") {
-        return { status: 200, body: { level: liveSessions.currentThinking(id) ?? null } };
+        return reply(SessionThinkingResponse, { level: liveSessions.currentThinking(id) ?? null });
       }
       if (action[2] === "thinking" && method === "POST") {
         const body = (await request.json()) as Record<string, unknown>;
@@ -380,14 +377,11 @@ export function createSessionActionRoutes(deps: {
         }
         try {
           await liveSessions.setThinking(id, level);
-          return { status: 200, body: { level: liveSessions.currentThinking(id) ?? level } };
+          return reply(SessionThinkingResponse, { level: liveSessions.currentThinking(id) ?? level });
         } catch (error) {
-          return {
-            status: error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error),
-            body: {
-              error: error instanceof Error ? error.message : "pi refused that thinking level.",
-            },
-          };
+          return reply(SessionError, {
+            error: error instanceof Error ? error.message : "pi refused that thinking level.",
+          }, error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error));
         }
       }
       if (action[2] === "fast" && method === "POST") {

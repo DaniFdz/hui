@@ -6,11 +6,11 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, test } from "vitest";
+import { afterAll, beforeAll, expectTypeOf, test } from "vitest";
 import { waitFor } from "../test-support/wait-for.ts";
 import { RuntimeInspection, SessionTools } from "../api/tools.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
-import { SessionClearResponse, SessionOpenResponse, SessionStreamFrame } from "../api/session-events.ts";
+import { SessionClearResponse, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionOpenResponse, SessionStreamFrame, SessionThinkingResponse, SideQuestionResult } from "../api/session-events.ts";
 
 // One isolated gateway on Pi Durable: its home, HUI's directory, PI's agent directory and a deterministic provider,
 // all temporary.
@@ -152,6 +152,36 @@ test("writing to an archived conversation restores it", { timeout: 60_000 }, asy
   assert.deepEqual(sent, { status: 200, body: { ok: true } });
   assert.equal((await readRegistry()).find((record) => record.id === id)?.archived, undefined);
   await answered(id, "BACK_AGAIN");
+});
+
+test("session catalogs, preferences and side answers match their published schemas", { timeout: 60_000 }, async () => {
+  expectTypeOf<{ question: string; answer: string; model: string }>().toEqualTypeOf<SideQuestionResult>();
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Catalogs" });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const id = (created.body["session"] as { id: string }).id;
+  const cold = await call(`/__hui/sessions/${id}/thinking`);
+  assert.equal(cold.status, 200);
+  expectSchema(SessionThinkingResponse, cold.body);
+  assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(id);
+
+  for (const [action, schema] of [["models", SessionModelsResponse], ["commands", SessionCommandsResponse]] as const) {
+    const result = await call(`/__hui/sessions/${id}/${action}`);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    expectSchema(schema, result.body);
+  }
+  const model = await call(`/__hui/sessions/${id}/model`, "POST", { provider: "hui-e2e", modelId: "fixture" });
+  assert.equal(model.status, 200, JSON.stringify(model.body));
+  expectSchema(SessionModelResponse, model.body);
+  const thinking = await call(`/__hui/sessions/${id}/thinking`, "POST", { level: "low" });
+  assert.equal(thinking.status, 200, JSON.stringify(thinking.body));
+  expectSchema(SessionThinkingResponse, thinking.body);
+  assert.equal(thinking.body.level, "low");
+  assert.equal((await call("/__hui/settings", "PUT", { models: { utility: "hui-e2e/fixture" } })).status, 200);
+  const side = await call(`/__hui/sessions/${id}/btw`, "POST", { question: "What is this session about?" });
+  assert.equal(side.status, 200, JSON.stringify(side.body));
+  expectSchema(SideQuestionResult, side.body);
+  assert.equal(side.body.question, "What is this session about?");
 });
 
 test("a session's open, event stream and clear payloads match their published schemas", { timeout: 60_000 }, async () => {
