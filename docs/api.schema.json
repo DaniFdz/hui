@@ -12745,7 +12745,7 @@
       }
     }
   },
-  "x-hui-api-version": "0.1.4",
+  "x-hui-api-version": "0.1.5",
   "x-hui-areas": {
     "api-schema": [
       "ApiSchemaDocument",
