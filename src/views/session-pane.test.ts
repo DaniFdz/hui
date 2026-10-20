@@ -14,7 +14,7 @@ function props(overrides: Partial<SessionPaneProps> = {}): SessionPaneProps {
     pane: { id: "pane-2", sessionId: "s1" },
     state: { active: true, visible: true, narrow: false, split: true },
     session: undefined, listed: undefined, groups: undefined, mobileNav: false, bots: [],
-    onClose: noop, onSplit: noop, onTerminal: noop, onBrowser: noop, onNavigate: noop,
+    onClose: noop, onSplit: noop, onTerminal: async () => {}, onBrowser: noop, onNavigate: noop,
     onRegistryChange: async () => {}, onUpdate: () => false, onDraftChange: noop, onOpenBot: noop,
     ...overrides,
   };

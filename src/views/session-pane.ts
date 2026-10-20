@@ -19,7 +19,7 @@ export type SessionPaneProps = {
   bots: readonly BotView[];
   onClose: (() => void) | undefined;
   onSplit: ((direction: SplitDirection) => void) | undefined;
-  onTerminal: () => void;
+  onTerminal: () => Promise<void>;
   onBrowser: () => void;
   onNavigate: (id: string) => void;
   onRegistryChange: () => Promise<void>;
