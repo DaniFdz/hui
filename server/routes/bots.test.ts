@@ -255,27 +255,27 @@ test("a bot's memory is OptChat's: built summaries, the view, zoom down to a who
   // Over 512 bytes, so the compactor writes its line; the reply and the second message fit as they are.
   const long = `OPT_MEM <b>keep</b> ${"the blue door opens at nine ".repeat(20).trim()}`;
   for (const text of [long, "second message"]) {
-    assert.deepEqual((await call("/__hui/bots/mem/messages", "POST", { text, wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
+    assert.deepEqual((await call(`/__hui/bots/${mem.handle}/messages`, "POST", { text, wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
   }
   // The log catches up and the compactor finishes beside the chat: wait until OptChat reports it.
   await memoryWhere(mem.sessionId, (status) => status.messages === 4 && status.pending === 0);
   const lines = ["user: FIXTURE_MEMORY OPT_MEM", "talk: Fixture response.", "user: second message", "talk: Fixture response."];
-  const memory = await call("/__hui/bots/mem/memory");
+  const memory = await call(`/__hui/bots/${mem.handle}/memory`);
   assert.equal(memory.status, 200);
   assert.deepEqual(memory.body, {
     status: { messages: 4, built: 7, pending: 0, viewBytes: Buffer.byteLength(lines.join("")), viewLines: 4, usage: { calls: 1, input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0 } },
     view: `<chat>\n${lines.map((line, index) => `${index}+1|${line}`).join("\n")}\n</chat>`,
   }, "the long message is a summary line written by one compactor call; the rest are their own lines");
-  assert.deepEqual(botOf(await call("/__hui/bots/mem")).memory, memory.body["status"], "the bot's view carries the same status");
+  assert.deepEqual(botOf(await call(`/__hui/bots/${mem.handle}`)).memory, memory.body["status"], "the bot's view carries the same status");
 
   // From the top of the tree down to the original message.
-  assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=0&n=4")).body, { text: `0+2|${lines[0]} ${lines[1]}\n2+2|${lines[2]} ${lines[3]}` });
-  assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=0&n=2")).body, { text: `0+1|${lines[0]}\n1+1|${lines[1]}` });
-  assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=0&n=1")).body, { text: `0+0|user: ${long}` }, "the whole message, word for word");
-  assert.deepEqual((await call("/__hui/bots/mem/memory/zoom?id=8&n=1")).body, { text: "No line 8+1." });
+  assert.deepEqual((await call(`/__hui/bots/${mem.handle}/memory/zoom?id=0&n=4`)).body, { text: `0+2|${lines[0]} ${lines[1]}\n2+2|${lines[2]} ${lines[3]}` });
+  assert.deepEqual((await call(`/__hui/bots/${mem.handle}/memory/zoom?id=0&n=2`)).body, { text: `0+1|${lines[0]}\n1+1|${lines[1]}` });
+  assert.deepEqual((await call(`/__hui/bots/${mem.handle}/memory/zoom?id=0&n=1`)).body, { text: `0+0|user: ${long}` }, "the whole message, word for word");
+  assert.deepEqual((await call(`/__hui/bots/${mem.handle}/memory/zoom?id=8&n=1`)).body, { text: "No line 8+1." });
 
   // The browse page: the view, every message and each level, escaped, under a policy that runs and frames nothing.
-  const page = await call("/__hui/bots/mem/memory/html");
+  const page = await call(`/__hui/bots/${mem.handle}/memory/html`);
   assert.equal(page.status, 200);
   assert.equal(page.type, "text/html; charset=utf-8");
   assert.match(page.text, /<title>OptChat memory of Mem<\/title>/u);
@@ -577,7 +577,7 @@ async function settledRun(runId: string): Promise<{ status: string; error?: stri
 
 test("bots are a Labs preview: off, their routes, calls and chats refuse naming the setting and routines are skipped; on again, all of it works", { timeout: 120_000 }, async () => {
   const kim = botOf(await call("/__hui/bots", "POST", { name: "Kim", soul: "You are Kim." }));
-  assert.deepEqual((await call("/__hui/bots/kim/messages", "POST", { text: "OPT_KIM the green gate", wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
+  assert.deepEqual((await call(`/__hui/bots/${kim.handle}/messages`, "POST", { text: "OPT_KIM the green gate", wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
   const created = await call("/__hui/automation/tasks", "POST", { name: "Tick", sessionId: kim.sessionId, prompt: "tick", schedule: { kind: "every", everyMs: 3_600_000 } });
   assert.equal(created.status, 201);
   const routine = created.body["task"] as { id: string };
@@ -586,7 +586,7 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
 
   // A bot waiting on the operator's answer to a secret request (#77), whose card only its chat shows.
   const sol = botOf(await call("/__hui/bots", "POST", { name: "Sol", soul: "You are Sol." }));
-  assert.equal((await call("/__hui/bots/sol/messages", "POST", { text: "E2E_SECRET_REQUEST" })).status, 202);
+  assert.equal((await call(`/__hui/bots/${sol.handle}/messages`, "POST", { text: "E2E_SECRET_REQUEST" })).status, 202);
   await new Promise<void>((resolve) => {
     const watched = liveSessions.watch(sol.sessionId, () => { if (liveSessions.snapshot(sol.sessionId).questions.some((question) => question.method === "secret")) { watched.unsubscribe(); resolve(); } });
     if (liveSessions.snapshot(sol.sessionId).questions.some((question) => question.method === "secret")) { watched.unsubscribe(); resolve(); }
@@ -612,14 +612,14 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
   const offer = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n";
   for (const [path, method, body] of [
     ["/__hui/bots", "GET"], ["/__hui/bots?archived=1", "GET"], ["/__hui/bots", "POST", { name: "Lee" }], [`/__hui/bots/${kim.id}`, "GET"],
-    ["/__hui/bots/kim", "PATCH", { title: "Boss" }], ["/__hui/bots/kim", "DELETE"], ["/__hui/bots/kim/restore", "POST", {}],
-    ["/__hui/bots/kim/messages", "POST", { text: "hello?" }], ["/__hui/bots/kim/stop", "POST", {}], ["/__hui/bots/kim/memory", "GET"],
-    ["/__hui/bots/kim/memory/zoom?id=0&n=1", "GET"], ["/__hui/bots/kim/soul", "GET"], ["/__hui/bots/kim/soul", "PUT", { soul: "x" }],
-    ["/__hui/bots/kim/catalog", "GET"], ["/__hui/bots/events", "GET"],
+    [`/__hui/bots/${kim.handle}`, "PATCH", { title: "Boss" }], [`/__hui/bots/${kim.handle}`, "DELETE"], [`/__hui/bots/${kim.handle}/restore`, "POST", {}],
+    [`/__hui/bots/${kim.handle}/messages`, "POST", { text: "hello?" }], [`/__hui/bots/${kim.handle}/stop`, "POST", {}], [`/__hui/bots/${kim.handle}/memory`, "GET"],
+    [`/__hui/bots/${kim.handle}/memory/zoom?id=0&n=1`, "GET"], [`/__hui/bots/${kim.handle}/soul`, "GET"], [`/__hui/bots/${kim.handle}/soul`, "PUT", { soul: "x" }],
+    [`/__hui/bots/${kim.handle}/catalog`, "GET"], ["/__hui/bots/events", "GET"],
     // Importing and exporting are bots too.
     ["/__hui/bots/import/preview", "POST", { source: { kind: "text", text: "You are Lee." } }],
-    ["/__hui/bots/import", "POST", { template: { format: "text", name: "Lee", soul: "You are Lee." } }], ["/__hui/bots/kim/export", "GET"], ["/__hui/calls", "GET"], ["/__hui/bots/kim/calls", "POST", { sdp: offer }],
-    ["/__hui/bots/kim/calls/0f8fad5b-d9cb-469f-a165-70867728950e/heartbeat", "POST"],
+    ["/__hui/bots/import", "POST", { template: { format: "text", name: "Lee", soul: "You are Lee." } }], [`/__hui/bots/${kim.handle}/export`, "GET"], ["/__hui/calls", "GET"], [`/__hui/bots/${kim.handle}/calls`, "POST", { sdp: offer }],
+    [`/__hui/bots/${kim.handle}/calls/0f8fad5b-d9cb-469f-a165-70867728950e/heartbeat`, "POST"],
     // Its chat is a session, and no session route reaches it: opening or prompting it would resume it.
     [`/__hui/sessions/${kim.sessionId}/open`, "POST", {}], [`/__hui/sessions/${kim.sessionId}/prompt`, "POST", { text: "hello?" }],
     [`/__hui/sessions/${kim.sessionId}/follow-up`, "POST", { text: "hello?" }], [`/__hui/sessions/${kim.sessionId}/continue`, "POST", {}],
@@ -642,7 +642,7 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
   assert.equal((await calendar()).includes(kim.sessionId), false, "Kim's chat is not in the calendar");
   assert.equal((await call("/__hui/sessions")).status, 200);
   const listed = ((await call("/__hui/sessions")).body["groups"] as Array<{ sessions: Array<{ id: string; bot?: unknown }> }>).flatMap((group) => group.sessions);
-  assert.deepEqual(listed.find((session) => session.id === kim.sessionId)?.bot, { id: kim.id, handle: "kim", name: "Kim" });
+  assert.deepEqual(listed.find((session) => session.id === kim.sessionId)?.bot, { id: kim.id, handle: kim.handle, name: "Kim" });
 
   // A routine's run is skipped, not failed, and the routine is kept as it was.
   const turnsBefore = liveSessions.transcript(kim.sessionId).length;
@@ -658,16 +658,16 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
 
   // On again, live, without a restart: everything is as it was.
   assert.equal((await call("/__hui/settings", "PUT", { ...settings, labs: { ...settings.labs, bots: true } })).status, 200);
-  const back = botOf(await call("/__hui/bots/kim"));
+  const back = botOf(await call(`/__hui/bots/${kim.handle}`));
   assert.deepEqual([back.name, back.routines, back.archived], ["Kim", 1, undefined], "Kim and its routine are there, never archived");
-  assert.equal(((await call("/__hui/bots/kim/memory")).body["status"] as BotMemoryStatus).messages, 2, "and its memory");
-  assert.deepEqual((await call("/__hui/bots/kim/soul")).body, { soul: "You are Kim." });
+  assert.equal(((await call(`/__hui/bots/${kim.handle}/memory`)).body["status"] as BotMemoryStatus).messages, 2, "and its memory");
+  assert.deepEqual((await call(`/__hui/bots/${kim.handle}/soul`)).body, { soul: "You are Kim." });
   assert.equal((await call(`/__hui/sessions/${kim.sessionId}/open`, "POST", {})).status, 200);
   assert.equal((await calendar()).includes(kim.sessionId), true, "and its activity is back in the calendar");
   const ran = await call(`/__hui/automation/tasks/${routine.id}/run`, "POST", {});
   assert.deepEqual((await settledRun((ran.body["run"] as { id: string }).id)).status, "completed", "the routine runs again");
   await settledWith(kim.sessionId, says("user", "[routine: Tick] tick"));
-  assert.deepEqual((await call("/__hui/bots/kim/messages", "POST", { text: "still there?", wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
+  assert.deepEqual((await call(`/__hui/bots/${kim.handle}/messages`, "POST", { text: "still there?", wait: true, timeoutSeconds: 60 })).body, { status: "answered", reply: "Fixture response." });
 });
 
 test("a bot whose worker is offline answers 503, like a memory HUI cannot read", async () => {
