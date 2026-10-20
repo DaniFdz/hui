@@ -107,7 +107,7 @@ Tests point at use cases through the library's `tags` option, `tags: ['CHAT-001'
 
 | Document | Role after this change |
 |---|---|
-| `SPEC.md` | Still the product spec. Every use case cites the section that defines it, and every exclusion cites a Decisions entry. |
+| `SPEC.md` | Still the product spec. Every use case cites the section that defines it, and every exclusion cites the SPEC heading that records the decision (3.4). |
 | `docs/api.md`, `docs/api.schema.json` | Still the normative contract and its published schema. A use case claims the routes it exercises. Routes no screen uses go into `e2e/catalogue/not-ui.ts` with a reason. |
 | `e2e/*.browser.md` | Each journey gets a class in `e2e/catalogue/journeys.ts` (2.15). A journey is retired once every use case derived from it is required on the web. Journeys that judge looks stay as agent-run visual checks. |
 | `.agents/skills/hui-visual-verification/references/features.md` | Maps each feature to its shared test files and tags. |
@@ -246,7 +246,7 @@ export default [
     spec: ["SPEC.md#behaviour"], journeys: ["e2e/miami-theme.browser.md"],
     surfaces: ["settings-page:appearance", "setting:themeMode"], web: "required", ios: "backlog" },
   { id: "IOS-001", title: "Connect the app to a gateway",
-    behaviour: "Entering the gateway URL shows its version and the session list; a gateway older than the app supports shows a notice naming both versions.",
+    behaviour: "Entering the gateway URL connects and shows the live session list; a gateway that reports no version (a development gateway) is marked unverified. The version comparisons (older and newer gateways) are covered by HUITests with recorded responses.",
     spec: ["SPEC.md#native-ios-app"], surfaces: ["route:GET /__hui/update"],
     web: { excluded: "The web UI is served by its own gateway", decision: "SPEC.md#the-ios-app-connects-to-one-gateway" }, ios: "required" },
   { id: "IOS-002", title: "Get a local notification when a run finishes while the app is in the background",
@@ -278,7 +278,7 @@ cites, and PR 3 adds `SPEC.md#native-ios-app` and the decision anchors the `IOS-
 | Per-test setup, cleanup, provider barriers, deep links | `test.extend` | `e2e/fixtures/hui.ts`, the `hui` fixture |
 | Use cases, baseline, lockstep | `tags`, `platforms`, `requires`, `list()` | `e2e/catalogue/`, `e2e/catalogue/baseline.json`, `scripts/use-cases.test.mjs` |
 | The label and test-id contract | the query vocabulary | both apps render the same names and ids (2.7) |
-| CI | documented GitHub Actions jobs | `e2e.yml`, nightly and release steps |
+| CI | documented GitHub Actions jobs | `e2e.yml`, `e2e-catalogue.yml`, nightly and release steps |
 
 ### 2.2 Layout
 
@@ -286,7 +286,7 @@ cites, and PR 3 adds `SPEC.md#native-ios-app` and the decision anchors the `IOS-
 e2e.config.ts                    targets, the launcher command, retries 0, reporters
 e2e/
   tests/<area>/<slug>.e2e.ts     shared tests, tagged with the use-case IDs they cover
-  catalogue/<area>.ts            use cases (section 1); types.ts, not-ui.ts, journeys.ts and surfaces.ts beside them
+  catalogue/<area>.ts            use cases (section 1); types.ts, not-ui.ts, journeys.ts, surfaces-src.ts, surfaces-server.ts
   catalogue/baseline.json        { backlog: { web: ID[], ios: ID[] }, unexercisedLabels: string[] }; only shrinks
   fixtures/hui.ts                the `hui` fixture: gateway, setup and cleanup, provider barriers, open, reload, peek, attach
   fixtures/hui-env.ts            the fixture world, the iOS gateway port and simulator, read from the environment
@@ -305,6 +305,8 @@ probes or fixtures, and Vitest's `include` (`{bin,cli,desktop,evals,scripts,serv
 doesn't want.
 
 ### 2.3 `e2e.config.ts`
+
+The config is shown as it stands after PR 3, which adds the `ios` target to PR 2's `web` target.
 
 ```ts
 /** The shared e2e suite: HUI's web UI in a browser and the iOS app on a simulator, each against a disposable gateway. */
@@ -381,9 +383,9 @@ way `save()` already writes its private receipt. `e2e/fixtures/hui-env.ts` maps 
 
 ### 2.4 The `hui` fixture
 
-Every shared test imports `test` from `e2e/fixtures/hui.ts`, not from `e2e`. The fixture runs before each test and tears
-down after it, failures included (the library's [test reference](https://e2e.tester.army/docs/reference/test),
-"Your own fixtures").
+Every shared test imports `test` from `e2e/fixtures/hui.ts`, not from `e2e`. The fixture runs before each test and
+tears down after it, failures included (the library's [test reference](https://e2e.tester.army/docs/reference/test),
+"Your own fixtures"). It is shown as it stands after PR 3; PR 2 lands its web half.
 
 ```ts
 /** HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through its API, the deterministic provider's barriers, and the four steps whose gesture differs per platform. */
@@ -554,16 +556,20 @@ test('a reply streams, its tool card opens, and Stop ends the next run', { tags:
 - CHAT-003 is the last block. The next prompt's answer proves the session stays usable after Stop.
 - `app.screenshot` leaves one picture per platform in `.e2e/results/`, which the PR description uses as evidence
   once it is uploaded (2.14).
+- The test is shown as it stands after PR 4. It lands in PR 2 with `platforms: ['web']`, because CHAT-001 to 003 are
+  iOS backlog until PR 4 builds the iOS chat and removes that option.
 
 `Idle` and `Running` come from `STATUS_TEXT` in `src/views/home.ts`, which moves into a pure module so the iOS core
 uses the same strings. `Message`, `Send message` and `Stop` are today's `aria-label`s in `renderComposer`. The
 composer is a `textarea` with `role="combobox"` (it offers completions), so the test finds it by label, not by the
-`textbox` role. Two web
-changes come with the test, neither visible. The session status gets an element of its own named
-`Session status: <status>`; today it is the tail of the header's meta line (`pi · <group> · Idle` in
-`renderHeader`), so it can't be a target, and screen readers can then name it too. The transcript container gets
-`data-testid="transcript"`, which scopes text queries away from the sidebar. On iOS the same names come from
-`.accessibilityLabel("Session status: Idle")` and `.accessibilityIdentifier("transcript")`.
+`textbox` role.
+
+Two web changes come with the test, neither visible. The session status gets an element of its own with
+`role="status"` and the name `Session status: <status>`. Today it is the tail of the header's meta line
+(`pi · <group> · Idle` in `renderHeader`), so it can't be a target, and a screen reader doesn't announce it as a
+status. The transcript container gets `data-testid="transcript"`, which scopes text queries away from the sidebar.
+On iOS the same names come from `.accessibilityLabel("Session status: Idle")` and
+`.accessibilityIdentifier("transcript")`.
 
 ### 2.6 How it runs on each target
 
@@ -651,7 +657,9 @@ for screenshots and the remaining visual checks.
 - A run starts one launcher with the flags of its world (`HUI_E2E_WORLD`). Tests that need a non-default world
   carry the tags `world` and `world:<name>`. The default run uses `--exclude-tag world`; the Jira run is
   `HUI_E2E_WORLD=jira npx e2e run --target web --tag world:jira`, and the iOS job runs each world with
-  `--target ios` the same way. A guard checks that every `world:<name>` tag has its run in `e2e.yml`.
+  `--target ios` the same way. A run with nothing to select fails with `NO_TESTS`, so each job runs a world on its
+  target only when `e2e list` shows a runnable test for it there; while every Jira test is still web-only, the iOS job
+  skips that world. A guard checks that every `world:<name>` tag has its run in `e2e.yml`.
 - Tests sharing a launcher run one at a time, because `release-replay` frees every held reply and `wait-held` counts
   holds since the provider started. Shards run in parallel, each with its own launcher.
 - `device.setNetwork('offline')` is unsupported on iOS simulators. Reconnect tests put the existing
@@ -733,16 +741,20 @@ npx agent-device doctor                               # Xcode, simulator and run
 | Job | Runner | When | Runs | Fails the PR when |
 |---|---|---|---|---|
 | `test` (existing `test.yml`) | ubuntu | every PR, main | `npm run typecheck`, `npm test` with the guards in `scripts/`, including the `list()` coverage guard | any guard in 3.1 fails |
-| `e2e / catalogue` (new `e2e.yml`) | ubuntu | every PR, including description edits | `node scripts/e2e-baseline-check.ts origin/$GITHUB_BASE_REF`; its summary lists new exclusions, changed backlog use cases, backlog use cases whose surfaces the PR's files define, and each journey's migration status | the baseline grew without an allowed reason, or a changed backlog use case didn't graduate (3.3) |
-| `e2e / web` | ubuntu, sharded | every PR, main | every shared test on `web` (`--shard i/N`), then each non-default world | any test fails |
-| `e2e / ios` | `macos-26`, sharded | every PR, main | Swift unit tests, the Release simulator build, a pinned simulator, every shared test on `ios` and each world | the build, a unit test or any test fails |
-| Nightly (`nightly.yml`) | macOS and ubuntu | each main push | `--repeat-each 3` on the smoke tests, `--video retain-on-failure` on iOS, the nightly IPA | blocks the nightly prerelease and its IPA |
+| `e2e-catalogue` (new `e2e-catalogue.yml`) | ubuntu | every PR, and again when its description is edited | `node scripts/e2e-baseline-check.ts origin/$GITHUB_BASE_REF`; its summary lists new exclusions, changed backlog use cases, backlog use cases whose surfaces the PR's files define, and each journey's migration status | the baseline grew without an allowed reason, or a changed backlog use case didn't graduate (3.3) |
+| `e2e / web` (new `e2e.yml`) | ubuntu, sharded | every PR | every shared test on `web` (`--shard i/N`), then each non-default world that has a test there | any test fails |
+| `e2e / ios` (`e2e.yml`) | `macos-26`, sharded | every PR | Swift unit tests, the Release simulator build, a pinned simulator, every shared test on `ios`, then each world that has a test there | the build, a unit test or any test fails |
+| Nightly (`nightly.yml`) | macOS and ubuntu | each main push | the full suite on `web` and `ios`, `--repeat-each 3` on the smoke tests, `--video retain-on-failure` on iOS, then the nightly IPA | blocks the nightly prerelease and its IPA |
 | Release (`release.yml`) | macOS and ubuntu | approved version PR | every test on `web` and `ios`, the release IPA, the SideStore source | blocks the release |
 
 - Every job sets `E2E_TELEMETRY_DISABLED: "1"` in its workflow-level `env`, which also stops the daily update
   check. No e2e job reads a secret, and no job uses `pull_request_target`.
+- The catalogue job has a workflow of its own because it must run again when the PR description changes (the
+  `Unchanged behaviour:` line, 3.3). Only that workflow listens to `edited`, so a description edit never re-runs or
+  skips the web and iOS jobs, whose results stay those of the commit.
 - Under the owner's rule a PR may not break iOS anywhere, so the iOS job runs every shared test, not a guessed
-  subset. The suite starts small and grows with the catch-up, and shards keep the job under about 25 minutes. If
+  subset. The suite starts small and grows with the catch-up. Each platform starts with one shard, because a shard
+  with no runnable test fails with `NO_TESTS`, and adds shards to stay under about 25 minutes. If
   the macOS concurrency GitHub gives this repository can't keep up, owner decision D2 chooses between more shards,
   waiting, or selecting tests by area per PR with the full suite on main.
 - CI caches `~/.cache/ms-playwright` for the browser, keyed on the `@e2e-dev/web` version, and `~/.agent-device`
@@ -823,7 +835,7 @@ option, instead of parsing test files.
 | Roles stay within `button`, `textbox`, `switch`, `tab` and `listitem` unless every ID the test covers is web-only; every `getByTestId` id exists as `data-testid` in `src/`, and as `.accessibilityIdentifier` in `ios/` for tests that run on iOS | source scan and `list()` | same | PR 2 (web half), PR 3 (iOS half) |
 | Every static accessible name in `src/` appears in a shared test or in `baseline.unexercisedLabels`; a name that is new in the PR appears in a test that runs on both targets | label scan, `list()` and a diff against the base branch | same | PR 2 (web), PR 3 (both) |
 | Every `world:<name>` tag has its run in `e2e.yml` | workflow scan | same | PR 2 |
-| The baseline grows only in the ways 3.3 allows, and a backlog use case the PR changes leaves the backlog | diff against the base branch | `e2e / catalogue` (`scripts/e2e-baseline-check.ts`) | PR 2 |
+| The baseline grows only in the ways 3.3 allows, and a backlog use case the PR changes leaves the backlog where a job can prove it | diff against the base branch | `e2e-catalogue` (`scripts/e2e-baseline-check.ts`) | PR 2 |
 | The Swift payload types in `ios/HUI/Gateway/Schema/` are what `scripts/api-schema.ts` generates from `docs/api.schema.json` | regenerate and compare | `scripts/api-schema.test.ts` | PR 3 |
 | The unions of the core's output that Swift mirrors (row kinds, transcript item kinds) match their Swift enums | literal-set compare | `scripts/ios-contract.test.mjs` | PR 4 |
 | Swift modules start with a header comment; `docs/map.md` names the `ios/` directories | the existing guard, extended | `scripts/module-headers.test.mjs` | PR 3 |
@@ -833,12 +845,15 @@ The label rule is a tripwire, not proof of coverage. A label found in a test onl
 that control. Its job is to make a new control impossible to add without a test that uses it, and under lockstep
 that test has to pass on iOS as well. `list()` loads `e2e.config.ts` with the iOS target in it on a Linux runner;
 the docs say it starts no engine, so it should work without Xcode (assumption, S4). If it needs a Mac, the coverage
-rows move into the `e2e / ios` job. Both e2e jobs become required checks in branch protection (owner action, D8).
+rows move into the `e2e / ios` job. The catalogue, web and iOS jobs become required checks in branch protection
+(owner action, D8).
 
 ### 3.2 Detecting new surfaces from the code
 
-`e2e/catalogue/surfaces.ts` returns `kind:key` strings. Each collector reads the module that owns the surface, and
-imports it where the module loads in Node without a DOM:
+Two files return `kind:key` strings: `e2e/catalogue/surfaces-src.ts` for the browser's surfaces and
+`e2e/catalogue/surfaces-server.ts` for the gateway's, because the boundary rule R12 forbids one file importing both
+`src/` and `server/`. `scripts/use-cases.test.mjs` imports the two and merges them. Each collector reads the module
+that owns the surface, and imports it where the module loads in Node without a DOM:
 
 | Kind | Source | How |
 |---|---|---|
@@ -851,7 +866,7 @@ imports it where the module loads in Node without a DOM:
 | `shortcut:` | `WORK_SHORTCUTS` in `src/lib/work-shortcuts.ts`, and the palette's chord | import (7 and 1) |
 | `row:` | `ChatProjectionRow` in `src/views/chat/projection.ts` | literal scan (6) |
 | `setting:` | the leaves of `DEFAULT_SETTINGS` in `src/lib/settings/settings.ts` | import and walk (33) |
-| `route:` | `x-hui-routes` in `docs/api.schema.json`, plus the `METHOD /__hui/…` strings of `docs/api.md` the schema doesn't list | JSON (181) and regex (about ten) |
+| `route:` | `x-hui-routes` in `docs/api.schema.json`, plus the `METHOD /__hui/…` strings of `docs/api.md` the schema doesn't list | JSON (181), and a one-line regex whose path must end in a letter, digit, `_` or `>` so trailing punctuation never becomes a route (8 paths) |
 | labels | `aria-label="…"` literals in `src/**/*.ts` | regex (198); must appear in a shared test, not in the catalogue |
 
 A PR that adds a page, a Settings page, a Work view, a tool, a slash command, a shortcut, a transcript row kind, a
@@ -880,26 +895,30 @@ checks can't see.
   web and iOS backlog. Wide-only and keyboard-only use cases start excluded on iOS, citing SPEC text that already
   calls them desktop-only or the keyboard-only decision PR 1 adds. They were built before the rule, so they are
   catch-up work, not feature PRs.
-- New use cases are required wherever a job can prove them. From PR 2 a new use case must be required on the web.
-  Until PR 3 adds the iOS job, it also joins the iOS backlog; that is the one time the baseline may grow with a new
-  feature, so PR 1 to PR 3 should land back to back. From PR 3 a new use case must be required on both, and the
+- New use cases are required wherever a job can prove them. In PR 1 nothing can prove a required use case yet, so
+  every entry is backlog or excluded. From PR 2 a new use case must be required on the web. Until PR 3 adds the iOS
+  job, it also joins the iOS backlog; that is the one time the baseline may grow with a new feature, so PR 1 to PR 3
+  should land back to back. From PR 3 a new use case must be required on both, and the
   coverage guard and the iOS job prove it in that PR.
 - The first inventory can miss something. A use case found later may join the baseline only if the collectors, run
-  on the base branch, already find its surfaces, which shows the feature predates the PR. The catalogue job checks
-  that and lists the addition in its summary.
+  on the base branch, already find its surfaces and the journey or SPEC section it cites already exists there. That
+  shows the surface and its documentation predate the PR; whether the behaviour does too is for review, so the
+  catalogue job lists every such addition in its summary.
 - A changed use case graduates in the same PR. A use case counts as changed when its catalogue entry changes
   (`behaviour`, `surfaces` or `spec`) or when a shared test tagged with it changes. If it is still iOS backlog,
   `scripts/e2e-baseline-check.ts` requires the same PR to take it off the iOS backlog, so the change ships on iOS
-  with its test passing there. One transition doesn't count as a change, so the web catch-up stays possible: a use
-  case may go from web backlog to web required in a PR that adds its first test and leaves its `behaviour` text
-  alone.
+  with its test passing there. The check enforces this once `e2e.config.ts` has an `ios` target (PR 3); before
+  that, a changed use case only has to be required on the web. One transition doesn't count as a change, so the web
+  catch-up stays possible: a use case may go from web backlog to web required in a PR that adds its first test and
+  leaves its `behaviour` text alone.
 - A new control can't ride along web-only. A static accessible name that is new in the PR must appear in a test that
   runs on both targets (3.1), so adding a control to a backlog area through that area's first web test still needs
-  the control on iOS.
+  the control on iOS. The rule can't tell a new control from an existing one that a catch-up PR names so its test
+  can find it, so such a PR lists the name on the `Unchanged behaviour:` line below, or uses a test id instead.
 - A test fix that changes no behaviour (a selector fix, a clearer wait) still edits a backlog use case's test. The
   author lists the ID on an `Unchanged behaviour:` line in the PR description. The catalogue job reads the
-  description from the event payload, accepts only IDs it flagged, and prints them in its summary for the owner's
-  review. Catalogue edits can't use that line.
+  description from the event payload, accepts only the IDs and names it flagged, and prints them in its summary for
+  the owner's review. Catalogue edits can't use that line.
 - A fix that restores an existing use case's documented behaviour changes no catalogue entry and no test, so it may
   stay web-only while that use case is in the baseline. A fix that changes the behaviour text or the test is a
   change, and graduates.
@@ -1132,7 +1151,7 @@ N = native SwiftUI, E = embedded web view, A = adapted to the phone, X = exclude
 | Session menus: rename, icon, move, archive, delete, fork | N | The visible options buttons, as on the web; a long-press menu is an iOS extra |
 | Hovercards (session, PR, Jira) | A | Long-press preview |
 | Command palette | N | Opened from a visible search control |
-| Keyboard shortcuts: Work pane chords, ⌘K, Escape to close | X | Keyboard-only affordances (a SPEC decision PR 3 adds); every action they trigger has a visible control both apps test |
+| Keyboard shortcuts: Work pane chords, ⌘K, Escape to close | X | Keyboard-only affordances (a SPEC decision PR 1 adds); every action they trigger has a visible control both apps test |
 | Composer, send modes, drafts, queue, steer, follow-up | N | |
 | Streaming, thinking, metrics, copy, reply, rewind, fork, compaction | N | Projection from the core |
 | Slash commands, skill and plugin commands, path autocomplete | N | Parsing from the core |
@@ -1254,7 +1273,8 @@ the owner wants the skeleton on the phone sooner.
 **PR 1: `test: add the use-case catalogue and a guard that finds uncatalogued surfaces`**
 
 - Adds `e2e/catalogue/*.ts` with the full first inventory (drafted per area by subagents and checked by a
-  second-reader pass), `types.ts`, `not-ui.ts`, `journeys.ts` and `surfaces.ts` beside it, `e2e/catalogue/baseline.json`,
+  second-reader pass), `types.ts`, `not-ui.ts`, `journeys.ts`, `surfaces-src.ts` and `surfaces-server.ts` beside it,
+  `e2e/catalogue/baseline.json`,
   `scripts/use-cases.test.mjs` with the PR 1 rows of 3.1, a `docs/map.md` row, and `tsconfig.json` including
   `e2e/catalogue`. No new dependency yet; the rows that need `list()` arrive with the library in PR 2.
 - `SPEC.md` gets the decisions "Use cases live in one catalogue" and "Keyboard-only affordances stay on the web"
@@ -1266,14 +1286,16 @@ the owner wants the skeleton on the phone sooner.
 **PR 2: `test: run the shared e2e tests on the web with tester-army/e2e`**
 
 - Adds `e2e@0.21.2` and `@e2e-dev/web@0.15.2` as exact dev dependencies, with `package-lock.json`.
-- Adds `e2e.config.ts` with the `web` target, `e2e/fixtures/hui.ts`, `e2e/fixtures/hui-env.ts`, and the launcher's
-  `--port` and `--receipt-dir`, with `e2e/visual-verification.test.mjs` extended.
+- Adds `e2e.config.ts` with the `web` target, the web half of `e2e/fixtures/hui.ts` (PR 3 adds its iOS branches with
+  the `@e2e-dev/mobile` types), `e2e/fixtures/hui-env.ts`, and the launcher's `--port` and `--receipt-dir`, with
+  `e2e/visual-verification.test.mjs` extended.
 - Adds the worked example `e2e/tests/chat/send-stream-tool-stop.e2e.ts`, plus `e2e/tests/sess/start-session.e2e.ts`
-  (SESS-001) and `e2e/tests/set/color-mode.e2e.ts` (SET-001), and the two invisible web changes: the session status
-  element named `Session status: <status>`, and `data-testid="transcript"`.
+  (SESS-001) and `e2e/tests/set/color-mode.e2e.ts` (SET-001), all three with `platforms: ['web']` because their use
+  cases are iOS backlog, and the two invisible web changes: the session status element (`role="status"`, named
+  `Session status: <status>`) and `data-testid="transcript"`.
 - Adds the PR 2 rows of 3.1 (the `list()` rows, no `agent`, no `retries`, no `test.skip(`, no sleeps, roles, the
-  web half of the test-id rule, the label tripwire, worlds), `scripts/e2e-baseline-check.ts`, `e2e.yml` with the
-  `catalogue` and `web` jobs, the `e2e` and `e2e:world` scripts and the `.e2e/` line in `.gitignore`.
+  web half of the test-id rule, the label tripwire, worlds), `scripts/e2e-baseline-check.ts`, `e2e-catalogue.yml`,
+  `e2e.yml` with the `web` job, the `e2e` and `e2e:world` scripts and the `.e2e/` line in `.gitignore`.
 - Updates `e2e/AGENTS.md` and `CONTRIBUTING.md` (Node 24.8+ for contributors, the browser install, telemetry off).
 - Verified by the web half of spike S1 and by S14; the CI web job green and a local `npm run e2e`; renaming "Stop"
   locally fails CHAT-003 with `trace.md`, a screenshot and the screen dump in `.e2e/results/`; adding
@@ -1289,21 +1311,22 @@ the owner wants the skeleton on the phone sooner.
   `src/lib/`); the Swift emitter in `scripts/api-schema.ts` and the generated `ios/HUI/Gateway/Schema/`, checked by
   `scripts/api-schema.test.ts`; a Connect screen; the version check; the live session list from `/__hui/sessions`
   and `/__hui/sessions/events`; the `hui://` scheme; and `HUITests`.
-- Adds `@e2e-dev/mobile@0.12.3` as an exact dev dependency, `npm run ios:build` and `npm run e2e:ios`, the `ios`
-  target in `e2e.config.ts`, the `e2e / ios` job (pinned simulator, Release build, `~/.agent-device` cache), module
-  headers for `ios/` and `.swift`, a boundary rule for `ios/core/` in `scripts/boundaries.test.mjs`, and the iOS half
-  of the test-id and label rules.
-- IOS-001 and the session-list use cases are required on both. CHAT-001 to 003 are iOS backlog for now, so the worked
-  example carries `platforms: ['web']`, which the guard allows only because they are backlog. From this PR on, new
-  and changed use cases must pass on both platforms.
+- Adds `@e2e-dev/mobile@0.12.3` as an exact dev dependency, the iOS branches of `e2e/fixtures/hui.ts`,
+  `npm run ios:build` and `npm run e2e:ios`, the `ios` target in `e2e.config.ts`, the `e2e / ios` job (pinned
+  simulator, Release build, `~/.agent-device` cache), module headers for `ios/` and `.swift`, a boundary rule for
+  `ios/core/` in `scripts/boundaries.test.mjs`, and the iOS half of the test-id and label rules.
+- IOS-001 is required on iOS, and the session-list use cases on both, with their shared tests. The three PR 2 tests
+  already carry `platforms: ['web']`, which the guard allows because their use cases are iOS backlog, so this PR
+  edits none of them. From this PR on, new and changed use cases must pass on both platforms.
 - Docs: the lockstep rule in root `AGENTS.md`, `CONTRIBUTING.md`, the PR template's iOS section and its
   `Unchanged behaviour:` line, the visual-verification skill's new steps, `docs/api.md` "Native clients", and
-  `SPEC.md` "Native iOS app" with its decisions (lockstep, the JavaScriptCore core, SideStore, local
-  notifications).
-- Verified by the iOS half of spike S1 and by S4; both e2e jobs green and the Swift unit tests (`xcodebuild test -only-testing:HUITests`); simulator
-  screenshots from `.e2e/results/` in the PR; a scratch commit adding a baseline entry failing `e2e / catalogue`; a
+  `SPEC.md` "Native iOS app" with its decisions: shared tests in lockstep on tester-army/e2e, the JavaScriptCore core,
+  SideStore distribution, "The iOS app connects to one gateway" and "iOS notifications are local".
+- Verified by the iOS half of spike S1 and by S4; both e2e jobs green and the Swift unit tests
+  (`xcodebuild test -only-testing:HUITests`, which also cover the version comparisons of IOS-001); simulator
+  screenshots from `.e2e/results/` in the PR; a scratch commit adding a baseline entry failing `e2e-catalogue`; a
   scratch use case marked required without an iOS-passing test failing the coverage guard; and a scratch edit to a
-  backlog use case's test failing `e2e / catalogue` until its ID is graduated or listed as unchanged.
+  backlog use case's test failing `e2e-catalogue` until its ID is graduated or listed as unchanged.
 
 **PR 4: `feat: chat on iOS: open a session, stream replies, tool cards, Stop`**
 
@@ -1318,7 +1341,8 @@ the owner wants the skeleton on the phone sooner.
 
 **PR 5: `ci: build the iOS app for SideStore with every nightly and release`**
 
-- Adds the archive and IPA steps to `nightly.yml` and `release.yml` after the full suite on both targets,
+- Adds the archive and IPA steps to `nightly.yml` and `release.yml`, after the full suite those workflows run on both
+  targets,
   `scripts/sidestore-source.mjs` with its unit test, and the install steps in `docs/guide.md` and the README.
 - Verified by a nightly run publishing `HUI-<version>.ipa` and `sidestore-source.json`; the owner adding the source in
   SideStore, installing, connecting over `tailscale serve` and seeing the live session list (spike S6 confirmed on
@@ -1432,13 +1456,13 @@ covers the schema's keywords).
 | `server/AGENTS.md` | A route change updates the iOS client in the same PR; native clients send `Origin` |
 | `docs/api.md` | "Native clients": what a client outside a browser sends, and the version policy |
 | `docs/map.md` | An `ios/` section (app, core, embedded, generated schema types, tests), `e2e/tests/`, `e2e/catalogue/` and `e2e.config.ts` under `e2e/`, and the iOS output of `scripts/api-schema.ts` |
-| `SPEC.md` | In PR 1, the decisions "Use cases live in one catalogue" and "Keyboard-only affordances stay on the web". In PR 3, Part 2 "Native iOS app" and its decisions: shared tests in lockstep on tester-army/e2e; a JavaScriptCore core; SideStore distribution; iOS notifications are local. Any other exclusion gets its own entry |
+| `SPEC.md` | In PR 1, the decisions "Use cases live in one catalogue" and "Keyboard-only affordances stay on the web". In PR 3, Part 2 "Native iOS app" and its decisions: shared tests in lockstep on tester-army/e2e; a JavaScriptCore core; SideStore distribution; "The iOS app connects to one gateway"; "iOS notifications are local". Any other exclusion gets its own entry |
 | `docs/implementation-roadmap.md` | HUI-22 "Native iOS app", M0 to M11 |
 | `docs/guide.md`, `README.md` | Installing through SideStore, connecting over `tailscale serve`, the 7-day refresh, the VPN sequence |
 | `CONTRIBUTING.md` | Node 24.8+, Xcode setup, the browser install, telemetry off, the iOS loop, `npm run e2e` and `npm run e2e:ios`, releasing the IPA, the lockstep rule |
 | `.github/pull_request_template.md` | "Use cases" (IDs added or changed) and the `Unchanged behaviour:` line; e2e results per target; screenshots for desktop and iPhone from `.e2e/results/`, uploaded, never committed |
 | `.agents/skills/hui-visual-verification/` | The three steps in 2.15; features mapped to test files and tags |
-| `.github/workflows/` | `e2e.yml` (new: catalogue, web, ios); `nightly.yml` and `release.yml` gain the iOS runs and the IPA; every e2e job sets `E2E_TELEMETRY_DISABLED` |
+| `.github/workflows/` | `e2e-catalogue.yml` (new) and `e2e.yml` (new: web, ios); `nightly.yml` and `release.yml` gain the full suite on both targets and the IPA; every e2e job sets `E2E_TELEMETRY_DISABLED` |
 | `.github/dependabot.yml` | One group for `e2e`, `@e2e-dev/web` and `@e2e-dev/mobile` |
 | `scripts/` | `use-cases.test.mjs`, `e2e-baseline-check.ts`, `ios-contract.test.mjs`, `ios-build.mjs` (the iOS bundles and Xcode builds), `sidestore-source.mjs` and its test; `api-schema.ts` and its test also cover the Swift output; `module-headers.test.mjs` covers `ios/` and `.swift`; `boundaries.test.mjs` gains a rule for `ios/core/` (it imports only DOM-free modules) |
 | `e2e.config.ts`, `package.json`, `package-lock.json`, `tsconfig.json`, `.gitignore` | The config; three dev dependencies and the `e2e`, `e2e:world`, `e2e:ios` and `ios:build` scripts; `tsconfig.json` includes `e2e.config.ts`, `e2e/fixtures/hui*.ts`, `e2e/tests`, `e2e/catalogue`, `ios/core` and `ios/embedded`; ignore `.e2e/`, `ios/HUI/Resources/Generated/`, `ios/build/`, `DerivedData` and `*.xcresult` |
