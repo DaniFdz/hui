@@ -261,8 +261,9 @@ PR 4 (iOS) land their test, the worked example in 2.5. SESS-001 and SET-001 are 
 their tests, and still iOS backlog. The rest are in the baseline. IOS-002 is shown as it will enter the catalogue,
 required on iOS, in the milestone that builds notifications. PR 1 adds the SPEC decision the `WORK-002` exclusion
 cites, and PR 3 adds `SPEC.md#native-ios-app` and the decision anchors the `IOS-*` entries cite. SPEC's Decisions
-headings end with the date they were made (`### Bots are always on (2026-10-20)`), so these anchors gain the date
-the PR lands, for example `#keyboard-only-affordances-stay-on-the-web-2026-11-02`.
+headings end with the date they were made (`### Bots are always on (2026-10-20)`), so the decision anchors PR 1 and
+PR 3 add gain the date the PR lands, for example `#keyboard-only-affordances-stay-on-the-web-2026-11-02`. The
+example above shows them before that date is known.
 
 ---
 
@@ -844,9 +845,9 @@ option, instead of parsing test files.
 | Swift modules start with a header comment; `docs/map.md` names the `ios/` directories | the existing guard, extended | `scripts/module-headers.test.mjs` | PR 3 |
 | The tests pass on the web, and on iOS | `e2e / web`, `e2e / ios` | `e2e.yml` | PR 2, PR 3 |
 
-The label rule is a tripwire, not proof of coverage. A label found in a test only shows that some test touches
-that control. Its job is to make a new control impossible to add without a test that uses it, and under lockstep
-that test has to pass on iOS as well. `list()` loads `e2e.config.ts` with the iOS target in it on a Linux runner;
+The label rule and the new-name check are a tripwire, not proof of coverage. A label found in a test only shows that
+some test touches that control. Their job is to make a new control impossible to add without a test that uses it,
+and, under lockstep, without that test passing on iOS as well. `list()` loads `e2e.config.ts` with the iOS target in it on a Linux runner;
 the docs say it starts no engine, so it should work without Xcode (assumption, S4). If it needs a Mac, the coverage
 rows move into the `e2e / ios` job. The catalogue, web and iOS jobs become required checks in branch protection
 (owner action, D8).
