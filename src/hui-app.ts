@@ -251,7 +251,7 @@ import { diffWorkViewKind } from "./lib/work-views/diff.ts";
 import { requestFilesViewReveal } from "./lib/files-view-state.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/file-link-store.ts";
 import { vscodeWorkViewKind } from "./lib/work-views/vscode.ts";
-import { OPEN_SETTINGS_EVENT, type OpenSettingsDetail } from "./lib/open-settings.ts";
+import { OPEN_SETTINGS_EVENT, requestOpenSettings, type OpenSettingsDetail } from "./lib/open-settings.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import { matchesShortcut } from "./lib/shortcut-binding.ts";
 import "./components/work-pane.ts";
@@ -5857,7 +5857,7 @@ export class HuiApp extends HuiElement {
       onWorkspaceBaseRef: (baseRef) => { this.workspaceBaseRef = baseRef; },
       onWorkspaceBranchSuggestionsOpen: (open) => { this.workspaceBranchSuggestionsOpen = open; },
       onWorkspaceBranch: (branch) => { this.workspaceBranch = branch; },
-      onOpenBranchPrefixSettings: () => this.openSurfaceSettings("sessions"),
+      onOpenBranchPrefixSettings: () => requestOpenSettings(this, { page: "worktrees", section: "branch-prefix" }),
     };
   }
 

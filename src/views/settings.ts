@@ -167,9 +167,9 @@ function renderThemeCard(
 }
 
 /** Heading and description sit outside the card, so rows own their inset. */
-function renderSection(heading: string, description: string, body: TemplateResult) {
+function renderSection(heading: string, description: string, body: TemplateResult, section?: string) {
   return html`
-    <section class="settings-section">
+    <section class="settings-section" data-settings-section=${section ?? nothing}>
       <div class="settings-section__header">
         <div class="settings-section__copy">
           <h2 class="settings-section__heading">${heading}</h2>
@@ -1013,7 +1013,7 @@ function renderWorktreesSettingsPage(props: SettingsProps) {
           <button type="submit" class="btn">Save</button>
         </form>
       `)}
-    `)}`;
+    `, "branch-prefix")}`;
 }
 
 function renderSecurityPage(props: SettingsProps) {
