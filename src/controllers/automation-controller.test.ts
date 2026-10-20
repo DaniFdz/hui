@@ -157,6 +157,21 @@ test("an open automation page re-reads the scheduler, never while busy, and stop
   assert.equal(calls.length, 4);
 });
 
+test("a poll waits for a slow read instead of superseding it", async () => {
+  vi.useFakeTimers();
+  const { controller, calls } = setup({
+    loadAutomation: () => {
+      calls.push("load");
+      return new Promise((resolve) => setTimeout(() => resolve(snapshot([TASK])), AUTOMATION_POLL_MS + 1_000));
+    },
+  });
+  controller.startPolling();
+  await vi.advanceTimersByTimeAsync(AUTOMATION_POLL_MS * 2 + 1_000);
+  assert.deepEqual(calls, ["load"]);
+  assert.deepEqual(controller.snapshot?.tasks, [TASK]);
+  controller.stopPolling();
+});
+
 test("leaving the page's element behind leaves no timer behind", async () => {
   vi.useFakeTimers();
   const { controller, calls } = setup();

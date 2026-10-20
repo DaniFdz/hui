@@ -28,6 +28,7 @@ export class AutomationController implements ReactiveController {
   readonly #api: AutomationApi;
   #poll: ReturnType<typeof setInterval> | undefined;
   #loadRequest = 0;
+  #loadsInFlight = 0;
 
   constructor(host: ReactiveControllerHost & { renderRoot: ParentNode }, api: AutomationApi = automationApi) {
     this.#host = host;
@@ -46,6 +47,7 @@ export class AutomationController implements ReactiveController {
 
   load = () => {
     const request = ++this.#loadRequest;
+    this.#loadsInFlight += 1;
     this.#set({ error: "" });
     void this.#api.loadAutomation()
       .then((snapshot) => {
@@ -53,13 +55,16 @@ export class AutomationController implements ReactiveController {
       })
       .catch((error: unknown) => {
         if (request === this.#loadRequest) this.#set({ error: error instanceof Error ? error.message : "Could not read automation state." });
+      })
+      .finally(() => {
+        this.#loadsInFlight -= 1;
       });
   };
 
   startPolling(): void {
     if (this.#poll !== undefined) return;
     this.#poll = setInterval(() => {
-      if (!this.pending) this.load();
+      if (!this.pending && this.#loadsInFlight === 0) this.load();
     }, AUTOMATION_POLL_MS);
   }
 
