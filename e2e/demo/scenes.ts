@@ -72,10 +72,10 @@ function drawSignupGraph(now: number): Promise<string> {
   });
 }
 
+let pagesHook = "";
+const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
 const link = (text: string): Target => ({ css: "a", text });
-/** A subagent's sidebar row, whose link also shows its run time. */
-const child = (title: string): Target => ({ css: "a", contains: title });
 
 /** Brings a chat element to the middle of the view once it is there, as a reader scrolls to it before looking. */
 async function centre(d: Director, target: Target) {
@@ -298,8 +298,8 @@ export const scenes: Scene[] = [
     ready: "Apple Pay at checkout",
     narration: {
       ask: "Big jobs can be split up. Here, one code review becomes three, running in parallel.",
-      children: "Each subagent works in its own session, right there in the sidebar.",
-      report: "As they finish, they report back, and the parent sums up what they found.",
+      children: "One card tracks every helper while the agent waits for all of them.",
+      report: "When they're done, the agent sums up what they found.",
       open: "You can open any of them to see exactly what it did.",
       parent: "Its task shows the session that sent it. Click the name to go back.",
       watcher: "For things that take a while, like CI, the agent leaves a watcher behind. It waits in the background, and merges once the checks go green.",
@@ -311,19 +311,20 @@ export const scenes: Scene[] = [
       await d.click({ placeholder: "What should this session work on?" });
       await d.type("Review PR #142 before we merge: security, performance and test coverage, in parallel");
       await d.press("Enter");
-      await d.caption("Each subagent runs in its own session");
+      await d.caption("One card tracks every helper");
       await d.say("children");
-      await d.waitFor(child("Test coverage review"), 30_000);
-      await d.zoom(child("Performance review"), 1.6);
+      await d.waitFor({ css: ".chat-swarm" }, 30_000);
+      await d.zoom({ css: ".chat-swarm" }, 1.6);
       await d.pause(2_400);
       await d.zoom();
-      await d.caption("…and reports back when it's done");
+      await d.caption("…and the agent sums them up");
       await d.say("report");
       await d.waitFor({ contains: "All three reviews are in" }, 40_000);
       await d.pause(2_200);
-      await d.caption("Open any subagent to see its work");
+      await d.caption("Open any helper to see its work");
       await d.say("open");
-      await d.click(child("Security review"));
+      await d.click({ css: ".chat-swarm__summary" });
+      await d.click({ css: ".chat-subagents__row", contains: "Security review" });
       await d.waitFor({ contains: "1 blocking issue" });
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
       await d.pause(2_200);
@@ -356,10 +357,9 @@ export const scenes: Scene[] = [
     viewport: [1280, 720],
     ready: "Apple Pay at checkout",
     async setup({ api }) {
-      const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
       const { bot } = await api("POST", "/__hui/bots", { name: "Scout", title: "Release captain", avatar: { shape: "blob", color: "#5b8cff" }, soul: soul("Scout, the team's release captain.") });
       await api("POST", "/__hui/bots", { name: "Pixel", title: "Design reviewer", avatar: { shape: "heart", color: "#ff7a6b", ears: "cat" }, soul: soul("Pixel, who reviews UI changes.") });
-      await api("POST", "/__hui/bots", { name: "Owl", title: "On-call buddy", avatar: { emoji: "🦉" }, soul: soul("Owl, who watches the pager overnight.") });
+      await api("POST", "/__hui/bots", { name: "Owl", title: "On-call SRE", avatar: { emoji: "🦉" }, soul: soul("Owl, the on-call SRE who watches the pager overnight.") });
       await api("POST", `/__hui/bots/${bot.id}/messages`, { text: "Heads-up: refunds roll out to 10% of stores on Monday, and Priya owns the rollback.", wait: true });
     },
     narration: {
@@ -423,6 +423,118 @@ export const scenes: Scene[] = [
       await d.click({ css: ".chat-sender-link", text: "Scout" });
       await d.waitFor({ css: ".chat-sender-link", text: "Apple Pay at checkout" }, 15_000);
       await d.zoom({ css: ".chat-group--peer", contains: "Monday" }, 1.4);
+      await d.pause(2_200);
+      await d.zoom();
+      await d.caption();
+    },
+  },
+  {
+    name: "teamwork",
+    chapter: "Bots working together",
+    viewport: [1280, 720],
+    ready: "Apple Pay at checkout",
+    async setup({ api }) {
+      await api("POST", "/__hui/bots", { name: "Piper", title: "PR shepherd", avatar: { shape: "blob", color: "#34c38f" }, soul: soul("Piper, who watches pull requests until they merge.") });
+      const { bot: owl } = await api("POST", "/__hui/bots", { name: "Owl", title: "On-call SRE", avatar: { emoji: "🦉" }, soul: soul("Owl, the on-call SRE for payments.") });
+      await api("POST", "/__hui/bots", { name: "Pixel", title: "Design reviewer", avatar: { shape: "heart", color: "#ff7a6b", ears: "cat" }, soul: soul("Pixel, who reviews UI changes.") });
+      const { hook } = await api("POST", `/__hui/bots/${owl.id}/triggers`, {
+        name: "Pages", source: "listener", filter: { match: { field: "fields.channel", op: "equals", value: "payments-oncall" } },
+        prompt: "Investigate this page. Hand any code fix to @piper.", cooldownSeconds: 0,
+      });
+      pagesHook = hook.path;
+      await api("POST", pagesHook, { events: [] });
+    },
+    narration: {
+      team: "Bots don't work alone. They take work from agents, and from each other.",
+      handoff: "When an agent opens a pull request, it hands it to Piper, the P R shepherd.",
+      question: "Piper watches C I, and brings the reviewer's question back to the agent that wrote the code.",
+      answer: "The agent makes the call, and Piper takes it from there.",
+      trigger: "Triggers wake a bot when something happens elsewhere. Here, a small listener watches the on-call channel for Owl.",
+      page: "A page comes in, and Owl starts digging right away.",
+      bots: "Owl finds the bad deploy, and tags Piper to revert it. Bots hand work to each other, too.",
+      reverted: "Piper reverts it, and reports back to Owl.",
+      follow: "Click a name to see the other side of the conversation.",
+    },
+    async run({ director: d, api }) {
+      await d.caption("Bots work with agents, and with each other");
+      await d.say("team");
+      await d.click({ css: "#sidebar-tab-bots" });
+      await d.waitFor({ css: ".bot-row__name", text: "Pixel" });
+      await d.zoom({ css: ".bot-roster" }, 1.8);
+      await d.pause(1_800);
+      await d.zoom();
+      await d.click({ css: "#sidebar-tab-sessions" });
+      await d.click({ css: "a", contains: "Retry-safe webhooks" });
+      await d.waitFor({ contains: "Tests cover duplicates" });
+
+      await d.caption("An agent hands its PR to Piper");
+      await d.say("handoff");
+      await send(d, "Open the PR, and ask @piper to watch it until it merges");
+      await d.waitFor({ css: ".chat-handoff" }, 30_000);
+      await centre(d, { css: ".chat-handoff" });
+      await d.zoom({ css: ".chat-handoff" }, 1.6);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("Piper brings the reviewer's question back");
+      await d.say("question");
+      await d.waitFor({ css: ".chat-group--peer", contains: "Lee asks" }, 30_000);
+      await centre(d, { css: ".chat-group--peer", contains: "Lee asks" });
+      await d.zoom({ css: ".chat-group--peer", contains: "Lee asks" }, 1.5);
+      await d.pause(2_200);
+      await d.zoom();
+
+      await d.caption("The agent decides, and answers");
+      await d.say("answer");
+      await d.waitFor({ contains: "Answered Lee through Piper" }, 30_000);
+      await centre(d, { css: ".chat-handoff", last: true });
+      await d.zoom({ css: ".chat-handoff", last: true }, 1.5);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("Triggers wake a bot");
+      await d.say("trigger");
+      await d.click({ css: "#sidebar-tab-bots" });
+      await d.click({ css: ".bot-row__name", text: "Owl" });
+      await d.waitFor({ css: "section[aria-labelledby$='overview-triggers']", contains: "Pages" });
+      await d.zoom({ css: "section[aria-labelledby$='overview-triggers']" }, 1.6);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("A page wakes Owl");
+      await d.say("page");
+      await api("POST", pagesHook, { events: [{
+        id: "page-4821", summary: "High error rate on POST /refunds", fields: { channel: "payments-oncall" },
+        details: "payments-api: 12% of POST /refunds requests failed in the last 5 minutes (normally 0.1%). Started 14:02.",
+      }] });
+      await d.waitFor({ contains: "Investigate this page" }, 15_000);
+      await d.zoom({ contains: "Investigate this page" }, 1.4);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("Owl hands the revert to Piper");
+      await d.say("bots");
+      await d.waitFor({ css: ".chat-handoff" }, 30_000);
+      await centre(d, { css: ".chat-handoff" });
+      await d.zoom({ css: ".chat-handoff" }, 1.6);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("Piper reverts it, and reports back");
+      await d.say("reverted");
+      await d.waitFor({ css: ".chat-group--peer", contains: "Reverted" }, 30_000);
+      await centre(d, { css: ".chat-group--peer", contains: "Reverted" });
+      await d.zoom({ css: ".chat-group--peer", contains: "Reverted" }, 1.5);
+      await d.pause(1_800);
+      await d.zoom();
+      await d.waitFor({ contains: "Closing the page" }, 30_000);
+
+      await d.caption("Click a name to open that chat");
+      await d.say("follow");
+      await d.click({ css: ".chat-sender-link", text: "Piper" });
+      await d.waitFor({ css: ".chat-group--peer", contains: "Please revert" }, 15_000);
+      await centre(d, { css: ".chat-group--peer", contains: "Please revert" });
+      await d.zoom({ css: ".chat-group--peer", contains: "Please revert" }, 1.4);
       await d.pause(2_200);
       await d.zoom();
       await d.caption();

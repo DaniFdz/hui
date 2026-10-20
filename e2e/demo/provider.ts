@@ -14,6 +14,7 @@ import { agentReplyTo } from "../../server/bots-format.ts";
 const logFile = process.env["HUI_E2E_PROVIDER_LOG"] || (() => { throw new Error("HUI_E2E_PROVIDER_LOG is required"); })();
 let port = Number(process.env["HUI_E2E_PROVIDER_PORT"] ?? 0);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+const workspace = process.env["HUI_E2E_WORKSPACE"] ?? "";
 
 type Call = { name: string; input: Record<string, unknown> };
 /** One model response: optional thinking, text, then tool calls. Text and calls can depend on the tool results so far, latest first,
@@ -40,6 +41,9 @@ function terminalId(results: string[]): string {
     } catch { /* Not a terminal result. */ }
   }
   throw new Error("No shared terminal is open in this conversation.");
+}
+function replyTo(prompt: string): string {
+  return agentReplyTo(prompt.slice(prompt.indexOf("[from agent: "))) ?? (() => { throw new Error("The tag carries no return address."); })();
 }
 /** A browser snapshot's ref for an element, from the latest result that has it; a page without it fails the turn. */
 function ref(results: string[], pattern: RegExp): string {
@@ -144,7 +148,7 @@ const scripts: Script[] = [
         : `Signup is broken on staging; the page said: ${results[0] ?? "nothing"}` },
     ],
   },
-  // Subagents: three reviewers in parallel (children first: their tasks name the PR too), and a watcher.
+  // Subagents: three reviewers in parallel that the parent waits for (children first: their tasks name the PR too), and a watcher.
   {
     when: "Security review of PR #142",
     turns: [
@@ -172,12 +176,13 @@ const scripts: Script[] = [
     when: "Review PR #142",
     title: "Review PR #142 in parallel",
     turns: [
-      { wait: 600, think: "Three independent angles: run them as parallel subagents so they don't block each other.", say: "I'll split the review into three parallel reviewers.", calls: [
-        { name: "sessions_spawn", input: { label: "Security review", task: "Security review of PR #142 (refund endpoint): auth checks, input validation, secrets." } },
-        { name: "sessions_spawn", input: { label: "Performance review", task: "Performance review of PR #142 (refund endpoint): queries, N+1s, hot paths." } },
-        { name: "sessions_spawn", input: { label: "Test coverage review", task: "Test coverage review of PR #142 (refund endpoint): missing cases and flaky tests." } },
+      { wait: 600, think: "Three independent angles: run them in parallel, then wait for all three.", say: "I'll split the review into three parallel reviewers.", calls: [
+        { name: "sessions_spawn", input: { label: "Security review", task: "Security review of PR #142 (refund endpoint): auth checks, input validation, secrets.", collect: true } },
+        { name: "sessions_spawn", input: { label: "Performance review", task: "Performance review of PR #142 (refund endpoint): queries, N+1s, hot paths.", collect: true } },
+        { name: "sessions_spawn", input: { label: "Test coverage review", task: "Test coverage review of PR #142 (refund endpoint): missing cases and flaky tests.", collect: true } },
       ] },
-      { say: "Three reviewers are running in the background. I'll combine their findings as they report back." },
+      { calls: (results) => [{ name: "agents_wait", input: { ids: results.slice(0, 3).map((result) => (JSON.parse(result) as { taskId: string }).taskId) } }] },
+      { wait: 600, say: "All three reviews are in:\n\n| Review | Verdict |\n| --- | --- |\n| Security | **Blocking:** missing ownership check on `POST /refunds` |\n| Performance | OK, batch the line-item queries later |\n| Tests | Add partial and over-refund cases |\n\nI'd fix the ownership check before merging." },
     ],
   },
   {
@@ -232,7 +237,7 @@ const scripts: Script[] = [
     turns: [
       // A bot takes a moment: its answer lands after the agent's handoff has had the screen.
       { wait: 3_500, think: "Monday already has refunds at 10%; Apple Pay can follow it.", calls: (_, prompt) => [{ name: "message_bot", input: {
-        to: agentReplyTo(prompt.slice(prompt.indexOf("[from agent: "))) ?? (() => { throw new Error("The tag carries no return address."); })(),
+        to: replyTo(prompt),
         message: "Apple Pay is on Monday's rollout, right after refunds reach 10%. Priya owns both rollbacks, so keep the Safari test green.",
       } }] },
       { say: "Added Apple Pay to Monday's rollout and told its agent." },
@@ -258,16 +263,52 @@ const scripts: Script[] = [
     when: "[routine: Morning digest]",
     turns: [{ wait: 900, say: "Good morning! Today's digest:\n\n- Refunds go to 10% of stores today; Priya owns the rollback.\n- #142 Partial refunds endpoint is merged and CI is green.\n- #482 Signup double-submit fix is live on staging.\n\nNothing is blocked." }],
   },
+  {
+    when: "ask @piper to watch it",
+    turns: [
+      { wait: 700, think: "Tests pass, so the pull request can go up, and Piper can watch it from there.", say: "Opened acme/payments-api#151.", calls: [{ name: "message_bot", input: { to: "@piper", message: "Please watch acme/payments-api#151 until it merges: keep CI green, and send me reviewers' questions." } }] },
+      { say: "Piper is watching **#151**. I'll answer reviewers' questions as they come in." },
+    ],
+  },
+  {
+    when: "Please watch acme/payments-api#151",
+    turns: [
+      { wait: 3_500, think: "CI is green. Lee left a question only the agent can answer.", calls: (_, prompt) => [{ name: "message_bot", input: { to: replyTo(prompt), message: "Watching #151: CI is green. Lee asks whether 7 days is long enough to keep event ids, since Stripe retries for up to 3 days. Your call?" } }] },
+      { say: "Watching #151. I passed Lee's question to its agent." },
+    ],
+  },
+  {
+    when: "Lee asks whether 7 days",
+    turns: [
+      { wait: 1_500, think: "Stripe stops retrying after 3 days, so 7 days covers it with room to spare.", calls: [{ name: "message_bot", input: { to: "@piper", message: "7 days is enough: Stripe stops retrying after 3. Please tell Lee, and merge once it's approved." } }] },
+      { say: "Answered Lee through Piper: 7 days covers Stripe's 3 days of retries." },
+    ],
+  },
+  {
+    when: "7 days is enough",
+    turns: [{ wait: 900, say: "Told Lee. I'll merge #151 as soon as it's approved." }],
+  },
+  {
+    when: "[trigger: Pages · High error rate on POST /refunds]",
+    turns: [
+      { wait: 1_200, think: "Errors started at 14:02. What shipped just before?", calls: [{ name: "bash", input: { command: `git -C ${workspace}/payments-api log --oneline -3`, timeout: 30 } }] },
+      { wait: 1_500, say: "The errors started right after **#148, Partial refunds endpoint**, went out. I'm asking Piper to revert it.", calls: [{ name: "message_bot", input: { to: "@piper", message: "Please revert acme/payments-api#148: since it deployed, 12% of POST /refunds requests fail. Watch the revert until it merges, and tell me." } }] },
+      { say: "Piper is reverting #148. I'll confirm once errors are back to normal." },
+    ],
+  },
+  {
+    when: "Please revert acme/payments-api#148",
+    turns: [
+      { wait: 1_500, calls: [{ name: "bash", input: { command: `git -C ${workspace}/payments-api revert --no-edit HEAD`, timeout: 30 } }] },
+      { wait: 2_500, calls: [{ name: "message_bot", input: { to: "@owl", message: "Reverted acme/payments-api#148 in #152. CI is green, and it's merged." } }] },
+      { say: "Reverted #148 and told Owl." },
+    ],
+  },
+  {
+    when: "Reverted acme/payments-api#148",
+    turns: [{ wait: 900, say: "Resolved: #148 is reverted, and POST /refunds is back to 0.1% errors. Closing the page." }],
+  },
 ];
-
-function subagentSummary(source: string): string {
-  const done = [...source.matchAll(/^title: (.+)$/gmu)].map((match) => match[1]!.trim());
-  const all = ["Security review", "Performance review", "Test coverage review"];
-  completed.push(...done);
-  if (!all.every((label) => completed.includes(label))) return `${done.join(" and ")} reported back; waiting on the rest.`;
-  return "All three reviews are in:\n\n| Review | Verdict |\n| --- | --- |\n| Security | **Blocking:** missing ownership check on `POST /refunds` |\n| Performance | OK, batch the line-item queries later |\n| Tests | Add partial and over-refund cases |\n\nI'd fix the ownership check before merging.";
-}
-const completed: string[] = [];
 
 // Anthropic Messages streaming.
 const sse = (response: ServerResponse, value: Record<string, unknown>) => response.write(`event: ${value["type"]}\ndata: ${JSON.stringify(value)}\n\n`);
@@ -362,7 +403,6 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
     const results = messages.flatMap(blocks).filter((block) => block.type === "tool_result").map(textOf).reverse();
     return respond(response, turn, `demo_${scriptIndex}_${turnIndex}`, results);
   }
-  if (source.includes("[HUI subagent completion event]")) return respond(response, { wait: 400, say: subagentSummary(source) }, "demo_events", []);
   const index = named ? scripts.indexOf(named) : -1;
   if (index === -1) return plain(response, "Done.");
   return respond(response, named!.turns[0]!, `demo_${index}_0`, [], undefined, source);

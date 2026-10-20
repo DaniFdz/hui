@@ -42,37 +42,43 @@ PI transcripts into its own storage.
 
 Every session is a card in the stage its work is in, agents move their own cards, and a backlog item starts in its own worktree.
 
-https://github.com/user-attachments/assets/f1f798d9-a3be-45ce-a21e-f7e359fc4ada
+https://github.com/user-attachments/assets/f8591a87-ea6a-4107-8bfc-f4f5e2bed13f
 
 ### Rich results in the chat
 
 Interactive widgets, a browser the agent drives with a live preview, and GitHub, Slack and Datadog links that unfurl.
 
-https://github.com/user-attachments/assets/35fcf436-3670-4fcf-9be6-accd7f5b8b56
+https://github.com/user-attachments/assets/a4e1ddfb-b8b8-47b9-8312-ecc37fd5952c
 
 ### Work pane
 
 A terminal you share with the agent, and the Diff, Files and VS Code views of what it changed, beside the chat.
 
-https://github.com/user-attachments/assets/96c1f282-71da-4e71-911e-a0df05a5e5c3
+https://github.com/user-attachments/assets/804bb631-9b12-4a8a-bf9c-f6c8eec8747c
 
 ### Subagents and watchers
 
-Parallel reviewers in their own sessions, and a watcher that waits for CI and merges.
+Parallel reviewers tracked on one card, and a watcher that waits for CI and merges.
 
-https://github.com/user-attachments/assets/f6740992-95e7-4bb1-b07b-06e3a17a963c
+https://github.com/user-attachments/assets/f20a20f1-b34e-4654-8e97-6d757e0d4a94
 
 ### Bots
 
 Long-lived agents with a face, one chat, a memory and routines they schedule themselves.
 
-https://github.com/user-attachments/assets/42487a00-26d2-4642-8b1c-a2b47022a767
+https://github.com/user-attachments/assets/e7bb9bc2-a1f4-4c40-a57b-3c0c6a43d3ea
+
+### Bots working together
+
+Agents hand bots their pull requests and get questions back, triggers wake a bot when a page comes in, and bots tag each other.
+
+https://github.com/user-attachments/assets/fd8bdd23-7932-4b18-b92f-88067b177b6a
 
 ### On your phone
 
 Open the gateway over Tailscale and check in on your agents, or the board, from anywhere.
 
-https://github.com/user-attachments/assets/710f8134-3746-45cf-8f58-5b459683605a
+https://github.com/user-attachments/assets/105d3a04-aeca-449e-a575-cd95eb36bbce
 
 ## Install
 

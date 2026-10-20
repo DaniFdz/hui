@@ -46,6 +46,14 @@ test("a demo prompt starts its script and the tool result continues it", async (
   assert.equal(second.tools[0]?.name, "show_widget");
 });
 
+test("a parent waits for the reviewers it spawned", async () => {
+  const spawned = await reply("Review PR #142 before we merge: security, performance and test coverage, in parallel");
+  assert.deepEqual(spawned.tools.map((tool) => [tool.name, tool.input.collect]), Array(3).fill(["sessions_spawn", true]));
+  const waited = await reply(spawned.tools.map((tool, index) => ({ type: "tool_result", tool_use_id: tool.id, content: JSON.stringify({ status: "accepted", taskId: `task-${index}` }) })));
+  assert.equal(waited.tools[0]?.name, "agents_wait");
+  assert.deepEqual(waited.tools[0]?.input.ids.toSorted(), ["task-0", "task-1", "task-2"]);
+});
+
 test("a bot's memory view does not start the scripts it mentions", async () => {
   const answer = await reply([{ type: "text", text: "<chat>\nuser: Every weekday at 9, post a digest\n</chat>" }, { type: "text", text: "Thanks!" }]);
   assert.deepEqual(answer.tools, []);
