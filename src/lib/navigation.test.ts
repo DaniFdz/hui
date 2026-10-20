@@ -75,6 +75,10 @@ test("only retained settings areas are routable", () => {
   });
 });
 
+test("the old Settings → Sessions URL opens the Sessions page", () => {
+  assert.equal(resolveNavigation("/settings/sessions").path, "/sessions");
+});
+
 test("the old Worktrees page URL opens its Settings page", () => {
   assert.deepEqual(resolveNavigation("/worktrees"), { target: { kind: "settings", page: "worktrees" }, path: "/settings/worktrees" });
 });
