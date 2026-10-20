@@ -435,14 +435,14 @@ test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only 
   // The top row: the collapse toggle, then the switch. Nothing sits above them, and each
   // tab has a sidebar of its own below.
   const top = sidebar.slice(at('<div class="sidebar-shell sidebar-drawer__body">'), at('<label class="sidebar-search'));
-  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*\$\{props\.bots \? html.<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>. : nothing\}\s*<\/div>\s*$/u);
+  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<\/div>\s*$/u);
   assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
   assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
   // Bots: no primary navigation, and the toolbar names the roster.
   assert.match(sidebar, /\$\{botsTab \? nothing : html`<nav class="sidebar-nav"/u);
   assert.match(sidebar, /<span>\$\{botsTab \? "Bots" : "Sessions"\}<\/span>/u);
   // The lists under the header are its tab panel, labelled by the selected tab.
-  assert.match(sidebar, /role=\$\{props\.bots \? "tabpanel" : nothing\}\s*aria-labelledby=\$\{props\.bots \? `sidebar-tab-\$\{props\.bots\.tab\}` : nothing\}/u);
+  assert.match(sidebar, /role="tabpanel" aria-labelledby="sidebar-tab-\$\{props\.bots\.tab\}"/u);
   // A full-width tab bar over a divider, unlike the uppercase section labels below it.
   const rule = (selector: string) => {
     const start = css.indexOf(`${selector} {`);

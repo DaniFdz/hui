@@ -10,22 +10,19 @@
  * bot's hourly cap holds it: then it waits,
  * and what waited goes out as one delivery that lists it all once they allow. Each delivery, and each event that
  * could not be delivered, is recorded as a run.
- *
- * Bots off (Settings → Labs → Bots): reports are refused with 409 and nothing is kept, so a listener sends them again
- * later; what waited for a cooldown is recorded as skipped when it comes due.
  */
 import { randomUUID } from "node:crypto";
 
 import {
-  BOT_TRIGGER_HOOK_PREFIX, BOT_TRIGGER_LIMITS, BOT_TRIGGER_MARKER, BOT_TRIGGER_SOURCE_LABELS, BOTS_OFF_TRIGGER_REASON, botTriggerFilterSummary, cooldownLabel,
+  BOT_TRIGGER_HOOK_PREFIX, BOT_TRIGGER_LIMITS, BOT_TRIGGER_MARKER, BOT_TRIGGER_SOURCE_LABELS, botTriggerFilterSummary, cooldownLabel,
   type BotTrigger, type BotTriggerCreated, type BotTriggerRecord, type BotTriggerRun, type BotTriggerRunStatus, type BotTriggersList,
 } from "./triggers-format.ts";
-import { BOTS_OFF_MESSAGE, type BotRecord } from "../bots-format.ts";
+import type { BotRecord } from "../bots-format.ts";
 import { normalizeTriggerInput, normalizeTriggerPatch, patchedFilter, TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./triggers-input.ts";
 import { hashHookToken, HookBodyError, LISTENER_SILENT_MS, listenerMatches, newHookToken, oneLine, parseListenerReport, sameHash } from "./triggers-listener.ts";
 import { pullRequestName } from "./triggers-prs.ts";
 import { InFlight, withRun, type JsonStateFile, type PendingEvent, type TriggerPending, type TriggerState } from "./triggers-store.ts";
-import { BotConflictError, BotsOffError, findBot } from "./bots.ts";
+import { BotConflictError, findBot } from "./bots.ts";
 
 const HOUR_MS = 3_600_000;
 /** How often the service looks again at the bots by itself (a bot deleted elsewhere). */
@@ -37,7 +34,7 @@ const LISTED_RUNS = 50;
 export type TriggerBots = {
   /** Every bot, archived ones included. */
   list(): Promise<readonly BotRecord[]>;
-  /** The bot's message path: a prompt while idle, otherwise a follow-up or selected steering. Refuses while bots are off. */
+  /** The bot's message path: a prompt while idle, otherwise a follow-up or selected steering. */
   deliver(botId: string, text: string, delivery?: "followUp" | "steer"): Promise<unknown>;
 };
 
@@ -47,8 +44,6 @@ export type BotTriggerServiceDeps = {
   /** The pull requests a delivery links to, read through gh, each as a block of text, diffs within `diffBudget`.
    * Absent: the links stay as they are. */
   pullRequests?(urls: readonly string[], diffBudget?: number): Promise<ReadonlyMap<string, string>>;
-  /** Settings → Labs → Bots, read at each use. */
-  active(): Promise<boolean>;
   now?: () => number;
   /** Runs `run` after `ms`; returns a cancel. Unref'd timers by default. */
   schedule?: (run: () => void, ms: number) => () => void;
@@ -302,7 +297,6 @@ export class BotTriggerService {
   /** Delivers a sample event now, outside the cooldown and the hourly cap, and answers how it went. */
   async test(target: string, ref: string): Promise<BotTriggerRun> {
     const bot = await this.#bot(target);
-    if (!await this.#deps.active()) throw new BotsOffError();
     if (bot.archived) throw new TriggerConflictError(`@${bot.handle} is archived. Restore it before testing its triggers.`);
     const trigger = this.#find(await this.#read(), bot, ref);
     return this.#deliver(trigger, [sampleEvent(this.#now())], 0, { test: true });
@@ -316,7 +310,6 @@ export class BotTriggerService {
    * listener reports can be the operator's own messages.
    */
   async tool(callerSessionId: string, params: Record<string, unknown>): Promise<{ text: string }> {
-    if (!await this.#deps.active()) throw new BotsOffError();
     const bot = (await this.#deps.bots.list()).find((candidate) => candidate.sessionId === callerSessionId);
     if (!bot) throw new TriggerInputError("triggers is only available in a bot's chat.");
     const action = params["action"];
@@ -335,8 +328,8 @@ export class BotTriggerService {
 
   /**
    * `POST /__hui/hooks/<token>`, a listener's report: 202 `{ status }` once it is taken (`fired`, `held` for the
-   * cooldown or the cap, or `ignored`: nothing new its filter passes); 404 for a token no trigger has; 409 while bots
-   * are off, for a trigger that is off or a bot that is archived, nothing kept (the listener sends those events again);
+   * cooldown or the cap, or `ignored`: nothing new its filter passes); 404 for a token no trigger has; 409 for a
+   * trigger that is off or a bot that is archived, nothing kept (the listener sends those events again);
    * 413 and 400 for a body that is too large or not a report, with what to fix. The body is read only for a known token.
    */
   async hook(token: string, readBody: () => Promise<unknown>): Promise<{ status: number; body: Record<string, unknown> }> {
@@ -345,7 +338,6 @@ export class BotTriggerService {
     const trigger = state.triggers.find((candidate) => sameHash(candidate.tokenHash, hash));
     // A listener that calls is alive, even when HUI refuses its report below: its trigger never says it went silent.
     if (trigger) this.#heard.set(trigger.id, { ...this.#heard.get(trigger.id), at: this.#now() });
-    if (!await this.#deps.active()) return { status: 409, body: { error: BOTS_OFF_MESSAGE } };
     const bot = trigger && (await this.#deps.bots.list()).find((candidate) => candidate.id === trigger.botId);
     if (!trigger || !bot) return { status: 404, body: { error: "No trigger has this URL." } };
     if (!trigger.enabled) return { status: 409, body: { error: "This trigger is off: turn it on in the bot's panel." } };
@@ -370,7 +362,7 @@ export class BotTriggerService {
     if (!events.length) return { status: 202, body: { status: "ignored" } };
     const plan = await this.#accept(trigger, events.map((event) => ({ summary: event.summary, details: event.details || event.summary, at: event.at, ...(event.links.length ? { links: event.links } : {}) })),
       events.map((event) => event.id), report.catchUp);
-    if (plan === "skipped") return { status: 409, body: { error: "Bots went off, or this trigger or its bot did, while the report came in: HUI kept none of it. Send it again later." } };
+    if (plan === "skipped") return { status: 409, body: { error: "This trigger was turned off or its bot archived while the report came in: HUI kept none of it. Send it again later." } };
     return { status: 202, body: { status: plan === "fire" ? "fired" : plan } };
   }
 
@@ -380,7 +372,7 @@ export class BotTriggerService {
    * the bot's hourly cap (a catch-up goes as one delivery), the new ids kept in the same write as the decision. Answers
    * what was decided; a delivery goes on in the background and records its run. */
   async #accept(trigger: BotTriggerRecord, events: PendingEvent[], ids: readonly string[], catchUp: boolean): Promise<Plan["kind"]> {
-    const [bots, active] = await Promise.all([this.#deps.bots.list(), this.#deps.active()]);
+    const bots = await this.#deps.bots.list();
     const now = this.#now();
     const plan = await this.#update((state) => {
       const seen = state.seen[trigger.id] ?? [];
@@ -388,8 +380,8 @@ export class BotTriggerService {
       if (!fresh.length) return { value: state, result: { kind: "ignored" } as Plan };
       // With new ones, the ids it reported again move to the newest end too: a listener that keeps reporting one keeps it.
       const remembered = [...seen.filter((id) => !ids.includes(id)), ...ids].slice(-BOT_TRIGGER_LIMITS.seen);
-      const decided = this.#decide({ ...state, seen: { ...state.seen, [trigger.id]: remembered } }, trigger.id, bots, active, fresh, catchUp, now);
-      // Bots went off, or the trigger or its bot, while the report came in: nothing is kept and the listener sends it again.
+      const decided = this.#decide({ ...state, seen: { ...state.seen, [trigger.id]: remembered } }, trigger.id, bots, fresh, catchUp, now);
+      // The trigger was turned off or its bot archived while the report came in: nothing is kept and the listener sends it again.
       return decided.result.kind === "fire" || decided.result.kind === "held" ? decided : { value: state, result: { kind: "skipped" } as Plan };
     });
     if (plan.heldUntil !== undefined) this.#flushAt(trigger.id, plan.heldUntil);
@@ -397,13 +389,13 @@ export class BotTriggerService {
     return plan.kind;
   }
 
-  #decide(state: TriggerState, id: string, bots: readonly BotRecord[], active: boolean, events: readonly PendingEvent[], catchUp: boolean, now: number): { value: TriggerState; result: Plan } {
+  #decide(state: TriggerState, id: string, bots: readonly BotRecord[], events: readonly PendingEvent[], catchUp: boolean, now: number): { value: TriggerState; result: Plan } {
     const trigger = state.triggers.find((each) => each.id === id);
     const bot = trigger && bots.find((candidate) => candidate.id === trigger.botId);
     if (!trigger || !trigger.enabled || !bot) return { value: state, result: { kind: "ignored" } };
-    if (!active || bot.archived) {
+    if (bot.archived) {
       const skipped = run(trigger, "skipped", events.length, events.length === 1 ? events[0]!.summary : `${events.length} events`, now,
-        { reason: active ? `Skipped because @${bot.handle} is archived.` : BOTS_OFF_TRIGGER_REASON, catchUp });
+        { reason: `Skipped because @${bot.handle} is archived.`, catchUp });
       return { value: { ...state, runs: withRun(state.runs, skipped, state.triggers) }, result: { kind: "skipped" } };
     }
     const deliveries = recent(state.deliveries[bot.id], now);
@@ -432,7 +424,7 @@ export class BotTriggerService {
 
   /** What waited for a trigger goes out as one delivery, once its cooldown and the bot's cap allow. */
   async #flush(id: string): Promise<void> {
-    const [bots, active] = await Promise.all([this.#deps.bots.list(), this.#deps.active()]);
+    const bots = await this.#deps.bots.list();
     const now = this.#now();
     const plan = await this.#update((state): { value: TriggerState; result: Plan } => {
       const waiting = state.pending[id];
@@ -443,7 +435,7 @@ export class BotTriggerService {
       const bot = trigger && bots.find((candidate) => candidate.id === trigger.botId);
       if (!trigger || !bot) return { value: { ...state, pending }, result: { kind: "ignored" } };
       const count = waiting.events.length + waiting.more;
-      const reason = !trigger.enabled ? "Skipped: the trigger was turned off." : !active ? BOTS_OFF_TRIGGER_REASON : bot.archived ? `Skipped because @${bot.handle} is archived.` : undefined;
+      const reason = !trigger.enabled ? "Skipped: the trigger was turned off." : bot.archived ? `Skipped because @${bot.handle} is archived.` : undefined;
       if (reason) {
         const skipped = run(trigger, "skipped", count, count === 1 && waiting.events[0] ? waiting.events[0].summary : `${count} waiting events`, now, { reason, ...(waiting.catchUp ? { catchUp: true } : {}) });
         return { value: { ...state, pending, runs: withRun(state.runs, skipped, state.triggers) }, result: { kind: "skipped" } };
@@ -463,7 +455,7 @@ export class BotTriggerService {
   }
 
   /** Puts the delivery in the bot's chat and records its run: `fired` for one event, `coalesced` for several, `skipped`
-   * when bots went off or the bot was archived meanwhile, `failed` otherwise. */
+   * when the bot was archived meanwhile, `failed` otherwise. */
   async #deliver(trigger: BotTriggerRecord, events: readonly PendingEvent[], more: number, options: { catchUp?: boolean; test?: boolean }): Promise<BotTriggerRun> {
     const shown = trigger.delivery === "steer" ? events : await this.#withPullRequests(events);
     const { text, summary } = triggerMessage(trigger, shown, more, options);
@@ -473,10 +465,7 @@ export class BotTriggerService {
     try {
       await this.#deps.bots.deliver(trigger.botId, text, trigger.delivery);
     } catch (error) {
-      if (error instanceof BotsOffError) {
-        status = "skipped";
-        reason = BOTS_OFF_TRIGGER_REASON;
-      } else if (error instanceof BotConflictError && /archived/u.test(error.message)) {
+      if (error instanceof BotConflictError && /archived/u.test(error.message)) {
         status = "skipped";
         reason = error.message;
       } else {

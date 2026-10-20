@@ -381,7 +381,7 @@ export type HomeProps = {
   onOpenBranchPrefixSettings: () => void;
   /** Present when this pane is a bot's permanent chat in the bot view. */
   bot?: HomeBot;
-  /** The bots whose faces show on the messages they sent and on what the agent sent them; none while bots are off. */
+  /** The bots whose faces show on the messages they sent and on what the agent sent them. */
   bots?: readonly Pick<BotView, "id" | "handle" | "name" | "avatar">[];
   /** Opens a bot's chat; without it a bot's name is not a link. */
   onOpenBot?: (botId: string) => void;
@@ -1088,7 +1088,7 @@ function senderIcon(glyph: unknown): TemplateResult {
 function senderView(props: HomeProps, sender: MessageSender): SenderView {
   if (sender.kind === "bot") {
     const bot = props.bots?.find((candidate) => candidate.handle === sender.handle);
-    // Bots are off, or it was deleted: its handle, without a face to guess.
+    // It was deleted: its handle, without a face to guess.
     if (!bot) return { name: `@${sender.handle}`, avatar: senderIcon(sender.handle.charAt(0).toUpperCase()) };
     const open = props.onOpenBot;
     return {

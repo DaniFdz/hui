@@ -62,8 +62,6 @@ type OriginalSettings = {
   labs: {
     denseObservability: boolean;
     detailedDebug: boolean;
-
-    bots: boolean;
   };
 };
 

@@ -15,14 +15,13 @@
  * - **Temporary routines** carry `until` and/or `runs`; Automation deletes them after either, and the bot may
  *   remove one itself, from that routine's own turn too, which then finishes.
  *
- * What it makes is recorded as the bot's (`createdBy`). Bots off (Settings → Labs → Bots), it refuses like every
- * bot tool; an archived bot has none to manage.
+ * What it makes is recorded as the bot's (`createdBy`). An archived bot has none to manage.
  */
 import { type BotRecord } from "../bots-format.ts";
 import { botTurnOrigin, runTurnOrigins, type BotTurnOrigin } from "../runtimes/turn-origins.ts";
 import type { AutomationSchedule, AutomationTask } from "../automation.ts";
 import { AutomationInputError, normalizeSchedule, type AutomationService } from "../automation.ts";
-import { BotConflictError, BotInputError, BotsOffError } from "./bots.ts";
+import { BotConflictError, BotInputError } from "./bots.ts";
 import { BOT_ROUTINE_LIMITS, ROUTINE_ACTIONS, ROUTINES_TOOL } from "./durable-routines.ts";
 import type { SessionRecord } from "../sessions/sessions.ts";
 
@@ -32,8 +31,6 @@ export type BotRoutineDeps = {
   /** HUI's session records: the caller's `runPrompt` says who started its turn. */
   readSessions(): Promise<readonly SessionRecord[]>;
   automation: Pick<AutomationService, "snapshot" | "create" | "update" | "remove" | "cancel" | "activeRun">;
-  /** Settings → Labs → Bots, read at each call. */
-  active(): Promise<boolean>;
   /** Where a cron without a time zone runs: the gateway's own. */
   timezone?(): string;
   now?(): number;
@@ -91,7 +88,6 @@ export class BotRoutines {
   /** One call of the tool from the bot whose chat `callerSessionId` is, with who brought each input of its run as the
    * host running the chat saw them (`runOrigins`; none from a host that can't tell). */
   async handle(callerSessionId: string, params: Record<string, unknown>, runOrigins?: readonly BotTurnOrigin[]): Promise<{ text: string }> {
-    if (!await this.#deps.active()) throw new BotsOffError();
     const bot = await this.#deps.botForSession(callerSessionId);
     if (!bot) throw new BotInputError(`${ROUTINES_TOOL} is only available in a bot's chat.`);
     if (bot.archived) throw new BotConflictError("An archived bot has no routines to manage.");

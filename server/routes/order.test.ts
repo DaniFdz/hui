@@ -31,7 +31,6 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
 await mkdir(join(root, "config", "hui"), { recursive: true });
-await writeFile(join(root, "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 const { middleware } = await import("../hui.ts");
 const { stopBackend } = await import("../backend.ts");
 

@@ -3,14 +3,13 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
-import { BOT_TRIGGER_LIMITS, BOTS_OFF_TRIGGER_REASON, type BotTriggerRun } from "./triggers-format.ts";
-import { BOTS_OFF_MESSAGE, type BotRecord } from "../bots-format.ts";
+import { BOT_TRIGGER_LIMITS, type BotTriggerRun } from "./triggers-format.ts";
+import type { BotRecord } from "../bots-format.ts";
 import { botTurnOrigin } from "../runtimes/turn-origins.ts";
 import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "./triggers-input.ts";
 import { HookBodyError, newHookToken } from "./triggers-listener.ts";
 import { triggerStore } from "./triggers-store.ts";
 import { BotTriggerService, triggerMessage } from "./triggers.ts";
-import { BotsOffError } from "./bots.ts";
 
 const START = Date.parse("2026-10-07T10:00:00.000Z");
 const MINUTE = 60_000;
@@ -55,7 +54,7 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
   const scheduled: Scheduled[] = [];
   const delivered: { botId: string; text: string }[] = [];
   /** `delivering`: deliveries wait for it before they reach the bot. */
-  const flags: { active: boolean; delivering?: Promise<void> } = { active: true };
+  const flags: { delivering?: Promise<void> } = {};
   const bots: BotRecord[] = [bot("ada"), bot("bob")];
   /** The pull requests deliveries read, and the block each reads as. */
   const prs = { read: [] as string[][], block: (url: string) => `PR BLOCK for ${url}` };
@@ -65,7 +64,6 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
       list: async () => bots,
       deliver: async (botId, text) => {
         if (flags.delivering) await flags.delivering;
-        if (!flags.active) throw new BotsOffError();
         delivered.push({ botId, text });
         return { status: "sent" };
       },
@@ -74,7 +72,6 @@ async function fixture(t: TestContext, options: { perHour?: number; file?: strin
       prs.read.push([...urls]);
       return new Map(urls.map((url) => [url, prs.block(url)]));
     },
-    active: async () => flags.active,
     now: () => clock.now,
     schedule: (run, ms) => {
       const entry: Scheduled = { at: clock.now + ms, run, cancelled: false };
@@ -204,18 +201,18 @@ test("the hourly cap holds what comes after it until a slot frees, never more th
   assert.match(f.delivered[2]!.text, /2 events within none/u);
 });
 
-test("events that waited when bots went off are skipped when they come due", async (t) => {
+test("events that waited when their bot was archived are skipped when they come due", async (t) => {
   const f = await fixture(t);
   await f.service.start();
   const { hook } = await f.service.create("ada", reviews());
   f.clock.now = START + 30_000;
   await f.send(hook.token, [listened("e1"), listened("e2")]);
   await f.settled(1);
-  f.flags.active = false;
+  f.bots[0] = { ...f.bots[0]!, archived: true };
   await f.advance(5 * MINUTE);
   await f.settled(2);
   const [latest] = await f.runs();
-  assert.deepEqual([latest?.status, latest?.events, latest?.reason], ["skipped", 1, BOTS_OFF_TRIGGER_REASON]);
+  assert.deepEqual([latest?.status, latest?.events, latest?.reason], ["skipped", 1, "Skipped because @ada is archived."]);
   assert.equal(f.delivered.length, 1);
 });
 
@@ -311,8 +308,6 @@ test("the triggers tool lists a bot's own triggers and removes one; only the ope
   await assert.rejects(f.service.tool("chat-ada", { action: "remove" }), /Name the trigger to remove/u);
   assert.match((await f.service.tool("chat-ada", { action: "remove", trigger: "reviews" })).text, /Removed the trigger "Reviews"/u);
   await assert.rejects(f.service.tool("chat-zed", { action: "list" }), /only available in a bot's chat/u);
-  f.flags.active = false;
-  await assert.rejects(f.service.tool("chat-ada", { action: "list" }), BotsOffError);
 });
 
 test("a test delivers a sample event at once, outside the cooldown and the cap, and leaves them as they were", async (t) => {
@@ -329,8 +324,6 @@ test("a test delivers a sample event at once, outside the cooldown and the cap, 
   const after = await f.service.list("ada");
   assert.equal(after.triggers[0]!.lastFiredAt, before);
   assert.equal(after.deliveries.lastHour, 1, "a test doesn't count against the cap");
-  f.flags.active = false;
-  await assert.rejects(f.service.test("ada", "Reviews"), BotsOffError);
 });
 
 test("a deleted bot's triggers, their runs, deliveries and the ids their listener reported go at the next sync", async (t) => {
@@ -452,16 +445,13 @@ test("a listener's filter: a field it reports, PR links, and events it marks as 
   assert.equal((await f.runs())[0]?.catchUp, true);
 });
 
-test("a listener's URL: one no trigger has, bots off, the trigger off or its bot archived refuse its report without reading it or recording a run; a body too large is refused; a new URL replaces it", async (t) => {
+test("a listener's URL: one no trigger has, the trigger off or its bot archived refuse its report without reading it or recording a run; a body too large is refused; a new URL replaces it", async (t) => {
   const f = await fixture(t);
   await f.service.start();
   const { hook, trigger } = await f.service.create("ada", { name: "Pings", source: "listener" });
   let read = false;
   const unread = async (): Promise<unknown> => { read = true; return { events: [] }; };
   assert.deepEqual(await f.service.hook("A".repeat(43), unread), { status: 404, body: { error: "No trigger has this URL." } });
-  f.flags.active = false;
-  assert.deepEqual(await f.service.hook(hook.token, unread), { status: 409, body: { error: BOTS_OFF_MESSAGE } }, "its listener sends those events again later");
-  f.flags.active = true;
   await f.service.update("ada", trigger.id, { enabled: false });
   assert.equal((await f.service.hook(hook.token, unread)).status, 409);
   await f.service.update("ada", trigger.id, { enabled: true });
@@ -498,33 +488,24 @@ test("a listener's report: two at once with one id wake the bot once, one sent a
   assert.ok(!seen.includes("waits") && !seen.includes("batch-0-0"), "the oldest are forgotten");
 });
 
-test("a listener's report that comes in as bots go off is refused whole; a trigger that is off shows no silence", async (t) => {
+test("a listener's report that comes in as its bot is archived is refused whole; a trigger that is off shows no silence", async (t) => {
   const f = await fixture(t);
   await f.service.start();
   const { hook, trigger } = await f.service.create("ada", { name: "Pings", source: "listener", cooldownSeconds: 0 });
   f.clock.now = START + 30_000;
-  // Bots go off while the body is still arriving: nothing is kept, so the listener's next report delivers it.
+  // The bot is archived while the body is still arriving: nothing is kept, so the listener's next report delivers it.
   const racing = async (): Promise<unknown> => {
-    f.flags.active = false;
+    f.bots[0] = { ...f.bots[0]!, archived: true };
     return { events: [listened("racing")] };
   };
   const refused = await f.service.hook(hook.token, racing);
   assert.equal(refused.status, 409);
   assert.match(String(refused.body["error"]), /HUI kept none of it\. Send it again later\./u);
   assert.deepEqual([(await f.runs()).length, f.delivered.length], [0, 0], "no run, no delivery");
-  f.flags.active = true;
+  f.bots[0] = { ...f.bots[0]!, archived: false };
   assert.deepEqual(await f.service.hook(hook.token, report({ events: [listened("racing")] })), { status: 202, body: { status: "fired" } });
   await f.settled(1);
   await f.service.update("ada", trigger.id, { enabled: false });
   f.clock.now += 10 * MINUTE;
   assert.equal((await f.service.list("ada")).triggers[0]?.watch?.error, undefined, "HUI refuses a paused trigger's reports: no alarm about the listener");
-  // Bots off: HUI refuses every report, but the listener still calls, so it isn't silent once bots are back.
-  await f.service.update("ada", trigger.id, { enabled: true });
-  f.flags.active = false;
-  for (let minute = 0; minute < 10; minute += 1) {
-    f.clock.now += MINUTE;
-    assert.equal((await f.service.hook(hook.token, report({ events: [] }))).status, 409);
-  }
-  f.flags.active = true;
-  assert.deepEqual((await f.service.list("ada")).triggers[0]?.watch, { polledAt: new Date(f.clock.now).toISOString() });
 });

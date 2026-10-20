@@ -57,8 +57,7 @@ function fakeMemory(options: { failEnable?: boolean } = {}): BotMemory {
   };
 }
 
-/** `bots`: Settings → Labs → Bots as the host reads it, which a test may flip. */
-async function fixture(t: TestContext, options: { bots?: { on: boolean } } = {}) {
+async function fixture(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "hui-durable-bots-"));
   const agentDir = join(dir, "agent");
   const cwd = join(dir, "workspace");
@@ -90,7 +89,7 @@ async function fixture(t: TestContext, options: { bots?: { on: boolean } } = {})
   const invocations: AgentToolInvocation[] = [];
   const host = new DurableHost({
     dir: join(dir, "store"), agentDir,
-    readSettings: async () => normalizeSettings({ labs: { bots: options.bots?.on === true } }),
+    readSettings: async () => normalizeSettings({}),
     invokeTool: async (invocation) => {
       invocations.push(invocation);
       return { text: "Queued for @bob." };
@@ -99,8 +98,7 @@ async function fixture(t: TestContext, options: { bots?: { on: boolean } } = {})
   });
   const homes = join(dir, "homes");
   const bots: DurableBotsDeps = {
-    // As the gateway answers: a session's list only while bots are on.
-    section: async (botId) => botId ? `Roster for ${botId}: @bob (Bob).` : options.bots?.on ? "Bots you can tag: @bob (Bob)." : undefined,
+    section: async (botId) => botId ? `Roster for ${botId}: @bob (Bob).` : "Bots you can tag: @bob (Bob).",
     souls: { home: (botId) => join(homes, botId), operator: async () => "Alex" },
   };
   host.configureDurableBots(createDurableBots(host, bots));
@@ -137,22 +135,20 @@ async function conversations(host: DurableHost): Promise<number> {
   return harness.commit(async (tx) => (await tx.scanConversations({}, 1_000)).items.length, durableContext);
 }
 
-test("a plain conversation is offered no message_bot and no bots section; its requests are unchanged", { timeout: 60_000 }, async (t) => {
+test("a plain conversation is offered none of a bot's own tools or sections, and no bot document is written", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   await session.prompt("plain turn");
   await settledWith(session, answered("Fixture response"));
   const [request] = await requests(f.log);
   assert.ok(request?.tools?.some((tool) => tool.name === "bash"), "the ordinary tools are offered");
-  assert.ok(!request?.tools?.some((tool) => tool.name === MESSAGE_BOT_TOOL || tool.name === WRITE_SOUL_TOOL));
-  assert.doesNotMatch(JSON.stringify(request?.system), /<bots>|Roster for|message_bot|<soul>|SOUL\.md/u);
-  assert.ok(!(await session.inspect()).tools.some((tool) => tool.name === MESSAGE_BOT_TOOL));
+  assert.ok(!request?.tools?.some((tool) => tool.name === WRITE_SOUL_TOOL || tool.name === SET_PROFILE_TOOL));
+  assert.doesNotMatch(JSON.stringify(request?.system), /Roster for|<soul>|SOUL\.md/u);
   const harness = await f.host.open();
   const id = durableConversationId(session.sessionFile)!;
   assert.equal(await harness.snapshot(BotDoc, id, durableContext), undefined, "no bot document is written");
   const agent = await harness.snapshot(AgentDoc, id, durableContext);
-  assert.equal(agent?.tools, undefined, "nothing is filtered: the stored agent is what it was before bots");
-  assert.equal(agent?.extensions, undefined);
+  assert.equal(agent?.tools, undefined, "nothing is filtered");
 });
 
 test("a bot's conversation is created in one commit with bot document and memory, offers message_bot, and reads SOUL.md on every request", { timeout: 90_000 }, async (t) => {
@@ -216,9 +212,8 @@ test("a bot's conversation is created in one commit with bot document and memory
   assert.match((await port.lastMessage(reference))!.at!, /^\d{4}-\d{2}-\d{2}T/u);
 });
 
-test("while bots are on, a session lists the bots it may tag and is offered message_bot alone, which reaches HUI as that session; off, neither", { timeout: 90_000 }, async (t) => {
-  const bots = { on: true };
-  const f = await fixture(t, { bots });
+test("a session lists the bots it may tag and is offered message_bot alone, which reaches HUI as that session", { timeout: 90_000 }, async (t) => {
+  const f = await fixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const harness = await f.host.open();
   const id = durableConversationId(session.sessionFile)!;
@@ -233,16 +228,6 @@ test("while bots are on, a session lists the bots it may tag and is offered mess
   assert.doesNotMatch(system, /<soul>|SOUL\.md/u);
   assert.match(system, /- message_bot: Tag a bot of this HUI: hand it work in its own chat/u);
   assert.deepEqual(first?.tools?.filter((tool) => [MESSAGE_BOT_TOOL, WRITE_SOUL_TOOL, SET_PROFILE_TOOL].includes(tool.name ?? "")).map((tool) => tool.name), [MESSAGE_BOT_TOOL]);
-
-  // Bots off (the gateway re-offers every open session its tools): no tool and no list from the next request.
-  bots.on = false;
-  await f.host.applyTools();
-  assert.equal((await harness.snapshot(AgentDoc, id, durableContext))?.extensions, undefined, "the stored agent is what it was before bots");
-  await session.prompt("plain turn");
-  await settledWith(session, answered("Fixture response"));
-  const latest = (await requests(f.log)).at(-1);
-  assert.ok(!latest?.tools?.some((tool) => tool.name === MESSAGE_BOT_TOOL));
-  assert.doesNotMatch(JSON.stringify(latest?.system), /<bots>|message_bot/u);
 });
 
 test("a failed memory enable creates no conversation, an unknown model is refused, and the tool reaches HUI only as a conversation's session", { timeout: 60_000 }, async (t) => {

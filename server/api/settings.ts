@@ -44,7 +44,7 @@ export const Settings = Type.Object({
   disabledPlugins: Type.Immutable(Type.Array(Type.Object({
     id: Type.String(), name: Type.String(), kind: Type.Union([Type.Literal("package"), Type.Literal("extension")]),
   }))),
-  labs: Type.Object({ denseObservability: Type.Boolean(), detailedDebug: Type.Boolean(), bots: Type.Boolean() }),
+  labs: Type.Object({ denseObservability: Type.Boolean(), detailedDebug: Type.Boolean() }),
 }, { $id: "Settings" });
 export type Settings = Static<typeof Settings>;
 

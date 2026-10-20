@@ -163,16 +163,6 @@ test("emoji tiles take a face's width in rows, so names line up whichever look a
   }
 });
 
-test("Labs → Bots is the one switch: off, the sidebar has no Agents | Bots switch, bot addresses land home and nothing of bots shows; on, it all comes back", () => {
-  assert.match(read("./shell.ts"), /\$\{props\.bots \? html`<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>` : nothing\}/u, "no props, no switch");
-  const settings = read("./settings.ts");
-  assert.match(between(settings, "function renderCallsSection(", "function renderModelsPage("), /if \(!botsEnabled\(props\.settings\)\) return nothing;/u);
-  const sessions = between(settings, "function renderSessionsSettingsPage(", "function renderWorktreesSettingsPage(");
-  assert.match(sessions, /\$\{botsEnabled\(props\.settings\) \? renderSection\("Bots",/u);
-  assert.doesNotMatch(settings, /Show the Bots tab|onChangeBots/u, "Settings → Sessions has no second switch");
-  assert.match(between(settings, "function renderModelsPage(", "PI defaults"), /Two roles: the primary model does the real work and the utility model the quick work\./u, "the models' intro names no calls while they are hidden");
-});
-
 test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bot; no dialog is left", () => {
   const source = read("./bots.ts");
   const button = between(source, "export function renderNewBotButton(", "/** The menu item for this machine");

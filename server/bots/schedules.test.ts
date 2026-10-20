@@ -7,13 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
-import { BOTS_OFF_MESSAGE, type BotView } from "../bots-format.ts";
+import type { BotView } from "../bots-format.ts";
 import type { AutomationSnapshot, AutomationTask } from "../automation.ts";
 import type { BotIO } from "../../cli/gateway-client.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory and a deterministic provider, all temporary.
-// Bots are on, as Settings → Labs → Bots leaves them once the operator turns them on.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-schedules-"));
 const agentDir = join(dir, "agent");
 const workspace = join(dir, "workspace");
@@ -39,7 +38,6 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 } } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "low" }));
 await mkdir(join(dir, "config", "hui"), { recursive: true });
-await writeFile(join(dir, "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 
 const { middleware } = await import("../hui.ts");
 const { startBackend, stopBackend } = await import("../backend.ts");
@@ -158,27 +156,6 @@ test("a turn another bot started can't make a bot add a routine: the gateway rea
   assert.ok(said("user", /^\[from @bob\] E2E_ROUTINE_ADD/u)(liveSessions.transcript(ada.sessionId)));
   assert.equal((await tasks()).length, before, "nothing was added");
   assert.equal(bob.handle, "bob");
-});
-
-test("with bots off, hui schedule lists sessions' schedules, leaves routines out and refuses anything naming a bot", { timeout: 60_000 }, async () => {
-  const ada = (await call("/__hui/bots/ada")).body["bot"] as BotView;
-  const routine = await call("/__hui/automation/tasks", "POST", { name: "Digest", sessionId: ada.sessionId, prompt: "digest", schedule: { kind: "every", everyMs: 3_600_000 } });
-  assert.equal(routine.status, 201);
-  const plain = await call("/__hui/automation/tasks", "POST", { name: "Nightly", sessionId: "s-elsewhere", prompt: "review", schedule: { kind: "every", everyMs: 86_400_000 } });
-  const nightly = plain.body["task"] as AutomationTask;
-  assert.deepEqual(nightly.createdBy, { kind: "operator" }, "the routes' tasks are the operator's");
-  const settings = (await call("/__hui/settings")).body as { labs: Record<string, boolean> };
-  assert.equal((await call("/__hui/settings", "PUT", { ...settings, labs: { ...settings.labs, bots: false } })).status, 200);
-  try {
-    assert.equal(await hui("list"), `Nightly  every 1d  next ${nightly.nextRunAt}  session s-elsewhere (gone)  ${nightly.id}\n`);
-    for (const [action, operands, flags] of [["list", [], { bot: "ada" }], ["show", ["Digest"], {}], ["pause", ["Digest"], {}]] as const) {
-      await assert.rejects(hui(action, [...operands], flags), (error: unknown) => (error as Error).message === BOTS_OFF_MESSAGE && (error as { status?: number }).status === 409, action);
-    }
-    assert.equal(await hui("pause", ["Nightly"]), "Paused schedule Nightly.\n", "a session's schedule works regardless");
-    assert.equal((await tasks()).find((task) => task.name === "Digest")?.enabled, true, "the routine was never touched");
-  } finally {
-    await call("/__hui/settings", "PUT", { ...settings, labs: { ...settings.labs, bots: true } });
-  }
 });
 
 test("an accepted routine reconciles across backend restart without re-sending its input", { timeout: 60_000 }, async () => {

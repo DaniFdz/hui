@@ -9859,17 +9859,13 @@
           "type": "object",
           "required": [
             "denseObservability",
-            "detailedDebug",
-            "bots"
+            "detailedDebug"
           ],
           "properties": {
             "denseObservability": {
               "type": "boolean"
             },
             "detailedDebug": {
-              "type": "boolean"
-            },
-            "bots": {
               "type": "boolean"
             }
           }

@@ -8,7 +8,7 @@ import type { BotTurnOrigin } from "../runtimes/turn-origins.ts";
 import type { AutomationTask } from "../automation.ts";
 import { AutomationService } from "../automation.ts";
 import { BotRoutines } from "./routines.ts";
-import { BotConflictError, BotInputError, BotsOffError } from "./bots.ts";
+import { BotConflictError, BotInputError } from "./bots.ts";
 import { BOT_ROUTINE_LIMITS } from "./durable-routines.ts";
 import type { SessionRecord } from "../sessions/sessions.ts";
 
@@ -44,11 +44,10 @@ async function harness(t: TestContext) {
   const bob = bot("bot-bob", "bob");
   const bots = [ada, bob];
   const records = new Map<string, Partial<SessionRecord>>();
-  const state = { on: true };
   const routines = new BotRoutines({
     botForSession: async (sessionId) => bots.find((candidate) => candidate.sessionId === sessionId),
     readSessions: async () => [...records].map(([id, record]) => ({ id, ...record }) as SessionRecord),
-    automation, active: async () => state.on, timezone: () => "Europe/Madrid",
+    automation, timezone: () => "Europe/Madrid",
   });
   /** The tool as Ada calls it, in a turn `runPrompt` started (the operator's when absent), with what the host saw the run
    * take (`runOrigins`; none when absent). */
@@ -57,7 +56,7 @@ async function harness(t: TestContext) {
     return routines.handle(who.sessionId, params, runOrigins);
   };
   const tasks = async () => (await automation.snapshot()).tasks;
-  return { automation, routines, ada, bob, bots, records, state, held, as, tasks };
+  return { automation, routines, ada, bob, bots, records, held, as, tasks };
 }
 
 const hours = (count: number) => new Date(Date.now() + count * 3_600_000).toISOString();
@@ -193,11 +192,8 @@ test("every input of the run counts: another bot's or a trigger's message that j
   assert.equal((await h.as(h.ada, { action: "remove", routine: "Mine" }, "please look", joined({ kind: "trigger", name: "CI" }))).text, "Removed the routine \"Mine\".", "removing only stops work");
 });
 
-test("bots off, a session that is no bot's chat and an archived bot are refused before anything is read", async (t) => {
+test("a session that is no bot's chat and an archived bot are refused before anything is read", async (t) => {
   const h = await harness(t);
-  h.state.on = false;
-  await assert.rejects(h.as(h.ada, { action: "list" }), BotsOffError);
-  h.state.on = true;
   await assert.rejects(h.routines.handle("s-plain", { action: "list" }), (error: unknown) => error instanceof BotInputError && /only available in a bot's chat/u.test(error.message));
   h.bots[0] = { ...h.ada, archived: true };
   await assert.rejects(h.as(h.bots[0], { action: "list" }), (error: unknown) => error instanceof BotConflictError && /archived/u.test(error.message));

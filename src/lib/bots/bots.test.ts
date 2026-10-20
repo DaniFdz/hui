@@ -4,13 +4,12 @@ import { test } from "vitest";
 import {
   applyBotsUpdate, withLiveChats, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, isBotSession, isNewBotsFrame, parseBotsUpdate, parseBot, parseBotList, botLook, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView,
   agentReplyTo, BOT_ACCESS_ANSWERS, BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_FACE_SHAPES, BOT_LIMITS, BOT_THINKING_LEVELS,
-  botColorName, botKickoffName, BOTS_OFF_MESSAGE, botTurnOrigin, isBotFaceEars, isBotFaceShape, isBotTagging, previewLine, storedTagging,
+  botColorName, botKickoffName, botTurnOrigin, isBotFaceEars, isBotFaceShape, isBotTagging, previewLine, storedTagging,
 } from "./bots.ts";
 import type { SessionGroup, SessionView } from "../../api/sessions.ts";
 
 test("bot limits, faces, labels, tagging and sender parsing match the portable fixtures", async () => {
   const fixture = JSON.parse(await readFile(new URL("./bots.fixture.json", import.meta.url), "utf8"));
-  assert.equal(BOTS_OFF_MESSAGE, fixture.offMessage);
   assert.deepEqual(BOT_LIMITS, fixture.limits);
   assert.deepEqual(BOT_THINKING_LEVELS, fixture.thinkingLevels);
   assert.deepEqual(BOT_ACCESS_ANSWERS, fixture.accessAnswers);

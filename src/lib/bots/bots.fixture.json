@@ -1,5 +1,4 @@
 {
-  "offMessage": "Bots are off on this gateway: they are a preview. Turn them on in Settings → Labs → Bots.",
   "limits": {
     "name": 60,
     "handle": 32,

@@ -181,7 +181,7 @@ export type DurableHostOptions = {
 /** A bot's chat, as its conversation's document says; what else it holds is the bots' business. */
 export type DurableBotState = { readonly bot: string };
 
-/** Bots (Labs), as the Durable core reaches them: `createDurableBots` builds them, and a host that never runs bot work
+/** Bots, as the Durable core reaches them: `createDurableBots` builds them, and a host that never runs bot work
  * configures `null`, where no conversation is a bot's. */
 export type DurableBots = {
   /** The `bots`, `bot_access` and `soul` sections, the tools only bots' chats select and `message_bot` alone for
@@ -227,7 +227,7 @@ export class DurableHost implements ExtensionHost {
   #tools: Extension;
   /** Bots on this host (`configureDurableBots`); undefined until configured, while the store refuses to open. */
   #bots: DurableBots | null | undefined;
-  /** The bots' sections (a session's `bots` while bots are on, the rest inert outside bots' chats), the tools only bots'
+  /** The bots' sections (a session's `bots`, the rest inert outside bots' chats), the tools only bots'
    * chats select, and `message_bot` alone for sessions (`DurableBots.extensions`). */
   #botExtensions: { section: Extension; tools: Extension; tag: Extension } | undefined;
   /** The store failed, was released and is about to open again: the gateway reattaches the sessions it ended. */
@@ -355,7 +355,7 @@ export class DurableHost implements ExtensionHost {
   /** Tools only bots' chats are offered. */
   get botTools(): readonly ToolRegistration[] { return this.#botExtensions?.tools.tools ?? []; }
 
-  /** `message_bot` alone, which a session selects while bots are on (`DurableSession.applyTools`). */
+  /** `message_bot` alone, which a session selects (`DurableSession.applyTools`). */
   get botTag(): Extension | undefined { return this.#botExtensions?.tag; }
 
   /** The bots configured on this host, which a bot's chat plans its offer with (`DurableSession.applyTools`). */

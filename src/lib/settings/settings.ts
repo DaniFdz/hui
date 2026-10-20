@@ -45,14 +45,8 @@ export const DEFAULT_SETTINGS: Settings = {
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false, bots: false },
+  labs: { denseObservability: false, detailedDebug: false },
 };
-
-/** Settings → Labs → Bots: whether bots exist at all, on the gateway and on every screen (the sidebar's Agents | Bots
- * switch included). */
-export function botsEnabled(settings: Pick<Settings, "labs">): boolean {
-  return settings.labs.bots;
-}
 
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
@@ -81,7 +75,7 @@ export function normalizeSettings(raw: unknown): Settings {
     calls: normalizeCalls(source["calls"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
-    labs: normalizeLabs(source["labs"], source["bots"]),
+    labs: normalizeLabs(source["labs"]),
   };
 }
 
@@ -216,15 +210,12 @@ function boundedText(value: unknown, fallback: string, maximum: number): string 
   return value.trim().slice(0, maximum);
 }
 
-/** Every Labs flag is opt-in: only an explicit true turns one on. Bots also stay on for a file from before Labs →
- * Bots that had Settings → Sessions → Show the Bots tab on (`bots.showTab`, `legacyBots` here) while it has no
- * `labs.bots`: an operator who had the tab keeps bots. The next save writes only `labs.bots`. */
-function normalizeLabs(value: unknown, legacyBots: unknown): Settings["labs"] {
+/** Every Labs flag is opt-in: only an explicit true turns one on. */
+function normalizeLabs(value: unknown): Settings["labs"] {
   const source = isRecord(value) ? value : {};
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    bots: source["bots"] === true || (source["bots"] === undefined && isRecord(legacyBots) && legacyBots["showTab"] === true),
   };
 }
 

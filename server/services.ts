@@ -3,7 +3,6 @@
  * sessions first, then bots, tools, integrations, automation and the backlog, with the route modules that serve them.
  */
 import { existsSync } from "node:fs";
-import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { homedir, hostname, userInfo } from "node:os";
 
@@ -29,7 +28,7 @@ import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bots
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
-import { botsEnabled, botsOn, readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
+import { readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
 import { AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
 import { VscodeService } from "./vscode/vscode.ts";
 import { VscodeInstaller } from "./vscode/install.ts";
@@ -198,14 +197,8 @@ export const bots = new BotService({
       await automation.remove(task.id).catch(automationStoreFailure);
     },
   },
-  // Bots are a preview: off (Settings → Labs → Bots), nothing starts a bot's turn, and a chat that starts one anyway
-  // (Durable resuming an interrupted run, a worker reattaching) goes quiet again.
-  active: botsOn,
-  statuses: liveSessions,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
-/** Open `GET /__hui/bots/events` streams, ended as bots are turned off so every screen hears it. */
-export const botStreams = new Set<ServerResponse>();
 export const botRoutes = createBotRoutes({
   service: bots,
   readAttachments: async (sessionId, raw) => {
@@ -217,7 +210,7 @@ export const botRoutes = createBotRoutes({
   },
 });
 /** Bots imported from other platforms' templates (`bots/template-import.ts`), and exported as templates reviewed for
- * personal information (`bots/export.ts`): under `/__hui/bots`, so Labs → Bots gates them too. */
+ * personal information (`bots/export.ts`), under `/__hui/bots`. */
 const localSkills = localBotSkills();
 // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
 const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);
@@ -267,7 +260,7 @@ export const botTemplateRoutes = createBotTemplateRoutes({
     },
   }),
 });
-// A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag while bots are on (a
+// A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag (a
 // worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
 // SOUL.md (or has its first conversation) in its `soul` section, from its home folder in HUI's configuration; a worker's
 // host reads the home folders it keeps itself.
@@ -335,7 +328,7 @@ liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
   // Behind the check where a bot's chat runs: HUI's own refusal of a tool the operator turned off in that chat.
   await bots.checkToolAllowed(invocation.callerSessionId, invocation.action);
-  // A bot's chat, or any session while bots are on: the service decides who may tag whom.
+  // A bot's chat, or any session: the service decides who may tag whom.
   if (invocation.action === "message_bot") return bots.messageBot(invocation.callerSessionId, invocation.params);
   // A bot's gated tools judge its run by every input it took, as the host running the chat saw them (`runOrigins`).
   if (invocation.action === "set_profile") return bots.setProfile(invocation.callerSessionId, invocation.params, invocation.runOrigins);
@@ -419,7 +412,6 @@ export const callRoutes = createCallRoutes({
 
 async function writeSettings(raw: unknown): Promise<Settings> {
   const before = await readHuiSettings();
-  const botsWereOn = botsEnabled(before);
   await ensureConfigDir();
   const settings = await writeHuiSettings(raw);
   // A changed browser mode or executable must not leave the old process running.
@@ -427,30 +419,9 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   // Off withdraws every VS Code frame's access and stops the server; a new executable applies to the next start.
   await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
-  if (botsWereOn && !botsEnabled(settings)) quietBots();
-  // Codemode, and while bots are on every session's message_bot, are offered per conversation.
-  if (before.codemode.enabled !== settings.codemode.enabled || botsWereOn !== botsEnabled(settings)) await durableHost().applyTools();
+  // Codemode is offered per conversation.
+  if (before.codemode.enabled !== settings.codemode.enabled) await durableHost().applyTools();
   return settings;
-}
-
-/**
- * Bots were just turned off (Settings → Labs → Bots). Their routes already refuse, as each reads the setting; what
- * they were doing stops too: every bot goes quiet (queued messages withdrawn, a running turn stopped), calls end and
- * are recorded, and open bot streams end, so each screen learns it. Nothing is deleted: turning bots on again finds
- * them as they were.
- */
-function quietBots(): void {
-  for (const response of botStreams) response.end();
-  const calls = callBroker.endAll();
-  recordDiagnosticEvent({
-    area: "session", level: "info", action: "bots_turned_off",
-    summary: `Bots were turned off in Settings → Labs${calls ? `; ${calls} call${calls === 1 ? "" : "s"} ended` : ""}`,
-  });
-  void bots.quietAll().catch((error: unknown) => recordDiagnosticEvent({
-    area: "session", level: "warning", action: "bots_off_stop_failed",
-    summary: "Bots were turned off, but HUI could not read them all to stop their turns",
-    detail: error instanceof Error ? error.message : String(error),
-  }));
 }
 
 async function browserStatus(): Promise<BrowserStatus> {
@@ -467,13 +438,12 @@ export const githubCli = new GitHubCli({ command: GH_COMMAND });
 export const triggers = createGatewayTriggers({
   send: (botId, message) => bots.send(botId, message),
   listBots: () => botRegistry.list(),
-  active: botsOn,
   ghCommand: GH_COMMAND,
   report: (event) => recordDiagnosticEvent({ area: "session", ...event }),
 });
 const githubPreviews = new GitHubPreviews(ghGraphQL(GH_COMMAND));
 const githubContributions = new GitHubContributionsReader(GH_COMMAND);
-export const githubRoutes = createGitHubRoutes({ githubCli, githubPreviews, githubContributions, bots });
+export const githubRoutes = createGitHubRoutes({ githubCli, githubPreviews, githubContributions });
 
 /* ── Datadog ── orgs, sign-in and previews run through the operator's `pup`; HUI never sees a token.
  * `HUI_PUP_CLI` points E2E at a fake executable. A sign-in or an org change drops cached previews. */
@@ -568,26 +538,23 @@ export const sessionRoutes = createSessionRoutes({
   lifecycle: { createSession, startWorktreeSession, deleteSession, updateSession },
   views: sessionViews,
   bots,
-  isDormantBotChat,
 });
 export const sessionActionRoutes = createSessionActionRoutes({
   lifecycle: { updateSession, forkRequest, forkFromSession },
   views: sessionViews,
   bots,
-  isDormantBotChat,
   subagents,
   secretRequests,
   questionnaires,
 });
 
-export const automation = new AutomationService(AUTOMATION_FILE, (task, signal, context) => executeAutomationTask(task, signal, context, { liveSessions, bots, botsOn }));
+export const automation = new AutomationService(AUTOMATION_FILE, (task, signal, context) => executeAutomationTask(task, signal, context, { liveSessions, bots }));
 export const automationRoutes = createAutomationRoutes({ automation });
 /** A bot's `routines` tool: its own chat's Automation tasks, behind its guards. */
 const botRoutines = new BotRoutines({
   botForSession: (sessionId) => bots.botForSession(sessionId),
   readSessions: readRegistry,
   automation,
-  active: botsOn,
 });
 
 /* ── backlog ── local tasks and HUI metadata in backlog.json; assigned To Do
@@ -629,10 +596,3 @@ export const backlogRoutes = createBacklogRoutes({
   jiraStatuses,
   createAssignedJiraIssue,
 });
-
-/** A bot's chat while bots are off: no session route reaches it, since opening or prompting it would resume it. The
- * bot registry decides, as for its forever chat; a registry that cannot be read refuses. */
-export async function isDormantBotChat(record: SessionRecord): Promise<boolean> {
-  if (!record.bot || await botsOn()) return false;
-  return bots.botForSession(record.id).then((bot) => Boolean(bot), () => true);
-}

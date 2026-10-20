@@ -3,14 +3,12 @@
  * and the contributions calendar (`github-contributions.ts`), plus `GET /__hui/session-activity`, the sessions' own
  * days shown beside it. `hui.ts` applies the `x-hui` guard before dispatching here.
  */
-import type { BotService } from "../bots/service.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, type GitHubContributionsReader, latestYear } from "../integrations/github-contributions.ts";
 import type { GitHubPreviews } from "../integrations/github-previews.ts";
 import { type GitHubCli, GitHubCliError } from "../integrations/github.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { GitHubConnection, GitHubContributions, GitHubError, GitHubPreviewsResponse, SessionActivity, routeSchemas as githubRouteSchemas } from "../api/github.ts";
-import { botsOn } from "../hui-settings.ts";
 import { activityRange, readSessionActivity } from "../sessions/activity.ts";
 import { readRegistry } from "../sessions/sessions.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../integrations/github-links.ts";
@@ -27,11 +25,10 @@ export function createGitHubRoutes(deps: {
   githubCli: GitHubCli;
   githubPreviews: GitHubPreviews;
   githubContributions: GitHubContributionsReader;
-  bots: BotService;
 }) {
   async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const { method, path } = request;
-    const { githubCli, githubPreviews, githubContributions, bots } = deps;
+    const { githubCli, githubPreviews, githubContributions } = deps;
 
     if (path === GITHUB_ROUTE) {
       if (method !== "GET") return reply(GitHubError, { error: "method not allowed" }, 405);
@@ -52,10 +49,7 @@ export function createGitHubRoutes(deps: {
       const range = activityRange(request.query);
       if (!range) return reply(GitHubError, { error: "from and to must be epoch milliseconds, to after from and at most 31 days apart." }, 400);
       try {
-        // Bots off: their chats' activity stays out of the calendar too (a record whose bot is gone is a session).
-        const records = await readRegistry();
-        const listed = await botsOn() ? records : records.filter((record) => !record.bot || !bots.identity(record.bot));
-        return reply(SessionActivity, await readSessionActivity(listed, range.from, range.to));
+        return reply(SessionActivity, await readSessionActivity(await readRegistry(), range.from, range.to));
       } catch (error) {
         return reply(GitHubError, { error: error instanceof Error ? error.message : "Session activity could not be read." }, 500);
       }

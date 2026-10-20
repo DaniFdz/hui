@@ -1,6 +1,6 @@
 /**
  * `BotsController` keeps the bot roster outside `hui-app.ts`: the list, its loading and error state, and the gateway's
- * bot stream that pushes it while Settings → Labs → Bots is on, with reads by GET as the fallback for a gateway without
+ * bot stream that pushes it, with reads by GET as the fallback for a gateway without
  * the stream. It also owns the sidebar's Agents | Bots choice, the bot panel's state with the browser-remembered open
  * state and width, the Settings page's saves, and the roster's actions: creating a bot, hiding, archiving (with its
  * confirmation and its Restore toast), restoring and deleting one, and whether GPT-Live calls can run. A top-level app
@@ -16,15 +16,13 @@ import { closeModal, ensureModal } from "../lib/modal-dialog.ts";
 import type { NavigationTarget } from "../lib/navigation.ts";
 import { applyBotsUpdate, botChangePatch, botSettingChange, isNewBotsFrame, upsertBot, type BotView } from "../lib/bots/bots.ts";
 import { archivedBotCount, hiddenBotCount, readBotPanel, readSidebarTab, writeBotPanel, writeSidebarTab, type BotPanelState, type BotPanelView, type SidebarTab } from "../lib/bots/roster.ts";
-import { botsEnabled } from "../lib/settings/settings.ts";
-import { refreshSettings, settingsWritten } from "../lib/settings/settings-store.ts";
 import { NO_BOT_SETTINGS_SAVES, type BotSettingKey, type BotSettingsProps, type BotSettingsSaves, type BotSettingValue } from "../views/bot-settings.ts";
 import type { SettingsController } from "./settings-controller.ts";
 
 type BotsHost = ReactiveControllerHost & { embeddedPane: boolean; renderRoot: ParentNode };
 
 type BotsDeps = {
-  control: Pick<SettingsController, "settings" | "adoptSettings">;
+  control: Pick<SettingsController, "settings">;
   /** The list with each bot's chat status, unread mark and presence as the shell knows them. */
   live: (bots: readonly BotView[]) => BotView[];
   /** Every bots frame: a bot loaded after a panel page opened, or woken. */
@@ -92,8 +90,6 @@ export class BotsController implements ReactiveController {
   #again = false;
   #streamStop: (() => void) | undefined;
   #streamUnsupported = false;
-  /** The stream was asked again after a 409 whose settings still said bots are on; once is enough. */
-  #streamRetried = false;
   #revision = 0;
 
   constructor(host: BotsHost, deps: BotsDeps) {
@@ -120,51 +116,28 @@ export class BotsController implements ReactiveController {
     this.#host.requestUpdate();
   }
 
-  /** The gateway's bot stream while the Bots tab is enabled. It starts with the
-   * whole list, then sends what changed; a gateway without it falls back to
-   * reading the list whenever a bot's session changes status. */
+  /** The gateway's bot stream. It starts with the whole list, then sends what
+   * changed; a gateway without it falls back to reading the list whenever a
+   * bot's session changes status. */
   sync(): void {
-    if (this.#host.embeddedPane) return;
-    const wanted = botsEnabled(this.#deps.control.settings) && !this.#streamUnsupported;
-    if (wanted && !this.#streamStop) {
-      this.#streamStop = subscribeBots({
-        onUpdate: (update, first) => {
-          if (!isNewBotsFrame(update.revision, first, this.#revision)) return;
-          this.#revision = update.revision;
-          this.#set({ list: this.#deps.live(applyBotsUpdate(this.list, update)), loaded: true, error: "" });
-          this.#deps.onFrame();
-        },
-        onConnection: (state) => {
-          this.streamLive = state === "live";
-          if (state === "live") this.#streamRetried = false;
-          if (state === "reconnecting" && !this.loaded) this.#set({ error: "Could not reach the gateway for the bot list. Retrying…" });
-          if (state === "unsupported") {
-            this.#streamUnsupported = true;
-            this.#streamStop = undefined;
-            void this.refresh();
-          }
-          // A 409: bots are off on the gateway, turned off on another screen (which ends this stream) or not on there
-          // yet. Once this screen's own writes have landed the settings are read again and followed; if they still say
-          // bots are on, the stream is asked once more.
-          if (state === "off") {
-            this.#streamStop = undefined;
-            const retry = !this.#streamRetried;
-            void settingsWritten().then(refreshSettings).then((settings) => {
-              if (!settings) return;
-              this.#deps.control.adoptSettings(settings);
-              if (retry && botsEnabled(settings)) {
-                this.#streamRetried = true;
-                this.sync();
-              }
-            });
-          }
-        },
-      });
-    } else if (!wanted && this.#streamStop) {
-      this.#streamStop();
-      this.#streamStop = undefined;
-      this.streamLive = false;
-    }
+    if (this.#host.embeddedPane || this.#streamUnsupported || this.#streamStop) return;
+    this.#streamStop = subscribeBots({
+      onUpdate: (update, first) => {
+        if (!isNewBotsFrame(update.revision, first, this.#revision)) return;
+        this.#revision = update.revision;
+        this.#set({ list: this.#deps.live(applyBotsUpdate(this.list, update)), loaded: true, error: "" });
+        this.#deps.onFrame();
+      },
+      onConnection: (state) => {
+        this.streamLive = state === "live";
+        if (state === "reconnecting" && !this.loaded) this.#set({ error: "Could not reach the gateway for the bot list. Retrying…" });
+        if (state === "unsupported") {
+          this.#streamUnsupported = true;
+          this.#streamStop = undefined;
+          void this.refresh();
+        }
+      },
+    });
   }
 
   /** The list is current when the stream runs; otherwise it is read now. */

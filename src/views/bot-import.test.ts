@@ -5,7 +5,7 @@ import { test } from "vitest";
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const between = (source: string, start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
-test("+ → Import bot… opens the import dialog and a bot's ⋯ → Export… the export dialog; only while bots are on", () => {
+test("+ → Import bot… opens the import dialog and a bot's ⋯ → Export… the export dialog", () => {
   const roster = read("./bots.ts");
   assert.match(between(roster, "function botRow(", "function archivedRow("), /<span class="session-menu__text">Export…<\/span>/u);
   assert.match(between(roster, "function botRow(", "function archivedRow("), /if \(action === "export"\) \{ drawer\.dialog\(event\); props\.onExport\(bot\); \}/u);

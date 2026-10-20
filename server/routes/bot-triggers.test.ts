@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test, type TestContext } from "vitest";
 import { BotTriggerCreated, BotTriggersList } from "../api/bot-triggers.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
-import { BOTS_OFF_MESSAGE, type BotView } from "../bots-format.ts";
+import type { BotView } from "../bots-format.ts";
 import type { BotIO } from "../../cli/gateway-client.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory, a deterministic provider and a fake GitHub
@@ -39,7 +39,6 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 } } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "low" }));
 await mkdir(join(dir, "config", "hui"), { recursive: true });
-await writeFile(join(dir, "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 const PAST = "2026-09-01T10:00:00Z";
 const pull = (number: number, author: string, created: string) => ({
   number, title: `Pull request ${number}`, html_url: `https://github.com/acme/widgets/pull/${number}`, state: "open", draft: false, user: { login: author },
@@ -372,17 +371,4 @@ test("a run stays tainted to its end: the operator's message after a trigger's i
   assert.match(clean, /Saved your SOUL\.md/u);
   assert.match(clean, /Added the routine "Clean"/u);
   assert.equal(await soulOf(), "# Ada\nClean.");
-});
-
-test("bots off: the trigger routes and a listener's URL answer 409, nothing is kept or recorded, and nothing reaches the bot", { timeout: 60_000 }, async () => {
-  const settings = (await call("/__hui/settings")).body;
-  const off = await listenerTrigger("Off check", "E2E_OFF_CHECK");
-  assert.equal((await call("/__hui/settings", "PUT", { ...settings, labs: { ...(settings["labs"] as object), bots: false } })).status, 200);
-  assert.deepEqual(await call(`/__hui/bots/${ada.id}/triggers`), { status: 409, body: { error: BOTS_OFF_MESSAGE } });
-  assert.deepEqual(await reportOne(off, "off-1"), { status: 409, body: { error: BOTS_OFF_MESSAGE } }, "its listener sends it again later");
-  assert.equal((await call("/__hui/settings", "PUT", { ...settings, labs: { ...(settings["labs"] as object), bots: true } })).status, 200);
-  const back = (await call(`/__hui/bots/${ada.id}/triggers`)).body as unknown as BotTriggersList;
-  assert.equal(back.runs.find((run) => run.triggerName === "Off check"), undefined);
-  assert.equal(await asked("E2E_OFF_CHECK"), false, "nothing reached the bot");
-  assert.deepEqual(await reportOne(off, "off-1"), { status: 202, body: { status: "fired" } }, "sent again once bots are on, it goes out");
 });
