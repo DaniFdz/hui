@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { GITHUB_CLI_REQUIRED } from "./github.ts";
 import { GitHubContributionsReader } from "./github-contributions.ts";
 
-const FIXTURE = fileURLToPath(new URL("../e2e/github-cli-fixture.mjs", import.meta.url));
+const FIXTURE = fileURLToPath(new URL("../../e2e/github-cli-fixture.mjs", import.meta.url));
 const NOW = Date.parse("2026-09-30T12:00:00Z");
 const dates = (count: number) => Array.from({ length: count }, (_, index) => new Date(NOW - (index % 360) * 86_400_000 - index * 1000).toISOString());
 

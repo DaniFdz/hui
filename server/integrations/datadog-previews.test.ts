@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { DatadogOrg } from "./api/datadog.ts";
+import type { DatadogOrg } from "../api/datadog.ts";
 import { PupError } from "./datadog.ts";
 import {
   DatadogPreviews,

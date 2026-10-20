@@ -28,7 +28,7 @@ import {
   type JiraConfig,
   type JiraIssueRef,
   type JiraIssueStatuses,
-} from "../jira.ts";
+} from "../integrations/jira.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import { SessionBusyError } from "../live-sessions.ts";
 import { suggestWorktreeName } from "../model-routing.ts";

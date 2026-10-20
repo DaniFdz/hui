@@ -10,7 +10,7 @@
  */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 
-import type { GitHubAccount, GitHubConnection, GitHubLoginState } from "./api/github.ts";
+import type { GitHubAccount, GitHubConnection, GitHubLoginState } from "../api/github.ts";
 
 export const GITHUB_CLI_REQUIRED = "GitHub CLI (gh) is required. Install it on the machine that runs HUI and make sure `gh` is on the gateway's PATH.";
 export const GITHUB_HOST = "github.com";

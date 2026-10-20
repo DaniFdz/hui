@@ -13,9 +13,9 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { DATADOG_CLI_REQUIRED, isDatadogHost, normalizeDatadogSite, pupSite } from "./integrations/datadog-links.ts";
-import type { DatadogConnection, DatadogLoginState, DatadogOrg, DatadogOrgStatus } from "./api/datadog.ts";
-import { CONFIG_DIR } from "./paths.ts";
+import { DATADOG_CLI_REQUIRED, isDatadogHost, normalizeDatadogSite, pupSite } from "./datadog-links.ts";
+import type { DatadogConnection, DatadogLoginState, DatadogOrg, DatadogOrgStatus } from "../api/datadog.ts";
+import { CONFIG_DIR } from "../paths.ts";
 
 const DATADOG_CONFIG_FILE = join(CONFIG_DIR, "datadog.json");
 const CONFIG_VERSION = 1;

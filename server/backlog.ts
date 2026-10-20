@@ -32,7 +32,7 @@ import {
   type JiraIssueFetcher,
   type JiraIssueRef,
   type JiraIssueStatuses,
-} from "./jira.ts";
+} from "./integrations/jira.ts";
 import type { liveSessions } from "./live-sessions.ts";
 import { CONFIG_DIR } from "./paths.ts";
 import { readRegistry, updateRegistry, type SessionNotFoundError, type SessionRecord } from "./sessions.ts";

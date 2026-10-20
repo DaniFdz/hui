@@ -17,7 +17,7 @@ import {
   mergeBacklog,
   splitItemId,
 } from "./backlog.ts";
-import { JiraClient, type JiraFetch } from "./jira.ts";
+import { JiraClient, type JiraFetch } from "./integrations/jira.ts";
 import { backlogItemPrompt } from "./backlog.ts";
 
 async function tempStore(t: TestContext) {

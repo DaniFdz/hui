@@ -616,18 +616,18 @@ Browser-tool update/reload proof are recorded in
 
 Done 2026-09-25. Settings → Integrations → Jira connection (site, email, API token, default
 project), session row mark and hovercard, and a create dialog with utility-model
-drafts for parent, summary and description. Proof: `server/jira.test.ts`,
+drafts for parent, summary and description. Proof: `server/integrations/jira.test.ts`,
 `src/lib/jira.test.ts`, and `e2e/jira-integration.browser.md`.
 
 Follow-up 2026-09-25: Settings → Integrations → GitHub signs in through the
 gateway's `gh auth login --web` device flow (code, copy, device link, Connected
 on approval) and reports a missing `gh` as required. Proof:
-`server/github.test.ts`, `src/lib/github.test.ts`, and
+`server/integrations/github.test.ts`, `src/lib/github.test.ts`, and
 `e2e/github-integration.browser.md`.
 
 Follow-up 2026-09-25: chat messages unfurl up to three GitHub repository, pull
 request and issue previews through `gh api`, and PR badges use the same lookup.
-Proof: `server/github-previews.test.ts`, `src/lib/markdown/github-links.test.ts`,
+Proof: `server/integrations/github-previews.test.ts`, `src/lib/markdown/github-links.test.ts`,
 `src/lib/github-previews.test.ts`, and `e2e/github-embeds.browser.md`.
 
 Follow-up 2026-09-30: removed the chat's changes card, its `propose_changes`
@@ -638,7 +638,7 @@ Follow-up 2026-10-16: chat messages unfurl up to three Datadog share links and
 dashboard links, with widget graphs drawn by Datadog's graph snapshots, through
 several Datadog orgs: Settings → Integrations → Datadog keeps a list of `pup`
 sessions and sites, and runs `pup auth login` from Settings or a card. Proof:
-`server/datadog.test.ts`, `server/datadog-previews.test.ts`,
+`server/integrations/datadog.test.ts`, `server/integrations/datadog-previews.test.ts`,
 `src/lib/markdown/datadog-links.test.ts`, `src/lib/datadog.test.ts`, and
 `e2e/datadog-embeds.browser.md`.
 

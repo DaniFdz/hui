@@ -23,7 +23,7 @@ import type { PullRequestState, SessionPullRequest } from "./api/github.ts";
 import { isMergedCleanupCandidate, riskAcknowledged } from "./git/worktrees.ts";
 import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRisk, WorktreeRemovalResult, WorktreeRow, WorktreeSessionRef } from "./api/worktrees.ts";
 import { WORKTREES_DIR } from "./paths.ts";
-import { pullRequestBodyPreview } from "./pull-requests.ts";
+import { pullRequestBodyPreview } from "./integrations/pull-requests.ts";
 import type { SessionRecord } from "./sessions.ts";
 
 export type CommandResult = { code: number; stdout: string; stderr: string };

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import * as Schema from "./api/jira.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import * as Schema from "../api/jira.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,7 +29,7 @@ import {
   validateCreateInput,
   type JiraFetch,
 } from "./jira.ts";
-import type { TranscriptEntry } from "./runtimes/types.ts";
+import type { TranscriptEntry } from "../runtimes/types.ts";
 
 const tool = (patch: Partial<Extract<TranscriptEntry, { kind: "tool" }>>): TranscriptEntry => ({
   kind: "tool", id: "call", name: "bash", ...patch,

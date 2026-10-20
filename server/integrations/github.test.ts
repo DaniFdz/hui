@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { GitHubConnection } from "./api/github.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import { GitHubConnection } from "../api/github.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ import {
   parseGhVersion,
 } from "./github.ts";
 
-const FIXTURE = fileURLToPath(new URL("../e2e/github-cli-fixture.mjs", import.meta.url));
+const FIXTURE = fileURLToPath(new URL("../../e2e/github-cli-fixture.mjs", import.meta.url));
 
 async function fakeGh(patch: Record<string, string> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-gh-"));

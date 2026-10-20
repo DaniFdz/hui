@@ -12,7 +12,7 @@
  */
 import { execFile } from "node:child_process";
 
-import type { GitHubContributionAccount, GitHubContributions } from "./api/github.ts";
+import type { GitHubContributionAccount, GitHubContributions } from "../api/github.ts";
 import { GH_ENV, GITHUB_HOST, parseAccounts, spawnFailure } from "./github.ts";
 
 const DAY_MS = 86_400_000;

@@ -4,9 +4,9 @@
  * days shown beside it. `hui.ts` applies the `x-hui` guard before dispatching here.
  */
 import type { BotService } from "../bot-service.ts";
-import { FIRST_YEAR as GITHUB_FIRST_YEAR, type GitHubContributionsReader, latestYear } from "../github-contributions.ts";
-import type { GitHubPreviews } from "../github-previews.ts";
-import { type GitHubCli, GitHubCliError } from "../github.ts";
+import { FIRST_YEAR as GITHUB_FIRST_YEAR, type GitHubContributionsReader, latestYear } from "../integrations/github-contributions.ts";
+import type { GitHubPreviews } from "../integrations/github-previews.ts";
+import { type GitHubCli, GitHubCliError } from "../integrations/github.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { GitHubConnection, GitHubContributions, GitHubError, GitHubPreviewsResponse, SessionActivity, routeSchemas as githubRouteSchemas } from "../api/github.ts";

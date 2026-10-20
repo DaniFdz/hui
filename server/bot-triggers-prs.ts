@@ -11,7 +11,7 @@ import { execFile } from "node:child_process";
 
 import { BOT_TRIGGER_LIMITS } from "./bot-triggers-format.ts";
 import { parseGitHubUrl } from "./integrations/github-links.ts";
-import { GH_ENV } from "./github.ts";
+import { GH_ENV } from "./integrations/github.ts";
 
 /** A diff's text read at most: gh stops past it, and what came is cut to the delivery's budget. */
 const MAX_DIFF_BYTES = 8 * 1024 * 1024;

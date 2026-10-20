@@ -53,7 +53,7 @@ login, transcript or HUI registry was read or changed.
 
 Previews were served by the fake CLI; the real `gh api` payload shapes were
 checked against `repos/cli/cli`, `…/pulls/14517` and `…/issues/14517` and are
-covered by `server/github-previews.test.ts`. Streaming unfurl (800 ms settle)
+covered by `server/integrations/github-previews.test.ts`. Streaming unfurl (800 ms settle)
 is covered by code review, not a live streaming turn.
 
 ## Latest messages only, one `gh` call (2026-10-17)

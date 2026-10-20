@@ -18,7 +18,7 @@ import {
   type GitHubGraphQL,
 } from "./github-previews.ts";
 
-const FIXTURE = fileURLToPath(new URL("../e2e/github-cli-fixture.mjs", import.meta.url));
+const FIXTURE = fileURLToPath(new URL("../../e2e/github-cli-fixture.mjs", import.meta.url));
 
 const repo = { nameWithOwner: "cli/cli", description: "GitHub’s official command line tool", stargazerCount: 46408, forkCount: 9076, primaryLanguage: { name: "Go" }, isPrivate: false, isArchived: false };
 const pull = (patch: Record<string, unknown> = {}) => ({

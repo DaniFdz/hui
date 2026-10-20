@@ -7,7 +7,7 @@ import {
   pullRequestsFromTranscript,
   type PullRequestDetails,
 } from "./pull-requests.ts";
-import type { TranscriptEntry } from "./runtimes/types.ts";
+import type { TranscriptEntry } from "../runtimes/types.ts";
 
 const tool = (patch: Partial<Extract<TranscriptEntry, { kind: "tool" }>>): TranscriptEntry => ({
   kind: "tool", id: "call", name: "bash", ...patch,

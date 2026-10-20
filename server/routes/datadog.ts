@@ -2,8 +2,8 @@
  * `/__hui/datadog…`: the `pup` connection, its orgs and sign-in (`datadog.ts`) and dashboard and share previews
  * (`datadog-previews.ts`). `hui.ts` applies the `x-hui` guard before dispatching here.
  */
-import { DatadogError, type DatadogOrgs } from "../datadog.ts";
-import type { DatadogPreviews } from "../datadog-previews.ts";
+import { DatadogError, type DatadogOrgs } from "../integrations/datadog.ts";
+import type { DatadogPreviews } from "../integrations/datadog-previews.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { DatadogConnection, DatadogError as DatadogErrorResponse, DatadogPreviewsResponse, routeSchemas as datadogRouteSchemas } from "../api/datadog.ts";

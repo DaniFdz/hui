@@ -27,7 +27,7 @@ import { buildCallRecord, callCompletion, callSettings, createCallDelegate, repo
 import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
-import { PullRequestStatuses } from "./pull-requests.ts";
+import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
 import { botsEnabled, botsOn, readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";
 import { AUTOMATION_FILE, BROWSER_PROFILE_DIR, VSCODE_DIR, VSCODE_SERVER_DIR, WATCHERS_FILE, WATCHER_LOG_DIR } from "./paths.ts";
@@ -63,15 +63,15 @@ import {
   parentCandidates,
   validateCreateInput,
   type JiraConfig,
-} from "./jira.ts";
+} from "./integrations/jira.ts";
 import { registerAgentToolHandler } from "./agent-tools-bridge.ts";
 import { SubagentService } from "./subagents.ts";
 import { presentMediaForSession } from "./presented-media.ts";
-import { GitHubCli } from "./github.ts";
-import { GitHubContributionsReader } from "./github-contributions.ts";
-import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./github-previews.ts";
-import { DatadogOrgs } from "./datadog.ts";
-import { DatadogPreviews } from "./datadog-previews.ts";
+import { GitHubCli } from "./integrations/github.ts";
+import { GitHubContributionsReader } from "./integrations/github-contributions.ts";
+import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./integrations/github-previews.ts";
+import { DatadogOrgs } from "./integrations/datadog.ts";
+import { DatadogPreviews } from "./integrations/datadog-previews.ts";
 import { TaskSuggestionInputError, TaskSuggestionStore } from "./task-suggestions.ts";
 import { WatcherInputError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";

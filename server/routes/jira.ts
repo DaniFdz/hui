@@ -27,7 +27,7 @@ import {
   normalizeJiraSite,
   normalizeProjectKey,
   parentCandidates,
-} from "../jira.ts";
+} from "../integrations/jira.ts";
 import { liveSessions } from "../live-sessions.ts";
 import { runPiUtilityPrompt } from "../runtimes/pi.ts";
 import { sessionDigest } from "../session-digest.ts";

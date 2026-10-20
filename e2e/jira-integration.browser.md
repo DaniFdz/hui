@@ -90,4 +90,4 @@ use one tree level deeper, and no mark remains in the title row.
 The managed headless Brave reports `(hover: none)`; the hover was driven by
 the Browser tool's pointer, which the controller accepts per pointer type.
 Real Jira Cloud was not contacted: the REST shapes follow Atlassian's v3
-documentation and are exercised by the fixture and `server/jira.test.ts`.
+documentation and are exercised by the fixture and `server/integrations/jira.test.ts`.

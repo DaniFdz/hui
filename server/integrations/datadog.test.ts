@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import { DatadogConnection } from "./api/datadog.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import { DatadogConnection } from "../api/datadog.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 import { chmod, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "vitest";
 
-import { waitFor } from "./test-support/wait-for.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
-import { DATADOG_CLI_REQUIRED } from "./integrations/datadog-links.ts";
+import { DATADOG_CLI_REQUIRED } from "./datadog-links.ts";
 import {
   classifyPupFailure,
   DatadogError,
@@ -23,7 +23,7 @@ import {
   sessionStatus,
 } from "./datadog.ts";
 
-const FIXTURE = fileURLToPath(new URL("../e2e/pup-cli-fixture.mjs", import.meta.url));
+const FIXTURE = fileURLToPath(new URL("../../e2e/pup-cli-fixture.mjs", import.meta.url));
 const PROD = { name: "prod", site: "app.datadoghq.com" };
 
 async function fakePup(sessions: unknown[] = [], options: { loginTimeoutMs?: number; command?: string } = {}) {

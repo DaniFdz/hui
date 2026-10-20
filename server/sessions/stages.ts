@@ -2,7 +2,7 @@
 import type { SessionStage } from "../api/sessions.ts";
 import { isSessionStage, SESSION_STAGE_LABELS, SESSION_STAGES } from "./session-stages.ts";
 import { liveSessions } from "../live-sessions.ts";
-import { pullRequestsFromTranscript } from "../pull-requests.ts";
+import { pullRequestsFromTranscript } from "../integrations/pull-requests.ts";
 import { SessionNotFoundError, updateRegistry } from "../sessions.ts";
 
 export function knownPullRequestUrls(sessionId: string): string[] {
