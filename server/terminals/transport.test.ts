@@ -7,9 +7,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { WebSocket } from "ws";
 import { terminals } from "./terminals.ts";
-import { attachTerminalTransport, createOutputBatcher, TERMINAL_BATCH_BYTES } from "./terminal-transport.ts";
-import { TerminalControlFrame, TerminalResponse, TerminalSnapshot, TerminalOperationResponse, TerminalConnectResponse, TerminalsResponse } from "./api/terminals.ts";
-import { expectSchema } from "./test-support/api-schema.ts";
+import { attachTerminalTransport, createOutputBatcher, TERMINAL_BATCH_BYTES } from "./transport.ts";
+import { TerminalControlFrame, TerminalResponse, TerminalSnapshot, TerminalOperationResponse, TerminalConnectResponse, TerminalsResponse } from "../api/terminals.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share one PTY", { timeout: 20_000 }, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-terminal-api-"));
@@ -20,9 +20,9 @@ test("guarded HTTP, one-use same-origin WebSocket tickets and agent bridge share
     { id: "alpha", title: "Alpha", tool: "pi", cwd: dir, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
     { id: "beta", title: "Beta", tool: "pi", cwd: dir, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
   ], groups: [] }));
-  const { middleware } = await import("./hui.ts");
-  const { stopBackend } = await import("./backend.ts");
-  const { agentToolEnvironment } = await import("./agent-tools-bridge.ts");
+  const { middleware } = await import("../hui.ts");
+  const { stopBackend } = await import("../backend.ts");
+  const { agentToolEnvironment } = await import("../agent-tools-bridge.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   const detach = attachTerminalTransport(server, new Set(["127.0.0.1"]));
   server.listen(0, "127.0.0.1");

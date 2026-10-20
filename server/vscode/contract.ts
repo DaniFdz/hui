@@ -1,5 +1,5 @@
 /** Server-local VS Code routes, provider order, actions and safe workbench theme normalization. */
-import type { VscodeAction, VscodeProviderKind, VscodeTheme } from "./api/vscode.ts";
+import type { VscodeAction, VscodeProviderKind, VscodeTheme } from "../api/vscode.ts";
 
 export const VSCODE_BASE_PATH = "/__hui/vscode";
 /** A frame's first load: trades a one-use ticket for the proxy's cookie, then redirects to the folder. */

@@ -2,7 +2,7 @@
  * The VS Code view's shared status: the last status any screen loaded (what can run here, what a first open must ask,
  * an install's progress), told to every listener, and the settings re-read after a license action. Requests go through
  * src/api/vscode.ts; HUI's colors for it come from theme/vscode-theme.ts. The gateway runs and guards the server
- * (server/vscode.ts).
+ * (server/vscode/vscode.ts).
  */
 import { refreshSettings } from "./settings/settings-store.ts";
 import { fetchVscodeStatus, postVscodeAction, postVscodeConnect } from "../api/vscode.ts";

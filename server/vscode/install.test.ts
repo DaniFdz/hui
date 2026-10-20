@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 import { test, type TestContext } from "vitest";
 import {
   OPENVSCODE_SERVER_RELEASE, openvscodeArch, openvscodeAssetUrl, VscodeInstaller, type OpenvscodeRelease,
-} from "./vscode-install.ts";
+} from "./install.ts";
 
 test("Node's architecture maps onto the release's Linux assets, and nothing else is offered", () => {
   assert.equal(openvscodeArch("linux", "x64"), "x64");

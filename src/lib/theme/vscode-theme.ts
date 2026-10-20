@@ -1,6 +1,6 @@
 /**
  * HUI's colors for the VS Code view, read from the document's tokens as #rrggbb so the gateway can hand them to the
- * workbench (server/vscode-proxy.ts). A token can be an expression only an element can resolve: themes imported
+ * workbench (server/vscode/proxy.ts). A token can be an expression only an element can resolve: themes imported
  * from tweakcn (and the built-in Catppuccin, Dracula and HUI) pair every color as `light-dark(…)`, which a canvas
  * cannot parse. Each token is therefore resolved by a probe element first, then converted by a 1×1 canvas, which
  * also composites a translucent color over the background. A token that still cannot be read is left out, never

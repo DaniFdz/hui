@@ -7,18 +7,18 @@ import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
-import { readObservability } from "./observability.ts";
-import { waitFor } from "./test-support/wait-for.ts";
+import { readObservability } from "../observability.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 import { VscodeService } from "./vscode.ts";
-import { defaultVscodeProbe } from "./vscode-providers.ts";
+import { defaultVscodeProbe } from "./providers.ts";
 import {
   attachVscodeTransport, downstreamHeaders, isVscodeProxyPath, isWorkbenchPath, patchWorkbenchHtml, proxyVscodeHttp, scopeVscodeCookie,
   serveVscodeEnter, upstreamHeaders, vscodeCookieSessionIds, vscodeThemeDefaults,
-} from "./vscode-proxy.ts";
-import { DEFAULT_VSCODE_SETTINGS } from "./hui-settings.ts";
-import { normalizeVscodeTheme, vscodeContrast } from "./vscode-contract.ts";
+} from "./proxy.ts";
+import { DEFAULT_VSCODE_SETTINGS } from "../hui-settings.ts";
+import { normalizeVscodeTheme, vscodeContrast } from "./contract.ts";
 
-const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", import.meta.url));
+const FAKE = fileURLToPath(new URL("../test-support/fake-vscode-server.mjs", import.meta.url));
 const DARK = { background: "#101114", panel: "#17181c", elevated: "#202127", text: "#e6e6e6", border: "#2a2b31", accent: "#ff5c5c" };
 const LIGHT = { background: "#fbfaf8", panel: "#f3f1ec", elevated: "#ffffff", text: "#403c35" };
 
@@ -113,7 +113,7 @@ const FIXTURES = ["1.137", "1.141"] as const;
 
 test("VS Code 1.137's and 1.141's real serve-web pages get the token, and nothing else in them changes", async () => {
   for (const version of FIXTURES) {
-    const page = await readFile(fileURLToPath(new URL(`./test-support/vscode-workbench-${version}.html`, import.meta.url)), "utf8");
+    const page = await readFile(fileURLToPath(new URL(`../test-support/vscode-workbench-${version}.html`, import.meta.url)), "utf8");
     const patched = patchWorkbenchHtml(page, { token: "TOKEN", theme: LIGHT });
     const config = configOf(patched);
     assert.equal(config["connectionToken"], "TOKEN", version);

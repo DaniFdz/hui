@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { brotliDecompressSync, gunzipSync } from "node:zlib";
-import { compressBody, isCompressible, negotiateEncoding } from "./http-compression.ts";
+import { compressBody, isCompressible, negotiateEncoding } from "./compression.ts";
 
 test("encoding negotiation prefers brotli, honours q-values and falls back to identity", () => {
   assert.equal(negotiateEncoding("gzip, deflate, br, zstd"), "br");

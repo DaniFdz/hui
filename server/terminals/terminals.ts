@@ -1,6 +1,6 @@
 /**
  * Interactive shells the operator opens inside a conversation. Owns the PTY processes, their bounded replay
- * buffers (server/terminal-replay.ts), the byte stream subscribers receive and the per-session and global limits,
+ * buffers (server/terminals/replay.ts), the byte stream subscribers receive and the per-session and global limits,
  * and lets that conversation's agent use the same terminals through the terminal tool. Terminals live only in this
  * gateway process; closing one kills its whole process tree.
  */
@@ -9,10 +9,10 @@ import { execFileSync } from "node:child_process";
 import { userInfo } from "node:os";
 import { stripVTControlCharacters } from "node:util";
 import { spawn, type IPty } from "@lydell/node-pty";
-import type { TerminalSnapshot, TerminalView, TerminalOperationResponse } from "./api/terminals.ts";
-import { ReplayBuffer } from "./terminal-replay.ts";
+import type { TerminalSnapshot, TerminalView, TerminalOperationResponse } from "../api/terminals.ts";
+import { ReplayBuffer } from "./replay.ts";
 
-export type { TerminalSnapshot, TerminalView } from "./api/terminals.ts";
+export type { TerminalSnapshot, TerminalView } from "../api/terminals.ts";
 
 export const TERMINAL_BUFFER_BYTES = 256 * 1024;
 export const TERMINAL_INPUT_BYTES = 16 * 1024;

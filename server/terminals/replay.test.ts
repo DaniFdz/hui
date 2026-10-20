@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { ReplayBuffer } from "./terminal-replay.ts";
+import { ReplayBuffer } from "./replay.ts";
 
 const LIMIT = 64 * 1024;
 const bytes = (text: string) => Buffer.from(text, "utf8");

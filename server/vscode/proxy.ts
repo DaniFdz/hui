@@ -18,10 +18,10 @@ import { request as httpRequest } from "node:http";
 import type { EventEmitter } from "node:events";
 import type { Duplex } from "node:stream";
 import { brotliDecompressSync, gunzipSync, inflateSync } from "node:zlib";
-import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH } from "./vscode-contract.ts";
-import type { VscodeTheme } from "./api/vscode.ts";
-import { recordDiagnosticEvent } from "./observability.ts";
-import { validTerminalOrigin } from "./terminal-transport.ts";
+import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH } from "./contract.ts";
+import type { VscodeTheme } from "../api/vscode.ts";
+import { recordDiagnosticEvent } from "../observability.ts";
+import { validTerminalOrigin } from "../terminals/transport.ts";
 import { vscodeAgent, type VscodeService } from "./vscode.ts";
 
 export const VSCODE_COOKIE = "hui-vscode";

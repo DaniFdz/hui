@@ -14,7 +14,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { encodeBrowserFrame } from "./browser/transport.ts";
 import type { BrowserViewMessage } from "./api/browser.ts";
 import { BrowserToolError, type BrowserViewFrame, type BrowserViewHandle, type BrowserViewListener } from "./browser/manager.ts";
-import { validTerminalOrigin } from "./terminal-transport.ts";
+import { validTerminalOrigin } from "./terminals/transport.ts";
 
 export const BROWSER_STREAM_PATH = "/__hui/browser-stream";
 /** A slow client skips frames instead of queueing them; the newest frame is

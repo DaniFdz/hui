@@ -17,10 +17,10 @@ import { allowedHostsFromConfig, tailnetFromStatus } from "./host.ts";
 import { liveSessions } from "./live-sessions.ts";
 import { attachLiveStreams, middleware } from "./hui.ts";
 import { startBackend, stopBackend } from "./backend.ts";
-import { serveStatic } from "./static-files.ts";
+import { serveStatic } from "./http/static-files.ts";
 import { configureUpdates } from "./updates.ts";
-import { terminals } from "./terminals.ts";
-import { attachTerminalTransport } from "./terminal-transport.ts";
+import { terminals } from "./terminals/terminals.ts";
+import { attachTerminalTransport } from "./terminals/transport.ts";
 
 export type GatewayOptions = { packageRoot: string; installationRoot?: string; host: string; port: number; allowedHosts: string[] };
 function listen(server: Server, host: string, port: number): Promise<number> {

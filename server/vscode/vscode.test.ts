@@ -4,15 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 import { fileURLToPath } from "node:url";
-import { waitFor } from "./test-support/wait-for.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 import { parseVscodeHelp, vscodeEnvironment, vscodeLaunchArguments, VscodeError, VscodeService, type VscodeProbe } from "./vscode.ts";
 import {
   defaultVscodeProbe, desktopCodeCandidates, detectVscodeProviders, parseCodeVersion, parseServeWebHelp, parseServeWebProgress, planVscode,
   serveWebLaunchArguments, type VscodeDetection,
-} from "./vscode-providers.ts";
-import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "./hui-settings.ts";
+} from "./providers.ts";
+import { DEFAULT_VSCODE_SETTINGS, type VscodeSettings } from "../hui-settings.ts";
 
-const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", import.meta.url));
+const FAKE = fileURLToPath(new URL("../test-support/fake-vscode-server.mjs", import.meta.url));
 const COMMIT = "645f29cc3176500b4b5762ba887cf2a7f0ffdf2c";
 const OPENVSCODE_HELP = "OpenVSCode Server 1.109.5\n\nUsage: openvscode-server [options]\n  --server-base-path <path>\n  --connection-token-file <path>\n  --server-data-dir\n  --extensions-dir <dir>\n";
 const CODE_SERVER_HELP = "code-server 4.96.4 abc123 with Code 1.96.4\n\nUsage: code-server [options] [path]\n  --bind-addr\n  --auth\n  --user-data-dir\n  --extensions-dir\n";

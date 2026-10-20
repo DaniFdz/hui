@@ -8,7 +8,7 @@ import { liveSessions } from "./live-sessions.ts";
 import { mirrorDiagnosticLogs, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { stopAgentToolBridge } from "./agent-tools-bridge.ts";
-import { terminals } from "./terminals.ts";
+import { terminals } from "./terminals/terminals.ts";
 import { ensureConfigDir } from "./themes.ts";
 import { readRegistry, type SessionRecord } from "./sessions.ts";
 import {

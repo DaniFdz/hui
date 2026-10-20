@@ -104,7 +104,7 @@ no start page, hidden secondary side bar, AI chat off) from
 `packages/vscode/src/server/proxy.ts`, and the frame's "Starting VS Code"
 presentation from `packages/vscode/src/server/render.ts` and
 `packages/vscode/src/client/style.css`. HUI's versions are
-`server/vscode-proxy.ts` and `src/components/vscode-view.ts` with
+`server/vscode/proxy.ts` and `src/components/vscode-view.ts` with
 `src/styles/vscode-view.css`.
 
 HUI's shared terminal adapts AgentsInTheCloud's Gespenst terminal client at the

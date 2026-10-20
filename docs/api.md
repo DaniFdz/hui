@@ -4328,7 +4328,7 @@ killed 2 seconds later if still there.
 
 **openvscode-server install.** Linux only, for `process.arch` `x64`, `arm64` or
 `arm` (asset `armhf`). HUI pins one release (`OPENVSCODE_SERVER_RELEASE` in
-`server/vscode-install.ts`: 1.109.5, with the size and SHA-256 of each asset) and
+`server/vscode/install.ts`: 1.109.5, with the size and SHA-256 of each asset) and
 downloads
 `https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v<v>/openvscode-server-v<v>-linux-<arch>.tar.gz`
 (`HUI_OPENVSCODE_SERVER_MIRROR` replaces the base for a mirror serving the same

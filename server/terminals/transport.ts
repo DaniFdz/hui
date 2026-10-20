@@ -9,7 +9,7 @@ import type { IncomingMessage } from "node:http";
 import type { EventEmitter } from "node:events";
 import { WebSocketServer, WebSocket } from "ws";
 import { terminals, TerminalService, TerminalError, TERMINAL_INPUT_BYTES, type TerminalStreamEvent } from "./terminals.ts";
-import type { TerminalControlFrame } from "./api/terminals.ts";
+import type { TerminalControlFrame } from "../api/terminals.ts";
 
 /** A client this far behind is dropped; it reconnects and replays instead of queueing unbounded output. */
 export const TERMINAL_MAX_BUFFERED_BYTES = 1024 * 1024;

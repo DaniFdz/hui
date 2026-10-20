@@ -6,7 +6,7 @@
 import type { Plugin } from "vite";
 import { attachLiveStreams, middleware } from "./hui.ts";
 import { startBackend, stopBackend } from "./backend.ts";
-import { attachTerminalTransport } from "./terminal-transport.ts";
+import { attachTerminalTransport } from "./terminals/transport.ts";
 import { recordDiagnosticEvent } from "./observability.ts";
 
 const GESPENST_NODE_STUB = "\0hui:gespenst-node-builtin";

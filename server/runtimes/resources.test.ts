@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { parseProcessRows, processTreeMemory } from "./runtime-resources.ts";
+import { parseProcessRows, processTreeMemory } from "./resources.ts";
 
 test("parses ps rows and rejects malformed process data", () => {
   assert.deepEqual(parseProcessRows(" 10 1 2048\n11 10 512\ninvalid\n12 10 -1\n"), [

@@ -7,7 +7,7 @@ import { displayPath } from "../working-directories.ts";
 import { liveSessions, type SessionStatusUpdate } from "../live-sessions.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { pullRequestsFromTranscript, type PullRequestStatuses } from "../integrations/pull-requests.ts";
-import { runtimeMemoryByPid } from "../runtime-resources.ts";
+import { runtimeMemoryByPid } from "../runtimes/resources.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { groupSessions, readSessionRegistry, updateRegistry, type SessionRecord } from "../sessions.ts";
 import type { WatcherService } from "../watchers.ts";

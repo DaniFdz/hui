@@ -17,7 +17,7 @@ import type { PromptAttachment } from "../runtimes/types.ts";
 import { SessionNotFoundError, updateRegistry, upsert, type SessionRecord } from "../sessions.ts";
 import type { SubagentService } from "../subagents.ts";
 import type { TaskSuggestionStore } from "../task-suggestions.ts";
-import { terminals } from "../terminals.ts";
+import { terminals } from "../terminals/terminals.ts";
 import type { WatcherService } from "../watchers.ts";
 import { workers } from "../workers.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";

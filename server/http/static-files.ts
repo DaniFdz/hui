@@ -7,7 +7,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, isAbsolute, join, relative, sep } from "node:path";
-import { COMPRESSION_MIN_BYTES, compressBody, isCompressible, negotiateEncoding, type ContentEncoding } from "./http-compression.ts";
+import { COMPRESSION_MIN_BYTES, compressBody, isCompressible, negotiateEncoding, type ContentEncoding } from "./compression.ts";
 
 const DEEP_LINK_SECTIONS = ["sessions", "settings", "bots"] as const;
 

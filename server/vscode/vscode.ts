@@ -20,21 +20,21 @@ import { Agent, get as httpGet } from "node:http";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH } from "./vscode-contract.ts";
-import type { VscodeConnection, VscodeErrorCode, VscodeFlavor, VscodeProvider, VscodeState, VscodeStatus, VscodeTheme } from "./api/vscode.ts";
-import type { VscodeSettings } from "./hui-settings.ts";
+import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH } from "./contract.ts";
+import type { VscodeConnection, VscodeErrorCode, VscodeFlavor, VscodeProvider, VscodeState, VscodeStatus, VscodeTheme } from "../api/vscode.ts";
+import type { VscodeSettings } from "../hui-settings.ts";
 import {
   defaultVscodeProbe, detectVscodeProviders, parseServeWebProgress, planVscode, publicProvider, serveWebLaunchArguments,
   vscodeEnvironment, vscodeLaunchArguments, type DetectedProvider, type VscodePlan, type VscodeProbe,
-} from "./vscode-providers.ts";
-import type { VscodeInstaller } from "./vscode-install.ts";
+} from "./providers.ts";
+import type { VscodeInstaller } from "./install.ts";
 
 /** The key a cookie session is stored under: the id itself never sits in gateway memory. */
 function sessionDigest(sessionId: string): string {
   return createHash("sha256").update(sessionId).digest("base64url");
 }
 
-export { parseVscodeHelp, vscodeEnvironment, vscodeLaunchArguments, type VscodeProbe } from "./vscode-providers.ts";
+export { parseVscodeHelp, vscodeEnvironment, vscodeLaunchArguments, type VscodeProbe } from "./providers.ts";
 
 export class VscodeError extends Error {
   status: number;

@@ -7,7 +7,7 @@
  */
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
 import type { Static, TSchema } from "typebox";
-import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "../http-compression.ts";
+import { COMPRESSION_MIN_BYTES, compressBody, negotiateEncoding } from "./compression.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 

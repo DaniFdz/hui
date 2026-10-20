@@ -2,7 +2,7 @@
  * The terminal Work view kind: one tab per shared terminal of the conversation, drawn by `<hui-terminal-pane>`.
  * "New terminal" creates a PTY in the gateway; closing the tab only hides it (the shell keeps running and can be
  * reopened from the launcher menu); "End terminal" inside the view stops it. The PTYs and the agent's terminal tool
- * belong to the gateway (`server/terminals.ts`).
+ * belong to the gateway (`server/terminals/terminals.ts`).
  */
 import { html, svg } from "lit";
 import { createTerminal, listTerminals } from "../../api/terminals.ts";

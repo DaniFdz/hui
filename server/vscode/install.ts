@@ -14,7 +14,7 @@ import { Agent as HttpAgent, get as httpGet, type IncomingMessage } from "node:h
 import { Agent as HttpsAgent, get as httpsGet } from "node:https";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { VscodeInstallPhase, VscodeInstallStatus } from "./api/vscode.ts";
+import type { VscodeInstallPhase, VscodeInstallStatus } from "../api/vscode.ts";
 
 export type OpenvscodeArch = "x64" | "arm64" | "armhf";
 export type OpenvscodeRelease = { version: string; assets: Record<OpenvscodeArch, { size: number; sha256: string }> };
