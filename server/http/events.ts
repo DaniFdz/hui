@@ -3,7 +3,7 @@
  * session's messages as named events (the SSE routes and the session WebSocket both use it).
  */
 import type { ServerResponse } from "node:http";
-import { liveSessions } from "../sessions/live-sessions.ts";
+import { liveSessions, type SessionSnapshot } from "../sessions/live-sessions.ts";
 
 /** How long an event stream may sit idle before a comment proves it is alive. */
 export const HEARTBEAT_MS = 15_000;
@@ -21,12 +21,13 @@ export function writeEvent(response: ServerResponse, event: string, data: unknow
 export function watchSessionEvents(
   id: string,
   send: (event: string, data: unknown) => void,
-  sessions: Pick<typeof liveSessions, "watch"> = liveSessions,
+  sessions: Pick<typeof liveSessions, "watch"> & Partial<Pick<typeof liveSessions, "revision">> = liveSessions,
+  { slim = false, heldRevision }: { slim?: boolean; heldRevision?: number } = {},
 ): () => void {
   const watched = sessions.watch(id, (message) => {
     switch (message.kind) {
       case "snapshot":
-        send("snapshot", message.snapshot);
+        send("snapshot", slim && message.transcriptUnchanged ? withoutTranscript(message.snapshot) : message.snapshot);
         break;
       case "transcript":
         send("transcript", message.entries);
@@ -51,6 +52,11 @@ export function watchSessionEvents(
         break;
     }
   }, { reader: true });
-  send("snapshot", watched.snapshot);
+  const held = slim && heldRevision !== undefined && heldRevision === sessions.revision?.(id);
+  send("snapshot", held ? withoutTranscript(watched.snapshot) : watched.snapshot);
   return watched.unsubscribe;
+}
+
+function withoutTranscript({ transcript: _transcript, ...snapshot }: SessionSnapshot): Omit<SessionSnapshot, "transcript"> {
+  return snapshot;
 }

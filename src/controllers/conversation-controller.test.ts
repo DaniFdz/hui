@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
-import type { SessionStatus, SessionStreamHandlers, SessionView } from "../api/sessions.ts";
+import type { SessionSnapshot, SessionStatus, SessionStreamHandlers, SessionView, SubagentTaskView } from "../api/sessions.ts";
 import { ConversationController } from "./conversation-controller.ts";
 
 const fake = vi.hoisted(() => ({
   modelRequests: [] as string[],
   modelsFail: false,
   thinking: [] as { id: string; level: string; resolve: (level: string) => void }[],
-  opens: [] as { id: string; resolve: (status: SessionStatus) => void }[],
-  streams: [] as { id: string; handlers: SessionStreamHandlers; stopped: boolean }[],
+  opens: [] as { id: string; resolve: (status: SessionStatus, snapshot?: Partial<SessionSnapshot>) => void }[],
+  streams: [] as { id: string; handlers: SessionStreamHandlers; heldRevision?: number; stopped: boolean }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
   loadModels: async (id: string) => {
@@ -19,10 +19,14 @@ vi.mock("../api/sessions.ts", () => ({
   setSessionThinking: (id: string, level: string) => new Promise((resolve) => fake.thinking.push({ id, level, resolve })),
   openSession: (id: string) => new Promise((resolve) => fake.opens.push({
     id,
-    resolve: (status) => resolve({ session: { id, status }, transcript: [] }),
+    resolve: (status, snapshot = {}) => resolve({
+      session: { id, status },
+      snapshot: { transcript: [], status, queue: { steering: [], followUp: [] }, questions: [], subagents: [], ...snapshot },
+      revision: 7,
+    }),
   })),
-  subscribeSession: (id: string, handlers: SessionStreamHandlers) => {
-    const stream = { id, handlers, stopped: false };
+  subscribeSession: (id: string, handlers: SessionStreamHandlers, heldRevision?: number) => {
+    const stream = { id, handlers, heldRevision, stopped: false };
     fake.streams.push(stream);
     return () => { stream.stopped = true; };
   },
@@ -41,10 +45,11 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 function conversation(state: { selected?: SessionView; streaming?: boolean } = {}) {
   const errors: string[] = [];
   let updates = 0;
+  let refreshes = 0;
   const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => { updates += 1; }, updateComplete: Promise.resolve(true), renderRoot: { querySelector: () => null } as unknown as HTMLElement };
   const controller = new ConversationController(host, {
     showError: (message) => errors.push(message),
-    refreshSessions: async () => {},
+    refreshSessions: async () => { refreshes += 1; },
     paneCreating: () => false,
     paneCreationFailed: () => false,
     resetSession: () => {},
@@ -56,7 +61,7 @@ function conversation(state: { selected?: SessionView; streaming?: boolean } = {
   });
   controller.selected = state.selected;
   controller.streaming = state.streaming ?? false;
-  return { controller, errors, updates: () => updates };
+  return { controller, errors, updates: () => updates, refreshes: () => refreshes };
 }
 
 test("models are requested once per selection once the runtime is ready, and again after a failure", async () => {
@@ -128,6 +133,7 @@ test("only the session still selected opens and streams; its status frames reach
   assert.equal(controller.opening, false);
   assert.equal(controller.streaming, true);
   assert.deepEqual(fake.streams.map(({ id }) => id), ["s2"]);
+  assert.equal(fake.streams[0]?.heldRevision, 7, "the stream starts from the transcript the open already brought");
   fake.streams[0]?.handlers.onStatus("idle");
   assert.equal(controller.streaming, false);
   assert.equal(controller.selected?.status, "idle");
@@ -164,4 +170,22 @@ test("a conversation whose element is removed starts no stream for an open still
   } finally {
     vi.useRealTimers();
   }
+});
+
+test("a conversation keeps its transcript through a snapshot without one, and reads the session list only when its subagents change", async () => {
+  vi.stubGlobal("window", globalThis);
+  const { controller, refreshes } = conversation({ selected: { id: "s1" } as SessionView });
+  const child = (status: SubagentTaskView["status"]): SubagentTaskView =>
+    ({ taskId: "t1", sessionId: "c1", parentSessionId: "s1", title: "child", task: "look", status, startedAt: "2026-10-20T10:00:00.000Z", updatedAt: status === "running" ? "2026-10-20T10:00:00.000Z" : "2026-10-20T10:05:00.000Z" });
+  const sideUpdate = (status: SubagentTaskView["status"]) => ({ status: "idle" as const, queue: { steering: [], followUp: [] }, questions: [], subagents: [child(status)] });
+  void controller.open("s1");
+  fake.opens[0]?.resolve("idle", { transcript: [{ kind: "message", role: "user", text: "hello" }], subagents: [child("running")] });
+  await settle();
+  assert.equal(refreshes(), 0, "the shell's status stream already lists the children");
+  fake.streams[0]?.handlers.onSnapshot(sideUpdate("running"));
+  assert.deepEqual(controller.transcript.map((item) => item.kind === "message" ? item.text : item.kind), ["hello"]);
+  assert.equal(refreshes(), 0);
+  fake.streams[0]?.handlers.onSnapshot(sideUpdate("completed"));
+  assert.equal(refreshes(), 1);
+  assert.equal(controller.transcript.length, 1);
 });

@@ -34,13 +34,15 @@ export type SessionModelResponse = { "model": (RuntimeModel) | (null); };
 
 export type SessionModelsResponse = { "models": Array<RuntimeModel>; };
 
-export type SessionOpenResponse = { "session": SessionView; "transcript": Array<TranscriptEntry>; "snapshot": SessionSnapshot; };
+export type SessionOpenResponse = { "session": SessionView; "snapshot": SessionSnapshot; "revision"?: number; };
 
 export type SessionQuestion = (RuntimeQuestion) | ({ "id": string; "method": "secret"; "title": string; "message": string; }) | ({ "id": string; "method": "questionnaire"; "title": string; "questions": Array<QuestionnaireQuestion>; });
 
 export type SessionSnapshot = { "transcript": Array<TranscriptEntry>; "status": SessionStatus; "model"?: RuntimeModel; "usage"?: RuntimeUsage; "thinking"?: string; "fast"?: boolean; "queue": RuntimeQueue; "questions": Array<SessionQuestion>; "subagents": Array<SubagentTaskView>; "suggestions"?: Array<TaskSuggestion>; "watchers"?: Array<Watcher>; "compaction"?: RuntimeCompaction; };
 
-export type SessionStreamFrame = ({ "event": "snapshot"; "data": SessionSnapshot; }) | ({ "event": "transcript"; "data": Array<TranscriptEntry>; }) | ({ "event": "status"; "data": { "status": SessionStatus; }; }) | ({ "event": "event"; "data": SessionEvent; }) | ({ "event": "model"; "data": RuntimeModel; }) | ({ "event": "thinking_level"; "data": { "level": string; }; }) | ({ "event": "fast"; "data": { "fast": boolean; }; }) | ({ "event": "closed"; "data": Record<string, unknown>; });
+export type SessionStreamFrame = ({ "event": "snapshot"; "data": SessionStreamSnapshot; }) | ({ "event": "transcript"; "data": Array<TranscriptEntry>; }) | ({ "event": "status"; "data": { "status": SessionStatus; }; }) | ({ "event": "event"; "data": SessionEvent; }) | ({ "event": "model"; "data": RuntimeModel; }) | ({ "event": "thinking_level"; "data": { "level": string; }; }) | ({ "event": "fast"; "data": { "fast": boolean; }; }) | ({ "event": "closed"; "data": Record<string, unknown>; });
+
+export type SessionStreamSnapshot = { "transcript"?: Array<TranscriptEntry>; "status": SessionStatus; "model"?: RuntimeModel; "usage"?: RuntimeUsage; "thinking"?: string; "fast"?: boolean; "queue": RuntimeQueue; "questions": Array<SessionQuestion>; "subagents": Array<SubagentTaskView>; "suggestions"?: Array<TaskSuggestion>; "watchers"?: Array<Watcher>; "compaction"?: RuntimeCompaction; };
 
 export type SessionThinkingRequest = { "level": ThinkingLevel; };
 

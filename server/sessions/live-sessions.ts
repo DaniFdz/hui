@@ -103,7 +103,7 @@ export type SessionSnapshot = {
 /** Everything a browser watching one session can receive: pi's events, and the
  * lifecycle pi has no opinion about. */
 export type SessionStreamMessage =
-  | { kind: "snapshot"; snapshot: SessionSnapshot }
+  | { kind: "snapshot"; snapshot: SessionSnapshot; transcriptUnchanged?: true }
   | { kind: "transcript"; entries: TranscriptEntry[] }
   | { kind: "event"; event: RuntimeEvent }
   | { kind: "status"; status: SessionStatus }
@@ -164,6 +164,7 @@ type Live = {
   unsubscribe?: () => void;
   unsubscribeExit?: () => void;
   subscribers: Set<Subscriber>;
+  revision: number;
   /** Detailed browser streams currently presenting this conversation. Internal
    * lifecycle watchers do not count as readers. */
   readers: number;
@@ -252,6 +253,7 @@ export class LiveSessions {
       || live.status === "running" || live.status === "waiting" || live.followUps.length > 0);
   }
   #live = new Map<string, Live>();
+  #revisions = 0;
   #statusSubscribers = new Set<StatusSubscriber>();
   /** Deleted ids stay tombstoned for this gateway lifetime so a request that
    * read the old row before DELETE committed cannot start it afterwards. */
@@ -330,6 +332,7 @@ export class LiveSessions {
       submissions: 0,
       bootStartedAt: Date.now(),
       subscribers: new Set(),
+      revision: ++this.#revisions,
       readers: 0,
       transcript: [],
       queue: { steering: [], followUp: [] },
@@ -389,7 +392,11 @@ export class LiveSessions {
     if (!live) return;
     // A HUI question starts or ends a wait, which the session list shows.
     this.#setStatus(live, this.#reported(live));
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id), transcriptUnchanged: true });
+  }
+
+  revision(id: string): number | undefined {
+    return this.#live.get(id)?.revision;
   }
 
   /** Whether this gateway currently owns a runtime lifecycle for the id.
@@ -1743,6 +1750,7 @@ export class LiveSessions {
   }
 
   #broadcast(live: Live, message: SessionStreamMessage): void {
+    live.revision = ++this.#revisions;
     for (const subscriber of live.subscribers) {
       subscriber(message);
     }

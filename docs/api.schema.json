@@ -8607,21 +8607,17 @@
       "type": "object",
       "required": [
         "session",
-        "transcript",
         "snapshot"
       ],
       "properties": {
         "session": {
           "$ref": "#/$defs/SessionView"
         },
-        "transcript": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/TranscriptEntry"
-          }
-        },
         "snapshot": {
           "$ref": "#/$defs/SessionSnapshot"
+        },
+        "revision": {
+          "type": "number"
         }
       }
     },
@@ -9109,7 +9105,7 @@
               "const": "snapshot"
             },
             "data": {
-              "$ref": "#/$defs/SessionSnapshot"
+              "$ref": "#/$defs/SessionStreamSnapshot"
             }
           }
         },
@@ -9255,20 +9251,78 @@
         }
       ]
     },
+    "SessionStreamSnapshot": {
+      "type": "object",
+      "required": [
+        "status",
+        "queue",
+        "questions",
+        "subagents"
+      ],
+      "properties": {
+        "transcript": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranscriptEntry"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/SessionStatus"
+        },
+        "model": {
+          "$ref": "#/$defs/RuntimeModel"
+        },
+        "usage": {
+          "$ref": "#/$defs/RuntimeUsage"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "fast": {
+          "type": "boolean"
+        },
+        "queue": {
+          "$ref": "#/$defs/RuntimeQueue"
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionQuestion"
+          }
+        },
+        "subagents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SubagentTaskView"
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskSuggestion"
+          }
+        },
+        "watchers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Watcher"
+          }
+        },
+        "compaction": {
+          "$ref": "#/$defs/RuntimeCompaction"
+        }
+      }
+    },
     "SessionSubagent": {
       "type": "object",
       "required": [
         "taskId",
-        "task",
         "status",
         "startedAt",
         "updatedAt"
       ],
       "properties": {
         "taskId": {
-          "type": "string"
-        },
-        "task": {
           "type": "string"
         },
         "label": {
@@ -9284,9 +9338,6 @@
           "type": "string"
         },
         "endedAt": {
-          "type": "string"
-        },
-        "summary": {
           "type": "string"
         },
         "error": {
@@ -12955,6 +13006,7 @@
       "SessionQuestion",
       "SessionSnapshot",
       "SessionStreamFrame",
+      "SessionStreamSnapshot",
       "SessionThinkingRequest",
       "SessionThinkingResponse",
       "SideQuestionResult",

@@ -7,9 +7,8 @@
  * frames that belong to the composer, the backlog and the sidebar.
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
-import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionSnapshot, type SessionStatus, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
+import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
-import { EMPTY_QUEUE } from "../lib/composer/state.ts";
 import { announceTurnEnd } from "../lib/session/turn-end.ts";
 import { emptySessionPresentation, isCurrentSessionRequest, isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels, streamingAfterEvent, streamingForStatus } from "../lib/session/ui-state.ts";
 import { FINISHED_BATCH_VISIBLE_MS, isSubagentActive } from "../lib/subagent-activity.ts";
@@ -23,7 +22,7 @@ type ConversationDeps = {
   paneCreationFailed: () => boolean;
   resetSession: () => void;
   connectionLost: () => void;
-  adoptSnapshot: (snapshot: SessionSnapshot) => void;
+  adoptSnapshot: (snapshot: SessionStreamSnapshot) => void;
   adoptEvent: (event: RuntimeEvent) => void;
   statusChanged: (id: string, status: SessionStatus, interrupted: SessionView["interrupted"]) => void;
   flushLaunchPrompt: () => void;
@@ -154,17 +153,11 @@ export class ConversationController implements ReactiveController {
         return;
       }
       this.selected = opened.session;
-      this.applySnapshot(opened.snapshot ?? {
-        transcript: opened.transcript,
-        status: opened.session.status,
-        queue: EMPTY_QUEUE,
-        questions: [],
-        subagents: [],
-      });
-      this.thinking = opened.snapshot?.thinking ?? opened.session.thinking ?? "medium";
+      this.applySnapshot(opened.snapshot, true);
+      this.thinking = opened.snapshot.thinking ?? opened.session.thinking ?? "medium";
       this.streaming = streamingForStatus(opened.session.status);
       this.connection = "live";
-      this.#startStream(id);
+      this.#startStream(id, opened.revision);
       this.requestModelsWhenReady(id, opened.session.status);
     } catch (error) {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
@@ -181,7 +174,7 @@ export class ConversationController implements ReactiveController {
     }
   }
 
-  #startStream(id: string): void {
+  #startStream(id: string, heldRevision?: number): void {
     // An older attempt may have installed a stream while a newer open request
     // was pending. Replacing it is an ownership transfer, so close it first.
     this.#streamStop?.();
@@ -236,19 +229,21 @@ export class ConversationController implements ReactiveController {
         }
         this.#host.requestUpdate();
       },
-    });
+    }, heldRevision);
   }
 
-  applySnapshot(snapshot: SessionSnapshot): void {
-    this.transcript = keepSentPreviews(normalizeTranscript(snapshot.transcript, {
-      streaming: streamingForStatus(snapshot.status),
-    }), this.transcript);
+  applySnapshot(snapshot: SessionStreamSnapshot, initial = false): void {
+    if (snapshot.transcript) {
+      this.transcript = keepSentPreviews(normalizeTranscript(snapshot.transcript, {
+        streaming: streamingForStatus(snapshot.status),
+      }), this.transcript);
+    }
     const previousTasks = this.subagents.map((task) => `${task.sessionId}:${task.status}:${task.updatedAt}`).join("|");
     this.subagents = snapshot.subagents ?? [];
     this.#scheduleSubagentExpiry();
     const nextTasks = this.subagents.map((task) => `${task.sessionId}:${task.status}:${task.updatedAt}`).join("|");
     this.#deps.adoptSnapshot(snapshot);
-    if (previousTasks !== nextTasks) void this.#deps.refreshSessions();
+    if (!initial && previousTasks !== nextTasks) void this.#deps.refreshSessions();
     this.adoptSnapshot(snapshot);
     this.#setStatus(snapshot.status);
   }
@@ -378,7 +373,7 @@ export class ConversationController implements ReactiveController {
     this.#modelsRequestedFor = "";
   }
 
-  adoptSnapshot(snapshot: SessionSnapshot): void {
+  adoptSnapshot(snapshot: SessionStreamSnapshot): void {
     // The open question stays while it is pending, whatever else arrives meanwhile.
     const question = snapshot.questions.find(({ id }) => id === this.question?.id) ?? snapshot.questions[0];
     if (question) this.showQuestion(question);

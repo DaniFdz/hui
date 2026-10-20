@@ -130,8 +130,13 @@ export const SessionEvent = Type.Union([
 ], { $id: "SessionEvent" });
 export type SessionEvent = Static<typeof SessionEvent>;
 
+export const SessionStreamSnapshot = Type.Object({
+  ...SessionSnapshot.properties, transcript: Type.Optional(SessionSnapshot.properties.transcript),
+}, { $id: "SessionStreamSnapshot" });
+export type SessionStreamSnapshot = Static<typeof SessionStreamSnapshot>;
+
 export const SessionStreamFrame = Type.Union([
-  Type.Object({ event: Type.Literal("snapshot"), data: SessionSnapshot }),
+  Type.Object({ event: Type.Literal("snapshot"), data: SessionStreamSnapshot }),
   Type.Object({ event: Type.Literal("transcript"), data: Type.Array(TranscriptEntry) }),
   Type.Object({ event: Type.Literal("status"), data: Type.Object({ status: SessionStatus }) }),
   Type.Object({ event: Type.Literal("event"), data: SessionEvent }),
@@ -143,7 +148,7 @@ export const SessionStreamFrame = Type.Union([
 export type SessionStreamFrame = Static<typeof SessionStreamFrame>;
 
 export const SessionOpenResponse = Type.Object({
-  session: SessionView, transcript: Type.Array(TranscriptEntry), snapshot: SessionSnapshot,
+  session: SessionView, snapshot: SessionSnapshot, revision: Type.Optional(Type.Number()),
 }, { $id: "SessionOpenResponse" });
 export type SessionOpenResponse = Static<typeof SessionOpenResponse>;
 

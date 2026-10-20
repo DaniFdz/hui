@@ -143,6 +143,8 @@ export type SessionSnapshot = {
   compaction?: RuntimeCompaction;
 };
 
+export type SessionStreamSnapshot = Omit<SessionSnapshot, "transcript"> & { transcript?: TranscriptEntry[] };
+
 /** Mirrors the server's RuntimeCompaction. */
 /** `blocking: false`: the runtime compacts beside the conversation (Durable), so
  * a run carries on and its working indicator stays. `background: true`: the
@@ -251,15 +253,15 @@ export async function loadGitCheckout(cwd: string): Promise<GitCheckoutInfo> {
 /** Ensures a runtime exists and returns what to paint immediately. */
 export async function openSession(
   id: string,
-): Promise<{ session: SessionView; transcript: TranscriptEntry[]; snapshot?: SessionSnapshot }> {
-  const body = await fetchJson<{ session?: SessionView; transcript?: TranscriptEntry[]; snapshot?: SessionSnapshot }>(
+): Promise<{ session: SessionView; snapshot: SessionSnapshot; revision?: number }> {
+  const body = await fetchJson<{ session?: SessionView; snapshot?: SessionSnapshot; revision?: number }>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/open`,
     { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
   );
-  if (!body.session) {
+  if (!body.session || !body.snapshot) {
     throw new Error("Could not open that session.");
   }
-  return { session: body.session, transcript: body.transcript ?? [], snapshot: body.snapshot };
+  return { session: body.session, snapshot: body.snapshot, revision: body.revision };
 }
 
 /** Resolves once pi has accepted the prompt, not when the turn finishes. */
@@ -504,7 +506,7 @@ export async function resumeSession(id: string): Promise<void> {
 export type SessionConnection = "live" | "reconnecting" | "stopped";
 
 export type SessionStreamHandlers = {
-  onSnapshot: (snapshot: SessionSnapshot) => void;
+  onSnapshot: (snapshot: SessionStreamSnapshot) => void;
   onTranscript: (entries: TranscriptEntry[]) => void;
   onEvent: (event: RuntimeEvent) => void;
   onStatus: (status: SessionStatus) => void;
@@ -582,9 +584,10 @@ export function subscribeSessionStatuses(
  * close code) means the server will keep refusing this session; both stop the
  * loop rather than replaying a session that is gone.
  */
-export function subscribeSession(id: string, handlers: SessionStreamHandlers): () => void {
+export function subscribeSession(id: string, handlers: SessionStreamHandlers, heldRevision?: number): () => void {
   const abort = new AbortController();
   let attempt = 0;
+  let held = heldRevision;
 
   void (async () => {
     while (!abort.signal.aborted) {
@@ -592,7 +595,8 @@ export function subscribeSession(id: string, handlers: SessionStreamHandlers): (
         // A connection that delivered a frame is healthy, so the backoff
         // restarts rather than growing across unrelated drops.
         attempt = 0;
-      });
+      }, held);
+      held = undefined;
       if (abort.signal.aborted) {
         return;
       }
@@ -631,6 +635,7 @@ async function connectOnce(
   handlers: SessionStreamHandlers,
   signal: AbortSignal,
   onLive: () => void,
+  heldRevision: number | undefined,
 ): Promise<StreamOutcome> {
   let socket: WebSocket;
   try {
@@ -647,6 +652,7 @@ async function connectOnce(
     }
     const address = new URL(((await response.json()) as { url: string }).url, location.href);
     address.protocol = address.protocol === "https:" ? "wss:" : "ws:";
+    if (heldRevision !== undefined) address.searchParams.set("revision", String(heldRevision));
     if (signal.aborted) return { kind: "dropped" };
     socket = new WebSocket(address);
   } catch {
@@ -752,7 +758,7 @@ async function connectStatusesOnce(
 function dispatch(name: string, payload: unknown, handlers: SessionStreamHandlers): boolean {
   switch (name) {
     case "snapshot":
-      handlers.onSnapshot(payload as SessionSnapshot);
+      handlers.onSnapshot(payload as SessionStreamSnapshot);
       break;
     case "transcript":
       handlers.onTranscript(payload as TranscriptEntry[]);

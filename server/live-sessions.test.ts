@@ -404,6 +404,31 @@ test("every session announces a prompt with a snapshot before its run, so screen
   manager.disposeAll();
 });
 
+test("a browser's stream leaves out a transcript it holds already or that a side update did not change; scripts get it every time", async () => {
+  const { watchSessionEvents } = await import("./http/events.ts");
+  const manager = new LiveSessions(factory([]));
+  const record = recordFor(`held-${crypto.randomUUID()}`);
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const opened = manager.revision(record.id);
+  const watch = (options: { slim?: boolean; heldRevision?: number }) => {
+    const snapshots: string[] = [];
+    const stop = watchSessionEvents(record.id, (event, data) => {
+      if (event === "snapshot") snapshots.push("transcript" in (data as object) ? "transcript" : "no transcript");
+    }, manager, options);
+    return { snapshots, stop };
+  };
+  const browser = watch({ slim: true, heldRevision: opened });
+  const script = watch({});
+  manager.notifySnapshot(record.id);
+  assert.deepEqual(browser.snapshots, ["no transcript", "no transcript"]);
+  assert.deepEqual(script.snapshots, ["transcript", "transcript"]);
+  const stale = watch({ slim: true, heldRevision: opened });
+  assert.deepEqual(stale.snapshots, ["transcript"], "a revision that has moved on gets the whole transcript");
+  for (const watcher of [browser, script, stale]) watcher.stop();
+  manager.disposeAll();
+});
+
 test("restart boots an idle session again from a new record and keeps its listeners", async () => {
   const started: FakeSession[] = [];
   const options: StartOptions[] = [];

@@ -449,10 +449,10 @@ export const middleware: Connect.NextHandleFunction = (request, response, next) 
 export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlySet<string>): () => void {
   const detachBrowser = attachBrowserTransport(server, managedBrowser, allowedHosts);
   const detachVscode = attachVscodeTransport(server, vscode, allowedHosts);
-  const detachSessions = attachSessionTransport(server, async (id, send) => {
+  const detachSessions = attachSessionTransport(server, async (id, send, heldRevision) => {
     const record = (await readRegistry()).find((session) => session.id === id);
     if (!record) return undefined;
-    return liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
+    return liveSessions.ensure(record) ? watchSessionEvents(id, send, liveSessions, { slim: true, heldRevision }) : undefined;
   }, allowedHosts);
   return () => { detachBrowser(); detachVscode(); detachSessions(); };
 }

@@ -196,7 +196,7 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   assert.deepEqual((await api(`sessions/${session.id}/models`)).models.map((model: { provider: string; id: string }) => `${model.provider}/${model.id}`), ["hui-e2e/fixture"]);
 
   await api(`sessions/${session.id}/prompt`, { text: "E2E_RICH" }); await waitIdle(session.id, "rich tool turn");
-  const history = (await api(`sessions/${session.id}/open`, {})).transcript;
+  const history = (await api(`sessions/${session.id}/open`, {})).snapshot.transcript;
   assert.match(JSON.stringify(history), /Installed SDK content/u);
   assert.equal((await api(`sessions/${session.id}/tools`)).backend, "sdk");
   const bundledSkills = (await api("pi")).skills.filter((skill: { origin?: string }) => skill.origin === "hui");
@@ -247,7 +247,7 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   status = JSON.parse(await command("gateway", "restart", "--json")); assert.notEqual(status.pid, beforeRestart);
   const reopened = await api(`sessions/${session.id}/open`, {});
   if (reopened.session.status !== "idle") await waitIdle(session.id, "reopened session");
-  assert.match(JSON.stringify((await api(`sessions/${session.id}/open`, {})).transcript), /Installed SDK content/u);
+  assert.match(JSON.stringify((await api(`sessions/${session.id}/open`, {})).snapshot.transcript), /Installed SDK content/u);
 
   const candidate = async (version: string, failActivation = false): Promise<string> => {
     const directory = join(temporary, `candidate-${version}`); await mkdir(directory);
@@ -404,13 +404,13 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   assert.equal((await doctor()).code, 0, "nothing left to fix");
   status = JSON.parse(await command("gateway", "start", "--port", "0", "--json"));
   await api(`sessions/${session.id}/open`, {}); await waitIdle(session.id, "moved session boot");
-  const movedHistory = (await api(`sessions/${session.id}/open`, {})).transcript as unknown[];
+  const movedHistory = (await api(`sessions/${session.id}/open`, {})).snapshot.transcript as unknown[];
   assert.match(JSON.stringify(movedHistory), /Installed SDK content/u, "the PI history moved along");
   assert.equal((await api(`sessions/${session.id}/tools`)).backend, "durable");
   const tools = (entries: unknown[]) => entries.filter((entry) => (entry as { kind?: string }).kind === "tool").length;
   const beforeTurn = tools(movedHistory);
   await api(`sessions/${session.id}/prompt`, { text: "E2E_RICH" }); await waitIdle(session.id, "first turn on Durable");
-  assert.equal(tools((await api(`sessions/${session.id}/open`, {})).transcript), beforeTurn + 1, "the moved session runs a tool turn on Durable");
+  assert.equal(tools((await api(`sessions/${session.id}/open`, {})).snapshot.transcript), beforeTurn + 1, "the moved session runs a tool turn on Durable");
 
   // A Durable run does not block an ordinary restart: Durable resumes it in the
   // replacement gateway, which asks the provider again and finishes the turn.
@@ -425,5 +425,5 @@ require('node:fs').writeFileSync(process.env.HUI_DESKTOP_PROOF, JSON.stringify({
   await fetch(`${providerUrl}/control/wait-replay-ready`, { signal: AbortSignal.timeout(20_000) });
   await fetch(`${providerUrl}/control/release-replay`, { method: "POST" });
   await waitIdle(session.id, "resumed Durable run");
-  assert.match(JSON.stringify((await api(`sessions/${session.id}/open`, {})).transcript), /replay suffix/u, "the resumed run finished");
+  assert.match(JSON.stringify((await api(`sessions/${session.id}/open`, {})).snapshot.transcript), /replay suffix/u, "the resumed run finished");
 });

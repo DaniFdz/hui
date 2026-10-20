@@ -203,7 +203,7 @@ test("real fixtures use distinct ports/state; doctor rejects wrong ports/provena
   await waitIdle(a.url, session.id);
   await huiApi(a.url, `sessions/${session.id}/prompt`, { text: "E2E_RICH" });
   await waitIdle(a.url, session.id);
-  const { transcript } = await huiApi(a.url, `sessions/${session.id}/open`, {});
+  const { snapshot: { transcript } } = await huiApi(a.url, `sessions/${session.id}/open`, {});
   const read = transcript.find((entry) => entry.kind === "tool" && entry.name === "read");
   assert.ok(read, `Real read tool missing: ${JSON.stringify(transcript)}`);
   assert.notEqual(read.failed, true);

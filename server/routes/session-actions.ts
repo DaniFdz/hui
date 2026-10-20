@@ -82,8 +82,8 @@ export function createSessionActionRoutes(deps: {
         const openedRecord = await liveSessions.markRead(id);
         return reply(SessionOpenResponse, {
           session: toView(openedRecord, liveSessions.status(id)),
-          transcript: liveSessions.transcript(id),
           snapshot: liveSessions.snapshot(id),
+          revision: liveSessions.revision(id),
         });
       }
       if (

@@ -454,7 +454,7 @@ export class ComposerController {
     this.#host.requestUpdate();
   }
 
-  adoptSnapshot({ queue }: SessionSnapshot): void {
+  adoptSnapshot({ queue }: Pick<SessionSnapshot, "queue">): void {
     this.adoptQueue(queue);
     if (this.queueEditingId && !queue.items?.some((item) => item.id === this.queueEditingId)) this.#setQueueEdit("", "");
   }
