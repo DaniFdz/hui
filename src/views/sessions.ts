@@ -327,6 +327,7 @@ function transcriptResults(props: SessionsPageProps): TemplateResult | typeof no
           ${hits.map(({ hit, session }) => html`<button type="button" class="sessions-transcript-search__result" @click=${() => props.onOpen(session)}>
             <span class="sessions-transcript-search__result-header">
               <strong>${session.title}</strong>
+              ${session.archived ? html`<span class="session-label-chip">Archived</span>` : nothing}
               <span class="muted">${hit.matches === 1 ? "1 message" : `${hit.matches} messages`}</span>
             </span>
             <span class="sessions-transcript-search__snippet">${hit.snippet}</span>

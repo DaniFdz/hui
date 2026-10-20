@@ -830,9 +830,10 @@ export class WorkerService {
     return (await connection.request<{ directories: string[] }>("directories", { q: query })).directories;
   }
 
+  /** Never connects: a worker without a live connection fails at once. */
   async searchTranscripts(id: string, sessionFiles: readonly string[], query: string, signal?: AbortSignal): Promise<TranscriptHit[]> {
-    if (this.#disconnectedByUser.has(id)) throw new WorkerOfflineError(`Disconnected from ${this.nameOf(id) ?? "the worker"}.`);
-    const connection = await this.connect(id);
+    const connection = this.#connections.get(id);
+    if (!connection || connection.closed) throw new WorkerOfflineError("HUI is not connected to it.");
     return (await connection.request<{ hits: TranscriptHit[] }>("sessions.search", { sessionFiles: [...sessionFiles], q: query }, 60_000, signal)).hits;
   }
 

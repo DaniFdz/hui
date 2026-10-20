@@ -1,7 +1,7 @@
 /**
  * `GET /__hui/sessions/search`'s work: splits the registry's sessions by where their conversation is stored, searches
  * this gateway's own with `runtimes/transcript-search.ts` and asks each remote worker to search its sessions, and
- * names the workers that could not answer. Bots' chats and subagents are left out, as the Sessions page leaves them.
+ * names the hosts that could not answer. Bots' chats and subagents are left out, as the Sessions page leaves them.
  */
 import type { SessionSearchResult } from "../api/sessions.ts";
 import { durableHost } from "../runtimes/durable-host.ts";
@@ -23,8 +23,11 @@ export async function searchSessions(query: string, signal?: AbortSignal): Promi
     try {
       hits = worker ? await workers.searchTranscripts(worker, files, query, signal) : await searchTranscripts(durableHost(), files, query, signal);
     } catch (error) {
-      if (!worker) throw error;
-      result.unsearched.push({ worker: workers.nameOf(worker) ?? worker, error: error instanceof Error ? error.message : String(error) });
+      const message = error instanceof Error ? error.message : String(error);
+      result.unsearched.push({
+        worker: worker ? workers.nameOf(worker) ?? worker : "this machine",
+        error: message.startsWith("Unsupported remote worker request") ? "it runs an older HUI release; update it to search its sessions." : message,
+      });
       return;
     }
     for (const hit of hits) {

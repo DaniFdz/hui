@@ -2955,17 +2955,21 @@ next free suffix.
 Transcript search for the Sessions page. `?q=` is 2-200 characters; anything
 else answers 400. The gateway reads every session's conversation where it is
 stored, without starting a runtime: its own Durable store, a PI session file,
-or, for a session on a remote worker, that worker's host (one `sessions.search`
-request per worker, 60 seconds at most). Bots' chats and subagents are left out.
-A user or assistant message matches when it contains `q`, case-insensitively;
-a Durable conversation is read from its latest reset on, as the chat shows it.
+or, for a session on a connected remote worker, that worker's host (one
+`sessions.search` request per worker, answered within 60 seconds; the search
+never connects a worker). Bots' chats and subagents are left out. A message
+matches when the text the chat shows for it contains `q`, case-insensitively:
+assistant text and user text without inlined skills or the attachment
+manifest. A Durable conversation is read from its latest reset on, without its
+system, extension and summary entries; a PI file is read whole, abandoned
+branches included.
 
 Answers `{ hits: { id, snippet, matches }[], unsearched: { worker, error }[] }`:
 one hit per matching session with its newest matching message cut around the
-match and the number of matching messages, and each worker that could not be
-searched (disconnected by the operator, unreachable, or on a release without
-the request) with the reason. A session whose conversation cannot be read is
-left out.
+match and the number of matching messages, and each host that could not be
+searched (a worker that is not connected, does not answer or runs a release
+without the request, or this machine when its Durable store does not open)
+with the reason. A session whose conversation cannot be read is left out.
 
 ### `GET /__hui/sessions/events`
 
