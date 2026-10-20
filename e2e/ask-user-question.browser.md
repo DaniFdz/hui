@@ -102,6 +102,6 @@ Date: 2026-10-17, branch `dani.fernandez/question-timeout`.
   `cli/bots.test.ts`.
 - The question timeout was exercised on Durable only. PI's SDK worker, a
   remote worker and a bot's chat reach the same gateway handler
-  (`server/hui.ts`), which starts the timer; the timer itself and Off waiting
+  (`server/services.ts`), which starts the timer; the timer itself and Off waiting
   past a timeout are covered by `server/agent-tools/questionnaires.test.ts`, not in the
   browser.
