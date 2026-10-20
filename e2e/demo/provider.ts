@@ -144,7 +144,7 @@ const scripts: Script[] = [
         : `Signup is broken on staging; the page said: ${results[0] ?? "nothing"}` },
     ],
   },
-  // Subagents: three reviewers in parallel (children first: their tasks name the PR too), and a watcher.
+  // Subagents: three reviewers in parallel that the parent waits for (children first: their tasks name the PR too), and a watcher.
   {
     when: "Security review of PR #142",
     turns: [
@@ -172,12 +172,13 @@ const scripts: Script[] = [
     when: "Review PR #142",
     title: "Review PR #142 in parallel",
     turns: [
-      { wait: 600, think: "Three independent angles: run them as parallel subagents so they don't block each other.", say: "I'll split the review into three parallel reviewers.", calls: [
-        { name: "sessions_spawn", input: { label: "Security review", task: "Security review of PR #142 (refund endpoint): auth checks, input validation, secrets." } },
-        { name: "sessions_spawn", input: { label: "Performance review", task: "Performance review of PR #142 (refund endpoint): queries, N+1s, hot paths." } },
-        { name: "sessions_spawn", input: { label: "Test coverage review", task: "Test coverage review of PR #142 (refund endpoint): missing cases and flaky tests." } },
+      { wait: 600, think: "Three independent angles: run them in parallel, then wait for all three.", say: "I'll split the review into three parallel reviewers.", calls: [
+        { name: "sessions_spawn", input: { label: "Security review", task: "Security review of PR #142 (refund endpoint): auth checks, input validation, secrets.", collect: true } },
+        { name: "sessions_spawn", input: { label: "Performance review", task: "Performance review of PR #142 (refund endpoint): queries, N+1s, hot paths.", collect: true } },
+        { name: "sessions_spawn", input: { label: "Test coverage review", task: "Test coverage review of PR #142 (refund endpoint): missing cases and flaky tests.", collect: true } },
       ] },
-      { say: "Three reviewers are running in the background. I'll combine their findings as they report back." },
+      { calls: (results) => [{ name: "agents_wait", input: { ids: results.slice(0, 3).map((result) => (JSON.parse(result) as { taskId: string }).taskId) } }] },
+      { wait: 600, say: "All three reviews are in:\n\n| Review | Verdict |\n| --- | --- |\n| Security | **Blocking:** missing ownership check on `POST /refunds` |\n| Performance | OK, batch the line-item queries later |\n| Tests | Add partial and over-refund cases |\n\nI'd fix the ownership check before merging." },
     ],
   },
   {
@@ -259,15 +260,6 @@ const scripts: Script[] = [
     turns: [{ wait: 900, say: "Good morning! Today's digest:\n\n- Refunds go to 10% of stores today; Priya owns the rollback.\n- #142 Partial refunds endpoint is merged and CI is green.\n- #482 Signup double-submit fix is live on staging.\n\nNothing is blocked." }],
   },
 ];
-
-function subagentSummary(source: string): string {
-  const done = [...source.matchAll(/^title: (.+)$/gmu)].map((match) => match[1]!.trim());
-  const all = ["Security review", "Performance review", "Test coverage review"];
-  completed.push(...done);
-  if (!all.every((label) => completed.includes(label))) return `${done.join(" and ")} reported back; waiting on the rest.`;
-  return "All three reviews are in:\n\n| Review | Verdict |\n| --- | --- |\n| Security | **Blocking:** missing ownership check on `POST /refunds` |\n| Performance | OK, batch the line-item queries later |\n| Tests | Add partial and over-refund cases |\n\nI'd fix the ownership check before merging.";
-}
-const completed: string[] = [];
 
 // Anthropic Messages streaming.
 const sse = (response: ServerResponse, value: Record<string, unknown>) => response.write(`event: ${value["type"]}\ndata: ${JSON.stringify(value)}\n\n`);
@@ -362,7 +354,6 @@ async function handle(request: IncomingMessage, response: ServerResponse) {
     const results = messages.flatMap(blocks).filter((block) => block.type === "tool_result").map(textOf).reverse();
     return respond(response, turn, `demo_${scriptIndex}_${turnIndex}`, results);
   }
-  if (source.includes("[HUI subagent completion event]")) return respond(response, { wait: 400, say: subagentSummary(source) }, "demo_events", []);
   const index = named ? scripts.indexOf(named) : -1;
   if (index === -1) return plain(response, "Done.");
   return respond(response, named!.turns[0]!, `demo_${index}_0`, [], undefined, source);

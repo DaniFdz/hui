@@ -74,8 +74,6 @@ function drawSignupGraph(now: number): Promise<string> {
 
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
 const link = (text: string): Target => ({ css: "a", text });
-/** A subagent's sidebar row, whose link also shows its run time. */
-const child = (title: string): Target => ({ css: "a", contains: title });
 
 /** Brings a chat element to the middle of the view once it is there, as a reader scrolls to it before looking. */
 async function centre(d: Director, target: Target) {
@@ -298,8 +296,8 @@ export const scenes: Scene[] = [
     ready: "Apple Pay at checkout",
     narration: {
       ask: "Big jobs can be split up. Here, one code review becomes three, running in parallel.",
-      children: "Each subagent works in its own session, right there in the sidebar.",
-      report: "As they finish, they report back, and the parent sums up what they found.",
+      children: "One card tracks every helper while the agent waits for all of them.",
+      report: "When they're done, the agent sums up what they found.",
       open: "You can open any of them to see exactly what it did.",
       parent: "Its task shows the session that sent it. Click the name to go back.",
       watcher: "For things that take a while, like CI, the agent leaves a watcher behind. It waits in the background, and merges once the checks go green.",
@@ -311,19 +309,20 @@ export const scenes: Scene[] = [
       await d.click({ placeholder: "What should this session work on?" });
       await d.type("Review PR #142 before we merge: security, performance and test coverage, in parallel");
       await d.press("Enter");
-      await d.caption("Each subagent runs in its own session");
+      await d.caption("One card tracks every helper");
       await d.say("children");
-      await d.waitFor(child("Test coverage review"), 30_000);
-      await d.zoom(child("Performance review"), 1.6);
+      await d.waitFor({ css: ".chat-swarm" }, 30_000);
+      await d.zoom({ css: ".chat-swarm" }, 1.6);
       await d.pause(2_400);
       await d.zoom();
-      await d.caption("…and reports back when it's done");
+      await d.caption("…and the agent sums them up");
       await d.say("report");
       await d.waitFor({ contains: "All three reviews are in" }, 40_000);
       await d.pause(2_200);
-      await d.caption("Open any subagent to see its work");
+      await d.caption("Open any helper to see its work");
       await d.say("open");
-      await d.click(child("Security review"));
+      await d.click({ css: ".chat-swarm__summary" });
+      await d.click({ css: ".chat-subagents__row", contains: "Security review" });
       await d.waitFor({ contains: "1 blocking issue" });
       await d.zoom({ contains: "1 blocking issue" }, 1.4);
       await d.pause(2_200);
