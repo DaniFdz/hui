@@ -1168,8 +1168,12 @@ requests:
    shared fixture), `server/bots/durable.test.ts`,
    `server/bots/durable-access.test.ts`, `server/bots/triggers.test.ts`,
    `src/controllers/bots-controller.test.ts`, `src/hui-app-bots.test.ts`,
-   `src/views/hui-owned-surfaces.test.ts`, `cli/*.test.ts`. Browser proof:
-   pending.
+   `src/views/hui-owned-surfaces.test.ts`, `cli/*.test.ts`. Browser proof
+   (2026-10-20, an isolated gateway from this branch, desktop and 390×844): a
+   fresh install shows the Agents | Bots switch, Labs lists only its two other
+   flags, *New bot* creates a bot that greets in its chat, and a `PUT` with
+   `labs.bots: false` and `bots.showTab: false` saves neither key and leaves
+   `/__hui/bots` answering.
 
 ### HUI-19 — Agent widgets
 
