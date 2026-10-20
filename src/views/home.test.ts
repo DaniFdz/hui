@@ -446,8 +446,13 @@ function markup(value: unknown): string {
     const template = value as { strings: readonly string[]; values: unknown[] };
     return template.strings.map((part, i) => part + markup(template.values[i])).join("");
   }
-  // A directive's arguments, such as the HTML `unsafeHTML` renders.
-  if (value && typeof value === "object" && "_$litDirective$" in value && "values" in value) return markup((value as { values: unknown[] }).values);
+  // A directive's arguments, such as the HTML `unsafeHTML` renders, or each item `repeat` renders.
+  if (value && typeof value === "object" && "_$litDirective$" in value && "values" in value) {
+    const values = (value as { values: unknown[] }).values;
+    const [items, , template] = values;
+    if (Array.isArray(items) && typeof template === "function") return markup(items.map((item, index) => (template as (item: unknown, index: number) => unknown)(item, index)));
+    return markup(values);
+  }
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
@@ -681,4 +686,26 @@ test("an unanswered questionnaire reads as expired with what it asked, never as 
   assert.doesNotMatch(expired, /declined|<form|<button/u);
   assert.match(row("lone"), /<strong>Auth<\/strong><span>Which auth method\? <span class="chat-question-summary__options">OAuth \(Recommended\), API key<\/span>/u);
   assert.match(row("declined"), /You declined to answer\./u);
+});
+
+test("a long conversation renders its latest rows and offers the earlier ones; a closed activity group renders no items", async () => {
+  const { TRANSCRIPT_WINDOW_ROWS } = await import("./chat/projection.ts");
+  const transcript = Array.from({ length: TRANSCRIPT_WINDOW_ROWS + 10 }, (_, index) => [
+    { kind: "message", id: `u${index}`, role: "user", text: `Step ${index}` },
+    { kind: "tool", id: `t${index}`, name: "bash", status: "succeeded", args: { command: `echo step-${index}` }, output: `step-${index}` },
+    { kind: "message", id: `a${index}`, role: "assistant", text: `Done ${index}` },
+  ]).flat();
+  const earlier: number[] = [];
+  const latest = await renderWorkerSession("idle", { transcript, onShowEarlier: (start: number) => earlier.push(start) });
+  const rows = latest.split("data-chat-row-key=").length - 1;
+  assert.equal(rows, TRANSCRIPT_WINDOW_ROWS);
+  assert.doesNotMatch(latest, /Step 0</u);
+  assert.match(latest, /Done 59</u);
+  assert.match(latest, /class="chat-history-boundary__action" @click=>Show earlier messages</u);
+  assert.doesNotMatch(latest, /echo step-59/u, "the command inside a closed group is not rendered");
+  const all = await renderWorkerSession("idle", { transcript, transcriptWindowStart: 0 });
+  assert.match(all, /Step 0</u);
+  assert.doesNotMatch(all, /Show earlier messages/u);
+  const open = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set([`s:t${TRANSCRIPT_WINDOW_ROWS + 9}`]) });
+  assert.match(open, /echo step-59/u);
 });

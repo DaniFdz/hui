@@ -393,6 +393,7 @@ export class HuiApp extends HuiElement {
   private deleteReturnFocus: HTMLElement | undefined;
   private deleteNeedsFocus = false;
   private autoFollow = true;
+  @state() private transcriptWindowStart: number | undefined;
   /** Rows grow after they render (link previews, images, diagrams): a followed thread stays at its end. */
   private readonly followResize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(([entry]) => {
     const thread = entry?.target.parentElement;
@@ -608,6 +609,7 @@ export class HuiApp extends HuiElement {
     if (this.updatingSelectedId !== this.conversation.selected?.id) {
       this.updatingSelectedId = this.conversation.selected?.id;
       this.sessions.toggledSessionTrees = new Set();
+      this.transcriptWindowStart = undefined;
     }
     if (changed.has("paneCreating") && !this.paneCreating && changed.get("paneCreating") && this.conversation.selected?.id === this.paneSessionId) {
       void this.conversation.open(this.conversation.selected.id);
@@ -1531,6 +1533,17 @@ export class HuiApp extends HuiElement {
   private transcriptScrolled = (element: HTMLElement) => {
     this.autoFollow = element.scrollHeight - element.scrollTop - element.clientHeight < 48;
     this.showScrollToBottom = !this.autoFollow;
+    if (!this.autoFollow) this.transcriptWindowStart ??= Number(element.dataset["windowStart"] ?? 0);
+    else if (this.transcriptWindowStart !== undefined) this.scrollToBottom();
+  };
+
+  private showEarlierRows = (start: number) => {
+    const scroller = this.renderRoot.querySelector?.(TRANSCRIPT_SCROLLER_SELECTOR);
+    if (!(scroller instanceof HTMLElement)) return;
+    const fromBottom = scroller.scrollHeight - scroller.scrollTop;
+    this.autoFollow = false;
+    this.transcriptWindowStart = start;
+    void this.updateComplete.then(() => { scroller.scrollTop = scroller.scrollHeight - fromBottom; });
   };
 
   private navigateTranscript = (element: HTMLElement, top: number) => {
@@ -1544,6 +1557,7 @@ export class HuiApp extends HuiElement {
 
   private scrollToBottom = () => {
     this.autoFollow = true;
+    this.transcriptWindowStart = undefined;
     void this.updateComplete.then(() => {
       // Measuring a pane out of sight would lay out its whole transcript on
       // every streamed token; it follows once it is shown again.
@@ -1727,6 +1741,7 @@ export class HuiApp extends HuiElement {
     this.continuing = false;
     this.showScrollToBottom = false;
     this.autoFollow = true;
+    this.transcriptWindowStart = undefined;
     this.resetSessionEphemeral();
   }
 
@@ -2508,6 +2523,7 @@ export class HuiApp extends HuiElement {
       copiedId: this.conversation.copiedId,
       ...(this.paneCall && this.onPaneCall ? { call: { inCall: this.paneCall.inCall, onCall: this.onPaneCall } } : {}),
       expandedActivityIds: this.expandedActivityIds,
+      transcriptWindowStart: this.transcriptWindowStart,
       showScrollToBottom: this.showScrollToBottom,
       ...this.conversation.props(),
       compaction: this.conversation.compaction,
@@ -2575,6 +2591,7 @@ export class HuiApp extends HuiElement {
       onActivityExpanded: this.setActivityExpanded,
       onTranscriptScroll: this.transcriptScrolled,
       onTranscriptNavigate: this.navigateTranscript,
+      onShowEarlier: this.showEarlierRows,
       onScrollToBottom: this.scrollToBottom,
       renaming: this.renamingFor === this.conversation.selected?.id,
       confirmingDelete: this.deletingFor === this.conversation.selected?.id,

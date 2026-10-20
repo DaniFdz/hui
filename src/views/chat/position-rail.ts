@@ -1,6 +1,7 @@
 /** Conversation-position interaction adapted from OpenClaw 2026.9.5.
  * Uses the pinned chat/message-layout.css; see THIRD_PARTY_NOTICES.md.
- * HUI measures its non-virtualized PI projection instead of OpenClaw sessions. */
+ * HUI measures the rows its PI projection renders instead of OpenClaw sessions;
+ * a marker above the rendered window brings its row in before the jump. */
 import { html, nothing } from "lit";
 import { AsyncDirective } from "lit/async-directive.js";
 import { directive } from "lit/directive.js";
@@ -17,6 +18,7 @@ type RailProps = {
   sessionId: string;
   markers: readonly ConversationMarker[];
   onNavigate: (thread: HTMLElement, top: number) => void;
+  onReveal: (id: string) => void;
 };
 
 const HINT = "Use arrow keys or Home and End to choose a marker, Enter or Space to jump, and Escape to return to the conversation. Tab leaves the rail.";
@@ -39,6 +41,7 @@ class ConversationPositionRail extends AsyncDirective {
   private dismissed = false;
   private keyboardNavigation = false;
   private wasVisible = false;
+  private revealing: string | undefined;
   private previewWindow: Window | null = null;
 
   private readonly escapePreview = (event: KeyboardEvent) => {
@@ -163,6 +166,12 @@ class ConversationPositionRail extends AsyncDirective {
         const box = target.getBoundingClientRect();
         return [{ id, top: box.top - origin, bottom: box.bottom - origin }];
       });
+      if (this.revealing && this.targets.has(this.revealing)) {
+        const id = this.revealing;
+        this.revealing = undefined;
+        this.jump(id);
+        return;
+      }
     }
 
     // The transcript extends underneath the composer; that strip is not
@@ -200,7 +209,12 @@ class ConversationPositionRail extends AsyncDirective {
     // Measure at activation too: expanded code, fonts or activity may have moved.
     const target = this.targets.get(id);
     const thread = this.thread;
-    if (!target || !thread) return;
+    if (!target) {
+      this.revealing = id;
+      this.props?.onReveal(id);
+      return;
+    }
+    if (!thread) return;
     const top = target.getBoundingClientRect().top - thread.getBoundingClientRect().top + thread.scrollTop - 16;
     this.props?.onNavigate(thread, Math.max(0, top));
     this.schedule();
