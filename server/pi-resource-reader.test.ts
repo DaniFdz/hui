@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "vitest";
+import { expectTypeOf, test } from "vitest";
+import { PiResourceDocument } from "./api/pi.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
+
+type OriginalPiResourceDocument = {
+  id: string;
+  kind: "skill" | "package" | "extension";
+  title: string;
+  fileName: string;
+  format: "markdown" | "code" | "json";
+  content: string;
+  truncated: boolean;
+};
+
+expectTypeOf<PiResourceDocument>().toEqualTypeOf<OriginalPiResourceDocument>();
 
 import { readPiConfigAt } from "./pi-config.ts";
 import { PiResourceNotFoundError, readPiResourceDocumentAt } from "./pi-resource-reader.ts";
@@ -28,6 +42,7 @@ test("reads an inventoried skill by opaque id", async () => {
     const skill = snapshot.skills.find((entry) => entry.name === "demo");
     assert(skill);
     const document = await readPiResourceDocumentAt(agentDir, "skill", skill.id);
+    expectSchema(PiResourceDocument, document);
     assert.equal(document.title, "demo");
     assert.equal(document.fileName, "SKILL.md");
     assert.equal(document.format, "markdown");
@@ -57,11 +72,13 @@ test("reads package documentation and direct extension source", async () => {
     assert(packageResource && extensionResource);
 
     const packageDocument = await readPiResourceDocumentAt(agentDir, "plugin", packageResource.id);
+    expectSchema(PiResourceDocument, packageDocument);
     assert.equal(packageDocument.fileName, "README.md");
     assert.equal(packageDocument.format, "markdown");
     assert.match(packageDocument.content, /Package documentation/);
 
     const extensionDocument = await readPiResourceDocumentAt(agentDir, "plugin", extensionResource.id);
+    expectSchema(PiResourceDocument, extensionDocument);
     assert.equal(extensionDocument.fileName, "extension.ts");
     assert.equal(extensionDocument.format, "code");
     assert.match(extensionDocument.content, /export default/);

@@ -1,6 +1,6 @@
 /** Browser client for the `pi` configuration page: reading the snapshot and a resource, and installing or removing
  * packages and skills. The gateway reads and changes PI's files. */
-import type { PiMutationResult, PiResourceDocument, PiSnapshot } from "../lib/pi.ts";
+import type { PiMutationResult, PiResourceDocument, PiSnapshot } from "./schema/pi.ts";
 import { fetchJson } from "./request.ts";
 
 const PI_URL = "/__hui/pi";

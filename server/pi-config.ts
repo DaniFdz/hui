@@ -17,11 +17,11 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { piRuntime } from "./runtimes/pi.ts";
-import type { RuntimeModel } from "./runtimes/types.ts";
+import type { PiTool, PiSkill, PiModel, PiConfiguredResource, PiSnapshot, PiModelCatalogEntry } from "./api/pi.ts";
 import { resolvePiAgentDir } from "./pi-paths.ts";
 import { shippedTools } from "./runtimes/tool-catalog.ts";
 import { safeSourceLabel } from "./source-label.ts";
-import { configuredResourceId, type ConfiguredResourceKind } from "./runtimes/resource-policy.ts";
+import { configuredResourceId } from "./runtimes/resource-policy.ts";
 import { bundledSkillRoot, bundledSkills } from "./bundled-skills.ts";
 import { isThinkingLevel } from "../shared/thinking.ts";
 export { safeSourceLabel } from "./source-label.ts";
@@ -35,68 +35,8 @@ const SKILLS_DIR = "skills";
 const AUTH_FILE = "auth.json";
 
 
-export type PiTool = {
-  name: string;
-  /** Shipped definitions only; configured sources are not tools. */
-  kind: "builtin" | "hui";
-  source?: string;
-};
-
-export type PiSkill = {
-  /** Opaque identity used by read-only resource routes. */
-  id: string;
-  name: string;
-  description: string;
-  path: string;
-  /** Which configured root it came from, so duplicates are explainable. */
-  root: string;
-  /** HUI defaults are shipped, not copied into PI's skill directory. */
-  origin?: "hui";
-  tags?: readonly string[];
-  /** Stable opt-out identity for defaults whose physical install path can move. */
-  preferencePath?: string;
-};
-
-export type PiModel = {
-  defaultProvider: string;
-  defaultModel: string;
-  thinking: string | null;
-  /** Patterns pi cycles through with Ctrl+P. */
-  enabled: readonly string[];
-  /** Provider names that have credentials. Names only: never a key or token. */
-  authenticated: readonly string[];
-  /** PI's available catalog filtered by models.json. No auth or transport fields. */
-  catalog: readonly CatalogEntry[];
-};
-
-export type PiSettingsSummary = {
-  path: string;
-  exists: boolean;
-  /** Package sources from settings, normalised to plain strings. */
-  packages: readonly string[];
-  extensions: readonly string[];
-  /** Opaque HUI identities for toggling a configured source without exposing it. */
-  resources: readonly PiConfiguredResource[];
-  skillRoots: readonly string[];
-};
-
-export type PiConfiguredResource = {
-  id: string;
-  label: string;
-  kind: ConfiguredResourceKind;
-};
-
-export type PiSnapshot = {
-  agentDir: string;
-  settings: PiSettingsSummary;
-  skills: readonly PiSkill[];
-  tools: readonly PiTool[];
-  model: PiModel;
-  /** Non-fatal problems worth showing, instead of silently hiding them. */
-  diagnostics: readonly string[];
-};
-
-type CatalogEntry = Pick<RuntimeModel, "provider" | "id" | "name" | "contextWindow" | "maxTokens" | "thinkingLevels" | "fast">;
+export type { PiTool, PiSkill, PiModel, PiSettingsSummary, PiConfiguredResource, PiSnapshot } from "./api/pi.ts";
+type CatalogEntry = PiModelCatalogEntry;
 type CatalogProbeSession = {
   listModels(): Promise<readonly CatalogEntry[]>;
   dispose(): void;

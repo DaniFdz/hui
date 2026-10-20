@@ -1,6 +1,6 @@
 /** Browser client for the provider settings: the providers snapshot, one connection's usage quota, and the
  * sign-in, selection and removal requests. The gateway owns the credentials. */
-import type { ProviderQuota, ProviderSnapshot } from "../../shared/providers.ts";
+import type { ProviderQuota, ProviderSnapshot } from "./schema/providers.ts";
 import { fetchJson } from "./request.ts";
 
 const API = "/__hui/providers";

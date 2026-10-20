@@ -23,7 +23,7 @@ import { piBackend } from "./pi-backend.ts";
 import { piCommand } from "./pi-command.ts";
 import { SdkInspector } from "./sdk-inspector.ts";
 import { RuntimeOutputError } from "./types.ts";
-import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
+import type { RuntimeInspection } from "./types.ts";
 
 import type {
   CompactionReason,

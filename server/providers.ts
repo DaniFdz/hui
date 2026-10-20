@@ -6,7 +6,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { ModelRuntime, readStoredCredential } from "@earendil-works/pi-coding-agent";
-import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../shared/providers.ts";
+import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "./api/providers.ts";
 import { createHuiModelRuntime, PROVIDERS_DIR, readProviderSelections, writeProviderSelections } from "./runtimes/hui-models.ts";
 import { ProviderAccounts, credentialStore } from "./provider-accounts.ts";
 import { credentialEmail } from "./provider-identity.ts";

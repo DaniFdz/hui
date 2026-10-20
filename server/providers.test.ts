@@ -2,7 +2,37 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test, type TestContext, vi } from "vitest";
+import { expectTypeOf, test, type TestContext, vi } from "vitest";
+import { ProviderSnapshot, ProviderLogin, ProviderQuota, type ProviderModel, type ProviderSummary } from "./api/providers.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
+
+
+type OriginalProviderModel = { id: string; name: string; contextWindow?: number; maxTokens?: number };
+type OriginalProviderSummary = {
+  id: string; name: string; methods: { id: "api_key" | "oauth"; label: string }[];
+  accounts?: { id: string; name: string; email?: string; authenticated: boolean; cooldownUntil?: number }[];
+  configured: boolean; authenticated: boolean; selected: string[]; models: OriginalProviderModel[];
+};
+type OriginalProviderLogin = {
+  id: string; provider: string; phase: "pending" | "complete" | "failed" | "cancelled";
+  accountId?: string;
+  message?: string; url?: string; code?: string;
+  prompt?: { id: string; type: "text" | "secret" | "select" | "manual_code"; message: string; options?: { id: string; label: string }[] };
+};
+type OriginalProviderSnapshot = { providers: OriginalProviderSummary[]; login?: OriginalProviderLogin };
+type OriginalProviderQuota = {
+  status: "available" | "unsupported" | "unavailable";
+  message?: string; checkedAt: number;
+  plan?: string; email?: string;
+  access?: "available" | "limited";
+  windows: { label: string; usedPercent: number; resetAt?: number; scope: "account" | "scoped" | "spend" }[];
+};
+
+expectTypeOf<ProviderModel>().toEqualTypeOf<OriginalProviderModel>();
+expectTypeOf<ProviderSummary>().toEqualTypeOf<OriginalProviderSummary>();
+expectTypeOf<ProviderLogin>().toEqualTypeOf<OriginalProviderLogin>();
+expectTypeOf<ProviderSnapshot>().toEqualTypeOf<OriginalProviderSnapshot>();
+expectTypeOf<ProviderQuota>().toEqualTypeOf<OriginalProviderQuota>();
 import { ProviderService, ProviderInputError } from "./providers.ts";
 import { createSessionModelRuntime, readProviderSelections, writeProviderSelections } from "./runtimes/hui-models.ts";
 import { filterConfiguredModels } from "./runtimes/pi-models.ts";
@@ -24,9 +54,12 @@ async function until<T extends object>(read: () => Promise<T>, predicate: (value
 test("built-in API key login stores credentials only in HUI and redacts snapshots", async (t) => {
   const { dir, service } = await fixture(t);
   const first = await service.snapshot();
+  expectSchema(ProviderSnapshot, first);
   assert(first.providers.some((provider) => provider.id === "openai-codex" && provider.methods.some((method) => method.id === "oauth")));
   const login = await service.start("openai", "api_key");
+  expectSchema(ProviderLogin, login);
   const waiting = await until(() => service.snapshot(), (snapshot) => Boolean(snapshot.login?.prompt));
+  expectSchema(ProviderSnapshot, waiting);
   assert.equal(waiting.login?.prompt?.type, "secret");
   assert.throws(() => service.answer(login.id, "stale", "fixture-key"), ProviderInputError);
   service.answer(login.id, waiting.login!.prompt!.id, "hui-fixture-secret-not-real");
@@ -215,6 +248,7 @@ test("quota cooldown uses account scope, never model, feature or spending budget
     const { dir, service } = await fixture(t);
     await writeFile(join(dir, "auth.json"), JSON.stringify({ "openai-codex": { type: "oauth", access: "synthetic-access", refresh: "synthetic-refresh", expires: Date.now() + 3600000 } }), { mode: 0o600 });
     const quota = await service.quota("openai-codex");
+    expectSchema(ProviderQuota, quota);
     assert.equal(quota.status, "available");
     assert.equal(quota.windows.length, 4);
     assert.equal((await service.accounts.list("openai-codex"))[0]?.cooldownUntil, exhausted ? reset * 1000 : undefined);

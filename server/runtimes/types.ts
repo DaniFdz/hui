@@ -12,6 +12,7 @@
  * Another harness can slot in beside them without any of the UI changing.
  */
 import type { TranscriptMetrics } from "./transcript-metrics.ts";
+export type { RuntimeInspection, RuntimeTool, ToolCatalogEntry, ToolsCatalog, SessionTools } from "../api/tools.ts";
 import type { CallRecord } from "../../shared/calls.ts";
 
 export type RuntimeQueue = {
@@ -183,7 +184,7 @@ export type RuntimeSession = {
    * uses it only for ephemeral resource telemetry; it is never persisted. */
   readonly processId?: number;
   /** A fresh read of the initialized registry and effective prompt. */
-  inspect?(): Promise<import("../../src/lib/tools-types.ts").RuntimeInspection>;
+  inspect?(): Promise<import("../api/tools.ts").RuntimeInspection>;
   /** The owning runtime's conversation identity. */
   readonly sessionId: string;
   /** Where the conversation is stored, once the tool has decided. */

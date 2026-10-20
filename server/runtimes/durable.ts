@@ -20,7 +20,7 @@ import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/p
 import { SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
 import { botTurnOrigin, type BotTurnOrigin } from "../../shared/bots.ts";
 import { resolveCommandReference } from "./command-references.ts";
-import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
+import type { RuntimeInspection } from "./types.ts";
 import { durableContext as context, durableHost, modelCallable, type DurableHost } from "./durable-host.ts";
 import { CallEntry } from "./turn-origins.ts";
 import { skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";

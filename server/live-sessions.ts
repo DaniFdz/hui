@@ -690,7 +690,7 @@ export class LiveSessions {
   }
 
   /** Inspection never boots a cold session or executes extensions implicitly. */
-  async inspect(id: string): Promise<import("../src/lib/tools-types.ts").SessionTools> {
+  async inspect(id: string): Promise<import("./runtimes/types.ts").SessionTools> {
     const runtime = this.#live.get(id)?.runtime;
     if (!runtime) return { status: "cold" };
     return runtime.inspect ? await runtime.inspect() : { status: "unsupported" };

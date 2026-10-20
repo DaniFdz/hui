@@ -1248,6 +1248,399 @@
         }
       ]
     },
+    "PiConfiguredResource": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "kind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "package"
+            },
+            {
+              "type": "string",
+              "const": "extension"
+            }
+          ]
+        }
+      }
+    },
+    "PiError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "PiInstallRequest": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "PiModel": {
+      "type": "object",
+      "required": [
+        "defaultProvider",
+        "defaultModel",
+        "thinking",
+        "enabled",
+        "authenticated",
+        "catalog"
+      ],
+      "properties": {
+        "defaultProvider": {
+          "type": "string"
+        },
+        "defaultModel": {
+          "type": "string"
+        },
+        "thinking": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "authenticated": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "catalog": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PiModelCatalogEntry"
+          }
+        }
+      }
+    },
+    "PiModelCatalogEntry": {
+      "type": "object",
+      "required": [
+        "provider",
+        "id",
+        "name"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "contextWindow": {
+          "type": "number"
+        },
+        "maxTokens": {
+          "type": "number"
+        },
+        "thinkingLevels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fast": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "PiMutationKind": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "package-install"
+        },
+        {
+          "type": "string",
+          "const": "package-remove"
+        },
+        {
+          "type": "string",
+          "const": "skill-install"
+        }
+      ]
+    },
+    "PiMutationResult": {
+      "type": "object",
+      "required": [
+        "kind",
+        "target",
+        "message",
+        "snapshot"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/PiMutationKind"
+        },
+        "target": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/PiSnapshot"
+        }
+      }
+    },
+    "PiRemoveRequest": {
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "type": "string"
+        }
+      }
+    },
+    "PiResourceDocument": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "fileName",
+        "format",
+        "content",
+        "truncated"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "skill"
+            },
+            {
+              "type": "string",
+              "const": "package"
+            },
+            {
+              "type": "string",
+              "const": "extension"
+            }
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "format": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "markdown"
+            },
+            {
+              "type": "string",
+              "const": "code"
+            },
+            {
+              "type": "string",
+              "const": "json"
+            }
+          ]
+        },
+        "content": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "PiSettingsSummary": {
+      "type": "object",
+      "required": [
+        "path",
+        "exists",
+        "packages",
+        "extensions",
+        "resources",
+        "skillRoots"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "exists": {
+          "type": "boolean"
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "extensions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PiConfiguredResource"
+          }
+        },
+        "skillRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PiSkill": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "description",
+        "path",
+        "root"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string",
+          "const": "hui"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preferencePath": {
+          "type": "string"
+        }
+      }
+    },
+    "PiSnapshot": {
+      "type": "object",
+      "required": [
+        "agentDir",
+        "settings",
+        "skills",
+        "tools",
+        "model",
+        "diagnostics"
+      ],
+      "properties": {
+        "agentDir": {
+          "type": "string"
+        },
+        "settings": {
+          "$ref": "#/$defs/PiSettingsSummary"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PiSkill"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PiTool"
+          }
+        },
+        "model": {
+          "$ref": "#/$defs/PiModel"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "PiTool": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "builtin"
+            },
+            {
+              "type": "string",
+              "const": "hui"
+            }
+          ]
+        },
+        "source": {
+          "type": "string"
+        }
+      }
+    },
     "PowerError": {
       "type": "object",
       "required": [
@@ -1339,6 +1732,419 @@
         }
       }
     },
+    "ProviderAnswerRequest": {
+      "type": "object",
+      "required": [
+        "promptId",
+        "value"
+      ],
+      "properties": {
+        "promptId": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "ProviderError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "ProviderLogin": {
+      "type": "object",
+      "required": [
+        "id",
+        "provider",
+        "phase"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "pending"
+            },
+            {
+              "type": "string",
+              "const": "complete"
+            },
+            {
+              "type": "string",
+              "const": "failed"
+            },
+            {
+              "type": "string",
+              "const": "cancelled"
+            }
+          ]
+        },
+        "accountId": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "object",
+          "required": [
+            "id",
+            "type",
+            "message"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "text"
+                },
+                {
+                  "type": "string",
+                  "const": "secret"
+                },
+                {
+                  "type": "string",
+                  "const": "select"
+                },
+                {
+                  "type": "string",
+                  "const": "manual_code"
+                }
+              ]
+            },
+            "message": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "label"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "ProviderLoginRequest": {
+      "type": "object",
+      "required": [
+        "method"
+      ],
+      "properties": {
+        "method": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "api_key"
+            },
+            {
+              "type": "string",
+              "const": "oauth"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "accountId": {
+          "type": "string"
+        }
+      }
+    },
+    "ProviderModel": {
+      "type": "object",
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "contextWindow": {
+          "type": "number"
+        },
+        "maxTokens": {
+          "type": "number"
+        }
+      }
+    },
+    "ProviderModelsRequest": {
+      "type": "object",
+      "required": [
+        "models"
+      ],
+      "properties": {
+        "models": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ProviderOk": {
+      "type": "object",
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "ProviderOrderRequest": {
+      "type": "object",
+      "required": [
+        "order"
+      ],
+      "properties": {
+        "order": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ProviderQuota": {
+      "type": "object",
+      "required": [
+        "status",
+        "checkedAt",
+        "windows"
+      ],
+      "properties": {
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "available"
+            },
+            {
+              "type": "string",
+              "const": "unsupported"
+            },
+            {
+              "type": "string",
+              "const": "unavailable"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "checkedAt": {
+          "type": "number"
+        },
+        "plan": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "access": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "available"
+            },
+            {
+              "type": "string",
+              "const": "limited"
+            }
+          ]
+        },
+        "windows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "usedPercent",
+              "scope"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "usedPercent": {
+                "type": "number"
+              },
+              "resetAt": {
+                "type": "number"
+              },
+              "scope": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "account"
+                  },
+                  {
+                    "type": "string",
+                    "const": "scoped"
+                  },
+                  {
+                    "type": "string",
+                    "const": "spend"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "ProviderSnapshot": {
+      "type": "object",
+      "required": [
+        "providers"
+      ],
+      "properties": {
+        "providers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProviderSummary"
+          }
+        },
+        "login": {
+          "$ref": "#/$defs/ProviderLogin"
+        }
+      }
+    },
+    "ProviderSummary": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "methods",
+        "configured",
+        "authenticated",
+        "selected",
+        "models"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label"
+            ],
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "api_key"
+                  },
+                  {
+                    "type": "string",
+                    "const": "oauth"
+                  }
+                ]
+              },
+              "label": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "authenticated"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "authenticated": {
+                "type": "boolean"
+              },
+              "cooldownUntil": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "authenticated": {
+          "type": "boolean"
+        },
+        "selected": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProviderModel"
+          }
+        }
+      }
+    },
     "PullRequestState": {
       "anyOf": [
         {
@@ -1358,6 +2164,94 @@
           "const": "closed"
         }
       ]
+    },
+    "RuntimeInspection": {
+      "type": "object",
+      "required": [
+        "status",
+        "backend",
+        "version",
+        "revision",
+        "tools",
+        "prompt",
+        "promptPhase",
+        "promptSource",
+        "diagnostics"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "const": "live"
+        },
+        "backend": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RuntimeTool"
+          }
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "promptPhase": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "initialized"
+            },
+            {
+              "type": "string",
+              "const": "current-turn"
+            },
+            {
+              "type": "string",
+              "const": "last-turn"
+            }
+          ]
+        },
+        "promptSource": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RuntimeTool": {
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "source",
+        "active",
+        "parameters"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "active": {
+          "type": "boolean"
+        },
+        "parameters": {}
+      }
     },
     "SessionActivity": {
       "type": "object",
@@ -1430,6 +2324,33 @@
           "type": "string"
         }
       }
+    },
+    "SessionTools": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RuntimeInspection"
+        },
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "cold"
+                },
+                {
+                  "type": "string",
+                  "const": "unsupported"
+                }
+              ]
+            }
+          }
+        }
+      ]
     },
     "Settings": {
       "type": "object",
@@ -1840,6 +2761,101 @@
       }
     },
     "SettingsRequest": {},
+    "ToolCatalogEntry": {
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "source",
+        "defaultEnabled"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "defaultEnabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ToolsCatalog": {
+      "type": "object",
+      "required": [
+        "backend",
+        "sdkVersion",
+        "tools",
+        "sources",
+        "diagnostics",
+        "prompt"
+      ],
+      "properties": {
+        "backend": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "sdk"
+            },
+            {
+              "type": "string",
+              "const": "cli"
+            }
+          ]
+        },
+        "sdkVersion": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ToolCatalogEntry"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "prompt": {
+          "type": "object",
+          "required": [
+            "revision",
+            "text"
+          ],
+          "properties": {
+            "revision": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "ToolsError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
     "VscodeProviderPreference": {
       "anyOf": [
         {
@@ -1960,6 +2976,42 @@
       "SettingsRequest",
       "VscodeProviderPreference",
       "VscodeSettings"
+    ],
+    "pi": [
+      "PiConfiguredResource",
+      "PiError",
+      "PiInstallRequest",
+      "PiModel",
+      "PiModelCatalogEntry",
+      "PiMutationKind",
+      "PiMutationResult",
+      "PiRemoveRequest",
+      "PiResourceDocument",
+      "PiSettingsSummary",
+      "PiSkill",
+      "PiSnapshot",
+      "PiTool"
+    ],
+    "providers": [
+      "ProviderAnswerRequest",
+      "ProviderError",
+      "ProviderLogin",
+      "ProviderLoginRequest",
+      "ProviderModel",
+      "ProviderModelsRequest",
+      "ProviderOk",
+      "ProviderOrderRequest",
+      "ProviderQuota",
+      "ProviderSnapshot",
+      "ProviderSummary"
+    ],
+    "tools": [
+      "RuntimeInspection",
+      "RuntimeTool",
+      "SessionTools",
+      "ToolCatalogEntry",
+      "ToolsCatalog",
+      "ToolsError"
     ]
   },
   "x-hui-routes": [
@@ -2103,6 +3155,50 @@
     },
     {
       "method": "GET",
+      "path": "/__hui/pi",
+      "response": {
+        "$ref": "#/$defs/PiSnapshot"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/pi/packages/install",
+      "request": {
+        "$ref": "#/$defs/PiInstallRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/PiMutationResult"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/pi/packages/remove",
+      "request": {
+        "$ref": "#/$defs/PiRemoveRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/PiMutationResult"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/pi/resources/:kind/:id",
+      "response": {
+        "$ref": "#/$defs/PiResourceDocument"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/pi/skills/install",
+      "request": {
+        "$ref": "#/$defs/PiInstallRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/PiMutationResult"
+      }
+    },
+    {
+      "method": "GET",
       "path": "/__hui/power",
       "response": {
         "$ref": "#/$defs/PowerResponse"
@@ -2116,6 +3212,88 @@
       },
       "response": {
         "$ref": "#/$defs/PowerResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/providers",
+      "response": {
+        "$ref": "#/$defs/ProviderSnapshot"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/providers/:provider",
+      "response": {
+        "$ref": "#/$defs/ProviderOk"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/providers/:provider",
+      "request": {
+        "$ref": "#/$defs/ProviderModelsRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ProviderOk"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/providers/:provider/accounts",
+      "request": {
+        "$ref": "#/$defs/ProviderOrderRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ProviderOk"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/providers/:provider/accounts/:account",
+      "response": {
+        "$ref": "#/$defs/ProviderOk"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/providers/:provider/accounts/:account/quota",
+      "response": {
+        "$ref": "#/$defs/ProviderQuota"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/providers/:provider/login",
+      "request": {
+        "$ref": "#/$defs/ProviderLoginRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ProviderLogin"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/providers/:provider/quota",
+      "response": {
+        "$ref": "#/$defs/ProviderQuota"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/providers/login/:id",
+      "response": {
+        "$ref": "#/$defs/ProviderOk"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/providers/login/:id",
+      "request": {
+        "$ref": "#/$defs/ProviderAnswerRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/ProviderOk"
       }
     },
     {
@@ -2157,6 +3335,13 @@
     },
     {
       "method": "GET",
+      "path": "/__hui/sessions/:id/tools",
+      "response": {
+        "$ref": "#/$defs/SessionTools"
+      }
+    },
+    {
+      "method": "GET",
       "path": "/__hui/settings",
       "response": {
         "$ref": "#/$defs/Settings"
@@ -2170,6 +3355,13 @@
       },
       "response": {
         "$ref": "#/$defs/Settings"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/tools",
+      "response": {
+        "$ref": "#/$defs/ToolsCatalog"
       }
     }
   ]

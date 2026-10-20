@@ -15,15 +15,8 @@ import { configuredResourceId } from "./runtimes/resource-policy.ts";
 const MAX_DOCUMENT_BYTES = 256 * 1024;
 const README_NAMES = ["readme.md", "readme.markdown", "readme", "package.json"];
 
-export type PiResourceDocument = {
-  id: string;
-  kind: "skill" | "package" | "extension";
-  title: string;
-  fileName: string;
-  format: "markdown" | "code" | "json";
-  content: string;
-  truncated: boolean;
-};
+import type { PiResourceDocument } from "./api/pi.ts";
+export type { PiResourceDocument } from "./api/pi.ts";
 
 export class PiResourceNotFoundError extends Error {
   override name = "PiResourceNotFoundError";

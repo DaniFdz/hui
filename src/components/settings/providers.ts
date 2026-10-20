@@ -5,7 +5,7 @@
  */
 import { LitElement, html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../../../shared/providers.ts";
+import type { ProviderLogin, ProviderQuota, ProviderSnapshot, ProviderSummary } from "../../api/schema/providers.ts";
 import { loadProviderQuota, loadProviders, providerRequest } from "../../api/providers.ts";
 import { renderProviderBrandIcon } from "../../lib/provider-icons.ts";
 import { connectionMethods, connectionName, providerBrand, providerBrands } from "../../lib/provider-choices.ts";

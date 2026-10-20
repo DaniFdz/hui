@@ -25,14 +25,8 @@ const PACKAGE_TIMEOUT_MS = 120_000;
 const SKILL_TIMEOUT_MS = 300_000;
 const CHEAP_MODEL = /(haiku|flash|mini|nano|small|lite|luna|terra)/iu;
 
-export type PiMutationKind = "package-install" | "package-remove" | "skill-install";
-
-export type PiMutationResult = {
-  kind: PiMutationKind;
-  target: string;
-  message: string;
-  snapshot: PiSnapshot;
-};
+import type { PiMutationKind, PiMutationResult } from "./api/pi.ts";
+export type { PiMutationKind, PiMutationResult } from "./api/pi.ts";
 
 export class PiMutationInputError extends Error {
   override name = "PiMutationInputError";

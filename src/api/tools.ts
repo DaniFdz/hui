@@ -3,7 +3,7 @@
  * what is available; this module only reads it.
  */
 import { fetchJson } from "./request.ts";
-import type { SessionTools, ToolsCatalog } from "../lib/tools-types.ts";
+import type { SessionTools, ToolsCatalog } from "./schema/tools.ts";
 
 export function loadToolsCatalog(): Promise<ToolsCatalog> {
   return fetchJson("/__hui/tools");

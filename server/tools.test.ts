@@ -2,7 +2,54 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "vitest";
+import { expectTypeOf, test } from "vitest";
+import { ToolsCatalog, type ToolCatalogEntry, type RuntimeTool, type RuntimeInspection, type SessionTools } from "./api/tools.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
+
+
+type OriginalToolCatalogEntry = {
+  name: string;
+  description: string;
+  source: string;
+  defaultEnabled: boolean;
+};
+
+type OriginalRuntimeTool = {
+  name: string;
+  description: string;
+  source: string;
+  active: boolean;
+  parameters: unknown;
+};
+
+type OriginalRuntimeInspection = {
+  status: "live";
+  backend: string;
+  version: string;
+  revision: string;
+  tools: OriginalRuntimeTool[];
+  prompt: string;
+  promptPhase: "initialized" | "current-turn" | "last-turn";
+  promptSource: string;
+  diagnostics: string[];
+};
+
+type OriginalSessionTools = OriginalRuntimeInspection | { status: "cold" | "unsupported" };
+
+type OriginalToolsCatalog = {
+  backend: "sdk" | "cli";
+  sdkVersion: string;
+  tools: OriginalToolCatalogEntry[];
+  sources: string[];
+  diagnostics: string[];
+  prompt: { revision: string; text: string };
+};
+
+expectTypeOf<ToolCatalogEntry>().toEqualTypeOf<OriginalToolCatalogEntry>();
+expectTypeOf<RuntimeTool>().toEqualTypeOf<OriginalRuntimeTool>();
+expectTypeOf<RuntimeInspection>().toEqualTypeOf<OriginalRuntimeInspection>();
+expectTypeOf<SessionTools>().toEqualTypeOf<OriginalSessionTools>();
+expectTypeOf<ToolsCatalog>().toEqualTypeOf<OriginalToolsCatalog>();
 import { readToolsCatalog } from "./tools.ts";
 import { huiToolDefinitions } from "./runtimes/hui-tools.ts";
 
@@ -16,6 +63,7 @@ test("global tools expose real HUI definitions without loading configured packag
   }));
   const before = await readdir(dir);
   const result = await readToolsCatalog(dir);
+  expectSchema(ToolsCatalog, result);
   assert.equal(result.tools.length, 25);
   assert.equal(result.tools.find((tool) => tool.name === "browser")?.source, "HUI");
   assert.equal(result.tools.find((tool) => tool.name === "show_widget")?.source, "HUI");

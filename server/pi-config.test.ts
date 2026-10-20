@@ -1,4 +1,78 @@
-import { test } from "vitest";
+import { expectTypeOf, test } from "vitest";
+import { PiSnapshot, type PiTool, type PiSkill, type PiModel, type PiSettingsSummary, type PiConfiguredResource, type PiModelCatalogEntry } from "./api/pi.ts";
+import type { RuntimeModel } from "./runtimes/types.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
+
+type OriginalPiTool = {
+  name: string;
+
+  kind: "builtin" | "hui";
+  source?: string;
+};
+
+type OriginalPiSkill = {
+
+  id: string;
+  name: string;
+  description: string;
+  path: string;
+
+  root: string;
+
+  origin?: "hui";
+  tags?: readonly string[];
+
+  preferencePath?: string;
+};
+
+type OriginalPiModel = {
+  defaultProvider: string;
+  defaultModel: string;
+  thinking: string | null;
+
+  enabled: readonly string[];
+
+  authenticated: readonly string[];
+
+  catalog: readonly OriginalCatalogEntry[];
+};
+
+type OriginalPiSettingsSummary = {
+  path: string;
+  exists: boolean;
+
+  packages: readonly string[];
+  extensions: readonly string[];
+
+  resources: readonly OriginalPiConfiguredResource[];
+  skillRoots: readonly string[];
+};
+
+type OriginalPiConfiguredResource = {
+  id: string;
+  label: string;
+  kind: "package" | "extension";
+};
+
+type OriginalPiSnapshot = {
+  agentDir: string;
+  settings: OriginalPiSettingsSummary;
+  skills: readonly OriginalPiSkill[];
+  tools: readonly OriginalPiTool[];
+  model: OriginalPiModel;
+
+  diagnostics: readonly string[];
+};
+
+type OriginalCatalogEntry = Pick<RuntimeModel, "provider" | "id" | "name" | "contextWindow" | "maxTokens" | "thinkingLevels" | "fast">;
+
+expectTypeOf<PiTool>().toEqualTypeOf<OriginalPiTool>();
+expectTypeOf<PiSkill>().toEqualTypeOf<OriginalPiSkill>();
+expectTypeOf<PiModel>().toEqualTypeOf<OriginalPiModel>();
+expectTypeOf<PiSettingsSummary>().toEqualTypeOf<OriginalPiSettingsSummary>();
+expectTypeOf<PiConfiguredResource>().toEqualTypeOf<OriginalPiConfiguredResource>();
+expectTypeOf<PiSnapshot>().toEqualTypeOf<OriginalPiSnapshot>();
+expectTypeOf<PiModelCatalogEntry>().toEqualTypeOf<OriginalCatalogEntry>();
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -63,6 +137,7 @@ test("reports shipped definitions separately from configured sources", async () 
     {},
   );
   const snapshot = await readPiConfigAt(dir);
+  expectSchema(PiSnapshot, snapshot);
   const builtin = snapshot.tools.filter((tool) => tool.kind === "builtin").map((t) => t.name);
   assert.deepEqual(builtin, ["read", "bash", "edit", "write", "grep", "find", "ls", "powershell"]);
   assert.deepEqual(

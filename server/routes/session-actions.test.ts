@@ -8,6 +8,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
 import { waitFor } from "../test-support/wait-for.ts";
+import { RuntimeInspection, SessionTools } from "../api/tools.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 // One isolated gateway on Pi Durable: its home, HUI's directory, PI's agent directory and a deterministic provider,
 // all temporary.
@@ -90,10 +92,18 @@ test("a resent request id is answered with the first send's outcome and never ru
   assert.equal(created.status, 200, JSON.stringify(created.body));
   const id = (created.body["session"] as { id: string; tool: string }).id;
   assert.equal((created.body["session"] as { tool: string }).tool, "durable");
+  const cold = await call(`/__hui/sessions/${id}/tools`);
+  assert.equal(cold.status, 200);
+  expectSchema(SessionTools, cold.body);
+  assert.deepEqual(cold.body, { status: "cold" });
   assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
   // Opening answers before the runtime is up; a prompt meanwhile is refused as still starting.
   await liveSessions.booted(id);
   await waitFor("the session's runtime", () => liveSessions.hasRuntime(id), { state: () => liveSessions.status(id) });
+
+  const inspection = await call(`/__hui/sessions/${id}/tools`);
+  assert.equal(inspection.status, 200);
+  expectSchema(RuntimeInspection, inspection.body);
 
   const first = await call(`/__hui/sessions/${id}/prompt`, "POST", { text: "RESEND_ONE", requestId: "req-1" });
   assert.deepEqual(first, { status: 200, body: { ok: true } });

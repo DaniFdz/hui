@@ -10,7 +10,7 @@ import { safeSourceLabel } from "./source-label.ts";
 import { shippedTools } from "./runtimes/tool-catalog.ts";
 import { HUI_DEFAULT_PROMPT, HUI_PROMPT_REVISION } from "./runtimes/hui-prompt.ts";
 import { piBackend, PI_SDK_VERSION } from "./runtimes/pi-backend.ts";
-import type { ToolsCatalog } from "../src/lib/tools-types.ts";
+import type { ToolsCatalog } from "./runtimes/types.ts";
 
 export async function readToolsCatalog(agentDir = resolvePiAgentDir()): Promise<ToolsCatalog> {
   const sources: string[] = [];

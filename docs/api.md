@@ -398,7 +398,7 @@ Text is bounded to 256 KiB; `truncated` reports when the source was larger.
 
 ### `GET /__hui/tools`
 
-Returns the global `ToolsCatalog` from `src/lib/tools-types.ts`: selected backend,
+Returns the global `ToolsCatalog` described in `server/api/tools.ts`: selected backend,
 pinned SDK version, shipped tools (`name`, `description`, `source`,
 `defaultEnabled`), redacted configured global sources, diagnostics and the HUI
 base prompt text/revision. It requires no session, model or credentials and runs
@@ -463,18 +463,45 @@ All routes retain the `x-hui` guard and `no-store` responses. Metadata never
 includes saved credentials; a login response may contain a short-lived device
 code, sign-in URL and input prompt for this local user's active login.
 
-| Route | Contract |
-| --- | --- |
-| `GET /__hui/providers` | Built-in names, supported login methods, configured/auth-available flags, selected IDs, model context/output limits, active login state; ordered `accounts` with opaque ID, fallback name, optional display-only email, auth availability and optional epoch-ms `cooldownUntil` |
-| `POST /__hui/providers/:provider/login` | `{ method: "api_key" or "oauth", name?: string, accountId?: string }`; a new account by default, or reconnect exactly `accountId`; starts PI's provider-owned login; returns opaque login ID and pending state |
-| `POST /__hui/providers/login/:id` | `{ promptId, value }`; responds to the exact current prompt; never echoes the value |
-| `DELETE /__hui/providers/login/:id` | Cancels a pending login |
-| `PUT /__hui/providers/:provider` | `{ models: string[] }`; validates exact catalog IDs and atomically saves the deduplicated selection; empty explicitly disables all models for this provider |
-| `DELETE /__hui/providers/:provider` | Removes this HUI selection and all its accounts/credentials; PI config/auth is untouched |
-| `PUT /__hui/providers/:provider/accounts` | `{ order: string[] }`; must contain every existing account ID exactly once; durable priority order |
-| `DELETE /__hui/providers/:provider/accounts/:account` | Removes only that account/credential; keeps other accounts and the shared model selection |
-| `GET /__hui/providers/:provider/accounts/:account/quota` | Account-specific quota with the same response shape below |
-| `GET /__hui/providers/:provider/quota` | `{ status, checkedAt, windows, plan?, email?, access?, message? }`; status is `available`, `unsupported` or `unavailable`; windows contain measured `usedPercent`, `scope` (`account`, `scoped`, `spend`) and optional epoch-ms `resetAt` |
+### `GET /__hui/providers`
+
+Built-in names, supported login methods, configured/auth-available flags, selected IDs, model context/output limits, active login state; ordered `accounts` with opaque ID, fallback name, optional display-only email, auth availability and optional epoch-ms `cooldownUntil`.
+
+### `POST /__hui/providers/:provider/login`
+
+`{ method: "api_key" or "oauth", name?: string, accountId?: string }`; a new account by default, or reconnect exactly `accountId`; starts PI's provider-owned login; returns opaque login ID and pending state.
+
+### `POST /__hui/providers/login/:id`
+
+`{ promptId, value }`; responds to the exact current prompt; never echoes the value.
+
+### `DELETE /__hui/providers/login/:id`
+
+Cancels a pending login.
+
+### `PUT /__hui/providers/:provider`
+
+`{ models: string[] }`; validates exact catalog IDs and atomically saves the deduplicated selection; empty explicitly disables all models for this provider.
+
+### `DELETE /__hui/providers/:provider`
+
+Removes this HUI selection and all its accounts/credentials; PI config/auth is untouched.
+
+### `PUT /__hui/providers/:provider/accounts`
+
+`{ order: string[] }`; must contain every existing account ID exactly once; durable priority order.
+
+### `DELETE /__hui/providers/:provider/accounts/:account`
+
+Removes only that account/credential; keeps other accounts and the shared model selection.
+
+### `GET /__hui/providers/:provider/accounts/:account/quota`
+
+Account-specific quota with the same response shape below.
+
+### `GET /__hui/providers/:provider/quota`
+
+`{ status, checkedAt, windows, plan?, email?, access?, message? }`; status is `available`, `unsupported` or `unavailable`; windows contain measured `usedPercent`, `scope` (`account`, `scoped`, `spend`) and optional epoch-ms `resetAt`.
 
 Credentials use PI's locked auth storage at `$XDG_CONFIG_HOME/hui/providers/auth.json`
 (default `~/.config/hui/providers/auth.json`, mode 0600). Selections use a separate
@@ -566,16 +593,22 @@ Input errors receive `400`, and a PI command/agent failure receives `502`.
 Every successful response contains `{ kind, target, message, snapshot }`, where
 `snapshot` is the refreshed `GET /__hui/pi` shape.
 
-`POST /__hui/pi/packages/install` accepts `{ "url": "https://pi.dev/packages/<package>" }`.
+### `POST /__hui/pi/packages/install`
+
+Accepts `{ "url": "https://pi.dev/packages/<package>" }`.
 Only clean HTTPS catalog URLs without credentials, query strings or fragments
 are accepted. HUI derives the npm source and invokes PI's own `install` command.
 
-`POST /__hui/pi/packages/remove` accepts `{ "source": "<browser label>" }`.
+### `POST /__hui/pi/packages/remove`
+
+Accepts `{ "source": "<browser label>" }`.
 The label must resolve to exactly one currently configured raw package source;
 HUI then passes that exact source to PI's own `remove` command. Extensions that
 were configured directly rather than as packages remain inventory-only.
 
-`POST /__hui/pi/skills/install` accepts `{ "url": "https://..." }`. HUI starts
+### `POST /__hui/pi/skills/install`
+
+Accepts `{ "url": "https://..." }`. HUI starts
 a short-lived PI process with no session, context files, extensions or existing
 skills, minimal thinking and a low-cost catalog model. It refuses to fall back
 to an expensive default when no low-cost candidate is present. The optional

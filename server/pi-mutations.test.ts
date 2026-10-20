@@ -1,7 +1,20 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { expectTypeOf, test } from "vitest";
+import { PiMutationKind, PiMutationResult, type PiSnapshot } from "./api/pi.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
 
-import type { PiSnapshot } from "./pi-config.ts";
+type OriginalPiMutationKind = "package-install" | "package-remove" | "skill-install";
+
+type OriginalPiMutationResult = {
+  kind: OriginalPiMutationKind;
+  target: string;
+  message: string;
+  snapshot: PiSnapshot;
+};
+
+expectTypeOf<PiMutationKind>().toEqualTypeOf<OriginalPiMutationKind>();
+expectTypeOf<PiMutationResult>().toEqualTypeOf<OriginalPiMutationResult>();
+
 import {
   packageSourceFromCatalogUrl,
   PiMutationBusyError,
@@ -81,8 +94,12 @@ test("package install and removal call PI and return refreshed snapshots", async
     readPackageSources: async () => ["npm:@scope/tool"],
   });
 
-  assert.equal((await service.installPackage("https://pi.dev/packages/@scope/tool")).message, "Installed @scope/tool.");
-  assert.equal((await service.removePackage("@scope/tool")).message, "Removed @scope/tool.");
+  const installed = await service.installPackage("https://pi.dev/packages/@scope/tool");
+  expectSchema(PiMutationResult, installed);
+  assert.equal(installed.message, "Installed @scope/tool.");
+  const removed = await service.removePackage("@scope/tool");
+  expectSchema(PiMutationResult, removed);
+  assert.equal(removed.message, "Removed @scope/tool.");
   assert.deepEqual(calls, [["install", "npm:@scope/tool"], ["remove", "npm:@scope/tool"]]);
 });
 

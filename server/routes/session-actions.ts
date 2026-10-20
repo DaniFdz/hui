@@ -7,7 +7,9 @@
  */
 import { homedir } from "node:os";
 import type { BotService } from "../bot-service.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import { SessionTools, ToolsError, routeSchemas as toolsRouteSchemas } from "../api/tools.ts";
+
 import { readHuiSettings } from "../hui-settings.ts";
 import { liveSessions, SessionBusyError } from "../live-sessions.ts";
 import { answerSideQuestion } from "../model-routing.ts";
@@ -25,6 +27,8 @@ import { foreverChatRefusal, MAX_PROMPT_BYTES, sessionMutationErrorStatus } from
 import { BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
 import { isThinkingLevel } from "../../shared/thinking.ts";
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
+
+export const routeSchemas = toolsRouteSchemas.filter((route) => route.path === "/__hui/sessions/:id/tools");
 
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
@@ -265,9 +269,9 @@ export function createSessionActionRoutes(deps: {
       }
       if (action[2] === "tools" && method === "GET") {
         try {
-          return { status: 200, body: await liveSessions.inspect(id) };
+          return reply(SessionTools, await liveSessions.inspect(id));
         } catch (error) {
-          return { status: 502, body: { error: error instanceof Error ? error.message : "Runtime inspection failed." } };
+          return reply(ToolsError, { error: error instanceof Error ? error.message : "Runtime inspection failed." }, 502);
         }
       }
       if ((action[2] === "models" || action[2] === "commands") && method === "GET") {
