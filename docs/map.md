@@ -59,7 +59,7 @@ rename an entry; a commit never adds a new kind of violation.
 
 ## A message, start to finish
 
-1. **Composer** (`src/hui-app.ts`, `src/lib/composer/state.ts`) builds the
+1. **Composer** (`src/controllers/composer-controller.ts`, `src/lib/composer/state.ts`) builds the
    prompt with its attachments and draft.
 2. **Client API** (`src/api/sessions.ts`) posts it to
    `/__hui/sessions/:id/prompt` (or `steer`, `follow-up`, `queue`) with a
@@ -105,10 +105,10 @@ rename an entry; a commit never adds a new kind of violation.
 
 | Area | Start here |
 |---|---|
-| App shell | `main.ts` (styles, boot, mount), `lib/boot-screen.ts` (index.html's boot screen), `lib/view-assets.ts` (view stylesheets loaded together before the first paint), `hui-app.ts` (navigation and cross-view state), `src/lit/hui-element.ts` |
+| App shell | `main.ts` (styles, boot, mount), `lib/boot-screen.ts` (index.html's boot screen), `lib/view-assets.ts` (view stylesheets loaded together before the first paint), `hui-app.ts` (route, layout and the controllers' wiring), `src/lit/hui-element.ts` |
 | Client stores and API | `src/api/` (requests to `/__hui/`: `request.ts` (fetch boundary, `x-hui` header, response deadline), `settings.ts`, `ui-errors.ts` (browser errors batched to the gateway), `sessions.ts` (session API), `session-list.ts` (applies session-list update frames), `terminals.ts`, `browser.ts`, `files.ts`, `diff.ts`, and one client per area: `automation.ts`, `backlog.ts`, `bots.ts`, `bot-facts.ts`, `bot-templates.ts`, `bot-tools.ts`, `bot-triggers.ts`, `calls.ts`, `datadog.ts`, `jira.ts`, `github.ts`, `github-previews.ts`, `pi.ts`, `providers.ts`, `themes.ts`, `vscode.ts`, `workers.ts`, …), `src/lib/settings/settings-store.ts` (settings cache and write queue), other `lib/*-store.ts` |
 | Generated API types | `src/api/schema/`, generated only from `docs/api.schema.json` by `npm run api:schema` |
-| Controllers | `src/controllers/` (Lit controllers holding a page's state and calling `src/api/`: automation (snapshot, polling, task actions), settings (HUI settings, theme, PI and the control surfaces), HUI update checks, the Kanban board, its Jira dialogs and task suggestions, the split layout and the Work pane, New Session launch state, the session registry, the sidebar and the shell toasts, the open conversation's composer, bot import and export, a bot's tools, triggers and memories, calls, the browser live view) |
+| Controllers | `src/controllers/` (Lit controllers holding a feature's state and calling `src/api/`): `conversation-controller.ts` (the open session's transcript, stream, models and question), `composer-controller.ts` (drafts, completion, the queue and sending), `sessions-controller.ts` (the session registry, the sidebar and the shell toasts), `launch-controller.ts` (New Session), `work-layout-controller.ts` (split panes and the Work pane), `backlog-controller.ts` (the Kanban board, its Jira dialogs and task suggestions), `settings-controller.ts` (HUI settings, theme, PI and the control surfaces), `automation-controller.ts`, `update-controller.ts`, `bots-controller.ts` and the bot `import`, `tools`, `triggers` and `facts` controllers, `voice-controller.ts` (calls), `browser-view-controller.ts` (the browser live view) |
 | Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file), `lib/github-links.ts` and `lib/datadog-links.ts` (browser-local Markdown link detection; portable JSON fixtures match the gateway copies), `lib/jira.ts` and `lib/pull-requests.ts` (work-item and pull-request labels), `lib/widgets.ts` (widget documents, theme bridge and frame messages; CSP fixtures match the gateway copy) |
 | Chat | `views/chat/` (projection, tool cards, position rail), `src/lib/markdown/`, `src/lib/composer/` (drafts, state, textarea, send requests); file references that open in the Files view: `lib/files/references.ts` (which text is a path), `lib/files/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
 | Sidebar and sessions | `src/lib/session/sidebar-sessions.ts`, `lib/session/sessions.ts` (group labels, transcript Markdown, unreachable hosts), `lib/session-tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |

@@ -1,8 +1,9 @@
 /**
  * The root application element, also reused as the embedded chat pane inside splits and bot views. As the shell it
- * holds the browser-side state (route, session list, layout, drafts, bots, settings and the polls that refresh them)
- * and passes it to the view render functions as props. Durable state lives behind the gateway's `/__hui/` routes;
- * this element mirrors it and sends requests, it never reads files or runs processes.
+ * owns the route and the layout, hands each feature's state to its controller in `controllers/` (the open
+ * conversation, the composer, sessions, bots, the backlog, settings, automation, updates, launch and the work layout)
+ * and passes props to the view render functions. Durable state lives behind the gateway's `/__hui/` routes; the shell
+ * and its controllers mirror it and send requests through `api/`, never reading files or running processes.
  */
 import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";

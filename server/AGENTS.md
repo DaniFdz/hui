@@ -15,6 +15,12 @@ reads, long-lived session lifecycle, and runtime adapters.
   is not its own, or a `RouteResult` (JSON through `reply(schema, body)`, HTML or a
   file) that `hui.ts` writes. Keep parsing, validation and status mapping in the
   route module; move lifecycle and persistence rules to their owning modules.
+- Every JSON payload a route sends or receives has a TypeBox schema in
+  `api/<area>.ts`, listed in the module's `routeSchemas`, and every route has a
+  heading in `docs/api.md`. After changing either, run `npm run api:schema`, which
+  rewrites `docs/api.schema.json` and the browser's generated types;
+  `scripts/api-schema.test.ts` fails on a gap or a stale file. Schemas describe
+  payloads; they don't validate requests. Internal records never get one.
 - `sessions.ts` owns HUI registry persistence. `live-sessions.ts` owns the one-live-
   runtime-per-session invariant. `runtimes/` translates a harness protocol into the
   generic types in `runtimes/types.ts`.
