@@ -384,8 +384,11 @@ function renderJiraBadge(session: SessionView) {
   >${brandIcons.jira}</span>`;
 }
 
+const menusShown = new Set<string>();
+
 function sessionRow(session: SessionView, selected: boolean, props: ShellProps, depth = 0, hasChildren = false, treeCollapsed = false) {
   const open = props.menuFor === session.id;
+  if (open) menusShown.add(session.id);
   const splitOpen = props.openSessionIds?.has(session.id) ?? props.splitSessionId === session.id;
   const hasDraft = props.draftSessionIds.has(session.id);
   const linkedJira = session.jiraIssues?.at(-1);
@@ -501,7 +504,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           <span class="session-row__draft-icon" aria-hidden="true">${icons.edit}</span>
           <span class="session-row__more-icon" aria-hidden="true">${icons.moreHorizontal}</span>
         </button>
-        <wa-dropdown-item value="pin" aria-keyshortcuts="P" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.pin}</span><span class="session-menu__text">${session.pinned ? "Unpin session" : "Pin session"}</span>${shortcut("P")}</wa-dropdown-item>
+        ${menusShown.has(session.id) ? html`<wa-dropdown-item value="pin" aria-keyshortcuts="P" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.pin}</span><span class="session-menu__text">${session.pinned ? "Unpin session" : "Pin session"}</span>${shortcut("P")}</wa-dropdown-item>
         <wa-dropdown-item value="rename" aria-keyshortcuts="R" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.edit}</span><span class="session-menu__text">Rename…</span>${shortcut("R")}</wa-dropdown-item>
         <wa-dropdown-item value="unread" aria-keyshortcuts="U" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.circle}</span><span class="session-menu__text">${session.unread ? "Mark as read" : "Mark as unread"}</span>${shortcut("U")}</wa-dropdown-item>
         <wa-dropdown-item value="archive" aria-keyshortcuts="A" class="session-menu__item"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.box}</span><span class="session-menu__text">Archive session</span>${shortcut("A")}</wa-dropdown-item>
@@ -535,7 +538,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           ${linkedJira ? html`<wa-dropdown-item slot="submenu" value="open:jira" class="session-menu__item"><span slot="icon" class="session-menu__icon session-menu__icon--jira">${brandIcons.jira}</span><span class="session-menu__text">Jira · ${linkedJira.key}</span></wa-dropdown-item>` : nothing}
         </wa-dropdown-item>
         <div class="session-menu__separator" role="separator"></div>
-        <wa-dropdown-item value="delete" aria-keyshortcuts="D" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.trash}</span><span class="session-menu__text">Delete…</span>${shortcut("D")}</wa-dropdown-item>
+        <wa-dropdown-item value="delete" aria-keyshortcuts="D" variant="danger" class="session-menu__item session-menu__item--destructive"><span slot="icon" class="session-menu__icon" aria-hidden="true">${icons.trash}</span><span class="session-menu__text">Delete…</span>${shortcut("D")}</wa-dropdown-item>` : nothing}
       </wa-dropdown>
       </span>
       </span>
