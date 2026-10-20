@@ -10,7 +10,7 @@ import { AgentDoc, defineDoc, type ConversationId, type ToolExecutionApi } from 
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { normalizeSettings } from "../hui-settings.ts";
 import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
-import type { BotMemoryStatus } from "../../shared/bots.ts";
+import type { BotMemoryStatus } from "../bots-format.ts";
 import type { BotMemory } from "../bot-memory.ts";
 import type { DurableSession } from "./durable.ts";
 import type { DurableBotsDeps } from "./durable-bot-access.ts";
@@ -30,7 +30,7 @@ const { OptChatDoc } = await import("./durable-optchat.ts");
 const { durableBotConversations } = await import("../bot-conversations.ts");
 const { BotMemoryUnavailableError, optChatBotMemory } = await import("../bot-memory.ts");
 const { BotInputError } = await import("../bots.ts");
-const { botKickoffText } = await import("../../shared/bots.ts");
+const { botKickoffText } = await import("../bots-format.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 /** Stands in for OptChat's document: written by `enable` inside the commit that creates the conversation. */

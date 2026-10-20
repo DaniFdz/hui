@@ -9,9 +9,11 @@
  */
 import { html, nothing, svg, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
-import { botSettingOf, type BotSettingKey, type BotSettingValue, type BotView } from "../lib/bots/bots.ts";
+import {
+  BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botColorName, botSettingOf, isBotFaceEars, isBotFaceShape,
+  type BotSettingKey, type BotSettingValue, type BotView,
+} from "../lib/bots/bots.ts";
 import type { RuntimeModel } from "../api/sessions.ts";
-import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPES, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, BOT_THINKING_LEVELS, botColorName, isBotFaceEars, isBotFaceShape } from "../../shared/bots.ts";
 import type { BotAvatar, BotFaceEars, BotFaceShape, BotTagging } from "../api/schema/bots.ts";
 import { FACE_LEAF_COLOR, faceEars, facePath, faceViewBox } from "../lib/bots/face.ts";
 import { callVoice, GPT_LIVE_VOICES, gptLiveVoiceLabel, type GptLiveVoice } from "../../shared/calls.ts";

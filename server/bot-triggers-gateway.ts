@@ -5,7 +5,7 @@
  */
 import type { IncomingMessage } from "node:http";
 
-import type { BotRecord } from "../shared/bots.ts";
+import type { BotRecord } from "./bots-format.ts";
 import { createBotTriggerRoutes } from "./routes/bot-triggers.ts";
 import { BotTriggerService } from "./bot-triggers.ts";
 import { HOOK_ROUTE, isTailnetOrLoopback, readHookBody } from "./bot-triggers-listener.ts";

@@ -31,12 +31,13 @@ import { mkdir, realpath, rm, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import {
-  agentReplyTo, agentTagPrefix, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook, botTurnOrigin,
-  handleFromName, isBotAccessQuestion, mentionsBot, previewLine, runTurnOrigins, storedTagging,
+  agentReplyTo, agentTagPrefix, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook,
+  handleFromName, isBotAccessQuestion, mentionsBot, previewLine, storedTagging,
   type BotAccessRequest, type BotCatalog, type BotSkillRef, type BotSkillSelector,
   type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
-  type BotQuestion, type BotRecord, type BotReply, type BotTurnOrigin, type BotView,
-} from "../shared/bots.ts";
+  type BotQuestion, type BotRecord, type BotReply, type BotView,
+} from "./bots-format.ts";
+import { botTurnOrigin, runTurnOrigins, type BotTurnOrigin } from "./runtimes/turn-origins.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "./automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts";

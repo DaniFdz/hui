@@ -6,7 +6,7 @@
  * except Letta's memory and messaging tools, which HUI's chat and OptChat memory replace. The message history is
  * skipped.
  */
-import { BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_LIMITS } from "../bots-format.ts";
 import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, isRecord, oneLine, sections, str } from "./common.ts";
 

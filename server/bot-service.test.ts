@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 
-import { agentReplyTo, BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, botTurnOrigin, mentionsBot, type BotAccess, type BotMemoryStatus } from "../shared/bots.ts";
+import { agentReplyTo, BOT_KICKOFF_MARKER, botDisplayCwd, botKickoffName, mentionsBot, type BotAccess, type BotMemoryStatus } from "./bots-format.ts";
+import { botTurnOrigin } from "./runtimes/turn-origins.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import type { CallRecord } from "../shared/calls.ts";
 import type { AutomationTask } from "./automation.ts";

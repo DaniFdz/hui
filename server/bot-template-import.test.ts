@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { BOT_LIMITS, botKickoffText, botTurnOrigin, parseRunOrigins, type BotView } from "../shared/bots.ts";
+import { BOT_LIMITS, botKickoffText, type BotView } from "./bots-format.ts";
+import { botTurnOrigin, parseRunOrigins } from "./runtimes/turn-origins.ts";
 import { botOpenerKickoffText, botTemplateKickoffText, type BotTemplate } from "./bot-templates/formats.ts";
 import type { BotTriggerInput } from "./bot-triggers-format.ts";
 import type { AutomationTask, AutomationTaskInput } from "./automation.ts";

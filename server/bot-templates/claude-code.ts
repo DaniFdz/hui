@@ -4,7 +4,7 @@
  * tools; HUI keeps on only the tools they map to (`CLAUDE_CODE_TOOLS`) and turns the rest off. Without one the subagent
  * inherits every tool, and so does the bot.
  */
-import { BOT_FACE_COLORS, BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_LIMITS } from "../bots-format.ts";
 import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, displayName, frontMatter, oneLine, str } from "./common.ts";
 

@@ -18,7 +18,7 @@
  * refuse). Its skills are on, like every skill of a bot: they are text the operator read in the preview, they widen no
  * tool, and each can be turned off on the Tools & skills page. The export side is `bot-export.ts`.
  */
-import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar } from "../shared/bots.ts";
+import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar } from "./bots-format.ts";
 import type { BotTemplateTrigger } from "./bot-export-format.ts";
 import {
   BOT_SKILL_TEXT_FILE, BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, botOpenerKickoffText, botTemplateKickoffText, notAgreedSection,

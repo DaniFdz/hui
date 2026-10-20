@@ -21,7 +21,7 @@ import { BotFactsStoreError, type BotFacts } from "./bot-facts.ts";
 import type { BotFact } from "./api/bots.ts";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { BotAccess, BotMemoryStatus, BotToolGroup } from "../shared/bots.ts";
+import type { BotAccess, BotMemoryStatus, BotToolGroup } from "./bots-format.ts";
 import { BotMemoryUnavailableError, type BotMemory } from "./bot-memory.ts";
 import type { BotOffer, BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./bot-service.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, storedAccess } from "./bots.ts";

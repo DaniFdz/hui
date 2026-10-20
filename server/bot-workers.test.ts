@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, test, type TestContext } from "vitest";
 import { fileURLToPath } from "node:url";
-import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "../shared/bots.ts";
+import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "./bots-format.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 

@@ -3,7 +3,7 @@
  * models this gateway resolves, its memories into SOUL.md, and a template that came back from the browser checked
  * again before anything is created from it. Pure: the service passes what the gateway knows.
  */
-import { BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape, storedTagging } from "../../shared/bots.ts";
+import { BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape, storedTagging } from "../bots-format.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateIntegration } from "./formats.ts";
 import type { AutomationSchedule } from "../automation.ts";
 import { gptLiveVoice } from "../../shared/calls.ts";

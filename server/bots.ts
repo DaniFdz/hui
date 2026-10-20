@@ -28,7 +28,7 @@ import {
   NEW_BOT_NAME, storedTagging,
   type BotAccess, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice,
   type BotVoicePatch,
-} from "../shared/bots.ts";
+} from "./bots-format.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
 import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
 import { CONFIG_DIR } from "./paths.ts";

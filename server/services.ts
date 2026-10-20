@@ -26,7 +26,7 @@ import { createCallRoutes } from "./routes/calls.ts";
 import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./call-helper.ts";
 import { optChatBotMemory } from "./bot-memory.ts";
 import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
-import { type BotReply, type BotView } from "../shared/bots.ts";
+import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./pull-requests.ts";
 
 import { botsEnabled, botsOn, readHuiSettings, writeHuiSettings, type Settings } from "./hui-settings.ts";

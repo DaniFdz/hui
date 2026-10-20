@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { BotRecord } from "../shared/bots.ts";
+import type { BotRecord } from "./bots-format.ts";
 import { CALL_LIMITS, chunkUtf8, GPT_LIVE_MODEL } from "../shared/calls.ts";
 import {
   boundBytes, buildCallInstructions, buildCallSession, callHeaders, callRequestIds, CallBroker, CallInputError, CallLimitError, CallNotFoundError,

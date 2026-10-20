@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import type { BotRecord, BotReply } from "../../shared/bots.ts";
+import type { BotRecord, BotReply } from "../bots-format.ts";
 import { CALL_LIMITS, type CallDelegationResult } from "../../shared/calls.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../hui-settings.ts";
 import { BotConflictError, BotNotFoundError } from "../bots.ts";

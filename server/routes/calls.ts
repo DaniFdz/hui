@@ -16,7 +16,7 @@
 import { CALL_LIMITS, GPT_LIVE_MODEL, GPT_LIVE_VOICES, type CallDelegationResult, type CallRecordLine, type CallsStatus, type CallStarted } from "../../shared/calls.ts";
 import type { Settings } from "../hui-settings.ts";
 import { BotMemoryUnavailableError } from "../bot-memory.ts";
-import type { BotRecord } from "../../shared/bots.ts";
+import type { BotRecord } from "../bots-format.ts";
 import type { BotService } from "../bot-service.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError } from "../bots.ts";
 import type { JsonResult, RouteRequest } from "../http/route.ts";

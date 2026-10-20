@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { createBot, loadBots, subscribeBots } from "./bots.ts";
-import { BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
+import { BOTS_OFF_MESSAGE } from "../lib/bots/bots.ts";
 
 const RECORD = {
   id: "b1",

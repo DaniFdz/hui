@@ -3,7 +3,7 @@
  * an `llm` and `tools`. A file usually holds several agents; each is a candidate the preview offers. CrewAI fills
  * `{placeholders}` from a crew's inputs at run time; HUI leaves them in and says so.
  */
-import { BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_LIMITS } from "../bots-format.ts";
 import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, displayName, isRecord, oneLine, parseYaml, sections, str } from "./common.ts";
 

@@ -6,7 +6,7 @@
  * the CLI use it, and the browser's copy (`src/lib/bots/export-preview.ts`) makes the dialog show exactly the files the
  * gateway then saves. See docs/api.md#importing-and-exporting-bots.
  */
-import { handleFromName, type BotTagging, type BotVoice } from "../shared/bots.ts";
+import { handleFromName, type BotTagging, type BotVoice } from "./bots-format.ts";
 import type {
   BotExportAddition, BotExportAvatar, BotExportChange, BotExportGroup, BotExportPart, BotExportReview, BotExportSchedule, BotOpenPoint, BotTemplateTrigger,
 } from "./api/bot-templates.ts";

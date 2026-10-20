@@ -6,7 +6,8 @@
  */
 import { readFileSync } from "node:fs";
 import type { Skill } from "@earendil-works/pi-coding-agent";
-import type { BotCatalogSkill, BotCatalogTool, BotTurnOrigin } from "../../shared/bots.ts";
+import type { BotCatalogSkill, BotCatalogTool } from "../bots-format.ts";
+import type { BotTurnOrigin } from "./turn-origins.ts";
 import type { QuestionDraft } from "./question-box.ts";
 import type { RuntimeQuestionResponse } from "./types.ts";
 

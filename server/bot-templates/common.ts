@@ -4,7 +4,7 @@
  * files. Importers are pure: they read what they are given and never touch the disk or the network.
  */
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
-import { BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_LIMITS } from "../bots-format.ts";
 import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateSkill } from "./formats.ts";
 import { isOneGrapheme } from "../bots.ts";
 import { safeRelativePath } from "./zip.ts";

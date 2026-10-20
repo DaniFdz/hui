@@ -18,7 +18,7 @@ import {
   type CallRecordLine, type CallsStatus, type CallTaskResult, type GptLiveVoice,
 } from "../shared/calls.ts";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
-import type { BotRecord, BotReply } from "../shared/bots.ts";
+import type { BotRecord, BotReply } from "./bots-format.ts";
 import { voiceLanguage, voiceLanguageName } from "../shared/voice.ts";
 import type { ProviderAccounts } from "./provider-accounts.ts";
 import { credentialEmail } from "./provider-identity.ts";

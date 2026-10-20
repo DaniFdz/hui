@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { crc32 } from "node:zlib";
 import { readFile } from "node:fs/promises";
-import { BOT_FACE_COLORS } from "../../shared/bots.ts";
+import { BOT_FACE_COLORS } from "../bots-format.ts";
 import { cardFromPng, parseCharacterCard } from "./character-card.ts";
 import { parseClaudeCodeAgent } from "./claude-code.ts";
 import { TemplateFormatError, type ImportFile } from "./common.ts";

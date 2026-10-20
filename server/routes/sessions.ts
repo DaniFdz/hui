@@ -23,7 +23,7 @@ import {
 import { type createSessionLifecycle, SESSION_GROUP_MAX, SESSION_TITLE_MAX, sessionText } from "../sessions/lifecycle.ts";
 import { type createSessionViews, pendingSessions } from "../sessions/views.ts";
 import { resolveWorkingDirectory } from "../working-directories.ts";
-import { BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
+import { BOTS_OFF_MESSAGE } from "../bots-format.ts";
 
 export const routeSchemas: RouteSchema[] = sessionRouteSchemas;
 

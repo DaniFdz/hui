@@ -6,7 +6,7 @@
  * memories do. Importing either gives the profile, soul, skills, routines (disabled, as every import's) and lists back.
  */
 import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotOpenPoint, type BotTemplateTrigger } from "../bot-export-format.ts";
-import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../shared/bots.ts";
+import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../bots-format.ts";
 import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateSkillFile } from "./formats.ts";
 import { BOT_TRIGGER_LIMITS } from "../bot-triggers-format.ts";
 import type { AutomationSchedule } from "../automation.ts";

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_LIMITS } from "../bots-format.ts";
 import { TemplateFormatError } from "./common.ts";
 import { composeSoul, KNOWN_HEADING, matchIntegration, normalizeTemplate, resolveModel } from "./mapping.ts";
 import { readSchedule } from "./schedule.ts";

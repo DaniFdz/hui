@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
-import { botKickoffName, type BotCatalog, type BotView } from "../../shared/bots.ts";
+import { botKickoffName, type BotCatalog, type BotView } from "../bots-format.ts";
 import type { BotExportManifest, BotExportReview } from "../bot-export-format.ts";
 import type { BotImportPreview, BotImportResult } from "../bot-templates/formats.ts";
 import type { AutomationTask } from "../automation.ts";

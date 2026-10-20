@@ -24,7 +24,7 @@ import { chmod, lstat, mkdir, readdir, readFile, realpath, rm, stat, unlink, wri
 import { hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { ConversationId } from "@earendil-works/pi-durable";
-import type { BotTurnOrigin } from "../../shared/bots.ts";
+import type { BotTurnOrigin } from "../runtimes/turn-origins.ts";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools-bridge.ts";
 import { operatorName } from "../bot-souls.ts";
 import { readHuiSettings } from "../hui-settings.ts";

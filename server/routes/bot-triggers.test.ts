@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test, type TestContext } from "vitest";
 import { BotTriggerCreated, BotTriggersList } from "../api/bot-triggers.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
-import { BOTS_OFF_MESSAGE, type BotView } from "../../shared/bots.ts";
+import { BOTS_OFF_MESSAGE, type BotView } from "../bots-format.ts";
 import type { BotIO } from "../../cli/gateway-client.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory, a deterministic provider and a fake GitHub

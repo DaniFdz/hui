@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { agentTagPrefix } from "../../../shared/bots.ts";
 import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel } from "./projection.ts";
 
 test("a message HUI delivered names its sender and keeps only what they wrote", () => {
   assert.deepEqual(attributedMessage("[from @grace · hop 2] PR #7 needs **your** decision."), { sender: { kind: "bot", handle: "grace" }, body: "PR #7 needs **your** decision." });
   assert.deepEqual(attributedMessage("[from @ada] hi"), { sender: { kind: "bot", handle: "ada" }, body: "hi" });
   // The gateway's own header for a session's tag, return address and hop included.
-  assert.deepEqual(attributedMessage(`${agentTagPrefix("Fix [retry] · now", "9b2e-41", 2)}Please babysit PR #7.`),
+  assert.deepEqual(attributedMessage("[from agent: Fix retry now · reply-to agent:9b2e-41 · hop 2] Please babysit PR #7."),
     { sender: { kind: "session", title: "Fix retry now", id: "9b2e-41" }, body: "Please babysit PR #7." });
   assert.deepEqual(attributedMessage("[from agent: Release prep] older tag"), { sender: { kind: "session", title: "Release prep" }, body: "older tag" });
   assert.deepEqual(attributedMessage("[Inter-session message from Build (2) (s-1)]\nDone, see the log."),

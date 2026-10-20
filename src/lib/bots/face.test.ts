@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "vitest";
-import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, botFaceColor, botFaceEars, botFaceShape, botLook, botSeed, defaultBotLook } from "../../../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, botLook, botSeed, defaultBotLook } from "./bots.ts";
 import {
   BOT_FACE_STATES,
   FACE_EYES,
@@ -79,18 +79,6 @@ test("a stored shape and color win over the id's, and an emoji wins over the fac
   // A record edited by hand: an unknown shape, ears or a bad color falls back to the id's face.
   const odd = botLook({ id, avatar: { shape: "dragon" as never, ears: "wings" as never, color: "teal" } });
   assert.deepEqual({ shape: odd.shape, ears: odd.ears, color: odd.color }, { ...defaultBotLook(id), ears: undefined });
-});
-
-test("CLI names: shapes and ears by id or label, palette colors by name or hex", () => {
-  assert.equal(botFaceShape("Pebble"), "round");
-  assert.equal(botFaceShape(" HEART "), "heart");
-  assert.equal(botFaceShape("dragon"), undefined);
-  assert.equal(botFaceEars("Cat ears"), "cat");
-  assert.equal(botFaceEars(" BUNNY "), "bunny");
-  assert.equal(botFaceEars("wings"), undefined);
-  assert.equal(botFaceColor("Mint")?.hex, "#2fc49a");
-  assert.equal(botFaceColor("#FF6B4A")?.label, "Coral");
-  assert.equal(botFaceColor("#123456"), undefined);
 });
 
 const IDLE_CHAT: ChatFaceInput = { status: "idle", streaming: false, question: false, memoryWaiting: false, toolRunning: false, failed: false };

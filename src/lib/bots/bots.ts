@@ -1,21 +1,215 @@
 /**
  * Browser half of the bots API (`/__hui/bots`, owned by `server/`; the contract
  * is in `docs/api.md`): parsing records and stream frames, drafts and edits, and
- * session lists. A bot is a named agent with one permanent chat: its session is
- * an ordinary HUI session whose view carries `bot`. The requests live in
- * src/api/bots.ts.
+ * session lists; and the browser's copy of the gateway's bot limits, faces,
+ * labels, tagging and sender parsing (server/bots-format.ts and
+ * server/runtimes/turn-origins.ts). A bot is a named agent with one permanent
+ * chat: its session is an ordinary HUI session whose view carries `bot`. The
+ * requests live in src/api/bots.ts.
  *
  * Responses are normalized on the way in, like settings: a malformed or newer
  * record is skipped or narrowed rather than reaching the roster as `undefined`.
  */
-import { botLook, isBotFaceEars, isBotFaceShape, isBotTagging, storedTagging } from "../../../shared/bots.ts";
-import type { BotAvatar, BotAvatarPatch, BotFaceEars, BotFaceShape, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotSessionStatus, BotsUpdate, BotView, BotVoice } from "../../api/schema/bots.ts";
+import type { BotAvatar, BotAvatarPatch, BotFaceEars, BotFaceShape, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotSessionStatus, BotsUpdate, BotTagging, BotView, BotVoice } from "../../api/schema/bots.ts";
 import { gptLiveVoice } from "../../../shared/calls.ts";
 import { voiceLanguage } from "../../../shared/voice.ts";
 import type { SessionGroup, SessionView } from "../../api/sessions.ts";
 import { sessionTreeIds } from "../session-tree.ts";
 
 export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../api/schema/bots.ts";
+
+/**
+ * Bots are a preview: Settings → Labs → Bots (`settings.labs.bots`) turns them on, and they are off until then. Off,
+ * every `/__hui/bots` route, every call route and the session routes of a bot's chat answer 409 with this message,
+ * the CLI prints it, and a call whose gateway says it ends.
+ */
+export const BOTS_OFF_MESSAGE = "Bots are off on this gateway: they are a preview. Turn them on in Settings → Labs → Bots.";
+
+/** Limits the gateway enforces at its boundary; the CLI and browser mirror them. */
+export const BOT_LIMITS = {
+  name: 60,
+  handle: 32,
+  title: 80,
+  description: 500,
+  /** SOUL.md, in characters: what a bot's chat reads of it, and what `PUT …/soul` accepts. */
+  soul: 20_000,
+  /** One `message_bot` message. */
+  message: 20_000,
+  /** `lastMessage.text`, a one-line preview. */
+  preview: 200,
+} as const;
+
+export const BOT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/**
+ * Who may tag a bot (`message_bot`), as a skill's frontmatter says when it loads: `anyone` (the default, never stored)
+ * whenever a task fits its description; `mention` only in a turn whose operator message names `@handle`, as a skill with
+ * `disable-model-invocation` waits for `/skill:name`; `nobody` never, and it is in no list.
+ */
+const BOT_TAGGING = ["anyone", "mention", "nobody"] as const;
+
+export function isBotTagging(value: unknown): value is BotTagging {
+  return typeof value === "string" && (BOT_TAGGING as readonly string[]).includes(value);
+}
+
+/** `tagging` as a record keeps it: `mention` or `nobody`; anything else, the default `anyone` included, is nothing. */
+export function storedTagging(value: unknown): Exclude<BotTagging, "anyone"> | undefined {
+  return value === "mention" || value === "nobody" ? value : undefined;
+}
+
+/**
+ * A bot's face, after OpenAI's Dots: a plush shape in a color, with two dot
+ * eyes and no mouth, and optionally ears (or an antenna, a sprout, horns) on
+ * top. Stored in `avatar` beside the emoji, which still wins while set (a bot
+ * switches to its face when the emoji is cleared).
+ */
+export const BOT_FACE_SHAPES = ["blob", "round", "triangle", "heart", "cookie", "star", "flower", "cloud", "drop", "ghost", "pill", "block", "hexagon"] as const;
+export const BOT_FACE_SHAPE_LABELS: Readonly<Record<BotFaceShape, string>> = {
+  blob: "Blob", round: "Pebble", triangle: "Triangle", heart: "Heart", cookie: "Cookie", star: "Star", flower: "Flower",
+  cloud: "Cloud", drop: "Drop", ghost: "Ghost", pill: "Pill", block: "Block", hexagon: "Hexagon",
+};
+/** The shapes a bot's id picks from without a stored one: the first five, so the faces bots had before the others
+ * came stay as they were. */
+const PICKED_SHAPES = BOT_FACE_SHAPES.slice(0, 5);
+
+/** What sits on top of a face; absent: nothing. Never picked by the id. */
+export const BOT_FACE_EARS = ["cat", "bear", "bunny", "antenna", "sprout", "horns"] as const;
+export const BOT_FACE_EARS_LABELS: Readonly<Record<BotFaceEars, string>> = {
+  cat: "Cat ears", bear: "Bear ears", bunny: "Bunny ears", antenna: "Antenna", sprout: "Sprout", horns: "Horns",
+};
+
+/** The palette the Bots tab and `hui bot --color` name; the API takes any #rrggbb. */
+export const BOT_FACE_COLORS = [
+  { id: "blue", label: "Blue", hex: "#3a7bfa" },
+  { id: "yellow", label: "Yellow", hex: "#f5c21b" },
+  { id: "magenta", label: "Magenta", hex: "#d23ce0" },
+  { id: "mint", label: "Mint", hex: "#2fc49a" },
+  { id: "coral", label: "Coral", hex: "#ff6b4a" },
+  { id: "lilac", label: "Lilac", hex: "#9b7cf6" },
+] as const;
+type BotFaceColor = (typeof BOT_FACE_COLORS)[number];
+
+/**
+ * The first line of the message HUI sends a new bot without a soul, so it speaks
+ * first: an ordinary user-role message (like a routine's), which the chat shows
+ * as a note ("<name> was created"), never as the operator's bubble.
+ */
+const BOT_KICKOFF_MARKER = "[HUI bot created]";
+
+/** The line after a kickoff's name that makes it an import's first turn: not the operator's, so its gated tools refuse
+ * (the template's soul and skills can't make the bot rewrite itself before the operator has said a word). */
+const BOT_IMPORTED_KICKOFF_LINE = "from: template";
+
+/** The bot's name when `text` is a kickoff message (`""` if it names none); undefined for every other message. */
+export function botKickoffName(text: string): string | undefined {
+  if (text !== BOT_KICKOFF_MARKER && !text.startsWith(`${BOT_KICKOFF_MARKER}\n`)) return undefined;
+  return /^name: (.*)$/mu.exec(text)?.[1]?.trim() ?? "";
+}
+
+/** The two answers of an access request. */
+export const BOT_ACCESS_ANSWERS = ["Allow", "Deny"] as const;
+
+/** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), a trigger
+ * (`[trigger: name · …] …`), another bot (`[from @handle] …`), a session's agent (`[from agent: title] …`), HUI's
+ * kickoff of a new bot, an imported bot's first turn (a kickoff with `from: template`), or else the operator. */
+export type BotTurnOrigin =
+  | { kind: "operator" } | { kind: "kickoff" } | { kind: "imported" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string }
+  | { kind: "bot"; handle: string } | { kind: "agent"; title: string };
+
+const AGENT_TAG = /^\[from agent: ([^\]\n]*?)(?: · reply-to (agent:[A-Za-z0-9_-]{1,94}))?(?: · hop [1-9]\d*)?\] /u;
+
+export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
+  if (!text) return { kind: "operator" };
+  if (text.startsWith("[routine: ")) return { kind: "routine", name: /^\[routine: (.*?)\] /u.exec(text)?.[1] ?? "" };
+  // A trigger's name holds no `[`, `]` or `·`: it ends at the summary's ` · ` or at the bracket.
+  if (text.startsWith("[trigger: ")) return { kind: "trigger", name: /^\[trigger: ([^\]·\n]*?)(?: · |\])/u.exec(text)?.[1] ?? "" };
+  const bot = /^\[from @([a-z0-9-]+)(?: · hop [1-9]\d*)?\] /u.exec(text);
+  if (bot) return { kind: "bot", handle: bot[1]! };
+  const agent = AGENT_TAG.exec(text);
+  if (agent) return { kind: "agent", title: agent[1]! };
+  if (botKickoffName(text) === undefined) return { kind: "operator" };
+  return text.split("\n", 3).includes(BOT_IMPORTED_KICKOFF_LINE) ? { kind: "imported" } : { kind: "kickoff" };
+}
+
+/** The gateway's return address in an agent's attribution header; never one embedded in a forwarded message. */
+export function agentReplyTo(text: string | undefined): string | undefined {
+  return AGENT_TAG.exec(text ?? "")?.[2];
+}
+
+export function isBotFaceShape(value: unknown): value is BotFaceShape {
+  return typeof value === "string" && (BOT_FACE_SHAPES as readonly string[]).includes(value);
+}
+
+export function isBotFaceEars(value: unknown): value is BotFaceEars {
+  return typeof value === "string" && (BOT_FACE_EARS as readonly string[]).includes(value);
+}
+
+/** A palette color by its name (`mint`, any case) or hex; undefined for anything else. */
+function botFaceColor(value: string): BotFaceColor | undefined {
+  const key = value.trim().toLowerCase();
+  return BOT_FACE_COLORS.find((color) => color.id === key || color.hex === key);
+}
+
+/** A 32-bit hash of a bot's id (FNV-1a with a final mix): stable across renames, reloads and machines. */
+export function botSeed(id: string): number {
+  let hash = 0x811c9dc5;
+  for (const character of id) hash = Math.imul(hash ^ character.codePointAt(0)!, 0x01000193);
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x85ebca6b);
+  hash ^= hash >>> 13;
+  hash = Math.imul(hash, 0xc2b2ae35);
+  hash ^= hash >>> 16;
+  return hash >>> 0;
+}
+
+/** What a bot looks like everywhere (roster, chat, call, CLI). `emoji` while it has one, else its face. */
+export type BotLook = {
+  kind: "face" | "emoji";
+  emoji?: string;
+  shape: BotFaceShape;
+  ears?: BotFaceEars;
+  /** #rrggbb: the face's body, the emoji's tile and the call's tint. */
+  color: string;
+  /** The shape or color comes from the id, not from the record. */
+  derived: { shape: boolean; color: boolean };
+  /** Seeds the plush texture, so the same bot has the same face everywhere. */
+  seed: number;
+};
+
+/** The face a bot gets without a stored shape or color: picked by its id, the same everywhere. */
+export function defaultBotLook(id: string): { shape: BotFaceShape; color: string } {
+  const seed = botSeed(id);
+  return {
+    shape: PICKED_SHAPES[seed % PICKED_SHAPES.length]!,
+    color: BOT_FACE_COLORS[Math.floor(seed / PICKED_SHAPES.length) % BOT_FACE_COLORS.length]!.hex,
+  };
+}
+
+export function botLook(bot: { id: string; avatar?: BotAvatar | undefined }): BotLook {
+  const fallback = defaultBotLook(bot.id);
+  const shape = isBotFaceShape(bot.avatar?.shape) ? bot.avatar.shape : undefined;
+  const color = bot.avatar?.color && /^#[0-9a-f]{6}$/iu.test(bot.avatar.color) ? bot.avatar.color.toLowerCase() : undefined;
+  return {
+    kind: bot.avatar?.emoji ? "emoji" : "face",
+    ...(bot.avatar?.emoji ? { emoji: bot.avatar.emoji } : {}),
+    shape: shape ?? fallback.shape,
+    ...(isBotFaceEars(bot.avatar?.ears) ? { ears: bot.avatar.ears } : {}),
+    color: color ?? fallback.color,
+    derived: { shape: !shape, color: !color },
+    seed: botSeed(bot.id),
+  };
+}
+
+/** `Mint` for a palette color, the hex for any other. */
+export function botColorName(hex: string): string {
+  return botFaceColor(hex)?.label ?? hex;
+}
+
+/** One line: whitespace runs as single spaces, at most `max` characters (an ellipsis marks a cut). */
+export function previewLine(text: string, max: number = BOT_LIMITS.preview): string {
+  const line = text.replace(/\s+/gu, " ").trim();
+  return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
+}
 
 /** A bot's editable fields as its Settings page holds them. Empty model fields mean the default: the gateway's
  * model, the default thinking level, Settings' utility model. The persona is not here: the bot writes its SOUL.md in

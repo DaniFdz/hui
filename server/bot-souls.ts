@@ -16,7 +16,7 @@
 import { lstat, mkdir, realpath, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { BOT_SOUL_FILE } from "../shared/bots.ts";
+import { BOT_SOUL_FILE } from "./bots-format.ts";
 import { DEFAULT_SETTINGS } from "./hui-settings.ts";
 import type { BotSouls } from "./bot-service.ts";
 import { BOTS_DIR } from "./bots.ts";

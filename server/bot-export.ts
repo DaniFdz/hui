@@ -15,7 +15,7 @@ import {
   type BotExportMeta, type BotExportPart, type BotExportReview, type BotExportSchedule,
 } from "./bot-export-format.ts";
 import { BOT_SKILL_TEXT_FILE } from "./bot-templates/formats.ts";
-import type { BotView } from "../shared/bots.ts";
+import type { BotView } from "./bots-format.ts";
 import type { BotTrigger } from "./bot-triggers-format.ts";
 import type { AutomationTask } from "./automation.ts";
 import type { BotOffer, BotService } from "./bot-service.ts";

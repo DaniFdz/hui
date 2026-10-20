@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
 
-import { BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_KICKOFF_MARKER, botKickoffName, botKickoffText, handleFromName, previewLine, type BotRecord } from "../shared/bots.ts";
+import { BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_KICKOFF_MARKER, botKickoffName, botKickoffText, handleFromName, previewLine, type BotRecord } from "./bots-format.ts";
 import {
   BotConflictError, BotInputError, BotNotFoundError, BotRegistry, BotStoreError,
   findBot, isDerivedHandle, isOneGrapheme, normalizeBotInput, normalizeBotPatch, normalizeSoul, parseBotRecord, patchedAvatar, patchedVoice, uniqueHandle,

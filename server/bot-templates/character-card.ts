@@ -5,7 +5,7 @@
  * `{{char}}` is the bot's name and `{{user}}` the operator's (Settings' profile name, else "the operator", or "you" in
  * the opener). Example messages, alternate greetings, post-history instructions, creator notes and the image stay out.
  */
-import { BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_LIMITS } from "../bots-format.ts";
 import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, isRecord, macros, oneLine, sections, str } from "./common.ts";
 import { pngTextChunks } from "./png.ts";

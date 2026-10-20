@@ -1,8 +1,30 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "vitest";
-import { applyBotsUpdate, withLiveChats, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, isBotSession, isNewBotsFrame, parseBotsUpdate, parseBot, parseBotList, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView } from "./bots.ts";
+import {
+  applyBotsUpdate, withLiveChats, botChangePatch, botDraftOf, botInputFromDraft, botPatchFromDraft, botSettingChange, botSettingOf, isBotSession, isNewBotsFrame, parseBotsUpdate, parseBot, parseBotList, botLook, parseBotMemoryStatus, upsertBot, withoutBotSessions, type BotDraft, type BotView,
+  agentReplyTo, BOT_ACCESS_ANSWERS, BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_FACE_SHAPES, BOT_LIMITS, BOT_THINKING_LEVELS,
+  botColorName, botKickoffName, BOTS_OFF_MESSAGE, botTurnOrigin, isBotFaceEars, isBotFaceShape, isBotTagging, previewLine, storedTagging,
+} from "./bots.ts";
 import type { SessionGroup, SessionView } from "../../api/sessions.ts";
-import { botLook } from "../../../shared/bots.ts";
+
+test("bot limits, faces, labels, tagging and sender parsing match the portable fixtures", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./bots.fixture.json", import.meta.url), "utf8"));
+  assert.equal(BOTS_OFF_MESSAGE, fixture.offMessage);
+  assert.deepEqual(BOT_LIMITS, fixture.limits);
+  assert.deepEqual(BOT_THINKING_LEVELS, fixture.thinkingLevels);
+  assert.deepEqual(BOT_ACCESS_ANSWERS, fixture.accessAnswers);
+  assert.deepEqual({ shapes: BOT_FACE_SHAPES, shapeLabels: BOT_FACE_SHAPE_LABELS, ears: BOT_FACE_EARS, earsLabels: BOT_FACE_EARS_LABELS, colors: BOT_FACE_COLORS }, fixture.faces);
+  for (const item of fixture.looks) assert.deepEqual(botLook(item.input), item.expected);
+  for (const item of fixture.shapeChecks) assert.equal(isBotFaceShape(item.input), item.expected);
+  for (const item of fixture.earsChecks) assert.equal(isBotFaceEars(item.input), item.expected);
+  for (const item of fixture.colorNames) assert.equal(botColorName(item.input), item.expected);
+  for (const item of fixture.previews) assert.equal(previewLine(item.input.text, item.input.max), item.expected);
+  for (const item of fixture.tagging) assert.deepEqual([isBotTagging(item.input), storedTagging(item.input) ?? null], [item.valid, item.stored]);
+  for (const item of fixture.kickoffNames) assert.equal(botKickoffName(item.input) ?? null, item.expected);
+  for (const item of fixture.turnOrigins) assert.deepEqual(botTurnOrigin(item.input ?? undefined), item.expected);
+  for (const item of fixture.replyTo) assert.equal(agentReplyTo(item.input ?? undefined) ?? null, item.expected);
+});
 
 const RECORD = {
   id: "b1",

@@ -9,7 +9,7 @@
  */
 import { appendFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { agentReplyTo } from "../../shared/bots.ts";
+import { agentReplyTo } from "../../server/bots-format.ts";
 
 const logFile = process.env["HUI_E2E_PROVIDER_LOG"] || (() => { throw new Error("HUI_E2E_PROVIDER_LOG is required"); })();
 let port = Number(process.env["HUI_E2E_PROVIDER_PORT"] ?? 0);

@@ -34,10 +34,11 @@ import {
   type ConversationId, type DocumentReader, type Extension, type PromptSection, type ToolRegistration,
 } from "@earendil-works/pi-durable";
 import { Type } from "typebox";
-import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME, botTurnOrigin, type BotAccess, type BotSkillRef, type BotTurnOrigin } from "../../shared/bots.ts";
+import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_KICKOFF_MARKER, BOT_LIMITS, BOT_SOUL_FILE, NEW_BOT_NAME, type BotAccess, type BotSkillRef } from "../bots-format.ts";
+import { botTurnOrigin, type BotTurnOrigin } from "./turn-origins.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_CONTRIBUTION, triggersTool } from "./durable-bot-triggers.ts";
 
-export type { BotAccess, BotSkillRef } from "../../shared/bots.ts";
+export type { BotAccess, BotSkillRef } from "../bots-format.ts";
 
 /** A bot's chat, as its document says: the bot, and what the operator turned off in it. Everything else a session in
  * its directory gets is on, tools and skills that appear later included. */

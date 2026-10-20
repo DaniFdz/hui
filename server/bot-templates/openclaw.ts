@@ -9,7 +9,7 @@
  * BOOTSTRAP.md (OpenClaw's first-run ritual; HUI's first conversation is skipped since the bot has a soul) and the
  * daily `memory/*.md` logs.
  */
-import { BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_LIMITS } from "../bots-format.ts";
 import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, displayName, fileText, findFile, oneEmoji, oneLine, skillFromFile, unwrapFolder, type ImportFile } from "./common.ts";
 

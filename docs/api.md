@@ -1419,8 +1419,8 @@ bot's name) registered through `createSession`, New Session's path; its record
 carries `bot`. The bot routes below never duplicate the session API: the chat's
 transcript, live stream, prompt, steer, follow-up and question routes are the
 session routes on `bot.sessionId`. A bot runs on this gateway or, chosen when it
-is created, on a remote worker ([below](#bots-on-a-worker)). Shared types are in
-`shared/bots.ts`:
+is created, on a remote worker ([below](#bots-on-a-worker)). The payloads are in
+`server/api/bots.ts`, the record and limits in `server/bots-format.ts`:
 
 ```ts
 type BotRecord = {
@@ -1621,7 +1621,7 @@ While it is off, bots are dormant and nothing about them is deleted:
 
 - **Every bot route refuses** with `409 { "error": "Bots are off on this gateway:
   they are a preview. Turn them on in Settings → Labs → Bots." }`
-  (`BOTS_OFF_MESSAGE` in `shared/bots.ts`): everything under `/__hui/bots`
+  (`BOTS_OFF_MESSAGE` in `server/bots-format.ts`): everything under `/__hui/bots`
   (the events stream and the memory page included), `/__hui/calls` and every
   call route, and the session routes of a bot's chat (`/__hui/sessions/:id/…`
   actions, `PATCH`/`DELETE /__hui/sessions/:id` and its live stream's
@@ -1960,7 +1960,7 @@ with the options `Allow` and `Deny`. The last line appears when a routine
 (`[routine: …]`), another bot (`[from @…]`), HUI's kickoff or an import's first
 turn (*Asked in its first turn after it was imported, before you wrote.*) started the turn,
 read from the run's input as `set_profile` reads it (`botTurnOrigin` in
-`shared/bots.ts`). Such a turn may ask, but only the operator answers: session
+`server/runtimes/turn-origins.ts`). Such a turn may ask, but only the operator answers: session
 questions are answered only through `POST /__hui/sessions/:id/question` (and the
 clients built on it), never by a message, a routine or another bot. `Allow`
 removes the items from the lists in one commit, offers the chat its tools again

@@ -13,7 +13,7 @@ import { recordDiagnosticEvent } from "./observability.ts";
 import { BotStoreError, BotsOffError, BotWorkerOfflineError } from "./bots.ts";
 import type { LiveSessions } from "./live-sessions.ts";
 import { readRegistry, type SessionRecord } from "./sessions.ts";
-import { BOTS_OFF_ROUTINE_MESSAGE, type BotRecord } from "../shared/bots.ts";
+import { BOTS_OFF_ROUTINE_MESSAGE, type BotRecord } from "./bots-format.ts";
 
 import type {
   AutomationCreator,

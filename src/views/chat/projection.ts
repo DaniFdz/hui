@@ -6,7 +6,7 @@
  */
 import type { TranscriptItem } from "../../api/sessions.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../../lib/subagent-completion.ts";
-import { agentReplyTo, botKickoffName, botTurnOrigin } from "../../../shared/bots.ts";
+import { agentReplyTo, botKickoffName, botTurnOrigin } from "../../lib/bots/bots.ts";
 
 export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
 export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;

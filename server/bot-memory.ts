@@ -10,7 +10,7 @@
  */
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type { ConversationId, Tx } from "@earendil-works/pi-durable";
-import type { BotMemoryStatus } from "../shared/bots.ts";
+import type { BotMemoryStatus } from "./bots-format.ts";
 import { durableContext, type DurableHost } from "./runtimes/durable-host.ts";
 import { configureOptChat, enableOptChat } from "./runtimes/durable-optchat.ts";
 import { durableConversationId } from "./runtimes/durable.ts";

@@ -18,7 +18,8 @@
  * What it makes is recorded as the bot's (`createdBy`). Bots off (Settings → Labs → Bots), it refuses like every
  * bot tool; an archived bot has none to manage.
  */
-import { botTurnOrigin, runTurnOrigins, type BotRecord, type BotTurnOrigin } from "../shared/bots.ts";
+import { type BotRecord } from "./bots-format.ts";
+import { botTurnOrigin, runTurnOrigins, type BotTurnOrigin } from "./runtimes/turn-origins.ts";
 import type { AutomationSchedule, AutomationTask } from "./automation.ts";
 import { AutomationInputError, normalizeSchedule, type AutomationService } from "./automation.ts";
 import { BotConflictError, BotInputError, BotsOffError } from "./bots.ts";

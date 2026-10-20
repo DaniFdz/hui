@@ -18,7 +18,7 @@ import { isHookPath } from "./bot-triggers-listener.ts";
 import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, type RouteResult } from "./http/route.ts";
 import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { CALLS_ROUTE } from "./routes/calls.ts";
-import { BOTS_OFF_MESSAGE, type BotsUpdate } from "../shared/bots.ts";
+import { BOTS_OFF_MESSAGE, type BotsUpdate } from "./bots-format.ts";
 
 import { botsOn } from "./hui-settings.ts";
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode-proxy.ts";

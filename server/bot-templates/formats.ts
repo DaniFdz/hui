@@ -11,7 +11,7 @@
  * operator's.
  */
 import type { BotOpenPoint } from "../api/bot-templates.ts";
-import { BOT_IMPORTED_KICKOFF_LINE, BOT_KICKOFF_MARKER } from "../../shared/bots.ts";
+import { BOT_IMPORTED_KICKOFF_LINE, BOT_KICKOFF_MARKER } from "../bots-format.ts";
 
 export type {
   BotImportPreview, BotImportResult, BotImportRoutine, BotImportSource, BotTemplate, BotTemplateFormat, BotTemplateIntegration, BotTemplateMemory,

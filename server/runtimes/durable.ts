@@ -18,7 +18,7 @@ import { CODEMODE_TOOL_NAME, type CodemodeNestedCall } from "@earendil-works/pi-
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
-import { botTurnOrigin, type BotTurnOrigin } from "../../shared/bots.ts";
+import { botTurnOrigin, type BotTurnOrigin } from "./turn-origins.ts";
 import { resolveCommandReference } from "./command-references.ts";
 import type { RuntimeInspection } from "./types.ts";
 import { durableContext as context, durableHost, modelCallable, type DurableHost } from "./durable-host.ts";

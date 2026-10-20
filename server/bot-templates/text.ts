@@ -2,7 +2,7 @@
  * Text that is no other format: a persona as it was pasted (a Grok Bot's instructions copied from its page, a prompt
  * from anywhere). It all becomes the soul; a short first heading names the bot.
  */
-import { BOT_LIMITS } from "../../shared/bots.ts";
+import { BOT_LIMITS } from "../bots-format.ts";
 import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, displayName, normalizeText, oneLine } from "./common.ts";
 

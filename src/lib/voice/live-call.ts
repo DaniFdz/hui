@@ -19,7 +19,7 @@
  * run under test.
  */
 import { boundText, CALL_LIMITS, chunkUtf8, type CallDelegationResult, type CallLine, type CallTaskResult, type GptLiveVoice } from "../../../shared/calls.ts";
-import { BOTS_OFF_MESSAGE } from "../../../shared/bots.ts";
+import { BOTS_OFF_MESSAGE } from "../bots/bots.ts";
 
 /* ── what the call view reads ─────────────────────────────────────────── */
 

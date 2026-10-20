@@ -1,17 +1,19 @@
 /**
  * Bots (HUI-18): named, persistent agents, each with one forever chat whose
  * memory is OptChat and whose persona is the SOUL.md it writes in its first
- * conversation. Shared by the gateway, the `hui bot` CLI and the browser.
+ * conversation. The gateway's and the `hui bot` CLI's records, limits, faces,
+ * kickoff and tags; the browser keeps its own copy of what it shows in
+ * src/lib/bots/bots.ts, and who started a turn is in runtimes/turn-origins.ts.
  * The chat itself is an ordinary Durable session (`BotRecord.sessionId`); the
  * session API drives it like any other.
  */
-import type { BotAvatar, BotFaceEars, BotFaceShape, BotSkillRef, BotTagging, BotView, BotVoice } from "../server/api/bots.ts";
+import type { BotAvatar, BotFaceEars, BotFaceShape, BotSkillRef, BotTagging, BotView, BotVoice } from "./api/bots.ts";
 
 export type {
   BotAccessRequest, BotAvatar, BotAvatarPatch, BotCatalog, BotCatalogSkill, BotCatalogTool, BotDelivery, BotFaceEars, BotFaceShape, BotInput,
   BotLastMessage, BotMemoryStatus, BotMemoryUsage, BotMessageResult, BotPatch, BotQuestion, BotReply, BotSessionStatus, BotSkillRef,
   BotSkillSelector, BotSoul, BotsUpdate, BotTagging, BotToolGroup, BotView, BotVoice, BotVoicePatch,
-} from "../server/api/bots.ts";
+} from "./api/bots.ts";
 
 /**
  * Bots are a preview: Settings → Labs → Bots (`settings.labs.bots`) turns them on, and they are off until then. Off,
@@ -190,27 +192,7 @@ export function isBotAccessQuestion(question: { method: string; title?: string; 
     && question.options?.length === 2 && question.options[0] === BOT_ACCESS_ANSWERS[0] && question.options[1] === BOT_ACCESS_ANSWERS[1];
 }
 
-/** Who started a bot's turn, by the message that started it: a routine (`[routine: name] …`), a trigger
- * (`[trigger: name · …] …`), another bot (`[from @handle] …`), a session's agent (`[from agent: title] …`), HUI's
- * kickoff of a new bot, an imported bot's first turn (a kickoff with `from: template`), or else the operator. */
-export type BotTurnOrigin =
-  | { kind: "operator" } | { kind: "kickoff" } | { kind: "imported" } | { kind: "routine"; name: string } | { kind: "trigger"; name: string }
-  | { kind: "bot"; handle: string } | { kind: "agent"; title: string };
-
-const AGENT_TAG = /^\[from agent: ([^\]\n]*?)(?: · reply-to (agent:[A-Za-z0-9_-]{1,94}))?(?: · hop [1-9]\d*)?\] /u;
-
-export function botTurnOrigin(text: string | undefined): BotTurnOrigin {
-  if (!text) return { kind: "operator" };
-  if (text.startsWith("[routine: ")) return { kind: "routine", name: /^\[routine: (.*?)\] /u.exec(text)?.[1] ?? "" };
-  // A trigger's name holds no `[`, `]` or `·`: it ends at the summary's ` · ` or at the bracket.
-  if (text.startsWith("[trigger: ")) return { kind: "trigger", name: /^\[trigger: ([^\]·\n]*?)(?: · |\])/u.exec(text)?.[1] ?? "" };
-  const bot = /^\[from @([a-z0-9-]+)(?: · hop [1-9]\d*)?\] /u.exec(text);
-  if (bot) return { kind: "bot", handle: bot[1]! };
-  const agent = AGENT_TAG.exec(text);
-  if (agent) return { kind: "agent", title: agent[1]! };
-  if (botKickoffName(text) === undefined) return { kind: "operator" };
-  return text.split("\n", 3).includes(BOT_IMPORTED_KICKOFF_LINE) ? { kind: "imported" } : { kind: "kickoff" };
-}
+export const AGENT_TAG = /^\[from agent: ([^\]\n]*?)(?: · reply-to (agent:[A-Za-z0-9_-]{1,94}))?(?: · hop [1-9]\d*)?\] /u;
 
 /** The gateway's return address in an agent's attribution header; never one embedded in a forwarded message. */
 export function agentReplyTo(text: string | undefined): string | undefined {
@@ -220,35 +202,6 @@ export function agentReplyTo(text: string | undefined): string | undefined {
 /** How a session's tag starts in the bot's chat: a sanitized title, its return address and the chain's current hop. */
 export function agentTagPrefix(title: string, sessionId: string, hop = 1): string {
   return `[from agent: ${previewLine(title.replace(/[[\]·]/gu, " "), 80) || "Untitled session"} · reply-to agent:${sessionId}${hop === 1 ? "" : ` · hop ${hop}`}] `;
-}
-
-/**
- * Who brought each input of a bot's running turn, as its gated tools judge it: they refuse when any of them is an
- * origin they refuse. The message that started the run, as the gateway recorded it (`runPrompt`), then every input the
- * host running the chat saw the run take (`runOrigins`, sent with the tool call: the first message and every steer and
- * follow-up since). A host that can't tell sends none, which leaves the check on `runPrompt` alone.
- */
-export function runTurnOrigins(runPrompt: string | undefined, runOrigins: readonly BotTurnOrigin[] | undefined): BotTurnOrigin[] {
-  return [botTurnOrigin(runPrompt), ...runOrigins ?? []];
-}
-
-/** Most origins a tool call carries: a host sends each one once. */
-const MAX_RUN_ORIGINS = 1_000;
-
-/** `runOrigins` as a worker's host sends them with a tool call; undefined for anything else (an older host sends
- * none), which leaves the check on `runPrompt` alone. */
-export function parseRunOrigins(value: unknown): BotTurnOrigin[] | undefined {
-  if (!Array.isArray(value) || value.length > MAX_RUN_ORIGINS) return undefined;
-  const origins: BotTurnOrigin[] = [];
-  for (const item of value) {
-    const { kind, name, handle, title } = (typeof item === "object" && item !== null ? item : {}) as Record<string, unknown>;
-    if (kind === "operator" || kind === "kickoff" || kind === "imported") origins.push({ kind });
-    else if ((kind === "routine" || kind === "trigger") && typeof name === "string") origins.push({ kind, name });
-    else if (kind === "bot" && typeof handle === "string") origins.push({ kind, handle });
-    else if (kind === "agent" && typeof title === "string") origins.push({ kind, title });
-    else return undefined;
-  }
-  return origins;
 }
 
 /* ── look ─────────────────────────────────────────────────────────────── */
