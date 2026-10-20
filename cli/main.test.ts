@@ -203,6 +203,7 @@ test("HELP lists every hui bot command", () => {
     "[--soul-file <path|->] [--cwd <dir>]",
     "--tagging who may: anyone, the default, whenever a task fits; mention, only",
     "--language is the language it",
+    "Bots are named agents with one forever chat each",
   ]) assert.ok(HELP.includes(line), line);
   assert.doesNotMatch(HELP, /VoiceStudio|--voice/u, "VoiceStudio's flags are gone");
   assert.doesNotMatch(HELP, /Labs/u, "bots need no Labs switch");

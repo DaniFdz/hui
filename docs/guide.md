@@ -192,7 +192,7 @@ does the quick work (session and branch names, Jira drafts, `/btw`, and for bots
 their memory summaries, quick answers on calls and call summaries): choose the
 fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Calls)
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
-are with bots only, so that section shows while [bots](#bots) are on.
+are with bots only.
 
 The composer's **Effort** slider offers the reasoning levels the session's model
 has, up to **Maximum** (PI's `max` level) where the model supports it, then
@@ -562,7 +562,8 @@ refuses intervals under a minute. `--cron` uses this machine's time zone unless
 `--timezone` names another.
 
 A routine that came due while the gateway was down runs once when the gateway
-starts again.
+starts again. A skipped run doesn't count against a temporary routine's runs,
+but its end time still comes.
 
 ### Schedules from a terminal
 
@@ -697,7 +698,7 @@ it**: *Anyone* (whenever a task fits), *Only when @mentioned* (only when your
 message names it) or *Nobody*. From a terminal: `hui bot edit ada --description
 "…" --tagging mention`.
 
-While bots are on, every session and every bot knows the bots it may tag and has
+Every session and every bot knows the bots it may tag and has
 a `message_bot` tool. To ask yourself, type `@` in any chat: bots come first in
 the list, and `@ada please add this to the release notes` makes that chat's agent
 send Ada the request, with the context she needs. The tag arrives in Ada's chat

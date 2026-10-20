@@ -356,7 +356,6 @@ async function handleRequest(
     return;
   }
 
-  // Calls are with bots only, so their status route goes with them.
   if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
     await serveCallRoute(response, routed);
     return;

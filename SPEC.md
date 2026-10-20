@@ -1858,8 +1858,8 @@ everything the Bots tab can, through the same routes.
   it (its title stands in without one), and the operator chooses who may tag
   it: *Anyone* (the default: whenever a task fits the description), *Only when
   @mentioned* (only in a turn whose operator message names it, as a skill with
-  `disable-model-invocation` waits for `/skill:name`) or *Nobody*. While bots
-  are on, every Durable conversation lists the bots it may tag in its system
+  `disable-model-invocation` waits for `/skill:name`) or *Nobody*. Every
+  Durable conversation lists the bots it may tag in its system
   prompt, byte-stable while the roster is, and has a `message_bot` tool. A tag
   arrives in the bot's chat as `[from @handle] …` from a bot or
   `[from agent: <title> · reply-to agent:<id>] …` from a session, like a

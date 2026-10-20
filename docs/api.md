@@ -2273,8 +2273,8 @@ names `@handle`, and `nobody` never.
 Every gateway's default Durable selection includes the `hui-bots` extension,
 whose prompt section `bots` is, in a bot's chat, who it is, the other bots it
 may tag and how, and, in any other conversation (a session's agent, a subagent
-included), the bots it may tag (`sessionBotsSection`), rendered only while bots
-are on and some bot takes its tags; `soul` (above) reads the conversation's
+included), the bots it may tag (`sessionBotsSection`), rendered when some bot
+takes its tags; `soul` (above) reads the conversation's
 `hui.bot` document and renders nothing without it. Both lists hold the
 non-archived bots other than `nobody` ones, one line each (`- @handle (name,
 title): description`, the description on one line), ordered by handle: those
@@ -2326,9 +2326,7 @@ bot it reaches, a session's tag is not the operator (`BotTurnOrigin` `{ kind: "a
 another bot's. The run's originating input is the session's recovery journal
 (`runPrompt`). Each bot, and each session tree (a session and its subagents),
 may send 30 tags per hour (gateway memory, a backstop). Refusals are tool errors
-the model reads. A session on a remote worker keeps or lacks `hui-bot-tag` until
-its next start after bots are turned off or on; the gateway's refusal covers it
-meanwhile.
+the model reads.
 
 #### Replying to a calling agent
 
@@ -2413,8 +2411,8 @@ The host's `bots` prompt section comes from this gateway: the host asks it
 (`bot.section`), which answers only for a bot that runs on that worker, so a
 bot on a worker knows the whole roster and `message_bot` crosses both ways. A
 session on the worker gets its list of the bots it may tag the same way (`bot.section`
-without `botId`, asked of its own gateway only while the Settings mirrored
-there have bots on), and its `hui-bot-tag` from those Settings at its next start;
+without `botId`, asked of its own gateway), and is offered `hui-bot-tag` as every
+Durable session is;
 its tags reach the gateway the same way
 (its tool call reaches the gateway through the agent-tool bridge, as any HUI
 tool of a remote session). With no gateway attached the section is left out,
@@ -3518,7 +3516,7 @@ stored as `runsLeft`). HUI deletes it by itself after either:
   `null` once none is left before it).
 - **After its last run.** Each run HUI starts counts, by hand or scheduled, and
   is taken from `runsLeft` as it starts; a run that ends `skipped` (its target
-  couldn't take it, or bots were off) gives it back. Once `runsLeft` is 0
+  couldn't take it) gives it back. Once `runsLeft` is 0
   nothing more is planned, and the task goes when that run ends (whatever its
   outcome). A run by hand of a task with none left is a 409.
 - **Across a restart**: the scheduler's start deletes a task whose `until`
