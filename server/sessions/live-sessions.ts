@@ -52,6 +52,7 @@ import type { Settings } from "../hui-settings.ts";
 
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
 const MAX_RECENT_MESSAGES = 10_000;
+const RECENT_MESSAGES_MS = 60_000;
 
 /** Replace runtime-internal attachment locations with opaque gateway URLs. */
 export function publicTranscript(id: string, entries: readonly TranscriptEntry[]): TranscriptEntry[] {
@@ -165,7 +166,7 @@ type Live = {
   unsubscribeExit?: () => void;
   subscribers: Set<Subscriber>;
   revision: number;
-  recent: { revision: number; message: SessionStreamMessage }[];
+  recent: { revision: number; at: number; message: SessionStreamMessage }[];
   recentSince: number;
   /** Detailed browser streams currently presenting this conversation. Internal
    * lifecycle watchers do not count as readers. */
@@ -213,6 +214,16 @@ type DeletionState = {
 
 /** Returns entries consumed between two queue snapshots, preserving both
  * order and duplicate messages. Queue values are not globally unique. */
+/** What a message makes redundant in the replay log: a later snapshot holds all of an earlier one, and a tool's
+ * update or end carries its whole output and details so far. */
+function replacedBy(message: SessionStreamMessage): ((earlier: SessionStreamMessage) => boolean) | undefined {
+  if (message.kind === "snapshot") return (earlier) => earlier.kind === "snapshot";
+  if (message.kind !== "event" || (message.event.type !== "tool_update" && message.event.type !== "tool_end")) return undefined;
+  const { id, output, details } = message.event;
+  return (earlier) => earlier.kind === "event" && earlier.event.type === "tool_update" && earlier.event.id === id
+    && (earlier.event.output === undefined || output !== undefined) && (earlier.event.details === undefined || details !== undefined);
+}
+
 function removedQueueEntries(previous: readonly string[], next: readonly string[]): string[] {
   const remaining = [...next];
   const removed: string[] = [];
@@ -1764,11 +1775,21 @@ export class LiveSessions {
 
   #broadcast(live: Live, message: SessionStreamMessage): void {
     live.revision = ++this.#revisions;
-    if ((message.kind === "snapshot" && !message.transcriptUnchanged) || live.recent.length >= MAX_RECENT_MESSAGES) this.#forgetRecent(live);
-    else live.recent.push({ revision: live.revision, message: message.kind === "snapshot" ? { ...message, snapshot: { ...message.snapshot, transcript: [] } } : message });
+    if (message.kind === "snapshot" && !message.transcriptUnchanged) this.#forgetRecent(live);
+    else this.#remember(live, message);
     for (const subscriber of live.subscribers) {
       subscriber(message);
     }
+  }
+
+  /** Keeps a message for a page whose open answer is a little older: the log drops what a later message replaces,
+   * and what is more than a minute old or beyond its cap. */
+  #remember(live: Live, message: SessionStreamMessage): void {
+    const replaced = replacedBy(message);
+    if (replaced) live.recent = live.recent.filter((entry) => !replaced(entry.message));
+    const at = Date.now();
+    live.recent.push({ revision: live.revision, at, message: message.kind === "snapshot" ? { ...message, snapshot: { ...message.snapshot, transcript: [] } } : message });
+    while (live.recent.length > MAX_RECENT_MESSAGES || live.recent[0]!.at < at - RECENT_MESSAGES_MS) live.recentSince = live.recent.shift()!.revision;
   }
 
   #forgetRecent(live: Live): void {

@@ -3364,8 +3364,10 @@ with the SSE payloads above, beginning with the snapshot. An upgrade URL with
 that only updates watchers, task suggestions, questions or subagents. With
 `&revision=<n>` from the `POST …/open` answer as well, the stream starts from
 that state: a snapshot without `transcript` when nothing has changed since, or
-else the frames sent since then, in order. When the transcript was replaced
-since (a settled turn, a clear, a rewind) it starts with the whole snapshot.
+else the frames sent since then, in order, leaving out a snapshot or tool
+output that a later one replaces. When the transcript was replaced since (a
+settled turn, a clear, a rewind), or a frame it would need is more than a
+minute old, it starts with the whole snapshot.
 The browser asks for both and keeps the transcript it has; its reconnects send
 no revision and get the whole snapshot. The server negotiates
 `permessage-deflate` (messages of at least 1 KiB, no context takeover in either
