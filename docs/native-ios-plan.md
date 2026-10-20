@@ -260,7 +260,9 @@ The statuses are shown as they stand after PR 4. CHAT-001 to CHAT-003 are requir
 PR 4 (iOS) land their test, the worked example in 2.5. SESS-001 and SET-001 are required on the web, where PR 2 lands
 their tests, and still iOS backlog. The rest are in the baseline. IOS-002 is shown as it will enter the catalogue,
 required on iOS, in the milestone that builds notifications. PR 1 adds the SPEC decision the `WORK-002` exclusion
-cites, and PR 3 adds `SPEC.md#native-ios-app` and the decision anchors the `IOS-*` entries cite.
+cites, and PR 3 adds `SPEC.md#native-ios-app` and the decision anchors the `IOS-*` entries cite. SPEC's Decisions
+headings end with the date they were made (`### Bots are always on (2026-10-20)`), so these anchors gain the date
+the PR lands, for example `#keyboard-only-affordances-stay-on-the-web-2026-11-02`.
 
 ---
 
@@ -741,7 +743,7 @@ npx agent-device doctor                               # Xcode, simulator and run
 | Job | Runner | When | Runs | Fails the PR when |
 |---|---|---|---|---|
 | `test` (existing `test.yml`) | ubuntu | every PR, main | `npm run typecheck`, `npm test` with the guards in `scripts/`, including the `list()` coverage guard | any guard in 3.1 fails |
-| `e2e-catalogue` (new `e2e-catalogue.yml`) | ubuntu | every PR, and again when its description is edited | `node scripts/e2e-baseline-check.ts origin/$GITHUB_BASE_REF`; its summary lists new exclusions, changed backlog use cases, backlog use cases whose surfaces the PR's files define, and each journey's migration status | the baseline grew without an allowed reason, or a changed backlog use case didn't graduate (3.3) |
+| `e2e-catalogue` (new `e2e-catalogue.yml`) | ubuntu | every PR, and again when its description is edited | `node scripts/e2e-baseline-check.ts origin/$GITHUB_BASE_REF`; its summary lists new exclusions, changed backlog use cases, backlog use cases whose surfaces the PR's files define, and each journey's migration status | the baseline grew without an allowed reason, a changed backlog use case didn't graduate, or a new name isn't tested on both targets (3.3) |
 | `e2e / web` (new `e2e.yml`) | ubuntu, sharded | every PR | every shared test on `web` (`--shard i/N`), then each non-default world that has a test there | any test fails |
 | `e2e / ios` (`e2e.yml`) | `macos-26`, sharded | every PR | Swift unit tests, the Release simulator build, a pinned simulator, every shared test on `ios`, then each world that has a test there | the build, a unit test or any test fails |
 | Nightly (`nightly.yml`) | macOS and ubuntu | each main push | the full suite on `web` and `ios`, `--repeat-each 3` on the smoke tests, `--video retain-on-failure` on iOS, then the nightly IPA | blocks the nightly prerelease and its IPA |
@@ -833,7 +835,8 @@ option, instead of parsing test files.
 | Every shared test has an ID tag, and every ID-shaped tag exists in the catalogue | `list()` | same | PR 2 |
 | No shared test uses `agent`, sets `retries`, calls `test.skip(`, reads `platform`, `device` or `browser` (only `e2e/fixtures/hui.ts` may), or sleeps | source scan of `e2e/tests/` | same | PR 2 |
 | Roles stay within `button`, `textbox`, `switch`, `tab` and `listitem` unless every ID the test covers is web-only; every `getByTestId` id exists as `data-testid` in `src/`, and as `.accessibilityIdentifier` in `ios/` for tests that run on iOS | source scan and `list()` | same | PR 2 (web half), PR 3 (iOS half) |
-| Every static accessible name in `src/` appears in a shared test or in `baseline.unexercisedLabels`; a name that is new in the PR appears in a test that runs on both targets | label scan, `list()` and a diff against the base branch | same | PR 2 (web), PR 3 (both) |
+| Every static accessible name in `src/` appears in a shared test or in `baseline.unexercisedLabels` | label scan | same | PR 2 |
+| A name that is new in the PR appears in a test that runs on both targets, unless the description's `Unchanged behaviour:` line lists it (3.3) | diff against the base branch, `list()` and the PR description | `e2e-catalogue` (`scripts/e2e-baseline-check.ts`) | PR 3 |
 | Every `world:<name>` tag has its run in `e2e.yml` | workflow scan | same | PR 2 |
 | The baseline grows only in the ways 3.3 allows, and a backlog use case the PR changes leaves the backlog where a job can prove it | diff against the base branch | `e2e-catalogue` (`scripts/e2e-baseline-check.ts`) | PR 2 |
 | The Swift payload types in `ios/HUI/Gateway/Schema/` are what `scripts/api-schema.ts` generates from `docs/api.schema.json` | regenerate and compare | `scripts/api-schema.test.ts` | PR 3 |
@@ -911,14 +914,15 @@ checks can't see.
   that, a changed use case only has to be required on the web. One transition doesn't count as a change, so the web
   catch-up stays possible: a use case may go from web backlog to web required in a PR that adds its first test and
   leaves its `behaviour` text alone.
-- A new control can't ride along web-only. A static accessible name that is new in the PR must appear in a test that
-  runs on both targets (3.1), so adding a control to a backlog area through that area's first web test still needs
-  the control on iOS. The rule can't tell a new control from an existing one that a catch-up PR names so its test
-  can find it, so such a PR lists the name on the `Unchanged behaviour:` line below, or uses a test id instead.
+- A new control can't ride along web-only. From PR 3, a static accessible name that is new in the PR must appear in
+  a test that runs on both targets, which `scripts/e2e-baseline-check.ts` checks (3.1), so adding a control to a
+  backlog area through that area's first web test still needs the control on iOS. The check can't tell a new control
+  from an existing one that a catch-up PR names so its test can find it, so such a PR lists the name on the
+  `Unchanged behaviour:` line below, or uses a test id instead.
 - A test fix that changes no behaviour (a selector fix, a clearer wait) still edits a backlog use case's test. The
-  author lists the ID on an `Unchanged behaviour:` line in the PR description. The catalogue job reads the
-  description from the event payload, accepts only the IDs and names it flagged, and prints them in its summary for
-  the owner's review. Catalogue edits can't use that line.
+  author lists the ID on an `Unchanged behaviour:` line in the PR description. `scripts/e2e-baseline-check.ts`, in
+  the catalogue job, reads the description from the event payload, accepts only the IDs and newly named controls it
+  flagged itself, and prints them in its summary for the owner's review. Catalogue edits can't use that line.
 - A fix that restores an existing use case's documented behaviour changes no catalogue entry and no test, so it may
   stay web-only while that use case is in the baseline. A fix that changes the behaviour text or the test is a
   change, and graduates.
@@ -1217,8 +1221,8 @@ The only exclusions are behaviour SPEC already calls desktop-only, keyboard-only
    CI's `node-version: "24"` resolves to the newest 24.x.
 4. **The phone.** Check its iOS version (18 or later) and that SideStore has a free app slot.
 5. **Reachability.** `tailscale serve` for the gateway with its name in `allowHosts`, if that isn't set up already.
-6. **GitHub.** Check the macOS runner concurrency for the account. Later, make `e2e / web` and `e2e / ios` required
-   checks.
+6. **GitHub.** Check the macOS runner concurrency for the account. Later, make `e2e-catalogue`, `e2e / web` and
+   `e2e / ios` required checks.
 7. **The owner's approvals** (section 11), the dependencies first.
 
 ### 7.2 Milestone M0: spikes (a throwaway branch, no PR)
@@ -1295,7 +1299,8 @@ the owner wants the skeleton on the phone sooner.
   `Session status: <status>`) and `data-testid="transcript"`.
 - Adds the PR 2 rows of 3.1 (the `list()` rows, no `agent`, no `retries`, no `test.skip(`, no sleeps, roles, the
   web half of the test-id rule, the label tripwire, worlds), `scripts/e2e-baseline-check.ts`, `e2e-catalogue.yml`,
-  `e2e.yml` with the `web` job, the `e2e` and `e2e:world` scripts and the `.e2e/` line in `.gitignore`.
+  `e2e.yml` with the `web` job, the web suite in `nightly.yml` and `release.yml`, the `e2e` and `e2e:world` scripts,
+  the `.e2e/` line in `.gitignore`, and `e2e.config.ts`, `e2e/fixtures/hui*.ts` and `e2e/tests` in `tsconfig.json`.
 - Updates `e2e/AGENTS.md` and `CONTRIBUTING.md` (Node 24.8+ for contributors, the browser install, telemetry off).
 - Verified by the web half of spike S1 and by S14; the CI web job green and a local `npm run e2e`; renaming "Stop"
   locally fails CHAT-003 with `trace.md`, a screenshot and the screen dump in `.e2e/results/`; adding
@@ -1314,7 +1319,9 @@ the owner wants the skeleton on the phone sooner.
 - Adds `@e2e-dev/mobile@0.12.3` as an exact dev dependency, the iOS branches of `e2e/fixtures/hui.ts`,
   `npm run ios:build` and `npm run e2e:ios`, the `ios` target in `e2e.config.ts`, the `e2e / ios` job (pinned
   simulator, Release build, `~/.agent-device` cache), module headers for `ios/` and `.swift`, a boundary rule for
-  `ios/core/` in `scripts/boundaries.test.mjs`, and the iOS half of the test-id and label rules.
+  `ios/core/` in `scripts/boundaries.test.mjs`, the iOS half of the test-id rule, the new-name check in
+  `scripts/e2e-baseline-check.ts`, the iOS suite in `nightly.yml` and `release.yml`, and `ios/core` and
+  `ios/embedded` in `tsconfig.json`.
 - IOS-001 is required on iOS, and the session-list use cases on both, with their shared tests. The three PR 2 tests
   already carry `platforms: ['web']`, which the guard allows because their use cases are iOS backlog, so this PR
   edits none of them. From this PR on, new and changed use cases must pass on both platforms.
@@ -1341,9 +1348,9 @@ the owner wants the skeleton on the phone sooner.
 
 **PR 5: `ci: build the iOS app for SideStore with every nightly and release`**
 
-- Adds the archive and IPA steps to `nightly.yml` and `release.yml`, after the full suite those workflows run on both
-  targets,
-  `scripts/sidestore-source.mjs` with its unit test, and the install steps in `docs/guide.md` and the README.
+- Adds the archive and IPA steps to `nightly.yml` and `release.yml`, after the web and iOS suites that PR 2 and PR 3
+  added there, `scripts/sidestore-source.mjs` with its unit test, and the install steps in `docs/guide.md` and the
+  README.
 - Verified by a nightly run publishing `HUI-<version>.ipa` and `sidestore-source.json`; the owner adding the source in
   SideStore, installing, connecting over `tailscale serve` and seeing the live session list (spike S6 confirmed on
   the phone); and `npx vitest run scripts/sidestore-source.test.mjs`.
@@ -1513,7 +1520,7 @@ ships a `hui doctor` check.
 | D5 | Gateway authentication | Not part of this work |
 | D6 | A public IPA and source feed on GitHub Releases | Accept |
 | D7 | iPad and Mac targets | Not now; decide on iPad after M6 |
-| D8 | Make `e2e / web` and `e2e / ios` required checks | Yes: the web from PR 2, iOS from PR 3 |
+| D8 | Make `e2e-catalogue`, `e2e / web` and `e2e / ios` required checks | Yes: the catalogue and web jobs from PR 2, iOS from PR 3 |
 | D9 | An optional exploratory suite with a model key (`ai` and one provider), never gating | Later, if wanted |
 | D10 | If S13 fails, one test-only launch argument that lists `e2e/fixtures/files` in the app's own picker | Accept only if S13 fails |
 | D11 | Raise `engines.node` to `>=24.8.0`, or keep `>=24.0.0` for users and state 24.8+ for contributors | Keep it, and state it for contributors |
