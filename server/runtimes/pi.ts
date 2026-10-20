@@ -1043,6 +1043,8 @@ export class PiSession implements RuntimeSession {
       && resolved.split(/\s/u, 1)[0] === `/${command.name}`)) {
       throw new Error("Run plugin actions when the session is idle.");
     }
+    const name = /^\$([^\s]+)/u.exec(text)![1]!;
+    if (resolved === text && this.#disabledSkillCommands.has(`skill:${name}`)) return `/skill:${name}${text.slice(name.length + 1)}`;
     return resolved;
   }
 

@@ -379,6 +379,12 @@ test("SDK honors HUI skill disable controls without changing PI files", { timeou
   const notice = nextEvent(session, (event) => event.type === "notice");
   await session.prompt("/skill:disabled-fixture");
   assert.deepEqual(await notice, { type: "notice", message: "Skill “disabled-fixture” is disabled for HUI sessions.", level: "warning" });
+  const aliased = nextEvent(session, (event) => event.type === "notice");
+  const aliasSettled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("$disabled-fixture now");
+  assert.deepEqual(await aliased, { type: "notice", message: "Skill “disabled-fixture” is disabled for HUI sessions.", level: "warning" });
+  await aliasSettled;
+  assert.equal(session.isStreaming, false, "the composer's $name form settles like the /skill command");
   await assert.rejects(readFile(f.log, "utf8"), { code: "ENOENT" });
   const settled = nextEvent(session, (event) => event.type === "settled");
   await session.prompt("Skill filtering fixture"); await settled;

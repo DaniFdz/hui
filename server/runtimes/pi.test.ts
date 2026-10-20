@@ -805,7 +805,7 @@ test("dollar references reach PI's exact invocation and extension actions settle
   assert.equal(sent.find((command) => command["type"] === "follow_up")?.["message"], "/skill:review later");
 });
 
-test("disabled skills cannot resolve dollar references", async (t) => {
+test("a disabled skill's dollar reference reaches PI as its /skill command, which the skill policy refuses", async (t) => {
   let message: unknown;
   const child = childWith((command, active) => {
     if (command["type"] === "prompt") message = command["message"];
@@ -815,7 +815,7 @@ test("disabled skills cannot resolve dollar references", async (t) => {
   const session = new PiSession(child as unknown as ChildProcessWithoutNullStreams, undefined, ["review"]);
   t.onTestFinished(() => session.dispose());
   await session.prompt("$review args");
-  assert.equal(message, "$review args");
+  assert.equal(message, "/skill:review args");
 });
 
 
