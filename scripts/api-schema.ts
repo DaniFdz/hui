@@ -1,4 +1,5 @@
 /** Publishes the server's API schema and generates browser-only payload types from the published JSON. */
+import { realpathSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { buildApiSchema } from "../server/api/index.ts";
@@ -98,7 +99,8 @@ export async function emittedSchema(): Promise<string> {
   return `${JSON.stringify(buildApiSchema(version), null, 2)}\n`;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+const entry = process.argv[1];
+if (import.meta.main ?? (entry !== undefined && import.meta.url === pathToFileURL(realpathSync(entry)).href)) {
   const destination = new URL("docs/api.schema.json", root);
   const schema = await emittedSchema();
   const generated = generateBrowserTypes(JSON.parse(schema));

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -24,7 +24,7 @@ test("the published schema and browser payload types are current", async () => {
 });
 
 test.for([false, true])("the schema CLI publishes both outputs or leaves them untouched when stale types exist (stale: %s)", async (stale, t) => {
-  const temporary = await realpath(await mkdtemp(join(tmpdir(), "hui-api-schema-")));
+  const temporary = await mkdtemp(join(tmpdir(), "hui-api-schema-"));
   t.onTestFinished(() => rm(temporary, { recursive: true, force: true }));
   for (const directory of ["scripts", "server/api", "docs", "src/api/schema"]) await mkdir(join(temporary, directory), { recursive: true });
   await cp(new URL("api-schema.ts", import.meta.url), join(temporary, "scripts/api-schema.ts"));
