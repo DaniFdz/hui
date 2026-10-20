@@ -1123,8 +1123,10 @@ test("a Stop resolves once the end-of-run handlers ran, so a rewind can follow a
   const stopping = session.abort().then(() => { stopped = true; });
   await holding;
   assert.equal(stopped, false, "Stop waits for the end-of-run handlers, as PI's does");
+  const releasedAt = Date.now();
   release();
   await stopping;
+  assert.ok(Date.now() - releasedAt < 5_000, "Stop wakes when the handlers finish, not at its wait's timeout");
   assert.equal(session.isStreaming, false, "a resolved Stop is idle");
   await session.rewind({ userFromEnd: 0 }, { excludeUserMessage: true });
   assert.deepEqual(session.transcript(), []);
