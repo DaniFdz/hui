@@ -42,28 +42,35 @@ export const SESSION_GROUP_MAX = 200;
 /** A started suggestion's runtime must boot before its prompt is accepted. */
 const SUGGESTION_READY_TIMEOUT_MS = 30_000;
 
+const SESSION_TEXT_LABELS = {
+  title: ["Session name", "A session name"],
+  group: ["Session group", "A session group"],
+  branchName: ["Branch name", "A branch name"],
+  baseRef: ["Base branch or commit", "A base branch or commit"],
+  model: ["Session model", "A session model"],
+  thinking: ["Thinking level", "A thinking level"],
+  initialPrompt: ["Initial prompt", "An initial prompt"],
+} as const;
+
 export function sessionText(
   body: Record<string, unknown>,
-  key: "title" | "group" | "branchName" | "baseRef" | "model" | "thinking" | "initialPrompt",
+  key: keyof typeof SESSION_TEXT_LABELS,
   maximum: number,
   options: { optional: boolean; allowEmpty: boolean },
 ): string | undefined {
   if (!(key in body)) {
     return options.optional ? undefined : "";
   }
+  const [label, aLabel] = SESSION_TEXT_LABELS[key];
   if (typeof body[key] !== "string") {
-    throw new Error(`${key === "title" ? "Session name" : key === "group" ? "Session group" : key === "branchName" ? "Branch name" : key === "baseRef" ? "Base branch or commit" : key === "model" ? "Session model" : key === "initialPrompt" ? "Initial prompt" : "Thinking level"} must be text.`);
+    throw new Error(`${label} must be text.`);
   }
   const value = body[key].trim();
   if (!options.allowEmpty && !value) {
-    throw new Error(`${key === "branchName" ? "A branch name" : key === "baseRef" ? "A base branch or commit" : key === "model" ? "A session model" : key === "thinking" ? "A thinking level" : "A session name"} must be 1-${maximum} characters.`);
+    throw new Error(`${aLabel} must be 1-${maximum} characters.`);
   }
   if (value.length > maximum) {
-    throw new Error(
-      `${key === "title" ? "A session name" : key === "group" ? "A session group" : key === "branchName" ? "A branch name" : key === "baseRef" ? "A base branch or commit" : key === "model" ? "A session model" : "A thinking level"} must be ${
-        options.allowEmpty ? `at most ${maximum}` : `1-${maximum}`
-      } characters.`,
-    );
+    throw new Error(`${aLabel} must be ${options.allowEmpty ? `at most ${maximum}` : `1-${maximum}`} characters.`);
   }
   return value;
 }

@@ -16,7 +16,7 @@ afterAll(() => rm(root, { recursive: true, force: true }));
 const { sessionGroupPatch } = await import("./routes/sessions.ts");
 const { waitForAutomationRun } = await import("./automation.ts");
 const { markBackgroundWork } = await import("./sessions/views.ts");
-const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");
+const { createSessionLifecycle, sessionText } = await import("./sessions/lifecycle.ts");
 const { waitForSessionReady } = createSessionLifecycle({
   views: { pendingView: () => { throw new Error("No pending sessions here."); } },
   readAttachments: async () => ({ attachments: [], cleanupRejected: async () => undefined }),
@@ -36,6 +36,13 @@ test("group defaults patch validates modes and bounded refs", async () => {
   }
   await assert.rejects(sessionGroupPatch({ baseRef: 123 }), /must be text/);
   await assert.rejects(sessionGroupPatch({ baseRef: "x".repeat(201) }), /at most 200/);
+});
+
+test("a session text error names the field that failed", () => {
+  const required = { optional: true, allowEmpty: false };
+  assert.throws(() => sessionText({ initialPrompt: " " }, "initialPrompt", 4_000, required), /^Error: An initial prompt must be 1-4000 characters\.$/u);
+  assert.throws(() => sessionText({ initialPrompt: "x".repeat(4_001) }, "initialPrompt", 4_000, required), /^Error: An initial prompt must be 1-4000 characters\.$/u);
+  assert.throws(() => sessionText({ initialPrompt: 1 }, "initialPrompt", 4_000, required), /^Error: Initial prompt must be text\.$/u);
 });
 
 /** One session's stream, driven by the test. */
