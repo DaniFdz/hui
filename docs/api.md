@@ -3366,8 +3366,9 @@ that only updates watchers, task suggestions, questions or subagents. With
 that state: a snapshot without `transcript` when nothing has changed since, or
 else the frames sent since then, in order, leaving out a snapshot or tool
 output that a later one replaces. When the transcript was replaced since (a
-settled turn, a clear, a rewind), or a frame it would need is more than a
-minute old, it starts with the whole snapshot.
+settled turn, a clear, a rewind), or the session no longer keeps every frame
+since then (it drops frames a minute old when it sends new ones), it starts
+with the whole snapshot.
 The browser asks for both and keeps the transcript it has; its reconnects send
 no revision and get the whole snapshot. The server negotiates
 `permessage-deflate` (messages of at least 1 KiB, no context takeover in either

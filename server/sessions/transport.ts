@@ -54,8 +54,8 @@ export function attachSessionTransport(server: EventEmitter, source: SessionEven
     const ticket = tickets.get(token);
     tickets.delete(token);
     if (!ticket || ticket.expires <= Date.now()) { reject(); return; }
-    const heldRevision = url.searchParams.get("revision");
-    const view = { slim: url.searchParams.has("slim"), ...(heldRevision === null ? {} : { heldRevision: Number(heldRevision) }) };
+    const heldRevision = Number(url.searchParams.get("revision") ?? undefined);
+    const view = { slim: url.searchParams.has("slim"), ...(Number.isSafeInteger(heldRevision) ? { heldRevision } : {}) };
     wss.handleUpgrade(request, socket, head, (ws) => {
       let alive = true;
       let stop: (() => void) | undefined;

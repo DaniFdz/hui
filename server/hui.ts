@@ -122,10 +122,7 @@ function answered(response: ServerResponse, path: string, result: RouteResult | 
 export function streamSession(
   response: ServerResponse,
   record: SessionRecord,
-  sessions: Pick<
-    typeof liveSessions,
-    "ensure" | "watch"
-  > = liveSessions,
+  sessions: Pick<typeof liveSessions, "ensure" | "watch" | "replaySince"> = liveSessions,
 ): void {
   if (!sessions.ensure(record)) {
     sendJson(response, 404, { error: `unknown session: ${record.id}` });

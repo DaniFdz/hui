@@ -41,6 +41,10 @@ test("session views stream over one-use, same-origin WebSocket tickets", { timeo
   first.close();
   await refused(ticket);
   assert.deepEqual(views, [{ slim: true, heldRevision: 12 }], "a page that asks for slim snapshots says which transcript it holds");
+  const malformed = new NodeWebSocket(socketUrl(`${sessionStreamTicket("alpha")!}&slim=1&revision=abc`), { origin });
+  await once(malformed, "message");
+  malformed.close();
+  assert.deepEqual(views.at(-1), { slim: true }, "a revision that is not a number holds no transcript");
 
   const connect = (id: string) => {
     const socket = new NodeWebSocket(socketUrl(sessionStreamTicket(id)!), { origin });

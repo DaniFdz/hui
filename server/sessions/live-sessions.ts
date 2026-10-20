@@ -266,7 +266,8 @@ export class LiveSessions {
       || live.status === "running" || live.status === "waiting" || live.followUps.length > 0);
   }
   #live = new Map<string, Live>();
-  #revisions = Math.floor(Math.random() * 2 ** 40);
+  // Clock-seeded so revisions keep rising across gateway restarts.
+  #revisions = Date.now() * 1000;
   #statusSubscribers = new Set<StatusSubscriber>();
   /** Deleted ids stay tombstoned for this gateway lifetime so a request that
    * read the old row before DELETE committed cannot start it afterwards. */

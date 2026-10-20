@@ -21,7 +21,7 @@ export function writeEvent(response: ServerResponse, event: string, data: unknow
 export function watchSessionEvents(
   id: string,
   send: (event: string, data: unknown) => void,
-  sessions: Pick<typeof liveSessions, "watch"> & Partial<Pick<typeof liveSessions, "replaySince">> = liveSessions,
+  sessions: Pick<typeof liveSessions, "watch" | "replaySince"> = liveSessions,
   { slim = false, heldRevision }: { slim?: boolean; heldRevision?: number } = {},
 ): () => void {
   const forward = (message: SessionStreamMessage) => {
@@ -53,7 +53,7 @@ export function watchSessionEvents(
     }
   };
   const watched = sessions.watch(id, forward, { reader: true });
-  const replay = slim && heldRevision !== undefined ? sessions.replaySince?.(id, heldRevision) : undefined;
+  const replay = slim && heldRevision !== undefined ? sessions.replaySince(id, heldRevision) : undefined;
   if (!replay) send("snapshot", watched.snapshot);
   else if (!replay.length) send("snapshot", withoutTranscript(watched.snapshot));
   else replay.forEach(forward);
