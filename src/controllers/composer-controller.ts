@@ -27,16 +27,11 @@ import type { ConversationController } from "./conversation-controller.ts";
 
 type ComposerDeps = {
   conversation: ConversationController;
-  /** Without a level, the note keeps the one it has. */
   showNote: (message: string, level?: NoteLevel) => void;
-  /** `/update` is HUI's: true when the shell took the text. */
   handleUpdateCommand: (text: string, attachments: readonly Attachment[]) => boolean;
   embeddedPane: () => boolean;
-  /** Reports a session's draft presence to the shell that owns the sidebar; only an embedded pane does. */
   draftChanged: (sessionId: string, hasDraft: boolean) => void;
-  /** The session the composer drafts for: none on New Session, which keeps the last chat selected. */
   composerSession: () => SessionView | undefined;
-  /** The commands a draft without a runtime offers: the local PI skills it will start with. */
   draftCommands: () => readonly RuntimeCommand[];
   defaultCwd: () => string | undefined;
   mentionable: () => readonly BotView[];
@@ -61,7 +56,6 @@ export class ComposerController {
   draftLoad = 0;
   draftEdit = 0;
   draftHydrated = false;
-  /** Opens the command menu once the launched session is idle. */
   pendingCommandBrowse = false;
   commands: readonly RuntimeCommand[] = [];
   commandsLoading = false;
@@ -210,7 +204,6 @@ export class ComposerController {
     this.#host.requestUpdate();
   }
 
-  /** The launched session is idle: its command draft opens the menu at its end. */
   browseCommands(textarea: HTMLTextAreaElement): void {
     this.pendingCommandBrowse = false;
     textarea.focus();
@@ -485,7 +478,6 @@ export class ComposerController {
       });
   }
 
-  /** The launched session reports a status: idle sends its first prompt, a lost or failed start gives it back to the composer. */
   followStatus(status: SessionStatus): void {
     if (status === "idle") {
       this.flushLaunchPrompt();
@@ -499,7 +491,6 @@ export class ComposerController {
     }
   }
 
-  /** What belongs to the session on screen only: a switch or a new session starts without it. */
   resetSession(): void {
     this.resetCommands();
     this.resetLocalPaths();

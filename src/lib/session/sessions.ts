@@ -1,9 +1,9 @@
 /**
  * The browser's pure session logic over the session API's types (src/api/sessions.ts): group labels as the sidebar
- * shows and the API stores them, the transcript as Markdown, status counts and how an unreachable host reads.
+ * shows and the API stores them, the transcript as Markdown and how an unreachable host reads.
  */
 import { callMinutes, callTranscriptText } from "../voice/calls.ts";
-import type { SessionGroup, SessionView, TranscriptEntry, TranscriptItem } from "../../api/sessions.ts";
+import type { SessionView, TranscriptItem } from "../../api/sessions.ts";
 
 /** Labels are presentation, not registry identifiers. Preserve stored spelling. */
 export function sessionGroupLabel(label: string): string {
@@ -14,10 +14,6 @@ export function sessionGroupLabel(label: string): string {
  * expose the stable `ungrouped` key used by the sidebar. */
 export function storedSessionGroup(label: string): string {
   return !label || label === "ungrouped" ? "" : label;
-}
-
-export function toTranscriptItems(entries: readonly TranscriptEntry[]): TranscriptItem[] {
-  return entries.map((entry, index) => ({ ...entry, id: entry.id ?? `history-${index}` })) as TranscriptItem[];
 }
 
 /** OpenClaw's Copy → Conversation as Markdown action, adapted to HUI's
@@ -32,28 +28,6 @@ export function transcriptAsMarkdown(items: readonly TranscriptItem[]): string {
     const details = item.output || (item.args === undefined ? "" : JSON.stringify(item.args, null, 2));
     return `### Tool: ${item.name}${details ? `\n\n\`\`\`\n${details}\n\`\`\`` : ""}`;
   }).join("\n\n").trim();
-}
-
-export function statusCounts(groups: readonly SessionGroup[]): {
-  running: number;
-  starting: number;
-  total: number;
-} {
-  let running = 0;
-  let starting = 0;
-  let total = 0;
-  for (const group of groups) {
-    for (const session of group.sessions) {
-      total += 1;
-      if (session.status === "running" || session.status === "waiting") {
-        running += 1;
-      }
-      if (session.status === "starting") {
-        starting += 1;
-      }
-    }
-  }
-  return { running, starting, total };
 }
 
 /** How a session on a machine HUI cannot reach reads: its status and the
