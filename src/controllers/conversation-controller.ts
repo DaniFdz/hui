@@ -64,6 +64,7 @@ export class ConversationController implements ReactiveController {
   /** Monotonic ownership token for open responses from the selected session. */
   #openRequestToken = 0;
   #subagentExpiryTimer: number | undefined;
+  #frameUpdate: number | undefined;
   #copyTimer: number | undefined;
   #disconnected = false;
 
@@ -248,6 +249,12 @@ export class ConversationController implements ReactiveController {
     this.#setStatus(snapshot.status);
   }
 
+  #requestFrameUpdate(): void {
+    if (this.#frameUpdate !== undefined) return;
+    const update = () => { this.#frameUpdate = undefined; this.#host.requestUpdate(); };
+    this.#frameUpdate = requestAnimationFrame(update);
+  }
+
   #clearSubagentExpiry(): void {
     if (this.#subagentExpiryTimer !== undefined) window.clearTimeout(this.#subagentExpiryTimer);
     this.#subagentExpiryTimer = undefined;
@@ -322,7 +329,8 @@ export class ConversationController implements ReactiveController {
         this.streaming = streamingAfterEvent(this.streaming, event.type);
         break;
     }
-    this.#host.requestUpdate();
+    if (event.type === "text" || event.type === "thinking" || event.type === "tool_update") this.#requestFrameUpdate();
+    else this.#host.requestUpdate();
   }
 
   #setStatus(status: SessionStatus): void {
