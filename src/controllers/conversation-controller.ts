@@ -74,9 +74,12 @@ export class ConversationController implements ReactiveController {
   }
 
   hostDisconnected(): void {
+    this.#openRequestToken += 1;
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.#clearSubagentExpiry();
+    window.clearTimeout(this.#copyTimer);
+    this.#copyTimer = undefined;
   }
 
   get streamOpen(): boolean {

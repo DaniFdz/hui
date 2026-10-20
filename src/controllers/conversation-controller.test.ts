@@ -137,3 +137,24 @@ test("only the session still selected opens and streams; its status frames reach
   assert.equal(fake.streams[0]?.stopped, true);
   assert.equal(controller.streamOpen, false);
 });
+
+test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("navigator", { clipboard: { writeText: async () => {} } });
+  try {
+    const { controller, updates } = conversation({ selected: { id: "s1" } as SessionView });
+    void controller.open("s1");
+    assert.equal(await controller.copy("text", "m1"), true);
+    controller.hostDisconnected();
+    fake.opens[0]?.resolve("idle");
+    await vi.advanceTimersByTimeAsync(0);
+    assert.deepEqual(fake.streams, []);
+    const before = updates();
+    await vi.advanceTimersByTimeAsync(1_500);
+    assert.equal(updates(), before);
+    assert.equal(controller.copiedId, "m1");
+  } finally {
+    vi.useRealTimers();
+  }
+});
