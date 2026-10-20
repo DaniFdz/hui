@@ -131,6 +131,16 @@ test("an @ path query loads suggestions for the session's folder and a pick comp
   assert.equal(controller.localPathQuery, null);
 });
 
+test("typing within an @ path query that has not changed does not render again", async () => {
+  const { controller, updates } = composer({ current: { id: "s1", cwd: "~/repo" } as SessionView });
+  controller.props().onLocalPathQuery({ input: "sr", start: 5, end: 8, mention: true });
+  await settle();
+  const before = updates();
+  controller.props().onLocalPathQuery({ input: "sr", start: 5, end: 8, mention: true });
+  assert.equal(updates(), before);
+  assert.deepEqual(fake.pathRequests, [{ cwd: "~/repo", input: "sr" }]);
+});
+
 const queue = (...ids: string[]): QueueSnapshot => ({ steering: [], followUp: [], items: ids.map((id) => ({ id, text: `text ${id}`, mode: "followUp" })) });
 
 test("editing a queued message ends when the queue drops it or the edit is saved", async () => {

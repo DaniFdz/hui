@@ -323,8 +323,8 @@ export class ComposerController {
       && this.#localPathCwd === workspace;
     this.localPathQuery = query;
     this.#localPathCwd = workspace;
-    this.#host.requestUpdate();
     if (sameQuery && (this.localPathsLoading || this.localPaths.length > 0 || this.localPathsError)) return;
+    this.#host.requestUpdate();
     this.localPathActiveIndex = 0;
     this.slashActiveIndex = 0;
     // A mention tags a bot as well as naming a file: the bots it matches come first, at once. A session still on PI's SDK
