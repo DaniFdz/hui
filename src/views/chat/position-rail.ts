@@ -18,7 +18,7 @@ type RailProps = {
   sessionId: string;
   markers: readonly ConversationMarker[];
   onNavigate: (thread: HTMLElement, top: number) => void;
-  onReveal: (id: string) => void;
+  onReveal: (id: string) => Promise<void> | undefined;
 };
 
 const HINT = "Use arrow keys or Home and End to choose a marker, Enter or Space to jump, and Escape to return to the conversation. Tab leaves the rail.";
@@ -41,7 +41,6 @@ class ConversationPositionRail extends AsyncDirective {
   private dismissed = false;
   private keyboardNavigation = false;
   private wasVisible = false;
-  private revealing: string | undefined;
   private previewWindow: Window | null = null;
 
   private readonly escapePreview = (event: KeyboardEvent) => {
@@ -166,12 +165,6 @@ class ConversationPositionRail extends AsyncDirective {
         const box = target.getBoundingClientRect();
         return [{ id, top: box.top - origin, bottom: box.bottom - origin }];
       });
-      if (this.revealing && this.targets.has(this.revealing)) {
-        const id = this.revealing;
-        this.revealing = undefined;
-        this.jump(id);
-        return;
-      }
     }
 
     // The transcript extends underneath the composer; that strip is not
@@ -210,8 +203,13 @@ class ConversationPositionRail extends AsyncDirective {
     const target = this.targets.get(id);
     const thread = this.thread;
     if (!target) {
-      this.revealing = id;
-      this.props?.onReveal(id);
+      // Safari has no scroll anchoring: jump before its next scroll event finds the reader at the bottom and drops the row again.
+      void this.props?.onReveal(id)?.then(() => {
+        const revealed = this.inner?.querySelector<HTMLElement>(`.chat-bubble[data-message-id="${CSS.escape(id)}"]`);
+        if (!revealed) return;
+        this.targets.set(id, revealed);
+        this.jump(id);
+      });
       return;
     }
     if (!thread) return;

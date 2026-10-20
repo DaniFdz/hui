@@ -1537,13 +1537,14 @@ export class HuiApp extends HuiElement {
     else if (this.transcriptWindowStart !== undefined) this.scrollToBottom();
   };
 
-  private showEarlierRows = (start: number) => {
+  private showEarlierRows = async (start: number) => {
     const scroller = this.renderRoot.querySelector?.(TRANSCRIPT_SCROLLER_SELECTOR);
     if (!(scroller instanceof HTMLElement)) return;
     const fromBottom = scroller.scrollHeight - scroller.scrollTop;
     this.autoFollow = false;
     this.transcriptWindowStart = start;
-    void this.updateComplete.then(() => { scroller.scrollTop = scroller.scrollHeight - fromBottom; });
+    await this.updateComplete;
+    scroller.scrollTop = scroller.scrollHeight - fromBottom;
   };
 
   private navigateTranscript = (element: HTMLElement, top: number) => {

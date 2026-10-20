@@ -340,7 +340,7 @@ export type HomeProps = {
   onAnswerQuestion: (answer: QuestionResponse) => void;
   onTranscriptScroll: (element: HTMLElement) => void;
   onTranscriptNavigate: (thread: HTMLElement, top: number) => void;
-  onShowEarlier: (start: number) => void;
+  onShowEarlier: (start: number) => Promise<void>;
   onScrollToBottom: () => void;
   renaming: boolean;
   confirmingDelete: boolean;
@@ -1261,7 +1261,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
   const earlier = start > 0 ? html`<div class="chat-history-boundary">
     <span class="chat-history-boundary__line"></span>
-    <button type="button" class="chat-history-boundary__action" @click=${() => props.onShowEarlier(Math.max(0, start - TRANSCRIPT_WINDOW_ROWS))}>Show earlier messages</button>
+    <button type="button" class="chat-history-boundary__action" @click=${() => void props.onShowEarlier(Math.max(0, start - TRANSCRIPT_WINDOW_ROWS))}>Show earlier messages</button>
     <span class="chat-history-boundary__line"></span>
   </div>` : nothing;
   return html`${earlier}${repeat(rows.slice(start), (_row, index) => start + index, (row, index) => {
@@ -2538,7 +2538,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
   const start = transcriptWindowStart(rows.length, props.transcriptWindowStart);
   const reveal = (messageId: string) => {
     const row = rowOfMessage(rows, messageId);
-    if (row >= 0 && row < start) props.onShowEarlier(row);
+    return row >= 0 && row < start ? props.onShowEarlier(row) : undefined;
   };
   return html`
     ${renderHeader(props, session)}
