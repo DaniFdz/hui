@@ -30,7 +30,8 @@ test.for([false, true])("the schema CLI publishes both outputs or leaves them un
   await cp(new URL("api-schema.ts", import.meta.url), join(temporary, "scripts/api-schema.ts"));
   const schema = { $defs: { Fixture: { type: "string" } }, "x-hui-areas": { fixture: ["Fixture"] } };
   await writeFile(join(temporary, "package.json"), JSON.stringify({ type: "module", version: "test" }));
-  await writeFile(join(temporary, "server/api/index.ts"), `export const buildApiSchema = () => (${JSON.stringify(schema)});\n`);
+  await writeFile(join(temporary, "server/api/schema.json"), JSON.stringify(schema));
+  await writeFile(join(temporary, "server/api/index.ts"), 'import schema from "./schema.json" with { type: "json" };\nexport const buildApiSchema = () => schema;\n');
   const document = join(temporary, "docs/api.schema.json");
   const types = join(temporary, "src/api/schema/fixture.ts");
   await writeFile(document, "previous schema\n");
