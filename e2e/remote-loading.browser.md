@@ -52,8 +52,40 @@ conversation that fails to load says so and offers a retry.
 At 600 ms / 300 kbit/s the branch shows the boot screen, then *Still loading —
 the connection is slow* after 6 s, and the conversation arrives intact.
 
+## Long sessions, subagents and a watcher on a phone (2026-10-20)
+
+macOS, Node 24, headless Chrome 155 with a 430×932 phone viewport and DevTools
+network throttling (4G: 70 ms, 12 Mbit/s; slow: 300 ms, 1.6 Mbit/s), production
+builds of `origin/main` and the branch, each on its own copy of one seeded state.
+
+1. Seed a 900-turn session (a 5.9 MB transcript of bash calls) with 450
+   subagent sessions and a watcher that logs every two seconds:
+
+   ```sh
+   HUI_E2E_TURNS=900 HUI_E2E_SUBAGENTS=450 HUI_E2E_WATCHER=1 node e2e/fixtures/long-session-fixture.ts
+   ```
+2. Copy the state for each build, start each built gateway on its copy and
+   load `/` (until *Recent chats* lists a row) and
+   `/sessions/e2e-long-session` (until the first message paints) in a fresh
+   browser profile.
+3. With the conversation open, count what its WebSocket receives for a minute
+   while the watcher logs.
+
+| | `origin/main` | branch |
+| --- | --- | --- |
+| Session list (raw JSON) | 2,205,149 B | 258,256 B |
+| Home on 4G / slow, *Recent chats* shown | 2.5 s / 10.6 s | 1.4 s / 6.5 s |
+| Long conversation on 4G / slow, first message shown | 7.6 s / 40.5 s | 4.2 s / 19.3 s |
+| `POST …/open` answer (raw JSON) | 11,562,882 B (the transcript twice) | 5,896,343 B |
+| WebSocket in the first minute | 7 snapshots with the whole transcript, 41 MB of JSON, 16.3 MB on the wire | 7 snapshots without it, 1.6 MB of JSON, 0.97 MB on the wire |
+| Main thread busy while idle, 2× CPU throttling | 12.5 % | 5.1 % |
+
+The conversation renders the same, the watcher's last line keeps updating,
+and after a gateway restart the page reconnects with the whole transcript.
+
 ## Limits
 
 The proxy models latency and one shared bandwidth budget over HTTP/1.1 to
 loopback; Tailscale serve speaks HTTP/2 to the phone and adds its own TLS
-handshakes and DERP relays. A real phone on mobile data was not part of this run.
+handshakes and DERP relays. A real phone on mobile data was not part of this run,
+and CPU throttling of a Mac core stands in for a phone's.
