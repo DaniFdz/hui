@@ -16,7 +16,7 @@ import {
   serveVscodeEnter, upstreamHeaders, vscodeCookieSessionIds, vscodeThemeDefaults,
 } from "./vscode-proxy.ts";
 import { DEFAULT_VSCODE_SETTINGS } from "./hui-settings.ts";
-import { normalizeVscodeTheme, vscodeContrast } from "../shared/vscode.ts";
+import { normalizeVscodeTheme, vscodeContrast } from "./vscode-contract.ts";
 
 const FAKE = fileURLToPath(new URL("./test-support/fake-vscode-server.mjs", import.meta.url));
 const DARK = { background: "#101114", panel: "#17181c", elevated: "#202127", text: "#e6e6e6", border: "#2a2b31", accent: "#ff5c5c" };

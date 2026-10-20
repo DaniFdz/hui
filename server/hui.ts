@@ -22,14 +22,14 @@ import { BOTS_OFF_MESSAGE, type BotsUpdate } from "../shared/bots.ts";
 
 import { botsOn } from "./hui-settings.ts";
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode-proxy.ts";
-import { VSCODE_ENTER_PATH } from "../shared/vscode.ts";
+import { VSCODE_ENTER_PATH } from "./vscode-contract.ts";
 import { attachBrowserTransport } from "./browser-transport.ts";
 import type { EventEmitter } from "node:events";
 import { liveSessions } from "./live-sessions.ts";
 import { diagnosticPath, recordDiagnosticEvent } from "./observability.ts";
 import { servePresentedMedia } from "./presented-media.ts";
 import { serveWidgetSandbox } from "./widget-sandbox.ts";
-import { WIDGET_SANDBOX_PATH } from "../shared/widgets.ts";
+import { WIDGET_SANDBOX_PATH } from "./agent-tools/widget-sandbox.ts";
 import { attachSessionTransport } from "./session-transport.ts";
 import { FILES_ROUTE } from "./routes/files.ts";
 import { DIFF_ROUTE } from "./routes/diff.ts";

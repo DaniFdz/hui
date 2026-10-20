@@ -11,8 +11,9 @@ import { currentSettings } from "../../lib/settings/settings-store.ts";
 import { loadVscodeStatus, vscodeAction } from "../../lib/vscode-store.ts";
 import {
   formatVscodeBytes, OPENVSCODE_SERVER_LICENSE_URL, VSCODE_SERVER_LICENSE_URL, vscodeProviderSource,
-  type VscodeAction, type VscodeProvider, type VscodeProviderPreference, type VscodeStatus,
-} from "../../../shared/vscode.ts";
+} from "../../lib/vscode.ts";
+import type { VscodeAction, VscodeProvider, VscodeStatus } from "../../api/schema/vscode.ts";
+import type { VscodeProviderPreference } from "../../api/schema/settings.ts";
 import { renderPicker } from "../../views/settings-picker.ts";
 import { loadViewAssets } from "../../lib/view-assets.ts";
 

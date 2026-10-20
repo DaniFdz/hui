@@ -6,7 +6,7 @@
  */
 import { refreshSettings } from "./settings/settings-store.ts";
 import { fetchVscodeStatus, postVscodeAction, postVscodeConnect } from "../api/vscode.ts";
-import type { VscodeAction, VscodeConnection, VscodeStatus, VscodeTheme } from "../../shared/vscode.ts";
+import type { VscodeAction, VscodeConnection, VscodeStatus, VscodeTheme } from "../api/schema/vscode.ts";
 
 let known: VscodeStatus | undefined;
 const listeners = new Set<(status: VscodeStatus) => void>();

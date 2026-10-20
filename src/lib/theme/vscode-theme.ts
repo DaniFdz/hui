@@ -6,7 +6,7 @@
  * also composites a translucent color over the background. A token that still cannot be read is left out, never
  * guessed: without the four base colors there is no theme, and VS Code keeps its own.
  */
-import type { VscodeTheme } from "../../../shared/vscode.ts";
+import type { VscodeTheme } from "../../api/schema/vscode.ts";
 
 /** The part of a 2D context the conversion uses, so it can be checked without a browser. */
 export type ColorCanvas = Pick<CanvasRenderingContext2D, "fillStyle" | "fillRect" | "clearRect" | "getImageData">;

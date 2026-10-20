@@ -18,7 +18,7 @@
  *   link request only while the widget holds focus right after a user gesture.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { WIDGET_SANDBOX_METHOD_PREFIX, widgetContentSecurityPolicy } from "../shared/widgets.ts";
+import { WIDGET_SANDBOX_METHOD_PREFIX, widgetContentSecurityPolicy } from "./agent-tools/widget-sandbox.ts";
 
 const PROXY_SCRIPT = `(() => {
   "use strict";

@@ -197,6 +197,7 @@ test.each([
   ["src/lib/thinking.fixture.json", "server/sessions/thinking.fixture.json"],
   ["src/lib/bots/templates.fixture.json", "server/bot-templates/formats.fixture.json"],
   ["src/lib/bots/export-preview.fixture.json", "server/bot-export-format.fixture.json"],
+  ["src/lib/widgets.fixture.json", "server/agent-tools/widget-sandbox.fixture.json"],
 ])("runtime fixtures stay byte-identical: %s and %s", async (browser, server) => {
   assert.equal(await readFile(join(root, browser), "utf8"), await readFile(join(root, server), "utf8"));
 });
@@ -266,8 +267,6 @@ const ALLOWED = [
   "server/calls.ts -> shared/calls.ts (R3)",
   "server/calls.ts -> shared/voice.ts (R3)",
   "server/hui.ts -> shared/bots.ts (R3)",
-  "server/hui.ts -> shared/vscode.ts (R3)",
-  "server/hui.ts -> shared/widgets.ts (R3)",
 
   "server/routes/bot-templates.test.ts -> shared/bots.ts (R3)",
   "server/routes/bot-triggers.test.ts -> shared/bots.ts (R3)",
@@ -280,7 +279,6 @@ const ALLOWED = [
   "server/routes/session-actions.ts -> shared/bots.ts (R3)",
 
   "server/routes/sessions.ts -> shared/bots.ts (R3)",
-  "server/routes/vscode.ts -> shared/vscode.ts (R3)",
 
   "server/runtimes/durable-bot-access.test.ts -> shared/bots.ts (R3)",
   "server/runtimes/durable-bot-access.ts -> shared/bots.ts (R3)",
@@ -293,19 +291,8 @@ const ALLOWED = [
   "server/runtimes/pi.ts -> shared/calls.ts (R3)",
   "server/runtimes/turn-origins.ts -> shared/calls.ts (R3)",
   "server/runtimes/types.ts -> shared/calls.ts (R3)",
-  "server/runtimes/widget-code.test.ts -> shared/widgets.ts (R3)",
   "server/services.ts -> shared/bots.ts (R3)",
 
-  "server/static-files.ts -> shared/app-routes.ts (R3)",
-
-  "server/vscode-install.ts -> shared/vscode.ts (R3)",
-  "server/vscode-providers.ts -> shared/vscode.ts (R3)",
-  "server/vscode-proxy.test.ts -> shared/vscode.ts (R3)",
-  "server/vscode-proxy.ts -> shared/vscode.ts (R3)",
-  "server/vscode.ts -> shared/vscode.ts (R3)",
-
-  "server/widget-sandbox.test.ts -> shared/widgets.ts (R3)",
-  "server/widget-sandbox.ts -> shared/widgets.ts (R3)",
   "server/worker/host-bots.ts -> shared/bots.ts (R3)",
   "server/worker/host-bots.ts -> shared/calls.ts (R3)",
   "server/worker/host.ts -> shared/bots.ts (R3)",
@@ -319,15 +306,10 @@ const ALLOWED = [
   "src/api/calls.ts -> shared/calls.ts (R3)",
   "src/api/sessions.ts -> shared/calls.ts (R3)",
 
-  "src/api/vscode.ts -> shared/vscode.ts (R3)",
-
   "src/components/bot-face.ts -> shared/bots.ts (R3)",
 
   "src/components/settings/calls.test.ts -> shared/calls.ts (R3)",
   "src/components/settings/calls.ts -> shared/calls.ts (R3)",
-  "src/components/settings/vscode.ts -> shared/vscode.ts (R3)",
-  "src/components/vscode-view.ts -> shared/vscode.ts (R3)",
-  "src/components/widget-card.ts -> shared/widgets.ts (R3)",
   "src/controllers/bots-controller.ts -> shared/calls.ts (R3)",
   "src/lib/attachment-file-icon.test.ts -> src/views/home.ts (R6)",
 
@@ -340,14 +322,12 @@ const ALLOWED = [
   "src/lib/jira.test.ts -> src/views/shell.ts (R6)",
 
   "src/lib/message-context-menu.test.ts -> src/views/home.ts (R6)",
-  "src/lib/navigation.test.ts -> shared/app-routes.ts (R3)",
 
   "src/lib/session/sessions.ts -> shared/calls.ts (R3)",
   "src/lib/settings.ts -> shared/calls.ts (R3)",
   "src/lib/subagent-completion.test.ts -> src/views/chat/projection.ts (R6)",
 
   "src/lib/terminal-font.test.ts -> src/views/settings.ts (R6)",
-  "src/lib/theme/vscode-theme.ts -> shared/vscode.ts (R3)",
   "src/lib/transcript-state.ts -> shared/calls.ts (R3)",
   "src/lib/voice/live-call-platform.ts -> shared/calls.ts (R3)",
   "src/lib/voice/live-call.test.ts -> shared/bots.ts (R3)",
@@ -355,9 +335,6 @@ const ALLOWED = [
   "src/lib/voice/live-call.ts -> shared/bots.ts (R3)",
   "src/lib/voice/live-call.ts -> shared/calls.ts (R3)",
   "src/lib/voice/voice.ts -> shared/voice.ts (R3)",
-  "src/lib/vscode-store.ts -> shared/vscode.ts (R3)",
-  "src/lib/widgets.test.ts -> shared/widgets.ts (R3)",
-  "src/lib/widgets.ts -> shared/widgets.ts (R3)",
 
   "src/views/bot-settings.ts -> shared/bots.ts (R3)",
   "src/views/bot-settings.ts -> shared/calls.ts (R3)",

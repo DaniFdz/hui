@@ -10265,6 +10265,308 @@
         "yue"
       ]
     },
+    "VscodeAction": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "stop"
+        },
+        {
+          "type": "string",
+          "const": "accept-license"
+        },
+        {
+          "type": "string",
+          "const": "revoke-license"
+        },
+        {
+          "type": "string",
+          "const": "install"
+        },
+        {
+          "type": "string",
+          "const": "cancel-install"
+        },
+        {
+          "type": "string",
+          "const": "uninstall"
+        }
+      ]
+    },
+    "VscodeActionRequest": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/VscodeAction"
+        }
+      }
+    },
+    "VscodeConnection": {
+      "type": "object",
+      "required": [
+        "url",
+        "folder",
+        "label",
+        "instance"
+      ],
+      "properties": {
+        "url": {
+          "type": "string"
+        },
+        "folder": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "instance": {
+          "type": "number"
+        }
+      }
+    },
+    "VscodeConnectRequest": {
+      "type": "object",
+      "properties": {
+        "theme": {
+          "$ref": "#/$defs/VscodeTheme"
+        }
+      }
+    },
+    "VscodeConnectResponse": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/VscodeConnection"
+        },
+        {
+          "$ref": "#/$defs/VscodePending"
+        }
+      ]
+    },
+    "VscodeErrorCode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "setup"
+        },
+        {
+          "type": "string",
+          "const": "remote"
+        },
+        {
+          "type": "string",
+          "const": "folder"
+        },
+        {
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "type": "string",
+          "const": "busy"
+        }
+      ]
+    },
+    "VscodeFailure": {
+      "type": "object",
+      "required": [
+        "error",
+        "code"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "code": {
+          "$ref": "#/$defs/VscodeErrorCode"
+        }
+      }
+    },
+    "VscodeFlavor": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "server"
+        },
+        {
+          "type": "string",
+          "const": "serve-web"
+        }
+      ]
+    },
+    "VscodeInstallPhase": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "downloading"
+        },
+        {
+          "type": "string",
+          "const": "verifying"
+        },
+        {
+          "type": "string",
+          "const": "extracting"
+        }
+      ]
+    },
+    "VscodeInstallStatus": {
+      "type": "object",
+      "required": [
+        "supported",
+        "reason",
+        "version",
+        "arch",
+        "size",
+        "dir",
+        "installed",
+        "task",
+        "error",
+        "hint"
+      ],
+      "properties": {
+        "supported": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "arch": {
+          "type": "string"
+        },
+        "size": {
+          "type": "number"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "installed": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "version",
+                "path"
+              ],
+              "properties": {
+                "version": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "phase",
+                "received",
+                "total"
+              ],
+              "properties": {
+                "phase": {
+                  "$ref": "#/$defs/VscodeInstallPhase"
+                },
+                "received": {
+                  "type": "number"
+                },
+                "total": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        }
+      }
+    },
+    "VscodePending": {
+      "type": "object",
+      "required": [
+        "pending",
+        "status"
+      ],
+      "properties": {
+        "pending": {
+          "type": "boolean",
+          "const": true
+        },
+        "status": {
+          "$ref": "#/$defs/VscodeStatus"
+        }
+      }
+    },
+    "VscodeProvider": {
+      "type": "object",
+      "required": [
+        "kind",
+        "flavor",
+        "path",
+        "name",
+        "version"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/VscodeProviderKind"
+        },
+        "flavor": {
+          "$ref": "#/$defs/VscodeFlavor"
+        },
+        "path": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "commit": {
+          "type": "string"
+        }
+      }
+    },
+    "VscodeProviderKind": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "configured"
+        },
+        {
+          "type": "string",
+          "const": "desktop"
+        },
+        {
+          "type": "string",
+          "const": "managed"
+        },
+        {
+          "type": "string",
+          "const": "path"
+        }
+      ]
+    },
     "VscodeProviderPreference": {
       "anyOf": [
         {
@@ -10308,6 +10610,229 @@
           "$ref": "#/$defs/VscodeProviderPreference"
         },
         "licenseAcceptedAt": {
+          "type": "string"
+        }
+      }
+    },
+    "VscodeSetup": {
+      "type": "object",
+      "required": [
+        "needed",
+        "desktop",
+        "install",
+        "download"
+      ],
+      "properties": {
+        "needed": {
+          "type": "boolean"
+        },
+        "desktop": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VscodeProvider"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "install": {
+          "type": "boolean"
+        },
+        "download": {
+          "type": "boolean"
+        }
+      }
+    },
+    "VscodeState": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "setup"
+        },
+        {
+          "type": "string",
+          "const": "stopped"
+        },
+        {
+          "type": "string",
+          "const": "starting"
+        },
+        {
+          "type": "string",
+          "const": "running"
+        },
+        {
+          "type": "string",
+          "const": "failed"
+        }
+      ]
+    },
+    "VscodeStatus": {
+      "type": "object",
+      "required": [
+        "platform",
+        "enabled",
+        "configuredExecutable",
+        "preference",
+        "providers",
+        "problems",
+        "active",
+        "activeError",
+        "setup",
+        "license",
+        "install",
+        "state",
+        "running",
+        "preparing",
+        "instance",
+        "lastError",
+        "connections",
+        "idleMinutes",
+        "dataDir"
+      ],
+      "properties": {
+        "platform": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "configuredExecutable": {
+          "type": "string"
+        },
+        "preference": {
+          "$ref": "#/$defs/VscodeProviderPreference"
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/VscodeProvider"
+          }
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "active": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VscodeProvider"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "activeError": {
+          "type": "string"
+        },
+        "setup": {
+          "$ref": "#/$defs/VscodeSetup"
+        },
+        "license": {
+          "type": "object",
+          "required": [
+            "accepted",
+            "acceptedAt"
+          ],
+          "properties": {
+            "accepted": {
+              "type": "boolean"
+            },
+            "acceptedAt": {
+              "type": "string"
+            }
+          }
+        },
+        "install": {
+          "$ref": "#/$defs/VscodeInstallStatus"
+        },
+        "state": {
+          "$ref": "#/$defs/VscodeState"
+        },
+        "running": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VscodeProvider"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "preparing": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "received",
+                "total"
+              ],
+              "properties": {
+                "received": {
+                  "type": "number"
+                },
+                "total": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instance": {
+          "type": "number"
+        },
+        "pid": {
+          "type": "number"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "lastError": {
+          "type": "string"
+        },
+        "connections": {
+          "type": "number"
+        },
+        "idleMinutes": {
+          "type": "number"
+        },
+        "dataDir": {
+          "type": "string"
+        }
+      }
+    },
+    "VscodeTheme": {
+      "type": "object",
+      "required": [
+        "background",
+        "panel",
+        "elevated",
+        "text"
+      ],
+      "properties": {
+        "background": {
+          "type": "string"
+        },
+        "panel": {
+          "type": "string"
+        },
+        "elevated": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "border": {
+          "type": "string"
+        },
+        "accent": {
           "type": "string"
         }
       }
@@ -11420,6 +11945,25 @@
       "BotTemplateSkill",
       "BotTemplateSkillFile",
       "BotTemplateTrigger"
+    ],
+    "vscode": [
+      "VscodeAction",
+      "VscodeActionRequest",
+      "VscodeConnectRequest",
+      "VscodeConnectResponse",
+      "VscodeConnection",
+      "VscodeErrorCode",
+      "VscodeFailure",
+      "VscodeFlavor",
+      "VscodeInstallPhase",
+      "VscodeInstallStatus",
+      "VscodePending",
+      "VscodeProvider",
+      "VscodeProviderKind",
+      "VscodeSetup",
+      "VscodeState",
+      "VscodeStatus",
+      "VscodeTheme"
     ]
   },
   "x-hui-routes": [
@@ -12425,6 +12969,16 @@
       }
     },
     {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/vscode/connect",
+      "request": {
+        "$ref": "#/$defs/VscodeConnectRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/VscodeConnectResponse"
+      }
+    },
+    {
       "method": "DELETE",
       "path": "/__hui/sessions/:id/watchers/:wid",
       "response": {
@@ -12549,6 +13103,23 @@
       "path": "/__hui/update/check",
       "response": {
         "$ref": "#/$defs/UpdateSnapshot"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/vscode-server",
+      "response": {
+        "$ref": "#/$defs/VscodeStatus"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/vscode-server",
+      "request": {
+        "$ref": "#/$defs/VscodeActionRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/VscodeStatus"
       }
     },
     {

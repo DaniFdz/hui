@@ -7,8 +7,18 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, isAbsolute, join, relative, sep } from "node:path";
-import { isAppRoutePath } from "../shared/app-routes.ts";
 import { COMPRESSION_MIN_BYTES, compressBody, isCompressible, negotiateEncoding, type ContentEncoding } from "./http-compression.ts";
+
+const DEEP_LINK_SECTIONS = ["sessions", "settings", "bots"] as const;
+
+const PAGE = /^\/[a-z][a-z0-9-]*$/u;
+const DEEP_LINK = new RegExp(`^/(?:${DEEP_LINK_SECTIONS.join("|")})/[^.]*$`, "u");
+
+/** Whether a decoded pathname is an app route: Home, a top-level page (`/skills`,
+ * `/kanban`) or a deep link. A deep link with a dot in it is a file request. */
+export function isAppRoutePath(path: string): boolean {
+  return path === "/" || PAGE.test(path) || DEEP_LINK.test(path);
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -72,8 +82,6 @@ export async function serveStatic(root: string, request: IncomingMessage, respon
   if (path.includes("\\") || /[\p{Cc}]/u.test(path) || path.split("/").some((part) => part.startsWith("."))) {
     response.writeHead(404).end(); return;
   }
-  // Home, top-level pages (`/skills`, `/kanban`, …) and the app's deep links load
-  // the app (shared/app-routes.ts); anything else is a file request.
   const spa = isAppRoutePath(path);
   try {
     const target = await realpath(join(root, spa ? "index.html" : path));

@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 import vm from "node:vm";
-import { buildWidgetDocument, isCompleteHtmlDocument, WIDGET_SANDBOX_PATH, widgetContentSecurityPolicy, widgetMode, widgetTokenValue } from "../shared/widgets.ts";
+import { WIDGET_SANDBOX_PATH, WIDGET_SANDBOX_METHOD_PREFIX, widgetContentSecurityPolicy } from "./agent-tools/widget-sandbox.ts";
+import fixture from "./agent-tools/widget-sandbox.fixture.json";
 import { WIDGET_SANDBOX_HTML, widgetSandboxHeaders } from "./widget-sandbox.ts";
 
 /** The text between the first `open` and the next `close`. */
@@ -82,37 +83,8 @@ test("the gateway serves the sandbox page without x-hui and keeps every other ro
   assert.equal((await fetch(origin + WIDGET_SANDBOX_PATH + "/x")).status, 403);
 });
 
-const theme = { mode: "dark" as const, tokens: { surface: "#101010", text: "rgb(200 200 200)", "font-body": "\"Geist\", system-ui, sans-serif" } };
-
-test("the canonical document wraps a fragment once, under the same policy and HUI's current theme", () => {
-  const code = "<p id=x>hi</p>\n<script>document.getElementById('x').textContent = 'ok'</script>";
-  const built = buildWidgetDocument({ title: "Ticks & <tocks>", code, theme });
-  assert.ok(built.html.startsWith("<!doctype html>\n<html lang=\"en\" data-display-mode=\"inline\">"));
-  assert.match(built.html, /<title>Ticks &#38; &#60;tocks&#62;<\/title>/u);
-  const meta = /<meta http-equiv="Content-Security-Policy" content="([^"]+)">/u.exec(built.html)?.[1];
-  assert.equal(meta?.replaceAll("&#39;", "'"), widgetContentSecurityPolicy());
-  assert.match(built.html, /<meta name="referrer" content="no-referrer">/u);
-  const variables = /<style>:root\{color-scheme:dark;([^\n]*)\n/u.exec(built.html)?.[1] ?? "";
-  for (const declaration of ["--surface:#101010;", "--text:rgb(200 200 200);", "--font-body:\"Geist\", system-ui, sans-serif;", "--muted:#8b8b94;"]) assert(variables.includes(declaration), declaration);
-  assert.equal(built.html.split("\n")[built.fragmentLine - 1], "<p id=x>hi</p>");
-  assert.equal(built.html.indexOf(code), built.html.lastIndexOf(code));
-  assert.ok(built.html.endsWith(`${code}\n</body></html>`));
-  const bridge = between(built.html, "<body><script>", "</script>");
-  new vm.Script(bridge);
-  for (const method of ["ui/notifications/size-changed", "ui/notifications/host-context-changed", "notifications/message", "ui/open-link", "ui/request-display-mode"]) assert(bridge.includes(method), method);
-});
-
-test("token values cannot leave their declaration", () => {
-  for (const value of ["red;}", "</style><script>", "url(x) \\61", "x".repeat(257), ""]) assert.equal(widgetTokenValue(value), undefined, value);
-  const built = buildWidgetDocument({ title: "T", code: "<p>x</p>", theme: { mode: "light", tokens: { surface: "red;} body{display:none" } } });
-  assert.match(built.html, /--surface:#faf9f7;/u);
-  assert.doesNotMatch(built.html, /body\{display:none/u);
-});
-
-test("an SVG fragment is centred as a drawing", () => {
-  assert.equal(widgetMode("  <svg viewBox='0 0 1 1'/>"), "svg");
-  assert.equal(widgetMode("<div><svg/></div>"), "html");
-  assert.match(buildWidgetDocument({ title: "T", code: "<svg/>", theme }).html, /<div class="svg-widget"><svg\/><\/div>\n<\/body>/u);
-  assert.equal(isCompleteHtmlDocument("\n<!doctype html><p>"), true);
-  assert.equal(isCompleteHtmlDocument("<p>html</p>"), false);
+test("the server widget policy and sandbox messages match the portable fixtures", () => {
+  assert.equal(WIDGET_SANDBOX_PATH, fixture.path);
+  assert.equal(WIDGET_SANDBOX_METHOD_PREFIX, fixture.methodPrefix);
+  for (const { options, expected } of fixture.policies) assert.equal(widgetContentSecurityPolicy(options), expected);
 });

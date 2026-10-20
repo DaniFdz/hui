@@ -5,10 +5,13 @@
  * stay ahead of the `x-hui` guard in `hui.ts` (`vscode-proxy.ts`); `hui.ts` applies that guard before dispatching here.
  */
 import { stat } from "node:fs/promises";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import * as schemas from "../api/vscode.ts";
+export { routeSchemas } from "../api/vscode.ts";
 import type { SessionRecord } from "../sessions.ts";
 import { VscodeError, type VscodeService } from "../vscode.ts";
-import { normalizeVscodeTheme, VSCODE_ACTIONS, VSCODE_STATUS_ROUTE, type VscodeAction } from "../../shared/vscode.ts";
+import { normalizeVscodeTheme, VSCODE_ACTIONS, VSCODE_STATUS_ROUTE } from "../vscode-contract.ts";
+import type { VscodeAction } from "../api/vscode.ts";
 
 const VSCODE_CONNECT_ROUTE = /^\/__hui\/sessions\/([^/]+)\/vscode\/connect$/u;
 
@@ -30,18 +33,17 @@ export function createVscodeRoutes(deps: { vscode: VscodeService; readRegistry()
         const theme = body && typeof body === "object" && !Array.isArray(body) ? normalizeVscodeTheme((body as Record<string, unknown>)["theme"]) : undefined;
         const connection = await vscode.connect(session.cwd, theme);
         // Still starting (serve-web downloading its first build): the view follows the status and asks again.
-        if ("pending" in connection) return { status: 202, body: { pending: true, status: await vscode.status() } };
-        return { status: 200, body: connection };
+        if ("pending" in connection) return reply(schemas.VscodePending, { pending: true, status: await vscode.status() }, 202);
+        return reply(schemas.VscodeConnection, connection);
       } catch (error) {
-        return {
-          status: error instanceof VscodeError ? error.status : 500,
-          body: { error: error instanceof Error ? error.message : "VS Code could not open.", code: error instanceof VscodeError ? error.code : "failed" },
-        };
+        return reply(schemas.VscodeFailure, {
+          error: error instanceof Error ? error.message : "VS Code could not open.", code: error instanceof VscodeError ? error.code : "failed",
+        }, error instanceof VscodeError ? error.status : 500);
       }
     }
     if (request.path === VSCODE_STATUS_ROUTE) {
       try {
-        if (request.method === "GET") return { status: 200, body: await vscode.status() };
+        if (request.method === "GET") return reply(schemas.VscodeStatus, await vscode.status());
         if (request.method !== "POST") throw new VscodeError("Method not allowed.", 405);
         let body: unknown;
         try { body = await request.json(); } catch { throw new VscodeError("VS Code request body must be JSON.", 400); }
@@ -55,12 +57,11 @@ export function createVscodeRoutes(deps: { vscode: VscodeService; readRegistry()
           case "cancel-install": await vscode.cancelInstall(); break;
           case "uninstall": await vscode.uninstall(); break;
         }
-        return { status: 200, body: await vscode.status() };
+        return reply(schemas.VscodeStatus, await vscode.status());
       } catch (error) {
-        return {
-          status: error instanceof VscodeError ? error.status : 500,
-          body: { error: error instanceof Error ? error.message : "The VS Code request failed.", code: error instanceof VscodeError ? error.code : "failed" },
-        };
+        return reply(schemas.VscodeFailure, {
+          error: error instanceof Error ? error.message : "The VS Code request failed.", code: error instanceof VscodeError ? error.code : "failed",
+        }, error instanceof VscodeError ? error.status : 500);
       }
     }
     return undefined;

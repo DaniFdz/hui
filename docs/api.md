@@ -1210,7 +1210,7 @@ send one). Other methods answer 405. Headers:
 | `X-Content-Type-Options` | `nosniff` |
 | `Cache-Control` | `no-store` |
 
-The widget policy (`widgetContentSecurityPolicy` in `shared/widgets.ts`) is
+The widget policy (`widgetContentSecurityPolicy` in `server/agent-tools/widget-sandbox.ts`, copied by `src/lib/widgets.ts`) is
 `default-src 'none'`; `script-src 'unsafe-inline'` plus cdnjs.cloudflare.com,
 cdn.jsdelivr.net, esm.sh and unpkg.com; `style-src` the same plus
 fonts.googleapis.com and fonts.bunny.net; `font-src data:`, the script CDNs,
@@ -4173,13 +4173,26 @@ the running server; a revoked license also withdraws every ticket and cookie.
 | `/__hui/vscode/enter?ticket=…` | GET | the ticket | 303 to `/__hui/vscode/?folder=<cwd>` with the cookie |
 | `/__hui/vscode/…` (HTTP and WebSocket) | any | the cookie | Proxied to the running server |
 
+### `GET /__hui/vscode-server`
+
+Returns `VscodeStatus` with the local providers, setup choices and process state.
+
+### `POST /__hui/vscode-server`
+
+Takes `VscodeActionRequest` (`{ action }`) and returns the updated `VscodeStatus`.
+
 Actions: `stop`; `accept-license` (writes `licenseAcceptedAt` now) and
 `revoke-license` (clears it and stops a running serve-web); `install` (starts the
 openvscode-server install and answers at once), `cancel-install`, `uninstall`
 (stops a running managed server, then deletes every install directory and
 leftover). Any other action is 400.
 
-`VscodeStatus` (`shared/vscode.ts`) holds `platform`, `enabled`,
+### `POST /__hui/sessions/:id/vscode/connect`
+
+Takes `VscodeConnectRequest` (`{ theme? }`) and returns `VscodeConnection` (200),
+or `VscodePending` (202) while the server starts. Refusals return `VscodeFailure`.
+
+`VscodeStatus` (`server/api/vscode.ts`) holds `platform`, `enabled`,
 `configuredExecutable`, `preference`, `providers` (`{ kind, flavor, path, name,
 version, commit? }` in preference order), `problems` (visible reasons for
 candidates that do not fit), `active` (what the next open runs, or `null`),

@@ -1,10 +1,9 @@
 /** Browser client for the VS Code routes: the gateway's VS Code status, its actions and the one-use frame URL for a
  * conversation's folder. lib/vscode-store.ts remembers the last status for every screen. */
 import { CLIENT_HEADERS, fetchJson, fetchWithResponseDeadline, trackedFetch } from "./request.ts";
-import {
-  VSCODE_STATUS_ROUTE,
-  type VscodeAction, type VscodeConnection, type VscodeErrorCode, type VscodeStatus, type VscodeTheme,
-} from "../../shared/vscode.ts";
+import type { VscodeAction, VscodeConnection, VscodeErrorCode, VscodeStatus, VscodeTheme } from "./schema/vscode.ts";
+
+export const VSCODE_STATUS_ROUTE = "/__hui/vscode-server";
 
 export function fetchVscodeStatus(): Promise<VscodeStatus> {
   return fetchJson<VscodeStatus>(VSCODE_STATUS_ROUTE);

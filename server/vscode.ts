@@ -20,10 +20,8 @@ import { Agent, get as httpGet } from "node:http";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import {
-  VSCODE_BASE_PATH, VSCODE_ENTER_PATH,
-  type VscodeConnection, type VscodeErrorCode, type VscodeFlavor, type VscodeProvider, type VscodeState, type VscodeStatus, type VscodeTheme,
-} from "../shared/vscode.ts";
+import { VSCODE_BASE_PATH, VSCODE_ENTER_PATH } from "./vscode-contract.ts";
+import type { VscodeConnection, VscodeErrorCode, VscodeFlavor, VscodeProvider, VscodeState, VscodeStatus, VscodeTheme } from "./api/vscode.ts";
 import type { VscodeSettings } from "./hui-settings.ts";
 import {
   defaultVscodeProbe, detectVscodeProviders, parseServeWebProgress, planVscode, publicProvider, serveWebLaunchArguments,

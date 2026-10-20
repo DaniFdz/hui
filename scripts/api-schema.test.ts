@@ -85,7 +85,6 @@ const ALLOWED = [
   "module: diagnostics",
   "module: local-paths",
   "module: themes",
-  "module: vscode",
   "undocumented: GET /__hui/power",
   "undocumented: PUT /__hui/power",
 ];

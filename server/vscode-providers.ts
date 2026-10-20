@@ -14,10 +14,8 @@ import { access, realpath, stat } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { delimiter, isAbsolute, join, win32 } from "node:path";
 import { promisify } from "node:util";
-import {
-  VSCODE_BASE_PATH, VSCODE_PROVIDER_ORDER,
-  type VscodeProvider, type VscodeProviderKind, type VscodeProviderPreference,
-} from "../shared/vscode.ts";
+import { VSCODE_BASE_PATH, VSCODE_PROVIDER_ORDER } from "./vscode-contract.ts";
+import type { VscodeProvider, VscodeProviderKind, VscodeProviderPreference } from "./api/vscode.ts";
 
 export type VscodeProbe = {
   platform: NodeJS.Platform;

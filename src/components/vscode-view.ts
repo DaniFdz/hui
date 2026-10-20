@@ -15,8 +15,8 @@ import { VscodeConnectError } from "../api/vscode.ts";
 import { readVscodeTheme } from "../lib/theme/vscode-theme.ts";
 import {
   formatVscodeBytes, MICROSOFT_PRIVACY_URL, OPENVSCODE_SERVER_LICENSE_URL, OPENVSCODE_SERVER_URL, VSCODE_DOWNLOAD_URL, VSCODE_SERVER_LICENSE_URL,
-  type VscodeConnection, type VscodeStatus,
-} from "../../shared/vscode.ts";
+} from "../lib/vscode.ts";
+import type { VscodeConnection, VscodeStatus } from "../api/schema/vscode.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 import { requestOpenSettings } from "../lib/open-settings.ts";
 

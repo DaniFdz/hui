@@ -7,8 +7,8 @@ import { keyed } from "lit/directives/keyed.js";
 import { ref } from "lit/directives/ref.js";
 import { HuiElement } from "../lit/hui-element.ts";
 import { icons } from "../lib/icons.ts";
-import { buildWidgetDocument, WIDGET_SANDBOX_METHOD_PREFIX, WIDGET_SANDBOX_PATH } from "../../shared/widgets.ts";
 import {
+  buildWidgetDocument, WIDGET_SANDBOX_METHOD_PREFIX, WIDGET_SANDBOX_PATH,
   clampWidgetHeight,
   currentWidgetTheme,
   openableWidgetUrl,

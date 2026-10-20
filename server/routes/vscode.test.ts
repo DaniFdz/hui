@@ -7,6 +7,8 @@ import { join } from "node:path";
 import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
+import * as schemas from "../api/vscode.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 const FAKE = fileURLToPath(new URL("../test-support/fake-vscode-server.mjs", import.meta.url));
 
@@ -44,9 +46,13 @@ test("VS Code routes: x-hui still guards every other route, the cookie opens onl
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   });
-  const api = async (path: string, init: RequestInit = {}) => {
+  const api = async (path: string, init: RequestInit = {}): Promise<{ status: number; body: Record<string, any> }> => {
     const response = await fetch(origin + path, { ...init, headers: { "x-hui": "1", "content-type": "application/json", ...init.headers } });
-    return { status: response.status, body: await response.json() as Record<string, any> };
+    const body = await response.json() as Record<string, any>;
+    if (path === "/__hui/vscode-server" || path.endsWith("/vscode/connect")) {
+      expectSchema(response.status >= 400 ? schemas.VscodeFailure : path.endsWith("/vscode/connect") ? schemas.VscodeConnectResponse : schemas.VscodeStatus, body);
+    }
+    return { status: response.status, body };
   };
   const connect = (id: string) => api(`/__hui/sessions/${id}/vscode/connect`, { method: "POST", body: JSON.stringify({ theme: { background: "#ffffff", panel: "#f4f4f4", elevated: "#eeeeee", text: "#222222", border: "javascript:alert(1)" } }) });
 
