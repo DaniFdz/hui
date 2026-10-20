@@ -429,8 +429,10 @@ test("the bot list streams: the whole list first, then the bots that changed", {
     }
   };
   const first = await next();
-  assert.deepEqual(first.upserts.map((bot) => bot.handle).toSorted(), ["ada", "bob", "mem"]);
-  assert.deepEqual(first.ids?.length, 3);
+  const listed = ((await call("/__hui/bots")).body["bots"] as BotView[]).map((bot) => bot.handle).toSorted();
+  assert.ok(["ada", "bob", "mem"].every((handle) => listed.includes(handle)));
+  assert.deepEqual(first.upserts.map((bot) => bot.handle).toSorted(), listed);
+  assert.deepEqual(first.ids?.length, listed.length);
   const views = new Map(first.upserts.map((bot) => [bot.id, JSON.stringify(bot)]));
   await call("/__hui/bots/bob", "PATCH", { title: "Helper" });
   // Other bots may change meanwhile (the last test's chat settling, its memory building): each frame carries only
