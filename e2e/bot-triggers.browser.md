@@ -11,7 +11,7 @@ an isolated instance of the committed checkout, its fixture provider, and its
 fake `gh` (`--github-fixture`), which answers for synthetic accounts but can't
 read a pull request, so a linked one shows as *gh could not read it*. Reading
 linked pull requests into a delivery is proved by
-`server/routes/bot-triggers.test.ts` against `e2e/github-triggers-fixture.mjs`.
+`server/routes/bot-triggers.test.ts` against `e2e/fixtures/github-triggers-fixture.mjs`.
 No operator configuration, transcript, credential or account is involved.
 
 ## Compact steering journey

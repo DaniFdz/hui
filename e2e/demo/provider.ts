@@ -2,7 +2,7 @@
 /**
  * The scripted model behind HUI's demo videos: an Anthropic-compatible
  * provider that plays a fixed script for each demo prompt, streaming text at a
- * readable pace. Like e2e/pi-provider-fixture.mjs it replaces only the model:
+ * readable pace. Like e2e/fixtures/pi-provider-fixture.mjs it replaces only the model:
  * PI runs every tool call for real. Started by
  * `visual-verification.mjs launch --demo`. It also serves the demo's pages, and
  * the Datadog graph the recorder draws before a clip (the fake pup's snapshot).

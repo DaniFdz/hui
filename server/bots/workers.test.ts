@@ -46,7 +46,7 @@ await writeFile(join(agentDir, "extensions", "ask.ts"), `export default function
 `);
 
 const log = join(root, "provider.jsonl");
-const provider = spawn(process.execPath, [join(repo, "e2e", "pi-provider-fixture.mjs")], {
+const provider = spawn(process.execPath, [join(repo, "e2e", "fixtures", "pi-provider-fixture.mjs")], {
   env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: join(remoteHome, "project"), HUI_E2E_PROVIDER_LOG: log, HUI_E2E_PROVIDER_KEY: KEY },
   stdio: ["ignore", "pipe", "inherit"],
 });

@@ -1,6 +1,6 @@
 /** Browser lacks a press-and-hold action. This isolated CDP helper sends only
  * the native touch gesture; Browser owns navigation, coordinates and assertions.
- * Usage: node e2e/touch-hold-probe.mjs <page-websocket-url> <x> <y>
+ * Usage: node e2e/probes/touch-hold-probe.mjs <page-websocket-url> <x> <y>
  */
 const [address, xValue, yValue] = process.argv.slice(2);
 const url = new URL(address);

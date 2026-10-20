@@ -4,7 +4,7 @@
 import { writeFile } from "node:fs/promises";
 
 const [urlPrefix, output] = process.argv.slice(2);
-if (!urlPrefix || !output) throw new Error("Usage: node e2e/capture-rendered.mjs <page-url-prefix> <output.png>");
+if (!urlPrefix || !output) throw new Error("Usage: node e2e/probes/capture-rendered.mjs <page-url-prefix> <output.png>");
 const tabs = await (await fetch("http://127.0.0.1:18800/json/list")).json();
 const tab = tabs.find((item) => item.type === "page" && item.url.startsWith(urlPrefix));
 if (!tab) throw new Error("No matching open browser page.");

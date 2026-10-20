@@ -4,7 +4,7 @@ Date: 2026-10-02. Verified against commit `62d7c0d` (merged with `main`) of
 `dani.fernandez/show-background-pr-watchers`, launched with the repository
 visual-verification fixture (`e2e/visual-verification.mjs launch`) and driven
 with the Browser tool. Only the model provider is mocked
-(`e2e/pi-provider-fixture.mjs`, `E2E_WATCHER`); HUI, the gateway, the real PI
+(`e2e/fixtures/pi-provider-fixture.mjs`, `E2E_WATCHER`); HUI, the gateway, the real PI
 SDK worker, the `watcher` extension, the process spawn and the browser are
 real. No operator transcript, credential or GitHub account was used.
 

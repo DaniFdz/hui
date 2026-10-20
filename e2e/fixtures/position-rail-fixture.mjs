@@ -1,5 +1,5 @@
 /** Seed disposable history with PI's own SessionManager, never operator data.
- * Usage: node e2e/position-rail-fixture.mjs <fresh-temp-root> <pi-session-manager.js>
+ * Usage: node e2e/fixtures/position-rail-fixture.mjs <fresh-temp-root> <pi-session-manager.js>
  * Use the isolated provider configuration from chat-composer.browser.md. */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";

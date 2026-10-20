@@ -2,8 +2,8 @@
  * whose tool call created a pull request, for GitHub embed and badge E2E. Thirty
  * earlier turns link more pull requests, issues and a Slack thread, a long
  * history that stays plain links: only the latest user message and reply unfurl.
- * Usage: node e2e/github-embeds-fixture.mjs <fresh /tmp/hui-github-embeds-* root> <pi session-manager.js>
- * Pair with HUI_GITHUB_CLI=e2e/github-cli-fixture.mjs, whose canned `gh api graphql`
+ * Usage: node e2e/fixtures/github-embeds-fixture.mjs <fresh /tmp/hui-github-embeds-* root> <pi session-manager.js>
+ * Pair with HUI_GITHUB_CLI=e2e/fixtures/github-cli-fixture.mjs, whose canned `gh api graphql`
  * previews describe acme/web, acme/web#12 (open PR), #13 (merged PR) and #7 (issue). */
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";

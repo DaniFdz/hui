@@ -26,7 +26,7 @@ process.env["PI_CODING_AGENT_DIR"] = agentDir;
 // No gh: startup would run the operator's in the background, writing into this home while afterAll() removes it.
 process.env["HUI_GITHUB_CLI"] = join(dir, "no-gh");
 const log = join(dir, "requests.jsonl");
-const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
   stdio: ["ignore", "pipe", "pipe"],
   env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: log },
 });

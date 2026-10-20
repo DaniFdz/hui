@@ -3,7 +3,7 @@
  * Stress run for HUI's `ask_user_question` card against an isolated
  * visual-verification instance (Durable, or `launch --pi-sessions`):
  *
- *   node e2e/ask-user-question-stress.mjs --receipt <receipt.json> [scenario,…]
+ *   node e2e/probes/ask-user-question-stress.mjs --receipt <receipt.json> [scenario,…]
  *
  * It writes its questionnaires into the instance's workspace, drives a private
  * headless Chrome with real key and mouse events (sessions are created through
@@ -19,7 +19,7 @@ import { join } from "node:path";
 
 const args = process.argv.slice(2);
 const receiptPath = args[args.indexOf("--receipt") + 1];
-if (!args.includes("--receipt") || !receiptPath) throw new Error("Usage: node e2e/ask-user-question-stress.mjs --receipt <receipt.json> [scenario,…]");
+if (!args.includes("--receipt") || !receiptPath) throw new Error("Usage: node e2e/probes/ask-user-question-stress.mjs --receipt <receipt.json> [scenario,…]");
 const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
 const base = receipt.browserUrl;
 const workspace = receipt.workspace;

@@ -5,7 +5,7 @@
  * each direction, and everything the gateway sends shares one downstream
  * bandwidth budget across all connections.
  *
- *   node e2e/slow-link-proxy.mjs --target 127.0.0.1:4173 [--port 0]
+ *   node e2e/fixtures/slow-link-proxy.mjs --target 127.0.0.1:4173 [--port 0]
  *     [--rtt-ms 300] [--down-kbps 1600] [--up-kbps 800]
  *
  * Prints {"url": "http://127.0.0.1:<port>/", ...} once listening. HTTP and

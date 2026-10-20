@@ -17,7 +17,7 @@ at `e8c08fe` (which changes only where Runs on shows, so only while a worker
 exists). HUI, the gateway's `/__hui/bots` and `/__hui/workers` routes and
 streams, Pi Durable, OptChat, the worker host, the soul's first conversation and
 `set_profile` are real; only the model provider is a fake
-(`e2e/pi-provider-fixture.mjs`). No VoiceStudio, ChatGPT login, operator
+(`e2e/fixtures/pi-provider-fixture.mjs`). No VoiceStudio, ChatGPT login, operator
 transcript, credential or account is involved.
 
 ## Reproduce
@@ -26,7 +26,7 @@ transcript, credential or account is involved.
    `XDG_DATA_HOME`, `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR`
    inside it, `PI_OFFLINE=1`, and the proxy variables unset; every process is
    started with `env -i` and only those variables.
-2. Start `e2e/pi-provider-fixture.mjs` (`HUI_E2E_PROVIDER_PORT=0`) and point
+2. Start `e2e/fixtures/pi-provider-fixture.mjs` (`HUI_E2E_PROVIDER_PORT=0`) and point
    `<agent>/models.json` at it: provider `hui-e2e` with the models `fixture` and
    `fixture-mini`; `<agent>/settings.json` defaults to `hui-e2e/fixture`.
 3. Start the built gateway, then set it up through the guarded API (not the

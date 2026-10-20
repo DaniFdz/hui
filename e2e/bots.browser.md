@@ -8,7 +8,7 @@ at the commit that adds this record (documentation only since `d3cecb3`). Both
 runs were launched with `e2e/visual-verification.mjs` and driven with the
 Browser tool (OpenClaw's managed profile on a headless Brave that another
 agent's labeled tab shared; that tab was left alone). Only the model provider is
-mocked (`e2e/pi-provider-fixture.mjs`): every turn answers "Fixture response.",
+mocked (`e2e/fixtures/pi-provider-fixture.mjs`): every turn answers "Fixture response.",
 and OptChat's compactor gets one short line per summary, `<kind>:
 FIXTURE_MEMORY <first E2E_/OPT_ marker>`, held while the message carries
 `E2E_HOLD_MEMORY` until `POST /control/release-replay` on the fixture. HUI, the

@@ -1,6 +1,6 @@
 /** Run the shipped OpenClaw renderer independently; never reuse HUI's card DOM. */
 import { applyOriginalTheme } from "./original-theme-probe.js";
-import { huiHovercardRow } from "../src/components/openclaw/hui-hovercard-adapter.ts";
+import { huiHovercardRow } from "../../src/components/openclaw/hui-hovercard-adapter.ts";
 
 export async function compareOriginalHovercard(sessionId, oracle = "http://127.0.0.1:43229") {
   const live = document.querySelector('.session-progress-hovercard[data-open="true"]');

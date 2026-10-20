@@ -1,7 +1,7 @@
 # Contributions → Calendar
 
 Run against `node e2e/visual-verification.mjs launch --branch <branch>
---activity-fixture`. `e2e/activity-fixture.ts` seeds the isolated store before
+--activity-fixture`. `e2e/fixtures/activity-fixture.ts` seeds the isolated store before
 the gateway starts: ten synthetic Durable sessions worked through the week
 before the current one, in five projects (directories under the workspace:
 checkout-api, ios-app, marketing-site, evals, infra) and five sidebar groups

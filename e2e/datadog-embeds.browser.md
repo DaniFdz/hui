@@ -3,7 +3,7 @@
 Verified on 2026-10-16 with HUI's Browser tool against the real HUI gateway from
 `node e2e/visual-verification.mjs launch` (isolated HUI and PI state, fixture model).
 Two runs: one through the operator's real `pup` 1.6.4 and the public Datadog share
-page, one through the fake pup (`--datadog-fixture`, `e2e/pup-cli-fixture.mjs`). The
+page, one through the fake pup (`--datadog-fixture`, `e2e/fixtures/pup-cli-fixture.mjs`). The
 real run was repeated on commit `9aabf54` with a clean tree (doctor passed before
 cleanup). No operator HUI state was read or changed; the real run read Datadog only.
 

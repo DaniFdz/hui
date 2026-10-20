@@ -17,7 +17,7 @@ import {
   parseGhVersion,
 } from "./github.ts";
 
-const FIXTURE = fileURLToPath(new URL("../../e2e/github-cli-fixture.mjs", import.meta.url));
+const FIXTURE = fileURLToPath(new URL("../../e2e/fixtures/github-cli-fixture.mjs", import.meta.url));
 
 async function fakeGh(patch: Record<string, string> = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-gh-"));

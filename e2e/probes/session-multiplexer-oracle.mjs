@@ -1,11 +1,11 @@
 // Compare against independently loaded OpenClaw 2026.9.5 shipped functions.
-// Usage: node e2e/session-multiplexer-oracle.mjs /path/to/dist/control-ui/assets
+// Usage: node e2e/probes/session-multiplexer-oracle.mjs /path/to/dist/control-ui/assets
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import ts from "typescript";
-import * as hui from "../src/lib/session/multiplexer.ts";
+import * as hui from "../../src/lib/session/multiplexer.ts";
 
 const assets = process.argv[2];
 if (!assets) throw new Error("Pass the installed OpenClaw 2026.9.5 assets directory.");

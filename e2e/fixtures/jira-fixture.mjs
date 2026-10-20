@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Deterministic Jira Cloud REST v3 subset for Browser E2E.
- * Usage: HUI_E2E_JIRA_PORT=43128 node e2e/jira-fixture.mjs
+ * Usage: HUI_E2E_JIRA_PORT=43128 node e2e/fixtures/jira-fixture.mjs
  * Accepts only `Basic base64(e2e@hui.test:e2e-token)` and keeps created work
  * items in memory. GET /control/created lists what HUI created. */
 import { createServer } from "node:http";

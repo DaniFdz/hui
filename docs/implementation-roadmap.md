@@ -219,7 +219,7 @@ same-session splits, horizontal/vertical resizing, browser-local persistence
 and mounted narrow-layout views. Any pane can close without restarting its
 survivors. The row menu retains an accessible **Open in split pane** fallback.
 The model is compared independently against the installed reference by
-`e2e/session-multiplexer-oracle.mjs`. Sidebar status for unmounted
+`e2e/probes/session-multiplexer-oracle.mjs`. Sidebar status for unmounted
 background sessions still settles without opening a full transcript stream for
 every chat. Deterministic routing/view coverage and a real-PI simultaneous-turn
 desktop/mobile Browser journey are recorded in

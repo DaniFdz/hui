@@ -1,5 +1,5 @@
 /** Read-only, loopback-only upstream stylesheet oracle for visual diagnostics.
- * Usage: node e2e/reference-style-server.mjs /path/to/openclaw-source /path/to/control-ui
+ * Usage: node e2e/fixtures/reference-style-server.mjs /path/to/openclaw-source /path/to/control-ui
  * This does not emulate an OpenClaw Gateway or claim upstream DOM equivalence. */
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";

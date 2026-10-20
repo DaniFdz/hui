@@ -1,5 +1,5 @@
 /** Seed a disposable PI transcript for Markdown formatting browser proof.
- * Usage: node e2e/markdown-formatting-fixture.mjs <fresh-temp-root> <pi-session-manager.js> */
+ * Usage: node e2e/fixtures/markdown-formatting-fixture.mjs <fresh-temp-root> <pi-session-manager.js> */
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";

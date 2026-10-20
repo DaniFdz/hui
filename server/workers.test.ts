@@ -101,7 +101,7 @@ beforeAll(async () => {
   await writeFile(join(agentDir, "skills", "gateway-skill", "SKILL.md"), "---\nname: gateway-skill\ndescription: Lives only on the gateway.\n---\nBody\n");
   await writeFile(join(root, "gateway", "package", "package.json"), JSON.stringify({ name: "local-package", version: "1.0.0", pi: { skills: ["./skills"] } }));
   await writeFile(join(root, "gateway", "package", "skills", "package-skill", "SKILL.md"), "---\nname: package-skill\ndescription: From a local PI package.\n---\nBody\n");
-  await writeFile(join(agentDir, "extensions", "question.ts"), await readFile(join(repo, "e2e", "question-extension.ts"), "utf8"));
+  await writeFile(join(agentDir, "extensions", "question.ts"), await readFile(join(repo, "e2e", "fixtures", "question-extension.ts"), "utf8"));
   await writeFile(join(agentDir, "extensions", "oauth-provider.ts"), `export default function (pi) {
   pi.registerProvider("fx-oauth", {
     baseUrl: process.env.HUI_TEST_BASE_URL, api: "anthropic-messages",
@@ -117,7 +117,7 @@ beforeAll(async () => {
   });
 }
 `);
-  provider = spawn(process.execPath, [join(repo, "e2e/pi-provider-fixture.mjs")], {
+  provider = spawn(process.execPath, [join(repo, "e2e/fixtures/pi-provider-fixture.mjs")], {
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: project, HUI_E2E_PROVIDER_LOG: join(root, "provider.jsonl"), HUI_E2E_PROVIDER_KEY: KEY },
     stdio: ["ignore", "pipe", "inherit"],
   });

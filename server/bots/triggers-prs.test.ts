@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { BOT_TRIGGER_LIMITS } from "./triggers-format.ts";
-import { createGitHubFake, type FakeGitHubState } from "../../e2e/github-triggers-fixture.mjs";
+import { createGitHubFake, type FakeGitHubState } from "../../e2e/fixtures/github-triggers-fixture.mjs";
 import { boundedDiff, GhReadError, parseGhInclude, pullRequestReader, readPullRequest, type GhRaw } from "./triggers-prs.ts";
 
 const URL = "https://github.com/acme/widgets/pull/42";

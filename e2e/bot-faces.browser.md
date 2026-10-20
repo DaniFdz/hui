@@ -7,7 +7,7 @@ accessibility and cost. Run against `e2e/visual-verification.mjs launch
 --branch feat/bot-faces --pi-sessions` in headless Chromium driven through CDP
 (the Browser tool's headless Brave hangs on screenshots on this host). HUI, the
 gateway's `/__hui/bots` routes and stream, Pi Durable and OptChat are real; the
-model provider (`e2e/pi-provider-fixture.mjs`) is a deterministic fake. No
+model provider (`e2e/fixtures/pi-provider-fixture.mjs`) is a deterministic fake. No
 operator transcript, credential or account is used.
 
 Since 2026-10-07 the Look is a row of the bot's Settings tab rather than a

@@ -5,7 +5,7 @@ Date: 2026-10-06. Verified against commit `16c9e8f` of
 `50e62aa` after its bridge client changed, launched with the repository
 visual-verification fixture (`e2e/visual-verification.mjs launch`, then again
 with `--pi-sessions`) and driven with the Browser tool. Only the model provider
-is mocked (`e2e/pi-provider-fixture.mjs`, `E2E_SECRET_REQUEST`); HUI, the
+is mocked (`e2e/fixtures/pi-provider-fixture.mjs`, `E2E_SECRET_REQUEST`); HUI, the
 gateway, Pi Durable, the PI SDK worker, the `secret_request` tool, the real
 `bash` tool and the browser are real. The secrets typed were throwaway
 strings; no operator credential was used.

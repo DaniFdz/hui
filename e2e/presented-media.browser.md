@@ -23,7 +23,7 @@ read or changed.
 The managed OpenClaw Browser wrapper timed out in both `status` and its single
 documented `start` retry after the gateway restart. Per the browser-automation
 fallback, the rendered journey was driven in `/run/current-system/sw/bin/brave`
-through a private CDP port by `e2e/presented-media-probe.mjs`. This is real browser
+through a private CDP port by `e2e/probes/presented-media-probe.mjs`. This is real browser
 interaction and rendering, but it is not a successful managed-Browser-tool run.
 
 ## Observed

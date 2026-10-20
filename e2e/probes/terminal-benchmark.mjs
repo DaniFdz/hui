@@ -10,7 +10,7 @@
  * CPU time and the bytes/messages on the terminal socket. A reconnect run measures
  * replaying the full 256 KiB buffer. Development tooling only; never shipped.
  *
- *   node e2e/terminal-benchmark.mjs --receipt <receipt.json> [--browser <chromium>] [--runs 3] [--label name] [--out result.json]
+ *   node e2e/probes/terminal-benchmark.mjs --receipt <receipt.json> [--browser <chromium>] [--runs 3] [--label name] [--out result.json]
  *
  * The receipt may come from any checkout (for example a detached origin/main
  * worktree), so the same script measures a baseline and a branch. The screen is
@@ -35,7 +35,7 @@ const { values: args } = parseArgs({ options: {
   out: { type: "string" },
   scenarios: { type: "string", default: "idle,typing,seq,cat,redraw,replay" },
 } });
-if (!args.receipt) throw new Error("Usage: node e2e/terminal-benchmark.mjs --receipt <receipt.json> [--browser <chromium>] [--runs 3] [--out result.json]");
+if (!args.receipt) throw new Error("Usage: node e2e/probes/terminal-benchmark.mjs --receipt <receipt.json> [--browser <chromium>] [--runs 3] [--out result.json]");
 const receipt = JSON.parse(await readFile(args.receipt, "utf8"));
 if (receipt.state !== "ready" || !receipt.url || !receipt.workspace || !receipt.serverPid) throw new Error("The receipt does not describe a ready visual-verification instance.");
 const runs = Math.max(1, Number(args.runs) || 1);

@@ -1,5 +1,5 @@
 /** Seed disposable PI transcripts whose tool calls created GitHub pull requests.
- * Usage: node e2e/session-pr-badges-fixture.mjs <fresh-temp-root> <pi-session-manager.js>
+ * Usage: node e2e/fixtures/session-pr-badges-fixture.mjs <fresh-temp-root> <pi-session-manager.js>
  * The URLs point at public cli/cli pull requests in each GitHub state, so the
  * gateway's real `gh pr view` lookup supplies state, title and description. */
 import { mkdir, writeFile } from "node:fs/promises";

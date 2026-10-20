@@ -6,7 +6,7 @@ provider in disposable HUI/PI directories. No operator sessions were modified.
 ## Reproduction
 
 Use the isolated setup in [chat-composer.browser.md](chat-composer.browser.md).
-Start `e2e/pi-provider-fixture.mjs` and HUI, then use the Browser tool:
+Start `e2e/fixtures/pi-provider-fixture.mjs` and HUI, then use the Browser tool:
 
 1. Create a session through the visible project/prompt controls, using the
    disposable workspace and `E2E_SUBAGENTS_STEERING`.

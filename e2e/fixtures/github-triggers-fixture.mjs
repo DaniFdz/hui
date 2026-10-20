@@ -4,7 +4,7 @@
  * and its diff, as triggers' deliveries read them. Every request is logged with its status.
  *
  * As a module: `createGitHubFake(state)` answers in-process (`respond(path, accept)`), for unit tests.
- * As `gh` (HUI_GITHUB_CLI=e2e/github-triggers-fixture.mjs): the state is `$HUI_FAKE_GH_DIR/github.json`, the log
+ * As `gh` (HUI_GITHUB_CLI=e2e/fixtures/github-triggers-fixture.mjs): the state is `$HUI_FAKE_GH_DIR/github.json`, the log
  * `$HUI_FAKE_GH_DIR/requests.jsonl`; `--version` and `auth status` answer too.
  *
  * State: { login, repos: { "owner/name": { pulls: [GitHub pull objects], files: { "<number>": [pull request files] },

@@ -8,8 +8,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AssistantEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
-import { DurableHost, durableContext } from "../server/runtimes/durable-host.ts";
-import { CONFIG_DIR } from "../server/paths.ts";
+import { DurableHost, durableContext } from "../../server/runtimes/durable-host.ts";
+import { CONFIG_DIR } from "../../server/paths.ts";
 
 const MINUTE = 60_000;
 const workspace = process.env["HUI_E2E_WORKSPACE"]!;

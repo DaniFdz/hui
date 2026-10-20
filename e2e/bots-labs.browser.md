@@ -11,7 +11,7 @@ Run on 2026-10-07 against a gateway built from `feat/bots-opt-in` at
 production) and driven with the Browser tool on an owned headless Brave
 (disposable profile, CDP 18800). HUI, the gateway's routes and streams, Pi
 Durable, OptChat, Automation and the CLI are real; only the model provider is a
-fake (`e2e/pi-provider-fixture.mjs`). No operator configuration, transcript,
+fake (`e2e/fixtures/pi-provider-fixture.mjs`). No operator configuration, transcript,
 credential or account is involved.
 
 ## Reproduce
@@ -20,7 +20,7 @@ credential or account is involved.
    `XDG_DATA_HOME`, `XDG_STATE_HOME`, `PI_CODING_AGENT_DIR` and
    `PI_CODING_AGENT_SESSION_DIR` inside it, `PI_OFFLINE=1`; every process is
    started with `env -i` and only those variables (no proxy).
-2. Start `e2e/pi-provider-fixture.mjs` (`HUI_E2E_PROVIDER_PORT=0`) and point
+2. Start `e2e/fixtures/pi-provider-fixture.mjs` (`HUI_E2E_PROVIDER_PORT=0`) and point
    `<agent>/models.json` at it (provider `hui-e2e`, model `fixture`).
 3. Start the built gateway and set it up through the guarded API (not the
    journey under test): `PUT /__hui/settings` with `{"labs":{"bots":true},

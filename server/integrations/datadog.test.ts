@@ -23,7 +23,7 @@ import {
   sessionStatus,
 } from "./datadog.ts";
 
-const FIXTURE = fileURLToPath(new URL("../../e2e/pup-cli-fixture.mjs", import.meta.url));
+const FIXTURE = fileURLToPath(new URL("../../e2e/fixtures/pup-cli-fixture.mjs", import.meta.url));
 const PROD = { name: "prod", site: "app.datadoghq.com" };
 
 async function fakePup(sessions: unknown[] = [], options: { loginTimeoutMs?: number; command?: string } = {}) {

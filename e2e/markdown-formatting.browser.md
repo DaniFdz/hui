@@ -5,7 +5,7 @@ Verified 2026-09-24 using the real HUI gateway and packaged PI 0.87.1.
 ## Reproduce
 
 1. Create a fresh `/tmp/hui-markdown-formatting-*` root and run
-   `node e2e/markdown-formatting-fixture.mjs <ROOT> <PI_PACKAGE>/dist/core/session-manager.js`.
+   `node e2e/fixtures/markdown-formatting-fixture.mjs <ROOT> <PI_PACKAGE>/dist/core/session-manager.js`.
    The fixture writes one disposable PI transcript plus an exclusive HUI registry.
 2. Configure the disposable `hui-e2e/fixture` model using the local provider
    definition from `chat-composer.browser.md`; no model request is required.

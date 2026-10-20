@@ -144,7 +144,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
   await mkdir(agentDir); await mkdir(cwd);
   await writeFile(join(cwd, "fixture.txt"), "Durable fixture content\n");
   const log = join(dir, "requests.jsonl");
-  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
   });

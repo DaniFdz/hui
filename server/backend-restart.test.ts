@@ -63,7 +63,7 @@ function runRecorded(id: string): Promise<void> {
 }
 
 test("the backend stops and restarts in-process, and its Durable sessions open again", { timeout: 60_000 }, async (t) => {
-  const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+  const provider = spawn(process.execPath, [fileURLToPath(new URL("../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
     stdio: ["ignore", "pipe", "inherit"],
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: join(dir, "requests.jsonl") },
   });
