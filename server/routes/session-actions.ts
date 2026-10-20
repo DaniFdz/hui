@@ -6,7 +6,7 @@
  * writes the `…/events` stream for the record this module answers with `{ stream }`.
  */
 import { homedir } from "node:os";
-import type { BotService } from "../bot-service.ts";
+import type { BotService } from "../bots/service.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { SessionTools, ToolsError, routeSchemas as toolsRouteSchemas } from "../api/tools.ts";

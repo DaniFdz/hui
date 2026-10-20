@@ -1,5 +1,5 @@
 /**
- * The browser's copy of building a bot's export (`server/bot-export-format.ts` is the gateway's): the export dialog
+ * The browser's copy of building a bot's export (`server/bots/export-format.ts` is the gateway's): the export dialog
  * shows exactly the files the gateway then saves, updated on every pick without a round trip. Both copies check the
  * same fixture (`export-preview.fixture.json`).
  */

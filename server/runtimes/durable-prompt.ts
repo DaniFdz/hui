@@ -6,8 +6,8 @@
  * extensions; a session's PI extensions (`durable-extensions.ts`) add their
  * tools' snippets and may change the prompt of a run, as in PI. Skills load per
  * directory, and a bot's chat adds its own (`skills/` in its home folder,
- * `bot-skills.ts`); it lists only the ones the operator left on
- * (`durable-bot-access.ts`), so two chats in one directory can differ. A
+ * `bots/skills.ts`); it lists only the ones the operator left on
+ * (`bots/durable-access.ts`), so two chats in one directory can differ. A
  * session on Ultra adds OpenClaw's plan, delegate and verify section.
  */
 import { DefaultResourceLoader, type BuildSystemPromptOptions, type Skill } from "@earendil-works/pi-coding-agent";

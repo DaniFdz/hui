@@ -373,7 +373,7 @@ export class DurableHost implements ExtensionHost {
     return harness && this.#bots ? this.#bots.state(harness, conversationId) : undefined;
   }
 
-  /** A bot's own skill folder (`skills/` in its home on this host, `bot-skills.ts`), which only its chat loads, once it exists
+  /** A bot's own skill folder (`skills/` in its home on this host, `bots/skills.ts`), which only its chat loads, once it exists
    * (PI's loader warns about a missing one); none for every other conversation, or on a host that keeps no bots' homes. */
   async skillDirsFor(conversationId: ConversationId): Promise<readonly string[]> {
     const bot = await this.botStateFor(conversationId);

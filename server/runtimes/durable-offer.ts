@@ -2,7 +2,7 @@
  * The tool offer every Durable conversation shares, bots' chats or not: what
  * a tool and skill of a chat's offer look like, where a tool comes from, the
  * live chat a conversation answers through and a skill's instructions as the
- * model reads them. Bot policy over them lives in `durable-bot-access.ts`.
+ * model reads them. Bot policy over them lives in `bots/durable-access.ts`.
  */
 import { readFileSync } from "node:fs";
 import type { Skill } from "@earendil-works/pi-coding-agent";

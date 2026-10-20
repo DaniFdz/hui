@@ -108,8 +108,8 @@ Browser tool only opened the captures to inspect them.
    sheet (`scrollWidth` 390, the card 353 px).
 5. Console: Lit's development-mode warnings only, as on `main`.
 
-`set_profile` changing the look is covered by `server/bot-service.test.ts` and
-`server/runtimes/durable-bots.test.ts`; no browser run had the model call it.
+`set_profile` changing the look is covered by `server/bots/service.test.ts` and
+`server/bots/durable.test.ts`; no browser run had the model call it.
 
 ## Sleeping, working and done (2026-10-19, `66a873d`, clean checkout; doctor passed before and after)
 

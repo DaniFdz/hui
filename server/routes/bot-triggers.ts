@@ -12,11 +12,11 @@
  * They live under `/__hui/bots`, so the `x-hui` guard and the 409 while bots are off apply as to every bot route.
  * The route its listener reports to, `POST /__hui/hooks/<token>`, is `bot-triggers-gateway.ts`'s.
  */
-import { BOT_TRIGGER_LIMITS } from "../bot-triggers-format.ts";
-import type { BotTriggerService } from "../bot-triggers.ts";
-import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "../bot-triggers-input.ts";
-import { TriggerStoreError } from "../bot-triggers-store.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotStoreError } from "../bots.ts";
+import { BOT_TRIGGER_LIMITS } from "../bots/triggers-format.ts";
+import type { BotTriggerService } from "../bots/triggers.ts";
+import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "../bots/triggers-input.ts";
+import { TriggerStoreError } from "../bots/triggers-store.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotStoreError } from "../bots/bots.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { BotTriggerCreated, BotTriggerDeleted, BotTriggerResponse, BotTriggerRunResponse, BotTriggersList, routeSchemas as botTriggerRouteSchemas } from "../api/bot-triggers.ts";

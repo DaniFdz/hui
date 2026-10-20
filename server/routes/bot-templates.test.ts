@@ -12,11 +12,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, test } from "vitest";
 import { botKickoffName, type BotCatalog, type BotView } from "../bots-format.ts";
-import type { BotExportManifest, BotExportReview } from "../bot-export-format.ts";
-import type { BotImportPreview, BotImportResult } from "../bot-templates/formats.ts";
+import type { BotExportManifest, BotExportReview } from "../bots/export-format.ts";
+import type { BotImportPreview, BotImportResult } from "../bots/templates/formats.ts";
 import type { AutomationTask } from "../automation.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
-import { readZip, writeZip } from "../bot-templates/zip.ts";
+import { readZip, writeZip } from "../bots/templates/zip.ts";
 
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-templates-"));
 const agentDir = join(dir, "agent");

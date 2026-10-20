@@ -12,7 +12,7 @@ import {
   BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, botColorName, botFaceEars, botDisplayCwd, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME,
   type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotQuestion, type BotSkillSelector, type BotSoul, type BotsUpdate, type BotTagging, type BotView,
 } from "../server/bots-format.ts";
-import { voiceLanguage, voiceLanguageName } from "../server/voice-languages.ts";
+import { voiceLanguage, voiceLanguageName } from "../server/bots/voice-languages.ts";
 import { gptLiveVoiceLabel } from "../server/calls-format.ts";
 import { bots, findBot, GatewayError, request, type BotFlags, type BotIO } from "./gateway-client.ts";
 

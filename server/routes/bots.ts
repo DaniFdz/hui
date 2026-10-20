@@ -25,9 +25,9 @@
  * `GET /__hui/bots/events` streams the list and is served by `hui.ts`.
  */
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
-import { BotMemoryUnavailableError } from "../bot-memory.ts";
-import type { BotService } from "../bot-service.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } from "../bots.ts";
+import { BotMemoryUnavailableError } from "../bots/memory.ts";
+import type { BotService } from "../bots/service.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } from "../bots/bots.ts";
 import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import {

@@ -4,10 +4,10 @@ import { test } from "vitest";
 import type { BotRecord, BotReply } from "../bots-format.ts";
 import { CALL_LIMITS, type CallDelegationResult } from "../calls-format.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../hui-settings.ts";
-import { BotConflictError, BotNotFoundError } from "../bots.ts";
+import { BotConflictError, BotNotFoundError } from "../bots/bots.ts";
 import { checkLines, createCallRoutes } from "./calls.ts";
 import type { RouteRequest } from "../http/route.ts";
-import { CallBroker, type ActiveCall, type CallAccounts } from "../calls.ts";
+import { CallBroker, type ActiveCall, type CallAccounts } from "../bots/calls.ts";
 import { CallsStatus, CallStarted } from "../api/calls.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
 

@@ -14,7 +14,7 @@ import type { Connect } from "vite";
 import { WORKERS_ROUTE } from "./routes/workers.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE } from "./routes/bots.ts";
 import { BOT_TRIGGERS_ROUTE } from "./routes/bot-triggers.ts";
-import { isHookPath } from "./bot-triggers-listener.ts";
+import { isHookPath } from "./bots/triggers-listener.ts";
 import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, type RouteResult } from "./http/route.ts";
 import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { CALLS_ROUTE } from "./routes/calls.ts";

@@ -26,7 +26,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import type { ConversationId } from "@earendil-works/pi-durable";
 import type { BotTurnOrigin } from "../runtimes/turn-origins.ts";
 import { registerAgentToolHandler, stopAgentToolBridge } from "../agent-tools/bridge.ts";
-import { operatorName } from "../bot-souls.ts";
+import { operatorName } from "../bots/souls.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 import { SECRET_REQUEST_TIMEOUT_MS, SecretFiles, type SecretAnswer } from "../agent-tools/secret-requests.ts";
 import { QUESTIONNAIRE_WAIT_MS } from "../agent-tools/questionnaires.ts";

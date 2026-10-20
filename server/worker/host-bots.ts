@@ -1,12 +1,12 @@
 /**
  * Bots on this worker (HUI-18): what a gateway asks the host for a bot whose
  * chat runs here. Its conversation and OptChat memory live in the host's own
- * Durable store, so these reuse the gateway's adapters (`bot-conversations.ts`
- * and `bot-memory.ts`) against the host's DurableHost: a bot's conversation is
+ * Durable store, so these reuse the gateway's adapters (`bots/conversations.ts`
+ * and `bots/memory.ts`) against the host's DurableHost: a bot's conversation is
  * created here exactly as the gateway creates a local one, its `hui.bot`
  * document and OptChat in one commit. Every bot has a home here, HUI's private
  * folder for it under the data directory (`home(botId)`), as the gateway keeps
- * one under its configuration: its SOUL.md lives there (`bot-souls.ts`, the
+ * one under its configuration: its SOUL.md lives there (`bots/souls.ts`, the
  * gateway's own implementation and guard, on this directory), and a bot without
  * a directory of its own works there. The bot itself (its record, routines,
  * roster) stays with the gateway; nothing here knows other bots.
@@ -18,19 +18,19 @@
  * this host's loader finds them at, the mirrored ones included), and hears of a
  * grant made here in a `bot.access` frame.
  */
-import { BOT_FACTS_FILE, localBotFacts } from "../bot-facts.ts";
+import { BOT_FACTS_FILE, localBotFacts } from "../bots/facts.ts";
 import { realpath, rm, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../bots-format.ts";
 import { parseCallRecord } from "../calls-format.ts";
-import { durableBotConversations } from "../bot-conversations.ts";
-import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
-import { BOT_TEMPLATE_LIMITS } from "../bot-templates/formats.ts";
-import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bot-skills.ts";
-import { caseClash, skillFilePath } from "../bot-templates/common.ts";
-import { localBotSouls } from "../bot-souls.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, accessField, normalizeSoul } from "../bots.ts";
-import { createDurableBots, type DurableBotsDeps } from "../runtimes/durable-bot-access.ts";
+import { durableBotConversations } from "../bots/conversations.ts";
+import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bots/memory.ts";
+import { BOT_TEMPLATE_LIMITS } from "../bots/templates/formats.ts";
+import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bots/skills.ts";
+import { caseClash, skillFilePath } from "../bots/templates/common.ts";
+import { localBotSouls } from "../bots/souls.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, accessField, normalizeSoul } from "../bots/bots.ts";
+import { createDurableBots, type DurableBotsDeps } from "../bots/durable-access.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId } from "../runtimes/durable.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";
@@ -46,7 +46,7 @@ export const BOT_MEMORY_STATUS_FRAME = "bot.memory.status";
 export const BOT_ACCESS_FEATURE = "bot-access";
 /** The frame a bot's lists arrive in after the operator allowed one of its requests here: `{ botId, access }`. */
 export const BOT_ACCESS_FRAME = "bot.access";
-/** What `hello` lists when the host keeps a bot's own skills in its home (`bot.skills.*`, `bot-skills.ts`): an imported bot's. */
+/** What `hello` lists when the host keeps a bot's own skills in its home (`bot.skills.*`, `bots/skills.ts`): an imported bot's. */
 export const BOT_SKILLS_FEATURE = "bot-skills";
 /** What `hello` lists when `bot.skills.*` also carry the files beside a SKILL.md (a template's scripts). */
 export const BOT_SKILL_FILES_FEATURE = "bot-skill-files";

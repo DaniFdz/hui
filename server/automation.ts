@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { recordDiagnosticEvent } from "./observability.ts";
-import { BotStoreError, BotsOffError, BotWorkerOfflineError } from "./bots.ts";
+import { BotStoreError, BotsOffError, BotWorkerOfflineError } from "./bots/bots.ts";
 import type { LiveSessions } from "./sessions/live-sessions.ts";
 import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 import { BOTS_OFF_ROUTINE_MESSAGE, type BotRecord } from "./bots-format.ts";

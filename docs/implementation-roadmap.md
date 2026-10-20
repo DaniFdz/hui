@@ -751,14 +751,14 @@ requests:
    adapter (`optChatBotMemory`) maps it onto the engine: a bot's chat has its
    memory from its creating commit, and the memory routes and `hui bot memory`
    read its status (with view lines and the compactor's usage), view, zoom and
-   browse page, which a same-origin link opens. Proof: `server/bots.test.ts`,
-   `server/bot-service.test.ts`, `server/routes/bots.test.ts` (a real gateway
+   browse page, which a same-origin link opens. Proof: `server/bots/bots.test.ts`,
+   `server/bots/service.test.ts`, `server/routes/bots.test.ts` (a real gateway
    with a deterministic provider: routes, guards, a waited reply, a bot-to-bot
    message, a routine, the events stream, real OptChat memory with built
    summaries, the view, zoom down to a whole message and the page under its
    same-origin rule, clearing the model and thinking, and `hui bot chat`
    showing a message from elsewhere and a routine before their replies),
-   `server/runtimes/durable-bots.test.ts` (requests of plain conversations
+   `server/bots/durable.test.ts` (requests of plain conversations
    unchanged; a bot conversation's commit, persona, section and tool; with the
    real adapter, OptChat on in the creating commit, zoom and date beside
    `message_bot`, a fresh second turn and every read),
@@ -781,8 +781,8 @@ requests:
    the name), and delete works on active bots too and removes the bot's whole
    folder and its OptChat memory (the raw Durable log stays: pi-durable cannot
    delete conversations), `hui bot delete` asking first or taking `--yes`.
-   Proof: `server/bots.test.ts`, `server/bot-service.test.ts` (kickoff,
-   soul routes, cache, migration, delete), `server/runtimes/durable-bots.test.ts`
+   Proof: `server/bots/bots.test.ts`, `server/bots/service.test.ts` (kickoff,
+   soul routes, cache, migration, delete), `server/bots/durable.test.ts`
    (the section in real requests, the first conversation's text, truncation, a
    host without a resolver), `server/routes/bots.test.ts` (a real gateway: the
    first turn starts by itself, the bot writes SOUL.md with its write tool and
@@ -829,18 +829,18 @@ requests:
    Calls (the default voice, the ChatGPT login calls use) and a per-bot call
    voice and language (`voice.live` and `voice.language`, `--call-voice` and
    `--language`). The gateway's broker
-   (`server/calls.ts`, `server/routes/calls.ts`) sets each WebRTC call up over
+   (`server/bots/calls.ts`, `server/routes/calls.ts`) sets each WebRTC call up over
    the ChatGPT login without the browser seeing a token, picking accounts as
    model turns do. The browser's `LiveCall` (`src/lib/voice/live-call.ts`) carries
    the audio and data channel. OpenDots-style: GPT-Live's one tool asks the bot's
-   call helper on its utility model (`server/call-helper.ts`). The helper hands
+   call helper on its utility model (`server/bots/call-helper.ts`). The helper hands
    real work to the chat as `[call task]` messages, whose replies are spoken
    while the call lasts. Each call ends as one card with a summary and the whole
    transcript, which the bot's memory keeps. The bot's Memory model became its
    Utility model, defaulting to Settings' utility model. Settings and `bots.json`
    saved while VoiceStudio was there keep loading, and the next write leaves its
-   fields out. Proof: `server/call*.test.ts`, `server/calls.test.ts`,
-   `server/bot-service.test.ts`, `server/routes/bots.test.ts`, `server/bots.test.ts`,
+   fields out. Proof: `server/call*.test.ts`, `server/bots/calls.test.ts`,
+   `server/bots/service.test.ts`, `server/routes/bots.test.ts`, `server/bots/bots.test.ts`,
    `server/runtimes/durable-optchat.test.ts`, `server/runtimes/durable.test.ts`,
    `src/lib/voice/live-call.test.ts`, `src/lib/voice/*.test.ts`, `src/lib/settings/settings.test.ts`,
    `src/lib/bots/bots.test.ts`, `src/views/bots.test.ts`, `src/components/settings/calls.test.ts`,
@@ -851,7 +851,7 @@ requests:
    conversation, folder and OptChat memory are created in the worker's Durable
    store by its host (`server/worker/host-bots.ts`, reusing `bot-conversations.ts`
    and `bot-memory.ts` against the host's own `DurableHost`). `BotService`
-   picks the gateway's ports or the worker's (`server/bot-remote.ts`) per bot;
+   picks the gateway's ports or the worker's (`server/bots/remote.ts`) per bot;
    lists read a remote memory's last reported status and never wait on a
    worker; an offline worker fails creates, memory reads and messages with a
    503 that names it, and a host from before bots is told apart (409). The
@@ -866,10 +866,10 @@ requests:
    machine (`~/.config/hui/bot-cleanup.json`) until the worker reconnects. A
    remote session's limits apply: no terminal,
    browser or watcher tools, no worktrees. Proof: `server/worker/host.test.ts`
-   (the host's bot operations on a real host), `server/bot-remote.test.ts`,
-   `server/bot-service.test.ts` (fake remote ports: routing, offline paths, a
-   list that never waits), `server/bots.test.ts`, `server/routes/bots.test.ts`,
-   `server/bot-workers.test.ts` (a real local worker with the fixture provider:
+   (the host's bot operations on a real host), `server/bots/remote.test.ts`,
+   `server/bots/service.test.ts` (fake remote ports: routing, offline paths, a
+   list that never waits), `server/bots/bots.test.ts`, `server/routes/bots.test.ts`,
+   `server/bots/workers.test.ts` (a real local worker with the fixture provider:
    the remote store, a reply with the bots section, the utility-model compactor,
    `message_bot` both ways, a routine, a queued message, steering, a question,
    Stop, a call's record, archive, restore, delete and a disconnected worker),
@@ -916,20 +916,20 @@ requests:
    there isn't offered `terminal`, `browser` or `watcher`, which the gateway's
    bridge refuses for any remote session (one list, `GATEWAY_ONLY_TOOLS`), so the
    catalog leaves them out and a list can't name them. Proof:
-   `server/runtimes/durable-bot-access.test.ts` (real requests: offers, the
+   `server/bots/durable-access.test.ts` (real requests: offers, the
    bridge, prompts, `/skill:`, `load_skill`, requests allowed, denied, refused
    and one at a time, the port, documents from before the lists),
-   `server/runtimes/question-box.test.ts`, `server/bot-service.test.ts`,
+   `server/runtimes/question-box.test.ts`, `server/bots/service.test.ts`,
    `server/routes/bots.test.ts` (a real gateway: what is off leaves the
    provider's request, a granted tool is on the next one, a skill that is off
-   is not in the prompt, the roster follows), `server/bots.test.ts`,
+   is not in the prompt, the roster follows), `server/bots/bots.test.ts`,
    `src/lib/bots/tools.test.ts`, `src/views/bot-tools.test.ts`,
    `cli/*.test.ts`, for workers `server/worker/host.test.ts` (the host's list
-   operations and offer), `server/bot-remote.test.ts`, `server/bot-service.test.ts`,
-   `server/runtimes/durable-bot-access.test.ts` (a host with `gatewayOnlyTools`: a
+   operations and offer), `server/bots/remote.test.ts`, `server/bots/service.test.ts`,
+   `server/bots/durable-access.test.ts` (a host with `gatewayOnlyTools`: a
    bot's chat never offered them nor able to ask for them, an ordinary session
    keeping them), `server/workers.test.ts` (the bridge still refuses them) and
-   `server/bot-workers.test.ts` (a real local worker: created with lists,
+   `server/bots/workers.test.ts` (a real local worker: created with lists,
    its catalog with a mirrored skill and without the gateway's own tools, what is
    off gone from its requests, a request allowed here and its grant reaching the
    roster, a skill named by the gateway's path, lists naming the gateway's own
@@ -947,7 +947,7 @@ requests:
    tab* folds into it (a file where that was on keeps bots on). **Bots stay
    behind Labs until HUI-18 is done**: the flag (and this
    item's refusals) go only once the owner calls bots finished, in their own
-   change. Proof: `src/lib/settings/settings.test.ts`, `server/bot-service.test.ts`,
+   change. Proof: `src/lib/settings/settings.test.ts`, `server/bots/service.test.ts`,
    `server/routes/bots.test.ts` (a real gateway: every refusal while off, toggled
    live through `PUT /__hui/settings`, a routine skipped then run, a bot stream
    ended), `src/views/hui-owned-surfaces.test.ts`, `src/views/bots.test.ts`,
@@ -973,14 +973,14 @@ requests:
     left*). Bots off, every bot-facing part refuses and `hui schedule` prints
     the gateway's refusal; sessions' schedules work regardless. Proof:
     `server/automation.test.ts` (makers, limits, expiry by `until` and by runs,
-    a skipped run given back, across a restart), `server/bot-routines.test.ts`
+    a skipped run given back, across a restart), `server/bots/routines.test.ts`
     (own tasks only, the cap, the minimum interval, names, the origin check,
-    removal from a routine's own turn), `server/runtimes/durable-bot-routines.test.ts`
+    removal from a routine's own turn), `server/bots/durable-routines.test.ts`
     (the tool in the bot tools' extension, the catalog entry, turned off and
-    refused by the bridge), `server/bot-schedules.test.ts` (a real gateway: a
+    refused by the bridge), `server/bots/schedules.test.ts` (a real gateway: a
     bot adds a temporary routine through a real turn, that routine's turn
     removes it, another bot's message can't add one, `hui schedule` with bots
-    off), `server/bot-workers.test.ts` (the tool from a bot on a worker),
+    off), `server/bots/workers.test.ts` (the tool from a bot on a worker),
     `cli/schedules.test.ts`, `cli/*.test.ts`, `src/lib/bots/routines.test.ts`
     and an isolated gateway driven in a browser
     ([`e2e/bot-schedules.browser.md`](../e2e/bot-schedules.browser.md), screens
@@ -1013,9 +1013,9 @@ requests:
    catch-up, the tool's origin checks, the webhook token, filter and size cap,
    bots off), `server/routes/bot-triggers.test.ts` (a real gateway: a webhook and
    a fake GitHub's pull request reaching the bot through the fixture provider,
-   the bot's tool, the CLI, bots off), `server/bot-workers.test.ts` (a real local
+   the bot's tool, the CLI, bots off), `server/bots/workers.test.ts` (a real local
    worker: a webhook's delivery runs on the worker, and the bot's tool there
-   reaches the gateway), `server/runtimes/durable-bot-access.test.ts`,
+   reaches the gateway), `server/bots/durable-access.test.ts`,
    `src/lib/bots/triggers.test.ts`, `src/views/bot-triggers.test.ts`,
    `cli/bot-triggers.test.ts` and an isolated gateway driven in a browser
    (`e2e/bot-triggers.browser.md` before item 13 rewrote it, screens in the pull
@@ -1042,7 +1042,7 @@ requests:
    `server/bot-triggers-slack.test.ts` and `server/bot-triggers-slack-prs.test.ts`
    (a fake Slack Web API, `e2e/slack-fixture.mjs`, and a fake clock: pagination,
    429, revoked tokens, catch-up after a restart and a sleep, dedupe, edits,
-   threads, DMs, bots, Slack Connect, diff truncation), `server/bot-triggers.test.ts`
+   threads, DMs, bots, Slack Connect, diff truncation), `server/bots/triggers.test.ts`
    (filters, delivery, the tool refusing Slack triggers),
    `server/slack-routes.test.ts` (a real gateway: connecting, a ping with a pull
    request reaching a bot whose gated tools refuse the turn, bots off and on, the
@@ -1063,10 +1063,10 @@ requests:
    GitHub, session, webhook and Slack sources went, with HUI's Slack connection,
    `hui slack` and the `triggers` tool's `add` and `update`; `hui doctor --fix`
    deletes what they left (`cli/doctor-triggers.ts`). Proof:
-   `server/bot-triggers-listener.test.ts`, `server/bot-triggers.test.ts`,
+   `server/bots/triggers-listener.test.ts`, `server/bots/triggers.test.ts`,
    `server/routes/bot-triggers.test.ts` (a real gateway: reports, the URL's
    checks, the linked pull request read through a fake gh, the gated tools on a
-   trigger's turn, bots off), `server/bot-workers.test.ts` (the same on a
+   trigger's turn, bots off), `server/bots/workers.test.ts` (the same on a
    worker), `cli/doctor-triggers.test.ts`, `cli/bot-triggers.test.ts`,
    `src/lib/bots/triggers.test.ts`, `src/views/bot-triggers.test.ts` and an
    isolated gateway driven in a browser
@@ -1104,11 +1104,11 @@ requests:
    as `[from agent: <title>]`, which no gated tool takes for the operator, and
    nothing comes back. The composer's `@` suggests bots before files. A bot's
    subagents don't tag and a session shares its hourly budget with its
-   subagents. Proof: `server/bot-service.test.ts` (sessions' tags, the mention
-   rule and HUI's own messages, budgets, rosters), `server/bots.test.ts`,
-   `server/runtimes/durable-bots.test.ts` (the tool and section in a session,
-   on and off), `server/bot-workers.test.ts` (a session on a worker),
-   `server/bot-routines.test.ts`, the template tests, `cli/main.test.ts`,
+   subagents. Proof: `server/bots/service.test.ts` (sessions' tags, the mention
+   rule and HUI's own messages, budgets, rosters), `server/bots/bots.test.ts`,
+   `server/bots/durable.test.ts` (the tool and section in a session,
+   on and off), `server/bots/workers.test.ts` (a session on a worker),
+   `server/bots/routines.test.ts`, the template tests, `cli/main.test.ts`,
    `cli/bots.test.ts`, `src/lib/bots/bots.test.ts`, `src/lib/local-paths.test.ts`,
    `src/views/bots.test.ts` and an isolated gateway driven in a browser
    ([`e2e/bot-tagging.browser.md`](../e2e/bot-tagging.browser.md), screens in
@@ -1124,9 +1124,9 @@ requests:
    handle, paths or dates. Import fills `{{user}}`, closes SOUL.md with *Not agreed
    yet*, makes triggers disabled, writes skill files (on a worker behind
    `bot-skill-files`) and starts a first turn that is not the operator's
-   (`from: template`). Proof: `server/bot-templates/cleanup.test.ts`,
-   `server/bot-export.test.ts`, `server/bot-template-import.test.ts`,
-   `server/bot-templates/formats.test.ts`, `server/bot-skills.test.ts`,
+   (`from: template`). Proof: `server/bots/templates/cleanup.test.ts`,
+   `server/bots/export.test.ts`, `server/bots/template-import.test.ts`,
+   `server/bots/templates/formats.test.ts`, `server/bots/skills.test.ts`,
    `server/routes/bot-templates.test.ts` (a real gateway with the fixture
    provider as utility model: the review's requests carry no tools and none of
    the owner's text, the zip none of it, a changed bot is 409, and the import
@@ -1141,9 +1141,9 @@ requests:
    the gateway to session handoffs. Received-message receipts authorize later
    notifications without opening general cross-session sends. Bot policies,
    budgets, attributed inputs and the hop bound remain in force through agent
-   replies. Proof: `server/bot-service.test.ts` (delivery, queues and denial
-   cases), `server/bot-workers.test.ts` (real Durable tools across the worker
-   connection in both directions), `server/runtimes/durable-bots.test.ts`, and
+   replies. Proof: `server/bots/service.test.ts` (delivery, queues and denial
+   cases), `server/bots/workers.test.ts` (real Durable tools across the worker
+   connection in both directions), `server/bots/durable.test.ts`, and
    an isolated Browser-tool agent → bot → agent journey at desktop/mobile
    ([`e2e/bot-agent-replies.browser.md`](../e2e/bot-agent-replies.browser.md)).
 
@@ -1152,9 +1152,9 @@ requests:
    and decisions with provenance, edit/delete/pin and revision conflicts,
    separate from OptChat. `facts.json` stays on the bot's execution host and
    each chat request and the call helper read current knowledge. No automatic
-   extraction or additional model calls. Proof: `server/bot-facts.test.ts`,
-   `server/routes/bots.test.ts`, `server/bot-workers.test.ts`,
-   `server/bot-remote.test.ts`, `server/call-helper.test.ts`,
+   extraction or additional model calls. Proof: `server/bots/facts.test.ts`,
+   `server/routes/bots.test.ts`, `server/bots/workers.test.ts`,
+   `server/bots/remote.test.ts`, `server/bots/call-helper.test.ts`,
    `src/lib/bot-facts.test.ts` and the isolated Browser journey
    [`e2e/bot-facts.browser.md`](../e2e/bot-facts.browser.md).
 

@@ -9,23 +9,23 @@ import { homedir, hostname, userInfo } from "node:os";
 
 import { workers } from "./workers.ts";
 import { createWorkerRoutes } from "./routes/workers.ts";
-import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots.ts";
-import { BotService } from "./bot-service.ts";
-import { remoteBots } from "./bot-remote.ts";
+import { BOT_CLEANUP_FILE, BOTS_DIR, BotInputError, BotRegistry } from "./bots/bots.ts";
+import { BotService } from "./bots/service.ts";
+import { remoteBots } from "./bots/remote.ts";
 import { createBotRoutes } from "./routes/bots.ts";
-import { createGatewayTriggers } from "./bot-triggers-gateway.ts";
-import { accountFullName, BotExportService } from "./bot-export.ts";
-import { nameFromUsername } from "./bot-templates/cleanup.ts";
-import { BotTemplateService } from "./bot-template-import.ts";
+import { createGatewayTriggers } from "./bots/triggers-gateway.ts";
+import { accountFullName, BotExportService } from "./bots/export.ts";
+import { nameFromUsername } from "./bots/templates/cleanup.ts";
+import { BotTemplateService } from "./bots/template-import.ts";
 import { createBotTemplateRoutes } from "./routes/bot-templates.ts";
-import { fetchGrokBotPage } from "./bot-templates/fetch.ts";
-import { localBotSkills } from "./bot-skills.ts";
-import { durableBotConversations } from "./bot-conversations.ts";
-import { CallBroker, providerCallAccounts } from "./calls.ts";
+import { fetchGrokBotPage } from "./bots/templates/fetch.ts";
+import { localBotSkills } from "./bots/skills.ts";
+import { durableBotConversations } from "./bots/conversations.ts";
+import { CallBroker, providerCallAccounts } from "./bots/calls.ts";
 import { createCallRoutes } from "./routes/calls.ts";
-import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./call-helper.ts";
-import { optChatBotMemory } from "./bot-memory.ts";
-import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bot-souls.ts";
+import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
+import { optChatBotMemory } from "./bots/memory.ts";
+import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bots/souls.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -44,12 +44,12 @@ import { WorktreeService } from "./git/worktree-inventory.ts";
 import { liveSessions } from "./sessions/live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { AutomationService, automationStoreFailure, executeAutomationTask } from "./automation.ts";
-import { BotRoutines } from "./bot-routines.ts";
-import { ROUTINES_TOOL } from "./runtimes/durable-bot-routines.ts";
+import { BotRoutines } from "./bots/routines.ts";
+import { ROUTINES_TOOL } from "./bots/durable-routines.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
 import { readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
-import { createDurableBots } from "./runtimes/durable-bot-access.ts";
+import { createDurableBots } from "./bots/durable-access.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
 import {
   JiraClient,
@@ -217,8 +217,8 @@ export const botRoutes = createBotRoutes({
     }
   },
 });
-/** Bots imported from other platforms' templates (`bot-template-import.ts`), and exported as templates reviewed for
- * personal information (`bot-export.ts`): under `/__hui/bots`, so Labs → Bots gates them too. */
+/** Bots imported from other platforms' templates (`bots/template-import.ts`), and exported as templates reviewed for
+ * personal information (`bots/export.ts`): under `/__hui/bots`, so Labs → Bots gates them too. */
 const localSkills = localBotSkills();
 // What a new bot would be offered: the tools every chat has and the skills of a new home folder, here or there.
 const newBotOffer = (worker?: string) => worker ? botWorkers.conversations(worker).offer(undefined, undefined, randomUUID()) : botConversations.offer(undefined, BOTS_DIR);

@@ -3,7 +3,7 @@
  * and the contributions calendar (`github-contributions.ts`), plus `GET /__hui/session-activity`, the sessions' own
  * days shown beside it. `hui.ts` applies the `x-hui` guard before dispatching here.
  */
-import type { BotService } from "../bot-service.ts";
+import type { BotService } from "../bots/service.ts";
 import { FIRST_YEAR as GITHUB_FIRST_YEAR, type GitHubContributionsReader, latestYear } from "../integrations/github-contributions.ts";
 import type { GitHubPreviews } from "../integrations/github-previews.ts";
 import { type GitHubCli, GitHubCliError } from "../integrations/github.ts";

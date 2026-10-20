@@ -80,7 +80,7 @@ reader against x.ai's current page (nothing of it is kept).
   tests, not the browser: the Browser tool sets one file on an input.
 - Bots on a worker: their own skills go through the worker host's
   `bot.skills.*` requests, proved by `server/worker/host.test.ts` and
-  `server/bot-remote.test.ts`; no worker was connected in this run.
+  `server/bots/remote.test.ts`; no worker was connected in this run.
 - The Grok Bot reader depends on x.ai's page; the live link proves it on
   2026-10-07 only.
 
@@ -150,6 +150,6 @@ is green*, and the imported bot's first turn), driven with the Browser tool,
   wrote is checked against the picks, overlapping passages merge, a passage found in
   a script changes the text too, personal skill names stay behind, older workers get
   no first turn). The dialog's controls are unchanged; those rules are proved by
-  `server/bot-export.test.ts`, `server/bot-templates/cleanup.test.ts` and
-  `server/bot-template-import.test.ts`, not by this browser run.
+  `server/bots/export.test.ts`, `server/bots/templates/cleanup.test.ts` and
+  `server/bots/template-import.test.ts`, not by this browser run.
 

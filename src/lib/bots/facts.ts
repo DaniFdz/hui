@@ -3,7 +3,7 @@
 import type { BotFact, BotFactInput, BotFactKind } from "../../api/schema/bots.ts";
 
 export const BOT_FACT_KINDS: readonly BotFactKind[] = ["fact", "preference", "decision"];
-/** The gateway's limits (`server/bot-facts.ts` enforces them). */
+/** The gateway's limits (`server/bots/facts.ts` enforces them). */
 export const BOT_FACT_LIMITS = { count: 40, text: 500, source: 200 } as const;
 export type BotFactsState = { botId: string; facts: BotFact[]; loading: boolean; loaded: boolean; pending: boolean; error: string; editing?: BotFact; removing?: BotFact };
 export type BotFactsActions = {

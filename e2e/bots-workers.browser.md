@@ -105,6 +105,6 @@ client adds that itself), desktop only, dark mode.
 
 A GPT-Live call with a bot on a worker (the call path itself runs in the
 gateway, and the helper's memory view and the call's record go through the
-worker's ports, which `server/bot-workers.test.ts` exercises); a real SSH
+worker's ports, which `server/bots/workers.test.ts` exercises); a real SSH
 worker on another machine (the container E2E of workers covers the real
 install path).

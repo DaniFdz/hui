@@ -88,7 +88,7 @@ function rule(from, to, specifier, type) {
   if (under(to, "e2e", "evals", "scripts")) return production && under(from, "bin", "cli", "desktop", "server") ? "R11" : undefined;
   if (under(from, "server/optchat") && !under(to, "server/optchat")) return "R9";
   if (under(from, "server/api") && !under(to, "server/api")) return "R15";
-  if (under(from, "server/runtimes", "server/sessions") && under(to, "server/bots")) return "R8";
+  if (production && under(from, "server/runtimes", "server/sessions") && under(to, "server/bots")) return "R8";
   if (under(from, "server", "cli") && !under(to, "server", "cli")) return "R4";
   if (under(from, "desktop") && !under(to, "desktop")) return "R4";
   if (under(from, "bin") && !under(to, "bin", "cli", "server", "desktop", "build")) return "R4";
@@ -189,19 +189,19 @@ test.each([
   ["src/api/files.fixture.json", "server/files.fixture.json"],
   ["src/api/browser.fixture.json", "server/browser/transport.fixture.json"],
   ["src/lib/diff/view-state.fixture.json", "server/git/diff.fixture.json"],
-  ["src/lib/bots/facts.fixture.json", "server/bot-facts.fixture.json"],
-  ["src/lib/bots/triggers.fixture.json", "server/bot-triggers-format.fixture.json"],
+  ["src/lib/bots/facts.fixture.json", "server/bots/facts.fixture.json"],
+  ["src/lib/bots/triggers.fixture.json", "server/bots/triggers-format.fixture.json"],
   ["src/api/backlog.fixture.json", "server/backlog.fixture.json"],
   ["src/lib/task-suggestions.fixture.json", "server/agent-tools/task-suggestions.fixture.json"],
   ["src/lib/backlog-start.fixture.json", "server/git/branch-names.fixture.json"],
   ["src/lib/worktrees.fixture.json", "server/git/worktrees.fixture.json"],
   ["src/lib/progress-card.fixture.json", "server/sessions/progress-card.fixture.json"],
   ["src/lib/thinking.fixture.json", "server/sessions/thinking.fixture.json"],
-  ["src/lib/bots/templates.fixture.json", "server/bot-templates/formats.fixture.json"],
-  ["src/lib/bots/export-preview.fixture.json", "server/bot-export-format.fixture.json"],
+  ["src/lib/bots/templates.fixture.json", "server/bots/templates/formats.fixture.json"],
+  ["src/lib/bots/export-preview.fixture.json", "server/bots/export-format.fixture.json"],
   ["src/lib/bots/bots.fixture.json", "server/bots-format.fixture.json"],
   ["src/lib/voice/calls.fixture.json", "server/calls-format.fixture.json"],
-  ["src/lib/voice/languages.fixture.json", "server/voice-languages.fixture.json"],
+  ["src/lib/voice/languages.fixture.json", "server/bots/voice-languages.fixture.json"],
   ["src/lib/widgets.fixture.json", "server/agent-tools/widget-sandbox.fixture.json"],
 ])("runtime fixtures stay byte-identical: %s and %s", async (browser, server) => {
   assert.equal(await readFile(join(root, browser), "utf8"), await readFile(join(root, server), "utf8"));

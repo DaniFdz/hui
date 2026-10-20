@@ -331,7 +331,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
    * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat (`message_bot` alone for any
    * other conversation while Labs → Bots is on), and drops the browser when Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
-   * it has no use for them (`durable-bot-access.ts`), and without the HUI tools that act on another machine than this
+   * it has no use for them (`bots/durable-access.ts`), and without the HUI tools that act on another machine than this
    * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Codemode, in the default selection, goes with
    * Settings → Tools → Codemode off, or a bot's chat that has it turned off. Applies per conversation, at start and on
    * every change. */

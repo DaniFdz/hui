@@ -23,14 +23,14 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, modelCallable } = await import("./durable-host.ts");
-const { createDurableBots } = await import("./durable-bot-access.ts");
+const { createDurableBots } = await import("../bots/durable-access.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {
   configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry,
 } = await import("./durable-optchat.ts");
 const { readObservability } = await import("../observability.ts");
-const { durableBotConversations } = await import("../bot-conversations.ts");
-const { optChatBotMemory } = await import("../bot-memory.ts");
+const { durableBotConversations } = await import("../bots/conversations.ts");
+const { optChatBotMemory } = await import("../bots/memory.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 // ── Pure parts ───────────────────────────────────────────────────────────────

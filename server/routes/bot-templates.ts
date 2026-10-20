@@ -10,15 +10,15 @@
  * `import` is a reserved handle, so no bot's `/__hui/bots/:id` is ever this route.
  */
 import { AutomationConflictError, AutomationInputError } from "../automation.ts";
-import type { BotExportService } from "../bot-export.ts";
-import type { BotTemplateService } from "../bot-template-import.ts";
+import type { BotExportService } from "../bots/export.ts";
+import type { BotTemplateService } from "../bots/template-import.ts";
 import { botErrorStatus } from "./bots.ts";
 import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { BotExportReview, BotImportPreview, BotImportResult, routeSchemas as botTemplateRouteSchemas } from "../api/bot-templates.ts";
-import { BotInputError } from "../bots.ts";
-import { TemplateFormatError } from "../bot-templates/common.ts";
-import { TemplateFetchError } from "../bot-templates/fetch.ts";
+import { BotInputError } from "../bots/bots.ts";
+import { TemplateFormatError } from "../bots/templates/common.ts";
+import { TemplateFetchError } from "../bots/templates/fetch.ts";
 
 export const routeSchemas: RouteSchema[] = botTemplateRouteSchemas;
 

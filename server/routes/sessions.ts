@@ -5,7 +5,7 @@
  * `hui.ts` applies the `x-hui` guard before dispatching here and keeps the `/__hui/sessions/events` stream.
  */
 import { stat } from "node:fs/promises";
-import type { BotService } from "../bot-service.ts";
+import type { BotService } from "../bots/service.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { SessionError, SessionList, SessionOk, SessionResponse, sessionRouteSchemas } from "../api/sessions.ts";

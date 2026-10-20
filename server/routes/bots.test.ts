@@ -50,10 +50,10 @@ const { startBackend, stopBackend } = await import("../backend.ts");
 const { liveSessions } = await import("../sessions/live-sessions.ts");
 const { readRegistry } = await import("../sessions/sessions.ts");
 const { durableHost } = await import("../runtimes/durable-host.ts");
-const { optChatBotMemory } = await import("../bot-memory.ts");
+const { optChatBotMemory } = await import("../bots/memory.ts");
 const { botChat } = await import("../../cli/bots.ts");
 const { HUI_SETTINGS_FILE } = await import("../hui-settings.ts");
-const { BotDoc } = await import("../runtimes/durable-bots.ts");
+const { BotDoc } = await import("../bots/durable.ts");
 const { OptChatDoc } = await import("../runtimes/durable-optchat.ts");
 const { durableContext } = await import("../runtimes/durable-host.ts");
 let origin = "";
@@ -674,8 +674,8 @@ test("bots are a Labs preview: off, their routes, calls and chats refuse naming 
 
 test("a bot whose worker is offline answers 503, like a memory HUI cannot read", async () => {
   const { botErrorStatus } = await import("./bots.ts");
-  const { BotWorkerOfflineError } = await import("../bots.ts");
-  const { BotMemoryUnavailableError } = await import("../bot-memory.ts");
+  const { BotWorkerOfflineError } = await import("../bots/bots.ts");
+  const { BotMemoryUnavailableError } = await import("../bots/memory.ts");
   assert.equal(botErrorStatus(new BotWorkerOfflineError("devbox, where this bot runs, is offline.")), 503);
   assert.equal(botErrorStatus(new BotMemoryUnavailableError()), 503);
 });

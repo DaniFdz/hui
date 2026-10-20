@@ -15,17 +15,17 @@
  */
 import { CALL_LIMITS, GPT_LIVE_MODEL, GPT_LIVE_VOICES, type CallRecordLine } from "../calls-format.ts";
 import type { Settings } from "../hui-settings.ts";
-import { BotMemoryUnavailableError } from "../bot-memory.ts";
+import { BotMemoryUnavailableError } from "../bots/memory.ts";
 import type { BotRecord } from "../bots-format.ts";
-import type { BotService } from "../bot-service.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError } from "../bots.ts";
+import type { BotService } from "../bots/service.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError } from "../bots/bots.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { CallDelegationResult, CallEnded, CallHeartbeat, CallLinesKept, CallsStatus, CallStarted, CallTaskResult, routeSchemas as callRouteSchemas } from "../api/calls.ts";
 import {
   buildCallInstructions, buildCallSession, CallInputError, CallLimitError, CallNotFoundError, CallUnavailableError, CallUpstreamError,
   checkOffer, checkRequest, sessionVoice, taskResult, type ActiveCall, type CallBroker,
-} from "../calls.ts";
+} from "../bots/calls.ts";
 
 export const routeSchemas: RouteSchema[] = callRouteSchemas;
 

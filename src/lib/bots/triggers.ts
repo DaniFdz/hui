@@ -10,7 +10,7 @@ import type {
 
 const BOT_TRIGGER_SOURCES: readonly BotTriggerSource[] = ["listener"];
 
-/** The gateway's limits the add form and the section show (`server/bot-triggers-format.ts` enforces them). */
+/** The gateway's limits the add form and the section show (`server/bots/triggers-format.ts` enforces them). */
 export const BOT_TRIGGER_LIMITS = { name: 60, prompt: 4_000, perHour: 12, cooldownDefault: 300 } as const;
 
 /** `5 min`, `1 h 30 min`, `45 s`, `none`. */

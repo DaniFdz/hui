@@ -22,7 +22,7 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
-const { createDurableBots } = await import("./durable-bot-access.ts");
+const { createDurableBots } = await import("../bots/durable-access.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;

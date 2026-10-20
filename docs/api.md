@@ -1507,7 +1507,7 @@ type BotCatalogTool = {
 A bot's conversation memory is [OptChat](optchat.md): its chat's conversation enables it in
 its creating commit, every turn starts fresh from the memory's view, and
 Durable's compactions are declined. The gateway reads it through
-`DurableHost.optchat` (`optChatBotMemory` in `server/bot-memory.ts`); a chat
+`DurableHost.optchat` (`optChatBotMemory` in `server/bots/memory.ts`); a chat
 whose conversation has no OptChat, or a store this process does not own, has no
 memory to read.
 
@@ -1606,7 +1606,7 @@ Without `cwd` the home folder is also its working directory. Then the Durable
 conversation, in one commit: its agent (`cwd`; the bot's model, else Settings'
 primary model, else PI's default, as above; thinking clamped to the model; no
 instructions), a `hui.bot` conversation document naming the bot, and
-OptChat through the `BotMemory` port (`server/bot-memory.ts`; name = bot name,
+OptChat through the `BotMemory` port (`server/bots/memory.ts`; name = bot name,
 model and thinking = `memoryModel`/`memoryThinking`). No prompt can reach the
 chat before these exist. Then the session record (with `bot` and
 `piSessionFile: durable:<id>`) is registered and started, then the bot record
@@ -1900,8 +1900,8 @@ The `soul` flag of a view is read once, then again only when the chat's
 status or session record changed (a settled turn, in which the bot may have
 written SOUL.md), every 10 seconds (a hand edit) or right after HUI wrote it:
 the events stream recomputes the list every second. SOUL.md is reached through
-the `BotSouls` port of `server/bot-service.ts` (`localBotSouls` in
-`server/bot-souls.ts`), so a bot that runs elsewhere can route it.
+the `BotSouls` port of `server/bots/service.ts` (`localBotSouls` in
+`server/bots/souls.ts`), so a bot that runs elsewhere can route it.
 
 Bots from before SOUL.md had their persona as `instructions` in `bots.json` and
 in their conversation's Durable instructions. At each start the gateway gives
@@ -2067,11 +2067,11 @@ Activity and Automations show the next retry or actionable *Needs attention*.
 **A bot's own routines.** Every bot's chat has a `routines` tool (SPEC.md,
 "Schedules are a CLI, and bots schedule their own routines"), in the
 `hui-bots-tools` extension beside `write_soul`, `set_profile` and
-`request_access` (`server/runtimes/durable-bot-routines.ts`). Unlike those, the
+`request_access` (`server/bots/durable-routines.ts`). Unlike those, the
 operator can turn it off: the catalog lists it as *Manage its own routines*, a
 normal switch in the Bots group, on by default, not powerful. It reaches HUI's
 agent-tool handler as the chat's session, from a worker's host too, where
-`server/bot-routines.ts` owns every rule:
+`server/bots/routines.ts` owns every rule:
 
 ```ts
 routines({
@@ -2441,7 +2441,7 @@ Creating one needs a live connection to the worker (503 naming it otherwise:
 "HUI is not connected to <worker>. Connect it in Settings → Workers, then
 create the bot again."). The gateway asks the worker's host to create the
 conversation there (`bot.create`), in the same one commit a local bot gets: the
-host runs `bot-conversations.ts` and `bot-memory.ts` against its own
+host runs `bots/conversations.ts` and `bots/memory.ts` against its own
 `DurableHost`. The host always makes the bot's home there, HUI's private folder
 for it, `<worker data dir>/bots/<id>` (mode 0700; usually
 `~/.local/share/hui-worker/bots/<id>`), with SOUL.md when `soul` is given, and the
@@ -2562,11 +2562,11 @@ chats' session records exist (409, as for any session on it).
 
 A bot can be made from another platform's template, and exported as a template
 someone else imports, reviewed for personal information first (importing:
-`server/bot-template-import.ts`, with the importers as pure functions in
-`server/bot-templates/`, their constants in `server/bot-templates/formats.ts` and
-the payloads in `server/api/bot-templates.ts`; exporting: `server/bot-export.ts`,
-its cleanup and reviewer in `server/bot-templates/cleanup.ts` and `review.ts`, and
-`bot.json` and `buildExport` in `server/bot-export-format.ts`, which the browser
+`server/bots/template-import.ts`, with the importers as pure functions in
+`server/bots/templates/`, their constants in `server/bots/templates/formats.ts` and
+the payloads in `server/api/bot-templates.ts`; exporting: `server/bots/export.ts`,
+its cleanup and reviewer in `server/bots/templates/cleanup.ts` and `review.ts`, and
+`bot.json` and `buildExport` in `server/bots/export-format.ts`, which the browser
 copies in `src/lib/bots/export-preview.ts`). The routes are under `/__hui/bots`, so
 they answer 409 while bots are off like every bot route; `import` is a reserved
 handle, so no bot's `/__hui/bots/:id` is ever one of them.
@@ -5115,7 +5115,7 @@ type CallTaskResult = { status: "answered" | "failed" | "needs-input" | "timeout
 ```
 
 A bot's `voice.language` is one of the 100 language codes of Whisper
-(`whisper/tokenizer.py`), `VOICE_LANGUAGES` in `server/voice-languages.ts`: ISO 639-1 codes plus
+(`whisper/tokenizer.py`), `VOICE_LANGUAGES` in `server/bots/voice-languages.ts`: ISO 639-1 codes plus
 `haw` (Hawaiian), `yue` (Cantonese) and Javanese as Whisper's `jw`, accepted in any
 case and stored lowercase; anything else is 400 at every boundary (the routes,
 `bots.json` drops it, the CLI). The call's instructions ask GPT-Live to speak it,
@@ -5147,7 +5147,7 @@ Request `{ lines: [{ role, text, at? }] }`.
 
 Request `{ id, request }`.
 
-`CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/routes/calls.ts`, implemented in `server/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's SOUL.md (or a note that it has none yet), its OptChat view (its newest 16 KB), the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off) and answers 6 questions per call; past them every request is handed off, and a call hands off at most 4 tasks (`limit`). `failed` says why no model answered. A client that leaves ends the wait
+`CallDelegationResult`. `id` is GPT-Live's delegation item, `request` its text (≤ 4,000 characters, one line). The request goes through one seam (`CallDelegate` in `server/routes/calls.ts`, implemented in `server/bots/call-helper.ts`): the bot's **call helper**, one completion on the bot's utility model at low thinking (below), from the bot's SOUL.md (or a note that it has none yet), its OptChat view (its newest 16 KB), the call so far and the request. It never waits for or queues behind the bot's own turn. `answered`: `speak` is its answer (≤ 1,800 characters). When the request needs tools, files, current information or an action, the helper hands it off: `[call task] <task>` goes to the bot's chat as any message (a prompt, or a follow-up behind a running turn) on the bot's own model, and the result is `handed-off` with the task's id. The helper has 25 s per question (`timeout` past it: GPT-Live says it is taking long and offers to hand it off) and answers 6 questions per call; past them every request is handed off, and a call hands off at most 4 tasks (`limit`). `failed` says why no model answered. A client that leaves ends the wait
 
 ### `POST /__hui/bots/:id/calls/:callId/tasks/:task`
 
