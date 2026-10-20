@@ -54,12 +54,13 @@ export type SidebarSessionTreeRow = { session: SessionView; depth: number; hasCh
 /** Keeps spawned sessions immediately below their parent while preserving the
  * sort order already chosen for each sibling set. Missing parents and cycles
  * degrade to ordinary root rows instead of hiding a conversation. With `fold`,
- * only the selected session and its ancestors show their children and
- * `toggled` flips that default; without it every tree is expanded. */
+ * only the selected session's ancestors show their children, so a selected
+ * subagent stays visible, and `toggled` flips that default; without it every
+ * tree is expanded. */
 export function sessionTreeRows(sessions: readonly SessionView[], fold?: { selectedId: string; toggled: ReadonlySet<string> }): SidebarSessionTreeRow[] {
   const byId = new Map(sessions.map((session) => [session.id, session]));
   const openByDefault = new Set<string>();
-  for (let id = fold?.selectedId; id && byId.has(id) && !openByDefault.has(id); id = byId.get(id)!.parentId) openByDefault.add(id);
+  for (let id = fold && byId.get(fold.selectedId)?.parentId; id && byId.has(id) && !openByDefault.has(id); id = byId.get(id)!.parentId) openByDefault.add(id);
   const folded = (id: string) => !!fold && openByDefault.has(id) === fold.toggled.has(id);
   const children = new Map<string, SessionView[]>();
   for (const session of sessions) {
