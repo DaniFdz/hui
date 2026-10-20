@@ -831,6 +831,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     void Promise.race([ended, late]).then((outcome) => {
       clearTimeout(timer);
       this.#settling -= 1;
+      this.#notifyQuiet();
       if (this.#disposed) return;
       if (outcome === "late") this.#emit({ type: "notice", level: "warning", message: "An extension is still handling the end of the run." });
       this.#emit({ type: "settled", historyRefreshed });
@@ -1354,13 +1355,14 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Durable's Stop (`Conversation.abort`): withdraws queued input and cancels the run and every compaction of its
    * ordinary scope, blocking and manual ones; background compactions keep running. Resolves once this view has seen
-   * that work end: HUI treats a resolved Stop as idle. */
+   * that work end and the run's end-of-run handlers finish, as PI's Stop does: HUI treats a resolved Stop as idle. */
   async abort(): Promise<void> {
     this.#extensions?.aborted();
     if (this.#starting > 0) this.#extensions?.abortStart();
     await this.#host.resumed;
     await this.#conversation.abort(context);
     await this.#until(() => !this.#busy());
+    await this.#until(() => this.#settling === 0);
   }
 
   /** Cancels the manual compactions running beside the conversation, and only them (Durable's `abortTask`), and
