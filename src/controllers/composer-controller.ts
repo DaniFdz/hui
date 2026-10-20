@@ -1,26 +1,36 @@
 /**
  * `ComposerController` owns the open conversation's composer outside `hui-app.ts`: its draft and attachments, kept
  * per session through `lib/composer/drafts.ts`, with the sessions that hold a draft (the sidebar's pencil); the slash
- * command menu and the commands it lists; local path and bot mention completion; and the session's message queue, with
- * the edit of one queued message and the requests that edit, remove, move and steer queued messages. The shell reads
- * its props, measures its textarea and hands it the queue from the conversation's snapshots and events.
+ * command menu and the commands it lists; local path and bot mention completion; sending a prompt, a steer, a
+ * follow-up or a composer command (`/clear`, `/reload`, `/compact`, `/btw` with its side chat), with the first prompt
+ * of a launched session held until it is idle; stopping a turn, compacting, rewinding to a message, the Fork dialog's
+ * target and answering a question; and the session's message queue, with the edit of one queued message and the
+ * requests that edit, remove, move and steer queued messages. The shell reads its props, measures its textarea and
+ * hands it the queue from the conversation's snapshots and events.
  */
 import type { LitElement, ReactiveControllerHost } from "lit";
-import { loadCommands, mutateQueuedMessage, type Attachment, type QueueSnapshot, type RuntimeCommand, type SessionSnapshot, type SessionView } from "../api/sessions.ts";
+import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, rewindSession, sendPrompt, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
+import { readTranscriptAttachments } from "../api/attachments.ts";
 import { loadLocalPathSuggestions } from "../api/local-paths.ts";
-import { readAttachment, validateAttachmentTotal } from "../lib/attachments.ts";
+import type { ForkTarget } from "../components/fork-dialog.ts";
+import { attachmentPreview, readAttachment, validateAttachmentTotal } from "../lib/attachments.ts";
 import type { BotView } from "../lib/bots/bots.ts";
-import { listComposerDraftSessionIds, mayUseComposerDraftKey, NEW_SESSION_DRAFT_KEY, readComposerDraft, sessionIdFromDraftKey, writeComposerDraft } from "../lib/composer/drafts.ts";
-import { EMPTY_QUEUE } from "../lib/composer/state.ts";
+import { listComposerDraftSessionIds, mayUseComposerDraftKey, mergeComposerDraft, NEW_SESSION_DRAFT_KEY, readComposerDraft, sessionDraftKey, sessionIdFromDraftKey, writeComposerDraft } from "../lib/composer/drafts.ts";
+import { SendRequests } from "../lib/composer/send-requests.ts";
+import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
-import { isSelectedSession, type NoteLevel } from "../lib/session/ui-state.ts";
-import { completeCommandReference, composerCommands, filterSlashCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/slash-commands.ts";
+import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/slash-commands.ts";
+import { appendPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
 
 type ComposerDeps = {
   conversation: ConversationController;
-  showNote: (message: string, level: NoteLevel) => void;
+  /** Without a level, the note keeps the one it has. */
+  showNote: (message: string, level?: NoteLevel) => void;
+  /** `/update` is HUI's: true when the shell took the text. */
+  handleUpdateCommand: (text: string, attachments: readonly Attachment[]) => boolean;
   embeddedPane: () => boolean;
   /** Reports a session's draft presence to the shell that owns the sidebar; only an embedded pane does. */
   draftChanged: (sessionId: string, hasDraft: boolean) => void;
@@ -31,7 +41,6 @@ type ComposerDeps = {
   defaultCwd: () => string | undefined;
   mentionable: () => readonly BotView[];
   textarea: () => HTMLTextAreaElement | null;
-  sending: () => boolean;
   launching: () => boolean;
 };
 
@@ -67,8 +76,19 @@ export class ComposerController {
   queue: QueueSnapshot = EMPTY_QUEUE;
   queueEditingId = "";
   queueEditingText = "";
+  sending = false;
+  rewindPending = false;
+  /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
+  forkTarget: ForkTarget | undefined;
+  sideChat: HomeProps["sideChat"];
+  /** First prompt composed on New Session, released only after PI reports idle. */
+  pendingLaunchPrompt = "";
+  pendingLaunchAttachments: readonly Attachment[] = [];
   readonly #host: ComposerHost;
   readonly #deps: ComposerDeps;
+  readonly #conversation: ConversationController;
+  /** Request ids for composer sends, so resending one the gateway already took never runs it twice. */
+  readonly #sendRequests = new SendRequests();
   #draftIndicatorRevision = 0;
   #commandsLoaded = false;
   #commandsRequest = 0;
@@ -78,6 +98,7 @@ export class ComposerController {
   constructor(host: ComposerHost, deps: ComposerDeps) {
     this.#host = host;
     this.#deps = deps;
+    this.#conversation = deps.conversation;
   }
 
   persistDraft(
@@ -201,7 +222,7 @@ export class ComposerController {
     const session = this.#deps.composerSession();
     if (!session || session.status === "starting" || session.status === "error" || this.commandsLoading) return;
     const request = ++this.#commandsRequest;
-    const current = () => this.#deps.conversation.selected?.id === session.id && request === this.#commandsRequest;
+    const current = () => this.#conversation.selected?.id === session.id && request === this.#commandsRequest;
     const returnFocus = document.activeElement?.closest(".slash-menu") !== null;
     this.commandsLoading = true;
     this.commandsError = "";
@@ -315,7 +336,7 @@ export class ComposerController {
     this.slashActiveIndex = 0;
     // A mention tags a bot as well as naming a file: the bots it matches come first, at once. A session still on PI's SDK
     // worker has no message_bot.
-    const selected = this.#deps.conversation.selected;
+    const selected = this.#conversation.selected;
     const bots = query.mention && selected?.tool !== "pi" ? botMentionSuggestions(this.#deps.mentionable(), query.input, selected?.bot?.id) : [];
     this.localPaths = bots;
     const request = ++this.#localPathsRequest;
@@ -400,7 +421,7 @@ export class ComposerController {
 
   #addAttachments = (files: readonly File[]) => {
     const key = this.draftKey;
-    if (this.#deps.sending() || this.#deps.launching()) {
+    if (this.sending || this.#deps.launching()) {
       return;
     }
     void Promise.all(files.map((file) => readAttachment(file)))
@@ -428,7 +449,7 @@ export class ComposerController {
   };
 
   #removeAttachment = (index: number) => {
-    if (this.#deps.sending()) return;
+    if (this.sending) return;
     this.draftEdit += 1;
     this.attachments = this.attachments.filter((_, at) => at !== index);
     this.#host.requestUpdate();
@@ -452,22 +473,424 @@ export class ComposerController {
   }
 
   #queueMutation(mutation: Parameters<typeof mutateQueuedMessage>[1], onSuccess?: () => void): void {
-    const session = this.#deps.conversation.selected;
+    const session = this.#conversation.selected;
     if (!session) return;
     void mutateQueuedMessage(session.id, mutation)
       .then(() => {
-        if (isSelectedSession(session.id, this.#deps.conversation.selected?.id)) onSuccess?.();
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) onSuccess?.();
       })
       .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.#deps.conversation.selected?.id)) return;
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
         this.#deps.showNote(error instanceof Error ? error.message : "Could not update the queue.", "error");
       });
   }
 
-  props(): Pick<HomeProps, "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer"> {
-    const { conversation } = this.#deps;
-    const sending = this.#deps.sending();
+  /** The launched session reports a status: idle sends its first prompt, a lost or failed start gives it back to the composer. */
+  followStatus(status: SessionStatus): void {
+    if (status === "idle") {
+      this.flushLaunchPrompt();
+    } else if ((status === "error" || status === "reconnecting" || status === "disconnected") && this.pendingLaunchPrompt) {
+      this.draftEdit += 1;
+      this.setDraft(this.pendingLaunchPrompt);
+      this.attachments = this.pendingLaunchAttachments;
+      this.pendingLaunchPrompt = "";
+      this.pendingLaunchAttachments = [];
+      void this.persistDraft();
+    }
+  }
+
+  /** What belongs to the session on screen only: a switch or a new session starts without it. */
+  resetSession(): void {
+    this.resetCommands();
+    this.resetLocalPaths();
+    this.pendingCommandBrowse = false;
+    this.sending = false;
+    this.adoptQueue(EMPTY_QUEUE);
+    this.sideChat = undefined;
+  }
+
+  clearSession(): void {
+    this.switchDraft(NEW_SESSION_DRAFT_KEY);
+    this.pendingLaunchPrompt = "";
+    this.pendingLaunchAttachments = [];
+    this.rewindPending = false;
+    this.#host.requestUpdate();
+  }
+
+  closeSideChat(): void {
+    this.sideChat = undefined;
+    this.#host.requestUpdate();
+  }
+
+  #showSideChat(sideChat: NonNullable<HomeProps["sideChat"]>): void {
+    this.sideChat = sideChat;
+    this.#host.requestUpdate();
+  }
+
+  closeFork(): void {
+    this.forkTarget = undefined;
+    this.#host.requestUpdate();
+  }
+
+  flushLaunchPrompt(): void {
+    const prompt = this.pendingLaunchPrompt;
+    if (!shouldFlushLaunchPrompt(prompt, this.#conversation.selected?.status, this.#conversation.connection, this.#conversation.opening)) {
+      return;
+    }
+    const attachments = this.pendingLaunchAttachments;
+    this.pendingLaunchPrompt = "";
+    this.pendingLaunchAttachments = [];
+    this.send(prompt, attachments);
+  }
+
+  send = (text: string, attachments: readonly Attachment[] = [], mode: PromptMode = "prompt") => {
+    if (this.#deps.handleUpdateCommand(text, attachments)) return;
+    const session = this.#conversation.selected;
+    const trimmed = text.trim();
+    const hasImage = attachments.some((item) => item.kind === "image");
+    if (!session || (!trimmed && !hasImage) || this.#conversation.opening || this.sending || this.#conversation.connection !== "live") {
+      return;
+    }
+    // The gateway refuses these for a bot's permanent chat; say why without a round trip.
+    const botRefusal = session.bot ? botChatCommandRefusal(trimmed) : undefined;
+    if (botRefusal) {
+      this.#deps.showNote(botRefusal, "error");
+      return;
+    }
+    const clearCommand = parseClearCommand(trimmed);
+    const reloadCommand = parseReloadCommand(trimmed);
+    const command = clearCommand ? "clear" : reloadCommand ? "reload" : undefined;
+    if (command) {
+      if ((clearCommand ?? reloadCommand) === "invalid" || attachments.length) {
+        this.#deps.showNote(`Use /${command} without arguments or attachments.`, "error");
+        return;
+      }
+      if (mode !== "prompt" || this.#conversation.streaming || session.status !== "idle") {
+        this.#deps.showNote(`Finish or stop active work before ${command}ing the session.`, "error");
+        return;
+      }
+      this.#deps.showNote("", "info");
+      this.sending = true;
+      this.#host.requestUpdate();
+      this.draftEdit += 1;
+      this.setDraft("");
+      this.attachments = [];
+      void this.persistDraft(sessionDraftKey(session.id), "", []);
+      const run = command === "clear"
+        ? clearSession(session.id).then((snapshot) => {
+          if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+          this.#conversation.applySnapshot(snapshot);
+          this.closeSideChat();
+          this.#deps.showNote("Session context cleared.");
+        })
+        : reloadSession(session.id).then(() => {
+          if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+          // Skills, prompts and extension commands may have changed.
+          this.resetCommands();
+          this.#deps.showNote("Reloaded extensions, skills, prompts and context files.");
+        });
+      void run.catch(async (error: unknown) => {
+        if (await this.#restoreSentDraft(session.id, text, attachments)) {
+          this.#deps.showNote(error instanceof Error ? error.message : `Could not ${command} that session.`, "error");
+        }
+      }).finally(() => {
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+          this.sending = false;
+          this.#host.requestUpdate();
+        }
+      });
+      return;
+    }
+    const compact = parseCompactCommand(trimmed);
+    if (compact) {
+      if (attachments.length || mode !== "prompt") {
+        this.#deps.showNote(attachments.length ? "Use /compact without attachments." : "Finish or stop active work before compacting the session.", "error");
+        return;
+      }
+      this.#compactNow(compact.instructions, text);
+      return;
+    }
+    const sideQuestion = /^\/(?:btw|side)(?:\s+([\s\S]+))?$/iu.exec(trimmed)?.[1]?.trim();
+    if (/^\/(?:btw|side)(?:\s|$)/iu.test(trimmed)) {
+      if (!sideQuestion) {
+        this.#deps.showNote("Add a question after /btw. Example: /btw which file are we editing?", "error");
+        return;
+      }
+      if (attachments.length) {
+        this.#deps.showNote("/btw does not support attachments in this build.", "error");
+        return;
+      }
+      this.draftEdit += 1;
+      this.setDraft("");
+      void this.persistDraft(sessionDraftKey(session.id), "", []);
+      this.#showSideChat({ question: sideQuestion, answer: "", model: "", loading: true, error: "" });
+      void askSideQuestion(session.id, sideQuestion).then((result) => {
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+          this.#showSideChat({ ...result, loading: false, error: "" });
+        }
+      }).catch((error: unknown) => {
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+          this.#showSideChat({
+            question: sideQuestion,
+            answer: "",
+            model: "",
+            loading: false,
+            error: error instanceof Error ? error.message : "The side question failed.",
+          });
+        }
+      });
+      return;
+    }
+    const pendingId = localTranscriptId("user");
+    this.#deps.showNote("", "info");
+    this.sending = true;
+    this.#host.requestUpdate();
+    // Claim this exact payload before awaiting HTTP. The composer stays locked
+    // for the short acknowledgement window, so a rejection can restore this
+    // transaction without mixing it with a second draft.
+    this.draftEdit += 1;
+    this.setDraft("");
+    this.attachments = [];
+    void this.persistDraft(sessionDraftKey(session.id), "", []);
+    this.#conversation.streaming = streamingAfterSubmission(
+      this.#conversation.streaming,
+      mode,
+      "started",
+      session.status,
+    );
+    const sentAttachments = attachments.map((item) => ({ name: item.name, kind: item.kind, mimeType: item.mimeType, ...(attachmentPreview(item) ? { url: attachmentPreview(item) } : {}) }));
+    if (mode === "prompt") {
+      this.#conversation.transcript = appendPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments);
+    }
+    this.#host.requestUpdate();
+    const request = mode === "steer" ? steerSession : mode === "followUp" ? followUpSession : sendPrompt;
+    // A resend of a send that failed on the way keeps its id, whatever the mode is now: a prompt the gateway took
+    // started a run, so its resend comes back as a steer or follow-up.
+    const { requestId, earlierRow } = this.#sendRequests.take(session.id, trimmed, attachments);
+    void request(session.id, trimmed, attachments, requestId)
+      .then(({ duplicate }) => {
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        // The gateway had the first attempt all along: its message is in the session, so drop the local copies.
+        if (duplicate) this.#conversation.transcript = this.#conversation.transcript.filter((item) => item.id !== pendingId && item.id !== earlierRow);
+        else if (mode === "prompt") this.#conversation.transcript = settlePendingUser(this.#conversation.transcript, pendingId, true);
+        this.#conversation.streaming = streamingAfterSubmission(
+          this.#conversation.streaming,
+          mode,
+          duplicate ? "duplicate" : "accepted",
+          this.#conversation.selected?.status ?? session.status,
+        );
+        this.#host.requestUpdate();
+      })
+      .catch(async (error: unknown) => {
+        this.#sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
+        const stillSelected = isSelectedSession(session.id, this.#conversation.selected?.id);
+        // The gateway's snapshots may have replaced the local row and then withdrawn theirs: show it failed again.
+        if (stillSelected && mode === "prompt") this.#conversation.transcript = settlePendingUser(this.#conversation.transcript.some((item) => item.id === pendingId)
+          ? this.#conversation.transcript : appendPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments), pendingId, false);
+        this.#host.requestUpdate();
+        const stored = stillSelected
+          ? { text: this.draft, attachments: this.attachments }
+          : await readComposerDraft(sessionDraftKey(session.id));
+        const restored = mergeComposerDraft(stored, { text, attachments });
+        await this.persistDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
+        if (!stillSelected) return;
+        this.draftEdit += 1;
+        this.setDraft(restored.text);
+        this.attachments = restored.attachments;
+        this.#conversation.streaming = streamingAfterSubmission(
+          this.#conversation.streaming,
+          mode,
+          "rejected",
+          this.#conversation.selected?.status ?? session.status,
+        );
+        this.#host.requestUpdate();
+        this.#deps.showNote(error instanceof Error ? error.message : "Could not send that prompt.", "error");
+      })
+      .finally(() => {
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+          this.sending = false;
+          this.#host.requestUpdate();
+        }
+      });
+  };
+
+  #continueInterrupted = () => {
+    const session = this.#conversation.selected;
+    if (!session?.interrupted || this.sending || this.#conversation.opening || this.#conversation.connection !== "live") return;
+    this.#deps.showNote("", "info");
+    this.sending = true;
+    this.#host.requestUpdate();
+    void continueSession(session.id)
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.#deps.showNote(error instanceof Error ? error.message : "Could not continue that run.", "error");
+      })
+      .finally(() => {
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+          this.sending = false;
+          this.#host.requestUpdate();
+        }
+      });
+  };
+
+  abort = () => {
+    const session = this.#conversation.selected;
+    if (!session || this.#conversation.stopping) {
+      return;
+    }
+    this.#conversation.stopping = true;
+    this.#host.requestUpdate();
+    void abortSession(session.id)
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.#deps.showNote(error instanceof Error ? error.message : "Could not stop that turn.", "error");
+      })
+      .finally(() => {
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.#conversation.stopping = false;
+        this.#host.requestUpdate();
+      });
+  };
+
+  /** The outcome arrives as `compaction_end`: the divider then reads cancelled. */
+  #cancelCompactionNow(): void {
+    const session = this.#conversation.selected;
+    if (!session) return;
+    void cancelCompaction(session.id).catch((error: unknown) => {
+      if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+      this.#deps.showNote(error instanceof Error ? error.message : "Could not cancel that compaction.", "error");
+    });
+  }
+
+  /** `typed` is the `/compact` draft, cleared now and given back if HUI refuses. */
+  #compactNow(instructions?: string, typed?: string) {
+    const session = this.#conversation.selected;
+    if (!session || this.sending) return;
+    if (this.#conversation.streaming || session.status !== "idle") {
+      this.#deps.showNote("Finish or stop active work before compacting the session.", "error");
+      return;
+    }
+    if (this.#conversation.compaction?.status === "running") {
+      this.#deps.showNote("A compaction is already running.", "error");
+      return;
+    }
+    this.#deps.showNote("", "info");
+    this.sending = true;
+    this.#host.requestUpdate();
+    if (typed !== undefined) {
+      this.draftEdit += 1;
+      this.setDraft("");
+      void this.persistDraft(sessionDraftKey(session.id), "", []);
+    }
+    // Progress and the outcome arrive as compaction events.
+    void compactSession(session.id, instructions).catch(async (error: unknown) => {
+      if (typed !== undefined ? await this.#restoreSentDraft(session.id, typed, []) : isSelectedSession(session.id, this.#conversation.selected?.id)) {
+        this.#deps.showNote(error instanceof Error ? error.message : "Could not compact that session.", "error");
+      }
+    }).finally(() => {
+      if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+        this.sending = false;
+        this.#host.requestUpdate();
+      }
+    });
+  }
+
+  /** Puts a refused command back into the composer, merged with anything typed
+   * since. True while that session is still selected. */
+  async #restoreSentDraft(sessionId: string, text: string, attachments: readonly Attachment[]): Promise<boolean> {
+    const stillSelected = isSelectedSession(sessionId, this.#conversation.selected?.id);
+    const stored = stillSelected
+      ? { text: this.draft, attachments: this.attachments }
+      : await readComposerDraft(sessionDraftKey(sessionId));
+    const restored = mergeComposerDraft(stored, { text, attachments });
+    await this.persistDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
+    if (!stillSelected) return false;
+    this.draftEdit += 1;
+    this.setDraft(restored.text);
+    this.attachments = restored.attachments;
+    return true;
+  }
+
+  #rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
+    const session = this.#conversation.selected;
+    if (!session || this.#conversation.opening || this.rewindPending) return;
+    this.rewindPending = true;
+    this.#host.requestUpdate();
+    this.#deps.showNote("", "info");
+    // Read the attachments first: their URLs point into the branch the rewind leaves.
+    void readTranscriptAttachments(sent)
+      .then(async (attachments) => {
+        await rewindSession(session.id, target, true);
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.draftEdit += 1;
+        this.setDraft(text);
+        this.attachments = attachments;
+        await this.persistDraft();
+        await this.#host.updateComplete;
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.#deps.textarea()?.focus();
+        this.#deps.textarea()?.setSelectionRange(text.length, text.length);
+        this.#deps.showNote("Message restored to the composer. The previous branch is kept.", "info");
+      })
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.#deps.showNote(error instanceof Error ? error.message : "Could not rewind that message.", "error");
+      })
+      .finally(() => {
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+          this.rewindPending = false;
+          this.#host.requestUpdate();
+        }
+      });
+  };
+
+  /** Asks where the fork works (same checkout or a new worktree); the dialog copies the history and `forked` opens
+   * the copy. The source session is left running or idle as it was. */
+  #forkFromMessage = (entryId: string) => {
+    const session = this.#conversation.selected;
+    if (!session || this.#conversation.opening || this.forkTarget) return;
+    void import("../components/fork-dialog.ts").then(() => {
+      this.forkTarget = { session, entryId };
+      this.#host.requestUpdate();
+    });
+  };
+
+  #answerQuestion = (answer: QuestionResponse) => {
+    const session = this.#conversation.selected;
+    const question = this.#conversation.question;
+    if (!session || !question) return;
+    this.#conversation.question = undefined;
+    this.#host.requestUpdate();
+    void answerQuestionRequest(session.id, question.id, answer)
+      .then(() => {
+        // The next question may already be showing (parallel calls): leave focus in it.
+        if (isSelectedSession(session.id, this.#conversation.selected?.id) && !this.#conversation.question) this.#conversation.restoreQuestionFocus();
+      })
+      .catch((error: unknown) => {
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.#conversation.question = question;
+        this.#host.requestUpdate();
+        this.#deps.showNote(error instanceof Error ? error.message : "Could not answer pi.", "error");
+      });
+  };
+
+  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer"> {
+    const conversation = this.#conversation;
+    const sending = this.sending;
     return {
+      sending,
+      rewindPending: this.rewindPending,
+      forkPending: Boolean(this.forkTarget),
+      sideChat: this.sideChat,
+      onCloseSideChat: () => this.closeSideChat(),
+      onSendPrompt: this.send,
+      onContinueInterrupted: this.#continueInterrupted,
+      onAbort: this.abort,
+      onRewind: this.#rewindToMessage,
+      onFork: this.#forkFromMessage,
+      onCompact: () => this.#compactNow(),
+      onCancelCompaction: () => this.#cancelCompactionNow(),
+      onAnswerQuestion: this.#answerQuestion,
       draft: this.draft,
       attachments: this.attachments,
       onDraftChange: this.updateDraft,

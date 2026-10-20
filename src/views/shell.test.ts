@@ -732,7 +732,7 @@ test("document-level Escape closes Settings or stops the running turn", () => {
   const appSource = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(appSource, /event\.key === "Escape"\) \{\s*this\.handleGlobalEscape\(event\)/u);
   assert.match(appSource, /if \(this\.settingsOpen\) \{\s*event\.preventDefault\(\);\s*this\.closeSettings\(\);/u);
-  assert.match(appSource, /this\.conversation\.streaming && !this\.conversation\.stopping\) \{\s*event\.preventDefault\(\);\s*this\.abort\(\);/u);
+  assert.match(appSource, /this\.conversation\.streaming && !this\.conversation\.stopping\) \{\s*event\.preventDefault\(\);\s*this\.composer\.abort\(\);/u);
 });
 
 test("session link names retain upstream single-line navigation semantics", () => {

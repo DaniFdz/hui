@@ -77,11 +77,7 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.match(source, /aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
   assert.doesNotMatch(app, /loadSessionCheckpoints/u);
-  assert.doesNotMatch(app, /!session \|\| this\.conversation\.streaming \|\| this\.conversation\.opening \|\| this\.rewindPending/u);
-  assert.match(app, /rewindSession\(session\.id, target, true\)/u);
-  assert.match(app, /this\.composer\.setDraft\(text\)/u);
-  assert.match(app, /this\.composer\.attachments = attachments/u);
-  assert.match(app, /this\.composerTextarea\?\.focus\(\)/u);
+  // The rewind itself, also while the session runs, is composer-controller.test.ts's.
   assert.match(app, /resumeSession\(session\.id\)/u);
 });
 

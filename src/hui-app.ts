@@ -14,36 +14,20 @@ import { keyed } from "lit/directives/keyed.js";
 import { property, state } from "lit/decorators.js";
 import { HuiElement } from "./lit/hui-element.ts";
 import {
-  abortSession,
-  askSideQuestion,
-  answerQuestion,
-  clearSession,
-  reloadSession,
   createSession,
   createSessionGroup,
   reorderSessionGroups,
-  continueSession,
   deleteSession,
   deleteSessionGroup,
-  followUpSession,
   loadGitCheckout,
   renameSession,
   resumeSession,
-  rewindSession,
-  type RewindTarget,
-  type TranscriptAttachment,
-  cancelCompaction,
-  compactSession,
-  sendPrompt,
-  steerSession,
   subscribeSession,
   updateSessionGroup,
   type Attachment,
   type RuntimeEvent,
   type RuntimeCompaction,
   type RuntimeQuestion,
-  type QuestionResponse,
-  type PromptMode,
   type SessionGroup,
   type SessionStatus,
   type SessionStatusUpdate,
@@ -53,9 +37,8 @@ import {
   type WorktreeProgress,
 } from "./api/sessions.ts";
 import { sessionGroupLabel, transcriptAsMarkdown } from "./lib/session/sessions.ts";
-import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { botChatCommandRefusal, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands } from "./lib/slash-commands.ts";
+import { parseUpdateCommand, skillCommands } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
@@ -78,10 +61,6 @@ import { renderPowerNotice } from "./views/power-notice.ts";
 import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
 import {
-  EMPTY_QUEUE,
-  streamingAfterSubmission,
-} from "./lib/composer/state.ts";
-import {
   deleteComposerDraft,
   mergeComposerDraft,
   NEW_SESSION_DRAFT_KEY,
@@ -89,15 +68,11 @@ import {
   sessionDraftKey,
   writeComposerDraft,
 } from "./lib/composer/drafts.ts";
-import { attachmentPreview } from "./lib/attachments.ts";
-import { appendPendingUser, localTranscriptId, settlePendingUser } from "./lib/transcript-state.ts";
-import { SendRequests } from "./lib/composer/send-requests.ts";
 import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts";
 import {
   emptySessionPresentation,
   isSelectedSession,
   noteAfterRunOutcome,
-  shouldFlushLaunchPrompt,
   type NoteLevel,
 } from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
@@ -116,7 +91,6 @@ import type { KanbanMove } from "./lib/kanban.ts";
 import { DEFAULT_SESSION_STAGE, SESSION_STAGE_LABELS } from "./lib/kanban.ts";
 import type { SessionStage } from "./api/schema/sessions.ts";
 import type { SessionCardAction } from "./views/kanban.ts";
-import type { ForkTarget } from "./components/fork-dialog.ts";
 import { VoiceController } from "./controllers/voice-controller.ts";
 import { renderCallBar, renderCallButton, renderCallView, type CallViewProps } from "./views/bot-voice.ts";
 import { liveCallPlatform } from "./lib/voice/live-call-platform.ts";
@@ -226,11 +200,15 @@ export class HuiApp extends HuiElement {
     },
     adoptEvent: (event) => this.adoptRunEvent(event),
     statusChanged: (id, status, interrupted) => this.followConversationStatus(id, status, interrupted),
-    flushLaunchPrompt: () => this.flushPendingLaunchPrompt(),
+    flushLaunchPrompt: () => this.composer.flushLaunchPrompt(),
   });
   private readonly composer = new ComposerController(this, {
     conversation: this.conversation,
-    showNote: (message, level) => { this.note = message; this.noteLevel = level; },
+    showNote: (message, level) => {
+      this.note = message;
+      if (level) this.noteLevel = level;
+    },
+    handleUpdateCommand: (text, attachments) => this.handleUpdateCommand(text, attachments),
     embeddedPane: () => this.embeddedPane,
     draftChanged: (sessionId, hasDraft) => { if (this.embeddedPane) this.onPaneDraftChange?.(sessionId, hasDraft); },
     composerSession: () => this.composerSession(),
@@ -238,7 +216,6 @@ export class HuiApp extends HuiElement {
     defaultCwd: () => this.launcher.defaults?.cwd,
     mentionable: () => this.mentionable(),
     textarea: () => this.composerTextarea,
-    sending: () => this.sending,
     launching: () => this.launching,
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
@@ -258,14 +235,7 @@ export class HuiApp extends HuiElement {
   @state() private draggingGroup = "";
   @state() private groupDropTarget: GroupDropTarget | undefined;
   @state() private groupReorderPending = false;
-  @state() private sending = false;
-  /** Request ids for composer sends, so resending one the gateway already took never runs it twice. */
-  private readonly sendRequests = new SendRequests();
   @state() private continuing = false;
-  @state() private rewindPending = false;
-  /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
-  @state() private forkTarget: ForkTarget | undefined;
-  @state() private sideChat: HomeProps["sideChat"];
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
   @state() private showScrollToBottom = false;
   @state() private launching = false;
@@ -427,9 +397,6 @@ export class HuiApp extends HuiElement {
     if (this.autoFollow && this.paneVisible && thread) thread.scrollTop = thread.scrollHeight;
   });
   private followed: Element | undefined;
-  /** First prompt composed on New Session, released only after PI reports idle. */
-  private pendingLaunchPrompt = "";
-  private pendingLaunchAttachments: readonly Attachment[] = [];
   private commandPaletteReturnFocus: HTMLElement | undefined;
 
   get hasQueuedMessageEdit(): boolean { return Boolean(this.composer.queueEditingId); }
@@ -439,8 +406,8 @@ export class HuiApp extends HuiElement {
   };
 
   private readonly onGlobalKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && this.sideChat) {
-      this.sideChat = undefined;
+    if (event.key === "Escape" && this.composer.sideChat) {
+      this.composer.closeSideChat();
       return;
     }
     if (this.embeddedPane) return;
@@ -476,9 +443,9 @@ export class HuiApp extends HuiElement {
   private handleGlobalEscape(event: KeyboardEvent) {
     if (event.defaultPrevented || event.isComposing || this.commandPaletteOpen) return;
     if (hasOpenWebAwesomePopup(event) || document.querySelector("dialog[open]")) return;
-    if (this.sideChat) {
+    if (this.composer.sideChat) {
       event.preventDefault();
-      this.sideChat = undefined;
+      this.composer.closeSideChat();
       return;
     }
     if (this.settingsOpen) {
@@ -509,7 +476,7 @@ export class HuiApp extends HuiElement {
     }
     if (this.view === "home" && this.conversation.selected && this.conversation.streaming && !this.conversation.stopping) {
       event.preventDefault();
-      this.abort();
+      this.composer.abort();
     }
   }
 
@@ -1421,16 +1388,7 @@ export class HuiApp extends HuiElement {
   }
 
   private followConversationStatus(id: string, status: SessionStatus, interrupted: SessionView["interrupted"]) {
-    if (status === "idle") {
-      this.flushPendingLaunchPrompt();
-    } else if ((status === "error" || status === "reconnecting" || status === "disconnected") && this.pendingLaunchPrompt) {
-      this.composer.draftEdit += 1;
-      this.composer.setDraft(this.pendingLaunchPrompt);
-      this.composer.attachments = this.pendingLaunchAttachments;
-      this.pendingLaunchPrompt = "";
-      this.pendingLaunchAttachments = [];
-      void this.composer.persistDraft();
-    }
+    this.composer.followStatus(status);
     // Keep the sidebar dot honest without a full re-fetch.
     this.sessions.groups = this.sessions.groups.map((group) => ({
       ...group,
@@ -1522,190 +1480,6 @@ export class HuiApp extends HuiElement {
   /** The shell's roster while bots are on (Labs → Bots): what an `@` in this composer suggests and whose faces its chat shows. */
   private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneBots ?? [] : botsEnabled(this.control.settings) ? this.bots.list : [];
 
-  private flushPendingLaunchPrompt() {
-    const prompt = this.pendingLaunchPrompt;
-    if (!shouldFlushLaunchPrompt(prompt, this.conversation.selected?.status, this.conversation.connection, this.conversation.opening)) {
-      return;
-    }
-    const attachments = this.pendingLaunchAttachments;
-    this.pendingLaunchPrompt = "";
-    this.pendingLaunchAttachments = [];
-    this.send(prompt, attachments);
-  }
-
-  private send = (text: string, attachments: readonly Attachment[] = [], mode: PromptMode = "prompt") => {
-    if (this.handleUpdateCommand(text, attachments)) return;
-    const session = this.conversation.selected;
-    const trimmed = text.trim();
-    const hasImage = attachments.some((item) => item.kind === "image");
-    if (!session || (!trimmed && !hasImage) || this.conversation.opening || this.sending || this.conversation.connection !== "live") {
-      return;
-    }
-    // The gateway refuses these for a bot's permanent chat; say why without a round trip.
-    const botRefusal = session.bot ? botChatCommandRefusal(trimmed) : undefined;
-    if (botRefusal) {
-      this.note = botRefusal;
-      this.noteLevel = "error";
-      return;
-    }
-    const clearCommand = parseClearCommand(trimmed);
-    const reloadCommand = parseReloadCommand(trimmed);
-    const command = clearCommand ? "clear" : reloadCommand ? "reload" : undefined;
-    if (command) {
-      if ((clearCommand ?? reloadCommand) === "invalid" || attachments.length) {
-        this.note = `Use /${command} without arguments or attachments.`;
-        this.noteLevel = "error";
-        return;
-      }
-      if (mode !== "prompt" || this.conversation.streaming || session.status !== "idle") {
-        this.note = `Finish or stop active work before ${command}ing the session.`;
-        this.noteLevel = "error";
-        return;
-      }
-      this.note = "";
-      this.noteLevel = "info";
-      this.sending = true;
-      this.composer.draftEdit += 1;
-      this.composer.setDraft("");
-      this.composer.attachments = [];
-      void this.composer.persistDraft(sessionDraftKey(session.id), "", []);
-      const run = command === "clear"
-        ? clearSession(session.id).then((snapshot) => {
-          if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-          this.conversation.applySnapshot(snapshot);
-          this.sideChat = undefined;
-          this.note = "Session context cleared.";
-        })
-        : reloadSession(session.id).then(() => {
-          if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-          // Skills, prompts and extension commands may have changed.
-          this.composer.resetCommands();
-          this.note = "Reloaded extensions, skills, prompts and context files.";
-        });
-      void run.catch(async (error: unknown) => {
-        if (await this.restoreSentDraft(session.id, text, attachments)) {
-          this.note = error instanceof Error ? error.message : `Could not ${command} that session.`;
-          this.noteLevel = "error";
-        }
-      }).finally(() => {
-        if (isSelectedSession(session.id, this.conversation.selected?.id)) this.sending = false;
-      });
-      return;
-    }
-    const compact = parseCompactCommand(trimmed);
-    if (compact) {
-      if (attachments.length || mode !== "prompt") {
-        this.note = attachments.length ? "Use /compact without attachments." : "Finish or stop active work before compacting the session.";
-        this.noteLevel = "error";
-        return;
-      }
-      this.compactNow(compact.instructions, text);
-      return;
-    }
-    const sideQuestion = /^\/(?:btw|side)(?:\s+([\s\S]+))?$/iu.exec(trimmed)?.[1]?.trim();
-    if (/^\/(?:btw|side)(?:\s|$)/iu.test(trimmed)) {
-      if (!sideQuestion) {
-        this.note = "Add a question after /btw. Example: /btw which file are we editing?";
-        this.noteLevel = "error";
-        return;
-      }
-      if (attachments.length) {
-        this.note = "/btw does not support attachments in this build.";
-        this.noteLevel = "error";
-        return;
-      }
-      this.composer.draftEdit += 1;
-      this.composer.setDraft("");
-      void this.composer.persistDraft(sessionDraftKey(session.id), "", []);
-      this.sideChat = { question: sideQuestion, answer: "", model: "", loading: true, error: "" };
-      void askSideQuestion(session.id, sideQuestion).then((result) => {
-        if (isSelectedSession(session.id, this.conversation.selected?.id)) {
-          this.sideChat = { ...result, loading: false, error: "" };
-        }
-      }).catch((error: unknown) => {
-        if (isSelectedSession(session.id, this.conversation.selected?.id)) {
-          this.sideChat = {
-            question: sideQuestion,
-            answer: "",
-            model: "",
-            loading: false,
-            error: error instanceof Error ? error.message : "The side question failed.",
-          };
-        }
-      });
-      return;
-    }
-    const pendingId = localTranscriptId("user");
-    this.note = "";
-    this.noteLevel = "info";
-    this.sending = true;
-    // Claim this exact payload before awaiting HTTP. The composer stays locked
-    // for the short acknowledgement window, so a rejection can restore this
-    // transaction without mixing it with a second draft.
-    this.composer.draftEdit += 1;
-    this.composer.setDraft("");
-    this.composer.attachments = [];
-    void this.composer.persistDraft(sessionDraftKey(session.id), "", []);
-    this.conversation.streaming = streamingAfterSubmission(
-      this.conversation.streaming,
-      mode,
-      "started",
-      session.status,
-    );
-    const sentAttachments = attachments.map((item) => ({ name: item.name, kind: item.kind, mimeType: item.mimeType, ...(attachmentPreview(item) ? { url: attachmentPreview(item) } : {}) }));
-    if (mode === "prompt") {
-      this.conversation.transcript = appendPendingUser(this.conversation.transcript, pendingId, trimmed, sentAttachments);
-    }
-    this.requestUpdate();
-    const request = mode === "steer" ? steerSession : mode === "followUp" ? followUpSession : sendPrompt;
-    // A resend of a send that failed on the way keeps its id, whatever the mode is now: a prompt the gateway took
-    // started a run, so its resend comes back as a steer or follow-up.
-    const { requestId, earlierRow } = this.sendRequests.take(session.id, trimmed, attachments);
-    void request(session.id, trimmed, attachments, requestId)
-      .then(({ duplicate }) => {
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        // The gateway had the first attempt all along: its message is in the session, so drop the local copies.
-        if (duplicate) this.conversation.transcript = this.conversation.transcript.filter((item) => item.id !== pendingId && item.id !== earlierRow);
-        else if (mode === "prompt") this.conversation.transcript = settlePendingUser(this.conversation.transcript, pendingId, true);
-        this.conversation.streaming = streamingAfterSubmission(
-          this.conversation.streaming,
-          mode,
-          duplicate ? "duplicate" : "accepted",
-          this.conversation.selected?.status ?? session.status,
-        );
-        this.requestUpdate();
-      })
-      .catch(async (error: unknown) => {
-        this.sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
-        const stillSelected = isSelectedSession(session.id, this.conversation.selected?.id);
-        // The gateway's snapshots may have replaced the local row and then withdrawn theirs: show it failed again.
-        if (stillSelected && mode === "prompt") this.conversation.transcript = settlePendingUser(this.conversation.transcript.some((item) => item.id === pendingId)
-          ? this.conversation.transcript : appendPendingUser(this.conversation.transcript, pendingId, trimmed, sentAttachments), pendingId, false);
-        this.requestUpdate();
-        const stored = stillSelected
-          ? { text: this.composer.draft, attachments: this.composer.attachments }
-          : await readComposerDraft(sessionDraftKey(session.id));
-        const restored = mergeComposerDraft(stored, { text, attachments });
-        await this.composer.persistDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
-        if (!stillSelected) return;
-        this.composer.draftEdit += 1;
-        this.composer.setDraft(restored.text);
-        this.composer.attachments = restored.attachments;
-        this.conversation.streaming = streamingAfterSubmission(
-          this.conversation.streaming,
-          mode,
-          "rejected",
-          this.conversation.selected?.status ?? session.status,
-        );
-        this.requestUpdate();
-        this.note = error instanceof Error ? error.message : "Could not send that prompt.";
-        this.noteLevel = "error";
-      })
-      .finally(() => {
-        if (isSelectedSession(session.id, this.conversation.selected?.id)) this.sending = false;
-      });
-  };
-
   private currentRunError() {
     const session = this.conversation.selected;
     const error = session ? latestRunError(this.conversation.transcript, this.conversation.streaming) : undefined;
@@ -1723,158 +1497,21 @@ export class HuiApp extends HuiElement {
 
   private continueAfterError = () => {
     if (!this.currentRunError()) return;
-    this.send(CONTINUE_AFTER_ERROR_PROMPT);
-  };
-
-  private continueInterrupted = () => {
-    const session = this.conversation.selected;
-    if (!session?.interrupted || this.sending || this.conversation.opening || this.conversation.connection !== "live") return;
-    this.note = "";
-    this.noteLevel = "info";
-    this.sending = true;
-    void continueSession(session.id)
-      .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.note = error instanceof Error ? error.message : "Could not continue that run.";
-        this.noteLevel = "error";
-      })
-      .finally(() => {
-        if (isSelectedSession(session.id, this.conversation.selected?.id)) this.sending = false;
-      });
-  };
-
-  private abort = () => {
-    const session = this.conversation.selected;
-    if (!session || this.conversation.stopping) {
-      return;
-    }
-    this.conversation.stopping = true;
-    this.requestUpdate();
-    void abortSession(session.id)
-      .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.note = error instanceof Error ? error.message : "Could not stop that turn.";
-        this.noteLevel = "error";
-      })
-      .finally(() => {
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.conversation.stopping = false;
-        this.requestUpdate();
-      });
-  };
-
-  /** The outcome arrives as `compaction_end`: the divider then reads cancelled. */
-  private cancelCompactionNow() {
-    const session = this.conversation.selected;
-    if (!session) return;
-    void cancelCompaction(session.id).catch((error: unknown) => {
-      if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-      this.note = error instanceof Error ? error.message : "Could not cancel that compaction.";
-      this.noteLevel = "error";
-    });
-  }
-
-  /** `typed` is the `/compact` draft, cleared now and given back if HUI refuses. */
-  private compactNow(instructions?: string, typed?: string) {
-    const session = this.conversation.selected;
-    if (!session || this.sending) return;
-    if (this.conversation.streaming || session.status !== "idle") {
-      this.note = "Finish or stop active work before compacting the session.";
-      this.noteLevel = "error";
-      return;
-    }
-    if (this.conversation.compaction?.status === "running") {
-      this.note = "A compaction is already running.";
-      this.noteLevel = "error";
-      return;
-    }
-    this.note = "";
-    this.noteLevel = "info";
-    this.sending = true;
-    if (typed !== undefined) {
-      this.composer.draftEdit += 1;
-      this.composer.setDraft("");
-      void this.composer.persistDraft(sessionDraftKey(session.id), "", []);
-    }
-    // Progress and the outcome arrive as compaction events.
-    void compactSession(session.id, instructions).catch(async (error: unknown) => {
-      if (typed !== undefined ? await this.restoreSentDraft(session.id, typed, []) : isSelectedSession(session.id, this.conversation.selected?.id)) {
-        this.note = error instanceof Error ? error.message : "Could not compact that session.";
-        this.noteLevel = "error";
-      }
-    }).finally(() => {
-      if (isSelectedSession(session.id, this.conversation.selected?.id)) this.sending = false;
-    });
-  }
-
-  /** Puts a refused command back into the composer, merged with anything typed
-   * since. True while that session is still selected. */
-  private async restoreSentDraft(sessionId: string, text: string, attachments: readonly Attachment[]): Promise<boolean> {
-    const stillSelected = isSelectedSession(sessionId, this.conversation.selected?.id);
-    const stored = stillSelected
-      ? { text: this.composer.draft, attachments: this.composer.attachments }
-      : await readComposerDraft(sessionDraftKey(sessionId));
-    const restored = mergeComposerDraft(stored, { text, attachments });
-    await this.composer.persistDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
-    if (!stillSelected) return false;
-    this.composer.draftEdit += 1;
-    this.composer.setDraft(restored.text);
-    this.composer.attachments = restored.attachments;
-    return true;
-  }
-
-  private rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
-    const session = this.conversation.selected;
-    if (!session || this.conversation.opening || this.rewindPending) return;
-    this.rewindPending = true;
-    this.note = "";
-    this.noteLevel = "info";
-    // Read the attachments first: their URLs point into the branch the rewind leaves.
-    void readTranscriptAttachments(sent)
-      .then(async (attachments) => {
-        await rewindSession(session.id, target, true);
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.composer.draftEdit += 1;
-        this.composer.setDraft(text);
-        this.composer.attachments = attachments;
-        await this.composer.persistDraft();
-        await this.updateComplete;
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.composerTextarea?.focus();
-        this.composerTextarea?.setSelectionRange(text.length, text.length);
-        this.note = "Message restored to the composer. The previous branch is kept.";
-        this.noteLevel = "info";
-      })
-      .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.note = error instanceof Error ? error.message : "Could not rewind that message.";
-        this.noteLevel = "error";
-      })
-      .finally(() => {
-        if (isSelectedSession(session.id, this.conversation.selected?.id)) this.rewindPending = false;
-      });
-  };
-
-  /** Asks where the fork works (same checkout or a new worktree); the dialog copies the history and `forked` opens
-   * the copy. The source session is left running or idle as it was. */
-  private forkFromMessage = (entryId: string) => {
-    const session = this.conversation.selected;
-    if (!session || this.conversation.opening || this.forkTarget) return;
-    void import("./components/fork-dialog.ts").then(() => { this.forkTarget = { session, entryId }; });
+    this.composer.send(CONTINUE_AFTER_ERROR_PROMPT);
   };
 
   private forked = async (forked: SessionView) => {
-    this.forkTarget = undefined;
+    this.composer.closeFork();
     await this.refreshSessions();
     this.selectSession(this.sessions.groups.flatMap((group) => group.sessions).find((candidate) => candidate.id === forked.id) ?? forked);
   };
 
   private renderForkDialog() {
-    if (!this.forkTarget) return null;
+    if (!this.composer.forkTarget) return null;
     return html`<hui-fork-dialog
-      .target=${this.forkTarget}
+      .target=${this.composer.forkTarget}
       .branchPrefix=${this.control.settings.branchPrefix}
-      .onClose=${() => { this.forkTarget = undefined; }}
+      .onClose=${() => this.composer.closeFork()}
       .onForked=${this.forked}
     ></hui-fork-dialog>`;
   }
@@ -1893,26 +1530,6 @@ export class HuiApp extends HuiElement {
       })
       .finally(() => {
         if (isSelectedSession(session.id, this.conversation.selected?.id)) this.continuing = false;
-      });
-  };
-
-  private answerQuestion = (answer: QuestionResponse) => {
-    const session = this.conversation.selected;
-    const question = this.conversation.question;
-    if (!session || !question) return;
-    this.conversation.question = undefined;
-    this.requestUpdate();
-    void answerQuestion(session.id, question.id, answer)
-      .then(() => {
-        // The next question may already be showing (parallel calls): leave focus in it.
-        if (isSelectedSession(session.id, this.conversation.selected?.id) && !this.conversation.question) this.conversation.restoreQuestionFocus();
-      })
-      .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.conversation.question = question;
-        this.requestUpdate();
-        this.note = error instanceof Error ? error.message : "Could not answer pi.";
-        this.noteLevel = "error";
       });
   };
 
@@ -2061,7 +1678,7 @@ export class HuiApp extends HuiElement {
     this.note = "";
     this.noteLevel = "info";
     const { prompt, commandDraft, ...sessionInput } = input;
-    this.pendingLaunchPrompt = prompt?.trim() ?? "";
+    this.composer.pendingLaunchPrompt = prompt?.trim() ?? "";
     const launchAttachments = this.composer.attachments;
     void createSession({
       ...sessionInput,
@@ -2084,23 +1701,23 @@ export class HuiApp extends HuiElement {
         await this.refreshSessions();
         this.navigate({ kind: "session", id: session.id });
         // The gateway sends a worktree session's prompt once its checkout exists.
-        const pendingPrompt = session.creating ? "" : this.pendingLaunchPrompt;
-        this.pendingLaunchPrompt = "";
+        const pendingPrompt = session.creating ? "" : this.composer.pendingLaunchPrompt;
+        this.composer.pendingLaunchPrompt = "";
         await this.withSessionPane(session, (app) => {
-          app.pendingLaunchPrompt = pendingPrompt;
-          app.pendingLaunchAttachments = pendingPrompt ? launchAttachments : [];
+          app.composer.pendingLaunchPrompt = pendingPrompt;
+          app.composer.pendingLaunchAttachments = pendingPrompt ? launchAttachments : [];
           app.composer.pendingCommandBrowse = commandDraft !== undefined;
           if (commandDraft !== undefined) app.composer.updateDraft(commandDraft);
-          app.flushPendingLaunchPrompt();
+          app.composer.flushLaunchPrompt();
         });
         this.composer.draftKey = NEW_SESSION_DRAFT_KEY;
         this.composer.setDraft("");
       })
       .catch((error: unknown) => {
-        if (this.pendingLaunchPrompt) {
+        if (this.composer.pendingLaunchPrompt) {
           this.composer.draftEdit += 1;
-          this.composer.setDraft(this.pendingLaunchPrompt);
-          this.pendingLaunchPrompt = "";
+          this.composer.setDraft(this.composer.pendingLaunchPrompt);
+          this.composer.pendingLaunchPrompt = "";
           void this.composer.persistDraft();
         }
         this.note = error instanceof Error ? error.message : "Could not start that session.";
@@ -2119,39 +1736,29 @@ export class HuiApp extends HuiElement {
 
   private clearSessionState() {
     this.conversation.clear();
-    this.composer.switchDraft(NEW_SESSION_DRAFT_KEY);
-    this.pendingLaunchPrompt = "";
-    this.pendingLaunchAttachments = [];
+    this.composer.clearSession();
     this.backlog.clearSession();
     const empty = emptySessionPresentation();
     this.note = empty.note;
     this.noteLevel = empty.noteLevel;
-    this.sending = false;
     this.continuing = false;
-    this.rewindPending = false;
-    this.composer.adoptQueue(EMPTY_QUEUE);
     this.showScrollToBottom = false;
     this.autoFollow = true;
     this.resetSessionEphemeral();
   }
 
   private resetSessionEphemeral() {
-    this.composer.resetCommands();
-    this.composer.resetLocalPaths();
-    this.composer.pendingCommandBrowse = false;
+    this.composer.resetSession();
     this.closeDeleteDialog();
     this.renamingFor = "";
     this.deletingFor = "";
     this.deleteReturnFocus = undefined;
     this.deleteNeedsFocus = false;
-    this.sending = false;
     this.conversation.stopping = false;
-    this.composer.adoptQueue(EMPTY_QUEUE);
     this.conversation.dropQuestion();
     this.note = "";
     this.noteLevel = "info";
     this.conversation.connectionNote = "";
-    this.sideChat = undefined;
   }
 
   private closeDeleteDialog() {
@@ -2935,11 +2542,8 @@ export class HuiApp extends HuiElement {
       opening: this.conversation.opening,
       openError: this.conversation.openError,
       streaming: this.conversation.streaming,
-      sending: this.sending,
       stopping: this.conversation.stopping,
       continuing: this.continuing,
-      rewindPending: this.rewindPending,
-      forkPending: Boolean(this.forkTarget),
       chatPreferences: this.control.settings.chat,
       question: this.conversation.question,
       connection: this.conversation.connection,
@@ -3004,26 +2608,16 @@ export class HuiApp extends HuiElement {
         onRestart: this.backlog.restartWatcher,
         onDismiss: this.backlog.dismissWatcher,
       } : undefined,
-      onSendPrompt: this.send,
-      onContinueInterrupted: this.continueInterrupted,
       runError: this.currentRunError(),
       onContinueAfterError: this.continueAfterError,
       onDismissRunError: this.dismissRunError,
       ...this.composer.props(),
-      onAbort: this.abort,
       onContinue: this.continueRun,
-      onRewind: this.rewindToMessage,
-      onFork: this.forkFromMessage,
-      onCompact: () => this.compactNow(),
-      onCancelCompaction: () => this.cancelCompactionNow(),
       onCopy: this.conversation.copy,
       onActivityExpanded: this.setActivityExpanded,
-      onAnswerQuestion: this.answerQuestion,
       onTranscriptScroll: this.transcriptScrolled,
       onTranscriptNavigate: this.navigateTranscript,
       onScrollToBottom: this.scrollToBottom,
-      sideChat: this.sideChat,
-      onCloseSideChat: () => { this.sideChat = undefined; },
       renaming: this.renamingFor === this.conversation.selected?.id,
       confirmingDelete: this.deletingFor === this.conversation.selected?.id,
       onCancelRename: this.cancelRename,
