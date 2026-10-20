@@ -473,6 +473,30 @@ test("hiding and restoring from the roster wait on one row at a time; with none 
   assert.equal(notes.at(-1), "Ada is back in the roster.");
 });
 
+test("the toast's Restore and a roster Delete of the same bot wait on each other", async () => {
+  const { controller } = setup();
+  const archived = { ...ADA, archived: true };
+  controller.adopt([archived]);
+  controller.archiveToast = { bot: archived, restoring: false };
+  controller.requestDelete(archived);
+  controller.confirmDelete();
+  void controller.restoreFromToast();
+  assert.deepEqual(fake.calls.map(({ call }) => call), ["delete ada"]);
+  fake.calls[0]!.answer(undefined);
+  await settle();
+  assert.equal(controller.pendingId, "");
+
+  controller.adopt([archived]);
+  controller.archiveToast = { bot: archived, restoring: false };
+  void controller.restoreFromToast();
+  assert.equal(controller.pendingId, "ada");
+  controller.requestDelete(archived);
+  assert.equal(controller.deleting, undefined, "Delete waits for the toast's Restore");
+  fake.calls[1]!.answer(ADA);
+  await settle();
+  assert.equal(controller.pendingId, "");
+});
+
 test("Call and the Settings page's Calls section follow one read of the ChatGPT login; a failed read leaves Call hidden", async () => {
   const { controller, host } = setup({ ...ON, calls: { voice: "maple" } });
   assert.equal(controller.callsAvailable(), false);

@@ -546,9 +546,9 @@ export class BotsController implements ReactiveController {
 
   restoreFromToast = async () => {
     const toast = this.archiveToast;
-    if (!toast || toast.restoring) return;
+    if (!toast || toast.restoring || this.pendingId) return;
     this.pauseToast();
-    this.#set({ archiveToast: { bot: toast.bot, restoring: true } });
+    this.#set({ archiveToast: { bot: toast.bot, restoring: true }, pendingId: toast.bot.id });
     try {
       const restored = await restoreBot(toast.bot.id);
       this.adopt(upsertBot(this.list, restored));
@@ -560,6 +560,8 @@ export class BotsController implements ReactiveController {
       if (this.archiveToast?.bot.id === toast.bot.id) {
         this.#set({ archiveToast: { bot: toast.bot, restoring: false, error: error instanceof Error ? error.message : "Could not restore that bot." } });
       }
+    } finally {
+      this.#set({ pendingId: "" });
     }
   };
 }
