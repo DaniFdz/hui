@@ -204,7 +204,7 @@ class ConversationPositionRail extends AsyncDirective {
     const thread = this.thread;
     if (!target) {
       // Safari has no scroll anchoring: jump before its next scroll event finds the reader at the bottom and drops the row again.
-      void this.props?.onReveal(id)?.then(() => {
+      void Promise.resolve(this.props?.onReveal(id)).then(() => {
         const revealed = this.inner?.querySelector<HTMLElement>(`.chat-bubble[data-message-id="${CSS.escape(id)}"]`);
         if (!revealed) return;
         this.targets.set(id, revealed);
