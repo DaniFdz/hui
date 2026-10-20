@@ -307,7 +307,7 @@ export const scenes: Scene[] = [
       await d.say("effort");
       await d.click({ label: "Thinking: high" });
       await d.waitFor({ label: "Thinking effort" });
-      await d.zoom({ css: ".chat-controls__effort-picker" }, 1.6);
+      await d.zoom({ css: ".chat-controls__effort-menu" }, 1.8);
       await d.press("Tab");
       for (let step = 0; step < 3; step++) {
         await d.press("ArrowRight");
