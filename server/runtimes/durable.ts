@@ -32,6 +32,8 @@ import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
+import { disabledSkillNotice } from "./skill-policy-extension.mjs";
+import { isBundledSkillPreference } from "../bundled-skills.ts";
 import type {
   AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
   RuntimePromptOptions, RuntimePromptResult, RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
@@ -774,7 +776,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         this.#agent = event.agent;
         return;
       case "auto_retry_start":
-        this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}` });
+        this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}`, recovery: true });
         return;
       case "task_failed":
         // A failed compaction's divider shows its reason instead.
@@ -975,6 +977,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       ...(sending.images ?? []),
       ...attachments.flatMap((item) => item.kind === "image" ? [{ type: "image" as const, data: item.dataBase64, mimeType: item.mimeType }] : []),
     ];
+    const refused = sending.expand ? disabledSkillNotice(text, (await this.#host.settings()).disabledSkills.filter((entry) => !isBundledSkillPreference(entry))) : undefined;
+    if (refused) {
+      this.#emit({ type: "notice", level: "warning", message: refused });
+      return false;
+    }
     if (extensions) {
       const input = await extensions.input(text, images, sending.source, whenBusy === "reject" ? undefined : whenBusy);
       if (!input) return false;

@@ -142,7 +142,7 @@ import {
   isSelectedSession,
   mergeSessionStatuses,
   modelRequestMarkerAfterFailure,
-  noteAfterRunOutcome,
+  noteAfterEvent,
   shouldRequestModels,
   shouldFlushLaunchPrompt,
   streamingAfterEvent,
@@ -2515,15 +2515,9 @@ export class HuiApp extends HuiElement {
       this.thinking = event.level;
       return;
     }
-    if (event.type === "notice") {
-      this.note = event.message;
-      this.noteLevel = event.level ?? "info";
-      this.recoveryNotice = this.noteLevel === "warning" ? event.message : "";
-      return;
-    }
-    if (event.type === "settled" || event.type === "error") {
-      ({ note: this.note, noteLevel: this.noteLevel } = noteAfterRunOutcome({ note: this.note, noteLevel: this.noteLevel }, this.recoveryNotice));
-      this.recoveryNotice = "";
+    if (event.type === "notice" || event.type === "settled" || event.type === "error") {
+      ({ note: this.note, noteLevel: this.noteLevel, recoveryNotice: this.recoveryNotice } = noteAfterEvent({ note: this.note, noteLevel: this.noteLevel, recoveryNotice: this.recoveryNotice }, event));
+      if (event.type === "notice") return;
     }
     // Views of what the agent may have changed (the Files view) refresh once its turn is over.
     if (event.type === "settled" && this.selected) announceTurnEnd(this.selected.id);

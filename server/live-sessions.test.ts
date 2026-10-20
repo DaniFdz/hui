@@ -791,6 +791,8 @@ test("a primary failure before output retries once on the configured fallback", 
     if (session.prompts.length === 2) retried();
   };
 
+  const notices: unknown[] = [];
+  manager.subscribe("fallback", (message) => { if (message.kind === "event" && message.event.type === "notice") notices.push(message.event); });
   await manager.prompt("fallback", "keep working");
   session.history = [
     { kind: "message", role: "user", text: "keep working" },
@@ -799,6 +801,7 @@ test("a primary failure before output retries once on the configured fallback", 
   session.emit({ type: "settled" });
   await retryAccepted;
 
+  assert.deepEqual(notices, [{ type: "notice", level: "warning", message: "Primary model failed before producing output. Retrying with anthropic/sonnet.", recovery: true }]);
   assert.deepEqual(session.switched, ["anthropic/sonnet"]);
   assert.deepEqual(session.prompts, ["keep working", "keep working"]);
   const restored = new Promise<void>((resolve) => {

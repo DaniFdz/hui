@@ -1584,7 +1584,7 @@ export class LiveSessions {
     const prompt = live.lastPrompt;
     this.#broadcast(live, {
       kind: "event",
-      event: { type: "notice", level: "warning", message: `Primary model failed before producing output. Retrying with ${routes.fallback}.` },
+      event: { type: "notice", level: "warning", message: `Primary model failed before producing output. Retrying with ${routes.fallback}.`, recovery: true },
     });
     try {
       await runtime.setModel(routes.fallback.slice(0, separator), routes.fallback.slice(separator + 1));

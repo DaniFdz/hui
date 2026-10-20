@@ -355,6 +355,33 @@ test("cancelling a placed tracked input aborts its task, and cancelling it again
   await settled;
 });
 
+test("a provider retry is announced as a recovery notice", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-retry-notice" }, f.host());
+  const notified = nextEvent(session, (event) => event.type === "notice");
+  await session.prompt("E2E_ERROR retried");
+  const notice = await notified;
+  assert(notice.type === "notice" && notice.level === "warning" && notice.recovery === true, JSON.stringify(notice));
+});
+
+test("a skill turned off in HUI is refused with a notice and never reaches the model", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const skill = join(f.agentDir, "skills", "review", "SKILL.md");
+  await mkdir(join(f.agentDir, "skills", "review"), { recursive: true });
+  await writeFile(skill, "---\nname: review\ndescription: Review fixture skill.\n---\nReview body.\n");
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-disabled-skill" }, f.host({ huiSettings: normalizeSettings({ disabledSkills: [{ name: "review", path: skill }] }) }));
+  const notified = nextEvent(session, (event) => event.type === "notice");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("/skill:review now");
+  assert.deepEqual(await notified, { type: "notice", level: "warning", message: "Skill “review” is disabled for HUI sessions." });
+  await settled;
+  const aliased = nextEvent(session, (event) => event.type === "notice");
+  await session.prompt("$review now");
+  assert.deepEqual(await aliased, { type: "notice", level: "warning", message: "Skill “review” is disabled for HUI sessions." }, "the composer's $name form too");
+  assert.equal(session.isStreaming, false);
+  assert.deepEqual(session.transcript(), [], "nothing reached the model");
+});
+
 test("a tracked provider failure retains its original diagnostic for routine failure classification", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t, { settings: { retry: { enabled: false } } });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "tracked-model-error" }, f.host());

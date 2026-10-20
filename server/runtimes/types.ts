@@ -90,7 +90,7 @@ export type RuntimeEvent =
   | { type: "tool_end"; id: string; name: string; output?: string; details?: unknown; failed?: boolean }
   | { type: "queue_update"; queue: RuntimeQueue }
   | { type: "question"; question: RuntimeQuestion }
-  | { type: "notice"; message: string; level: "info" | "warning" | "error" }
+  | { type: "notice"; message: string; level: "info" | "warning" | "error"; recovery?: true }
   | { type: "turn_start" }
   | { type: "turn_end" }
   /** `blocking` and `background` as in `RuntimeCompaction`; absent, it blocks and is not background. */

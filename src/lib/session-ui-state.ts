@@ -6,6 +6,7 @@
 import type {
   Attachment,
   RuntimeCompaction,
+  RuntimeEvent,
   RuntimeModel,
   RuntimeUsage,
   SessionConnection,
@@ -32,16 +33,21 @@ export function mergeSessionStatuses(
 /** Severity of the transient chat notification; it picks the toast's icon and live region. */
 export type NoteLevel = "info" | "warning" | "error";
 
+/** The chat note and the recovery notice the current run is narrating, if any. */
+type NoteState = { note: string; noteLevel: NoteLevel; recoveryNotice: string };
+
 /**
- * A runtime warning narrates recovery inside the run (a provider retry or the
- * model fallback). Once the run settles or fails, its outcome supersedes that
- * warning, so the toast closes unless another note has replaced it.
+ * A runtime notice becomes the note. A recovery notice narrates a retry inside
+ * the run (a provider retry or the model fallback): once the run settles or
+ * fails, its outcome supersedes it, so the toast closes unless another note has
+ * replaced it. Any other notice, such as a refused command, stays.
  */
-export function noteAfterRunOutcome(
-  state: { note: string; noteLevel: NoteLevel },
-  recoveryNotice: string,
-): { note: string; noteLevel: NoteLevel } {
-  return recoveryNotice && state.note === recoveryNotice ? { note: "", noteLevel: "info" } : state;
+export function noteAfterEvent(state: NoteState, event: RuntimeEvent): NoteState {
+  if (event.type === "notice") return { note: event.message, noteLevel: event.level ?? "info", recoveryNotice: event.recovery ? event.message : "" };
+  if (event.type !== "settled" && event.type !== "error") return state;
+  return state.recoveryNotice && state.note === state.recoveryNotice
+    ? { note: "", noteLevel: "info", recoveryNotice: "" }
+    : { ...state, recoveryNotice: "" };
 }
 
 /** Only errors interrupt assistive technology; other notes are polite status. */

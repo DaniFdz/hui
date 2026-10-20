@@ -242,7 +242,7 @@ export type RuntimeEvent =
   | { type: "tool_end"; id: string; name: string; output?: string; details?: unknown; failed?: boolean }
   | { type: "queue_update"; queue: QueueSnapshot }
   | { type: "question"; question: RuntimeQuestion }
-  | { type: "notice"; message: string; level?: "info" | "warning" | "error" }
+  | { type: "notice"; message: string; level?: "info" | "warning" | "error"; recovery?: true }
   | { type: "thinking_level"; level: string }
   | { type: "turn_start" }
   | { type: "turn_end" }
