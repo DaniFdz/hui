@@ -8,7 +8,7 @@ at the commit that adds this record (documentation only since `d3cecb3`). Both
 runs were launched with `e2e/visual-verification.mjs` and driven with the
 Browser tool (OpenClaw's managed profile on a headless Brave that another
 agent's labeled tab shared; that tab was left alone). Only the model provider is
-mocked (`e2e/pi-provider-fixture.mjs`): every turn answers "Fixture response.",
+mocked (`e2e/fixtures/pi-provider-fixture.mjs`): every turn answers "Fixture response.",
 and OptChat's compactor gets one short line per summary, `<kind>:
 FIXTURE_MEMORY <first E2E_/OPT_ marker>`, held while the message carries
 `E2E_HOLD_MEMORY` until `POST /control/release-replay` on the fixture. HUI, the
@@ -230,7 +230,7 @@ outside the repository and are not committed.
 - A view keeps one line per message until it outgrows its 128 KB budget, so the
   browser zoomed a message line straight to its message. Opening a summary of
   several messages into its two halves is covered by
-  `src/lib/bot-memory.test.ts` (parsing) and `server/bot-routes.test.ts` (the
+  `src/lib/bot-memory.test.ts` (parsing) and `server/routes/bots.test.ts` (the
   route), not by this journey.
 - The fixture reports one token each way and no cost, so the cost the panel
   shows once a provider reports one is unit-tested only.

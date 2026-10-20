@@ -4,7 +4,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import { UPDATE_CHECK_INTERVAL_MS, type UpdateCheck } from "../src/lib/update-types.ts";
+import { UPDATE_CHECK_INTERVAL_MS, type UpdateCheck } from "../cli/releases.ts";
+import { expectSchema } from "./test-support/api-schema.ts";
+import { UpdateSnapshot } from "./api/updates.ts";
 
 // HUI's directory resolves at import time and hui.ts reads it as it loads: never the operator's own.
 const home = await mkdtemp(join(tmpdir(), "hui-updates-home-"));
@@ -19,6 +21,7 @@ test("development mode reports source ownership and cannot start an updater", as
   const service = createUpdates();
   assert.equal((await service.status()).job, null);
   const result = await service.check();
+  expectSchema(UpdateSnapshot, result);
   assert.equal(result.check?.canInstall, false);
   assert.match(result.check!.message, /development server/u);
   await assert.rejects(service.start("0.2.0"), UpdateConflict);

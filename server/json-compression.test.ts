@@ -29,7 +29,8 @@ test("large JSON answers are compressed for clients that accept it and identical
     tool: "durable", piSessionFile: `durable:compression-${index}`, createdAt: "2026-10-01T10:00:00.000Z", updatedAt: "2026-10-01T11:00:00.000Z", source: "hui",
   }));
   await writeFile(join(dir, "hui", "sessions.json"), JSON.stringify({ version: 2, groups: [], sessions }));
-  const { middleware, stopBackend } = await import("./hui.ts");
+  const { middleware } = await import("./hui.ts");
+  const { stopBackend } = await import("./backend.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

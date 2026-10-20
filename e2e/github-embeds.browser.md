@@ -2,14 +2,14 @@
 
 Verified on 2026-09-25 with the OpenClaw Browser tool against the real HUI
 gateway (Vite, port 5198), real PI 0.87.1 transcripts and the fake GitHub CLI
-(`e2e/github-cli-fixture.mjs`, canned `gh api` payloads; since 2026-10-17
+(`e2e/fixtures/github-cli-fixture.mjs`, canned `gh api` payloads; since 2026-10-17
 `gh api graphql` answers). No operator GitHub
 login, transcript or HUI registry was read or changed.
 
 ## Reproduce
 
 1. `R=$(mktemp -d /tmp/hui-github-embeds-XXXX)` and
-   `node e2e/github-embeds-fixture.mjs $R node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js`.
+   `node e2e/fixtures/github-embeds-fixture.mjs $R node_modules/@earendil-works/pi-coding-agent/dist/core/session-manager.js`.
    It seeds one session (*Checkout PR*): thirty earlier turns that each link a
    pull request, an issue and a Slack thread, then a user message that links
    issue `acme/web#7`, a bash tool that ran `gh pr create` printing
@@ -17,7 +17,7 @@ login, transcript or HUI registry was read or changed.
    references, one inside code.
 2. Start Vite with `XDG_CONFIG_HOME=$R/xdg`, `PI_CODING_AGENT_DIR=$R/pi-agent`,
    `PI_CODING_AGENT_SESSION_DIR=$R/pi-sessions`,
-   `HUI_GITHUB_CLI=$PWD/e2e/github-cli-fixture.mjs`, `HUI_FAKE_GH_DIR=$R/gh` and
+   `HUI_GITHUB_CLI=$PWD/e2e/fixtures/github-cli-fixture.mjs`, `HUI_FAKE_GH_DIR=$R/gh` and
    `NO_PROXY=127.0.0.1,localhost`.
 3. Open `/sessions/github-embeds` at 1440×900, then 390×844.
 
@@ -53,7 +53,7 @@ login, transcript or HUI registry was read or changed.
 
 Previews were served by the fake CLI; the real `gh api` payload shapes were
 checked against `repos/cli/cli`, `…/pulls/14517` and `…/issues/14517` and are
-covered by `server/github-previews.test.ts`. Streaming unfurl (800 ms settle)
+covered by `server/integrations/github-previews.test.ts`. Streaming unfurl (800 ms settle)
 is covered by code review, not a live streaming turn.
 
 ## Latest messages only, one `gh` call (2026-10-17)
@@ -61,7 +61,7 @@ is covered by code review, not a live streaming turn.
 Same fixture with the thirty earlier turns, served by the built gateway
 (`node bin/hui.mjs gateway run --port 43391`, the environment of step 2, with
 `HUI_GITHUB_CLI` pointing at a wrapper that logs each `gh` invocation before
-running the fake) and the deterministic provider (`e2e/pi-provider-fixture.mjs`,
+running the fake) and the deterministic provider (`e2e/fixtures/pi-provider-fixture.mjs`,
 its URL written into `pi-agent/models.json`), checked with the Browser tool at
 1440×900 and 390×844.
 

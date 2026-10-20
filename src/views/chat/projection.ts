@@ -4,9 +4,9 @@
  * activity between them folded, compactions, calls, subagent events and bot kickoffs, plus the working labels and where
  * the live browser preview goes. Presentation only; PI's transcript keeps the order and the data.
  */
-import type { TranscriptItem } from "../../lib/sessions-store.ts";
+import type { TranscriptItem } from "../../api/sessions.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../../lib/subagent-completion.ts";
-import { agentReplyTo, botKickoffName, botTurnOrigin } from "../../../shared/bots.ts";
+import { agentReplyTo, botKickoffName, botTurnOrigin } from "../../lib/bots/bots.ts";
 
 export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
 export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;
@@ -26,9 +26,9 @@ export type MessageSender =
   | { kind: "routine"; name: string }
   | { kind: "trigger"; name: string; summary: string };
 
-/** `sessions_send` (server/subagents.ts): the sender's title and id on the first line. */
+/** `sessions_send` (server/agent-tools/subagents.ts): the sender's title and id on the first line. */
 const INTER_SESSION = /^\[Inter-session message from (.*) \(([^()\s]+)\)\]\n/u;
-/** A subagent's first prompt, its task from the session that spawned it (server/subagents.ts). */
+/** A subagent's first prompt, its task from the session that spawned it (server/agent-tools/subagents.ts). */
 const SUBAGENT_TASK = "[Subagent Task]\n";
 
 /**

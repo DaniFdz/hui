@@ -5,9 +5,9 @@
 import { html, type TemplateResult } from "lit";
 import { renderSettingsToggle } from "./settings-toggle.ts";
 
-import type { GatewayHealth } from "../lib/control-surfaces.ts";
+import type { GatewayHealth } from "../api/control-surfaces.ts";
 import type { HuiPage } from "../lib/pages.ts";
-import type { Settings } from "../lib/settings.ts";
+import type { Settings } from "../lib/settings/settings.ts";
 
 export type OwnedSurfaceProps = {
   page: HuiPage;

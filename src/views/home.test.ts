@@ -25,22 +25,23 @@ test("chat notifications of every level render as the shell toast, not an inline
   assert.match(styles, /\.chat-operation-toast\[data-level="error"\] \.app-toast__icon \{ color: var\(--danger\); \}/);
 });
 
-test("auto-follow and scroll-to-latest target the real reference transcript scroller", () => {
+test("auto-follow and scroll-to-latest target the real reference transcript scroller", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(app, /querySelector\?\.\("\.chat-thread"\)/);
-  assert.doesNotMatch(app, /querySelector\?\.\("\.transcript__scroll"\)/);
+  const { TRANSCRIPT_SCROLLER_SELECTOR } = await import("./home.ts");
+  assert.equal(TRANSCRIPT_SCROLLER_SELECTOR, ".chat-thread");
+  assert.match(await renderWorkerSession("idle"), /<div class="chat-thread chat-thread--direct" role="log"/u);
   assert.match(source, /class="chat-scroll-to-bottom"[^>]*\?inert=\$\{!props\.showScrollToBottom\}/);
   assert.match(source, /aria-label="Scroll to latest">\$\{icons\.arrowDown\}/);
 });
 
-test("PI choices use the original question option buttons and focus visible controls", () => {
+test("PI choices use the original question option buttons and focus visible controls", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
+  const { QUESTION_FOCUS_SELECTOR } = await import("./home.ts");
   assert.match(source, /class="chat-question-panel__option" role="radio" aria-checked="false"/);
   assert.match(source, /class="chat-question-panel__option-marker"/);
   assert.match(source, /option\.setAttribute\("aria-checked", String\(selected\)\)/);
-  assert.ok(app.includes('.session-question-card input:not([type="hidden"])'));
+  assert.equal(QUESTION_FOCUS_SELECTOR, '.session-question-card :is([role="radio"], [role="checkbox"])[tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea');
+  assert.match(await renderWorkerSession("waiting", { question: { id: "q", method: "input", title: "Name?" } }), /<form class="session-question-card chat-question-panel"/u);
   assert.doesNotMatch(source, /input type="radio" name="answer"/);
 });
 
@@ -66,7 +67,6 @@ test("the composer routes Enter shortcuts through explicit steer and queue modes
 
 test("session history actions expose direct editable rewind and prompt-free continuation", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 
   assert.doesNotMatch(source, /aria-label="Rewind session"/u);
   assert.match(source, /class="chat-group-rewind" aria-label=\$\{props\.rewindPending \? "Rewinding…" : "Rewind to here"\}/u);
@@ -75,13 +75,7 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.doesNotMatch(source, /row\.role === "user" && !props\.streaming/u);
   assert.match(source, /aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
-  assert.doesNotMatch(app, /loadSessionCheckpoints/u);
-  assert.doesNotMatch(app, /!session \|\| this\.streaming \|\| this\.opening \|\| this\.rewindPending/u);
-  assert.match(app, /rewindSession\(session\.id, target, true\)/u);
-  assert.match(app, /this\.setDraft\(text\)/u);
-  assert.match(app, /this\.attachments = attachments/u);
-  assert.match(app, /this\.composerTextarea\?\.focus\(\)/u);
-  assert.match(app, /resumeSession\(session\.id\)/u);
+  // The rewind itself, also while the session runs, is composer-controller.test.ts's.
 });
 
 test("runtime-owned queue rows cannot collide with the empty edit sentinel", () => {
@@ -121,11 +115,7 @@ test("the composer ports OpenClaw input interactions without unsupported control
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
 
-  assert.match(source, /import \{ adjustTextareaHeight as syncComposerTextarea \} from "\.\.\/lib\/composer-textarea\.ts"/);
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(app, /observeTextareaOverflow\(textarea\)/);
-  assert.match(app, /disconnectTextareaOverflowObserver\(this\.composerTextarea\)/);
-  assert.match(app, /changed\.has\("draftRevision"\)/);
+  assert.match(source, /import \{ adjustTextareaHeight as syncComposerTextarea \} from "\.\.\/lib\/composer\/textarea\.ts"/);
   assert.doesNotMatch(source, /@scroll=\$\{[^\n]*syncComposerTextarea/);
   assert.match(source, /@paste=\$\{onComposerPaste\(props\)\}/);
   assert.match(source, /PASTED_TEXT_ATTACHMENT_THRESHOLD/);
@@ -140,20 +130,9 @@ test("the composer ports OpenClaw input interactions without unsupported control
 });
 
 test("typing edits the composer without re-rendering the transcript behind it", () => {
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   const home = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
 
-  // The draft is a plain field, so assigning it never schedules a Lit update.
-  assert.match(app, /private draft = "";/u);
-  assert.doesNotMatch(app, /@state\(\) private draft\b/u);
-  // Typing asks for a render only when the composer stops or starts holding text
-  // (Send/Stop), and never for the post-render measuring pass.
-  const typed = app.slice(app.indexOf("private typeDraft"), app.indexOf("private setDraft"));
-  assert.match(typed, /if \(\(draft\.trim\(\) !== ""\) !== hadText\) this\.requestUpdate\(\);/u);
-  assert.doesNotMatch(typed, /draftRevision/u);
-  // A draft HUI puts in the composer does reach the textarea and its height.
-  assert.match(app, /private setDraft\(draft: string\) \{\s*this\.draft = draft;\s*this\.draftRevision \+= 1;\s*\}/u);
-  assert.match(app, /onDraftInput: this\.typeDraft,/u);
+  // Typing itself renders only when the composer starts or stops holding text (composer-controller.test.ts).
   // Reply quotes onto the live textarea value, not a draft rendered earlier.
   assert.match(home, /props\.onDraftInput\(textarea\.value\)/u);
   assert.match(home, /props\.onDraftChange\(replyDraft\(editor\?\.value \?\? props\.draft, text\)\)/u);
@@ -161,12 +140,10 @@ test("typing edits the composer without re-rendering the transcript behind it", 
 
 test("chat and New Session expose cursor-aware local path completion", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(source, /renderLocalPathMenu\(\{ \.\.\.props\.localPathMenu/u);
   assert.match(source, /localPathQuery\(textarea\.value, textarea\.selectionStart, textarea\.selectionEnd\)/u);
   assert.match(source, /props\.onLocalPathKeydown\(event\)/u);
-  assert.match(app, /loadLocalPathSuggestions\(workspace, query\.input\)/u);
-  assert.match(app, /completeLocalPath\(this\.draft, query, suggestion\)/u);
+  // Loading and completing the paths is composer-controller.test.ts's.
 });
 
 test("the primary chat uses the OpenClaw transcript and composer hierarchy", () => {
@@ -298,11 +275,9 @@ test("the model control remains visible while PI has no model catalog", () => {
 
 test("the launch directory picker uses the themed combobox instead of a native datalist", () => {
   const source = readFileSync(new URL("./directory-picker.ts", import.meta.url), "utf8");
-  for (const path of ["./home.ts", "../hui-app.ts"]) {
-    const consumer = readFileSync(new URL(path, import.meta.url), "utf8");
-    assert.match(consumer, /renderDirectoryPicker\(/);
-    assert.doesNotMatch(consumer, /<datalist id="(?:launch-directories|group-default-directories)"/);
-  }
+  const consumer = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  assert.match(consumer, /renderDirectoryPicker\(/);
+  assert.doesNotMatch(consumer, /<datalist id="(?:launch-directories|group-default-directories)"/);
   const styles = readStyles("../styles/openclaw-workspaces.css") + readStyles("../styles/openclaw-launch.css");
 
   assert.match(source, /role="combobox"/);
@@ -310,12 +285,6 @@ test("the launch directory picker uses the themed combobox instead of a native d
   assert.match(source, /role="option"/);
   assert.doesNotMatch(source, /<datalist id="launch-directories"/);
   assert.match(styles, /\.new-session-page__directory-menu/);
-});
-
-test("the thread follows the live compaction divider like new transcript rows", () => {
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-
-  assert.match(app, /if \(\(changed\.has\("transcript"\) \|\| changed\.has\("compaction"\) \|\| changed\.has\("paneVisible"\)\) && this\.autoFollow\) this\.scrollToBottom\(\);/);
 });
 
 test("the composer exposes PI context usage beside the model", () => {
@@ -448,7 +417,6 @@ test("the chat header exposes original same-session split controls and pane-loca
 
 test("session rename mirrors the Control UI single title field without a group editor", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   const editor = source.slice(source.indexOf("function renderSessionEditor"), source.indexOf("function renderDeleteConfirmation"));
   assert.match(editor, /class="chat-pane__session-title-input"/);
   assert.match(editor, /event\.key === "Enter"/);
@@ -456,7 +424,6 @@ test("session rename mirrors the Control UI single title field without a group e
   assert.match(editor, /@blur=/);
   assert.doesNotMatch(editor, /name="group"|<button|<form/);
   assert.match(source, /onRename: \(title: string\) => void;/);
-  assert.match(app, /renameSession\(targetId, \{ title \}\)/);
 });
 
 test("composer notices render above the progress card and queue, which underlap their next sibling", () => {

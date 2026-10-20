@@ -1,18 +1,18 @@
 /**
  * Importing a bot (the roster's + → Import bot…) and exporting one (its ⋯ → Export…). Rendering only: `hui-app.ts`
- * owns the state and every request (`lib/bot-templates.ts`). The import dialog has two steps: the source (a file or a
+ * owns the state and every request (`lib/bots/templates.ts`). The import dialog has two steps: the source (a file or a
  * folder, a Grok Bot link, or pasted text), then the gateway's preview of everything creating it would do, which shows
  * all of the imported text, since it is untrusted, before Create. The export dialog shows the gateway's review of the
  * bot (what the cleanup and the utility model would change), a group picker per change, and the files exactly as
- * Download saves them (`buildExport`, the gateway's own).
+ * Download saves them (`buildExport`, a copy of the gateway's).
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { live } from "lit/directives/live.js";
-import { buildExport, changeGroups, withAdditions, type BotExportAddition, type BotExportBuild, type BotExportGroup, type BotExportReview } from "../../shared/bot-export.ts";
-import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview } from "../../shared/bot-templates.ts";
-import { botTriggerFilterSummary, cooldownLabel } from "../../shared/bot-triggers.ts";
-import type { BotView } from "../lib/bots.ts";
-import type { BotImportTab, PickedSource } from "../lib/bot-templates.ts";
+import { buildExport, changeGroups, withAdditions, type BotExportBuild } from "../lib/bots/export-preview.ts";
+import type { BotExportAddition, BotExportGroup, BotExportReview, BotImportPreview } from "../api/schema/bot-templates.ts";
+import type { BotView } from "../lib/bots/bots.ts";
+import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportTab, type PickedSource } from "../lib/bots/templates.ts";
+import { botTriggerFilterSummary, cooldownLabel } from "../lib/bots/triggers.ts";
 import { icons } from "../lib/icons.ts";
 import { renderBotAvatar, type BotPlace } from "./bots.ts";
 import { describeRoutineSchedule } from "./settings-automation.ts";

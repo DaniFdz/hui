@@ -4,7 +4,13 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import { contentEtag, decodeText, FilesError, FilesRoot, normalizeFilesPath, parseIfMatch, searchRank, validEntryName } from "./files.ts";
+import { fileExtension, MAX_RESOLVE_PATHS, contentEtag, decodeText, FilesError, FilesRoot, normalizeFilesPath, parseIfMatch, searchRank, validEntryName } from "./files.ts";
+
+test("file extensions and resolve limits match the portable fixtures", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./files.fixture.json", import.meta.url), "utf8"));
+  assert.equal(MAX_RESOLVE_PATHS, fixture.maxResolvePaths);
+  for (const item of fixture.paths) assert.equal(fileExtension(item.input), item.extension);
+});
 
 const base = await realpath(await mkdtemp(join(tmpdir(), "hui-files-")));
 afterAll(() => rm(base, { recursive: true, force: true }));

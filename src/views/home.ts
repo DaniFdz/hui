@@ -10,7 +10,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { renderPaneMoveHandle } from "./pane-move-handle.ts";
 import { matchesModelSearch, modelSearchText } from "../lib/model-selection.ts";
-import { sessionGroupLabel, unreachableHost } from "../lib/sessions-store.ts";
+import { sessionGroupLabel, unreachableHost } from "../lib/session/sessions.ts";
 import type {
   Attachment,
   RuntimeModel,
@@ -30,35 +30,35 @@ import type {
   TranscriptItem,
   GitCheckoutInfo,
   WorktreeProgress,
-} from "../lib/sessions-store.ts";
+} from "../api/sessions.ts";
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
-import { composerEnterMode, composerPlaceholder } from "../lib/composer-state.ts";
+import { composerEnterMode, composerPlaceholder } from "../lib/composer/state.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
-import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session-ui-state.ts";
-import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer-textarea.ts";
+import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
+import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
-import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../../shared/thinking.ts";
+import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
-import type { SplitDirection } from "../lib/session-multiplexer.ts";
-import { renderAgentMarkdown, renderMarkdown } from "../lib/markdown.ts";
+import type { SplitDirection } from "../lib/session/multiplexer.ts";
+import { renderAgentMarkdown, renderMarkdown } from "../lib/markdown/markdown.ts";
 import "../components/file-link.ts";
 import "../components/github-embeds.ts";
 import "../components/datadog-embeds.ts";
 import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
-import type { QuestionnaireQuestion, QuestionnaireResult } from "../../server/questionnaires.ts";
-import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown-blocks.ts";
+import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
+import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
 import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
-import { parseSlackLink } from "../lib/slack-link.ts";
+import { parseSlackLink } from "../lib/markdown/slack-link.ts";
 import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./chat/projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
@@ -70,13 +70,12 @@ import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
-import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bot-face.ts";
+import { chatFaceState, hasRunningTool, type BotFaceState } from "../lib/bots/face.ts";
 import { renderCallButton } from "./bot-voice.ts";
 import { renderCallCard } from "./chat-call.ts";
-import type { BotView } from "../lib/bots.ts";
-import { botLook, previewLine } from "../../shared/bots.ts";
+import { botLook, previewLine, type BotView } from "../lib/bots/bots.ts";
 import { navigationPath } from "../lib/navigation.ts";
-import { slashCommandQuery, type CommandQuery } from "../lib/slash-commands.ts";
+import { slashCommandQuery, type CommandQuery } from "../lib/composer/slash-commands.ts";
 import { renderSlashMenu, SLASH_MENU_ID, slashOptionId, type SlashMenuProps } from "./slash-menu.ts";
 import { localPathQuery, type LocalPathQuery } from "../lib/local-paths.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
@@ -112,6 +111,8 @@ const STATUS_TEXT: Record<SessionStatus, string> = {
 };
 
 const SEND_LONG_PRESS_MS = 450;
+export const TRANSCRIPT_SCROLLER_SELECTOR = ".chat-thread";
+export const QUESTION_FOCUS_SELECTOR = '.session-question-card :is([role="radio"], [role="checkbox"])[tabindex="0"], .session-question-card input:not([type="hidden"]), .session-question-card textarea';
 const sendLongPressTimers = new WeakMap<HTMLElement, number>();
 const consumedSendLongPresses = new WeakSet<HTMLElement>();
 const composerDragDepth = new WeakMap<HTMLElement, number>();

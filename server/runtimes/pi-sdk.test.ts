@@ -11,9 +11,9 @@ import type { PiSession } from "./pi.ts";
 import type { RuntimeEvent } from "./types.ts";
 import { shippedTools } from "./tool-catalog.ts";
 import { configuredResourceId } from "./resource-policy.ts";
-import { bundledSkills } from "../bundled-skills.ts";
-import { registerAgentToolHandler } from "../agent-tools-bridge.ts";
-import { SecretFiles, SecretRequests } from "../secret-requests.ts";
+import { bundledSkills } from "../pi/bundled-skills.ts";
+import { registerAgentToolHandler } from "../agent-tools/bridge.ts";
+import { SecretFiles, SecretRequests } from "../agent-tools/secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 import { waitFor } from "../test-support/wait-for.ts";
 
@@ -42,7 +42,7 @@ async function fixture(t: TestContext) {
   await writeFile(join(cwd, "fixture.txt"), "SDK fixture content\n");
   const log = join(dir, "requests.jsonl");
   const sessions: PiSession[] = [];
-  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
   });
@@ -379,6 +379,12 @@ test("SDK honors HUI skill disable controls without changing PI files", { timeou
   const notice = nextEvent(session, (event) => event.type === "notice");
   await session.prompt("/skill:disabled-fixture");
   assert.deepEqual(await notice, { type: "notice", message: "Skill “disabled-fixture” is disabled for HUI sessions.", level: "warning" });
+  const aliased = nextEvent(session, (event) => event.type === "notice");
+  const aliasSettled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("$disabled-fixture now");
+  assert.deepEqual(await aliased, { type: "notice", message: "Skill “disabled-fixture” is disabled for HUI sessions.", level: "warning" });
+  await aliasSettled;
+  assert.equal(session.isStreaming, false, "the composer's $name form settles like the /skill command");
   await assert.rejects(readFile(f.log, "utf8"), { code: "ENOENT" });
   const settled = nextEvent(session, (event) => event.type === "settled");
   await session.prompt("Skill filtering fixture"); await settled;
@@ -586,7 +592,7 @@ async function requestWith(log: string, marker: string): Promise<string> {
 test("SDK keeps the whole branch visible across compaction and rewinds to any message by entry id", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t);
   await mkdir(join(f.agentDir, "extensions"));
-  await copyFile(new URL("../../e2e/compaction-extension.ts", import.meta.url), join(f.agentDir, "extensions", "compaction.ts"));
+  await copyFile(new URL("../../e2e/fixtures/compaction-extension.ts", import.meta.url), join(f.agentDir, "extensions", "compaction.ts"));
   // The long third turn alone exceeds keepRecentTokens: PI keeps it verbatim and summarizes the first two.
   await writeFile(join(f.agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", compaction: { enabled: true, keepRecentTokens: 400, reserveTokens: 1024 } }));
   const session = await f.start();

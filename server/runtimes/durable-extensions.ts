@@ -27,7 +27,7 @@ import {
   type AgentEvent, type CompactionReason, type Conversation, type EntryId, type EntryRecord, type Extension, type NestedToolExecutionResult,
   type ToolExecutionApi, type ToolExecutionResult, type ToolRegistration,
 } from "@earendil-works/pi-durable";
-import { safeSourceLabel } from "../source-label.ts";
+import { safeSourceLabel } from "../pi/source-label.ts";
 import { createPolicySettingsManager } from "./resource-policy.ts";
 import type { RuntimeCommand, RuntimeEvent, RuntimeQuestion, RuntimeQuestionResponse, RuntimeUsage } from "./types.ts";
 

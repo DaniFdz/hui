@@ -7,11 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, test, type TestContext } from "vitest";
-import { normalizeSettings } from "../../src/lib/settings.ts";
+import { normalizeSettings } from "../hui-settings.ts";
 import type { DurableSession } from "./durable.ts";
-import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
+import type { AgentToolInvocation } from "../agent-tools/bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
-import { SecretFiles, SecretRequests } from "../secret-requests.ts";
+import { SecretFiles, SecretRequests } from "../agent-tools/secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
@@ -22,6 +22,7 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, registryCaller } = await import("./durable-host.ts");
+const { createDurableBots } = await import("../bots/durable-access.ts");
 // The estimate Durable's compaction thresholds use; the package root does not export it.
 const { estimateContext } = await import(new URL("./harness/compaction.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
   estimateContext(view: unknown, extra: readonly unknown[]): number;
@@ -45,7 +46,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
   }
   await writeFile(join(cwd, "fixture.txt"), "Durable fixture content\n");
   const log = join(dir, "requests.jsonl");
-  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
   });
@@ -80,6 +81,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
       invokeTool: options.invokeTool ?? (async (invocation) => { invocations.push(invocation); return { ok: true }; }),
       lookupCaller: async () => undefined,
     });
+    created.configureDurableBots(createDurableBots(created, {}));
     hosts.push(created);
     return created;
   };
@@ -180,6 +182,14 @@ test("resume references round-trip Durable's integer conversation IDs only", () 
   for (const reference of [undefined, "/home/me/.pi/session.jsonl", "durable:", "durable:4x", "durable:-1"]) {
     assert.equal(durableConversationId(reference), undefined, String(reference));
   }
+});
+
+test("a host whose bots were never configured refuses to open its store, so no conversation runs without bot policy", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-durable-unconfigured-"));
+  const host = new DurableHost({ dir: join(dir, "store"), agentDir: dir, resume: false });
+  await assert.rejects(host.open(), /before its bots were configured/u);
+  assert.equal(existsSync(join(dir, "store")), false);
+  await rm(dir, { recursive: true, force: true });
 });
 
 test("the live view streams an answer Durable sends whole, exactly once", { timeout: 45_000 }, async (t) => {
@@ -355,6 +365,69 @@ test("cancelling a placed tracked input aborts its task, and cancelling it again
   await settled;
 });
 
+test("a provider retry is announced as a recovery notice", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { settings: { retry: { enabled: true, maxRetries: 1, baseDelayMs: 1 } } });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-retry-notice" }, f.host());
+  const notified = nextEvent(session, (event) => event.type === "notice");
+  await session.prompt("E2E_ERROR retried");
+  const notice = await notified;
+  assert(notice.type === "notice" && notice.level === "warning" && notice.recovery === true, JSON.stringify(notice));
+});
+
+test("a skill turned off in HUI is refused with a notice and never reaches the model", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const skill = join(f.agentDir, "skills", "review", "SKILL.md");
+  await mkdir(join(f.agentDir, "skills", "review"), { recursive: true });
+  await writeFile(skill, "---\nname: review\ndescription: Review fixture skill.\n---\nReview body.\n");
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-disabled-skill" }, f.host({ huiSettings: normalizeSettings({ disabledSkills: [{ name: "review", path: skill }] }) }));
+  const notified = nextEvent(session, (event) => event.type === "notice");
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("/skill:review now");
+  assert.deepEqual(await notified, { type: "notice", level: "warning", message: "Skill “review” is disabled for HUI sessions." });
+  await settled;
+  const aliased = nextEvent(session, (event) => event.type === "notice");
+  await session.prompt("$review now");
+  assert.deepEqual(await aliased, { type: "notice", level: "warning", message: "Skill “review” is disabled for HUI sessions." }, "the composer's $name form too");
+  assert.equal(session.isStreaming, false);
+  assert.deepEqual(session.transcript(), [], "nothing reached the model");
+});
+
+test("a skill of the same name from another folder stays usable when only one of them is turned off", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.agentDir, "skills", "review"), { recursive: true });
+  await writeFile(join(f.agentDir, "skills", "review", "SKILL.md"), "---\nname: review\ndescription: Review fixture skill.\n---\nReview body.\n");
+  const elsewhere = join(f.cwd, "elsewhere", "review", "SKILL.md");
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-same-name-skill" }, f.host({ huiSettings: normalizeSettings({ disabledSkills: [{ name: "review", path: elsewhere }] }) }));
+  const settled = nextEvent(session, (event) => event.type === "settled");
+  await session.prompt("/skill:review now");
+  await settled;
+  assert.ok(session.transcript().some((entry) => entry.kind === "message" && entry.role === "user"), "the enabled review ran");
+});
+
+test("a bundled skill turned off in HUI is refused with a notice", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const visualizeOff = normalizeSettings({ disabledSkills: [{ name: "visualize", path: "hui:skill:visualize" }] });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-disabled-bundled-skill" }, f.host({ huiSettings: visualizeOff }));
+  for (const text of ["/skill:visualize now", "$visualize now"]) {
+    const notified = nextEvent(session, (event) => event.type === "notice");
+    await session.prompt(text);
+    assert.deepEqual(await notified, { type: "notice", level: "warning", message: "Skill “visualize” is disabled for HUI sessions." }, text);
+  }
+  assert.deepEqual(session.transcript(), [], "nothing reached the model");
+});
+
+test("a skill named like a bundled one turned off in HUI stays usable", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.agentDir, "skills", "visualize"), { recursive: true });
+  await writeFile(join(f.agentDir, "skills", "visualize", "SKILL.md"), "---\nname: visualize\ndescription: Local visualize skill.\n---\nLocal body.\n");
+  const visualizeOff = normalizeSettings({ disabledSkills: [{ name: "visualize", path: "hui:skill:visualize" }] });
+  const replaced = await startDurable({ cwd: f.cwd, huiSessionId: "durable-replaced-bundled-skill" }, f.host({ huiSettings: visualizeOff }));
+  const settled = nextEvent(replaced, (event) => event.type === "settled");
+  await replaced.prompt("/skill:visualize now");
+  await settled;
+  assert.ok(replaced.transcript().some((entry) => entry.kind === "message" && entry.role === "user"), "the local visualize ran");
+});
+
 test("a tracked provider failure retains its original diagnostic for routine failure classification", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t, { settings: { retry: { enabled: false } } });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "tracked-model-error" }, f.host());
@@ -366,7 +439,7 @@ test("a gateway killed mid-tool resumes the run without replaying bash", { timeo
   const f = await fixture(t);
   const hostUrl = new URL("./durable-host.ts", import.meta.url).href;
   const durableUrl = new URL("./durable.ts", import.meta.url).href;
-  const settingsUrl = new URL("../../src/lib/settings.ts", import.meta.url).href;
+  const settingsUrl = new URL("../hui-settings.ts", import.meta.url).href;
   // A separate process owns the store and is SIGKILLed while bash is running.
   const child = spawn(process.execPath, ["--input-type=module", "-e", `
     const { DurableHost } = await import(${JSON.stringify(hostUrl)});
@@ -374,6 +447,7 @@ test("a gateway killed mid-tool resumes the run without replaying bash", { timeo
     const { normalizeSettings } = await import(${JSON.stringify(settingsUrl)});
     const host = new DurableHost({ dir: ${JSON.stringify(f.store)}, agentDir: ${JSON.stringify(f.agentDir)},
       readSettings: async () => normalizeSettings(undefined), invokeTool: async () => ({}), lookupCaller: async () => undefined });
+    host.configureDurableBots(null);
     const session = await startDurable({ cwd: ${JSON.stringify(f.cwd)}, huiSessionId: "crash" }, host);
     process.stdout.write("REF " + session.sessionFile + "\\n");
     await session.prompt("E2E_COMMAND_RUNNING hold the command", undefined, { requestId: "routine-crash" });
@@ -909,7 +983,7 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
 });
 
 test("a worker row with the same durable:N never becomes the caller of a gateway conversation", async () => {
-  const { updateRegistry } = await import("../sessions.ts");
+  const { updateRegistry } = await import("../sessions/sessions.ts");
   const base = { cwd: root, tool: "durable", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   await updateRegistry(() => [
     { ...base, id: "remote-row", piSessionFile: "durable:7", worker: "w1" },
@@ -1109,6 +1183,29 @@ test("end-of-run handlers see a Stop in ctx.signal and hold the settle, not the 
   assert.equal((await logged(f.events, "agent_end"))[1]?.["stopped"], true, "a handler tells a user's Stop by ctx.signal");
 });
 
+test("a Stop resolves once the end-of-run handlers ran, so a rewind can follow at once", { timeout: 45_000 }, async (t) => {
+  const f = await extensionFixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-stop-settles" }, f.host());
+  let release!: () => void;
+  (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd = new Promise((resolve) => { release = resolve; });
+  t.onTestFinished(() => { release(); delete (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd; });
+  const running = nextEvent(session, (event) => event.type === "tool_start");
+  const holding = nextEvent(session, (event) => event.type === "notice" && event.message === "agent_end is holding");
+  await session.prompt("E2E_COMMAND_RUNNING hold the command");
+  await running;
+  let stopped = false;
+  const stopping = session.abort().then(() => { stopped = true; });
+  await holding;
+  assert.equal(stopped, false, "Stop waits for the end-of-run handlers, as PI's does");
+  const releasedAt = Date.now();
+  release();
+  await stopping;
+  assert.ok(Date.now() - releasedAt < 5_000, "Stop wakes when the handlers finish, not at its wait's timeout");
+  assert.equal(session.isStreaming, false, "a resolved Stop is idle");
+  await session.rewind({ userFromEnd: 0 }, { excludeUserMessage: true });
+  assert.deepEqual(session.transcript(), []);
+});
+
 test("rewinding drops prompt-specific extension context but keeps independent context", { timeout: 45_000 }, async (t) => {
   const f = await extensionFixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-rewind-context" }, f.host());
@@ -1252,7 +1349,7 @@ test("interrupted runs wait for their extensions even when another session's sta
   }` } });
   const hostUrl = new URL("./durable-host.ts", import.meta.url).href;
   const durableUrl = new URL("./durable.ts", import.meta.url).href;
-  const settingsUrl = new URL("../../src/lib/settings.ts", import.meta.url).href;
+  const settingsUrl = new URL("../hui-settings.ts", import.meta.url).href;
   // A separate gateway owns the store and is SIGKILLed while bash is running.
   const child = spawn(process.execPath, ["--input-type=module", "-e", `
     const { DurableHost } = await import(${JSON.stringify(hostUrl)});
@@ -1260,6 +1357,7 @@ test("interrupted runs wait for their extensions even when another session's sta
     const { normalizeSettings } = await import(${JSON.stringify(settingsUrl)});
     const host = new DurableHost({ dir: ${JSON.stringify(f.store)}, agentDir: ${JSON.stringify(f.agentDir)},
       readSettings: async () => normalizeSettings(undefined), invokeTool: async () => ({}), lookupCaller: async () => undefined });
+    host.configureDurableBots(null);
     const session = await startDurable({ cwd: ${JSON.stringify(f.cwd)}, huiSessionId: "crash-extensions" }, host);
     process.stdout.write("REF " + session.sessionFile + "\\n");
     await session.prompt("E2E_COMMAND_RUNNING hold the command");

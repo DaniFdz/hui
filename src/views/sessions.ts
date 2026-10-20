@@ -6,7 +6,8 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
 import { navigationPath } from "../lib/navigation.ts";
-import { sessionGroupLabel, type SessionGroup, type SessionStatus, type SessionView } from "../lib/sessions-store.ts";
+import { type SessionGroup, type SessionStatus, type SessionView } from "../api/sessions.ts";
+import { sessionGroupLabel } from "../lib/session/sessions.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
 loadViewAssets(() => import("../styles/openclaw-workspaces.css"));

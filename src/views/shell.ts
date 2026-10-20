@@ -3,27 +3,28 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
 import { icons as openclawIcons } from "../components/openclaw/icons.ts";
-import { sessionMenuShortcuts } from "../lib/session-menu-shortcuts.ts";
+import { sessionMenuShortcuts } from "../lib/session/menu-shortcuts.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
-import { sessionGroupLabel, storedSessionGroup, unreachableHost, type SessionGroup, type SessionView } from "../lib/sessions-store.ts";
+import { type SessionGroup, type SessionView } from "../api/sessions.ts";
+import { sessionGroupLabel, storedSessionGroup, unreachableHost } from "../lib/session/sessions.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
-import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/sidebar-sessions.ts";
+import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/session/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
 import { kanbanIcon } from "./kanban.ts";
-import { isSessionStage, SESSION_STAGE_LABELS } from "../../shared/session-stages.ts";
-export { filterSessionGroups } from "../lib/sidebar-sessions.ts";
+import { isSessionStage, SESSION_STAGE_LABELS } from "../lib/kanban.ts";
+export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
 import { HUI_PAGES, type HuiPage } from "../lib/pages.ts";
 import { navigationPath } from "../lib/navigation.ts";
-import { writeSessionDrag } from "../lib/session-pane-layout.ts";
-import { pullRequestAccessibleLabel } from "../../shared/pull-requests.ts";
+import { writeSessionDrag } from "../lib/session/pane-layout.ts";
+import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
-import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../../shared/jira.ts";
+import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../lib/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
-import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bot-roster.ts";
+import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bots/roster.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
 // The real browser entry loads these before this view can render.

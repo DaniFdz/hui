@@ -10,8 +10,8 @@
  */
 import { readFile } from "node:fs/promises";
 import { workers, type RemoteSessionLink, type RemoteSessionSink, type RemoteSnapshot } from "../workers.ts";
-import type { RemoteState } from "../worker/host.ts";
-import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
+import type { RemoteState } from "../worker/protocol.ts";
+import type { RuntimeInspection } from "./types.ts";
 import type { AgentRuntime, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimePromptOptions, RuntimePromptResult, RuntimeSession, RuntimeUnreachableError, StartOptions, TranscriptEntry } from "./types.ts";
 
 type Frame = RemoteSnapshot & { event?: RuntimeEvent };

@@ -24,6 +24,7 @@
     "dev": "node bin/hui-dev.mjs gateway",
     "desktop": "npm run build && node bin/hui.mjs desktop",
     "build": "node scripts/build.mjs",
+    "api:schema": "node scripts/api-schema.ts",
     "prepack": "npm run build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -31,7 +32,7 @@
     "e2e:sdk": "node e2e/sdk-backend.mjs",
     "e2e:package": "node e2e/package-browser.mjs",
     "eval:jira-draft": "node evals/jira-draft/run.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.server.json",
     "postinstall": "node desktop/install.mjs --postinstall"
   },
   "dependencies": {

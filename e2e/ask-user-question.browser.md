@@ -5,7 +5,7 @@ HUI's own `ask_user_question` tool replaces the PI extension
 plain select and input dialogs (option lines like `1. Label — description`,
 previews folded into the title, multi-select typed as numbers).
 
-Only the model provider is mocked (`e2e/pi-provider-fixture.mjs`): a prompt
+Only the model provider is mocked (`e2e/fixtures/pi-provider-fixture.mjs`): a prompt
 holding `E2E_ASK_USER:<name>` makes it call `ask_user_question` with the
 workspace's `ask-<name>.json` (an array of inputs means parallel calls), and its
 next answer quotes every tool result as `tool answered: …`. HUI, the gateway,
@@ -16,7 +16,7 @@ Pi Durable or PI's SDK worker, the tool and the browser are real.
 1. From a clean checkout: `node e2e/visual-verification.mjs launch --branch
    <branch>` (Durable), or with `--pi-sessions` (PI's SDK worker); `doctor` on
    the receipt.
-2. Stress run: `node e2e/ask-user-question-stress.mjs --receipt <receipt.json>`
+2. Stress run: `node e2e/probes/ask-user-question-stress.mjs --receipt <receipt.json>`
    writes the questionnaires (`single`, `full`, `parallel`, `invalid`,
    `stress`) into the workspace, drives a private headless Chrome with real key
    and mouse events and prints one PASS/FAIL line per scenario. Pass scenario
@@ -102,6 +102,6 @@ Date: 2026-10-17, branch `dani.fernandez/question-timeout`.
   `cli/bots.test.ts`.
 - The question timeout was exercised on Durable only. PI's SDK worker, a
   remote worker and a bot's chat reach the same gateway handler
-  (`server/hui.ts`), which starts the timer; the timer itself and Off waiting
-  past a timeout are covered by `server/questionnaires.test.ts`, not in the
+  (`server/services.ts`), which starts the timer; the timer itself and Off waiting
+  past a timeout are covered by `server/agent-tools/questionnaires.test.ts`, not in the
   browser.

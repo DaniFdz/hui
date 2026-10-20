@@ -4,11 +4,11 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
-import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
-import type { BotExportReview } from "../shared/bot-export.ts";
-import type { BotImportPreview } from "../shared/bot-templates.ts";
+import { BOTS_OFF_MESSAGE, type BotView } from "../server/bots-format.ts";
+import type { BotExportReview } from "../server/bots/export-format.ts";
+import type { BotImportPreview } from "../server/bots/templates/formats.ts";
 import { exportAdditions, exportCommand, formatExportReview, formatImportPreview, importCommand, importSource } from "./bot-templates.ts";
-import type { BotIO } from "./bots.ts";
+import type { BotIO } from "./gateway-client.ts";
 import { parseCli } from "./main.ts";
 
 const BOT: BotView = {

@@ -208,9 +208,9 @@ export async function launch(expectedBranch) {
   for (const path of [artifacts, workspace, join(agentDir, "extensions"), join(agentDir, "skills", "sdk-fixture")]) await mkdir(path, { recursive: true });
   await writeFile(join(workspace, "fixture.txt"), "Real SDK browser fixture\n");
   await writeFile(join(agentDir, "skills", "sdk-fixture", "SKILL.md"), "---\nname: sdk-fixture\ndescription: SDK browser skill enablement fixture.\n---\nUse only for fixture skill checks.\n");
-  await copyFile(join(repo, "e2e/question-extension.ts"), join(agentDir, "extensions/question.ts"));
-  await copyFile(join(repo, "e2e/slash-commands-extension.ts"), join(agentDir, "extensions/commands.ts"));
-  await copyFile(join(repo, "e2e/compaction-extension.ts"), join(agentDir, "extensions/compaction.ts"));
+  await copyFile(join(repo, "e2e/fixtures/question-extension.ts"), join(agentDir, "extensions/question.ts"));
+  await copyFile(join(repo, "e2e/fixtures/slash-commands-extension.ts"), join(agentDir, "extensions/commands.ts"));
+  await copyFile(join(repo, "e2e/fixtures/compaction-extension.ts"), join(agentDir, "extensions/compaction.ts"));
   const receiptPath = join(dir, "receipt.json");
   const receipt = { version: 1, state: "starting", runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
   const save = async () => {
@@ -273,7 +273,7 @@ export async function launch(expectedBranch) {
   try {
     // --demo: the scripted model and seeded world of the demo videos (e2e/demo), with the fake GitHub CLI.
     const demo = process.argv.includes("--demo");
-    const provider = start(demo ? "demo/provider.ts" : "pi-provider-fixture.mjs", { HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: join(artifacts, "provider.jsonl") });
+    const provider = start(demo ? "demo/provider.ts" : "fixtures/pi-provider-fixture.mjs", { HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: join(artifacts, "provider.jsonl") });
     receipt.providerPid = provider.pid;
     receipt.providerUrl = await ready(provider, (done) => {
       let output = "";
@@ -301,9 +301,9 @@ export async function launch(expectedBranch) {
     // New sessions run on Durable, including PI extensions; journeys checking PI-worker semantics opt in.
     if (process.argv.includes("--pi-sessions")) serverEnv.HUI_SESSION_RUNTIME = "pi";
     if (process.argv.includes("--jira-fixture")) {
-      // Local Jira Cloud subset (e2e/jira-fixture.mjs), connected with its
+      // Local Jira Cloud subset (e2e/fixtures/jira-fixture.mjs), connected with its
       // public test credentials; the fixture model is also the utility model.
-      const jira = start("jira-fixture.mjs", { HUI_E2E_JIRA_PORT: "0" });
+      const jira = start("fixtures/jira-fixture.mjs", { HUI_E2E_JIRA_PORT: "0" });
       receipt.jiraUrl = await ready(jira, (done) => {
         let output = "";
         const onData = (data) => { output += data; const url = output.match(/http:\/\/127\.0\.0\.1:\d+/u)?.[0]; if (url) done(url); };
@@ -323,7 +323,7 @@ export async function launch(expectedBranch) {
       ] }));
     }
     if (process.argv.includes("--github-fixture") || demo) {
-      // Fake gh (e2e/github-cli-fixture.mjs) signed in to two synthetic accounts
+      // Fake gh (e2e/fixtures/github-cli-fixture.mjs) signed in to two synthetic accounts
       // with deterministic commits and pull requests since they were created.
       const gh = join(dir, "gh");
       await mkdir(gh, { recursive: true });
@@ -345,10 +345,10 @@ export async function launch(expectedBranch) {
         "hui-e2e": activity("2022-03-14T09:00:00Z", 14, 1, 0.55),
         "hui-e2e-personal": activity("2019-08-02T18:00:00Z", 2, 9, 0.15),
       }));
-      Object.assign(serverEnv, { HUI_GITHUB_CLI: join(repo, "e2e", "github-cli-fixture.mjs"), HUI_FAKE_GH_DIR: gh });
+      Object.assign(serverEnv, { HUI_GITHUB_CLI: join(repo, "e2e", "fixtures", "github-cli-fixture.mjs"), HUI_FAKE_GH_DIR: gh });
     }
     if (process.argv.includes("--datadog-fixture") || demo) {
-      // Fake pup (e2e/pup-cli-fixture.mjs). E2E: `e2e-prod` is signed in, `e2e-stale` needs a sign-in, one dashboard
+      // Fake pup (e2e/fixtures/pup-cli-fixture.mjs). E2E: `e2e-prod` is signed in, `e2e-stale` needs a sign-in, one dashboard
       // each, snapshots answer 403 (no image). The demo: Acme's org and its signup dashboard, whose graph the
       // recorder draws and the demo provider serves (HUI_DATADOG_TEST_ORIGIN admits it). Share links still read the
       // real public Datadog page.
@@ -369,7 +369,7 @@ export async function launch(expectedBranch) {
         await writeFile(join(pup, "snapshot.json"), JSON.stringify({ snapshot_url: `${receipt.providerUrl}/demo/datadog-graph.png` }));
         serverEnv.HUI_DATADOG_TEST_ORIGIN = receipt.providerUrl;
       }
-      Object.assign(serverEnv, { HUI_PUP_CLI: join(repo, "e2e", "pup-cli-fixture.mjs"), HUI_FAKE_PUP_DIR: pup });
+      Object.assign(serverEnv, { HUI_PUP_CLI: join(repo, "e2e", "fixtures", "pup-cli-fixture.mjs"), HUI_FAKE_PUP_DIR: pup });
     }
     if (demo) {
       serverEnv.HUI_DEMO_STAGE = join(repo, "e2e", "demo", "stage.html");
@@ -383,7 +383,7 @@ export async function launch(expectedBranch) {
     }
     if (process.argv.includes("--activity-fixture")) {
       // Two weeks of synthetic Durable sessions for Contributions → Calendar.
-      execFileSync(process.execPath, [join(repo, "e2e", "activity-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
+      execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "activity-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
     }
     const server = start("visual-verification-server.mjs", {
       ...serverEnv,

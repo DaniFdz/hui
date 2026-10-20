@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test, type TestContext } from "vitest";
-import type { WorkerView } from "../shared/workers.ts";
+import type { WorkerView } from "../server/worker/workers.ts";
 import { formatWorkers, workersCommand } from "./workers.ts";
 
 /** A stand-in gateway: the workers routes over an in-memory list, recording each request. */

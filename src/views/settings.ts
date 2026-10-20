@@ -4,31 +4,31 @@
  * (providers, integrations, tools, browser, workers, calls) are their own elements.
  */
 import { html, nothing, type TemplateResult } from "lit";
-import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal-font.ts";
-import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearance.ts";
-import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme.ts";
-import { botsEnabled, QUESTION_TIMEOUTS, type Settings } from "../lib/settings.ts";
-import type { PowerState, PowerStatus } from "../../shared/power.ts";
-import type { ThemePreview } from "../lib/theme-store.ts";
-import type { ThemeSwatches } from "../lib/shadcn-theme.ts";
+import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal/font.ts";
+import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/theme/appearance.ts";
+import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
+import { botsEnabled, QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
+import type { PowerState, PowerStatus } from "../api/schema/power.ts";
+import type { ThemePreview } from "../lib/theme/theme-store.ts";
+import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
 import { skillIsEnabled, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
-import type { GatewayHealth, WorkspaceInspection } from "../lib/control-surfaces.ts";
+import type { GatewayHealth, WorkspaceInspection } from "../api/control-surfaces.ts";
 import { formatGatewayUptime } from "../lib/gateway-presentation.ts";
-import type { ObservabilitySnapshot } from "../lib/observability.ts";
+import type { ObservabilitySnapshot } from "../api/observability.ts";
 import { icons } from "../lib/icons.ts";
 import { hasOpenWebAwesomePopup } from "../lib/web-awesome.ts";
 import { renderPicker, renderSettingsPicker } from "./settings-picker.ts";
-import { renderListFilter } from "./list-filter.ts";
+import { renderListFilter } from "../components/list-filter.ts";
 import { renderSettingsToggle } from "./settings-toggle.ts";
-import "./settings-tools.ts";
-import "./settings-browser.ts";
-import "./settings-vscode.ts";
-import "./settings-jira.ts";
-import "./settings-calls.ts";
-import "./settings-github.ts";
-import "./settings-datadog.ts";
-import "./settings-providers.ts";
-import "./settings-workers.ts";
+import "../components/settings/tools.ts";
+import "../components/settings/browser.ts";
+import "../components/settings/vscode.ts";
+import "../components/settings/jira.ts";
+import "../components/settings/calls.ts";
+import "../components/settings/github.ts";
+import "../components/settings/datadog.ts";
+import "../components/settings/providers.ts";
+import "../components/settings/workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
 import { renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
 import {
@@ -167,9 +167,9 @@ function renderThemeCard(
 }
 
 /** Heading and description sit outside the card, so rows own their inset. */
-function renderSection(heading: string, description: string, body: TemplateResult) {
+function renderSection(heading: string, description: string, body: TemplateResult, section?: string) {
   return html`
-    <section class="settings-section">
+    <section class="settings-section" data-settings-section=${section ?? nothing}>
       <div class="settings-section__header">
         <div class="settings-section__copy">
           <h2 class="settings-section__heading">${heading}</h2>
@@ -1013,7 +1013,7 @@ function renderWorktreesSettingsPage(props: SettingsProps) {
           <button type="submit" class="btn">Save</button>
         </form>
       `)}
-    `)}`;
+    `, "branch-prefix")}`;
 }
 
 function renderSecurityPage(props: SettingsProps) {

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test, type TestContext } from "vitest";
-import { BOTS_OFF_MESSAGE, type BotView } from "../shared/bots.ts";
-import type { AutomationRun, AutomationTask } from "../src/lib/automation-types.ts";
-import type { BotIO } from "./bots.ts";
+import { BOTS_OFF_MESSAGE, type BotView } from "../server/bots-format.ts";
+import type { AutomationRun, AutomationTask } from "../server/automation.ts";
+import type { BotIO } from "./gateway-client.ts";
 import { HELP, parseCli } from "./main.ts";
 import { botCommand } from "./bots.ts";
 import { formatSchedules, scheduleCommand, scheduleText, taskFacts, type ScheduleSession } from "./schedules.ts";

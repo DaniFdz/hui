@@ -18,12 +18,12 @@ import { CODEMODE_TOOL_NAME, type CodemodeNestedCall } from "@earendil-works/pi-
 // The estimators Durable's own compaction uses, so the meter matches its thresholds.
 import { calculateContextTokens, estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { SettingsManager, type Skill } from "@earendil-works/pi-coding-agent";
-import { botTurnOrigin, type BotTurnOrigin } from "../../shared/bots.ts";
-import { resolveCommandReference } from "../../src/lib/command-references.ts";
-import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
+import { botTurnOrigin, type BotTurnOrigin } from "./turn-origins.ts";
+import { resolveCommandReference } from "./command-references.ts";
+import type { RuntimeInspection } from "./types.ts";
 import { durableContext as context, durableHost, modelCallable, type DurableHost } from "./durable-host.ts";
-import { CallEntry } from "./durable-bots.ts";
-import { botSkills, describeTool, planBotTools, skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-bot-access.ts";
+import { CallEntry } from "./turn-origins.ts";
+import { skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
 import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
@@ -32,6 +32,7 @@ import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
+import { disabledSkillNotice } from "./skill-policy-extension.mjs";
 import type {
   AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
   RuntimePromptOptions, RuntimePromptResult, RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
@@ -331,13 +332,14 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
    * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat (`message_bot` alone for any
    * other conversation while Labs → Bots is on), and drops the browser when Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
-   * it has no use for them (`durable-bot-access.ts`), and without the HUI tools that act on another machine than this
+   * it has no use for them (`bots/durable-access.ts`), and without the HUI tools that act on another machine than this
    * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Codemode, in the default selection, goes with
    * Settings → Tools → Codemode off, or a bot's chat that has it turned off. Applies per conversation, at start and on
    * every change. */
   async applyTools(): Promise<void> {
     const { browser, codemode, labs } = await this.#host.settings();
     const browserEnabled = browser.enabled !== false;
+    const bots = this.#host.bots;
     const bot = await this.#host.botStateFor(this.#conversation.id);
     // A session tags bots while they are on; a bot's chat has message_bot among its own tools.
     const tag = !bot && labs.bots ? this.#host.botTag : undefined;
@@ -355,7 +357,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     let withCodemode = codemode.enabled;
     const remove = [...inactive.values()];
     this.#botOffer = [];
-    if (bot) {
+    if (bot && bots) {
       // What a session here is offered, in Durable's order: the coding tools, HUI's, the extensions' and the added ones.
       const offered = this.#composed([
         [this.#host.codingTools, () => ({ kind: "coding" })],
@@ -365,10 +367,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         [optchat?.tools ?? [], () => ({ kind: "hui" })],
         [botTools?.tools ?? [], () => ({ kind: "bot" })],
       ]).filter(({ name }) => !inactive.has(name));
-      const skills = await this.availableSkills();
-      const on = botSkills(skills, bot.disabledSkills).length;
-      const plan = planBotTools(offered, bot, { memory: (optchat?.tools ?? []).map((tool) => tool.name), skillsOn: on, skillsOff: skills.length - on });
-      this.#botOffer = plan.listable.map(({ tool, origin }) => describeTool(tool, origin));
+      const plan = bots.planOffer(offered, bot, { memory: (optchat?.tools ?? []).map((tool) => tool.name), skills: await this.availableSkills() });
+      this.#botOffer = plan.offer;
       // Removed by name, so a tool that appears later is on until the operator turns it off.
       remove.push(...plan.removed.map(({ tool }) => tool));
       // Without its tool, the chat goes without codemode's prompt section too.
@@ -493,8 +493,9 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
    * chat. */
   async #skills(loader: { getSkills(): { skills: Skill[] } }): Promise<readonly Skill[]> {
     const all = loader.getSkills().skills;
+    const bots = this.#host.bots;
     const bot = await this.#host.botStateFor(this.#conversation.id);
-    return bot ? botSkills(all, bot.disabledSkills) : all;
+    return bot && bots ? bots.skills(all, bot) : all;
   }
 
   /** Entries since the latest reset, oldest first: what the extensions' PI session view holds. */
@@ -774,7 +775,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         this.#agent = event.agent;
         return;
       case "auto_retry_start":
-        this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}` });
+        this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}`, recovery: true });
         return;
       case "task_failed":
         // A failed compaction's divider shows its reason instead.
@@ -831,6 +832,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     void Promise.race([ended, late]).then((outcome) => {
       clearTimeout(timer);
       this.#settling -= 1;
+      this.#notifyQuiet();
       if (this.#disposed) return;
       if (outcome === "late") this.#emit({ type: "notice", level: "warning", message: "An extension is still handling the end of the run." });
       this.#emit({ type: "settled", historyRefreshed });
@@ -957,6 +959,14 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return /^\$[^\s]+(?:\s|$)/u.test(text) ? resolveCommandReference(text, await this.listCommands()) : text;
   }
 
+  async #refusedSkill(text: string): Promise<string | undefined> {
+    if (!/^(?:\/skill:|\$)\S/u.test(text)) return undefined;
+    const disabled = (await this.#host.settings()).disabledSkills;
+    const disabledPaths = new Set(disabled.map((entry) => entry.path));
+    const usable = new Set((await this.#skills(await this.#loader())).filter((skill) => !disabledPaths.has(skill.filePath)).map((skill) => skill.name));
+    return disabledSkillNotice(text, disabled.filter((entry) => !usable.has(entry.name)));
+  }
+
   async #expand(text: string): Promise<string> {
     const loader = await this.#loader();
     const skills = /^\/skill:|(?<!\S)\$/u.test(text) ? await this.#skills(loader) : [];
@@ -975,6 +985,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       ...(sending.images ?? []),
       ...attachments.flatMap((item) => item.kind === "image" ? [{ type: "image" as const, data: item.dataBase64, mimeType: item.mimeType }] : []),
     ];
+    const refused = sending.expand ? await this.#refusedSkill(text) : undefined;
+    if (refused) {
+      this.#emit({ type: "notice", level: "warning", message: refused });
+      return false;
+    }
     if (extensions) {
       const input = await extensions.input(text, images, sending.source, whenBusy === "reject" ? undefined : whenBusy);
       if (!input) return false;
@@ -1354,13 +1369,14 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Durable's Stop (`Conversation.abort`): withdraws queued input and cancels the run and every compaction of its
    * ordinary scope, blocking and manual ones; background compactions keep running. Resolves once this view has seen
-   * that work end: HUI treats a resolved Stop as idle. */
+   * that work end and the run's end-of-run handlers finish, as PI's Stop does: HUI treats a resolved Stop as idle. */
   async abort(): Promise<void> {
     this.#extensions?.aborted();
     if (this.#starting > 0) this.#extensions?.abortStart();
     await this.#host.resumed;
     await this.#conversation.abort(context);
     await this.#until(() => !this.#busy());
+    await this.#until(() => this.#settling === 0);
   }
 
   /** Cancels the manual compactions running beside the conversation, and only them (Durable's `abortTask`), and

@@ -7,7 +7,7 @@ accessibility and cost. Run against `e2e/visual-verification.mjs launch
 --branch feat/bot-faces --pi-sessions` in headless Chromium driven through CDP
 (the Browser tool's headless Brave hangs on screenshots on this host). HUI, the
 gateway's `/__hui/bots` routes and stream, Pi Durable and OptChat are real; the
-model provider (`e2e/pi-provider-fixture.mjs`) is a deterministic fake. No
+model provider (`e2e/fixtures/pi-provider-fixture.mjs`) is a deterministic fake. No
 operator transcript, credential or account is used.
 
 Since 2026-10-07 the Look is a row of the bot's Settings tab rather than a
@@ -80,8 +80,8 @@ the old dialog.
 
 That run also checked the face on a call, through a VoiceStudio fixture HUI no
 longer has. On GPT-Live calls the face listens with the microphone's level and
-speaks with the bot's audio: `src/lib/bot-face.test.ts`,
-`src/lib/voice-controller.test.ts` and `src/lib/live-call.test.ts` check it, as
+speaks with the bot's audio: `src/lib/bots/face.test.ts`,
+`src/controllers/voice-controller.test.ts` and `src/lib/voice/live-call.test.ts` check it, as
 did the real calls of the calls pull request.
 
 ## More shapes and ears (2026-10-08, `f2a2753`, clean checkout; doctor passed before and after)
@@ -108,8 +108,8 @@ Browser tool only opened the captures to inspect them.
    sheet (`scrollWidth` 390, the card 353 px).
 5. Console: Lit's development-mode warnings only, as on `main`.
 
-`set_profile` changing the look is covered by `server/bot-service.test.ts` and
-`server/runtimes/durable-bots.test.ts`; no browser run had the model call it.
+`set_profile` changing the look is covered by `server/bots/service.test.ts` and
+`server/bots/durable.test.ts`; no browser run had the model call it.
 
 ## Sleeping, working and done (2026-10-19, `66a873d`, clean checkout; doctor passed before and after)
 

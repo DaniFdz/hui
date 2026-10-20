@@ -10,7 +10,7 @@ bin/hui.mjs gateway run`) in a temporary HOME and XDG directories, with a local
 worker: its connect command is `env HOME=<temp>/remote SHELL=/bin/sh`, so the
 "remote" is a separate home on the same machine, with the built worker release
 pre-installed (no network). HUI, the worker host, Pi Durable and OptChat are
-real; the model provider (`e2e/pi-provider-fixture.mjs`) is the deterministic
+real; the model provider (`e2e/fixtures/pi-provider-fixture.mjs`) is the deterministic
 fake. Driven through CDP in headless Chromium. No operator transcript,
 credential or account is used.
 

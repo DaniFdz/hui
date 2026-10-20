@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "vitest";
 
 import { aggregateUsage, diagnosticPath, mirrorDiagnosticLogs, readObservability, recordDiagnosticEvent } from "./observability.ts";
-import type { SessionRecord } from "./sessions.ts";
+import type { SessionRecord } from "./sessions/sessions.ts";
 
 test("usage aggregates numeric PI metadata without returning transcript content", async () => {
   const root = await mkdtemp(join(tmpdir(), "hui-usage-"));

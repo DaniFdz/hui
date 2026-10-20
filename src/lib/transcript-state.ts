@@ -3,9 +3,9 @@
  * runtime events into rows, including optimistic user messages until the runtime accepts them. The runtime's
  * transcript stays authoritative; these rows are a projection for rendering.
  */
-import { sanitizeMetrics } from "../../server/runtimes/transcript-metrics.ts";
-import type { RuntimeEvent, TranscriptAttachment, TranscriptItem } from "./sessions-store.ts";
-import { parseCallRecord } from "../../shared/calls.ts";
+import { sanitizeMetrics } from "./transcript-metrics.ts";
+import type { RuntimeEvent, TranscriptAttachment, TranscriptItem } from "../api/sessions.ts";
+import { parseCallRecord } from "./voice/calls.ts";
 
 let localSequence = 0;
 

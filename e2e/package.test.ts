@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 import { test } from "node:test";
 import { watch } from "node:fs";
 import { WebSocket } from "ws";
-import { releaseFixture } from "./release-fixture.mjs";
+import { releaseFixture } from "./fixtures/release-fixture.mjs";
 
 const exec = promisify(execFile);
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -36,7 +36,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   const installed = dirname(dirname(cli));
   const command = async (...args: string[]) => (await exec(process.execPath, [cli, ...args], { cwd: temporary, env, timeout: 60_000, maxBuffer: 1024 * 1024 })).stdout.trim();
   const npm = async (args: string[], cwd = repo) => (await exec("npm", args, { cwd, env, timeout: 120_000, maxBuffer: 1024 * 1024 })).stdout;
-  const provider = spawn(process.execPath, [join(repo, "e2e/pi-provider-fixture.mjs")], {
+  const provider = spawn(process.execPath, [join(repo, "e2e/fixtures/pi-provider-fixture.mjs")], {
     env: { ...env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: workspace, HUI_E2E_PROVIDER_LOG: join(temporary, "provider.jsonl") }, stdio: ["ignore", "pipe", "pipe"],
   });
   let providerError = "";

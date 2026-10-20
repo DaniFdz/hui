@@ -5,7 +5,7 @@
 import { html, nothing } from "lit";
 import { relativeTime } from "../../lib/browser-view.ts";
 import { icons } from "../../lib/icons.ts";
-import { watcherStateLabel, watcherStateNote, type Watcher } from "../../lib/watchers.ts";
+import { watcherStateLabel, watcherStateNote, type Watcher } from "../../api/watchers.ts";
 
 export type WatcherLogView = {
   id: string;

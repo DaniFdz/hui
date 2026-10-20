@@ -48,7 +48,6 @@ buildNpmPackage {
       ../desktop
       ../scripts
       ../server
-      ../shared
       ../src
       ../public
       ../themes

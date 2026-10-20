@@ -11,7 +11,7 @@ import type { Message, Models, UserMessage } from "@earendil-works/pi-ai";
 import { AgentDoc, createRegistry, Harness, UserEntry, type ConversationId, type EntryRecord } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { OptChatStatus } from "../optchat/memory.ts";
-import type { CallRecord } from "../../shared/calls.ts";
+import type { CallRecord } from "../calls-format.ts";
 import type { OptChatTuning } from "./durable-optchat.ts";
 import type { DurableSession } from "./durable.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
@@ -23,13 +23,14 @@ process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 afterAll(() => rm(root, { recursive: true, force: true }));
 const { DurableHost, durableContext, modelCallable } = await import("./durable-host.ts");
+const { createDurableBots } = await import("../bots/durable-access.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {
   configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry,
 } = await import("./durable-optchat.ts");
 const { readObservability } = await import("../observability.ts");
-const { durableBotConversations } = await import("../bot-conversations.ts");
-const { optChatBotMemory } = await import("../bot-memory.ts");
+const { durableBotConversations } = await import("../bots/conversations.ts");
+const { optChatBotMemory } = await import("../bots/memory.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
 // ── Pure parts ───────────────────────────────────────────────────────────────
@@ -143,7 +144,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
   await mkdir(agentDir); await mkdir(cwd);
   await writeFile(join(cwd, "fixture.txt"), "Durable fixture content\n");
   const log = join(dir, "requests.jsonl");
-  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/pi-provider-fixture.mjs", import.meta.url))], {
+  const provider = spawn(process.execPath, [fileURLToPath(new URL("../../e2e/fixtures/pi-provider-fixture.mjs", import.meta.url))], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: cwd, HUI_E2E_PROVIDER_LOG: log },
   });
@@ -168,6 +169,7 @@ async function fixture(t: TestContext, options: { contextWindow?: number; settin
       dir: store, agentDir, invokeTool: async () => ({ ok: true }), lookupCaller: async () => undefined,
       ...(tuning ? { optchat: tuning } : {}),
     });
+    created.configureDurableBots(createDurableBots(created, {}));
     hosts.push(created);
     return created;
   };

@@ -18,7 +18,7 @@ import type {
   StartOptions,
   TranscriptEntry,
 } from "./runtimes/types.ts";
-import { DEFAULT_SETTINGS } from "../src/lib/settings.ts";
+import { DEFAULT_SETTINGS } from "./hui-settings.ts";
 import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 import { waitFor } from "./test-support/wait-for.ts";
 
@@ -26,16 +26,26 @@ import { waitFor } from "./test-support/wait-for.ts";
 // be in place before the module is loaded.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-live-"));
 
-const { LiveSessions, SessionBusyError } = await import("./live-sessions.ts");
-const { deleteSession } = await import("./hui.ts");
-const { readRegistry, SessionRegistryError, updateRegistry } = await import("./sessions.ts");
+const { LiveSessions, SessionBusyError } = await import("./sessions/live-sessions.ts");
+const { createSessionLifecycle } = await import("./sessions/lifecycle.ts");
+const cleanedUp = { subagents: [] as string[], taskSuggestions: [] as string[], watchers: [] as string[], managedBrowser: [] as string[] };
+const { deleteSession } = createSessionLifecycle({
+  views: { pendingView: () => { throw new Error("No pending sessions here."); } },
+  readAttachments: async () => ({ attachments: [], cleanupRejected: async () => undefined }),
+  subagents: () => ({ forgetSessions: (ids) => { cleanedUp.subagents.push(...ids); } }),
+  taskSuggestions: () => ({ forget: (ids) => { cleanedUp.taskSuggestions.push(...ids); } }),
+  watchers: () => ({ forget: async (ids) => { cleanedUp.watchers.push(...ids); } }),
+  managedBrowser: () => ({ closeOwner: (owner) => { cleanedUp.managedBrowser.push(owner); } }),
+});
+const { readRegistry, SessionRegistryError, updateRegistry } = await import("./sessions/sessions.ts");
 const { readObservability } = await import("./observability.ts");
 const { workers } = await import("./workers.ts");
-type SessionRecord = import("./sessions.ts").SessionRecord;
-type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
-type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
-type SessionStatusUpdate = import("./live-sessions.ts").SessionStatusUpdate;
-type SecretQuestion = import("./secret-requests.ts").SecretQuestion;
+const { terminals } = await import("./terminals/terminals.ts");
+type SessionRecord = import("./sessions/sessions.ts").SessionRecord;
+type SessionStreamMessage = import("./sessions/live-sessions.ts").SessionStreamMessage;
+type SessionSnapshot = import("./sessions/live-sessions.ts").SessionSnapshot;
+type SessionStatusUpdate = import("./sessions/live-sessions.ts").SessionStatusUpdate;
+type SecretQuestion = import("./agent-tools/secret-requests.ts").SecretQuestion;
 
 /** Stands in for a pi subprocess, so the state machine can be driven event by
  * event instead of waiting five seconds for a real boot. */
@@ -690,7 +700,7 @@ test("manual continuation remains available after automatic recovery is exhauste
 test("settled background activity becomes unread and a reader clears it", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
-  const updates: import("./live-sessions.ts").SessionStatusUpdate[] = [];
+  const updates: import("./sessions/live-sessions.ts").SessionStatusUpdate[] = [];
   manager.watchStatuses((update) => updates.push(update));
   manager.ensure(recordFor("unread"));
   await waitForBoot(manager, "unread");
@@ -791,6 +801,8 @@ test("a primary failure before output retries once on the configured fallback", 
     if (session.prompts.length === 2) retried();
   };
 
+  const notices: unknown[] = [];
+  manager.subscribe("fallback", (message) => { if (message.kind === "event" && message.event.type === "notice") notices.push(message.event); });
   await manager.prompt("fallback", "keep working");
   session.history = [
     { kind: "message", role: "user", text: "keep working" },
@@ -799,6 +811,7 @@ test("a primary failure before output retries once on the configured fallback", 
   session.emit({ type: "settled" });
   await retryAccepted;
 
+  assert.deepEqual(notices, [{ type: "notice", level: "warning", message: "Primary model failed before producing output. Retrying with anthropic/sonnet.", recovery: true }]);
   assert.deepEqual(session.switched, ["anthropic/sonnet"]);
   assert.deepEqual(session.prompts, ["keep working", "keep working"]);
   const restored = new Promise<void>((resolve) => {
@@ -1598,7 +1611,7 @@ async function bootWithCompaction(id: string, resumed: Extract<RuntimeEvent, { t
       return session;
     },
   });
-  const updates: import("./live-sessions.ts").SessionStatusUpdate[] = [];
+  const updates: import("./sessions/live-sessions.ts").SessionStatusUpdate[] = [];
   manager.watchStatuses((update) => updates.push(update));
   const record = { ...recordFor(id), tool: "durable" };
   manager.ensure(record);
@@ -2471,9 +2484,14 @@ test("deleting a parent closes descendant runtimes and blocks stale child opens"
   const records = [parent, child, grandchild, outside];
   for (const row of records) { manager.ensure(row); await waitForBoot(manager, row.id); }
   let stored = records;
+  for (const calls of Object.values(cleanedUp)) calls.length = 0;
+  const closedTerminals = vi.spyOn(terminals, "closeOwner");
   await deleteSession(parent.id, manager, async (mutate) => { stored = [...mutate(stored)]; return stored; });
   assert.deepEqual(stored.map((r) => r.id), [outside.id]);
   assert.deepEqual(started.map((runtime) => runtime.disposed), [true, true, true, false]);
   for (const row of [parent, child, grandchild]) assert.equal(manager.ensure(row), false);
+  const tree = [parent.id, child.id, grandchild.id].sort();
+  for (const calls of [...Object.values(cleanedUp), closedTerminals.mock.calls.map(([owner]) => owner)]) assert.deepEqual([...calls].sort(), tree);
+  closedTerminals.mockRestore();
   manager.disposeAll();
 });

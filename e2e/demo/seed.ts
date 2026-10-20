@@ -69,6 +69,7 @@ const seeds: Seed[] = [
 const text = (value: string) => [{ type: "text", text: value }];
 const usage = { input: 1200, output: 300, cacheRead: 0, cacheWrite: 0, totalTokens: 1500, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const host = new DurableHost({ dir: join(CONFIG_DIR, "durable"), agentDir, resume: false, lookupCaller: async () => undefined });
+host.configureDurableBots(null);
 const harness = await host.open();
 const sessions: Record<string, unknown>[] = [];
 for (const [index, seed] of seeds.entries()) {

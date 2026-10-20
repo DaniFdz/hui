@@ -2,7 +2,7 @@
 
 HUI follows the semantic color contract shipped by OpenClaw Control UI
 2026.9.4. Components consume roles; theme files provide the source colors;
-`src/lib/shadcn-theme.ts` derives the remaining roles exactly once.
+`src/lib/theme/shadcn-theme.ts` derives the remaining roles exactly once.
 
 Reference sources in the OpenClaw repository:
 
@@ -79,7 +79,7 @@ semantic set. Important derived roles are:
 
 ### Contrast rules
 
-After derivation, `CONTRAST_RULES` in `src/lib/shadcn-theme.ts` checks every
+After derivation, `CONTRAST_RULES` in `src/lib/theme/shadcn-theme.ts` checks every
 place a foreground meets a surface, in order, so a fill is settled before the
 text on it:
 
@@ -91,12 +91,12 @@ text on it:
 
 A failing color keeps its OKLCH hue, its chroma is capped at the source's and at
 what sRGB can show, and only its lightness moves, to the first value that passes
-(`src/lib/color-contrast.ts`, after Pi's system theme). Roles that defaulted to
+(`src/lib/theme/color-contrast.ts`, after Pi's system theme). Roles that defaulted to
 it follow (`--muted-foreground`, `--accent-muted`, `--accent-2`, `--danger`,
 `--text-strong`, `--chat-text`); roles the theme set itself do not. A color
 written in a syntax only the browser converts (`lab()`, `color()`, names) is
 left as written. A user accent from Appearance is solved per mode against `--bg`
-and `--card` by `src/lib/theme-store.ts`. The native Claw, Rose and Miami
+and `--card` by `src/lib/theme/theme-store.ts`. The native Claw, Rose and Miami
 palettes come from OpenClaw's pinned stylesheets and are not rewritten; a bundled
 theme test runs every `themes/*.json` through the rules.
 

@@ -5,7 +5,6 @@ import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import { normalizeSettings } from "../src/lib/settings.ts";
 
 // HUI's directory, the Durable store and PI's agent directory resolve at import time, and PI finds skills in
 // ~/.agents/skills: never the operator's own.
@@ -28,8 +27,9 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
   }],
 } } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
+const { normalizeSettings } = await import("../server/hui-settings.ts");
 const { formatDoctorReport, runDoctor } = await import("./doctor.ts");
-const { readRegistry, writeRegistry } = await import("../server/sessions.ts");
+const { readRegistry, writeRegistry } = await import("../server/sessions/sessions.ts");
 const { DurableHost } = await import("../server/runtimes/durable-host.ts");
 const { startDurable } = await import("../server/runtimes/durable.ts");
 
@@ -73,10 +73,12 @@ const piCheck = (report: Awaited<ReturnType<typeof runDoctor>>) => report.checks
 const statuses = (report: Awaited<ReturnType<typeof runDoctor>>) => piCheck(report).items.map((item) => [item.id, item.status]);
 
 function inspector() {
-  return new DurableHost({
+  const host = new DurableHost({
     dir: store, agentDir, readSettings: async () => normalizeSettings(undefined),
     invokeTool: async () => ({}), lookupCaller: async () => undefined, resume: false,
   });
+  host.configureDurableBots(null);
+  return host;
 }
 
 test("the report lists sessions still on PI, changes nothing, and --fix waits for the gateway to stop", async () => {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { BotView } from "../../shared/bots.ts";
+import type { BotView } from "../api/schema/bots.ts";
 import { botMentionSuggestions, completeLocalPath, localPathQuery } from "./local-paths.ts";
 
 test("local path queries follow the caret and also expose leading absolute prefixes", () => {

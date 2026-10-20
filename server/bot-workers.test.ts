@@ -1,6 +1,6 @@
 /**
  * Bots on a remote worker end to end on one machine (HUI-18). The gateway runs
- * in this process with its routes, as in bot-routes.test.ts; the "remote" is a
+ * in this process with its routes, as in routes/bots.test.ts; the "remote" is a
  * separate home reached through `env … sh -s`, as in workers.test.ts, with this
  * checkout pre-installed as its release, so nothing is shared with the gateway
  * except what the worker protocol carries. A deterministic Anthropic-compatible
@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, beforeAll, test, type TestContext } from "vitest";
 import { fileURLToPath } from "node:url";
-import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "../shared/bots.ts";
+import { botKickoffName, type BotCatalog, type BotMemoryStatus, type BotView } from "./bots-format.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 
@@ -46,7 +46,7 @@ await writeFile(join(agentDir, "extensions", "ask.ts"), `export default function
 `);
 
 const log = join(root, "provider.jsonl");
-const provider = spawn(process.execPath, [join(repo, "e2e", "pi-provider-fixture.mjs")], {
+const provider = spawn(process.execPath, [join(repo, "e2e", "fixtures", "pi-provider-fixture.mjs")], {
   env: { ...process.env, HUI_E2E_PROVIDER_PORT: "0", HUI_E2E_WORKSPACE: join(remoteHome, "project"), HUI_E2E_PROVIDER_LOG: log, HUI_E2E_PROVIDER_KEY: KEY },
   stdio: ["ignore", "pipe", "inherit"],
 });
@@ -62,12 +62,13 @@ await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvide
 await mkdir(join(root, "gateway", "config", "hui"), { recursive: true });
 await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 
-const { middleware, startBackend, stopBackend } = await import("./hui.ts");
+const { middleware } = await import("./hui.ts");
+const { startBackend, stopBackend } = await import("./backend.ts");
 const { workers } = await import("./workers.ts");
-const { liveSessions } = await import("./live-sessions.ts");
-const { readRegistry } = await import("./sessions.ts");
+const { liveSessions } = await import("./sessions/live-sessions.ts");
+const { readRegistry } = await import("./sessions/sessions.ts");
 const { workerRelease } = await import("./worker/release.ts");
-const { remoteBots } = await import("./bot-remote.ts");
+const { remoteBots } = await import("./bots/remote.ts");
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 let origin = "";
 let workerId = "";

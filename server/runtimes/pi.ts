@@ -9,13 +9,13 @@
  */
 import { piEnvironment } from "./pi-environment.ts";
 import { RuntimeTimings, sanitizeMetrics } from "./transcript-metrics.ts";
-import { parseCallRecord } from "../../shared/calls.ts";
-import { resolveCommandReference } from "../../src/lib/command-references.ts";
+import { parseCallRecord } from "../calls-format.ts";
+import { resolveCommandReference } from "./command-references.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { relayCredentials, secretEnv } from "../worker/credentials.ts";
 import { fileURLToPath } from "node:url";
-import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-skills.ts";
-import { resolvePiAgentDir } from "../pi-paths.ts";
+import { enabledBundledSkillPaths, isBundledSkillPreference } from "../pi/bundled-skills.ts";
+import { resolvePiAgentDir } from "../pi/paths.ts";
 import { PROVIDERS_DIR, readProviderSelections } from "./hui-models.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import { modelControls, piThinking } from "./model-controls.ts";
@@ -23,7 +23,7 @@ import { piBackend } from "./pi-backend.ts";
 import { piCommand } from "./pi-command.ts";
 import { SdkInspector } from "./sdk-inspector.ts";
 import { RuntimeOutputError } from "./types.ts";
-import type { RuntimeInspection } from "../../src/lib/tools-types.ts";
+import type { RuntimeInspection } from "./types.ts";
 
 import type {
   CompactionReason,
@@ -41,7 +41,7 @@ import type {
   RuntimeUsage,
   TranscriptEntry,
 } from "./types.ts";
-import { agentToolEnvironment } from "../agent-tools-bridge.ts";
+import { agentToolEnvironment } from "../agent-tools/bridge.ts";
 import { readHuiSettings } from "../hui-settings.ts";
 
 const START_TIMEOUT_MS = 30_000;
@@ -1043,6 +1043,8 @@ export class PiSession implements RuntimeSession {
       && resolved.split(/\s/u, 1)[0] === `/${command.name}`)) {
       throw new Error("Run plugin actions when the session is idle.");
     }
+    const [token, name] = /^\$(?:skill:)?([^\s]+)/u.exec(text)!;
+    if (resolved === text && this.#disabledSkillCommands.has(`skill:${name}`)) return `/skill:${name}${text.slice(token.length)}`;
     return resolved;
   }
 

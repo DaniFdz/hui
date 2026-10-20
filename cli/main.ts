@@ -12,9 +12,9 @@ import { packageVersion, type Installation } from "./installation.ts";
 import { LOG_FILE, withLifecycleLock } from "./state.ts";
 import { updateRelease } from "./update.ts";
 import { checkNightly, checkRelease } from "./releases.ts";
-import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_TAGGING, BOT_THINKING_LEVELS, botFaceColor, botFaceEars, botFaceShape, isBotTagging } from "../shared/bots.ts";
-import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../shared/voice.ts";
-import { GPT_LIVE_VOICES, gptLiveVoice } from "../shared/calls.ts";
+import { BOT_FACE_COLORS, BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_TAGGING, BOT_THINKING_LEVELS, botFaceColor, botFaceEars, botFaceShape, isBotTagging } from "../server/bots-format.ts";
+import { VOICE_LANGUAGE_EXAMPLES, voiceLanguage } from "../server/bots/voice-languages.ts";
+import { GPT_LIVE_VOICES, gptLiveVoice } from "../server/calls-format.ts";
 import { checkTriggerAdd } from "./bot-triggers.ts";
 
 export const HELP = `Usage:

@@ -4,9 +4,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
-import { botKickoffText, BOTS_OFF_MESSAGE, type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotView } from "../shared/bots.ts";
-import type { AutomationTask } from "../src/lib/automation-types.ts";
-import { botCommand, findBot, formatBot, formatBots, formatLook, lookColor, parseDuration, parseZoom, questionAnswer, routineSchedule, type BotIO } from "./bots.ts";
+import { botKickoffText, BOTS_OFF_MESSAGE, type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotView } from "../server/bots-format.ts";
+import type { AutomationTask } from "../server/automation.ts";
+import { botCommand, formatBot, formatBots, formatLook, lookColor, parseZoom, questionAnswer } from "./bots.ts";
+import { findBot, parseDuration, routineSchedule, type BotIO } from "./gateway-client.ts";
 
 function view(id: string, handle: string, extra: Partial<BotView> = {}): BotView {
   return {

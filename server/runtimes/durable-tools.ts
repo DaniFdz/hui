@@ -5,7 +5,7 @@
  */
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { defineExtension, defineTool, type ConversationId, type Extension, type ToolRegistration } from "@earendil-works/pi-durable";
-import type { AgentToolInvocation } from "../agent-tools-bridge.ts";
+import type { AgentToolInvocation } from "../agent-tools/bridge.ts";
 import { directHuiBridge } from "./bridge-client.mjs";
 import { huiToolDefinitions } from "./hui-tools.ts";
 

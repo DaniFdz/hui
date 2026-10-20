@@ -11,13 +11,6 @@ test("triggers show on the overview and have a page of their own, self-contained
   assert.match(panel, /triggers: Omit<BotTriggersProps, "bot" \| "now">;/u);
   assert.match(between(panel, "function renderPanelView(", "/* ── size"), /case "triggers": return renderBotTriggers\(\{ bot: props\.bot, now: Date\.now\(\), \.\.\.props\.triggers, adding: props\.openedFrom === "triggers-add" \}\);/u, "the overview's + opens the page on its add form");
   assert.match(between(panel, "function renderTriggersSummary(", "function renderActivity("), /renderSettingsToggle\(`Enable \$\{trigger\.name\}`, trigger\.enabled, \(checked\) => props\.triggers\.onToggle\(trigger, checked\), state\.pending\)/u, "each one switches on the overview too");
-  const app = read("../hui-app.ts");
-  assert.match(app, /private botTriggers = new BotTriggersController\(this, \{ visible: \(\) => this\.botTriggersVisible\(\) \}\);/u);
-  assert.match(between(app, "private botTriggersVisible(", "private followBotTools("), /return this\.botPanelShows\("overview", "triggers"\);/u, "read while the overview or the page shows");
-  assert.match(app, /this\.botTools\.reset\(target\.id\);\n\s+this\.botTriggers\.reset\(target\.id\);/u, "another bot starts clean");
-  assert.match(app, /this\.botTriggers\.sync\(this\.botTriggersVisible\(\) \? this\.activeBot\(\) : undefined\);/u);
-  assert.match(app, /triggers: this\.botTriggers\.props\(bot\),/u);
-  assert.match(app, /this\.followBotTools\(\);\n\s+this\.followBotTriggers\(\);/u, "on every bots frame: a bot loaded after the page opened, or woken");
   assert.match(read("./bot-triggers.ts"), /loadViewAssets\(\(\) => import\("\.\.\/styles\/bot-triggers\.css"\)\);/u);
 });
 

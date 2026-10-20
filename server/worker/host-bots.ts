@@ -1,12 +1,12 @@
 /**
  * Bots on this worker (HUI-18): what a gateway asks the host for a bot whose
  * chat runs here. Its conversation and OptChat memory live in the host's own
- * Durable store, so these reuse the gateway's adapters (`bot-conversations.ts`
- * and `bot-memory.ts`) against the host's DurableHost: a bot's conversation is
+ * Durable store, so these reuse the gateway's adapters (`bots/conversations.ts`
+ * and `bots/memory.ts`) against the host's DurableHost: a bot's conversation is
  * created here exactly as the gateway creates a local one, its `hui.bot`
  * document and OptChat in one commit. Every bot has a home here, HUI's private
  * folder for it under the data directory (`home(botId)`), as the gateway keeps
- * one under its configuration: its SOUL.md lives there (`bot-souls.ts`, the
+ * one under its configuration: its SOUL.md lives there (`bots/souls.ts`, the
  * gateway's own implementation and guard, on this directory), and a bot without
  * a directory of its own works there. The bot itself (its record, routines,
  * roster) stays with the gateway; nothing here knows other bots.
@@ -18,21 +18,22 @@
  * this host's loader finds them at, the mirrored ones included), and hears of a
  * grant made here in a `bot.access` frame.
  */
-import { BOT_FACTS_FILE, localBotFacts } from "../bot-facts.ts";
+import { BOT_FACTS_FILE, localBotFacts } from "../bots/facts.ts";
 import { realpath, rm, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../../shared/bots.ts";
-import { parseCallRecord } from "../../shared/calls.ts";
-import { durableBotConversations } from "../bot-conversations.ts";
-import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
-import { BOT_TEMPLATE_LIMITS } from "../../shared/bot-templates.ts";
-import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bot-skills.ts";
-import { caseClash, skillFilePath } from "../bot-templates/common.ts";
-import { localBotSouls } from "../bot-souls.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, accessField, normalizeSoul } from "../bots.ts";
+import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../bots-format.ts";
+import { parseCallRecord } from "../calls-format.ts";
+import { durableBotConversations } from "../bots/conversations.ts";
+import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bots/memory.ts";
+import { BOT_TEMPLATE_LIMITS } from "../bots/templates/formats.ts";
+import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bots/skills.ts";
+import { caseClash, skillFilePath } from "../bots/templates/common.ts";
+import { localBotSouls } from "../bots/souls.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, accessField, normalizeSoul } from "../bots/bots.ts";
+import { createDurableBots, type DurableBotsDeps } from "../bots/durable-access.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId } from "../runtimes/durable.ts";
-import { resolveWorkingDirectory } from "../working-directories.ts";
+import { resolveWorkingDirectory } from "../git/working-directories.ts";
 import { isRecord, type Frame, type Peer } from "./protocol.ts";
 
 /** What `hello` lists when the host can run bots, so a gateway tells an older host from this one. */
@@ -45,7 +46,7 @@ export const BOT_MEMORY_STATUS_FRAME = "bot.memory.status";
 export const BOT_ACCESS_FEATURE = "bot-access";
 /** The frame a bot's lists arrive in after the operator allowed one of its requests here: `{ botId, access }`. */
 export const BOT_ACCESS_FRAME = "bot.access";
-/** What `hello` lists when the host keeps a bot's own skills in its home (`bot.skills.*`, `bot-skills.ts`): an imported bot's. */
+/** What `hello` lists when the host keeps a bot's own skills in its home (`bot.skills.*`, `bots/skills.ts`): an imported bot's. */
 export const BOT_SKILLS_FEATURE = "bot-skills";
 /** What `hello` lists when `bot.skills.*` also carry the files beside a SKILL.md (a template's scripts). */
 export const BOT_SKILL_FILES_FEATURE = "bot-skill-files";
@@ -64,6 +65,12 @@ export type HostBotsOptions = {
   botsDir: string;
   /** The model a bot without one of its own starts on: Settings' primary model, as the gateway mirrors it here. */
   primaryModel?: () => Promise<string | undefined>;
+  /** A chat's `bots` section, as a connected gateway gives it. */
+  section: DurableBotsDeps["section"];
+  /** Settings' profile name, for a bot's first conversation. */
+  operator: () => Promise<string | undefined>;
+  /** The operator allowed a bot's request here: what its lists are now. */
+  recorded: DurableBotsDeps["recorded"];
 };
 
 type Handler = (params: Record<string, unknown>) => Promise<unknown>;
@@ -155,6 +162,11 @@ export function hostBots(options: HostBotsOptions) {
   /** Each bot's name as its gateway last gave it (the create, then every `bots` section): a bot still called "New Bot"
    * asks for a real one in its first conversation. */
   const names = new Map<string, string>();
+  // Its SOUL.md (or its first conversation) from its home here, and write_soul writes it there.
+  options.durable.configureDurableBots(createDurableBots(options.durable, {
+    section: options.section, recorded: options.recorded,
+    souls: { home, operator: options.operator, name: (id) => names.get(id) },
+  }));
 
   /** A directory chosen for the bot that lies inside its home here: deleting the home would take it along. */
   const chosenInsideHome = async (id: string, cwd: unknown): Promise<boolean> => {
@@ -355,9 +367,6 @@ export function hostBots(options: HostBotsOptions) {
 
   return {
     handlers,
-    home,
-    /** The bot's name as its gateway last gave it; undefined until one did since this host started. */
-    nameOf: (id: string): string | undefined => names.get(id),
     /** What a gateway's `bots` section reply says the bot is called now. */
     named(id: string, name: string): void {
       if (ID.test(id) && name) names.set(id, name.slice(0, BOT_LIMITS.name));

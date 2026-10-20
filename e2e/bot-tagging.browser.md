@@ -13,7 +13,7 @@ the panel as a profile (`54db9be`, steps 2, 4, 5 and 8), with
 `e2e/visual-verification.mjs launch` (doctor passed before and after on a clean
 checkout). HUI, the gateway's bot and session routes, Pi Durable, OptChat and
 the agent-tool handler are real; only the model provider is mocked
-(`e2e/pi-provider-fixture.mjs`): `E2E_MESSAGE_BOT @handle` makes it call
+(`e2e/fixtures/pi-provider-fixture.mjs`): `E2E_MESSAGE_BOT @handle` makes it call
 `message_bot({ to: "@handle", message: "hello from the fixture" })`, and
 `E2E_CALL:<base64url JSON>` makes it call the tool it names. No operator
 transcript, credential or account was used.

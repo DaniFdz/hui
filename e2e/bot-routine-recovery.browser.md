@@ -42,7 +42,7 @@ operator's accounts, workers, transcripts or scheduler state.
 - `server/automation.test.ts` uses an observable manual clock and disposable
   registry: retries keep one run/deadline/count, survive restart and stop on
   cancellation/exhaustion/end; classification never permits replay by itself.
-- `server/bot-schedules.test.ts` starts a real routine whose isolated command
+- `server/bots/schedules.test.ts` starts a real routine whose isolated command
   is held by the provider, stops/restarts the backend and asserts one input,
   one run id, the recorded result and one temporary-run consumption.
 - `server/runtimes/durable.test.ts` verifies request deduplication, exact-input

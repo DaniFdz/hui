@@ -1,13 +1,12 @@
 /**
  * Completion of the composer's `@` mentions and paths: finding the path or `@` mention at the caret, the bots a
- * mention suggests, splicing a chosen suggestion back in, and asking the gateway for matching paths. The browser never
- * reads the filesystem itself.
+ * mention suggests and splicing a chosen suggestion back in. The gateway lists matching paths (src/api/local-paths.ts).
  */
-import type { BotView } from "../../shared/bots.ts";
-import { fetchJson } from "./settings-store.ts";
+import type { BotView } from "../api/schema/bots.ts";
+import type { LocalPathSuggestion as PathSuggestion } from "../api/schema/local-paths.ts";
 
 export type LocalPathSuggestion =
-  | { path: string; kind: "directory" | "file" }
+  | PathSuggestion
   /** A bot an `@` mention tags: `path` is its handle. */
   | { path: string; kind: "bot"; bot: Pick<BotView, "id" | "name" | "title" | "avatar"> };
 
@@ -59,11 +58,4 @@ export function botMentionSuggestions(bots: readonly BotView[], input: string, o
     .sort((a, b) => a.handle.localeCompare(b.handle))
     .slice(0, MAX_BOT_SUGGESTIONS)
     .map((bot) => ({ path: bot.handle, kind: "bot", bot: { id: bot.id, name: bot.name, title: bot.title, avatar: bot.avatar } }));
-}
-
-export async function loadLocalPathSuggestions(cwd: string, input: string): Promise<LocalPathSuggestion[]> {
-  const body = await fetchJson<{ paths?: LocalPathSuggestion[] }>(
-    `/__hui/local-paths?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(input)}`,
-  );
-  return body.paths ?? [];
 }

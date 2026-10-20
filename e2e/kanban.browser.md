@@ -39,7 +39,7 @@ covered by server/unit tests only, not by this Browser journey.
 Isolated root under `/tmp` (`XDG_CONFIG_HOME`, `PI_CODING_AGENT_DIR`,
 `PI_CODING_AGENT_SESSION_DIR`, `PI_OFFLINE=1`), `HUI_JIRA_TEST_ORIGIN` pointing to
 a local fake Jira with CI-2 and CI-3 (CI-3's summary contains `E2E_HOLD_BRANCH`),
-`e2e/pi-provider-fixture.mjs` as `hui-e2e/primary-fixture` and
+`e2e/fixtures/pi-provider-fixture.mjs` as `hui-e2e/primary-fixture` and
 `hui-e2e/utility-fixture`, HUI settings `branchPrefix: "feature/"` and that
 utility model, a temp Git repo (`main`, `dev`, `release/1.0`) and a plain folder.
 The fixture answers the worktree-name prompt with

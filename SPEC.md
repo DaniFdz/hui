@@ -3112,7 +3112,7 @@ the HUI page, or open popups. The boundary:
    both the sandbox page and the chat, opens a new tab with
    `noopener,noreferrer`. `window.open` and top navigation stay blocked.
 
-`e2e/widget-probe.html` exercises the boundary from inside a widget: a fetch of
+`e2e/fixtures/widget-probe.html` exercises the boundary from inside a widget: a fetch of
 `/__hui/settings` with x-hui, cookies, localStorage, the HUI DOM, top
 navigation, `window.open`, a script, an image and a WebSocket from an origin
 outside the allowlist are all blocked, and its origin is `null`.
