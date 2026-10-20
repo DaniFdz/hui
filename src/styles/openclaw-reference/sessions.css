@@ -128,7 +128,6 @@
 
 .sessions-transcript-search__result {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
   gap: 5px;
   width: 100%;
   padding: var(--space-2) 0;
@@ -153,13 +152,7 @@
   box-shadow: var(--focus-ring);
 }
 
-.sessions-transcript-search__result-header > span {
-  flex: none;
-  white-space: nowrap;
-}
-
 .sessions-transcript-search__result-header > strong {
-  min-width: 0;
   overflow: hidden;
   color: var(--text-strong);
   font-size: 13px;
