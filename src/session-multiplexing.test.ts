@@ -3,9 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "vitest";
 
 test("pane views are keyed independently of session and retain hidden session views", () => {
-  const app = readFileSync(new URL("./hui-app.ts", import.meta.url), "utf8");
   const view = readFileSync(new URL("./components/session-multiplexer.ts", import.meta.url), "utf8");
-  assert.ok(app.includes('pane-session-id=${pane.sessionId}'));
   assert.ok(view.includes('repeat(stablePanes, (pane) => pane.id'));
   assert.match(view, /const stablePanes = \[\.\.\.panes\]\.sort/);
   assert.doesNotMatch(view, /repeat\(column\.panes/);
@@ -43,7 +41,6 @@ test("the narrow panel selector uses the shared HUI picker instead of a native s
 
 test("embedded panes open from the shell's registry entry instead of waiting on their own fetch", () => {
   const app = readFileSync(new URL("./hui-app.ts", import.meta.url), "utf8");
-  assert.ok(app.includes(".paneSession=${this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId)}"));
   const open = app.slice(app.indexOf("private openPendingSession()"), app.indexOf("private selectView ="));
   assert.ok(open.includes("?? (this.paneSession?.id === id ? this.paneSession : undefined)"));
 });

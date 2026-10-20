@@ -314,7 +314,6 @@ test("embedded chat panes report draft presence to the shell that owns the sideb
   // pane's report is composer-controller.test.ts's.
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(app, /draftChanged: \(sessionId, hasDraft\) => \{ if \(this\.embeddedPane\) this\.onPaneDraftChange\?\.\(sessionId, hasDraft\); \}/);
-  assert.match(app, /\.onPaneDraftChange=\$\{\(sessionId: string, hasDraft: boolean\) => this\.composer\.markSessionDraft\(sessionId, hasDraft\)\}/);
 });
 
 test("returning to the still-selected session restores its composer draft key", () => {

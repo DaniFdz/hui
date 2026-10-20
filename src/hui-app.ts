@@ -6,6 +6,7 @@
  */
 import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
+import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session-tree.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
@@ -2696,35 +2697,26 @@ export class HuiApp extends HuiElement {
     </div>`;
   }
 
-  /** Chat panes only: terminals and the browser view live in the Work pane. */
   private renderSessionPane = (pane: SessionPane, state: PanePresentation) => {
     const controls = this.work.paneControls(pane, state);
-    return html`
-    <hui-app
-      class="chat-split-view__pane hui-session-pane-app"
-      embedded-pane
-      pane-session-id=${pane.sessionId}
-      .paneSession=${this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId)}
-      .paneId=${pane.id}
-      .paneActive=${state.active}
-      .paneVisible=${state.visible}
-      .paneNarrow=${state.narrow}
-      .paneMobileNav=${this.mobileNavLayout}
-      .onPaneClose=${controls.close}
-      .onPaneSplit=${controls.split}
-      .onPaneTerminal=${() => this.work.openTerminal(pane)}
-      .onPaneBrowser=${() => this.work.openBrowser(pane)}
-      .onPaneNavigate=${(id: string) => this.work.changePaneSession(pane.id, id)}
-      .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
-      .paneCreating=${this.listedSession(pane.sessionId)?.creating}
-      .paneCreationError=${this.listedSession(pane.sessionId)?.creationError}
-      .paneUnsentPrompt=${this.listedSession(pane.sessionId)?.initialPrompt}
-      .paneGroups=${this.sessions.revision ? this.sessions.groups : undefined}
-      .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
-      .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.composer.markSessionDraft(sessionId, hasDraft)}
-      .paneBots=${this.mentionable()}
-      .onPaneOpenBot=${this.openBot}
-    ></hui-app>`;
+    return renderSessionPane({
+      pane,
+      state,
+      session: this.sessions.groups.flatMap((group) => group.sessions).find(({ id }) => id === pane.sessionId),
+      listed: this.listedSession(pane.sessionId),
+      groups: this.sessions.revision ? this.sessions.groups : undefined,
+      mobileNav: this.mobileNavLayout,
+      bots: this.mentionable(),
+      onClose: controls.close,
+      onSplit: controls.split,
+      onTerminal: () => this.work.openTerminal(pane),
+      onBrowser: () => this.work.openBrowser(pane),
+      onNavigate: (id) => this.work.changePaneSession(pane.id, id),
+      onRegistryChange: () => this.refreshSessions(true).then(() => this.updateComplete).then(() => {}),
+      onUpdate: (text, attachments) => this.handleUpdateCommand(text, attachments),
+      onDraftChange: (sessionId, hasDraft) => this.composer.markSessionDraft(sessionId, hasDraft),
+      onOpenBot: this.openBot,
+    });
   };
 
   private paneLabel = (pane: SessionPane) => this.listedSession(pane.sessionId)?.title ?? "Session";
