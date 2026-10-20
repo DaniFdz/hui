@@ -1120,6 +1120,29 @@ test("end-of-run handlers see a Stop in ctx.signal and hold the settle, not the 
   assert.equal((await logged(f.events, "agent_end"))[1]?.["stopped"], true, "a handler tells a user's Stop by ctx.signal");
 });
 
+test("a Stop resolves once the end-of-run handlers ran, so a rewind can follow at once", { timeout: 45_000 }, async (t) => {
+  const f = await extensionFixture(t);
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-stop-settles" }, f.host());
+  let release!: () => void;
+  (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd = new Promise((resolve) => { release = resolve; });
+  t.onTestFinished(() => { release(); delete (globalThis as { fixtureHoldAgentEnd?: Promise<void> }).fixtureHoldAgentEnd; });
+  const running = nextEvent(session, (event) => event.type === "tool_start");
+  const holding = nextEvent(session, (event) => event.type === "notice" && event.message === "agent_end is holding");
+  await session.prompt("E2E_COMMAND_RUNNING hold the command");
+  await running;
+  let stopped = false;
+  const stopping = session.abort().then(() => { stopped = true; });
+  await holding;
+  assert.equal(stopped, false, "Stop waits for the end-of-run handlers, as PI's does");
+  const releasedAt = Date.now();
+  release();
+  await stopping;
+  assert.ok(Date.now() - releasedAt < 5_000, "Stop wakes when the handlers finish, not at its wait's timeout");
+  assert.equal(session.isStreaming, false, "a resolved Stop is idle");
+  await session.rewind({ userFromEnd: 0 }, { excludeUserMessage: true });
+  assert.deepEqual(session.transcript(), []);
+});
+
 test("rewinding drops prompt-specific extension context but keeps independent context", { timeout: 45_000 }, async (t) => {
   const f = await extensionFixture(t);
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-rewind-context" }, f.host());
