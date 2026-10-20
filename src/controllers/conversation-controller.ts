@@ -66,6 +66,7 @@ export class ConversationController implements ReactiveController {
   #openRequestToken = 0;
   #subagentExpiryTimer: number | undefined;
   #copyTimer: number | undefined;
+  #disconnected = false;
 
   constructor(host: ConversationHost, deps: ConversationDeps) {
     this.#host = host;
@@ -73,13 +74,20 @@ export class ConversationController implements ReactiveController {
     host.addController(this);
   }
 
+  hostConnected(): void {
+    this.#disconnected = false;
+  }
+
   hostDisconnected(): void {
+    this.#disconnected = true;
     this.#openRequestToken += 1;
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.#clearSubagentExpiry();
     window.clearTimeout(this.#copyTimer);
     this.#copyTimer = undefined;
+    this.opening = false;
+    this.copiedId = "";
   }
 
   get streamOpen(): boolean {
@@ -343,6 +351,7 @@ export class ConversationController implements ReactiveController {
   copy = (text: string, id: string): Promise<boolean> => {
     return writeClipboardText(text).then((copied) => {
       if (!copied) throw new Error("Clipboard write failed");
+      if (this.#disconnected) return true;
       this.copiedId = id;
       this.#host.requestUpdate();
       if (this.#copyTimer !== undefined) window.clearTimeout(this.#copyTimer);

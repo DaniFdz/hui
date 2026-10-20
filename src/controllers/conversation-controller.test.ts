@@ -138,7 +138,7 @@ test("only the session still selected opens and streams; its status frames reach
   assert.equal(controller.streamOpen, false);
 });
 
-test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer", async () => {
+test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer or stale state", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);
   vi.stubGlobal("navigator", { clipboard: { writeText: async () => {} } });
@@ -146,14 +146,21 @@ test("a conversation whose element is removed starts no stream for an open still
     const { controller, updates } = conversation({ selected: { id: "s1" } as SessionView });
     void controller.open("s1");
     assert.equal(await controller.copy("text", "m1"), true);
+    let finishWrite!: () => void;
+    vi.stubGlobal("navigator", { clipboard: { writeText: () => new Promise<void>((resolve) => { finishWrite = resolve; }) } });
+    const late = controller.copy("text", "m2");
     controller.hostDisconnected();
+    assert.equal(controller.opening, false, "a reattached pane does not stay opening");
+    assert.equal(controller.copiedId, "", "nor keeps a Copied mark");
     fake.opens[0]?.resolve("idle");
+    finishWrite();
+    assert.equal(await late, true);
     await vi.advanceTimersByTimeAsync(0);
     assert.deepEqual(fake.streams, []);
     const before = updates();
     await vi.advanceTimersByTimeAsync(1_500);
-    assert.equal(updates(), before);
-    assert.equal(controller.copiedId, "m1");
+    assert.equal(updates(), before, "a copy that finished after removal arms no timer");
+    assert.equal(controller.copiedId, "");
   } finally {
     vi.useRealTimers();
   }
