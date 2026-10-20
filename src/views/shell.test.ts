@@ -310,30 +310,22 @@ test("session drafts project a persistent pencil into the action slot", () => {
 
 test("embedded chat panes report draft presence to the shell that owns the sidebar", () => {
   // Each pane is its own hui-app with a private draft set; without this bridge
-  // the sidebar only learned about drafts at startup or after a reload.
+  // the sidebar only learned about drafts at startup or after a reload. The
+  // pane's report is composer-controller.test.ts's.
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  assert.match(app, /if \(this\.embeddedPane\) this\.onPaneDraftChange\?\.\(sessionId, hasDraft\);/);
-  assert.match(app, /\.onPaneDraftChange=\$\{\(sessionId: string, hasDraft: boolean\) => this\.markSessionDraft\(sessionId, hasDraft\)\}/);
+  assert.match(app, /draftChanged: \(sessionId, hasDraft\) => \{ if \(this\.embeddedPane\) this\.onPaneDraftChange\?\.\(sessionId, hasDraft\); \}/);
+  assert.match(app, /\.onPaneDraftChange=\$\{\(sessionId: string, hasDraft: boolean\) => this\.composer\.markSessionDraft\(sessionId, hasDraft\)\}/);
 });
 
 test("returning to the still-selected session restores its composer draft key", () => {
   // New session keeps `selected` but switches the composer to the new-session
   // draft. Without this, typing after returning persisted under the wrong key
-  // and the row never showed its pencil.
+  // and the row never showed its pencil. The restored draft is composer-controller.test.ts's.
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(
     app,
-    /if \(this\.conversation\.selected\?\.id === target\.id\) \{[^}]*this\.switchComposerDraft\(sessionDraftKey\(target\.id\)\);[^}]*return;/s,
+    /if \(this\.conversation\.selected\?\.id === target\.id\) \{[^}]*this\.composer\.switchDraft\(sessionDraftKey\(target\.id\)\);[^}]*return;/s,
   );
-});
-
-test("the app refuses the launch draft key to panes at both composer boundaries", () => {
-  // firstUpdated used to hand a pane the launch key milliseconds after its own
-  // navigation set `session:<id>`, and persisting the launch key let a pane
-  // clobber, or an unmounting pane clear, the shell's unsent text.
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-  const refusals = app.match(/if \(!mayUseComposerDraftKey\(this\.embeddedPane, key\)\) return;/g) ?? [];
-  assert.equal(refusals.length, 2, "switchComposerDraft and persistComposerDraft must both refuse the launch key");
 });
 
 test("active search reveals matches without changing the collapsed preference", () => {

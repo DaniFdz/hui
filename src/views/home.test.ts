@@ -79,8 +79,8 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.doesNotMatch(app, /loadSessionCheckpoints/u);
   assert.doesNotMatch(app, /!session \|\| this\.conversation\.streaming \|\| this\.conversation\.opening \|\| this\.rewindPending/u);
   assert.match(app, /rewindSession\(session\.id, target, true\)/u);
-  assert.match(app, /this\.setDraft\(text\)/u);
-  assert.match(app, /this\.attachments = attachments/u);
+  assert.match(app, /this\.composer\.setDraft\(text\)/u);
+  assert.match(app, /this\.composer\.attachments = attachments/u);
   assert.match(app, /this\.composerTextarea\?\.focus\(\)/u);
   assert.match(app, /resumeSession\(session\.id\)/u);
 });
@@ -126,7 +126,7 @@ test("the composer ports OpenClaw input interactions without unsupported control
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(app, /observeTextareaOverflow\(textarea\)/);
   assert.match(app, /disconnectTextareaOverflowObserver\(this\.composerTextarea\)/);
-  assert.match(app, /changed\.has\("draftRevision"\)/);
+  assert.match(app, /const draftReplaced = this\.renderedDraftRevision !== this\.composer\.draftRevision;[\s\S]*\} else if \(textarea && draftReplaced\) \{\s*\/\/[^\n]*\n[^\n]*\n\s*scheduleTextareaHeightAdjustment\(textarea\);/u);
   assert.doesNotMatch(source, /@scroll=\$\{[^\n]*syncComposerTextarea/);
   assert.match(source, /@paste=\$\{onComposerPaste\(props\)\}/);
   assert.match(source, /PASTED_TEXT_ATTACHMENT_THRESHOLD/);
@@ -141,20 +141,9 @@ test("the composer ports OpenClaw input interactions without unsupported control
 });
 
 test("typing edits the composer without re-rendering the transcript behind it", () => {
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   const home = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
 
-  // The draft is a plain field, so assigning it never schedules a Lit update.
-  assert.match(app, /private draft = "";/u);
-  assert.doesNotMatch(app, /@state\(\) private draft\b/u);
-  // Typing asks for a render only when the composer stops or starts holding text
-  // (Send/Stop), and never for the post-render measuring pass.
-  const typed = app.slice(app.indexOf("private typeDraft"), app.indexOf("private setDraft"));
-  assert.match(typed, /if \(\(draft\.trim\(\) !== ""\) !== hadText\) this\.requestUpdate\(\);/u);
-  assert.doesNotMatch(typed, /draftRevision/u);
-  // A draft HUI puts in the composer does reach the textarea and its height.
-  assert.match(app, /private setDraft\(draft: string\) \{\s*this\.draft = draft;\s*this\.draftRevision \+= 1;\s*\}/u);
-  assert.match(app, /onDraftInput: this\.typeDraft,/u);
+  // Typing itself renders only when the composer starts or stops holding text (composer-controller.test.ts).
   // Reply quotes onto the live textarea value, not a draft rendered earlier.
   assert.match(home, /props\.onDraftInput\(textarea\.value\)/u);
   assert.match(home, /props\.onDraftChange\(replyDraft\(editor\?\.value \?\? props\.draft, text\)\)/u);
@@ -162,12 +151,10 @@ test("typing edits the composer without re-rendering the transcript behind it", 
 
 test("chat and New Session expose cursor-aware local path completion", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(source, /renderLocalPathMenu\(\{ \.\.\.props\.localPathMenu/u);
   assert.match(source, /localPathQuery\(textarea\.value, textarea\.selectionStart, textarea\.selectionEnd\)/u);
   assert.match(source, /props\.onLocalPathKeydown\(event\)/u);
-  assert.match(app, /loadLocalPathSuggestions\(workspace, query\.input\)/u);
-  assert.match(app, /completeLocalPath\(this\.draft, query, suggestion\)/u);
+  // Loading and completing the paths is composer-controller.test.ts's.
 });
 
 test("the primary chat uses the OpenClaw transcript and composer hierarchy", () => {

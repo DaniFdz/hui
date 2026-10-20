@@ -27,7 +27,6 @@ import {
   deleteSessionGroup,
   followUpSession,
   loadGitCheckout,
-  loadCommands,
   renameSession,
   resumeSession,
   rewindSession,
@@ -41,7 +40,6 @@ import {
   updateSessionGroup,
   type Attachment,
   type RuntimeEvent,
-  type RuntimeCommand,
   type RuntimeCompaction,
   type RuntimeQuestion,
   type QuestionResponse,
@@ -55,10 +53,9 @@ import {
   type WorktreeProgress,
 } from "./api/sessions.ts";
 import { sessionGroupLabel, transcriptAsMarkdown } from "./lib/session/sessions.ts";
-import { readAttachment, validateAttachmentTotal } from "./lib/attachments.ts";
 import { readTranscriptAttachments } from "./api/attachments.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "./lib/slash-commands.ts";
+import { botChatCommandRefusal, parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand, skillCommands } from "./lib/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
 import { withLiveChats, withoutBotSessions, type BotView } from "./lib/bots/bots.ts";
 import { isBotSettingsShortcut, type BotPanelView, type SidebarTab } from "./lib/bots/roster.ts";
@@ -78,8 +75,6 @@ import { BotImportController } from "./controllers/bot-import-controller.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
-import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "./lib/local-paths.ts";
-import { loadLocalPathSuggestions } from "./api/local-paths.ts";
 import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
 import {
@@ -88,13 +83,10 @@ import {
 } from "./lib/composer/state.ts";
 import {
   deleteComposerDraft,
-  listComposerDraftSessionIds,
-  mayUseComposerDraftKey,
   mergeComposerDraft,
   NEW_SESSION_DRAFT_KEY,
   readComposerDraft,
   sessionDraftKey,
-  sessionIdFromDraftKey,
   writeComposerDraft,
 } from "./lib/composer/drafts.ts";
 import { attachmentPreview } from "./lib/attachments.ts";
@@ -225,9 +217,9 @@ export class HuiApp extends HuiElement {
       this.backlog.clearSession();
       this.note = "";
       this.noteLevel = "info";
-      this.resetCommands();
+      this.composer.resetCommands();
     },
-    connectionLost: () => this.resetCommands(),
+    connectionLost: () => this.composer.resetCommands(),
     adoptSnapshot: (snapshot) => {
       this.composer.adoptSnapshot(snapshot);
       this.backlog.adoptSnapshot(snapshot.suggestions, snapshot.watchers);
@@ -237,8 +229,17 @@ export class HuiApp extends HuiElement {
     flushLaunchPrompt: () => this.flushPendingLaunchPrompt(),
   });
   private readonly composer = new ComposerController(this, {
-    selected: () => this.conversation.selected,
+    conversation: this.conversation,
     showNote: (message, level) => { this.note = message; this.noteLevel = level; },
+    embeddedPane: () => this.embeddedPane,
+    draftChanged: (sessionId, hasDraft) => { if (this.embeddedPane) this.onPaneDraftChange?.(sessionId, hasDraft); },
+    composerSession: () => this.composerSession(),
+    draftCommands: () => this.launcher.worker ? [] : skillCommands(this.control.pi?.skills ?? [], this.control.settings.disabledSkills),
+    defaultCwd: () => this.launcher.defaults?.cwd,
+    mentionable: () => this.mentionable(),
+    textarea: () => this.composerTextarea,
+    sending: () => this.sending,
+    launching: () => this.launching,
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
   @state() private kanbanMovePendingId = "";
@@ -265,13 +266,6 @@ export class HuiApp extends HuiElement {
   /** The Fork from here dialog: the session and reply it forks from. While it is open, the chat's fork buttons rest. */
   @state() private forkTarget: ForkTarget | undefined;
   @state() private sideChat: HomeProps["sideChat"];
-  /** The composer's live text, deliberately not reactive: a keystroke only
-   * changes what its own textarea already shows, so typing must not re-render
-   * the transcript behind it. Code-owned changes go through `setDraft`. */
-  private draft = "";
-  /** Bumped by `setDraft` so `updated()` measures a textarea whose value code
-   * replaced, never one the operator is typing into. */
-  @state() private draftRevision = 0;
   @state() private expandedActivityIds: ReadonlySet<string> = new Set();
   @state() private showScrollToBottom = false;
   @state() private launching = false;
@@ -308,6 +302,7 @@ export class HuiApp extends HuiElement {
   private renderedTranscript: readonly TranscriptItem[] = [];
   private renderedCompaction: RuntimeCompaction | undefined;
   private renderedQueueEditingId: string | undefined;
+  private renderedDraftRevision = 0;
   private groupActionReturnFocus: HTMLElement | undefined;
 
   @state() private settingsOpen = false;
@@ -315,26 +310,8 @@ export class HuiApp extends HuiElement {
   /** Session-scoped editor state: a late selection can never retarget an action. */
   @state() private renamingFor = "";
   @state() private deletingFor = "";
-  @state() private commands: readonly RuntimeCommand[] = [];
-  @state() private commandsLoading = false;
-  @state() private commandsError = "";
-  @state() private slashQuery: CommandQuery | null = null;
-  @state() private slashActiveIndex = 0;
-  @state() private localPathQuery: LocalPathQuery | null = null;
-  @state() private localPaths: readonly LocalPathSuggestion[] = [];
-  @state() private localPathsLoading = false;
-  @state() private localPathsError = "";
-  @state() private localPathActiveIndex = 0;
-  private commandsLoaded = false;
-  private commandsRequest = 0;
-  private localPathsRequest = 0;
-  private localPathCwd = "";
-  private pendingCommandBrowse = false;
   @state() private updateSessionCreating = false;
   private readonly updates = new UpdateController(this, () => this.composerTextarea?.focus());
-  @state() private draftSessionIds: ReadonlySet<string> = new Set();
-  /** Picked but not yet sent; cleared on send and on switching session. */
-  @state() private attachments: readonly Attachment[] = [];
   /** Which sidebar row menu is open. Only one at a time. */
   @state() private menuFor = "";
   @state() private commandPaletteOpen = false;
@@ -454,11 +431,6 @@ export class HuiApp extends HuiElement {
   private pendingLaunchPrompt = "";
   private pendingLaunchAttachments: readonly Attachment[] = [];
   private commandPaletteReturnFocus: HTMLElement | undefined;
-  private composerDraftKey = NEW_SESSION_DRAFT_KEY;
-  private composerDraftLoad = 0;
-  private composerDraftEdit = 0;
-  private composerDraftHydrated = false;
-  private draftIndicatorRevision = 0;
 
   get hasQueuedMessageEdit(): boolean { return Boolean(this.composer.queueEditingId); }
 
@@ -542,7 +514,7 @@ export class HuiApp extends HuiElement {
   }
 
   private readonly onPageHide = () => {
-    void this.persistComposerDraft();
+    void this.composer.persistDraft();
   };
 
   override connectedCallback() {
@@ -570,7 +542,7 @@ export class HuiApp extends HuiElement {
 
   override disconnectedCallback() {
     this.sessions.pauseArchiveToast();
-    void this.persistComposerDraft();
+    void this.composer.persistDraft();
     super.disconnectedCallback();
     window.clearInterval(this.sessionProgressPoll);
     this.mobileNavMedia?.removeEventListener("change", this.onMobileNavChange);
@@ -604,8 +576,8 @@ export class HuiApp extends HuiElement {
         this.requestUpdate();
       }
     }, 3000);
-    this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
-    this.refreshDraftIndicators();
+    this.composer.switchDraft(NEW_SESSION_DRAFT_KEY);
+    this.composer.refreshDraftIndicators();
     if (!this.embeddedPane) {
       void this.refreshSessions();
       this.loadLaunchPreferences();
@@ -712,6 +684,8 @@ export class HuiApp extends HuiElement {
     // Session and bot panes measure their own composers.
     const textarea = !this.embeddedPane && ((this.view === "home" && this.conversation.selected) || this.view === "bot")
       ? null : this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
+    const draftReplaced = this.renderedDraftRevision !== this.composer.draftRevision;
+    this.renderedDraftRevision = this.composer.draftRevision;
     if (textarea !== this.composerTextarea) {
       if (this.composerTextarea) disconnectTextareaOverflowObserver(this.composerTextarea);
       this.composerTextarea = textarea;
@@ -719,16 +693,13 @@ export class HuiApp extends HuiElement {
         observeTextareaOverflow(textarea);
         scheduleTextareaHeightAdjustment(textarea);
       }
-    } else if (textarea && changed.has("draftRevision")) {
+    } else if (textarea && draftReplaced) {
       // Typing measures its own textarea in the input handler; only a draft that
       // code replaced under it needs a measuring pass after the render.
       scheduleTextareaHeightAdjustment(textarea);
     }
-    if (this.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.conversation.opening && textarea) {
-      this.pendingCommandBrowse = false;
-      textarea.focus();
-      textarea.setSelectionRange(this.draft.length, this.draft.length);
-      this.setCommandQuery(slashCommandQuery(this.draft, this.draft.length));
+    if (this.composer.pendingCommandBrowse && this.conversation.selected?.status === "idle" && !this.conversation.opening && textarea) {
+      this.composer.browseCommands(textarea);
     }
     // Bots turned on or off, here or (through the bot stream) on another screen.
     if (this.renderedSettings !== this.control.settings) {
@@ -922,7 +893,7 @@ export class HuiApp extends HuiElement {
       this.conversation.suspend();
       this.resetSessionEphemeral();
       if (target.page.id === "new-session") {
-        this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
+        this.composer.switchDraft(NEW_SESSION_DRAFT_KEY);
         this.loadLaunchPreferences();
         this.launcher.requestCheckout(this.launcher.defaults?.cwd ?? "~/");
         this.launcher.loadWorkers();
@@ -946,7 +917,7 @@ export class HuiApp extends HuiElement {
         this.pendingSessionId = "";
         // New session keeps the selection but owns the composer; returning to
         // the same session must restore that session's draft key.
-        this.switchComposerDraft(sessionDraftKey(target.id));
+        this.composer.switchDraft(sessionDraftKey(target.id));
         if (this.embeddedPane && !this.conversation.streamOpen) void this.conversation.open(target.id);
         return;
       }
@@ -1430,7 +1401,7 @@ export class HuiApp extends HuiElement {
       return;
     }
     this.resetSessionEphemeral();
-    this.switchComposerDraft(sessionDraftKey(session.id));
+    this.composer.switchDraft(sessionDraftKey(session.id));
     this.view = "home";
     this.conversation.select(session);
     void this.conversation.open(session.id);
@@ -1453,12 +1424,12 @@ export class HuiApp extends HuiElement {
     if (status === "idle") {
       this.flushPendingLaunchPrompt();
     } else if ((status === "error" || status === "reconnecting" || status === "disconnected") && this.pendingLaunchPrompt) {
-      this.composerDraftEdit += 1;
-      this.setDraft(this.pendingLaunchPrompt);
-      this.attachments = this.pendingLaunchAttachments;
+      this.composer.draftEdit += 1;
+      this.composer.setDraft(this.pendingLaunchPrompt);
+      this.composer.attachments = this.pendingLaunchAttachments;
       this.pendingLaunchPrompt = "";
       this.pendingLaunchAttachments = [];
-      void this.persistComposerDraft();
+      void this.composer.persistDraft();
     }
     // Keep the sidebar dot honest without a full re-fetch.
     this.sessions.groups = this.sessions.groups.map((group) => ({
@@ -1468,77 +1439,6 @@ export class HuiApp extends HuiElement {
       ),
     }));
   }
-
-  private persistComposerDraft(
-    key = this.composerDraftKey,
-    text = this.draft,
-    attachments: readonly Attachment[] = this.attachments,
-  ) {
-    if (!mayUseComposerDraftKey(this.embeddedPane, key)) return;
-    const sessionId = sessionIdFromDraftKey(key);
-    if (sessionId) {
-      const hasDraft = Boolean(text || attachments.length);
-      this.markSessionDraft(sessionId, hasDraft);
-      if (this.embeddedPane) this.onPaneDraftChange?.(sessionId, hasDraft);
-    }
-    return writeComposerDraft(key, { text, attachments });
-  }
-
-  private markSessionDraft(sessionId: string, hasDraft: boolean) {
-    if (this.draftSessionIds.has(sessionId) === hasDraft) return;
-    const next = new Set(this.draftSessionIds);
-    hasDraft ? next.add(sessionId) : next.delete(sessionId);
-    this.draftIndicatorRevision += 1;
-    this.draftSessionIds = next;
-  }
-
-  private refreshDraftIndicators() {
-    const revision = this.draftIndicatorRevision;
-    void listComposerDraftSessionIds().then((sessionIds) => {
-      if (revision === this.draftIndicatorRevision) this.draftSessionIds = new Set(sessionIds);
-    });
-  }
-
-  private switchComposerDraft(key: string) {
-    if (!mayUseComposerDraftKey(this.embeddedPane, key)) return;
-    if (key === this.composerDraftKey && this.composerDraftHydrated) return;
-    if (key !== this.composerDraftKey) void this.persistComposerDraft();
-    this.composerDraftKey = key;
-    this.composerDraftHydrated = true;
-    const load = ++this.composerDraftLoad;
-    const edit = ++this.composerDraftEdit;
-    this.setDraft("");
-    this.attachments = [];
-    void readComposerDraft(key).then((draft) => {
-      if (load !== this.composerDraftLoad || edit !== this.composerDraftEdit || key !== this.composerDraftKey) return;
-      this.setDraft(draft.text);
-      this.attachments = draft.attachments;
-    });
-  }
-
-  /** A keystroke. The textarea already shows this text, so the value itself
-   * needs no update; only what the draft makes the composer show (Send/Stop
-   * instead of nothing to send) does, and that flips at most twice per message. */
-  private typeDraft = (draft: string) => {
-    const hadText = this.draft.trim() !== "";
-    this.composerDraftEdit += 1;
-    this.draft = draft;
-    if ((draft.trim() !== "") !== hadText) this.requestUpdate();
-    void this.persistComposerDraft();
-  };
-
-  /** A draft HUI set, not one typed into the textarea: it has to reach the
-   * value, the controls derived from it and the textarea's measured height. */
-  private setDraft(draft: string) {
-    this.draft = draft;
-    this.draftRevision += 1;
-  }
-
-  private updateDraft = (draft: string) => {
-    this.composerDraftEdit += 1;
-    this.setDraft(draft);
-    void this.persistComposerDraft();
-  };
 
   private isUpdateSession(session: SessionView | undefined): boolean {
     return session?.title === HUI_UPDATE_SESSION_TITLE && session.group === "";
@@ -1552,12 +1452,12 @@ export class HuiApp extends HuiElement {
     const activeSessionView = this.view === "home" && this.activePage === undefined && !this.settingsOpen;
     const sourceOwner = !this.embeddedPane && activeSessionView ? this.activePaneApp() ?? this : this;
     if (activeSessionView && this.isUpdateSession(this.conversation.selected)) {
-      sourceOwner.updateDraft(draft);
+      sourceOwner.composer.updateDraft(draft);
       return true;
     }
     if (this.updateSessionCreating) return false;
-    const sourceDraftKey = sourceOwner.composerDraftKey;
-    const sourceDraft = sourceOwner.draft;
+    const sourceDraftKey = sourceOwner.composer.draftKey;
+    const sourceDraft = sourceOwner.composer.draft;
     const activeSession = activeSessionView ? this.conversation.selected : undefined;
     this.updateSessionCreating = true;
     try {
@@ -1571,19 +1471,19 @@ export class HuiApp extends HuiElement {
       // The command was consumed by HUI, not by the source session. Remove
       // only that exact command draft; an unrelated draft from Review update
       // must survive the session switch.
-      if (sourceOwner.composerDraftKey === sourceDraftKey && sourceOwner.draft === sourceDraft && sourceDraft.trim() === draft) {
-        sourceOwner.composerDraftEdit += 1;
-        sourceOwner.setDraft("");
-        void sourceOwner.persistComposerDraft(sourceDraftKey, "", []);
+      if (sourceOwner.composer.draftKey === sourceDraftKey && sourceOwner.composer.draft === sourceDraft && sourceDraft.trim() === draft) {
+        sourceOwner.composer.draftEdit += 1;
+        sourceOwner.composer.setDraft("");
+        void sourceOwner.composer.persistDraft(sourceDraftKey, "", []);
       }
       this.resetSessionEphemeral();
-      if (this.embeddedPane) this.switchComposerDraft(sessionDraftKey(refreshed.id));
+      if (this.embeddedPane) this.composer.switchDraft(sessionDraftKey(refreshed.id));
       this.view = "home";
       this.conversation.select(refreshed);
       this.navigate({ kind: "session", id: refreshed.id });
       if (this.embeddedPane) {
-        await this.persistComposerDraft(sessionDraftKey(refreshed.id), draft, []);
-      } else await this.withSessionPane(refreshed, (app) => app.updateDraft(draft));
+        await this.composer.persistDraft(sessionDraftKey(refreshed.id), draft, []);
+      } else await this.withSessionPane(refreshed, (app) => app.composer.updateDraft(draft));
       return true;
     } catch (error) {
       this.note = error instanceof Error ? error.message : "Could not create the HUI update session.";
@@ -1605,7 +1505,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane && this.onPaneUpdate) return this.onPaneUpdate(text, attachments);
     this.note = "";
     this.noteLevel = "info";
-    this.slashQuery = null;
+    this.composer.closeCommands();
     this.updates.review(this.composerTextarea, command === "check", () => this.openUpdateSession(command));
     return true;
   }
@@ -1614,232 +1514,13 @@ export class HuiApp extends HuiElement {
     this.updates.review(document.activeElement instanceof HTMLElement ? document.activeElement : null, false, () => this.openUpdateSession("update"));
   };
 
-  private resetCommands() {
-    this.commandsRequest += 1;
-    this.commands = [];
-    this.commandsLoaded = false;
-    this.commandsLoading = false;
-    this.commandsError = "";
-    this.slashQuery = null;
-    this.slashActiveIndex = 0;
-  }
-
-  private resetLocalPaths() {
-    this.localPathsRequest += 1;
-    // Typing text that opens no `@` mention repeats this reset on every
-    // keystroke, and reassigning the values it already holds would schedule a
-    // second full app render alongside the draft's own update.
-    if (this.localPathQuery === null && this.localPaths.length === 0 && !this.localPathsLoading
-      && this.localPathsError === "" && this.localPathActiveIndex === 0 && this.localPathCwd === "") {
-      return;
-    }
-    this.localPathQuery = null;
-    this.localPaths = [];
-    this.localPathsLoading = false;
-    this.localPathsError = "";
-    this.localPathActiveIndex = 0;
-    this.localPathCwd = "";
-  }
-
   /** The New Session page keeps the last chat selected, but its composer drafts a session that does not exist yet. */
   private composerSession(): SessionView | undefined {
     return this.view === "surface" && this.activePage?.id === "new-session" ? undefined : this.conversation.selected;
   }
 
-  private requestCommands = () => {
-    const session = this.composerSession();
-    if (!session || session.status === "starting" || session.status === "error" || this.commandsLoading) return;
-    const request = ++this.commandsRequest;
-    const current = () => this.conversation.selected?.id === session.id && request === this.commandsRequest;
-    const returnFocus = document.activeElement?.closest(".slash-menu") !== null;
-    this.commandsLoading = true;
-    this.commandsError = "";
-    void loadCommands(session.id).then((commands) => {
-      if (!current()) return;
-      this.commands = commands;
-      this.commandsLoaded = true;
-      this.slashActiveIndex = 0;
-      if (returnFocus) void this.updateComplete.then(() => {
-        if (current() && this.slashQuery !== null) this.composerTextarea?.focus();
-      });
-    }).catch((error: unknown) => {
-      if (current()) this.commandsError = error instanceof Error ? error.message : "Could not load commands.";
-    }).finally(() => {
-      if (current()) this.commandsLoading = false;
-    });
-  };
-
-  /** A draft has no runtime yet: offer the local PI skills it will start with. */
-  private runtimeCommands(): readonly RuntimeCommand[] {
-    if (this.composerSession()) return this.commands;
-    return this.launcher.worker ? [] : skillCommands(this.control.pi?.skills ?? [], this.control.settings.disabledSkills);
-  }
-
-  private menuCommands(): ComposerCommand[] {
-    const query = this.slashQuery ?? { text: "", start: 0 };
-    const runtime = this.runtimeCommands();
-    if (query.start > 0) return filterSlashCommands(runtime.filter((command) => command.source === "skill"), query.text.slice(1));
-    const session = this.composerSession();
-    return filterSlashCommands(query.text.startsWith("$") ? runtime : composerCommands(runtime, !!session, Boolean(session?.bot)), query.text);
-  }
-
-  private setCommandQuery = (query: CommandQuery | null) => {
-    // Assigning an equal value still schedules a Lit update, and this runs on
-    // every keystroke: only a changed query may schedule one.
-    if (query?.text !== this.slashQuery?.text || query?.start !== this.slashQuery?.start) {
-      this.slashActiveIndex = 0;
-      this.slashQuery = query;
-    }
-    if (query !== null && !this.commandsLoaded && !this.commandsError) this.requestCommands();
-  };
-
-  private selectSlashCommand = (command: ComposerCommand) => {
-    const completed = completeCommandReference(this.draft, command, this.runtimeCommands(), this.slashQuery?.start ?? 0);
-    this.updateDraft(completed.text);
-    this.resetLocalPaths();
-    this.slashQuery = null;
-    void this.updateComplete.then(() => {
-      const textarea = this.composerTextarea;
-      if (!textarea) return;
-      textarea.value = completed.text;
-      textarea.focus();
-      textarea.setSelectionRange(completed.caret, completed.caret);
-    });
-  };
-
-  private commandKeydown = (event: KeyboardEvent) => {
-    if (this.slashQuery === null || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
-    const commands = this.menuCommands();
-    const paths = this.localPathQuery ? this.localPaths : [];
-    const count = commands.length + paths.length;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      this.slashQuery = null;
-      this.resetLocalPaths();
-      return;
-    }
-    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-    if ((this.commandsLoading || this.localPathsLoading) && !count && (event.key === "Enter" || event.key === "Tab")) {
-      event.preventDefault();
-      return;
-    }
-    if (!count) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      this.slashActiveIndex = (this.slashActiveIndex + (event.key === "ArrowDown" ? 1 : -1) + count) % count;
-      void this.updateComplete.then(() => this.renderRoot.querySelector('.slash-menu [aria-selected="true"]')?.scrollIntoView({ block: "nearest" }));
-    } else if (event.key === "Enter" || event.key === "Tab") {
-      const command = commands[this.slashActiveIndex];
-      if (command) {
-        event.preventDefault();
-        this.selectSlashCommand(command);
-      } else {
-        const path = paths[this.slashActiveIndex - commands.length];
-        if (path) { event.preventDefault(); this.selectLocalPath(path); }
-      }
-    }
-  };
-
-  private setLocalPathQuery = (query: LocalPathQuery | null, cwd?: string) => {
-    if (!query) {
-      this.resetLocalPaths();
-      return;
-    }
-    const workspace = this.composerSession()?.cwd || cwd?.trim() || this.launcher.defaults?.cwd || "~/";
-    const sameQuery = this.localPathQuery?.input === query.input
-      && this.localPathQuery.start === query.start
-      && this.localPathQuery.end === query.end
-      && this.localPathQuery.mention === query.mention
-      && this.localPathCwd === workspace;
-    this.localPathQuery = query;
-    this.localPathCwd = workspace;
-    if (sameQuery && (this.localPathsLoading || this.localPaths.length > 0 || this.localPathsError)) return;
-    this.localPathActiveIndex = 0;
-    this.slashActiveIndex = 0;
-    // A mention tags a bot as well as naming a file: the bots it matches come first, at once. A session still on PI's SDK
-    // worker has no message_bot.
-    const bots = query.mention && this.conversation.selected?.tool !== "pi" ? botMentionSuggestions(this.mentionable(), query.input, this.conversation.selected?.bot?.id) : [];
-    this.localPaths = bots;
-    const request = ++this.localPathsRequest;
-    this.localPathsLoading = true;
-    this.localPathsError = "";
-    void loadLocalPathSuggestions(workspace, query.input).then((paths) => {
-      if (request !== this.localPathsRequest) return;
-      this.localPaths = [...bots, ...paths];
-    }).catch((error: unknown) => {
-      if (request !== this.localPathsRequest) return;
-      this.localPaths = bots;
-      this.localPathsError = error instanceof Error ? error.message : "Could not load local paths.";
-    }).finally(() => {
-      if (request === this.localPathsRequest) this.localPathsLoading = false;
-    });
-  };
-
   /** The shell's roster while bots are on (Labs → Bots): what an `@` in this composer suggests and whose faces its chat shows. */
   private readonly mentionable = (): readonly BotView[] => this.embeddedPane ? this.paneBots ?? [] : botsEnabled(this.control.settings) ? this.bots.list : [];
-
-  private retryLocalPaths = () => {
-    const query = this.localPathQuery;
-    const cwd = this.localPathCwd;
-    this.resetLocalPaths();
-    if (query) this.setLocalPathQuery(query, cwd);
-  };
-
-  private selectLocalPath = (suggestion: LocalPathSuggestion) => {
-    const query = this.localPathQuery;
-    if (!query) return;
-    this.slashQuery = null;
-    const completed = completeLocalPath(this.draft, query, suggestion);
-    this.updateDraft(completed.text);
-    if (suggestion.kind === "directory") {
-      this.setLocalPathQuery({
-        input: suggestion.path,
-        start: query.start,
-        end: completed.caret,
-        mention: query.mention,
-      }, this.localPathCwd);
-    } else {
-      this.resetLocalPaths();
-    }
-    void this.updateComplete.then(() => {
-      const textarea = this.composerTextarea;
-      if (!textarea) return;
-      textarea.value = completed.text;
-      textarea.focus();
-      textarea.setSelectionRange(completed.caret, completed.caret);
-      if (suggestion.kind !== "directory") {
-        requestAnimationFrame(() => this.resetLocalPaths());
-      }
-    });
-  };
-
-  private localPathKeydown = (event: KeyboardEvent) => {
-    if (this.slashQuery !== null || !this.localPathQuery || event.isComposing || !(event.target instanceof HTMLTextAreaElement)) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      this.resetLocalPaths();
-      return;
-    }
-    if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
-    if (this.localPathsLoading && (event.key === "Enter" || event.key === "Tab")) {
-      event.preventDefault();
-      return;
-    }
-    if (!this.localPaths.length) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      this.localPathActiveIndex = (this.localPathActiveIndex + (event.key === "ArrowDown" ? 1 : -1) + this.localPaths.length) % this.localPaths.length;
-      void this.updateComplete.then(() => this.renderRoot.querySelector('.mention-menu [aria-selected="true"]')?.scrollIntoView({ block: "nearest" }));
-    } else if (event.key === "Enter" || event.key === "Tab") {
-      const suggestion = this.localPaths[this.localPathActiveIndex];
-      if (suggestion) {
-        event.preventDefault();
-        this.selectLocalPath(suggestion);
-      }
-    }
-  };
 
   private flushPendingLaunchPrompt() {
     const prompt = this.pendingLaunchPrompt;
@@ -1884,10 +1565,10 @@ export class HuiApp extends HuiElement {
       this.note = "";
       this.noteLevel = "info";
       this.sending = true;
-      this.composerDraftEdit += 1;
-      this.setDraft("");
-      this.attachments = [];
-      void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
+      this.composer.draftEdit += 1;
+      this.composer.setDraft("");
+      this.composer.attachments = [];
+      void this.composer.persistDraft(sessionDraftKey(session.id), "", []);
       const run = command === "clear"
         ? clearSession(session.id).then((snapshot) => {
           if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
@@ -1898,7 +1579,7 @@ export class HuiApp extends HuiElement {
         : reloadSession(session.id).then(() => {
           if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
           // Skills, prompts and extension commands may have changed.
-          this.resetCommands();
+          this.composer.resetCommands();
           this.note = "Reloaded extensions, skills, prompts and context files.";
         });
       void run.catch(async (error: unknown) => {
@@ -1933,9 +1614,9 @@ export class HuiApp extends HuiElement {
         this.noteLevel = "error";
         return;
       }
-      this.composerDraftEdit += 1;
-      this.setDraft("");
-      void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
+      this.composer.draftEdit += 1;
+      this.composer.setDraft("");
+      void this.composer.persistDraft(sessionDraftKey(session.id), "", []);
       this.sideChat = { question: sideQuestion, answer: "", model: "", loading: true, error: "" };
       void askSideQuestion(session.id, sideQuestion).then((result) => {
         if (isSelectedSession(session.id, this.conversation.selected?.id)) {
@@ -1961,10 +1642,10 @@ export class HuiApp extends HuiElement {
     // Claim this exact payload before awaiting HTTP. The composer stays locked
     // for the short acknowledgement window, so a rejection can restore this
     // transaction without mixing it with a second draft.
-    this.composerDraftEdit += 1;
-    this.setDraft("");
-    this.attachments = [];
-    void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
+    this.composer.draftEdit += 1;
+    this.composer.setDraft("");
+    this.composer.attachments = [];
+    void this.composer.persistDraft(sessionDraftKey(session.id), "", []);
     this.conversation.streaming = streamingAfterSubmission(
       this.conversation.streaming,
       mode,
@@ -2002,14 +1683,14 @@ export class HuiApp extends HuiElement {
           ? this.conversation.transcript : appendPendingUser(this.conversation.transcript, pendingId, trimmed, sentAttachments), pendingId, false);
         this.requestUpdate();
         const stored = stillSelected
-          ? { text: this.draft, attachments: this.attachments }
+          ? { text: this.composer.draft, attachments: this.composer.attachments }
           : await readComposerDraft(sessionDraftKey(session.id));
         const restored = mergeComposerDraft(stored, { text, attachments });
-        await this.persistComposerDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
+        await this.composer.persistDraft(sessionDraftKey(session.id), restored.text, restored.attachments);
         if (!stillSelected) return;
-        this.composerDraftEdit += 1;
-        this.setDraft(restored.text);
-        this.attachments = restored.attachments;
+        this.composer.draftEdit += 1;
+        this.composer.setDraft(restored.text);
+        this.composer.attachments = restored.attachments;
         this.conversation.streaming = streamingAfterSubmission(
           this.conversation.streaming,
           mode,
@@ -2062,42 +1743,6 @@ export class HuiApp extends HuiElement {
       });
   };
 
-  private addAttachments = (files: readonly File[]) => {
-    const key = this.composerDraftKey;
-    if (this.sending || this.launching) {
-      return;
-    }
-    void Promise.all(files.map((file) => readAttachment(file)))
-      .then(async (added) => {
-        if (key !== this.composerDraftKey) {
-          const stored = await readComposerDraft(key);
-          const attachments = [...stored.attachments, ...added];
-          validateAttachmentTotal(attachments);
-          await this.persistComposerDraft(key, stored.text, attachments);
-          return;
-        }
-        const next = [...this.attachments, ...added];
-        validateAttachmentTotal(next);
-        this.composerDraftEdit += 1;
-        this.attachments = next;
-        await this.persistComposerDraft();
-      })
-      .catch((error: unknown) => {
-        if (key !== this.composerDraftKey) {
-          return;
-        }
-        this.note = error instanceof Error ? error.message : "Could not read that file.";
-        this.noteLevel = "error";
-      });
-  };
-
-  private removeAttachment = (index: number) => {
-    if (this.sending) return;
-    this.composerDraftEdit += 1;
-    this.attachments = this.attachments.filter((_, at) => at !== index);
-    void this.persistComposerDraft();
-  };
-
   private abort = () => {
     const session = this.conversation.selected;
     if (!session || this.conversation.stopping) {
@@ -2147,9 +1792,9 @@ export class HuiApp extends HuiElement {
     this.noteLevel = "info";
     this.sending = true;
     if (typed !== undefined) {
-      this.composerDraftEdit += 1;
-      this.setDraft("");
-      void this.persistComposerDraft(sessionDraftKey(session.id), "", []);
+      this.composer.draftEdit += 1;
+      this.composer.setDraft("");
+      void this.composer.persistDraft(sessionDraftKey(session.id), "", []);
     }
     // Progress and the outcome arrive as compaction events.
     void compactSession(session.id, instructions).catch(async (error: unknown) => {
@@ -2167,14 +1812,14 @@ export class HuiApp extends HuiElement {
   private async restoreSentDraft(sessionId: string, text: string, attachments: readonly Attachment[]): Promise<boolean> {
     const stillSelected = isSelectedSession(sessionId, this.conversation.selected?.id);
     const stored = stillSelected
-      ? { text: this.draft, attachments: this.attachments }
+      ? { text: this.composer.draft, attachments: this.composer.attachments }
       : await readComposerDraft(sessionDraftKey(sessionId));
     const restored = mergeComposerDraft(stored, { text, attachments });
-    await this.persistComposerDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
+    await this.composer.persistDraft(sessionDraftKey(sessionId), restored.text, restored.attachments);
     if (!stillSelected) return false;
-    this.composerDraftEdit += 1;
-    this.setDraft(restored.text);
-    this.attachments = restored.attachments;
+    this.composer.draftEdit += 1;
+    this.composer.setDraft(restored.text);
+    this.composer.attachments = restored.attachments;
     return true;
   }
 
@@ -2189,10 +1834,10 @@ export class HuiApp extends HuiElement {
       .then(async (attachments) => {
         await rewindSession(session.id, target, true);
         if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
-        this.composerDraftEdit += 1;
-        this.setDraft(text);
-        this.attachments = attachments;
-        await this.persistComposerDraft();
+        this.composer.draftEdit += 1;
+        this.composer.setDraft(text);
+        this.composer.attachments = attachments;
+        await this.composer.persistDraft();
         await this.updateComplete;
         if (!isSelectedSession(session.id, this.conversation.selected?.id)) return;
         this.composerTextarea?.focus();
@@ -2417,7 +2062,7 @@ export class HuiApp extends HuiElement {
     this.noteLevel = "info";
     const { prompt, commandDraft, ...sessionInput } = input;
     this.pendingLaunchPrompt = prompt?.trim() ?? "";
-    const launchAttachments = this.attachments;
+    const launchAttachments = this.composer.attachments;
     void createSession({
       ...sessionInput,
       ...(prompt?.trim() ? { initialPrompt: prompt.trim() } : {}),
@@ -2426,14 +2071,14 @@ export class HuiApp extends HuiElement {
     })
       .then(async (session) => {
         await deleteComposerDraft(NEW_SESSION_DRAFT_KEY);
-        this.composerDraftKey = sessionDraftKey(session.id);
-        this.composerDraftHydrated = true;
-        this.composerDraftLoad += 1;
-        this.composerDraftEdit += 1;
-        this.setDraft(commandDraft ?? "");
-        this.pendingCommandBrowse = commandDraft !== undefined;
-        this.attachments = [];
-        if (commandDraft !== undefined) void this.persistComposerDraft();
+        this.composer.draftKey = sessionDraftKey(session.id);
+        this.composer.draftHydrated = true;
+        this.composer.draftLoad += 1;
+        this.composer.draftEdit += 1;
+        this.composer.setDraft(commandDraft ?? "");
+        this.composer.pendingCommandBrowse = commandDraft !== undefined;
+        this.composer.attachments = [];
+        if (commandDraft !== undefined) void this.composer.persistDraft();
         this.launcher.resetWorkspace();
         this.conversation.select(session);
         await this.refreshSessions();
@@ -2444,19 +2089,19 @@ export class HuiApp extends HuiElement {
         await this.withSessionPane(session, (app) => {
           app.pendingLaunchPrompt = pendingPrompt;
           app.pendingLaunchAttachments = pendingPrompt ? launchAttachments : [];
-          app.pendingCommandBrowse = commandDraft !== undefined;
-          if (commandDraft !== undefined) app.updateDraft(commandDraft);
+          app.composer.pendingCommandBrowse = commandDraft !== undefined;
+          if (commandDraft !== undefined) app.composer.updateDraft(commandDraft);
           app.flushPendingLaunchPrompt();
         });
-        this.composerDraftKey = NEW_SESSION_DRAFT_KEY;
-        this.setDraft("");
+        this.composer.draftKey = NEW_SESSION_DRAFT_KEY;
+        this.composer.setDraft("");
       })
       .catch((error: unknown) => {
         if (this.pendingLaunchPrompt) {
-          this.composerDraftEdit += 1;
-          this.setDraft(this.pendingLaunchPrompt);
+          this.composer.draftEdit += 1;
+          this.composer.setDraft(this.pendingLaunchPrompt);
           this.pendingLaunchPrompt = "";
-          void this.persistComposerDraft();
+          void this.composer.persistDraft();
         }
         this.note = error instanceof Error ? error.message : "Could not start that session.";
         this.noteLevel = "error";
@@ -2474,7 +2119,7 @@ export class HuiApp extends HuiElement {
 
   private clearSessionState() {
     this.conversation.clear();
-    this.switchComposerDraft(NEW_SESSION_DRAFT_KEY);
+    this.composer.switchDraft(NEW_SESSION_DRAFT_KEY);
     this.pendingLaunchPrompt = "";
     this.pendingLaunchAttachments = [];
     this.backlog.clearSession();
@@ -2491,9 +2136,9 @@ export class HuiApp extends HuiElement {
   }
 
   private resetSessionEphemeral() {
-    this.resetCommands();
-    this.resetLocalPaths();
-    this.pendingCommandBrowse = false;
+    this.composer.resetCommands();
+    this.composer.resetLocalPaths();
+    this.composer.pendingCommandBrowse = false;
     this.closeDeleteDialog();
     this.renamingFor = "";
     this.deletingFor = "";
@@ -2854,7 +2499,7 @@ export class HuiApp extends HuiElement {
           .onPaneRegistryChange=${() => this.refreshSessions(true).then(() => this.updateComplete).then(() => {})}
           .paneGroups=${this.sessions.revision ? this.sessions.groups : undefined}
           .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
-          .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
+          .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.composer.markSessionDraft(sessionId, hasDraft)}
           .paneCall=${paneCall}
           .onPaneCall=${paneCall ? this.paneCallAction(bot) : undefined}
           .paneBots=${this.mentionable()}
@@ -3295,7 +2940,6 @@ export class HuiApp extends HuiElement {
       continuing: this.continuing,
       rewindPending: this.rewindPending,
       forkPending: Boolean(this.forkTarget),
-      draft: this.draft,
       chatPreferences: this.control.settings.chat,
       question: this.conversation.question,
       connection: this.conversation.connection,
@@ -3305,7 +2949,6 @@ export class HuiApp extends HuiElement {
       showScrollToBottom: this.showScrollToBottom,
       ...this.conversation.props(),
       compaction: this.conversation.compaction,
-      attachments: this.attachments,
       launching: this.launching,
       note: this.note,
       noteLevel: this.noteLevel,
@@ -3361,37 +3004,6 @@ export class HuiApp extends HuiElement {
         onRestart: this.backlog.restartWatcher,
         onDismiss: this.backlog.dismissWatcher,
       } : undefined,
-      onDraftChange: this.updateDraft,
-      onDraftInput: this.typeDraft,
-      commandMenu: {
-        open: this.slashQuery !== null && !this.sending && !this.conversation.opening && !this.launching && (!this.composerSession() || this.conversation.connection === "live"),
-        commands: this.menuCommands(),
-        catalog: this.runtimeCommands(),
-        paths: this.localPathQuery ? this.localPaths : undefined,
-        pathsLoading: this.localPathsLoading,
-        pathsError: this.localPathsError,
-        onSelectPath: this.selectLocalPath,
-        onRetryPaths: this.retryLocalPaths,
-        activeIndex: this.slashActiveIndex,
-        loading: this.commandsLoading,
-        error: this.commandsError,
-        streaming: this.conversation.streaming,
-        onSelect: this.selectSlashCommand,
-        onRetry: this.requestCommands,
-      },
-      onCommandQuery: this.setCommandQuery,
-      onCommandKeydown: this.commandKeydown,
-      localPathMenu: {
-        open: this.localPathQuery !== null && this.slashQuery === null && !this.sending && !this.conversation.opening && this.conversation.connection === "live",
-        paths: this.localPaths,
-        activeIndex: this.localPathActiveIndex,
-        loading: this.localPathsLoading,
-        error: this.localPathsError,
-        onSelect: this.selectLocalPath,
-        onRetry: this.retryLocalPaths,
-      },
-      onLocalPathQuery: this.setLocalPathQuery,
-      onLocalPathKeydown: this.localPathKeydown,
       onSendPrompt: this.send,
       onContinueInterrupted: this.continueInterrupted,
       runError: this.currentRunError(),
@@ -3404,8 +3016,6 @@ export class HuiApp extends HuiElement {
       onFork: this.forkFromMessage,
       onCompact: () => this.compactNow(),
       onCancelCompaction: () => this.cancelCompactionNow(),
-      onAddAttachments: this.addAttachments,
-      onRemoveAttachment: this.removeAttachment,
       onCopy: this.conversation.copy,
       onActivityExpanded: this.setActivityExpanded,
       onAnswerQuestion: this.answerQuestion,
@@ -3517,7 +3127,7 @@ export class HuiApp extends HuiElement {
       .paneUnsentPrompt=${this.listedSession(pane.sessionId)?.initialPrompt}
       .paneGroups=${this.sessions.revision ? this.sessions.groups : undefined}
       .onPaneUpdate=${(text: string, attachments: readonly Attachment[]) => this.handleUpdateCommand(text, attachments)}
-      .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.markSessionDraft(sessionId, hasDraft)}
+      .onPaneDraftChange=${(sessionId: string, hasDraft: boolean) => this.composer.markSessionDraft(sessionId, hasDraft)}
       .paneBots=${this.mentionable()}
       .onPaneOpenBot=${this.openBot}
     ></hui-app>`;
@@ -3669,7 +3279,7 @@ export class HuiApp extends HuiElement {
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),
       groups: this.listedGroups,
       bots: this.shellBotsProps(),
-      draftSessionIds: this.draftSessionIds,
+      draftSessionIds: this.composer.draftSessionIds,
       collapsed: this.sessions.collapsed,
       loading: this.sessions.loading,
       error: this.sessions.error,
