@@ -17,10 +17,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize } from "node:path";
 
-import { BACKLOG_LIMITS, backlogItemId, backlogItemPrompt, type BacklogItem, type BacklogView } from "../shared/backlog.ts";
+import type { BacklogItem, BacklogItemKind, BacklogView } from "./api/backlog.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
 import { isSessionStage, SESSION_STAGES } from "./sessions/session-stages.ts";
-import { taskSuggestionPrompt, type TaskSuggestionStartMode } from "../shared/task-suggestions.ts";
+import { taskSuggestionPrompt, type TaskSuggestionStartMode } from "./agent-tools/task-suggestions.ts";
 import {
   JIRA_KEY,
   JiraClient,
@@ -40,6 +40,39 @@ import type { createSessionLifecycle } from "./sessions/lifecycle.ts";
 import type { SessionView } from "./api/sessions.ts";
 import type { createSessionViews } from "./sessions/views.ts";
 import { TaskSuggestionInputError, type TaskSuggestionStore } from "./task-suggestions.ts";
+
+export const BACKLOG_LIMITS = {
+  title: 200,
+  problem: 12_000,
+  fix: 8_000,
+  cwd: 4_096,
+  group: 200,
+  tasks: 500,
+} as const;
+
+export function backlogItemId(kind: BacklogItemKind, key: string): string {
+  return `${kind}:${key}`;
+}
+
+export function backlogItemPrompt(item: Pick<BacklogItem, "kind" | "title" | "problem" | "fix" | "jira">): string {
+  const link = item.jira ? [`Jira: [${item.jira.key}](${item.jira.url})`] : [];
+  if (item.kind === "jira") {
+    const summary = item.jira?.summary || item.title;
+    return [
+      `# ${item.jira ? `${item.jira.key}: ` : ""}${summary}`,
+      ...link,
+      "## Description",
+      item.jira?.description?.trim() || "No description in Jira. Investigate and confirm the scope before changing code.",
+    ].join("\n\n");
+  }
+  return [
+    `# ${item.title}`,
+    ...link,
+    "## Problem", item.problem?.trim() || "Not described.",
+    "## Proposed fix",
+    item.fix?.trim() || "Not known yet. Investigate and confirm the root cause before changing code.",
+  ].join("\n\n");
+}
 
 export const BACKLOG_FILE = join(CONFIG_DIR, "backlog.json");
 export const BACKLOG_VERSION = 1;

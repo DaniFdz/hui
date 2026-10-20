@@ -4,10 +4,12 @@
  * `hui.ts` applies the `x-hui` guard before dispatching here.
  */
 import { readWorkspaceInspection } from "../control-surfaces.ts";
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import { WorkspaceInspection, WorktreeError, WorktreeInventory, WorktreeRemovalResponse } from "../api/worktrees.ts";
+export { routeSchemas } from "../api/worktrees.ts";
 import type { SessionRecord } from "../sessions.ts";
 import type { WorktreeService } from "../worktree-inventory.ts";
-import type { WorktreeRisk } from "../../shared/worktrees.ts";
+import type { WorktreeRisk } from "../api/worktrees.ts";
 
 const WORKTREES_ROUTE = "/__hui/worktrees";
 const WORKTREES_REMOVE_ROUTE = "/__hui/worktrees/remove";
@@ -40,23 +42,23 @@ export function createWorktreeRoutes(deps: { worktreeService: WorktreeService; r
     const { method, path } = request;
     const { worktreeService, readRegistry } = deps;
     if (path === WORKTREES_ROUTE) {
-      if (method === "GET") return { status: 200, body: await worktreeService.inventory(await readRegistry()) };
-      return { status: 405, body: { error: "method not allowed" } };
+      if (method === "GET") return reply(WorktreeInventory, await worktreeService.inventory(await readRegistry()));
+      return reply(WorktreeError, { error: "method not allowed" }, 405);
     }
     if (path === WORKTREES_REMOVE_ROUTE) {
-      if (method !== "POST") return { status: 405, body: { error: "method not allowed" } };
+      if (method !== "POST") return reply(WorktreeError, { error: "method not allowed" }, 405);
       let removal: ReturnType<typeof parseWorktreeRemoval>;
       try {
         removal = parseWorktreeRemoval(await request.json());
       } catch (error) {
-        return { status: 400, body: { error: error instanceof Error ? error.message : "Invalid removal request." } };
+        return reply(WorktreeError, { error: error instanceof Error ? error.message : "Invalid removal request." }, 400);
       }
       const results = await worktreeService.remove(await readRegistry(), removal.paths, removal.mode, removal.acknowledged);
-      return { status: 200, body: { results, inventory: await worktreeService.inventory(await readRegistry()) } };
+      return reply(WorktreeRemovalResponse, { results, inventory: await worktreeService.inventory(await readRegistry()) });
     }
     if (path === WORKSPACES_ROUTE) {
-      if (method === "GET") return { status: 200, body: await readWorkspaceInspection() };
-      return { status: 405, body: { error: "method not allowed" } };
+      if (method === "GET") return reply(WorkspaceInspection, await readWorkspaceInspection());
+      return reply(WorktreeError, { error: "method not allowed" }, 405);
     }
     return undefined;
   }

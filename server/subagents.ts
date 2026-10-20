@@ -17,7 +17,7 @@ import {
 import { AgentToolInputError, rootSessionId } from "./sessions/session-tree.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { piThinking } from "./runtimes/model-controls.ts";
-import { isThinkingLevel } from "../shared/thinking.ts";
+import { isThinkingLevel } from "./sessions/thinking.ts";
 import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "./agent-tools/subagent-completion.ts";
 
 const MAX_ACTIVE_SUBAGENTS = 8;

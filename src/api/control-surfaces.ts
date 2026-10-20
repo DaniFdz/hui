@@ -4,6 +4,7 @@
  * and types the results.
  */
 import type { PowerResponse, PowerStatus } from "./schema/power.ts";
+import type { WorkspaceInspection } from "./schema/worktrees.ts";
 import { fetchJson } from "./request.ts";
 
 export type GatewayHealth = {
@@ -24,31 +25,7 @@ export type GatewayHealth = {
   };
 };
 
-export type MemorySource = {
-  workspace: string;
-  path: string;
-  relativePath: string;
-  kind: "context" | "memory";
-  bytes: number;
-  modifiedAt: string;
-};
-
-export type WorktreeView = {
-  repository: string;
-  path: string;
-  branch: string;
-  head: string;
-  bare: boolean;
-  detached: boolean;
-  sessionIds: readonly string[];
-};
-
-export type WorkspaceInspection = {
-  workspaces: readonly string[];
-  memory: readonly MemorySource[];
-  worktrees: readonly WorktreeView[];
-  diagnostics: readonly string[];
-};
+export type { MemorySource, WorktreeView, WorkspaceInspection } from "./schema/worktrees.ts";
 
 export function loadGatewayHealth(): Promise<GatewayHealth> {
   return fetchJson<GatewayHealth>("/__hui/health");

@@ -14,8 +14,8 @@
 import { LitElement, html, nothing } from "lit";
 import { SESSION_STAGE_LABELS } from "../lib/kanban.ts";
 import type { SessionStage } from "../api/schema/sessions.ts";
-import type { BacklogItem } from "../../shared/backlog.ts";
-import { fallbackBranchName } from "../../shared/branch-names.ts";
+import type { BacklogItem } from "../api/schema/backlog.ts";
+import { fallbackBranchName } from "../lib/backlog-start.ts";
 import { startBacklogItem, suggestBacklogBranchName } from "../api/backlog.ts";
 import {
   backlogBranchOptions,

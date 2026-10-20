@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, TaskSuggestionStore } from "./task-suggestions.ts";
-import { parseTaskSuggestions, taskSuggestionJiraDescription, taskSuggestionLocation, taskSuggestionPreview, taskSuggestionPrompt } from "../shared/task-suggestions.ts";
 
 async function fixture(t: TestContext) {
   const dir = await mkdtemp(join(tmpdir(), "hui-suggestions-"));
@@ -75,23 +74,6 @@ test("forgetting deleted sessions drops their cards", async (t) => {
   store.forget(["alpha"]);
   assert.deepEqual(store.list("alpha"), []);
   assert.equal(store.list("beta").length, 1);
-});
-
-test("browser helpers normalize, locate and describe suggestions", () => {
-  assert.deepEqual(parseTaskSuggestions([
-    { id: "a", title: " T ", problem: "P", fix: "F", cwd: "/repo", createdAt: "now" },
-    { id: "b", title: "", problem: "P", cwd: "/repo" },
-    { id: "c", title: "No problem", fix: "F", cwd: "/repo" },
-    "junk",
-  ]), [{ id: "a", title: "T", problem: "P", fix: "F", cwd: "/repo", createdAt: "now" }]);
-  assert.deepEqual(parseTaskSuggestions(undefined), []);
-  assert.equal(taskSuggestionLocation("/home/developer/Projects/HUI/"), "HUI");
-  assert.equal(taskSuggestionLocation("/"), "/");
-  assert.equal(taskSuggestionJiraDescription({ problem: "It breaks.", fix: "Patch it." }), "## Problem\n\nIt breaks.\n\n## Proposed fix\n\nPatch it.");
-  assert.equal(taskSuggestionJiraDescription({ problem: "It breaks.", fix: "" }), "## Problem\n\nIt breaks.");
-  assert.equal(taskSuggestionPrompt({ title: "T", problem: "It breaks.", fix: "Patch it." }), "# T\n\n## Problem\n\nIt breaks.\n\n## Proposed fix\n\nPatch it.");
-  assert.match(taskSuggestionPrompt({ title: "T", problem: "It breaks.", fix: "" }), /## Proposed fix\n\nNot known yet\. Investigate and confirm the root cause before changing code\.$/);
-  assert.equal(taskSuggestionPreview("## Cause\n\n- The `select` in **x.ts**\n\n```ts\ncode\n```\nsee [docs](https://x)"), "Cause The select in x.ts see docs");
 });
 
 test("suggest_task guidance covers operator-requested follow-ups", async () => {

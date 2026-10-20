@@ -4,8 +4,8 @@
  * Naming always has a deterministic fallback, so a missing model or failed call never blocks session creation.
  */
 import type { Settings } from "./hui-settings.ts";
-import type { BacklogItem } from "../shared/backlog.ts";
-import { fallbackBranchName, normalizeSuggestedBranchName } from "../shared/branch-names.ts";
+import type { BacklogItem, SuggestedBranchName } from "./api/backlog.ts";
+import { fallbackBranchName, normalizeSuggestedBranchName } from "./git/branch-names.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { runPiUtilityPrompt } from "./runtimes/pi.ts";
 
@@ -158,7 +158,7 @@ export async function generateSessionTitle(options: {
 
 const BRANCH_CONTEXT_MAX = 4_000;
 
-export type SuggestedWorktreeName = { name: string; source: "model" | "fallback" };
+export type SuggestedWorktreeName = SuggestedBranchName;
 
 /** Task facts the utility model reads to name a branch, bounded. */
 function branchNameContext(item: Pick<BacklogItem, "title" | "problem" | "fix" | "jira">): string {

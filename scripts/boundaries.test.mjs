@@ -189,6 +189,12 @@ test.each([
   ["src/lib/diff/view-state.fixture.json", "server/git-diff.fixture.json"],
   ["src/lib/bots/facts.fixture.json", "server/bot-facts.fixture.json"],
   ["src/lib/bots/triggers.fixture.json", "server/bot-triggers-format.fixture.json"],
+  ["src/api/backlog.fixture.json", "server/backlog.fixture.json"],
+  ["src/lib/task-suggestions.fixture.json", "server/agent-tools/task-suggestions.fixture.json"],
+  ["src/lib/backlog-start.fixture.json", "server/git/branch-names.fixture.json"],
+  ["src/lib/worktrees.fixture.json", "server/git/worktrees.fixture.json"],
+  ["src/lib/progress-card.fixture.json", "server/sessions/progress-card.fixture.json"],
+  ["src/lib/thinking.fixture.json", "server/sessions/thinking.fixture.json"],
 ])("runtime fixtures stay byte-identical: %s and %s", async (browser, server) => {
   assert.equal(await readFile(join(root, browser), "utf8"), await readFile(join(root, server), "utf8"));
 });
@@ -210,9 +216,7 @@ const ALLOWED = [
   "e2e/demo/provider.ts -> shared/bots.ts (R3)",
   "server/agent-tools-bridge.ts -> shared/bots.ts (R3)",
   "server/automation.ts -> shared/bots.ts (R3)",
-  "server/backlog.test.ts -> shared/backlog.ts (R3)",
-  "server/backlog.ts -> shared/backlog.ts (R3)",
-  "server/backlog.ts -> shared/task-suggestions.ts (R3)",
+
   "server/bot-conversations.ts -> shared/bots.ts (R3)",
   "server/bot-conversations.ts -> shared/calls.ts (R3)",
   "server/bot-export.test.ts -> shared/bot-export.ts (R3)",
@@ -285,12 +289,7 @@ const ALLOWED = [
   "server/hui.ts -> shared/bots.ts (R3)",
   "server/hui.ts -> shared/vscode.ts (R3)",
   "server/hui.ts -> shared/widgets.ts (R3)",
-  "server/live-sessions.ts -> shared/task-suggestions.ts (R3)",
-  "server/live-sessions.ts -> shared/watchers.ts (R3)",
-  "server/model-routing.test.ts -> shared/branch-names.ts (R3)",
-  "server/model-routing.ts -> shared/backlog.ts (R3)",
-  "server/model-routing.ts -> shared/branch-names.ts (R3)",
-  "server/pi-config.ts -> shared/thinking.ts (R3)",
+
   "server/routes/bot-templates.test.ts -> shared/bot-export.ts (R3)",
   "server/routes/bot-templates.test.ts -> shared/bot-templates.ts (R3)",
   "server/routes/bot-templates.test.ts -> shared/bots.ts (R3)",
@@ -300,13 +299,12 @@ const ALLOWED = [
   "server/routes/calls.test.ts -> shared/calls.ts (R3)",
   "server/routes/calls.ts -> shared/bots.ts (R3)",
   "server/routes/calls.ts -> shared/calls.ts (R3)",
-  "server/routes/jira.ts -> shared/task-suggestions.ts (R3)",
+
   "server/routes/session-actions.ts -> shared/bots.ts (R3)",
-  "server/routes/session-actions.ts -> shared/thinking.ts (R3)",
+
   "server/routes/sessions.ts -> shared/bots.ts (R3)",
   "server/routes/vscode.ts -> shared/vscode.ts (R3)",
-  "server/routes/worktrees.ts -> shared/worktrees.ts (R3)",
-  "server/routes/watchers.ts -> shared/watchers.ts (R3)",
+
   "server/runtimes/durable-bot-access.test.ts -> shared/bots.ts (R3)",
   "server/runtimes/durable-bot-access.ts -> shared/bots.ts (R3)",
   "server/runtimes/durable-bots.test.ts -> shared/bots.ts (R3)",
@@ -320,21 +318,15 @@ const ALLOWED = [
   "server/runtimes/types.ts -> shared/calls.ts (R3)",
   "server/runtimes/widget-code.test.ts -> shared/widgets.ts (R3)",
   "server/services.ts -> shared/bots.ts (R3)",
-  "server/services.ts -> shared/task-suggestions.ts (R3)",
-  "server/sessions/lifecycle.ts -> shared/branch-names.ts (R3)",
-  "server/sessions/lifecycle.ts -> shared/thinking.ts (R3)",
-  "server/sessions/views.ts -> shared/progress-card.ts (R3)",
+
   "server/static-files.ts -> shared/app-routes.ts (R3)",
-  "server/subagents.ts -> shared/thinking.ts (R3)",
-  "server/task-suggestions.test.ts -> shared/task-suggestions.ts (R3)",
-  "server/task-suggestions.ts -> shared/task-suggestions.ts (R3)",
+
   "server/vscode-install.ts -> shared/vscode.ts (R3)",
   "server/vscode-providers.ts -> shared/vscode.ts (R3)",
   "server/vscode-proxy.test.ts -> shared/vscode.ts (R3)",
   "server/vscode-proxy.ts -> shared/vscode.ts (R3)",
   "server/vscode.ts -> shared/vscode.ts (R3)",
-  "server/watchers.test.ts -> shared/watchers.ts (R3)",
-  "server/watchers.ts -> shared/watchers.ts (R3)",
+
   "server/widget-sandbox.test.ts -> shared/widgets.ts (R3)",
   "server/widget-sandbox.ts -> shared/widgets.ts (R3)",
   "server/worker/host-bots.ts -> shared/bot-templates.ts (R3)",
@@ -342,32 +334,24 @@ const ALLOWED = [
   "server/worker/host-bots.ts -> shared/calls.ts (R3)",
   "server/worker/host.ts -> shared/bots.ts (R3)",
   "server/workers.ts -> shared/bots.ts (R3)",
-  "server/worktree-inventory.test.ts -> shared/worktrees.ts (R3)",
-  "server/worktree-inventory.ts -> shared/worktrees.ts (R3)",
-  "server/worktrees.ts -> shared/branch-names.ts (R3)",
+
   "shared/ (R3)",
   "shared/bot-export.ts -> shared/bots.ts (R3)",
   "shared/bot-templates.ts -> shared/bot-export.ts (R3)",
   "shared/bot-templates.ts -> shared/bots.ts (R3)",
-  "shared/bots.ts -> shared/thinking.ts (R3)",
+
   "shared/voice.ts -> shared/calls.ts (R3)",
-  "src/api/backlog.ts -> shared/backlog.ts (R3)",
-  "src/api/backlog.ts -> shared/task-suggestions.ts (R3)",
+
   "src/api/bot-templates.ts -> shared/bot-export.ts (R3)",
   "src/api/bot-templates.ts -> shared/bot-templates.ts (R3)",
   "src/api/bots.test.ts -> shared/bots.ts (R3)",
   "src/api/calls.ts -> shared/calls.ts (R3)",
   "src/api/sessions.ts -> shared/calls.ts (R3)",
-  "src/api/sessions.ts -> shared/task-suggestions.ts (R3)",
-  "src/api/sessions.ts -> shared/watchers.ts (R3)",
-  "src/api/task-suggestions.ts -> shared/task-suggestions.ts (R3)",
+
   "src/api/vscode.ts -> shared/vscode.ts (R3)",
-  "src/api/watchers.ts -> shared/watchers.ts (R3)",
-  "src/api/worktrees.ts -> shared/worktrees.ts (R3)",
-  "src/components/backlog-start-dialog.ts -> shared/backlog.ts (R3)",
-  "src/components/backlog-start-dialog.ts -> shared/branch-names.ts (R3)",
+
   "src/components/bot-face.ts -> shared/bots.ts (R3)",
-  "src/components/fork-dialog.ts -> shared/branch-names.ts (R3)",
+
   "src/components/settings/calls.test.ts -> shared/calls.ts (R3)",
   "src/components/settings/calls.ts -> shared/calls.ts (R3)",
   "src/components/settings/vscode.ts -> shared/vscode.ts (R3)",
@@ -376,7 +360,7 @@ const ALLOWED = [
   "src/controllers/bot-import-controller.ts -> shared/bot-export.ts (R3)",
   "src/controllers/bots-controller.ts -> shared/calls.ts (R3)",
   "src/lib/attachment-file-icon.test.ts -> src/views/home.ts (R6)",
-  "src/lib/backlog-start.ts -> shared/backlog.ts (R3)",
+
   "src/lib/bots/bots.test.ts -> shared/bots.ts (R3)",
   "src/lib/bots/bots.ts -> shared/bots.ts (R3)",
   "src/lib/bots/bots.ts -> shared/calls.ts (R3)",
@@ -386,15 +370,14 @@ const ALLOWED = [
   "src/lib/bots/templates.ts -> shared/bot-templates.ts (R3)",
   "src/lib/bots/tools.ts -> shared/bots.ts (R3)",
   "src/lib/jira.test.ts -> src/views/shell.ts (R6)",
-  "src/lib/kanban.test.ts -> shared/backlog.ts (R3)",
-  "src/lib/kanban.ts -> shared/backlog.ts (R3)",
+
   "src/lib/message-context-menu.test.ts -> src/views/home.ts (R6)",
   "src/lib/navigation.test.ts -> shared/app-routes.ts (R3)",
-  "src/lib/progress-card.ts -> shared/progress-card.ts (R3)",
+
   "src/lib/session/sessions.ts -> shared/calls.ts (R3)",
   "src/lib/settings.ts -> shared/calls.ts (R3)",
   "src/lib/subagent-completion.test.ts -> src/views/chat/projection.ts (R6)",
-  "src/lib/task-suggestions.ts -> shared/task-suggestions.ts (R3)",
+
   "src/lib/terminal-font.test.ts -> src/views/settings.ts (R6)",
   "src/lib/theme/vscode-theme.ts -> shared/vscode.ts (R3)",
   "src/lib/transcript-state.ts -> shared/calls.ts (R3)",
@@ -407,12 +390,12 @@ const ALLOWED = [
   "src/lib/vscode-store.ts -> shared/vscode.ts (R3)",
   "src/lib/widgets.test.ts -> shared/widgets.ts (R3)",
   "src/lib/widgets.ts -> shared/widgets.ts (R3)",
-  "src/lib/worktrees.ts -> shared/worktrees.ts (R3)",
+
   "src/views/bot-import.ts -> shared/bot-export.ts (R3)",
   "src/views/bot-import.ts -> shared/bot-templates.ts (R3)",
   "src/views/bot-settings.ts -> shared/bots.ts (R3)",
   "src/views/bot-settings.ts -> shared/calls.ts (R3)",
-  "src/views/bot-settings.ts -> shared/thinking.ts (R3)",
+
   "src/views/bot-settings.ts -> shared/voice.ts (R3)",
   "src/views/bot-tools.ts -> shared/bots.ts (R3)",
   "src/views/bot-voice.ts -> shared/bots.ts (R3)",
@@ -423,11 +406,9 @@ const ALLOWED = [
   "src/views/chat/projection.ts -> shared/bots.ts (R3)",
   "src/views/home.test.ts -> src/hui-app.ts (R7)",
   "src/views/home.ts -> shared/bots.ts (R3)",
-  "src/views/home.ts -> shared/thinking.ts (R3)",
-  "src/views/kanban.ts -> shared/backlog.ts (R3)",
-  "src/views/kanban.ts -> shared/task-suggestions.ts (R3)",
+
   "src/views/settings-automation.test.ts -> src/hui-app.ts (R7)",
   "src/views/settings-workspaces.test.ts -> src/hui-app.ts (R7)",
   "src/views/shell.test.ts -> src/hui-app.ts (R7)",
-  "src/views/worktrees.test.ts -> shared/worktrees.ts (R3)",
+
 ];

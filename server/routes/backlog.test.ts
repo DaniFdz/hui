@@ -6,6 +6,10 @@ import { once } from "node:events";
 import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { BacklogError, BacklogJiraResponse, BacklogStartResponse, BacklogView, SuggestedBranchName } from "../api/backlog.ts";
+import { JiraDraftResponse } from "../api/jira.ts";
+import { TaskSuggestionBacklogResponse, TaskSuggestionError } from "../api/task-suggestions.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 async function body(request: IncomingMessage): Promise<string> {
   let text = "";
@@ -74,7 +78,16 @@ test("backlog routes merge Jira and local items, regroup, link and save suggesti
       headers: { ...(guard ? { "x-hui": "1" } : {}), "content-type": "application/json" },
       ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
     });
-    return { status: response.status, body: await response.json() as View & { error?: string; suggestions?: unknown[]; taskId?: string; backlog?: View; issue?: { key: string } } };
+    const result: unknown = await response.json();
+    if (path.startsWith("/__hui/backlog")) {
+      if (response.status >= 400) expectSchema(BacklogError, result);
+      else if (path.endsWith("/jira/draft")) expectSchema(JiraDraftResponse, result);
+      else if (/\/jira(?:\/link)?$/u.test(path)) expectSchema(BacklogJiraResponse, result);
+      else if (path.endsWith("/start")) expectSchema(BacklogStartResponse, result);
+      else expectSchema(BacklogView, result);
+    }
+    if (/\/suggestions\//u.test(path)) expectSchema(response.status >= 400 ? TaskSuggestionError : TaskSuggestionBacklogResponse, result);
+    return { status: response.status, body: result as View & { error?: string; suggestions?: unknown[]; taskId?: string; backlog?: View; issue?: { key: string } } };
   };
 
   assert.equal((await route("/__hui/backlog", "GET", undefined, false)).status, 403);
@@ -133,7 +146,9 @@ test("backlog routes merge Jira and local items, regroup, link and save suggesti
     const response = await fetch(`${origin}/__hui/backlog/items/${encodeURIComponent(id)}/branch-name`, {
       method, headers: { "x-hui": "1", "content-type": "application/json" }, ...(method === "POST" ? { body: JSON.stringify(payload) } : {}),
     });
-    return { status: response.status, body: await response.json() as Suggestion };
+    const result: unknown = await response.json();
+    expectSchema(response.status >= 400 ? BacklogError : SuggestedBranchName, result);
+    return { status: response.status, body: result as Suggestion };
   };
   assert.deepEqual(await suggest("jira:CI-2", { cwd: dir }), { status: 200, body: { name: "assigned-work", source: "fallback" } });
   assert.equal((await suggest("jira:CI-2", undefined, "GET")).status, 405);

@@ -1,16 +1,10 @@
-/** The agent's progress card, shared by gateway and browser. It turns a `progress_card` tool call's arguments into
- * bounded markdown and plan steps, treats the latest call in a transcript as the current card, and derives the
- * compact sidebar summary. */
-export type ProgressStepStatus = "pending" | "in_progress" | "completed";
-export type ProgressStep = { step: string; status: ProgressStepStatus };
-export type ProgressCard = {
-  markdown: string;
-  steps: ProgressStep[];
-};
+/** Rebuilds the latest progress card from a session transcript for gateway snapshots. */
+import type { ProgressCard, ProgressStep } from "../api/sessions.ts";
+type ProgressStepStatus = ProgressStep["status"];
 
 const STATUSES = new Set<ProgressStepStatus>(["pending", "in_progress", "completed"]);
 
-export function parseProgressCard(value: unknown): ProgressCard | undefined {
+function parseProgressCard(value: unknown): ProgressCard | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const source = value as Record<string, unknown>;
   const markdown = typeof source["markdown"] === "string" ? source["markdown"].slice(0, 8_192) : "";
@@ -31,15 +25,4 @@ export function parseProgressCard(value: unknown): ProgressCard | undefined {
 export function progressCardFromTranscript<T extends { kind: string; name?: string; args?: unknown }>(transcript: readonly T[]): ProgressCard | undefined {
   const call = transcript.findLast((item) => item.kind === "tool" && item.name === "progress_card");
   return call?.kind === "tool" ? parseProgressCard(call.args) : undefined;
-}
-
-/** Compact sidebar label; only explicit plan state supplies a count. */
-export function progressCardSummary(card: ProgressCard): { label: string; count: string } {
-  const completed = card.steps.filter((step) => step.status === "completed").length;
-  const current = card.steps.find((step) => step.status === "in_progress")
-    ?? card.steps.find((step) => step.status === "pending");
-  return {
-    label: current?.step ?? (card.steps.length ? "Completed" : "Agent notes"),
-    count: card.steps.length ? `${completed}/${card.steps.length}` : "",
-  };
 }

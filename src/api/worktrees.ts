@@ -1,6 +1,6 @@
 /** Browser client for the worktree inventory in Settings: loading it and removing worktrees with acknowledged
  * risks. Git work happens in the gateway. */
-import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRemovalResult, WorktreeRisk } from "../../shared/worktrees.ts";
+import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRemovalResponse, WorktreeRisk } from "./schema/worktrees.ts";
 import { fetchJson } from "./request.ts";
 
 export function loadWorktrees(): Promise<WorktreeInventory> {
@@ -11,7 +11,7 @@ export function removeWorktrees(
   paths: readonly string[],
   mode: WorktreeRemovalMode,
   acknowledged: readonly WorktreeRisk[] = [],
-): Promise<{ results: WorktreeRemovalResult[]; inventory: WorktreeInventory }> {
+): Promise<WorktreeRemovalResponse> {
   return fetchJson("/__hui/worktrees/remove", {
     method: "POST",
     headers: { "content-type": "application/json" },

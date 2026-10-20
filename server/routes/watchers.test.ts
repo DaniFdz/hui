@@ -7,6 +7,8 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { waitFor } from "../test-support/wait-for.ts";
+import { WatcherLog, WatchersResponse } from "../api/watchers.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 test("the watcher tool starts HUI-run processes and the guarded routes control them", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-watcher-routes-"));
@@ -87,6 +89,7 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
     logBody = await log.json() as typeof logBody;
     return logBody?.lines.length;
   }, { state: () => logBody });
+  expectSchema(WatcherLog, logBody);
   assert.deepEqual(logBody, { id, lines: ["posted /merge"], truncated: false });
   assert.equal((await route(`${base}/log?lines=0`)).status, 400);
 
@@ -94,13 +97,15 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
   const runningId = running.body.result?.["id"] as string;
   const stopped = await route(`/__hui/sessions/alpha/watchers/${runningId}/stop`, "POST");
   assert.equal(stopped.status, 200);
-  const stoppedWatchers = await stopped.json() as { watchers: Array<{ id: string; state: string; endedAt?: string }> };
+  const stoppedWatchers: unknown = await stopped.json();
+  expectSchema(WatchersResponse, stoppedWatchers);
   assert.equal(stoppedWatchers.watchers.find((watcher) => watcher.id === runningId)?.state, "stopped");
   assert.ok(stoppedWatchers.watchers.find((watcher) => watcher.id === runningId)?.endedAt);
 
   const restarted = await route(`/__hui/sessions/alpha/watchers/${runningId}/restart`, "POST");
   assert.equal(restarted.status, 200);
-  const restartedWatchers = await restarted.json() as { watchers: Array<{ id: string; state: string }> };
+  const restartedWatchers: unknown = await restarted.json();
+  expectSchema(WatchersResponse, restartedWatchers);
   assert.equal(restartedWatchers.watchers.find((watcher) => watcher.id === runningId)?.state, "running");
   assert.equal((await route(`/__hui/sessions/alpha/watchers/${runningId}/restart`, "POST")).status, 409);
   assert.equal((await route(`/__hui/sessions/alpha/watchers/${runningId}`, "DELETE")).status, 409);
@@ -110,7 +115,8 @@ test("the watcher tool starts HUI-run processes and the guarded routes control t
   assert.equal(settled.status, 200);
   const removed = await route(base, "DELETE");
   assert.equal(removed.status, 200);
-  const remaining = await removed.json() as { watchers: Array<{ id: string }> };
+  const remaining: unknown = await removed.json();
+  expectSchema(WatchersResponse, remaining);
   assert.deepEqual(remaining.watchers.map((watcher) => watcher.id), [runningId]);
   assert.equal((await route(base, "DELETE")).status, 404);
   const listed = await tool("list", {});

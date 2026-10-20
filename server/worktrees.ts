@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 
 import { WORKTREES_DIR } from "./paths.ts";
 import type { WorktreeProgress } from "./api/sessions.ts";
-import { worktreeSlug } from "../shared/branch-names.ts";
+import { worktreeSlug } from "./git/branch-names.ts";
 
 export { worktreeSlug };
 

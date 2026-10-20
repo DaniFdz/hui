@@ -19,7 +19,7 @@ import { voiceLanguageName } from "../../shared/voice.ts";
 import { languageOptions } from "../lib/voice/voice.ts";
 import { renderPicker } from "./settings-picker.ts";
 import { renderDirectoryPicker } from "./directory-picker.ts";
-import { THINKING_LABELS } from "../../shared/thinking.ts";
+import { THINKING_LABELS } from "../lib/thinking.ts";
 
 export type { BotSettingKey, BotSettingValue } from "../lib/bots/bots.ts";
 

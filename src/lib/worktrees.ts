@@ -2,10 +2,15 @@
  * Helpers for the worktree inventory in Settings: sizes and the worktrees only the given sessions use. Its requests
  * live in src/api/worktrees.ts.
  */
-import type { WorktreeRow } from "../../shared/worktrees.ts";
+import type { WorktreeRow } from "../api/schema/worktrees.ts";
 
-export type { WorktreeInventory, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../../shared/worktrees.ts";
-export { isMergedCleanupCandidate } from "../../shared/worktrees.ts";
+export type { WorktreeInventory, WorktreeRemovalResult, WorktreeRisk, WorktreeRow } from "../api/schema/worktrees.ts";
+
+export function isMergedCleanupCandidate(row: WorktreeRow): boolean {
+  return row.managed && row.merged && row.sessions.every((session) => session.archived) && row.dirty === false && row.risks.length === 0;
+}
+
+
 
 /** Binary units, one decimal from MiB up, matching `du -h` intuition. */
 export function formatBytes(bytes: number | undefined): string {

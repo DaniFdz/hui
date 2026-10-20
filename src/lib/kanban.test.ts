@@ -21,7 +21,7 @@ import {
   toggleKanbanColumn,
 } from "./kanban.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
-import type { BacklogItem } from "../../shared/backlog.ts";
+import type { BacklogItem } from "../api/schema/backlog.ts";
 import type { SessionStage } from "../api/schema/sessions.ts";
 
 const stageFixture: {

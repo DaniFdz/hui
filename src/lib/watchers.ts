@@ -1,42 +1,8 @@
-/** A long-running background process HUI started for one conversation with the
- * `watcher` agent tool: wait for a pull request approval, a CI run, a deploy or
- * an external state change, then act.
- *
- * The registry survives gateway restarts; state is derived from the process
- * identity and the exit record the wrapper leaves behind, so a watcher whose
- * process is gone is reported dead instead of pretending to still run, and one
- * that keeps running is started again. */
-export type WatcherState = "running" | "done" | "failed" | "stopped" | "dead";
+/** Normalizes watcher snapshot rows and formats their state labels and failure notes. */
+import type { Watcher, WatcherState } from "../api/schema/watchers.ts";
+export type { Watcher, WatcherState } from "../api/schema/watchers.ts";
 
-export type Watcher = {
-  id: string;
-  /** One line: what this watcher waits for. */
-  purpose: string;
-  /** Absolute URL of the pull request or other thing being watched; "" when
-   * the watcher names no external target. */
-  target: string;
-  /** What happens when the condition holds, e.g. "post /merge"; "" when the
-   * command speaks for itself. */
-  outcome: string;
-  /** The shell command HUI runs and supervises. */
-  command: string;
-  /** HUI-owned log file that receives the command's output. */
-  logPath: string;
-  state: WatcherState;
-  /** The recorded process-group leader, also shown once it is gone. */
-  pid: number | null;
-  /** The shell exit status, when the wrapper recorded one. */
-  exitCode?: number;
-  startedAt: string;
-  /** When it stopped: the exit record's time or an operator stop. */
-  endedAt?: string;
-  /** The latest non-empty log line, for the card. */
-  lastLine: string;
-  /** HUI starts it again when it finds it dead. */
-  keepRunning?: true;
-};
-
-export const WATCHER_LIMITS = {
+const WATCHER_LIMITS = {
   purpose: 200,
   target: 500,
   outcome: 200,

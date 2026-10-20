@@ -11,8 +11,8 @@ import type {
 export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
 import type { CallRecord } from "../../shared/calls.ts";
 import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SubagentTaskView } from "./schema/session-events.ts";
-import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
-import type { Watcher } from "../../shared/watchers.ts";
+import type { TaskSuggestion } from "./schema/task-suggestions.ts";
+import type { Watcher } from "./schema/watchers.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 
 export type { SessionGroup, SessionList, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";

@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 
-import { isMergedCleanupCandidate } from "../shared/worktrees.ts";
+import { isMergedCleanupCandidate, riskAcknowledged } from "./git/worktrees.ts";
+
 import type { SessionRecord } from "./sessions.ts";
 import {
   parseGhPullRequestList,
@@ -287,4 +288,9 @@ test("the inventory shows which worktree is being removed, how much of it is lef
   const after = await service.inventory([]);
   assert.equal(after.worktrees.some((row) => row.removal), false);
   assert.equal(after.worktrees.some((row) => row.branch === "hui/open"), false);
+});
+
+test("acknowledging unread changes covers dirty but unrelated risks do not", () => {
+  assert.equal(riskAcknowledged("dirty", ["unknown"]), true);
+  assert.equal(riskAcknowledged("dirty", ["external"]), false);
 });

@@ -9,7 +9,8 @@ import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { isAbsolute, normalize } from "node:path";
 
-import { TASK_SUGGESTION_LIMITS, type TaskSuggestion } from "../shared/task-suggestions.ts";
+import { TASK_SUGGESTION_LIMITS } from "./agent-tools/task-suggestions.ts";
+import type { TaskSuggestion } from "./api/task-suggestions.ts";
 
 export class TaskSuggestionInputError extends Error {
   override name = "TaskSuggestionInputError";

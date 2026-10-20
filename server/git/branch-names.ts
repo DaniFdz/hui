@@ -1,12 +1,4 @@
-/**
- * Git branch-name components for new worktrees.
- *
- * The configured branch prefix (Settings → `branchPrefix`, e.g. `feature/`) is
- * applied by the server when the worktree is created, so everything here yields
- * only the short kebab-case description that follows it. Shared so the server
- * (utility-model suggestion, worktree creation) and the browser (a local
- * fallback when the suggestion request fails) agree on the same rules.
- */
+/** Git branch-name components for new worktrees and utility-model suggestions. */
 
 /** Longest suggested name; the full branch adds the prefix and maybe `-N`. */
 export const SUGGESTED_BRANCH_NAME_MAX = 40;

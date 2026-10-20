@@ -622,6 +622,247 @@
         }
       }
     },
+    "BacklogBranchNameRequest": {
+      "type": "object",
+      "required": [
+        "cwd"
+      ],
+      "properties": {
+        "cwd": {
+          "type": "string"
+        }
+      }
+    },
+    "BacklogError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "BacklogGroupRequest": {
+      "type": "object",
+      "required": [
+        "group"
+      ],
+      "properties": {
+        "group": {
+          "type": "string"
+        }
+      }
+    },
+    "BacklogItem": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "group"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/BacklogItemKind"
+        },
+        "title": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "problem": {
+          "type": "string"
+        },
+        "fix": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "jira": {
+          "$ref": "#/$defs/SessionJiraIssue"
+        }
+      }
+    },
+    "BacklogItemKind": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "jira"
+        },
+        {
+          "type": "string",
+          "const": "local"
+        }
+      ]
+    },
+    "BacklogJiraCreateRequest": {
+      "type": "object",
+      "required": [
+        "project",
+        "parent",
+        "summary",
+        "description"
+      ],
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "parent": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "assignToMe": {
+          "type": "boolean"
+        }
+      }
+    },
+    "BacklogJiraDraftRequest": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "type": "string"
+        }
+      }
+    },
+    "BacklogJiraResponse": {
+      "type": "object",
+      "required": [
+        "issue",
+        "backlog"
+      ],
+      "properties": {
+        "issue": {
+          "$ref": "#/$defs/JiraIssueRef"
+        },
+        "backlog": {
+          "$ref": "#/$defs/BacklogView"
+        },
+        "warning": {
+          "type": "string"
+        }
+      }
+    },
+    "BacklogJiraState": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "ok"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "unconfigured"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "status",
+            "message"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "unavailable"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "BacklogStartInput": {
+      "type": "object",
+      "required": [
+        "cwd",
+        "worktree",
+        "stage",
+        "group"
+      ],
+      "properties": {
+        "cwd": {
+          "type": "string"
+        },
+        "worktree": {
+          "type": "boolean"
+        },
+        "branchName": {
+          "type": "string"
+        },
+        "baseRef": {
+          "type": "string"
+        },
+        "stage": {
+          "$ref": "#/$defs/SessionStage"
+        },
+        "group": {
+          "type": "string"
+        }
+      }
+    },
+    "BacklogStartResponse": {
+      "type": "object",
+      "required": [
+        "session",
+        "backlog"
+      ],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        },
+        "backlog": {
+          "$ref": "#/$defs/BacklogView"
+        }
+      }
+    },
+    "BacklogView": {
+      "type": "object",
+      "required": [
+        "items",
+        "jira"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BacklogItem"
+          }
+        },
+        "jira": {
+          "$ref": "#/$defs/BacklogJiraState"
+        }
+      }
+    },
     "BotAccessRequest": {
       "type": "object",
       "required": [
@@ -4362,6 +4603,46 @@
         }
       ]
     },
+    "MemorySource": {
+      "type": "object",
+      "required": [
+        "workspace",
+        "path",
+        "relativePath",
+        "kind",
+        "bytes",
+        "modifiedAt"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "relativePath": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "context"
+            },
+            {
+              "type": "string",
+              "const": "memory"
+            }
+          ]
+        },
+        "bytes": {
+          "type": "number"
+        },
+        "modifiedAt": {
+          "type": "string"
+        }
+      }
+    },
     "PiConfiguredResource": {
       "type": "object",
       "required": [
@@ -7644,6 +7925,149 @@
         }
       }
     },
+    "SuggestedBranchName": {
+      "type": "object",
+      "required": [
+        "name",
+        "source"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "model"
+            },
+            {
+              "type": "string",
+              "const": "fallback"
+            }
+          ]
+        }
+      }
+    },
+    "TaskSuggestion": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "problem",
+        "fix",
+        "cwd",
+        "createdAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "problem": {
+          "type": "string"
+        },
+        "fix": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "worker": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string"
+        }
+      }
+    },
+    "TaskSuggestionBacklogResponse": {
+      "type": "object",
+      "required": [
+        "taskId",
+        "suggestions"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string"
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskSuggestion"
+          }
+        }
+      }
+    },
+    "TaskSuggestionError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "TaskSuggestionsResponse": {
+      "type": "object",
+      "required": [
+        "suggestions"
+      ],
+      "properties": {
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskSuggestion"
+          }
+        }
+      }
+    },
+    "TaskSuggestionStartMode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "session"
+        },
+        {
+          "type": "string",
+          "const": "worktree"
+        },
+        {
+          "type": "string",
+          "const": "current"
+        }
+      ]
+    },
+    "TaskSuggestionStartRequest": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/TaskSuggestionStartMode"
+        }
+      }
+    },
+    "TaskSuggestionStartResponse": {
+      "type": "object",
+      "required": [
+        "session",
+        "suggestions"
+      ],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskSuggestion"
+          }
+        }
+      }
+    },
     "TerminalConnectResponse": {
       "type": "object",
       "required": [
@@ -7981,6 +8405,42 @@
           "type": "string"
         }
       }
+    },
+    "ThinkingLevel": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "off"
+        },
+        {
+          "type": "string",
+          "const": "minimal"
+        },
+        {
+          "type": "string",
+          "const": "low"
+        },
+        {
+          "type": "string",
+          "const": "medium"
+        },
+        {
+          "type": "string",
+          "const": "high"
+        },
+        {
+          "type": "string",
+          "const": "xhigh"
+        },
+        {
+          "type": "string",
+          "const": "max"
+        },
+        {
+          "type": "string",
+          "const": "ultra"
+        }
+      ]
     },
     "ToolCatalogEntry": {
       "type": "object",
@@ -8692,6 +9152,141 @@
         }
       }
     },
+    "Watcher": {
+      "type": "object",
+      "required": [
+        "id",
+        "purpose",
+        "target",
+        "outcome",
+        "command",
+        "logPath",
+        "state",
+        "pid",
+        "startedAt",
+        "lastLine"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "logPath": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/WatcherState"
+        },
+        "pid": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exitCode": {
+          "type": "number"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "endedAt": {
+          "type": "string"
+        },
+        "lastLine": {
+          "type": "string"
+        },
+        "keepRunning": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "WatcherError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "WatcherLog": {
+      "type": "object",
+      "required": [
+        "id",
+        "lines",
+        "truncated"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "WatchersResponse": {
+      "type": "object",
+      "required": [
+        "watchers"
+      ],
+      "properties": {
+        "watchers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Watcher"
+          }
+        }
+      }
+    },
+    "WatcherState": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "running"
+        },
+        {
+          "type": "string",
+          "const": "done"
+        },
+        {
+          "type": "string",
+          "const": "failed"
+        },
+        {
+          "type": "string",
+          "const": "stopped"
+        },
+        {
+          "type": "string",
+          "const": "dead"
+        }
+      ]
+    },
     "WorkerActionResponse": {
       "type": "object",
       "required": [
@@ -8909,6 +9504,77 @@
         }
       }
     },
+    "WorkspaceInspection": {
+      "type": "object",
+      "required": [
+        "workspaces",
+        "memory",
+        "worktrees",
+        "diagnostics"
+      ],
+      "properties": {
+        "workspaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "memory": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MemorySource"
+          }
+        },
+        "worktrees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorktreeView"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "WorktreeError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "WorktreeInventory": {
+      "type": "object",
+      "required": [
+        "worktrees",
+        "diagnostics",
+        "pending"
+      ],
+      "properties": {
+        "worktrees": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorktreeRow"
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pending": {
+          "type": "boolean"
+        }
+      }
+    },
     "WorktreeProgress": {
       "type": "object",
       "required": [
@@ -8947,6 +9613,270 @@
         },
         "total": {
           "type": "number"
+        }
+      }
+    },
+    "WorktreeRemovalMode": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "single"
+        },
+        {
+          "type": "string",
+          "const": "merged"
+        }
+      ]
+    },
+    "WorktreeRemovalRequest": {
+      "type": "object",
+      "required": [
+        "paths",
+        "mode"
+      ],
+      "properties": {
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mode": {
+          "$ref": "#/$defs/WorktreeRemovalMode"
+        },
+        "acknowledged": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorktreeRisk"
+          }
+        }
+      }
+    },
+    "WorktreeRemovalResponse": {
+      "type": "object",
+      "required": [
+        "results",
+        "inventory"
+      ],
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorktreeRemovalResult"
+          }
+        },
+        "inventory": {
+          "$ref": "#/$defs/WorktreeInventory"
+        }
+      }
+    },
+    "WorktreeRemovalResult": {
+      "type": "object",
+      "required": [
+        "path",
+        "label",
+        "removed",
+        "branchDeleted"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "removed": {
+          "type": "boolean"
+        },
+        "branchDeleted": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "WorktreeRisk": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "dirty"
+        },
+        {
+          "type": "string",
+          "const": "unknown"
+        },
+        {
+          "type": "string",
+          "const": "locked"
+        },
+        {
+          "type": "string",
+          "const": "running"
+        },
+        {
+          "type": "string",
+          "const": "missing"
+        },
+        {
+          "type": "string",
+          "const": "external"
+        }
+      ]
+    },
+    "WorktreeRow": {
+      "type": "object",
+      "required": [
+        "repository",
+        "path",
+        "displayPath",
+        "branch",
+        "head",
+        "detached",
+        "managed",
+        "sessions",
+        "merged",
+        "risks"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "displayPath": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "managed": {
+          "type": "boolean"
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorktreeSessionRef"
+          }
+        },
+        "pullRequests": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionPullRequest"
+          }
+        },
+        "dirty": {
+          "type": "boolean"
+        },
+        "bytes": {
+          "type": "number"
+        },
+        "merged": {
+          "type": "boolean"
+        },
+        "risks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/WorktreeRisk"
+          }
+        },
+        "unavailable": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "pullRequests"
+              },
+              {
+                "type": "string",
+                "const": "dirty"
+              },
+              {
+                "type": "string",
+                "const": "bytes"
+              }
+            ]
+          }
+        },
+        "removal": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "queued"
+            },
+            {
+              "type": "string",
+              "const": "removing"
+            }
+          ]
+        },
+        "remainingBytes": {
+          "type": "number"
+        }
+      }
+    },
+    "WorktreeSessionRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "archived"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "archived": {
+          "type": "boolean"
+        }
+      }
+    },
+    "WorktreeView": {
+      "type": "object",
+      "required": [
+        "repository",
+        "path",
+        "branch",
+        "head",
+        "bare",
+        "detached",
+        "sessionIds"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "head": {
+          "type": "string"
+        },
+        "bare": {
+          "type": "boolean"
+        },
+        "detached": {
+          "type": "boolean"
+        },
+        "sessionIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     }
@@ -9084,6 +10014,7 @@
       "SessionSubagent",
       "SessionView",
       "SubagentStatus",
+      "ThinkingLevel",
       "TranscriptMetrics",
       "WorktreeProgress"
     ],
@@ -9256,6 +10187,51 @@
       "BotTriggerSource",
       "BotTriggersList",
       "TriggerMatch"
+    ],
+    "backlog": [
+      "BacklogBranchNameRequest",
+      "BacklogError",
+      "BacklogGroupRequest",
+      "BacklogItem",
+      "BacklogItemKind",
+      "BacklogJiraCreateRequest",
+      "BacklogJiraDraftRequest",
+      "BacklogJiraResponse",
+      "BacklogJiraState",
+      "BacklogStartInput",
+      "BacklogStartResponse",
+      "BacklogView",
+      "SuggestedBranchName"
+    ],
+    "task-suggestions": [
+      "TaskSuggestion",
+      "TaskSuggestionBacklogResponse",
+      "TaskSuggestionError",
+      "TaskSuggestionStartMode",
+      "TaskSuggestionStartRequest",
+      "TaskSuggestionStartResponse",
+      "TaskSuggestionsResponse"
+    ],
+    "worktrees": [
+      "MemorySource",
+      "WorkspaceInspection",
+      "WorktreeError",
+      "WorktreeInventory",
+      "WorktreeRemovalMode",
+      "WorktreeRemovalRequest",
+      "WorktreeRemovalResponse",
+      "WorktreeRemovalResult",
+      "WorktreeRisk",
+      "WorktreeRow",
+      "WorktreeSessionRef",
+      "WorktreeView"
+    ],
+    "watchers": [
+      "Watcher",
+      "WatcherError",
+      "WatcherLog",
+      "WatcherState",
+      "WatchersResponse"
     ]
   },
   "x-hui-routes": [
@@ -9312,6 +10288,80 @@
       "path": "/__hui/automation/tasks/:id/run",
       "response": {
         "$ref": "#/$defs/AutomationRunResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/backlog",
+      "response": {
+        "$ref": "#/$defs/BacklogView"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/backlog/items/:id",
+      "response": {
+        "$ref": "#/$defs/BacklogView"
+      }
+    },
+    {
+      "method": "PATCH",
+      "path": "/__hui/backlog/items/:id",
+      "request": {
+        "$ref": "#/$defs/BacklogGroupRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BacklogView"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/backlog/items/:id/branch-name",
+      "request": {
+        "$ref": "#/$defs/BacklogBranchNameRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/SuggestedBranchName"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/backlog/items/:id/jira",
+      "request": {
+        "$ref": "#/$defs/BacklogJiraCreateRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BacklogJiraResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/backlog/items/:id/jira/draft",
+      "request": {
+        "$ref": "#/$defs/BacklogJiraDraftRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/JiraDraftResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/backlog/items/:id/jira/link",
+      "request": {
+        "$ref": "#/$defs/JiraLinkRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BacklogJiraResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/backlog/items/:id/start",
+      "request": {
+        "$ref": "#/$defs/BacklogStartInput"
+      },
+      "response": {
+        "$ref": "#/$defs/BacklogStartResponse"
       }
     },
     {
@@ -10129,10 +11179,62 @@
       }
     },
     {
+      "method": "DELETE",
+      "path": "/__hui/sessions/:id/suggestions/:sid",
+      "response": {
+        "$ref": "#/$defs/TaskSuggestionsResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/suggestions/:sid/backlog",
+      "response": {
+        "$ref": "#/$defs/TaskSuggestionBacklogResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/suggestions/:sid/start",
+      "request": {
+        "$ref": "#/$defs/TaskSuggestionStartRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/TaskSuggestionStartResponse"
+      }
+    },
+    {
       "method": "GET",
       "path": "/__hui/sessions/:id/tools",
       "response": {
         "$ref": "#/$defs/SessionTools"
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/__hui/sessions/:id/watchers/:wid",
+      "response": {
+        "$ref": "#/$defs/WatchersResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/watchers/:wid/log",
+      "response": {
+        "$ref": "#/$defs/WatcherLog"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/watchers/:wid/restart",
+      "response": {
+        "$ref": "#/$defs/WatchersResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/watchers/:wid/stop",
+      "response": {
+        "$ref": "#/$defs/WatchersResponse"
       }
     },
     {
@@ -10287,6 +11389,30 @@
       "path": "/__hui/workers/:id/sync",
       "response": {
         "$ref": "#/$defs/WorkerActionResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/workspaces",
+      "response": {
+        "$ref": "#/$defs/WorkspaceInspection"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/worktrees",
+      "response": {
+        "$ref": "#/$defs/WorktreeInventory"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/worktrees/remove",
+      "request": {
+        "$ref": "#/$defs/WorktreeRemovalRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/WorktreeRemovalResponse"
       }
     }
   ]

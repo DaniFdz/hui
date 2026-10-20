@@ -51,6 +51,8 @@ export type SessionView = { "progress"?: ProgressCard; "pullRequests"?: Array<Se
 
 export type SubagentStatus = ("starting") | ("running") | ("completed") | ("failed") | ("cancelled") | ("timed_out") | ("interrupted");
 
+export type ThinkingLevel = ("off") | ("minimal") | ("low") | ("medium") | ("high") | ("xhigh") | ("max") | ("ultra");
+
 export type TranscriptMetrics = { "timestamp"?: number; "completedAt"?: number; "durationMs"?: number; "inputTokens"?: number; "outputTokens"?: number; "cacheReadTokens"?: number; "cacheWriteTokens"?: number; "costUsd"?: number; };
 
 export type WorktreeProgress = { "phase": ("naming") | ("preparing") | ("checkout") | ("filtering") | ("finalizing"); "percent"?: number; "completed"?: number; "total"?: number; };

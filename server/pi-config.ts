@@ -23,7 +23,7 @@ import { shippedTools } from "./runtimes/tool-catalog.ts";
 import { safeSourceLabel } from "./source-label.ts";
 import { configuredResourceId } from "./runtimes/resource-policy.ts";
 import { bundledSkillRoot, bundledSkills } from "./bundled-skills.ts";
-import { isThinkingLevel } from "../shared/thinking.ts";
+import { isThinkingLevel } from "./sessions/thinking.ts";
 export { safeSourceLabel } from "./source-label.ts";
 
 export { resolvePiAgentDir } from "./pi-paths.ts";

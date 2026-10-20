@@ -13,7 +13,7 @@ import { groupSessions, readSessionRegistry, updateRegistry, type SessionRecord 
 import type { WatcherService } from "../watchers.ts";
 import { workers } from "../workers.ts";
 import type { SessionJiraIssue, SessionStatus, SessionView, WorktreeProgress } from "../api/sessions.ts";
-import { progressCardFromTranscript } from "../../shared/progress-card.ts";
+import { progressCardFromTranscript } from "./progress-card.ts";
 import { effectiveSessionStage, stageRank } from "./session-stages.ts";
 
 /** Worktree sessions whose checkout is still being created, shown in the

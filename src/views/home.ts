@@ -39,7 +39,7 @@ import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
-import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../../shared/thinking.ts";
+import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts";
 import { forkPoint } from "../lib/fork-point.ts";
 import { closeDropdownOnEscape, labelDropdown } from "../lib/web-awesome.ts";
 import type { SplitDirection } from "../lib/session/multiplexer.ts";

@@ -11,7 +11,7 @@ import type { SessionStage } from "../api/schema/sessions.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { jiraIssueAccessibleLabel, jiraStatusLabel } from "../lib/jira.ts";
 import type { SessionJiraIssue } from "../api/schema/sessions.ts";
-import type { BacklogItem, BacklogJiraState } from "../../shared/backlog.ts";
+import type { BacklogItem, BacklogJiraState } from "../api/schema/backlog.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { icons } from "../lib/icons.ts";
@@ -38,7 +38,7 @@ import {
 import { type SessionGroup, type SessionView } from "../api/sessions.ts";
 import { sessionGroupLabel, storedSessionGroup } from "../lib/session/sessions.ts";
 import { formatUpdated } from "./sessions.ts";
-import { taskSuggestionLocation, taskSuggestionPreview } from "../../shared/task-suggestions.ts";
+import { taskSuggestionLocation, taskSuggestionPreview } from "../lib/task-suggestions.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
 loadViewAssets(

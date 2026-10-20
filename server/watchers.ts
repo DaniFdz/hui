@@ -19,11 +19,17 @@ import { dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
-import {
-  WATCHER_LIMITS,
-  type Watcher,
-  type WatcherState,
-} from "../shared/watchers.ts";
+import type { Watcher, WatcherState, WatcherLog } from "./api/watchers.ts";
+
+export const WATCHER_LIMITS = {
+  purpose: 200,
+  target: 500,
+  outcome: 200,
+  command: 4_000,
+  perSession: 10,
+  logLines: 400,
+  logLine: 500,
+} as const;
 
 const execFileAsync = promisify(execFile);
 const STORE_VERSION = 1;
@@ -469,7 +475,7 @@ export class WatcherService {
     });
   }
 
-  async log(sessionId: string, id: string, lines = 100): Promise<{ id: string; lines: string[]; truncated: boolean }> {
+  async log(sessionId: string, id: string, lines = 100): Promise<WatcherLog> {
     const record = this.#require(sessionId, id);
     const tail = await readTail(record.logPath, MAX_LOG_BYTES);
     let text = tail.text;

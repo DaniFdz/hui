@@ -5,7 +5,7 @@
  * each cell by what needs the operator first. Options are browser reading
  * preferences, like the sidebar's.
  */
-import type { BacklogItem } from "../../shared/backlog.ts";
+import type { BacklogItem } from "../api/schema/backlog.ts";
 import type { SessionPullRequest } from "../api/schema/github.ts";
 import type { SessionStage } from "../api/schema/sessions.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";

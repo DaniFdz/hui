@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 
 import { liveSessions } from "./live-sessions.ts";
 import type { SessionStatus } from "./api/sessions.ts";
+import type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
 import { readRegistry, type SessionRecord } from "./sessions.ts";
 
 const execFileAsync = promisify(execFile);
@@ -26,31 +27,7 @@ export type GatewayHealth = {
   sessions: Record<SessionStatus | "registered" | "processes", number>;
 };
 
-export type MemorySource = {
-  workspace: string;
-  path: string;
-  relativePath: string;
-  kind: "context" | "memory";
-  bytes: number;
-  modifiedAt: string;
-};
-
-export type WorktreeView = {
-  repository: string;
-  path: string;
-  branch: string;
-  head: string;
-  bare: boolean;
-  detached: boolean;
-  sessionIds: readonly string[];
-};
-
-export type WorkspaceInspection = {
-  workspaces: readonly string[];
-  memory: readonly MemorySource[];
-  worktrees: readonly WorktreeView[];
-  diagnostics: readonly string[];
-};
+export type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
 
 type CommandResult = { stdout: string; stderr: string };
 type CommandRunner = (file: string, args: readonly string[]) => Promise<CommandResult>;

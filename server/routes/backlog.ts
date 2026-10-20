@@ -2,7 +2,10 @@
  * `/__hui/backlog…`: the Kanban backlog, grouping and starting items, branch names and local tasks' Jira actions.
  * Lifecycle and persistence stay in `backlog.ts`; `hui.ts` applies the `x-hui` guard before dispatching here.
  */
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import { BacklogError, BacklogJiraResponse, BacklogStartResponse, BacklogView, SuggestedBranchName } from "../api/backlog.ts";
+import { JiraDraftResponse } from "../api/jira.ts";
+export { routeSchemas } from "../api/backlog.ts";
 import {
   BacklogInputError,
   BacklogNotFoundError,
@@ -64,13 +67,13 @@ export function createBacklogRoutes(deps: BacklogRouteDeps) {
     const { listBacklog, findBacklogItem, startBacklogItem, backlogStore, backlogFeed, jiraConfigReady, jiraConfig, jiraClient, jiraStatuses, createAssignedJiraIssue, taskSuggestionJiraDescription } = deps;
     if (path === BACKLOG_ROUTE) {
       if (request.method !== "GET") {
-        return { status: 405, body: { error: "method not allowed" } };
+        return reply(BacklogError, { error: "method not allowed" }, 405);
       }
       try {
         const force = request.query.get("refresh") === "1";
-        return { status: 200, body: await listBacklog(force) };
+        return reply(BacklogView, await listBacklog(force));
       } catch (error) {
-        return { status: backlogErrorStatus(error), body: { error: error instanceof Error ? error.message : "Could not read the backlog." } };
+        return reply(BacklogError, { error: error instanceof Error ? error.message : "Could not read the backlog." }, backlogErrorStatus(error));
       }
     }
 
@@ -81,10 +84,10 @@ export function createBacklogRoutes(deps: BacklogRouteDeps) {
       const [kind, key] = splitItemId(itemId);
       const allowed = action ? "POST" : request.method === "PATCH" || (request.method === "DELETE" && kind === "local") ? request.method : "";
       if (!kind || !key) {
-        return { status: 404, body: { error: "That item is no longer in the backlog." } };
+        return reply(BacklogError, { error: "That item is no longer in the backlog." }, 404);
       }
       if (request.method !== allowed) {
-        return { status: 405, body: { error: "method not allowed" } };
+        return reply(BacklogError, { error: "method not allowed" }, 405);
       }
       try {
         if (!action && request.method === "PATCH") {
@@ -92,22 +95,22 @@ export function createBacklogRoutes(deps: BacklogRouteDeps) {
           // A Jira item must still be in the backlog; its metadata is keyed by it.
           await findBacklogItem(itemId);
           await backlogStore.setGroup(itemId, body["group"]);
-          return { status: 200, body: await listBacklog() };
+          return reply(BacklogView, await listBacklog());
         }
         if (!action) {
           await backlogStore.removeTask(key);
-          return { status: 200, body: await listBacklog() };
+          return reply(BacklogView, await listBacklog());
         }
         if (action === "start") {
           const body = (await request.json()) as Record<string, unknown>;
           const session = await startBacklogItem(itemId, body);
-          return { status: 200, body: { session, backlog: await listBacklog() } };
+          return reply(BacklogStartResponse, { session, backlog: await listBacklog() });
         }
         if (action === "branch-name") {
           const body = (await request.json()) as Record<string, unknown>;
           const item = await findBacklogItem(itemId);
           const cwd = await existingDirectory(body["cwd"]);
-          return { status: 200, body: await suggestWorktreeName({ cwd, item, settings: await readHuiSettings() }) };
+          return reply(SuggestedBranchName, await suggestWorktreeName({ cwd, item, settings: await readHuiSettings() }));
         }
         // Jira actions only apply to local tasks without a key yet.
         await jiraConfigReady;
@@ -130,7 +133,7 @@ export function createBacklogRoutes(deps: BacklogRouteDeps) {
             model: (await readHuiSettings()).models.utility,
             run: runPiUtilityPrompt,
           });
-          return { status: 200, body: { draft } };
+          return reply(JiraDraftResponse, { draft });
         }
         if (action === "jira/link") {
           const linkKey = typeof body["key"] === "string" ? jiraKeyFromInput(body["key"]) : undefined;
@@ -139,7 +142,7 @@ export function createBacklogRoutes(deps: BacklogRouteDeps) {
           const ref = { key: linkKey, url: jiraIssueUrl(jiraConfig()!.site, linkKey) };
           await backlogStore.attachJira(key, ref);
           jiraStatuses.remember(ref, details);
-          return { status: 200, body: { issue: ref, backlog: await listBacklog() } };
+          return reply(BacklogJiraResponse, { issue: ref, backlog: await listBacklog() });
         }
         const { ref, warning } = await createAssignedJiraIssue(client, body);
         try {
@@ -149,9 +152,9 @@ export function createBacklogRoutes(deps: BacklogRouteDeps) {
           throw new BacklogInputError(`${ref.key} was created but could not be attached to the task: ${error instanceof Error ? error.message : "unknown error"}`);
         }
         backlogFeed.invalidate();
-        return { status: 200, body: { issue: ref, backlog: await listBacklog(), ...(warning ? { warning } : {}) } };
+        return reply(BacklogJiraResponse, { issue: ref, backlog: await listBacklog(), ...(warning ? { warning } : {}) });
       } catch (error) {
-        return { status: backlogErrorStatus(error), body: { error: error instanceof Error ? error.message : "Could not update the backlog." } };
+        return reply(BacklogError, { error: error instanceof Error ? error.message : "Could not update the backlog." }, backlogErrorStatus(error));
       }
     }
     return undefined;

@@ -111,7 +111,7 @@ test("btw uses bounded reference context and the utility model", async () => {
 });
 
 test("suggested branch names drop the prefix, type words, Jira keys and chatter", async () => {
-  const { fallbackBranchName, normalizeSuggestedBranchName } = await import("../shared/branch-names.ts");
+  const { fallbackBranchName, normalizeSuggestedBranchName } = await import("./git/branch-names.ts");
   const prefix = "feature/";
   assert.equal(normalizeSuggestedBranchName("rate-limit-jira-proxy", { prefix }), "rate-limit-jira-proxy");
   assert.equal(normalizeSuggestedBranchName("feature/rate-limit-jira-proxy", { prefix }), "rate-limit-jira-proxy");

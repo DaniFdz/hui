@@ -6,6 +6,8 @@ import { once } from "node:events";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { TaskSuggestionsResponse } from "../api/task-suggestions.ts";
+import { expectSchema } from "../test-support/api-schema.ts";
 
 test("suggest_task bridge calls feed guarded dismiss and start routes", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-suggestion-routes-"));
@@ -65,7 +67,9 @@ test("suggest_task bridge calls feed guarded dismiss and start routes", async (t
 
   const dismissed = await route(`${base}/${firstId}`, "DELETE");
   assert.equal(dismissed.status, 200);
-  const { suggestions } = await dismissed.json() as { suggestions: Array<{ id: string; title: string }> };
+  const dismissedBody: unknown = await dismissed.json();
+  expectSchema(TaskSuggestionsResponse, dismissedBody);
+  const { suggestions } = dismissedBody;
   assert.deepEqual(suggestions.map(({ id, title }) => ({ id, title })), [{ id: secondId, title: "Second" }]);
   assert.equal((await route(`${base}/${firstId}`, "DELETE")).status, 404);
 

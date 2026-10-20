@@ -1,17 +1,13 @@
 /**
  * Browser client for a session's watchers: stopping, restarting or dismissing one and reading its log. The
- * gateway runs the watchers; the shared parser keeps both sides on one shape.
+ * gateway runs the watchers; the browser normalizes their snapshot rows.
  */
-import { parseWatchers, type Watcher } from "../../shared/watchers.ts";
+import { parseWatchers } from "../lib/watchers.ts";
+import type { Watcher, WatcherLog } from "./schema/watchers.ts";
 import { fetchJson } from "./request.ts";
 
-export { parseWatchers, watcherStateLabel, watcherStateNote, type Watcher, type WatcherState } from "../../shared/watchers.ts";
-
-export type WatcherLog = {
-  id: string;
-  lines: string[];
-  truncated: boolean;
-};
+export { parseWatchers, watcherStateLabel, watcherStateNote } from "../lib/watchers.ts";
+export type { Watcher, WatcherState, WatcherLog } from "./schema/watchers.ts";
 
 function watcherUrl(sessionId: string, watcherId: string): string {
   return `/__hui/sessions/${encodeURIComponent(sessionId)}/watchers/${encodeURIComponent(watcherId)}`;

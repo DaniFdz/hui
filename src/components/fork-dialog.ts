@@ -5,7 +5,7 @@
  * a failure stays here and Cancel changes nothing.
  */
 import { LitElement, html, nothing } from "lit";
-import { fallbackBranchName } from "../../shared/branch-names.ts";
+import { fallbackBranchName } from "../lib/backlog-start.ts";
 import { icons } from "../lib/icons.ts";
 import { ensureModal } from "../lib/modal-dialog.ts";
 import { forkSession, loadGitCheckout, type GitCheckoutInfo, type SessionView } from "../api/sessions.ts";

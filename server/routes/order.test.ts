@@ -11,6 +11,10 @@ import { AutomationError, AutomationSnapshot } from "../api/automation.ts";
 import { UpdateError, UpdateSnapshot } from "../api/updates.ts";
 import { WorkerError, WorkersResponse } from "../api/workers.ts";
 import { TerminalError } from "../api/terminals.ts";
+import { BacklogError } from "../api/backlog.ts";
+import { TaskSuggestionError } from "../api/task-suggestions.ts";
+import { WatcherError } from "../api/watchers.ts";
+import { WorktreeError, WorktreeInventory, WorkspaceInspection, WorktreeRemovalResponse } from "../api/worktrees.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
 import { once } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -146,6 +150,10 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
   let body: unknown;
   try { body = JSON.parse(text); } catch { body = undefined; }
   if (response.status >= 400) {
+    if (path.startsWith("/__hui/backlog")) expectSchema(BacklogError, body);
+    if (/\/suggestions\//u.test(path)) expectSchema(TaskSuggestionError, body);
+    if (/\/watchers\//u.test(path)) expectSchema(WatcherError, body);
+    if (path.startsWith("/__hui/worktrees") || path === "/__hui/workspaces") expectSchema(WorktreeError, body);
     if (path.startsWith("/__hui/pi")) expectSchema(PiError, body);
     if (path === "/__hui/tools" || /\/sessions\/[^/]+\/tools$/u.test(path)) expectSchema(ToolsError, body);
     if (path.startsWith("/__hui/providers")) expectSchema(ProviderError, body);
@@ -160,12 +168,21 @@ async function answer(request: string, init: RequestInit = {}): Promise<[number,
     if (/^\/__hui\/(?:session-groups(?:\/[^/]+)?|sessions(?:\/[^/]+(?:\/(?:prompt|steer|follow-up|continue|compact|reload|abort|rewind|resume|question|fork|fast|connect))?)?)$/u.test(path)) expectSchema(SessionError, body);
   }
   if (response.status === 200) {
+    if (path === "/__hui/worktrees") expectSchema(WorktreeInventory, body);
+    if (path === "/__hui/workspaces") expectSchema(WorkspaceInspection, body);
+    if (path === "/__hui/worktrees/remove") expectSchema(WorktreeRemovalResponse, body);
     if (path === "/__hui/automation") expectSchema(AutomationSnapshot, body);
     if (path === "/__hui/update") expectSchema(UpdateSnapshot, body);
     if (path === "/__hui/workers") expectSchema(WorkersResponse, body);
   }
   return [response.status, body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).sort() : null];
 }
+
+test("worktree and workspace routes publish their existing payloads", async () => {
+  assert.equal((await answer("GET /__hui/worktrees"))[0], 200);
+  assert.equal((await answer("GET /__hui/workspaces"))[0], 200);
+  assert.equal((await answer("POST /__hui/worktrees/remove", { body: JSON.stringify({ paths: [join(root, "missing")], mode: "single" }) }))[0], 200);
+});
 
 test("each route family answers in today's dispatch order, recorded only after the diagnostics hook", async () => {
   const actual = [];

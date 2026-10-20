@@ -2,7 +2,9 @@
  * `/__hui/sessions/:id/suggestions/:sid…`: dismiss, start or save a session's pending task suggestion to the
  * backlog. `hui.ts` supplies the lifecycle and applies the `x-hui` guard before dispatching here.
  */
-import type { JsonResult, RouteRequest } from "../http/route.ts";
+import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
+import { TaskSuggestionBacklogResponse, TaskSuggestionError, TaskSuggestionStartResponse, TaskSuggestionsResponse } from "../api/task-suggestions.ts";
+export { routeSchemas } from "../api/task-suggestions.ts";
 import type { createBacklogLifecycle } from "../backlog.ts";
 import { SessionBusyError } from "../live-sessions.ts";
 import type { readRegistry } from "../sessions.ts";
@@ -29,22 +31,22 @@ export function createTaskSuggestionRoutes(deps: TaskSuggestionRouteDeps) {
       const starting = suggestionRoute[3] === "start";
       const saving = suggestionRoute[3] === "backlog";
       if (request.method !== (starting || saving ? "POST" : "DELETE")) {
-        return { status: 405, body: { error: "method not allowed" } };
+        return reply(TaskSuggestionError, { error: "method not allowed" }, 405);
       }
       const id = decodeURIComponent(suggestionRoute[1] ?? "");
       const suggestionId = decodeURIComponent(suggestionRoute[2] ?? "");
       const source = (await readRegistry()).find((session) => session.id === id);
       if (!source) {
-        return { status: 404, body: { error: `unknown session: ${id}` } };
+        return reply(TaskSuggestionError, { error: `unknown session: ${id}` }, 404);
       }
       if (saving) {
         try {
           const task = await saveSuggestionToBacklog(id, suggestionId);
-          return { status: 200, body: { taskId: `local:${task.id}`, suggestions: taskSuggestions.list(id) } };
+          return reply(TaskSuggestionBacklogResponse, { taskId: `local:${task.id}`, suggestions: taskSuggestions.list(id) });
         } catch (error) {
-          return { status: backlogErrorStatus(error), body: {
+          return reply(TaskSuggestionError, {
             error: error instanceof Error ? error.message : "Could not add that suggestion to the backlog.",
-          } };
+          }, backlogErrorStatus(error));
         }
       }
       if (starting) {
@@ -55,20 +57,20 @@ export function createTaskSuggestionRoutes(deps: TaskSuggestionRouteDeps) {
             throw new TaskSuggestionInputError("mode must be session, worktree or current.");
           }
           const session = await startTaskSuggestion(source, suggestionId, mode as TaskSuggestionStartMode);
-          return { status: 200, body: { session, suggestions: taskSuggestions.list(id) } };
+          return reply(TaskSuggestionStartResponse, { session, suggestions: taskSuggestions.list(id) });
         } catch (error) {
-          return { status: error instanceof TaskSuggestionNotFoundError ? 404 : error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error), body: {
+          return reply(TaskSuggestionError, {
             error: error instanceof Error ? error.message : "Could not start that suggestion.",
-          } };
+          }, error instanceof TaskSuggestionNotFoundError ? 404 : error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error));
         }
       }
       try {
         taskSuggestions.remove(id, suggestionId);
-        return { status: 200, body: { suggestions: taskSuggestions.list(id) } };
+        return reply(TaskSuggestionsResponse, { suggestions: taskSuggestions.list(id) });
       } catch (error) {
-        return { status: error instanceof TaskSuggestionNotFoundError ? 404 : 400, body: {
+        return reply(TaskSuggestionError, {
           error: error instanceof Error ? error.message : "Could not dismiss that suggestion.",
-        } };
+        }, error instanceof TaskSuggestionNotFoundError ? 404 : 400);
       }
     }
     return undefined;

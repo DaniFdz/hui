@@ -40,6 +40,12 @@ export const WorktreeProgress = Type.Object({
 }, { $id: "WorktreeProgress" });
 export type WorktreeProgress = Static<typeof WorktreeProgress>;
 
+export const ThinkingLevel = Type.Union([
+  Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"), Type.Literal("medium"), Type.Literal("high"),
+  Type.Literal("xhigh"), Type.Literal("max"), Type.Literal("ultra"),
+], { $id: "ThinkingLevel" });
+export type ThinkingLevel = Static<typeof ThinkingLevel>;
+
 export const ProgressStep = Type.Object({
   step: Type.String(), status: Type.Union([Type.Literal("pending"), Type.Literal("in_progress"), Type.Literal("completed")]),
 }, { $id: "ProgressStep" });

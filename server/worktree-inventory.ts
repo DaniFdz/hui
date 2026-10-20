@@ -20,16 +20,8 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import type { PullRequestState, SessionPullRequest } from "./api/github.ts";
-import {
-  isMergedCleanupCandidate,
-  riskAcknowledged,
-  type WorktreeInventory,
-  type WorktreeRemovalMode,
-  type WorktreeRisk,
-  type WorktreeRemovalResult,
-  type WorktreeRow,
-  type WorktreeSessionRef,
-} from "../shared/worktrees.ts";
+import { isMergedCleanupCandidate, riskAcknowledged } from "./git/worktrees.ts";
+import type { WorktreeInventory, WorktreeRemovalMode, WorktreeRisk, WorktreeRemovalResult, WorktreeRow, WorktreeSessionRef } from "./api/worktrees.ts";
 import { WORKTREES_DIR } from "./paths.ts";
 import { pullRequestBodyPreview } from "./pull-requests.ts";
 import type { SessionRecord } from "./sessions.ts";

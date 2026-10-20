@@ -733,7 +733,7 @@ available only as part of the explicit `POST /__hui/sessions` transaction below.
 ### `GET /__hui/worktrees`
 
 Returns `{ worktrees, diagnostics, pending }` (`WorktreeInventory` in
-`shared/worktrees.ts`). Repositories come from registered session directories
+`server/api/worktrees.ts`). Repositories come from registered session directories
 and HUI's worktree root; each repository's main checkout is not listed. `dirty`, `bytes` and `pullRequests` are absent until a
 background `git status`, `du` or `gh pr list --head <branch>` answers; a failed
 lookup is listed in `unavailable`. A row whose removal was requested carries
@@ -4297,11 +4297,20 @@ cards appear newest first as an optional `suggestions: TaskSuggestion[]`
 `snapshot` event, omitted when empty. Operator routes (all require `x-hui`,
 scoped to the owning session; unknown session or card → 404):
 
-| Route | Result |
-| --- | --- |
-| `DELETE /__hui/sessions/:id/suggestions/:suggestionId` | Dismisses the card, returns `{ suggestions }` |
-| `POST /__hui/sessions/:id/suggestions/:suggestionId/backlog` | Saves the card as a local [backlog](#kanban-backlog) task (title, problem, fix, `cwd`, group OTHER), removes the card and returns `{ taskId, suggestions }`. Refused while the card is starting |
-| `POST /__hui/sessions/:id/suggestions/:suggestionId/start` `{ mode? }` | `mode` is `session` (default), `worktree` or `current`, matching OpenClaw's start menu. `session` creates a session in the card's `cwd` with its title, the source session's group and runtime; `worktree` does the same through *Create in workspace* (requires a Git checkout; the branch uses the configured prefix); `current` sends the card to the recording session itself (prompt when idle, otherwise steer, falling back to a queued follow-up) and returns that session. A new session waits up to 30 seconds for the runtime to be idle, prompts it with `# <title>`, `## Problem` and `## Proposed fix` sections (an unknown fix asks the session to confirm the root cause before changing code), then removes the card and returns `{ session, suggestions }`. A concurrent start or agent dismissal is refused while one is in flight. On failure the card stays pending; a session that was already created is kept, not deleted |
+### `DELETE /__hui/sessions/:id/suggestions/:sid`
+
+Dismisses the card, returns `{ suggestions }`
+
+### `POST /__hui/sessions/:id/suggestions/:sid/backlog`
+
+Saves the card as a local [backlog](#kanban-backlog) task (title, problem, fix, `cwd`, group OTHER), removes the card and returns `{ taskId, suggestions }`. Refused while the card is starting
+
+### `POST /__hui/sessions/:id/suggestions/:sid/start`
+
+Body: `{ mode? }`.
+
+`mode` is `session` (default), `worktree` or `current`, matching OpenClaw's start menu. `session` creates a session in the card's `cwd` with its title, the source session's group and runtime; `worktree` does the same through *Create in workspace* (requires a Git checkout; the branch uses the configured prefix); `current` sends the card to the recording session itself (prompt when idle, otherwise steer, falling back to a queued follow-up) and returns that session. A new session waits up to 30 seconds for the runtime to be idle, prompts it with `# <title>`, `## Problem` and `## Proposed fix` sections (an unknown fix asks the session to confirm the root cause before changing code), then removes the card and returns `{ session, suggestions }`. A concurrent start or agent dismissal is refused while one is in flight. On failure the card stays pending; a session that was already created is kept, not deleted
+
 
 The card shows **Create Jira task** with a ▾ menu (Create Jira task, Add to
 backlog) while Jira is connected, and a single **Add to backlog** otherwise.
@@ -4331,12 +4340,22 @@ conversation stops and forgets it.
 Operator routes (all require `x-hui`, scoped to the owning session; unknown
 session or watcher → 404, a running watcher for `restart` or `DELETE` → 409):
 
-| Route | Result |
-| --- | --- |
-| `POST /__hui/sessions/:id/watchers/:watcherId/stop` | Stops the watcher, returns `{ watchers }` |
-| `POST /__hui/sessions/:id/watchers/:watcherId/restart` | Restarts a settled watcher, returns `{ watchers }` |
-| `GET /__hui/sessions/:id/watchers/:watcherId/log?lines=` | Returns the bounded log tail |
-| `DELETE /__hui/sessions/:id/watchers/:watcherId` | Removes a settled watcher, its log and its exit record; returns `{ watchers }` |
+### `POST /__hui/sessions/:id/watchers/:wid/stop`
+
+Stops the watcher, returns `{ watchers }`
+
+### `POST /__hui/sessions/:id/watchers/:wid/restart`
+
+Restarts a settled watcher, returns `{ watchers }`
+
+### `GET /__hui/sessions/:id/watchers/:wid/log`
+
+Returns the bounded log tail
+
+### `DELETE /__hui/sessions/:id/watchers/:wid`
+
+Removes a settled watcher, its log and its exit record; returns `{ watchers }`
+
 
 The session snapshot/SSE `snapshot` event carries an optional `watchers: Watcher[]`
 (omitted when empty). The view is `{ id, purpose, target, outcome, command,
@@ -4453,16 +4472,50 @@ loaded transcript) or attached to a local task are skipped. An unconfigured or
 failing Jira yields local items plus the `jira` state; it is never an error
 response. All routes require `x-hui`; unknown items are 404.
 
-| Route | Result |
-| --- | --- |
-| `GET /__hui/backlog[?refresh=1]` | `BacklogView`; `refresh=1` bypasses the Jira cache |
-| `PATCH /__hui/backlog/items/:id` `{ group }` | Changes only the item's group (a Jira item must still be listed) and returns the `BacklogView` |
-| `DELETE /__hui/backlog/items/local:<uuid>` | Removes a local task, returns the `BacklogView`. Jira items cannot be deleted (405) |
-| `POST /__hui/backlog/items/:id/start` `{ cwd, worktree, branchName?, baseRef?, stage, group }` | `stage` is a session stage (not `backlog`). Creates a session through the same path as `POST /__hui/sessions` (title = item title, runtime PI, optional worktree/base ref) with an operator placement in `stage`, waits up to 30 seconds for the runtime, prompts it with `# KEY: summary`, the Jira link and `## Description` (Jira) or `# title`, `## Problem`, `## Proposed fix` (local), then links the Jira key to the session and removes a local task. Returns `{ session, backlog }`. A concurrent start of the same item is refused; on failure the item stays and a created session is kept |
-| `POST /__hui/backlog/items/:id/branch-name` `{ cwd }` | Suggests the part of a new worktree branch after the configured `branchPrefix` and returns `{ name, source }`. `cwd` must be an existing directory (resolved like the start route; 400 otherwise). With a utility model (`settings.models.utility`, 20-second timeout) the task's title, Jira summary and description or problem and fix (at most 4,000 characters) become a 2–4 word kebab-case description; the answer is normalized (prefix, path segments, Jira keys, quotes and leading type words such as `feature`/`fix`/`chore` removed, at most 40 characters) and `source` is `model`. Without a utility model, on failure or an empty answer, `source` is `fallback` and `name` is the title's first meaningful words. Creates nothing |
-| `POST /__hui/backlog/items/local:<uuid>/jira/draft` `{ project? }` | Parent candidates and a draft from the task's problem and fix, like the session draft route |
-| `POST /__hui/backlog/items/local:<uuid>/jira` `{ project, parent, summary, description, assignToMe? }` | Creates and assigns a work item like the session route, attaches its key to the task and returns `{ issue, backlog, warning? }` |
-| `POST /__hui/backlog/items/local:<uuid>/jira/link` `{ key }` | Verifies the item with Jira, attaches it to the task and returns `{ issue, backlog }`. A task already holding a key is a 400 |
+### `GET /__hui/backlog`
+
+`BacklogView`; `refresh=1` bypasses the Jira cache
+
+### `PATCH /__hui/backlog/items/:id`
+
+Body: `{ group }`.
+
+Changes only the item's group (a Jira item must still be listed) and returns the `BacklogView`
+
+### `DELETE /__hui/backlog/items/:id`
+
+Removes a local task, returns the `BacklogView`. Jira items cannot be deleted (405)
+
+### `POST /__hui/backlog/items/:id/start`
+
+Body: `{ cwd, worktree, branchName?, baseRef?, stage, group }`.
+
+`stage` is a session stage (not `backlog`). Creates a session through the same path as `POST /__hui/sessions` (title = item title, runtime PI, optional worktree/base ref) with an operator placement in `stage`, waits up to 30 seconds for the runtime, prompts it with `# KEY: summary`, the Jira link and `## Description` (Jira) or `# title`, `## Problem`, `## Proposed fix` (local), then links the Jira key to the session and removes a local task. Returns `{ session, backlog }`. A concurrent start of the same item is refused; on failure the item stays and a created session is kept
+
+### `POST /__hui/backlog/items/:id/branch-name`
+
+Body: `{ cwd }`.
+
+Suggests the part of a new worktree branch after the configured `branchPrefix` and returns `{ name, source }`. `cwd` must be an existing directory (resolved like the start route; 400 otherwise). With a utility model (`settings.models.utility`, 20-second timeout) the task's title, Jira summary and description or problem and fix (at most 4,000 characters) become a 2–4 word kebab-case description; the answer is normalized (prefix, path segments, Jira keys, quotes and leading type words such as `feature`/`fix`/`chore` removed, at most 40 characters) and `source` is `model`. Without a utility model, on failure or an empty answer, `source` is `fallback` and `name` is the title's first meaningful words. Creates nothing
+
+### `POST /__hui/backlog/items/:id/jira/draft`
+
+Body: `{ project? }`.
+
+Parent candidates and a draft from the task's problem and fix, like the session draft route
+
+### `POST /__hui/backlog/items/:id/jira`
+
+Body: `{ project, parent, summary, description, assignToMe? }`.
+
+Creates and assigns a work item like the session route, attaches its key to the task and returns `{ issue, backlog, warning? }`
+
+### `POST /__hui/backlog/items/:id/jira/link`
+
+Body: `{ key }`.
+
+Verifies the item with Jira, attaches it to the task and returns `{ issue, backlog }`. A task already holding a key is a 400
+
 
 ### Task progress
 

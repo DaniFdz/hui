@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { parseWatchers, watcherStateLabel, watcherStateNote } from "../shared/watchers.ts";
 import {
   WatcherConflictError,
   WatcherInputError,
@@ -108,8 +107,8 @@ test("a finished command reports done or failed with its exit code and output", 
   const failed = service.list("alpha")[0]!;
   assert.equal(failed.exitCode, 3);
   assert.equal(failed.lastLine, "boom");
-  assert.equal(watcherStateLabel(failed), "Failed");
-  assert.equal(watcherStateNote(failed), "Exited with status 3.");
+  assert.equal(failed.state, "failed");
+  assert.equal(failed.exitCode, 3);
 
   const log = await service.log("alpha", done.id, 10);
   assert.deepEqual(log.lines, ["hello watcher"]);
@@ -126,8 +125,8 @@ test("a recorded PID that is not the started process is dead, not running", asyn
   const watcher = await service.start("alpha", { purpose: "Reboot victim", command: "sleep 30" });
   assert.equal(watcher.state, "dead");
   assert.equal(watcher.pid, 424_242);
-  assert.equal(watcherStateLabel(watcher), "Dead");
-  assert.match(watcherStateNote(watcher), /recorded no exit status/u);
+  assert.equal(watcher.state, "dead");
+  assert.equal(watcher.exitCode, undefined);
 });
 
 test("stop kills the whole process group and reports stopped", async (t) => {
@@ -443,18 +442,4 @@ test("watcherScript quotes paths and records the command's status", () => {
   assert.match(script, /^\(exit 3\n\)/u);
   assert.match(script, />> '\/tmp\/it'\\''s here\.log' 2>&1/u);
   assert.match(script, /printf '%s\\n' "\$\?" > '\/tmp\/it'\\''s here\.exit'/u);
-});
-
-test("parseWatchers normalizes snapshot rows and drops malformed ones", () => {
-  const watchers = parseWatchers([
-    { id: "a", purpose: "Wait", command: "true", startedAt: "2026-10-02T10:00:00.000Z", state: "running", pid: 12, logPath: "/tmp/a.log", keepRunning: true },
-    { id: "b", purpose: "Bad state", command: "true", startedAt: "2026-10-02T10:00:00.000Z", state: "weird" },
-    { id: "", purpose: "No id", command: "true", startedAt: "2026-10-02T10:00:00.000Z", state: "done" },
-    "nope",
-  ]);
-  assert.deepEqual(watchers.map(({ id, state, keepRunning }) => ({ id, state, keepRunning })), [
-    { id: "a", state: "running", keepRunning: true },
-    { id: "b", state: "dead", keepRunning: undefined },
-  ]);
-  assert.equal(parseWatchers(undefined).length, 0);
 });

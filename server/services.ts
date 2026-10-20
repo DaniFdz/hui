@@ -77,7 +77,7 @@ import { WatcherInputError, WatcherService } from "./watchers.ts";
 import { SecretFiles, SecretRequests } from "./secret-requests.ts";
 import { Questionnaires } from "./questionnaires.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
-import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription } from "../shared/task-suggestions.ts";
+import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription } from "./agent-tools/task-suggestions.ts";
 import { terminals, TerminalError } from "./terminals.ts";
 import { createSessionListHub } from "./session-list.ts";
 import { createFileRoutes } from "./routes/files.ts";

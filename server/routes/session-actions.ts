@@ -28,7 +28,7 @@ import { type createSessionViews, pendingSessions } from "../sessions/views.ts";
 import type { SubagentService } from "../subagents.ts";
 import { foreverChatRefusal, MAX_PROMPT_BYTES, sessionMutationErrorStatus } from "./sessions.ts";
 import { BOTS_OFF_MESSAGE } from "../../shared/bots.ts";
-import { isThinkingLevel } from "../../shared/thinking.ts";
+import { isThinkingLevel } from "../sessions/thinking.ts";
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
 
 export const routeSchemas: RouteSchema[] = [
