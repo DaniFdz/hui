@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, win32 } from "node:path";
 import { test } from "vitest";
 import { fileURLToPath } from "node:url";
 
@@ -39,9 +39,12 @@ test("every source module starts with a header comment", async () => {
   assert.deepEqual(missing, [], "add a header comment saying what the module owns (see docs/map.md)");
 });
 
-test("docs/map.md names every directory that holds source modules", async () => {
+test.each([
+  ["native", { dirname, join, relative }],
+  ["Windows", win32],
+])("docs/map.md names every directory that holds source modules (%s paths)", async (_name, path) => {
   const map = await readFile(join(root, "docs/map.md"), "utf8");
-  const directories = [...new Set(files.map((file) => relative(root, join(root, dirname(file)))))];
-  const unnamed = directories.filter((directory) => !map.includes(`${directory}/`));
+  const directories = [...new Set(files.map((file) => path.relative(root, path.join(root, path.dirname(file)))))];
+  const unnamed = directories.filter((directory) => !map.includes(`${directory.replaceAll("\\", "/")}/`));
   assert.deepEqual(unnamed, [], "add the directory to docs/map.md");
 });

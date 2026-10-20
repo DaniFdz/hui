@@ -50,9 +50,9 @@ function scan(file, code) {
   const imports = [];
   const calls = new Set();
   walk(parseAst(code, { lang: /\.d\.[cm]?ts$/u.test(file) ? "dts" : "ts" }), (node) => {
-    if (node.type === "ImportDeclaration") imports.push({ specifier: node.source.value, type: node.importKind === "type" });
+    if (node.type === "ImportDeclaration") imports.push({ specifier: node.source.value, type: node.importKind === "type" || (node.specifiers.length > 0 && node.specifiers.every((specifier) => specifier.importKind === "type")) });
     else if (node.type === "ExportNamedDeclaration" || node.type === "ExportAllDeclaration") {
-      if (node.source) imports.push({ specifier: node.source.value, type: node.exportKind === "type" });
+      if (node.source) imports.push({ specifier: node.source.value, type: node.exportKind === "type" || (node.specifiers?.length > 0 && node.specifiers.every((specifier) => specifier.exportKind === "type")) });
     } else if (node.type === "ImportExpression" && text(node.source)) imports.push({ specifier: text(node.source), type: false });
     else if (node.type === "TSImportType" && text(node.source)) imports.push({ specifier: text(node.source), type: true });
     else if (node.type === "NewExpression") {
@@ -68,6 +68,26 @@ function scan(file, code) {
   });
   return { imports, calls };
 }
+
+test.each([
+  ['import type { X } from "../api/fixture.ts";', true],
+  ['import { type X, type Y } from "../api/fixture.ts";', true],
+  ['import type * as X from "../api/fixture.ts";', true],
+  ['import { type X, Y } from "../api/fixture.ts";', false],
+  ['import X, { type Y } from "../api/fixture.ts";', false],
+  ['import * as X from "../api/fixture.ts";', false],
+  ['import "../api/fixture.ts";', false],
+  ['import {} from "../api/fixture.ts";', false],
+  ['export type { X } from "../api/fixture.ts";', true],
+  ['export { type X, type Y } from "../api/fixture.ts";', true],
+  ['export type * from "../api/fixture.ts";', true],
+  ['export { type X, Y } from "../api/fixture.ts";', false],
+  ['export * from "../api/fixture.ts";', false],
+  ['export * as X from "../api/fixture.ts";', false],
+  ['export {} from "../api/fixture.ts";', false],
+])("keeps type-only edges for cycles but distinguishes them from runtime dependencies: %s", (code, type) => {
+  assert.deepEqual(scan("src/lib/fixture.ts", code).imports, [{ specifier: "../api/fixture.ts", type }]);
+});
 
 function rule(from, to, specifier, type) {
   const production = !TEST.test(from);
