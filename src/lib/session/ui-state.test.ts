@@ -8,7 +8,7 @@ import {
   isCurrentSessionRequest,
   mergeSessionStatuses,
   modelRequestMarkerAfterFailure,
-  noteAfterRunOutcome,
+  noteAfterEvent,
   noteAnnouncement,
   shouldRequestModels,
   shouldFlushLaunchPrompt,
@@ -18,11 +18,18 @@ import {
 
 test("a settled or failed run closes its own recovery warning, not a newer note", () => {
   const retry = "Primary model failed before producing output. Retrying with openai/fallback.";
-  assert.deepEqual(noteAfterRunOutcome({ note: retry, noteLevel: "warning" }, retry), { note: "", noteLevel: "info" });
-  const replaced = { note: "Could not stop that turn.", noteLevel: "error" as const };
-  assert.equal(noteAfterRunOutcome(replaced, retry), replaced);
-  const confirmation = { note: "Session context cleared.", noteLevel: "info" as const };
-  assert.equal(noteAfterRunOutcome(confirmation, ""), confirmation);
+  const narrating = noteAfterEvent({ note: "", noteLevel: "info", recoveryNotice: "" }, { type: "notice", level: "warning", message: retry, recovery: true });
+  assert.deepEqual(noteAfterEvent(narrating, { type: "settled" }), { note: "", noteLevel: "info", recoveryNotice: "" });
+  assert.deepEqual(noteAfterEvent(narrating, { type: "error", message: "failed" }), { note: "", noteLevel: "info", recoveryNotice: "" });
+  const replaced = { note: "Could not stop that turn.", noteLevel: "error" as const, recoveryNotice: retry };
+  assert.deepEqual(noteAfterEvent(replaced, { type: "settled" }), { ...replaced, recoveryNotice: "" });
+});
+
+test("a warning that is not a recovery stays after the run settles", () => {
+  const refused = noteAfterEvent({ note: "", noteLevel: "info", recoveryNotice: "" }, { type: "notice", level: "warning", message: "Skill “review” is disabled for HUI sessions." });
+  assert.deepEqual(noteAfterEvent(refused, { type: "settled" }), refused);
+  const confirmation = { note: "Session context cleared.", noteLevel: "info" as const, recoveryNotice: "" };
+  assert.deepEqual(noteAfterEvent(confirmation, { type: "settled" }), confirmation);
 });
 
 test("only error notes are announced as alerts", () => {

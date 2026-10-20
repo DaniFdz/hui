@@ -74,7 +74,7 @@ import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts"
 import {
   emptySessionPresentation,
   isSelectedSession,
-  noteAfterRunOutcome,
+  noteAfterEvent,
   type NoteLevel,
 } from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
@@ -1381,14 +1381,8 @@ export class HuiApp extends HuiElement {
 
   private adoptRunEvent(event: RuntimeEvent) {
     if (event.type === "queue_update") this.composer.adoptQueue(event.queue);
-    if (event.type === "notice") {
-      this.note = event.message;
-      this.noteLevel = event.level ?? "info";
-      this.recoveryNotice = this.noteLevel === "warning" ? event.message : "";
-    }
-    if (event.type === "settled" || event.type === "error") {
-      ({ note: this.note, noteLevel: this.noteLevel } = noteAfterRunOutcome({ note: this.note, noteLevel: this.noteLevel }, this.recoveryNotice));
-      this.recoveryNotice = "";
+    if (event.type === "notice" || event.type === "settled" || event.type === "error") {
+      ({ note: this.note, noteLevel: this.noteLevel, recoveryNotice: this.recoveryNotice } = noteAfterEvent({ note: this.note, noteLevel: this.noteLevel, recoveryNotice: this.recoveryNotice }, event));
     }
   }
 

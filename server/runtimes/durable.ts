@@ -32,6 +32,8 @@ import {
   fileFromMessages, imageFromMessages, latestRunUsage, promptPayload, restoreAttachmentNames, toolOutput, transcriptFrom,
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
+import { disabledSkillNotice } from "./skill-policy-extension.mjs";
+import { isBundledSkillPreference } from "../pi/bundled-skills.ts";
 import type {
   AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
   RuntimePromptOptions, RuntimePromptResult, RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
@@ -774,7 +776,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
         this.#agent = event.agent;
         return;
       case "auto_retry_start":
-        this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}` });
+        this.#emit({ type: "notice", level: "warning", message: `Retrying after a provider error (attempt ${event.attempt}): ${event.errorMessage}`, recovery: true });
         return;
       case "task_failed":
         // A failed compaction's divider shows its reason instead.
@@ -958,6 +960,14 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return /^\$[^\s]+(?:\s|$)/u.test(text) ? resolveCommandReference(text, await this.listCommands()) : text;
   }
 
+  async #refusedSkill(text: string): Promise<string | undefined> {
+    if (!/^(?:\/skill:|\$)\S/u.test(text)) return undefined;
+    const disabled = (await this.#host.settings()).disabledSkills.filter((entry) => !isBundledSkillPreference(entry));
+    const disabledPaths = new Set(disabled.map((entry) => entry.path));
+    const usable = new Set((await this.#skills(await this.#loader())).filter((skill) => !disabledPaths.has(skill.filePath)).map((skill) => skill.name));
+    return disabledSkillNotice(text, disabled.filter((entry) => !usable.has(entry.name)));
+  }
+
   async #expand(text: string): Promise<string> {
     const loader = await this.#loader();
     const skills = /^\/skill:|(?<!\S)\$/u.test(text) ? await this.#skills(loader) : [];
@@ -976,6 +986,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
       ...(sending.images ?? []),
       ...attachments.flatMap((item) => item.kind === "image" ? [{ type: "image" as const, data: item.dataBase64, mimeType: item.mimeType }] : []),
     ];
+    const refused = sending.expand ? await this.#refusedSkill(text) : undefined;
+    if (refused) {
+      this.#emit({ type: "notice", level: "warning", message: refused });
+      return false;
+    }
     if (extensions) {
       const input = await extensions.input(text, images, sending.source, whenBusy === "reject" ? undefined : whenBusy);
       if (!input) return false;

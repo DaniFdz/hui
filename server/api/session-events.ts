@@ -117,7 +117,7 @@ export const SessionEvent = Type.Union([
   }),
   Type.Object({ type: Type.Literal("queue_update"), queue: RuntimeQueue }),
   Type.Object({ type: Type.Literal("question"), question: SessionQuestion }),
-  Type.Object({ type: Type.Literal("notice"), message: Type.String(), level: Type.Union([Type.Literal("info"), Type.Literal("warning"), Type.Literal("error")]) }),
+  Type.Object({ type: Type.Literal("notice"), message: Type.String(), level: Type.Union([Type.Literal("info"), Type.Literal("warning"), Type.Literal("error")]), recovery: Type.Optional(Type.Literal(true)) }),
   Type.Object({ type: Type.Literal("turn_start") }),
   Type.Object({ type: Type.Literal("turn_end") }),
   Type.Object({ type: Type.Literal("compaction_start"), reason: CompactionReason, ...compactionMode }),

@@ -8265,6 +8265,10 @@
                   "const": "error"
                 }
               ]
+            },
+            "recovery": {
+              "type": "boolean",
+              "const": true
             }
           }
         },
