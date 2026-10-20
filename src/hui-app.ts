@@ -270,6 +270,7 @@ export class HuiApp extends HuiElement {
   private renderedSettings: Settings | undefined;
   private updatingSelectedId: string | undefined;
   private renderedSelected: SessionView | undefined;
+  private renderedBots: readonly BotView[] = [];
   private renderedQuestion: RuntimeQuestion | undefined;
   private renderedTranscript: readonly TranscriptItem[] = [];
   private renderedCompaction: RuntimeCompaction | undefined;
@@ -680,7 +681,9 @@ export class HuiApp extends HuiElement {
     if (!this.embeddedPane && this.view === "bot" && !this.bots.callsStatus) void this.bots.loadCallsStatus();
     const selectedChanged = this.renderedSelected !== this.conversation.selected;
     this.renderedSelected = this.conversation.selected;
-    if (selectedChanged || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || this.view === "bot") {
+    const botsChanged = this.renderedBots !== this.bots.list;
+    this.renderedBots = this.bots.list;
+    if (selectedChanged || changed.has("view") || changed.has("settingsOpen") || changed.has("activeBotId") || botsChanged) {
       const activeSessionTitle = this.settingsOpen ? undefined
         : this.view === "home" ? this.conversation.selected?.title
           : this.view === "bot" ? this.activeBot()?.name
@@ -1392,12 +1395,7 @@ export class HuiApp extends HuiElement {
   private followConversationStatus(id: string, status: SessionStatus, interrupted: SessionView["interrupted"]) {
     this.composer.followStatus(status);
     // Keep the sidebar dot honest without a full re-fetch.
-    this.sessions.groups = this.sessions.groups.map((group) => ({
-      ...group,
-      sessions: group.sessions.map((session) =>
-        session.id === id ? { ...session, status, interrupted } : session,
-      ),
-    }));
+    this.sessions.showStatus(id, status, interrupted);
   }
 
   private isUpdateSession(session: SessionView | undefined): boolean {
@@ -2845,7 +2843,7 @@ export class HuiApp extends HuiElement {
           onRefreshObservability: () => this.loadOperationalData(true),
           onSelectPage: this.selectSettingsPage,
           onChangeModels: (models) => {
-            this.launcher.model = models.primary;
+            this.launcher.selectModel(models.primary);
             void this.control.save({ models });
           },
           onClose: this.closeSettings,

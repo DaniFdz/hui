@@ -145,6 +145,16 @@ export class SessionsController {
     this.#deps.listReceived(new Set(groups.flatMap((group) => group.sessions.map(({ id }) => id))));
   }
 
+  showStatus(id: string, status: SessionStatus, interrupted: SessionView["interrupted"]): void {
+    this.groups = this.groups.map((group) => ({
+      ...group,
+      sessions: group.sessions.map((session) =>
+        session.id === id ? { ...session, status, interrupted } : session,
+      ),
+    }));
+    this.#host.requestUpdate();
+  }
+
   toggleSessionTree = (id: string) => {
     const next = new Set(this.toggledSessionTrees);
     if (next.has(id)) next.delete(id);

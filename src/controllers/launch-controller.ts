@@ -111,6 +111,10 @@ export class LaunchController {
     if (model !== this.model || thinking !== this.thinking) this.#set({ model, thinking });
   }
 
+  selectModel(model: string): void {
+    this.#set({ model });
+  }
+
   loadWorkers(): void {
     void loadWorkers().then((list) => {
       this.workers = list;
