@@ -816,6 +816,8 @@ test("a disabled skill's dollar reference reaches PI as its /skill command, whic
   t.onTestFinished(() => session.dispose());
   await session.prompt("$review args");
   assert.equal(message, "/skill:review args");
+  await session.prompt("$skill:review args");
+  assert.equal(message, "/skill:review args", "the qualified $skill:name form too");
 });
 
 

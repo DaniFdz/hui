@@ -404,6 +404,30 @@ test("a skill of the same name from another folder stays usable when only one of
   assert.ok(session.transcript().some((entry) => entry.kind === "message" && entry.role === "user"), "the enabled review ran");
 });
 
+test("a bundled skill turned off in HUI is refused with a notice", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  const visualizeOff = normalizeSettings({ disabledSkills: [{ name: "visualize", path: "hui:skill:visualize" }] });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-disabled-bundled-skill" }, f.host({ huiSettings: visualizeOff }));
+  for (const text of ["/skill:visualize now", "$visualize now"]) {
+    const notified = nextEvent(session, (event) => event.type === "notice");
+    await session.prompt(text);
+    assert.deepEqual(await notified, { type: "notice", level: "warning", message: "Skill “visualize” is disabled for HUI sessions." }, text);
+  }
+  assert.deepEqual(session.transcript(), [], "nothing reached the model");
+});
+
+test("a skill named like a bundled one turned off in HUI stays usable", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t);
+  await mkdir(join(f.agentDir, "skills", "visualize"), { recursive: true });
+  await writeFile(join(f.agentDir, "skills", "visualize", "SKILL.md"), "---\nname: visualize\ndescription: Local visualize skill.\n---\nLocal body.\n");
+  const visualizeOff = normalizeSettings({ disabledSkills: [{ name: "visualize", path: "hui:skill:visualize" }] });
+  const replaced = await startDurable({ cwd: f.cwd, huiSessionId: "durable-replaced-bundled-skill" }, f.host({ huiSettings: visualizeOff }));
+  const settled = nextEvent(replaced, (event) => event.type === "settled");
+  await replaced.prompt("/skill:visualize now");
+  await settled;
+  assert.ok(replaced.transcript().some((entry) => entry.kind === "message" && entry.role === "user"), "the local visualize ran");
+});
+
 test("a tracked provider failure retains its original diagnostic for routine failure classification", { timeout: 45_000 }, async (t) => {
   const f = await fixture(t, { settings: { retry: { enabled: false } } });
   const session = await startDurable({ cwd: f.cwd, huiSessionId: "tracked-model-error" }, f.host());

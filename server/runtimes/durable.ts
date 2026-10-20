@@ -33,7 +33,6 @@ import {
 } from "./pi.ts";
 import { RuntimeTimings } from "./transcript-metrics.ts";
 import { disabledSkillNotice } from "./skill-policy-extension.mjs";
-import { isBundledSkillPreference } from "../pi/bundled-skills.ts";
 import type {
   AgentRuntime, CompactionReason, PromptAttachment, RuntimeCommand, RuntimeEvent, RuntimeModel, RuntimeQuestion,
   RuntimePromptOptions, RuntimePromptResult, RuntimeQuestionResponse, RuntimeQueue, RuntimeRewindOptions, RuntimeRewindTarget, RuntimeSession, RuntimeUsage, StartOptions,
@@ -962,7 +961,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   async #refusedSkill(text: string): Promise<string | undefined> {
     if (!/^(?:\/skill:|\$)\S/u.test(text)) return undefined;
-    const disabled = (await this.#host.settings()).disabledSkills.filter((entry) => !isBundledSkillPreference(entry));
+    const disabled = (await this.#host.settings()).disabledSkills;
     const disabledPaths = new Set(disabled.map((entry) => entry.path));
     const usable = new Set((await this.#skills(await this.#loader())).filter((skill) => !disabledPaths.has(skill.filePath)).map((skill) => skill.name));
     return disabledSkillNotice(text, disabled.filter((entry) => !usable.has(entry.name)));
