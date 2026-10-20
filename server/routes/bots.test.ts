@@ -207,6 +207,16 @@ test("bots are created, read, edited, archived and restored through the guarded 
   const deleted = await call(`/__hui/sessions/${ada.sessionId}`, "DELETE");
   assert.equal(deleted.status, 409);
   assert.match(String(deleted.body["error"]), /archive the bot instead/u);
+  const botsFile = join(dir, "config", "hui", "bots.json");
+  const registry = await readFile(botsFile, "utf8");
+  await writeFile(botsFile, "not json");
+  try {
+    const unread = await call(`/__hui/sessions/${ada.sessionId}`, "DELETE");
+    assert.equal(unread.status, 409, "an unreadable bot registry refuses rather than orphan the bot");
+    assert.match(String(unread.body["error"]), /a bot's forever chat/u);
+  } finally {
+    await writeFile(botsFile, registry);
+  }
 
   const archived = await call("/__hui/bots/bob", "DELETE");
   assert.equal(archived.status, 200);

@@ -228,9 +228,9 @@ export function createSessionRoutes(deps: {
 
       if (method === "DELETE") {
         // A bot owns its chat: deleting the row would orphan the bot. Archiving keeps both.
-        const bot = await bots.botForSession(id).catch(() => undefined);
-        if (bot) {
-          return reply(SessionError, { error: foreverChatRefusal(bot.handle, "delete") }, 409);
+        const owner = await bots.botForSession(id).then((bot) => bot ? { handle: bot.handle } : undefined, () => owned?.bot ? { handle: undefined } : undefined);
+        if (owner) {
+          return reply(SessionError, { error: foreverChatRefusal(owner.handle, "delete") }, 409);
         }
         // Block stale opens first, but keep the runtime and streams alive until
         // registry removal commits. A storage failure rolls the tombstone back.
