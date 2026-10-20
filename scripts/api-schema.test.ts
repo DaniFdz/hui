@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile, readdir } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import { test } from "vitest";
 import { Type } from "typebox";
 import { apiAreas, buildApiSchema } from "../server/api/index.ts";
@@ -17,6 +21,32 @@ test("the published schema and browser payload types are current", async () => {
   for (const [area, expected] of Object.entries(generated)) assert.equal(await readFile(new URL(`${area}.ts`, directory), "utf8"), expected, regenerate);
   const modules = (await readdir(new URL("server/api/", root))).filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts") && name !== "index.ts");
   assert.deepEqual(modules.sort(), Object.keys(apiAreas).map((area) => `${area}.ts`).sort(), "register each API area in server/api/index.ts");
+});
+
+test.for([false, true])("the schema CLI publishes both outputs or leaves them untouched when stale types exist (stale: %s)", async (stale, t) => {
+  const temporary = await realpath(await mkdtemp(join(tmpdir(), "hui-api-schema-")));
+  t.onTestFinished(() => rm(temporary, { recursive: true, force: true }));
+  for (const directory of ["scripts", "server/api", "docs", "src/api/schema"]) await mkdir(join(temporary, directory), { recursive: true });
+  await cp(new URL("api-schema.ts", import.meta.url), join(temporary, "scripts/api-schema.ts"));
+  const schema = { $defs: { Fixture: { type: "string" } }, "x-hui-areas": { fixture: ["Fixture"] } };
+  await writeFile(join(temporary, "package.json"), JSON.stringify({ type: "module", version: "test" }));
+  await writeFile(join(temporary, "server/api/index.ts"), `export const buildApiSchema = () => (${JSON.stringify(schema)});\n`);
+  const document = join(temporary, "docs/api.schema.json");
+  const types = join(temporary, "src/api/schema/fixture.ts");
+  await writeFile(document, "previous schema\n");
+  await writeFile(types, "previous types\n");
+  if (stale) await writeFile(join(temporary, "src/api/schema/obsolete.ts"), "obsolete types\n");
+  const run = () => promisify(execFile)(process.execPath, [join(temporary, "scripts/api-schema.ts")], { cwd: temporary });
+  if (stale) {
+    await assert.rejects(run, /Remove obsolete generated API types: obsolete.ts/u);
+    assert.equal(await readFile(document, "utf8"), "previous schema\n");
+    assert.equal(await readFile(types, "utf8"), "previous types\n");
+    assert.equal(await readFile(join(temporary, "src/api/schema/obsolete.ts"), "utf8"), "obsolete types\n");
+  } else {
+    await run();
+    assert.equal(await readFile(document, "utf8"), `${JSON.stringify(schema, null, 2)}\n`);
+    assert.equal(await readFile(types, "utf8"), "/** Generated from docs/api.schema.json by scripts/api-schema.ts. Do not edit. */\n\nexport type Fixture = string;\n");
+  }
 });
 
 test("the converter handles every supported schema keyword and cross-area references", () => {

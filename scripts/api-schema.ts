@@ -1,5 +1,6 @@
 /** Publishes the server's API schema and generates browser-only payload types from the published JSON. */
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 import { buildApiSchema } from "../server/api/index.ts";
 
 const root = new URL("../", import.meta.url);
@@ -97,13 +98,14 @@ export async function emittedSchema(): Promise<string> {
   return `${JSON.stringify(buildApiSchema(version), null, 2)}\n`;
 }
 
-if (import.meta.main) {
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   const destination = new URL("docs/api.schema.json", root);
-  await writeFile(destination, await emittedSchema());
-  const generated = generateBrowserTypes(JSON.parse(await readFile(destination, "utf8")));
+  const schema = await emittedSchema();
+  const generated = generateBrowserTypes(JSON.parse(schema));
   const directory = new URL("src/api/schema/", root);
   await mkdir(directory, { recursive: true });
   const stale = (await readdir(directory)).filter((file) => file.endsWith(".ts") && !(file.slice(0, -3) in generated));
   if (stale.length > 0) throw new Error(`Remove obsolete generated API types: ${stale.join(", ")}`);
+  await writeFile(destination, schema);
   for (const [area, content] of Object.entries(generated)) await writeFile(new URL(`${area}.ts`, directory), content);
 }
