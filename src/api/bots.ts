@@ -6,7 +6,7 @@
 import type { BotInput, BotPatch, BotView } from "./schema/bots.ts";
 import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
-import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS } from "./sessions.ts";
+import { decodeSseFrame, reconnectDelay, sseFrameReader, STATUS_STREAM_STALL_MS } from "./sessions.ts";
 
 const BOTS_URL = "/__hui/bots";
 
@@ -60,7 +60,7 @@ async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal
   if (!response.ok || !response.body) return response.status === 404 || response.status === 405 ? "unsupported" : "dropped";
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frames = sseFrameReader();
   let first = true;
   let stall: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -69,11 +69,8 @@ async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal
       stall = setTimeout(() => void reader.cancel(), STATUS_STREAM_STALL_MS);
       const { done, value } = await reader.read();
       if (done) break;
-      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
-      let at: number;
-      while ((at = buffer.indexOf("\n\n")) !== -1) {
-        const frame = decodeSseFrame(buffer.slice(0, at));
-        buffer = buffer.slice(at + 2);
+      for (const text of frames(decoder.decode(value, { stream: true }))) {
+        const frame = decodeSseFrame(text);
         const update = frame?.name === "bots" ? parseBotsUpdate(frame.payload) : undefined;
         if (!update) continue;
         if (first) {

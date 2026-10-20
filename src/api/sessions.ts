@@ -714,7 +714,7 @@ async function connectStatusesOnce(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = "";
+  const frames = sseFrameReader();
   let live = false;
   // A phone changing networks can leave the socket open but silent; the gateway
   // heartbeats every 15 s, so a longer silence means reconnect and resync.
@@ -729,11 +729,8 @@ async function connectStatusesOnce(
         live = true;
         onLive();
       }
-      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
-      let at: number;
-      while ((at = buffer.indexOf("\n\n")) !== -1) {
-        const frame = decodeSseFrame(buffer.slice(0, at));
-        buffer = buffer.slice(at + 2);
+      for (const text of frames(decoder.decode(value, { stream: true }))) {
+        const frame = decodeSseFrame(text);
         if (!frame) continue;
         if (frame.name === "snapshot") {
           handlers.onSnapshot(
@@ -784,6 +781,34 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
       break;
   }
   return false;
+}
+
+export function sseFrameReader(): (text: string) => string[] {
+  let pending: string[] = [];
+  let carriageReturn = false;
+  let endsWithNewline = false;
+  return (input) => {
+    let text = (carriageReturn ? "\r" : "") + input;
+    carriageReturn = text.endsWith("\r");
+    if (carriageReturn) text = text.slice(0, -1);
+    text = text.replace(/\r\n/g, "\n");
+    if (!text) return [];
+    const ended = text.includes("\n\n") || (endsWithNewline && text.startsWith("\n"));
+    pending.push(text);
+    endsWithNewline = text.endsWith("\n");
+    if (!ended) return [];
+    const buffer = pending.join("");
+    const frames: string[] = [];
+    let start = 0;
+    for (let at = buffer.indexOf("\n\n"); at !== -1; at = buffer.indexOf("\n\n", start)) {
+      frames.push(buffer.slice(start, at));
+      start = at + 2;
+    }
+    const rest = buffer.slice(start);
+    pending = rest ? [rest] : [];
+    endsWithNewline = rest.endsWith("\n");
+    return frames;
+  };
 }
 
 /** One SSE frame; shared with other HUI event streams (bots). */

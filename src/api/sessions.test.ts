@@ -33,8 +33,8 @@ test("jitter stays inside the band and under the cap", () => {
   }
 });
 
-test("the browser demultiplexes lifecycle snapshot and status frames", async () => {
-  const body = [
+test("the browser demultiplexes lifecycle snapshot and status frames, however the body is split into reads", async () => {
+  const body = new TextEncoder().encode([
     "event: snapshot",
     'data: {"statuses":[{"id":"a","status":"running"}]}',
     "",
@@ -45,11 +45,17 @@ test("the browser demultiplexes lifecycle snapshot and status frames", async () 
     'data: {"revision":2,"upserts":[]}',
     "",
     "",
-  ].join("\n");
+  ].join("\r\n"));
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     assert.equal(String(input), "/__hui/sessions/events");
     assert.deepEqual(init?.headers, { "x-hui": "1", accept: "text/event-stream" });
-    return new Response(body, {
+    const reads = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const byte of body) controller.enqueue(Uint8Array.of(byte));
+        controller.close();
+      },
+    });
+    return new Response(reads, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
     });
