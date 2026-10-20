@@ -404,28 +404,34 @@ test("every session announces a prompt with a snapshot before its run, so screen
   manager.disposeAll();
 });
 
-test("a browser's stream leaves out a transcript it holds already or that a side update did not change; scripts get it every time", async () => {
+test("a browser's stream starts from the transcript it holds: nothing again, or only what happened since; scripts get whole snapshots", async () => {
   const { watchSessionEvents } = await import("./http/events.ts");
-  const manager = new LiveSessions(factory([]));
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
   const record = recordFor(`held-${crypto.randomUUID()}`);
   manager.ensure(record);
   await waitForBoot(manager, record.id);
   const opened = manager.revision(record.id);
   const watch = (options: { slim?: boolean; heldRevision?: number }) => {
-    const snapshots: string[] = [];
+    const frames: string[] = [];
     const stop = watchSessionEvents(record.id, (event, data) => {
-      if (event === "snapshot") snapshots.push("transcript" in (data as object) ? "transcript" : "no transcript");
+      frames.push(event === "snapshot" ? ("transcript" in (data as object) ? "snapshot" : "snapshot without transcript")
+        : event === "event" ? (data as RuntimeEvent).type : event);
     }, manager, options);
-    return { snapshots, stop };
+    return { frames, stop };
   };
   const browser = watch({ slim: true, heldRevision: opened });
   const script = watch({});
   manager.notifySnapshot(record.id);
-  assert.deepEqual(browser.snapshots, ["no transcript", "no transcript"]);
-  assert.deepEqual(script.snapshots, ["transcript", "transcript"]);
+  assert.deepEqual(browser.frames, ["snapshot without transcript", "snapshot without transcript"]);
+  assert.deepEqual(script.frames, ["snapshot", "snapshot"]);
+  started[0]!.emit({ type: "text", delta: "Working on it" });
+  const late = watch({ slim: true, heldRevision: opened });
+  assert.deepEqual(late.frames, ["snapshot without transcript", "text"], "what changed since the open, in order");
+  await manager.prompt(record.id, "Next step");
   const stale = watch({ slim: true, heldRevision: opened });
-  assert.deepEqual(stale.snapshots, ["transcript"], "a revision that has moved on gets the whole transcript");
-  for (const watcher of [browser, script, stale]) watcher.stop();
+  assert.deepEqual(stale.frames, ["snapshot"], "a revision from before a new transcript gets the whole one");
+  for (const watcher of [browser, script, late, stale]) watcher.stop();
   manager.disposeAll();
 });
 

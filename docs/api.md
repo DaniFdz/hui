@@ -3361,11 +3361,13 @@ is refused with 403 otherwise. Each text message is
 `{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "closed", "data": … }`
 with the SSE payloads above, beginning with the snapshot. An upgrade URL with
 `&slim=1` asks for snapshots without `transcript` when it has not changed: one
-that only updates watchers, task suggestions, questions or subagents, and the
-first one when the URL also carries `&revision=<n>` from the `POST …/open`
-answer and the session has not changed since. The browser asks for both and
-keeps the transcript it has; its reconnects send no revision and get the whole
-snapshot. The server negotiates
+that only updates watchers, task suggestions, questions or subagents. With
+`&revision=<n>` from the `POST …/open` answer as well, the stream starts from
+that state: a snapshot without `transcript` when nothing has changed since, or
+else the frames sent since then, in order. When the transcript was replaced
+since (a settled turn, a clear, a rewind) it starts with the whole snapshot.
+The browser asks for both and keeps the transcript it has; its reconnects send
+no revision and get the whole snapshot. The server negotiates
 `permessage-deflate` (messages of at least 1 KiB, no context takeover in either
 direction), so the snapshot's transcript crosses a slow link compressed; a
 client that does not offer it gets uncompressed frames. After `closed` the

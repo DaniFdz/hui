@@ -51,6 +51,7 @@ import { readHuiSettings } from "../hui-settings.ts";
 import type { Settings } from "../hui-settings.ts";
 
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
+const MAX_RECENT_MESSAGES = 10_000;
 
 /** Replace runtime-internal attachment locations with opaque gateway URLs. */
 export function publicTranscript(id: string, entries: readonly TranscriptEntry[]): TranscriptEntry[] {
@@ -164,6 +165,8 @@ type Live = {
   unsubscribeExit?: () => void;
   subscribers: Set<Subscriber>;
   revision: number;
+  recent: { revision: number; message: SessionStreamMessage }[];
+  recentSince: number;
   /** Detailed browser streams currently presenting this conversation. Internal
    * lifecycle watchers do not count as readers. */
   readers: number;
@@ -323,6 +326,7 @@ export class LiveSessions {
       existing.boot = this.#boot(existing);
       return true;
     }
+    const revision = ++this.#revisions;
     const live: Live = {
       record,
       unsaved: new Set(),
@@ -331,7 +335,9 @@ export class LiveSessions {
       submissions: 0,
       bootStartedAt: Date.now(),
       subscribers: new Set(),
-      revision: ++this.#revisions,
+      revision,
+      recent: [],
+      recentSince: revision,
       readers: 0,
       transcript: [],
       queue: { steering: [], followUp: [] },
@@ -396,6 +402,12 @@ export class LiveSessions {
 
   revision(id: string): number | undefined {
     return this.#live.get(id)?.revision;
+  }
+
+  replaySince(id: string, revision: number): SessionStreamMessage[] | undefined {
+    const live = this.#live.get(id);
+    if (!live || revision < live.recentSince || revision > live.revision) return undefined;
+    return live.recent.filter((entry) => entry.revision > revision).map((entry) => entry.message);
   }
 
   /** Whether this gateway currently owns a runtime lifecycle for the id.
@@ -1314,6 +1326,7 @@ export class LiveSessions {
       live.runtime = runtime;
       live.transcript = [...runtime.transcript()];
       live.revision = ++this.#revisions;
+      this.#forgetRecent(live);
       live.thinking = runtime.currentThinking?.();
       // Only a runtime that can change speed reports one.
       live.fast = runtime.setFast ? runtime.currentFast?.() === true : undefined;
@@ -1751,9 +1764,16 @@ export class LiveSessions {
 
   #broadcast(live: Live, message: SessionStreamMessage): void {
     live.revision = ++this.#revisions;
+    if ((message.kind === "snapshot" && !message.transcriptUnchanged) || live.recent.length >= MAX_RECENT_MESSAGES) this.#forgetRecent(live);
+    else live.recent.push({ revision: live.revision, message: message.kind === "snapshot" ? { ...message, snapshot: { ...message.snapshot, transcript: [] } } : message });
     for (const subscriber of live.subscribers) {
       subscriber(message);
     }
+  }
+
+  #forgetRecent(live: Live): void {
+    live.recent = [];
+    live.recentSince = live.revision;
   }
 
   #queueSnapshot(live: Live): RuntimeQueue {
