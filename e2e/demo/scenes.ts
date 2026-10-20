@@ -291,6 +291,50 @@ export const scenes: Scene[] = [
     },
   },
   {
+    name: "effort",
+    chapter: "Effort",
+    viewport: [1280, 720],
+    path: "/sessions/demo-5",
+    ready: { contains: "load testing it" },
+    narration: {
+      effort: "Each session chooses how hard its agent thinks: now up to Maximum, and Ultra.",
+      ultra: "On Ultra, the agent makes the easy calls itself, and stops to ask only before something risky.",
+      answer: "Answer once, and it carries on.",
+    },
+    async run({ director: d }) {
+      await d.caption("Choose how hard it thinks");
+      await d.say("effort");
+      await d.click({ label: "Thinking: high" });
+      await d.waitFor({ label: "Thinking effort" });
+      await d.zoom({ css: ".chat-controls__effort-picker" }, 1.6);
+      await d.press("Tab");
+      for (let step = 0; step < 3; step++) {
+        await d.press("ArrowRight");
+        await d.pause(900);
+      }
+      await d.waitFor({ label: "Thinking: ultra" });
+      await d.press("Escape");
+      await d.zoom();
+
+      await d.caption("Ultra makes the easy calls itself");
+      await d.say("ultra");
+      await send(d, "Make the limiter fail open when Redis is down, then roll it out");
+      await d.waitFor({ css: ".questionnaire-card" }, 30_000);
+      await centre(d, { css: ".questionnaire-card" });
+      await d.zoom({ css: ".questionnaire-card" }, 1.4);
+      await d.pause(1_600);
+
+      await d.caption("Answer, and it carries on");
+      await d.say("answer");
+      await d.click({ css: "button[data-option]", contains: "10% of stores first" });
+      await d.click({ css: ".questionnaire-card button[type='submit']" });
+      await d.zoom();
+      await d.waitFor({ contains: "before going wider" }, 30_000);
+      await d.pause(2_000);
+      await d.caption();
+    },
+  },
+  {
     name: "subagents",
     chapter: "Subagents and watchers",
     viewport: [1280, 720],

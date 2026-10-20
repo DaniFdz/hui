@@ -309,6 +309,19 @@ const scripts: Script[] = [
     when: "Reverted acme/payments-api#142",
     turns: [{ wait: 900, say: "Resolved: #142 is reverted, and POST /refunds is back to 0.1% errors. Closing the page." }],
   },
+  // Effort: on Ultra the agent makes the easy calls itself and asks only before a risky rollout.
+  {
+    when: "fail open when Redis is down",
+    turns: [
+      { wait: 1_500, think: "Failing open is the safe default for a rate limiter, and a small in-memory window covers the gap. Both are easy calls, so I won't ask.", calls: [{ name: "write", input: { path: "src/rate-limit.js", content: "/** Requests per minute per store; a short in-memory window while Redis is down. */\nconst local = new Map();\n\nexport async function allow(redis, store, limit = 600) {\n  try {\n    return (await redis.incr(`rate:${store}`)) <= limit;\n  } catch {\n    const count = (local.get(store) ?? 0) + 1;\n    local.set(store, count);\n    return count <= limit;\n  }\n}\n" } }] },
+      { wait: 900, calls: [{ name: "bash", input: { command: "node --test test/", timeout: 60 } }] },
+      { wait: 700, say: "The limiter now fails open: while Redis is down, it falls back to a short in-memory window. Tests pass.\n\nRolling it out is the risky part, so that call is yours.", calls: [{ name: "ask_user_question", input: { questions: [{ header: "Rollout", question: "This changes rate limiting for every store. How should it roll out?", options: [
+        { label: "10% of stores first (Recommended)", description: "Watch error rates for an hour, then go to everyone." },
+        { label: "Every store now", description: "Faster, but a bug would hit every store at once." },
+      ] }] } }] },
+      { say: (results) => results[0]?.includes("10% of stores first") ? "Rolling out to **10% of stores** first. I'll watch error rates for an hour before going wider." : "Rolling out to every store now." },
+    ],
+  },
 ];
 
 // Anthropic Messages streaming.
