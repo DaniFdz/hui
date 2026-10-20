@@ -3,8 +3,8 @@
  * roster, the live list stream, and creating, editing, archiving, restoring and deleting a bot. Records are
  * normalized by src/lib/bots/bots.ts on the way in.
  */
-import type { BotPatch, BotView } from "./schema/bots.ts";
-import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers, type NewBotInput } from "../lib/bots/bots.ts";
+import type { BotInput, BotPatch, BotView } from "./schema/bots.ts";
+import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS } from "./sessions.ts";
 
@@ -108,7 +108,7 @@ export async function loadBots(): Promise<BotView[]> {
 }
 
 /** Resolves only once the gateway created the bot, its chat and its memory. */
-export async function createBot(input: NewBotInput): Promise<BotView> {
+export async function createBot(input: BotInput): Promise<BotView> {
   return parseBotBody(await fetchJson<unknown>(BOTS_URL, {
     method: "POST",
     headers: JSON_HEADERS,

@@ -180,7 +180,6 @@ test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bo
   assert.match(read("./shell.ts"), /onCreate: botsTab\.onCreate, onImport: botsTab\.onImport, creating: botsTab\.creating,/u);
   assert.match(source, /props\.creating \? "Creating…" : "New bot"/u, "and so does the empty roster's New bot");
   assert.doesNotMatch(source, /renderBotDialog\b|bot-dialog|botDialog|botDraft/u, "the New bot and Edit dialogs are gone");
-  assert.match(read("../lib/bots/bots.ts"), /export type NewBotInput = Omit<BotInput, "name"> & \{ name\?: string \};/u, "the create body may leave the name out");
 });
 
 test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {

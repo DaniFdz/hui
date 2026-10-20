@@ -621,7 +621,3 @@ export function withoutBotSessions(groups: readonly SessionGroup[]): SessionGrou
     return sessions.length || (group.label && group.label !== "ungrouped") ? [{ ...group, sessions }] : [];
   });
 }
-
-/** `POST /__hui/bots`'s body. Without `name` the gateway creates "New Bot" (`NEW_BOT_NAME`), which asks what to call it
- * in its first conversation: what + sends, with `worker` for a bot created on a remote worker. */
-export type NewBotInput = Omit<BotInput, "name"> & { name?: string };
