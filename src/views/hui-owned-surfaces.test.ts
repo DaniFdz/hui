@@ -4,7 +4,7 @@ import { test } from "vitest";
 
 import { HUI_PAGES } from "../lib/pages.ts";
 import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "../lib/settings/settings.ts";
-import { BOTS_LABS_HINT, renderOwnedSurface } from "./hui-owned-surfaces.ts";
+import { renderOwnedSurface } from "./hui-owned-surfaces.ts";
 
 const source = await readFile(new URL("./hui-owned-surfaces.ts", import.meta.url), "utf8");
 
@@ -37,31 +37,13 @@ test("HUI-10 implements every retained HUI-owned surface", () => {
   assert.match(source, /does not change PI/u);
 });
 
-test("Labs offers Bots, a preview that is off until turned on, beside the presentation flags", () => {
+test("Labs holds the presentation flags and no Bots switch, and a switch saves its flag with the others", () => {
   const page = text(labs(DEFAULT_SETTINGS));
   assert.match(page, /Experimental and opt-in features\./u, "the subtitle fits more than presentation flags");
   assert.doesNotMatch(page, /HUI-only presentation flags/u);
-  assert.ok(page.includes(`<span class="settings-row__title">Bots</span><span class="settings-row__desc">${BOTS_LABS_HINT}</span>`), "a Bots switch with its one-line hint");
-  assert.ok(page.indexOf(">Bots<") < page.indexOf(">Dense observability<"), "first, before the presentation flags");
-  assert.match(BOTS_LABS_HINT, /^Work in progress: named bots with their own chat, memory, SOUL\.md, routines and calls\. Off hides them, stops their turns and pauses their routines; nothing is deleted\.$/u);
-
-  // Its switch saves the flag with the other Labs flags, both ways.
+  assert.doesNotMatch(page, />Bots</u, "bots are always on");
   const saved: Array<Partial<Settings>> = [];
-  const off = normalizeSettings({ labs: { detailedDebug: true } });
-  const [, change] = handlers(labs(off, (patch) => saved.push(patch)));
+  const [, change] = handlers(labs(normalizeSettings({ labs: { detailedDebug: true } }), (patch) => saved.push(patch)));
   change!({ currentTarget: { checked: true } });
-  const on = normalizeSettings({ labs: { detailedDebug: true, bots: true } });
-  handlers(labs(on, (patch) => saved.push(patch)))[1]!({ currentTarget: { checked: false } });
-  assert.deepEqual(saved, [
-    { labs: { denseObservability: false, detailedDebug: true, bots: true } },
-    { labs: { denseObservability: false, detailedDebug: true, bots: false } },
-  ]);
-});
-
-test("the Bots switch is the only one: its hint points nowhere else, on or off", () => {
-  for (const settings of [DEFAULT_SETTINGS, normalizeSettings({ labs: { bots: true } })]) {
-    const page = text(labs(settings));
-    assert.ok(page.includes(`<span class="settings-row__desc">${BOTS_LABS_HINT}</span>`));
-    assert.doesNotMatch(page, /Show the Bots tab|Settings → Sessions/u);
-  }
+  assert.deepEqual(saved, [{ labs: { denseObservability: true, detailedDebug: true } }]);
 });

@@ -10,8 +10,6 @@ const fake = vi.hoisted(() => ({
   streams: [] as { handlers: BotsStreamHandlers; stopped: boolean }[],
   reads: 0,
   list: [] as BotView[],
-  written: [] as (() => void)[],
-  refreshed: undefined as Settings | undefined,
   patches: [] as { id: string; patch: Record<string, unknown>; answer: (outcome: BotView | Error) => void }[],
   calls: [] as { call: string; body?: unknown; answer: (outcome: unknown) => void }[],
   modal: [] as string[],
@@ -43,17 +41,11 @@ vi.mock("../lib/modal-dialog.ts", () => ({
   ensureModal: (dialog: { open: boolean; selector: string }) => { dialog.open = true; fake.modal.push(`open ${dialog.selector}`); },
   closeModal: (dialog: { selector: string }) => { fake.modal.push(`close ${dialog.selector}`); },
 }));
-vi.mock("../lib/settings/settings-store.ts", () => ({
-  settingsWritten: () => new Promise<void>((resolve) => fake.written.push(resolve)),
-  refreshSettings: async () => fake.refreshed,
-}));
 
 beforeEach(() => {
   fake.streams = [];
   fake.reads = 0;
   fake.list = [];
-  fake.written = [];
-  fake.refreshed = undefined;
   fake.patches = [];
   fake.calls = [];
   fake.modal = [];
@@ -61,7 +53,6 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) });
 });
 
-const ON: Settings = { ...DEFAULT_SETTINGS, labs: { ...DEFAULT_SETTINGS.labs, bots: true } };
 const ADA: BotView = { id: "ada", name: "Ada", sessionId: "s-ada", cwd: "/work" } as BotView;
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -72,11 +63,10 @@ class FakeDialog {
   querySelector(selector: string) { return { focus: () => { this.focused = selector; } }; }
 }
 
-function setup(settings: Settings = ON, embeddedPane = false) {
+function setup(settings: Settings = DEFAULT_SETTINGS, embeddedPane = false) {
   vi.stubGlobal("HTMLDialogElement", FakeDialog);
   vi.stubGlobal("document", { activeElement: null });
-  const adopted: Settings[] = [];
-  const control = { settings, adoptSettings: (next: Settings) => { adopted.push(next); control.settings = next; } };
+  const control = { settings };
   const frames: string[] = [];
   const shown = { botId: "", dialogs: new Map<string, FakeDialog>(), toast: undefined as { hovered: boolean } | undefined };
   const notes: string[] = [];
@@ -105,20 +95,16 @@ function setup(settings: Settings = ON, embeddedPane = false) {
     refreshSessions: () => { sessionRefreshes += 1; },
     workers: () => [{ id: "w1", name: "Lab box" }] as WorkerView[],
   });
-  return { controller, control, adopted, frames, host, shown, notes, navigations, sessionRefreshes: () => sessionRefreshes };
+  return { controller, control, frames, host, shown, notes, navigations, sessionRefreshes: () => sessionRefreshes };
 }
 
-test("no bot stream while Labs → Bots is off, and none in an embedded pane", () => {
-  setup({ ...DEFAULT_SETTINGS }).controller.sync();
-  setup(ON, true).controller.sync();
+test("no bot stream in an embedded pane, and one at a time", () => {
+  setup(DEFAULT_SETTINGS, true).controller.sync();
   assert.equal(fake.streams.length, 0);
-  const { controller, control } = setup();
+  const { controller } = setup();
   controller.sync();
   controller.sync();
   assert.equal(fake.streams.length, 1, "one stream at a time");
-  control.settings = { ...DEFAULT_SETTINGS };
-  controller.sync();
-  assert.equal(fake.streams[0]?.stopped, true, "turned off, it stops at once");
 });
 
 test("every new bots frame lands with each bot's live chat state, and tells the shell (the panel's Tools and Triggers follow)", () => {
@@ -132,39 +118,6 @@ test("every new bots frame lands with each bot's live chat state, and tells the 
   assert.deepEqual(frames, ["ada"], "an old frame is dropped");
   stream.onUpdate({ revision: 2, ids: [], upserts: [] }, false);
   assert.deepEqual(frames, ["ada", ""], "on every bots frame");
-});
-
-test("a 409 reads the settings again once this screen's writes landed; still on, the stream is asked once more, never in a loop", async () => {
-  const { controller, adopted } = setup();
-  controller.sync();
-  fake.refreshed = ON;
-  fake.streams[0]!.handlers.onConnection("off");
-  assert.equal(adopted.length, 0, "waits for this screen's own writes");
-  fake.written.shift()!();
-  await settle();
-  assert.deepEqual(adopted, [ON]);
-  assert.equal(fake.streams.length, 2, "asked once more");
-  fake.streams[1]!.handlers.onConnection("off");
-  fake.written.shift()!();
-  await settle();
-  assert.equal(fake.streams.length, 2, "never in a loop");
-  controller.retry();
-  fake.streams[2]!.handlers.onConnection("live");
-  fake.streams[2]!.handlers.onConnection("off");
-  fake.written.shift()!();
-  await settle();
-  assert.equal(fake.streams.length, 4, "a live stream may be asked again after its next 409");
-});
-
-test("a 409 whose settings say bots are off does not ask again", async () => {
-  const { controller, adopted } = setup();
-  controller.sync();
-  fake.refreshed = { ...DEFAULT_SETTINGS };
-  fake.streams[0]!.handlers.onConnection("off");
-  fake.written.shift()!();
-  await settle();
-  assert.deepEqual(adopted, [fake.refreshed]);
-  assert.equal(fake.streams.length, 1);
 });
 
 test("a gateway without the stream falls back to one read at a time, and a live stream skips reads", async () => {
@@ -498,7 +451,7 @@ test("the toast's Restore and a roster Delete of the same bot wait on each other
 });
 
 test("Call and the Settings page's Calls section follow one read of the ChatGPT login; a failed read leaves Call hidden", async () => {
-  const { controller, host } = setup({ ...ON, calls: { voice: "maple" } });
+  const { controller, host } = setup({ ...DEFAULT_SETTINGS, calls: { voice: "maple" } });
   assert.equal(controller.callsAvailable(), false);
   assert.deepEqual(controller.settingsCall(), { defaultVoice: "maple" }, "nothing about a login until the gateway has said");
   const first = controller.loadCallsStatus();

@@ -64,7 +64,7 @@ https://github.com/user-attachments/assets/f6740992-95e7-4bb1-b07b-06e3a17a963c
 
 ### Bots
 
-Long-lived agents (Settings → Labs) with a face, one chat, a memory and routines they schedule themselves.
+Long-lived agents with a face, one chat, a memory and routines they schedule themselves.
 
 https://github.com/user-attachments/assets/42487a00-26d2-4642-8b1c-a2b47022a767
 
@@ -174,15 +174,13 @@ hui schedule edit <schedule> [same flags as add] [--json]   # --bot/--session mo
 hui schedule pause|resume|run|remove <schedule> [--json]
 ```
 
-Bots are a **preview**, off until you turn them on in Settings → Labs → **Bots**,
-their one switch (the sidebar then gets its Agents | Bots switch). While they are
-off nothing of them shows or runs, `hui bot` prints the gateway's refusal, and
-nothing is deleted. They are named agents with one forever chat each, whose memory never needs
-clearing. A new bot starts by asking what you expect from it, then writes its
-persona (SOUL.md) itself; they can run routines, schedule their own (temporary
-ones end by themselves) and message one another. Everything the Bots tab
-does works from a terminal too, through the running gateway (`hui bots` is the
-same command). `<bot>` is an id, a handle or an exact name:
+Bots are named agents with one forever chat each, whose memory never needs
+clearing. The sidebar's Agents | Bots switch shows them. A new bot starts by
+asking what you expect from it, then writes its persona (SOUL.md) itself; they
+can run routines, schedule their own (temporary ones end by themselves) and
+message one another. Everything the Bots tab does works from a terminal too,
+through the running gateway (`hui bots` is the same command). `<bot>` is an id,
+a handle or an exact name:
 
 ```sh
 hui bot list [--archived] [--json]

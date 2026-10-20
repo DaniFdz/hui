@@ -17,13 +17,11 @@ import {
   reorderSessionGroups,
   SessionNotFoundError,
   SessionRegistryError,
-  type SessionRecord,
   updateSessionGroup,
 } from "../sessions/sessions.ts";
 import { type createSessionLifecycle, SESSION_GROUP_MAX, SESSION_TITLE_MAX, sessionText } from "../sessions/lifecycle.ts";
 import { type createSessionViews, pendingSessions } from "../sessions/views.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";
-import { BOTS_OFF_MESSAGE } from "../bots-format.ts";
 
 export const routeSchemas: RouteSchema[] = sessionRouteSchemas;
 
@@ -121,11 +119,10 @@ export function createSessionRoutes(deps: {
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "createSession" | "startWorktreeSession" | "deleteSession" | "updateSession">;
   views: Pick<ReturnType<typeof createSessionViews>, "toView">;
   bots: Pick<BotService, "botForSession">;
-  isDormantBotChat(record: SessionRecord): Promise<boolean>;
 }) {
   async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const { method, path } = request;
-    const { sessionList, bots, isDormantBotChat } = deps;
+    const { sessionList, bots } = deps;
     const { createSession, startWorktreeSession, deleteSession, updateSession } = deps.lifecycle;
     const { toView } = deps.views;
 
@@ -222,9 +219,6 @@ export function createSessionRoutes(deps: {
       }
 
       const owned = (await readRegistry()).find((session) => session.id === id);
-      if (owned && await isDormantBotChat(owned)) {
-        return reply(SessionError, { error: BOTS_OFF_MESSAGE }, 409);
-      }
 
       if (method === "DELETE") {
         // A bot owns its chat: deleting the row would orphan the bot. Archiving keeps both.

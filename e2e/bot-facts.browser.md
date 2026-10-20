@@ -4,8 +4,7 @@ Follow `.agents/skills/hui-visual-verification/SKILL.md` from this checkout.
 Use the default isolated launcher (real Durable gateway and deterministic PI
 provider), at the clean committed branch HEAD, never the operator's state.
 
-1. Run launch and doctor, retain its receipt and browser URL. Enable Bots in
-   Settings → Labs (or seed only that setting through the guarded API).
+1. Run launch and doctor, retain its receipt and browser URL.
 2. Create one disposable bot (a fixture soul may be seeded through the bot API).
    Open it from the Bots roster. In its overview choose Setup → Memory.
 3. Observe the empty state. Choose Preference, enter a concrete preference and

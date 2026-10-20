@@ -48,7 +48,7 @@ export function triggersTool(options: {
         return { output: [{ type: "text", text }] };
       } catch (error) {
         if (context.abortSignal?.aborted) throw error;
-        // A refusal (an unknown trigger, bots off) is the model's to read and act on.
+        // A refusal (an unknown trigger, say) is the model's to read and act on.
         return { output: [{ type: "text", text: error instanceof Error ? error.message : String(error) }], isError: true };
       }
     },

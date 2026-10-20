@@ -203,9 +203,10 @@ test("HELP lists every hui bot command", () => {
     "[--soul-file <path|->] [--cwd <dir>]",
     "--tagging who may: anyone, the default, whenever a task fits; mention, only",
     "--language is the language it",
+    "Bots are named agents with one forever chat each",
   ]) assert.ok(HELP.includes(line), line);
   assert.doesNotMatch(HELP, /VoiceStudio|--voice/u, "VoiceStudio's flags are gone");
-  assert.ok(HELP.includes("Bots are a preview: off until Settings → Labs → Bots turns them on, and until\nthen every hui bot command prints the gateway's refusal."), "bots are marked as a preview that needs Labs");
+  assert.doesNotMatch(HELP, /Labs/u, "bots need no Labs switch");
 });
 
 test("production binding is explicit and never a wildcard", () => {

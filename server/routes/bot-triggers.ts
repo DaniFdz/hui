@@ -9,14 +9,14 @@
  *   POST   /__hui/bots/:id/triggers/:trigger/test    { run }: a sample event, delivered now
  *   POST   /__hui/bots/:id/triggers/:trigger/token   BotTriggerCreated: a new token for its URL, this once
  *
- * They live under `/__hui/bots`, so the `x-hui` guard and the 409 while bots are off apply as to every bot route.
+ * They live under `/__hui/bots`, so the `x-hui` guard applies as to every bot route.
  * The route its listener reports to, `POST /__hui/hooks/<token>`, is `bot-triggers-gateway.ts`'s.
  */
 import { BOT_TRIGGER_LIMITS } from "../bots/triggers-format.ts";
 import type { BotTriggerService } from "../bots/triggers.ts";
 import { TriggerConflictError, TriggerInputError, TriggerNotFoundError } from "../bots/triggers-input.ts";
 import { TriggerStoreError } from "../bots/triggers-store.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotStoreError } from "../bots/bots.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotStoreError } from "../bots/bots.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { BotTriggerCreated, BotTriggerDeleted, BotTriggerResponse, BotTriggerRunResponse, BotTriggersList, routeSchemas as botTriggerRouteSchemas } from "../api/bot-triggers.ts";
@@ -26,11 +26,11 @@ export const routeSchemas: RouteSchema[] = botTriggerRouteSchemas;
 export const BOT_TRIGGERS_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/triggers(?:\/([^/]{1,400})(?:\/(test|token))?)?$/u;
 const BODY_BYTES = 64 * 1024;
 
-/** 400 for input, 404 for an unknown bot or trigger, 409 for a state that refuses it (bots off included), 500 for storage. */
+/** 400 for input, 404 for an unknown bot or trigger, 409 for a state that refuses it, 500 for storage. */
 export function triggerErrorStatus(error: unknown): number {
   if (error instanceof TriggerInputError || error instanceof BotInputError || error instanceof SyntaxError) return 400;
   if (error instanceof TriggerNotFoundError || error instanceof BotNotFoundError) return 404;
-  if (error instanceof TriggerConflictError || error instanceof BotConflictError || error instanceof BotsOffError) return 409;
+  if (error instanceof TriggerConflictError || error instanceof BotConflictError) return 409;
   if (error instanceof TriggerStoreError || error instanceof BotStoreError) return 500;
   return 500;
 }

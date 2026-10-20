@@ -38,7 +38,7 @@ export function subscribeBots(handlers: BotsStreamHandlers, fetcher: typeof fetc
     while (!abort.signal.aborted) {
       const outcome = await connectBotsOnce(handlers, abort.signal, fetcher, () => { attempt = 0; });
       if (abort.signal.aborted) return;
-      if (outcome === "unsupported" || outcome === "off") {
+      if (outcome === "unsupported") {
         handlers.onConnection(outcome);
         return;
       }
@@ -50,14 +50,13 @@ export function subscribeBots(handlers: BotsStreamHandlers, fetcher: typeof fetc
   return () => abort.abort();
 }
 
-async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal, fetcher: typeof fetch, onLive: () => void): Promise<"dropped" | "unsupported" | "off"> {
+async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal, fetcher: typeof fetch, onLive: () => void): Promise<"dropped" | "unsupported"> {
   let response: Response;
   try {
     response = await fetcher(BOTS_EVENTS_URL, { headers: { ...CLIENT_HEADERS, accept: "text/event-stream" }, cache: "no-store", signal });
   } catch {
     return "dropped";
   }
-  if (response.status === 409) return "off";
   if (!response.ok || !response.body) return response.status === 404 || response.status === 405 ? "unsupported" : "dropped";
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

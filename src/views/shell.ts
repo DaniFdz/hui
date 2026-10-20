@@ -110,9 +110,7 @@ export type GroupDropTarget = { group: string; position: "before" | "after" };
 
 /** The Agents | Bots switch fills the sidebar's top row, right after the
  * collapse toggle, because each tab has a sidebar of its own: Agents is the
- * sidebar as before, and Bots shows only the roster. Present only while
- * Settings → Labs → Bots is on; without it the top row holds
- * only the toggle. */
+ * sidebar as before, and Bots shows only the roster. */
 export type ShellBotsProps = {
   tab: SidebarTab;
   onTab: (tab: SidebarTab) => void;
@@ -204,7 +202,7 @@ export type ShellProps = {
   /** Drops `group` before/after `target`; `ungrouped` as target means last. */
   onReorderGroup: (group: string, target: GroupDropTarget) => void;
   onDeleteSession: (session: SessionView) => void;
-  bots?: ShellBotsProps;
+  bots: ShellBotsProps;
 };
 
 export function sessionMoveGroupOptions(groups: readonly SessionGroup[]): Array<{ label: string; value: string }> {
@@ -788,7 +786,7 @@ export function renderSidebar(props: ShellProps) {
   const visibleGroups = sidebarSessionGroups(props.groups, props.search, props.sessionOptions);
   // On the Bots tab the sidebar is the roster alone, as in Hermes: the primary
   // navigation and New session stay under Agents.
-  const botsTab = props.bots?.tab === "bots" ? props.bots : undefined;
+  const botsTab = props.bots.tab === "bots" ? props.bots : undefined;
   const searchLabel = botsTab ? "Search bots" : "Search sessions";
   return html`<hui-session-hovercard-provider .sessions=${props.groups.flatMap((group) => group.sessions)}>
     <header class="topbar">
@@ -851,7 +849,7 @@ export function renderSidebar(props: ShellProps) {
         <div class="sidebar-shell sidebar-drawer__body">
           <div class="sidebar-brand">
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
-            ${props.bots ? html`<div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>` : nothing}
+            <div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>
           </div>
 
           <label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
@@ -866,8 +864,7 @@ export function renderSidebar(props: ShellProps) {
           </label>
 
           <div class="sidebar-shell__content">
-          <div class="sidebar-shell__body" id=${props.bots ? "sidebar-tabpanel" : nothing} role=${props.bots ? "tabpanel" : nothing}
-            aria-labelledby=${props.bots ? `sidebar-tab-${props.bots.tab}` : nothing}>
+          <div class="sidebar-shell__body" id="sidebar-tabpanel" role="tabpanel" aria-labelledby="sidebar-tab-${props.bots.tab}">
           ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation">
             ${PRIMARY_NAV.map((item) => {
               const page = HUI_PAGES.find((candidate) => candidate.id === item.id);

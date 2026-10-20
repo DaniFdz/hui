@@ -1858,8 +1858,8 @@ everything the Bots tab can, through the same routes.
   it (its title stands in without one), and the operator chooses who may tag
   it: *Anyone* (the default: whenever a task fits the description), *Only when
   @mentioned* (only in a turn whose operator message names it, as a skill with
-  `disable-model-invocation` waits for `/skill:name`) or *Nobody*. While bots
-  are on, every Durable conversation lists the bots it may tag in its system
+  `disable-model-invocation` waits for `/skill:name`) or *Nobody*. Every
+  Durable conversation lists the bots it may tag in its system
   prompt, byte-stable while the roster is, and has a `message_bot` tool. A tag
   arrives in the bot's chat as `[from @handle] …` from a bot or
   `[from agent: <title> · reply-to agent:<id>] …` from a session, like a
@@ -1879,18 +1879,12 @@ everything the Bots tab can, through the same routes.
   the chat is never compacted. Bots reach it only through one interface, so its
   engine stays separate; `hui bot memory` and the memory routes show its
   status, its view, any line zoomed down to a message, and a browse page.
-- **A preview behind Labs.** Bots are off until Settings → Labs → *Bots*
-  turns them on (decision below). Off, they are dormant everywhere and nothing
-  is deleted: no screen shows them, the gateway refuses their routes, calls and
-  chats, skips their routines and starts none of their turns; turning them on
-  brings everything back as it was, without a restart.
-- **The Bots tab** comes with them: while Labs → *Bots* (their one switch) is
-  on, an **Agents | Bots** switch fills the sidebar's top row after the collapse
-  toggle (arrow keys, Home/End; the browser remembers the tab): Agents is the
-  sidebar as before, and Bots shows only the roster, without the navigation.
-  Bot chats, the
-  subagents a bot spawns and their own subagents never appear in the Sessions
-  list, its search, Kanban, the Sessions page, the command palette or session
+- **Always on.** Bots have no switch (decision below).
+- **The Bots tab**: an **Agents | Bots** switch fills the sidebar's top row
+  after the collapse toggle (arrow keys, Home/End; the browser remembers the
+  tab): Agents is the sidebar as before, and Bots shows only the roster,
+  without the navigation. Bot chats, the subagents a bot spawns and their own
+  subagents never appear in the Sessions list, its search, Kanban, the Sessions page, the command palette or session
   pickers; a message from one still names and links it; Automations labels their routines
   *Bot · name* and words
   their schedules as the bot's panel does (*Daily at 08:00*), and shows who
@@ -1991,6 +1985,22 @@ everything the Bots tab can, through the same routes.
 The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
+
+### Bots are always on (2026-10-20)
+
+The owner: "in this version, bots should be available by default as well,
+instead of being under a lab feature flag". Asked whether to keep a switch, he
+chose none. This supersedes [Bots stay behind an opt-in Labs setting while they
+are a preview](#bots-stay-behind-an-opt-in-labs-setting-while-they-are-a-preview-2026-10-07).
+
+- **No switch.** Settings → Labs → *Bots* is gone. The Bots tab, bot chats,
+  routines, triggers and calls are always there, and every Durable session is
+  offered `message_bot`.
+- **Nobody keeps bots off.** An operator who had them off gets them. A saved
+  `labs.bots`, or the older `bots.showTab`, is not read, and the next settings
+  save drops it. That leaves nothing to migrate, so `hui doctor` has no check
+  for it.
+- **Labs stays** for its other flags.
 
 ### Resting bots sleep, and a green dot means done (2026-10-19)
 
@@ -2231,13 +2241,9 @@ tag a bot. The contract is [docs/api.md#tagging-bots](docs/api.md#tagging-bots).
 - **No new loops.** A session can't be tagged, so its tags only start chains,
   which three hops still end. A bot's subagents don't tag: the bot does, within
   its chain's hops. A session shares its hourly budget with its subagents.
-- **Only while bots are on.** With Labs → Bots off no conversation lists bots,
-  and no session here has `message_bot`, as before; turning it on or off offers
-  every open Durable session its tools again. A session on a remote worker
-  reads the list from the gateway on each request, as a bot there does, and
-  gets or loses the tool at its next start; meanwhile the gateway refuses its
-  tags. Sessions still on PI's SDK worker don't tag, and their composers
-  suggest no bots.
+- **Every Durable session tags.** A session on a remote worker reads the list
+  from the gateway on each request, as a bot there does. Sessions still on PI's
+  SDK worker don't tag, and their composers suggest no bots.
 
 ### Explicit bot knowledge (2026-10-18)
 
@@ -2578,10 +2584,11 @@ would do before anything exists, then creates exactly that. The contract is
   and suggests pasting the bot's instructions instead.
 - **Export is a zip** (`bot.json`, `SOUL.md`, `skills/`, optionally `memory.md`) rather
   than one JSON file: the soul and skills stay files a person can read and edit,
-  as in an OpenClaw workspace, and importing it round-trips. Like everything of
-  bots, all of this exists only while Labs → Bots is on.
+  as in an OpenClaw workspace, and importing it round-trips.
 
 ### Bots stay behind an opt-in Labs setting while they are a preview (2026-10-07)
+
+Superseded by [Bots are always on](#bots-are-always-on-2026-10-20).
 
 As the bots stack was about to be squash-merged into `main`, the owner asked:
 "make sure that there is an optin config (like a feature flag, but in

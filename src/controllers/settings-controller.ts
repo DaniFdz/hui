@@ -112,11 +112,6 @@ export class SettingsController implements ReactiveController {
     void this.save(patch);
   };
 
-  adoptSettings(settings: Settings): void {
-    this.settings = settings;
-    this.#changed();
-  }
-
   loadPreviews(): void {
     void loadThemePreviews().then((previews) => {
       this.previews = previews;

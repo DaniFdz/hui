@@ -10,7 +10,7 @@ operator's accounts, workers, transcripts or scheduler state.
 
 1. Launch the exact committed checkout, retain its persistent process handle,
    and require the printed receipt's doctor checks before Browser work and
-   final capture. Enable Bots in Settings → Labs and create a fixture bot
+   final capture. Create a fixture bot
    (*Ada*, with a short soul) through the guarded API as setup.
 2. Add a routine (*Morning digest*, hourly, prompt `E2E_RICH review the fixture`)
    through the bot's visible Routines page. Click **Run now**, observe its

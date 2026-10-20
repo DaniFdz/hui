@@ -1,5 +1,5 @@
 /**
- * HUI's own settings file in its config directory: reading and writing it, always normalized, and whether bots are on.
+ * HUI's own settings file in its config directory: reading and writing it, always normalized.
  * A missing or malformed file reads as the defaults instead of an error.
  */
 import { readFile, writeFile } from "node:fs/promises";
@@ -31,11 +31,6 @@ export async function readHuiSettingsAt(path: string): Promise<Settings> {
 
 export function readHuiSettings(): Promise<Settings> {
   return readHuiSettingsAt(HUI_SETTINGS_FILE);
-}
-
-/** Settings → Labs → Bots, read at each use, so turning bots on or off applies without a restart. */
-export async function botsOn(): Promise<boolean> {
-  return botsEnabled(await readHuiSettings());
 }
 
 export async function writeHuiSettings(raw: unknown): Promise<Settings> {
@@ -109,12 +104,8 @@ export const DEFAULT_SETTINGS: Settings = {
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
-  labs: { denseObservability: false, detailedDebug: false, bots: false },
+  labs: { denseObservability: false, detailedDebug: false },
 };
-
-export function botsEnabled(settings: Pick<Settings, "labs">): boolean {
-  return settings.labs.bots;
-}
 
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
@@ -143,7 +134,7 @@ export function normalizeSettings(raw: unknown): Settings {
     calls: normalizeCalls(source["calls"]),
     disabledSkills: normalizeDisabledSkills(source["disabledSkills"]),
     disabledPlugins: normalizeDisabledPlugins(source["disabledPlugins"]),
-    labs: normalizeLabs(source["labs"], source["bots"]),
+    labs: normalizeLabs(source["labs"]),
   };
 }
 
@@ -268,12 +259,11 @@ function boundedText(value: unknown, fallback: string, maximum: number): string 
   return value.trim().slice(0, maximum);
 }
 
-function normalizeLabs(value: unknown, legacyBots: unknown): Settings["labs"] {
+function normalizeLabs(value: unknown): Settings["labs"] {
   const source = isRecord(value) ? value : {};
   return {
     denseObservability: source["denseObservability"] === true,
     detailedDebug: source["detailedDebug"] === true,
-    bots: source["bots"] === true || (source["bots"] === undefined && isRecord(legacyBots) && legacyBots["showTab"] === true),
   };
 }
 

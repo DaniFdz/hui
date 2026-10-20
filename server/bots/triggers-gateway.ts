@@ -1,6 +1,6 @@
 /**
- * Triggers in the gateway (HUI-18): the service and the route its listeners report to, wired to the gateway's bots and
- * settings, and the GitHub CLI that reads the pull requests a delivery links to. `services.ts` makes one of these,
+ * Triggers in the gateway (HUI-18): the service and the route its listeners report to, wired to the gateway's bots
+ * and the GitHub CLI that reads the pull requests a delivery links to. `services.ts` makes one of these,
  * `backend.ts` starts and stops it, and `hui.ts` routes `/__hui/bots/:id/triggers…` and `POST /__hui/hooks/<token>` to it.
  */
 import type { IncomingMessage } from "node:http";
@@ -16,8 +16,6 @@ export type GatewayTriggerDeps = {
   /** The bot message path (`BotService.send`). */
   send(botId: string, message: { text: string; whenBusy?: "followUp" | "steer" }): Promise<unknown>;
   listBots(): Promise<readonly BotRecord[]>;
-  /** Settings → Labs → Bots. */
-  active(): Promise<boolean>;
   /** The GitHub CLI the gateway runs (`HUI_GITHUB_CLI` points tests at a fake). */
   ghCommand: string;
   report(event: { level: "info" | "warning" | "error"; action: string; summary: string; detail?: string }): void;
@@ -36,7 +34,6 @@ export function createGatewayTriggers(deps: GatewayTriggerDeps) {
     store,
     bots: { list: deps.listBots, deliver: (botId, text, delivery) => deps.send(botId, { text, whenBusy: delivery }) },
     pullRequests: (urls, diffBudget) => readPullRequests(urls, diffBudget),
-    active: deps.active,
     report,
   });
   return {

@@ -58,8 +58,7 @@ model's delegation choices or GitHub fixes.
 1. `node e2e/visual-verification.mjs launch --branch <branch> --github-fixture`,
    then `doctor` with its receipt. The Browser tool opens the instance at
    1440×900.
-2. Settings → Labs: turn **Bots** on. **New bot** makes one with the fixture
-   model.
+2. **New bot** makes one with the fixture model.
 3. The bot's panel → **Routines**: the Triggers section and its add form.
 4. A shell plays the listener: `curl -sS -X POST "$URL" -H 'content-type:
    application/json' -d '<report>'` with the URL the form showed.

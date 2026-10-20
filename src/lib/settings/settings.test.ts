@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
-import { botsEnabled, DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeCalls, normalizeSettings } from "./settings.ts";
+import { DEFAULT_SETTINGS, normalizeBranchPrefix, normalizeCalls, normalizeSettings } from "./settings.ts";
 
 test("round-trips a complete file", () => {
   assert.deepEqual(
@@ -38,45 +38,7 @@ test("normalizes HUI-owned profile and labs", () => {
   });
   assert.equal(settings.profileName, "Alex");
   assert.equal(settings.profileHandle, "@alex");
-  assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false, bots: false });
-});
-
-test("bots are a Labs preview: off by default, and only an explicit true turns them on", () => {
-  assert.equal(DEFAULT_SETTINGS.labs.bots, false);
-  assert.equal(normalizeSettings({}).labs.bots, false, "a settings.json from before the flag has bots off");
-  for (const labs of [null, "yes", [], {}, { bots: "true" }, { bots: 1 }, { bots: "on" }, { bots: null }]) {
-    assert.equal(normalizeSettings({ labs }).labs.bots, false, JSON.stringify(labs));
-  }
-  assert.deepEqual(normalizeSettings({ labs: { bots: true } }).labs, { denseObservability: false, detailedDebug: false, bots: true });
-  // A saved choice survives the client/server round trip, beside the other flags.
-  const saved = normalizeSettings({ labs: { bots: true, detailedDebug: true } });
-  assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(saved))).labs, { denseObservability: false, detailedDebug: true, bots: true });
-});
-
-test("Labs → Bots is the one switch: the Agents | Bots switch and everything else about bots follow it", () => {
-  assert.equal(botsEnabled(DEFAULT_SETTINGS), false);
-  assert.equal(botsEnabled(normalizeSettings({ labs: { bots: true } })), true);
-  assert.equal(botsEnabled(normalizeSettings({ labs: { bots: false } })), false);
-  assert.equal("bots" in DEFAULT_SETTINGS, false, "Settings → Sessions → Show the Bots tab is gone");
-});
-
-test("a file from before Labs → Bots keeps bots on where Show the Bots tab was on, and the next save writes only labs.bots", () => {
-  // Show the Bots tab on, no labs.bots yet: bots stay on without the operator doing anything.
-  const migrated = normalizeSettings({ labs: { detailedDebug: true }, bots: { showTab: true } });
-  assert.deepEqual(migrated.labs, { denseObservability: false, detailedDebug: true, bots: true });
-  assert.equal(normalizeSettings({ bots: { showTab: true } }).labs.bots, true, "without any labs at all");
-  assert.equal("bots" in migrated, false, "the old key is not carried");
-  // What the next save writes, read back: only labs.bots says so.
-  const saved = JSON.parse(JSON.stringify(migrated)) as Record<string, unknown>;
-  assert.deepEqual([saved["labs"], "bots" in saved], [{ denseObservability: false, detailedDebug: true, bots: true }, false]);
-  assert.equal(normalizeSettings(saved).labs.bots, true);
-  // Off or missing stays off, and a labs.bots already saved wins over the old switch either way.
-  for (const bots of [{ showTab: false }, {}, { showTab: "true" }, { showTab: 1 }, null, "yes", []]) {
-    assert.equal(normalizeSettings({ bots }).labs.bots, false, JSON.stringify(bots));
-  }
-  assert.equal(normalizeSettings({}).labs.bots, false);
-  assert.equal(normalizeSettings({ labs: { bots: false }, bots: { showTab: true } }).labs.bots, false, "turned off in Labs since");
-  assert.equal(normalizeSettings({ labs: { bots: true }, bots: { showTab: false } }).labs.bots, true);
+  assert.deepEqual(settings.labs, { denseObservability: true, detailedDebug: false });
 });
 
 test("codemode is on unless explicitly switched off", () => {
@@ -248,12 +210,11 @@ test("calls take Cove unless a known GPT-Live voice is saved", () => {
   assert.deepEqual(normalizeCalls({ voice: "marin" }), { voice: "cove" }, "a public-API voice is not one of the route's");
 });
 
-const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings>; botsEnabled: boolean }[] = JSON.parse(readFileSync(new URL("./settings.fixture.json", import.meta.url), "utf8"));
+const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings> }[] = JSON.parse(readFileSync(new URL("./settings.fixture.json", import.meta.url), "utf8"));
 
 test("settings preserves the shared runtime fixtures", () => {
   for (const fixture of fixtures) {
     assert.deepEqual(normalizeSettings(fixture.input), fixture.expected);
-    assert.equal(botsEnabled(normalizeSettings(fixture.input)), fixture.botsEnabled);
   }
   assert.deepEqual(DEFAULT_SETTINGS, fixtures.find((fixture) => fixture.input === null)!.expected);
 });

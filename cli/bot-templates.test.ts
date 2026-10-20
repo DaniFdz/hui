@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "vitest";
-import { BOTS_OFF_MESSAGE, type BotView } from "../server/bots-format.ts";
+import type { BotView } from "../server/bots-format.ts";
 import type { BotExportReview } from "../server/bots/export-format.ts";
 import type { BotImportPreview } from "../server/bots/templates/formats.ts";
 import { exportAdditions, exportCommand, formatExportReview, formatImportPreview, importCommand, importSource } from "./bot-templates.ts";
@@ -123,7 +123,7 @@ test("hui bot import sends a folder (without .git), shows the preview, and creat
   assert.match(yes.err, /warning: one thing/u);
 });
 
-test("a file with several agents needs --agent where nobody can be asked; a link and stdin are sources too; bots off is the gateway's refusal", async (t) => {
+test("a file with several agents needs --agent where nobody can be asked; a link and stdin are sources too", async (t) => {
   const many = preview({ candidates: [{ key: "researcher", name: "Researcher" }, { key: "reporting_analyst", name: "Reporting Analyst", title: "Analyst" }], pick: "researcher" });
   const gateway = await fakeGateway(t, {
     "POST /__hui/bots/import/preview": (call) => ({ body: call.body?.["pick"] === "reporting_analyst" ? { ...many, pick: "reporting_analyst", bot: { name: "Reporting Analyst", handle: "reporting-analyst" } } : many }),
@@ -135,8 +135,6 @@ test("a file with several agents needs --agent where nobody can be asked; a link
   assert.equal(gateway.calls.filter((call) => call.path === "/__hui/bots/import/preview").at(-1)!.body?.["pick"], "reporting_analyst");
   assert.deepEqual(gateway.calls[0]!.body?.["source"], { kind: "text", text: "researcher:\n  role: R\n" });
   assert.deepEqual(await importSource("https://x.ai/bot/marketplace/bots/a", terminal().io), { kind: "url", url: "https://x.ai/bot/marketplace/bots/a" });
-  const off = await fakeGateway(t, { "POST /__hui/bots/import/preview": () => ({ status: 409, body: { error: BOTS_OFF_MESSAGE } }) });
-  await assert.rejects(importCommand(off.base, "-", { yes: true }, terminal({ stdin: "Be terse." }).io), (error: unknown) => error instanceof Error && error.message === BOTS_OFF_MESSAGE);
 });
 
 test("hui bot export prints the review and saves the template once confirmed, owner-only and never over a file without --yes", async (t) => {

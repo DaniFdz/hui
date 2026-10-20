@@ -93,10 +93,8 @@ Workers are the remote machines of Settings → Workers, managed through the
 running gateway. A new worker connects at once; --extra-path is repeatable and
 on edit replaces the list. Edit changes only the fields given; a new command
 applies the next time the worker connects.
-Bots are a preview: off until Settings → Labs → Bots turns them on, and until
-then every hui bot command prints the gateway's refusal. They are named agents
-with one forever chat each, managed through the running gateway like the Bots
-tab; "bots" works as "bot". <bot> is an id, a handle or
+Bots are named agents with one forever chat each, managed through the running
+gateway like the Bots tab; "bots" works as "bot". <bot> is an id, a handle or
 an exact name. A new bot starts by asking what you expect from it (talk with
 hui bot chat <handle>), then writes its persona, SOUL.md, itself; --soul-file
 gives it one instead (- reads stdin) and skips that first conversation. Without
@@ -186,9 +184,7 @@ itself: --until at that time, --runs after that many runs (1-1000; a skipped
 run doesn't count), and HUI deletes it after either; on edit --until "" and
 --runs "" clear them. --timeout is how long one run may take (10-86400
 seconds, default 900). A bot can schedule its own routines too, with its
-routines tool, which shows as made by @bot. While bots are off, anything that
-names a bot or a bot's routine prints the gateway's refusal and list leaves
-bots' routines out; sessions' schedules work regardless.
+routines tool, which shows as made by @bot.
 `;
 
 export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {

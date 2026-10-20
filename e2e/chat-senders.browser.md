@@ -15,11 +15,9 @@ every message was sent through a visible composer or panel button.
 
 ## Reproduce
 
-1. Launch and run doctor. Setup through the guarded API: `PUT /__hui/settings`
-   with `{"labs":{"bots":true}}` (a later settings `PUT` must carry `labs` too,
-   or bots turn off); `POST /__hui/bots` for Grace (mint, round, a soul) and Ada
-   (lilac, a soul); two Durable sessions in the receipt's workspace, *Implement
-   retry fix* and *Unrelated PR work*; a routine on Ada's chat
+1. Launch and run doctor. Setup through the guarded API: `POST /__hui/bots` for
+   Grace (mint, round, a soul) and Ada (lilac, a soul); two Durable sessions in
+   the receipt's workspace, *Implement retry fix* and *Unrelated PR work*; a routine on Ada's chat
    (`POST /__hui/automation/tasks`, *Weekly release digest*) and a trigger
    (`POST /__hui/bots/<ada>/triggers`, *PR merged*).
 2. 1440×900, *Implement retry fix*: send `@grace please babysit PR #7.` with an
@@ -54,7 +52,5 @@ every message was sent through a visible composer or panel button.
 - The subagent shows its task and the `sessions_send` message under *Implement
   retry fix*, a link back to the parent.
 - Grace's face and bubble change color in the open session without a reload.
-- With bots off (a settings `PUT` without `labs`, so this screen saw it on its
-  next load) a bot's message shows its `@handle` and an initial, no face.
 - At 390×844 the face stays beside the bubble and the name, time and actions
   share one line. Light mode keeps the tint and a readable name.

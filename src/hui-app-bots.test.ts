@@ -8,13 +8,6 @@ import type { BotExportReview, BotImportPreview } from "./api/schema/bot-templat
 import * as botViews from "./views/bots.ts";
 import type { BotView } from "./lib/bots/bots.ts";
 import type { SessionView } from "./api/sessions.ts";
-import { DEFAULT_SETTINGS } from "./lib/settings/settings.ts";
-
-const written = vi.hoisted(() => ({ finish: undefined as (() => void) | undefined }));
-vi.mock("./lib/settings/settings-store.ts", async (original) => ({
-  ...await original<object>(),
-  settingsWritten: () => new Promise<void>((resolve) => { written.finish = resolve; }),
-}));
 
 const BOT = {
   id: "ada", name: "Ada", handle: "ada", sessionId: "s-ada", cwd: "/work", status: "idle", soul: false, routines: 0,
@@ -28,14 +21,12 @@ beforeEach(() => {
   vi.stubGlobal("HTMLDialogElement", class {});
   vi.stubGlobal("HTMLButtonElement", class {});
   vi.stubGlobal("HTMLElement", class {});
-  written.finish = undefined;
 });
 
 function setup() {
   const app = new HuiApp();
   Object.defineProperty(app, "renderRoot", { value: { querySelector: () => null } });
   Object.defineProperty(app, "updateComplete", { value: Promise.resolve(true) });
-  app["control"].settings = { ...DEFAULT_SETTINGS, labs: { ...DEFAULT_SETTINGS.labs, bots: true } };
   app["bots"].adopt([BOT]);
   app["bots"].loaded = true;
   app["sessions"].groups = [{ label: "g1", sessions: [SESSION] }];
@@ -78,63 +69,23 @@ function workspace(app: HuiApp) {
   return { template, props };
 }
 
-test("Labs hides every bot entry without forgetting the tab, and the Agents list always excludes bot chats", () => {
+test("the Agents list always excludes bot chats, and the sidebar keeps the chosen tab", () => {
   const app = setup();
   app["bots"].selectTab("bots");
   const normal = { id: "normal", title: "Work" } as SessionView;
   app["sessions"].groups = [{ label: "g1", sessions: [SESSION, normal] }];
-  for (const enabled of [true, false, true]) {
-    app["control"].settings = { ...app["control"].settings, labs: { ...app["control"].settings.labs, bots: enabled } };
-    assert.equal(app["shellBotsProps"]()?.tab, enabled ? "bots" : undefined);
-    assert.deepEqual(app["listedGroups"][0]?.sessions, [normal]);
-    assert.equal(app["automationProps"]().bots, enabled);
-  }
+  assert.equal(app["shellBotsProps"]().tab, "bots");
+  assert.deepEqual(app["listedGroups"][0]?.sessions, [normal]);
   assert.equal(localStorage.getItem("hui.sidebar-tab"), "bots");
 });
 
-test("bot routes and session links go home while Labs is off, and session links open the bot while on", () => {
+test("session links open the bot, and an embedded pane sends a bot route home", () => {
   const app = setup();
-  app["control"].settings = { ...DEFAULT_SETTINGS };
-  app["applyNavigation"]({ kind: "bot", id: BOT.id });
-  assert.deepEqual(vi.mocked(app["navigate"]).mock.calls.at(-1), [{ kind: "home" }, true]);
-  app["pendingSessionId"] = SESSION.id;
-  app["openPendingSession"]();
-  assert.deepEqual(vi.mocked(app["navigate"]).mock.calls.at(-1), [{ kind: "home" }, true]);
-  app["control"].settings = { ...DEFAULT_SETTINGS, labs: { ...DEFAULT_SETTINGS.labs, bots: true } };
   app["pendingSessionId"] = SESSION.id;
   app["openPendingSession"]();
   assert.deepEqual(vi.mocked(app["navigate"]).mock.calls.at(-1), [{ kind: "bot", id: BOT.id }, true]);
   app.embeddedPane = true;
   app["applyNavigation"]({ kind: "bot", id: BOT.id });
-  assert.deepEqual(vi.mocked(app["navigate"]).mock.calls.at(-1), [{ kind: "home" }, true]);
-});
-
-test("Labs changes stop bots and close their dialogs and call at once; enabling waits for the setting to reach the gateway", async () => {
-  const app = setup();
-  const sync = vi.mocked(app["bots"].sync);
-  app["followBotsSetting"]();
-  assert.equal(sync.mock.calls.length, 0);
-  written.finish!();
-  await Promise.resolve();
-  assert.equal(sync.mock.calls.length, 1);
-  const hangUp = vi.spyOn(app["voice"], "hangUp").mockImplementation(() => {});
-  Object.defineProperty(app["voice"], "call", { get: () => ({ bot: BOT }) });
-  app["botImports"].openImport();
-  app["bots"].openPanel(true);
-  app["botMenuFor"] = BOT.id;
-  app["view"] = "bot";
-  app.updated(new Map());
-  app["control"].settings = { ...DEFAULT_SETTINGS };
-  app.updated(new Map());
-  assert.equal(sync.mock.calls.length, 2, "a changed settings snapshot is followed immediately");
-  assert.equal(app["botImports"].importing, false);
-  assert.equal(app["bots"].sheetOpen, false);
-  assert.equal(app["botMenuFor"], "");
-  assert.equal(hangUp.mock.calls.length, 1);
-  assert.deepEqual(vi.mocked(app["navigate"]).mock.calls.at(-1), [{ kind: "home" }, true]);
-  app["view"] = "home";
-  app["conversation"].select(SESSION);
-  app["followBotsSetting"]();
   assert.deepEqual(vi.mocked(app["navigate"]).mock.calls.at(-1), [{ kind: "home" }, true]);
 });
 
@@ -153,8 +104,8 @@ test("the sidebar and empty roster create immediately on the selected machine, a
   props.onWorkersMenu?.();
   assert.equal(vi.mocked(app["launcher"].loadWorkers).mock.calls.length, 1);
   app["bots"].creating = true;
-  assert.equal(app["shellBotsProps"]()?.creating, true);
-  assert.equal(app["shellBotsProps"]()?.roster.creating, true);
+  assert.equal(app["shellBotsProps"]().creating, true);
+  assert.equal(app["shellBotsProps"]().roster.creating, true);
   props.onImport();
   assert.equal(app["botImports"].importing, true);
   app["botImports"].close();
@@ -176,7 +127,7 @@ test("import creates only after preview and opens the imported bot through the b
   vi.spyOn(templatesApi, "previewBotImport").mockResolvedValue(preview);
   const create = vi.spyOn(templatesApi, "importBot").mockResolvedValue({ bot: BOT, warnings: ["Routines paused."], skills: [], routines: 0, opener: false });
   const imported = vi.spyOn(app["bots"], "imported").mockImplementation(() => {});
-  app["shellBotsProps"]()!.onImport();
+  app["shellBotsProps"]().onImport();
   app["botImports"].importProps()!.onCreate();
   assert.equal(create.mock.calls.length, 0, "no create before a preview");
   app["botImports"].importProps()!.onTab("paste");
@@ -192,7 +143,7 @@ test("import creates only after preview and opens the imported bot through the b
   assert.equal(app["botImports"].importing, false);
 });
 
-test("Download sends the review id, picks and added passages; a stale review offers another review and Labs closes the export", async () => {
+test("Download sends the review id, picks and added passages; a stale review offers another review", async () => {
   const app = setup();
   const review: BotExportReview = {
     id: "review-1", botId: BOT.id, name: BOT.name, cleanup: [], changes: [], files: [], needs: [], leftOut: [],
@@ -201,7 +152,7 @@ test("Download sends the review id, picks and added passages; a stale review off
   };
   const read = vi.spyOn(templatesApi, "reviewBotExport").mockResolvedValue(review);
   const download = vi.spyOn(templatesApi, "downloadBotExport").mockRejectedValue(new templatesApi.BotExportError("Review expired.", 409));
-  app["shellBotsProps"]()!.roster.onExport(BOT);
+  app["shellBotsProps"]().roster.onExport(BOT);
   await Promise.resolve();
   app["botImports"].exportProps()!.onPick("change-1", "remove");
   app["botImports"].exportProps()!.onDraft({ quote: "Monday", group: "confirm" });
@@ -215,9 +166,6 @@ test("Download sends the review id, picks and added passages; a stale review off
   await Promise.resolve();
   assert.deepEqual(read.mock.calls, [[BOT.id], [BOT.id]]);
   assert.equal(app["botImports"].exportProps()?.stale, false);
-  app["control"].settings = { ...DEFAULT_SETTINGS };
-  app["followBotsSetting"]();
-  assert.equal(app["botImports"].exporting, false);
 });
 
 test("Edit opens Settings docked or in a sheet, and the shortcut toggles it only on an unobstructed bot chat", () => {
@@ -225,7 +173,7 @@ test("Edit opens Settings docked or in a sheet, and the shortcut toggles it only
     const app = setup();
     app["mobileNavLayout"] = mobile;
     app["navigate"] = vi.fn((target) => app["applyNavigation"](target));
-    app["shellBotsProps"]()!.roster.onEdit(BOT);
+    app["shellBotsProps"]().roster.onEdit(BOT);
     assert.equal(app["view"], "bot");
     assert.equal(app["activeBotId"], BOT.id);
     assert.equal(app["bots"].panelView, "settings");

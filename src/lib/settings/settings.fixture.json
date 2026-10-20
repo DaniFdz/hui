@@ -51,11 +51,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": "nope",
@@ -109,11 +107,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": [],
@@ -167,11 +163,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {},
@@ -225,11 +219,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -289,11 +281,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -349,11 +339,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -409,11 +397,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -474,11 +460,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": true,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -534,11 +518,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -594,11 +576,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -654,11 +634,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -714,321 +692,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "labs": {
-        "bots": "true"
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "labs": {
-        "bots": 1
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "labs": {
-        "bots": "on"
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "labs": {
-        "bots": null
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "labs": {
-        "bots": true
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": true
-      }
-    },
-    "botsEnabled": true
+    }
   },
   {
     "input": {
@@ -1087,504 +753,14 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": true,
-        "bots": false
+        "detailedDebug": true
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
-      "bots": null
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
       "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "bots": "yes"
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "bots": []
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "bots": {}
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "bots": {
-        "showTab": false
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "bots": {
-        "showTab": true
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
         "bots": true
-      }
-    },
-    "botsEnabled": true
-  },
-  {
-    "input": {
-      "bots": {
-        "showTab": "true"
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "bots": {
-        "showTab": 1
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
-      }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "labs": {
-        "bots": false
       },
       "bots": {
         "showTab": true
@@ -1640,76 +816,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
-  },
-  {
-    "input": {
-      "labs": {
-        "bots": true
-      },
-      "bots": {
-        "showTab": false
-      }
-    },
-    "expected": {
-      "theme": "claw",
-      "themeMode": "system",
-      "accent": "",
-      "fontUi": "instrument-sans",
-      "fontChat": "instrument-sans",
-      "fontTerminal": "JetBrains Mono",
-      "textScale": 100,
-      "chat": {
-        "messageWidth": "comfortable",
-        "collapseTaskProgress": false,
-        "sendShortcut": "enter",
-        "githubEmbeds": true,
-        "datadogEmbeds": true
-      },
-      "profileName": "HUI Operator",
-      "profileHandle": "",
-      "branchPrefix": "feature/",
-      "browser": {
-        "enabled": true,
-        "headless": true,
-        "executablePath": ""
-      },
-      "codemode": {
-        "enabled": true
-      },
-      "questions": {
-        "timeoutMinutes": 0
-      },
-      "vscode": {
-        "enabled": false,
-        "executable": "",
-        "provider": "auto",
-        "licenseAcceptedAt": ""
-      },
-      "power": {
-        "keepAwake": true
-      },
-      "models": {
-        "primary": "",
-        "fallback": "",
-        "utility": ""
-      },
-      "calls": {
-        "voice": "cove"
-      },
-      "disabledSkills": [],
-      "disabledPlugins": [],
-      "labs": {
-        "denseObservability": false,
-        "detailedDebug": false,
-        "bots": true
-      }
-    },
-    "botsEnabled": true
+    }
   },
   {
     "input": {
@@ -1765,11 +874,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -1827,11 +934,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -1889,11 +994,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -1949,11 +1052,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2009,11 +1110,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2069,11 +1168,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2131,11 +1228,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2193,11 +1288,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2255,11 +1348,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2317,11 +1408,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2379,11 +1468,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2441,11 +1528,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2503,11 +1588,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2565,11 +1648,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2627,11 +1708,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2689,11 +1768,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2753,11 +1830,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2817,11 +1892,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2879,11 +1952,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -2941,11 +2012,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3006,11 +2075,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3068,11 +2135,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3130,11 +2195,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3192,11 +2255,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3254,11 +2315,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3316,11 +2375,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3378,11 +2435,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3440,11 +2495,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3505,11 +2558,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3567,11 +2618,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3630,11 +2679,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3696,11 +2743,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3762,11 +2807,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3825,11 +2868,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3889,11 +2930,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -3949,11 +2988,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4009,11 +3046,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4069,11 +3104,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4129,11 +3162,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4189,11 +3220,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4249,11 +3278,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4309,11 +3336,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4369,11 +3394,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4452,11 +3475,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4539,11 +3560,9 @@
       ],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4599,11 +3618,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4659,11 +3676,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4719,11 +3734,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4779,11 +3792,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4839,11 +3850,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4899,11 +3908,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -4959,11 +3966,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5019,11 +4024,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5086,11 +4089,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5148,11 +4149,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5210,11 +4209,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5272,11 +4269,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5334,11 +4329,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5396,11 +4389,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5458,11 +4449,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5520,11 +4509,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5582,11 +4569,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5644,11 +4629,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5706,11 +4689,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5768,11 +4749,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5830,11 +4809,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5892,11 +4869,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -5956,11 +4931,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6016,11 +4989,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6076,11 +5047,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6136,11 +5105,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6196,11 +5163,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6256,11 +5221,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6316,11 +5279,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6376,11 +5337,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6436,11 +5395,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6496,11 +5453,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6556,11 +5511,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6616,11 +5569,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6676,11 +5627,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6736,11 +5685,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6796,11 +5743,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6856,11 +5801,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6916,11 +5859,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -6976,11 +5917,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -7036,11 +5975,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -7096,11 +6033,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -7156,11 +6091,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -7216,11 +6149,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -7276,11 +6207,9 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   },
   {
     "input": {
@@ -7336,10 +6265,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false,
-        "bots": false
+        "detailedDebug": false
       }
-    },
-    "botsEnabled": false
+    }
   }
 ]

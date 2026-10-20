@@ -42,7 +42,6 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 } } }));
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "low" }));
 await mkdir(join(dir, "config", "hui"), { recursive: true });
-await writeFile(join(dir, "config", "hui", "settings.json"), JSON.stringify({ labs: { bots: true } }));
 
 const { middleware } = await import("../hui.ts");
 const { startBackend, stopBackend } = await import("../backend.ts");

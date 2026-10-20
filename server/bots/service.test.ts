@@ -20,7 +20,7 @@ import type { SecretQuestion } from "../agent-tools/secret-requests.ts";
 // Paths are resolved at import time: never the operator's own configuration.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));
 const { LiveSessions } = await import("../sessions/live-sessions.ts");
-const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } = await import("./bots.ts");
+const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError } = await import("./bots.ts");
 const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess, sessionBotsSection } = await import("./service.ts");
 const { BotMemoryUnavailableError } = await import("./memory.ts");
 const { AUTOMATION_SUSPENDED } = await import("../automation.ts");
@@ -128,9 +128,7 @@ const MEMORY: BotMemoryStatus = {
   usage: { calls: 2, input: 1_200, output: 80, cacheRead: 300, cacheWrite: 0, cost: 0.0042 },
 };
 
-/** `bots`: Settings → Labs → Bots as the gateway reads it, which the test flips; with it, the service also watches
- * the chats' statuses, as the gateway's does. */
-async function harness(t: TestContext, options: { messagesPerHour?: number; memoryReadable?: boolean; bots?: { on: boolean } } = {}) {
+async function harness(t: TestContext, options: { messagesPerHour?: number; memoryReadable?: boolean } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "hui-bot-service-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const botsDir = join(dir, "bots");
@@ -382,7 +380,6 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     now: () => clock,
     report: (event) => { reports.push(event); },
     ...(options.messagesPerHour ? { messagesPerHour: options.messagesPerHour } : {}),
-    ...(options.bots ? { active: async () => options.bots!.on, statuses: sessions } : {}),
   });
   return {
     dir, botsDir, sessions, service, registry, conversations, memoryCalls, tasks, created, removed, chats, histories, remote, soulChecks, reports,
@@ -601,56 +598,6 @@ test("archiving keeps every byte, disables the bot's routines and stops its turn
   assert.equal(restored.archived, undefined);
   assert.equal(h.record(bot.sessionId)?.archived, undefined);
   assert.equal(h.tasks[0]!.enabled, false, "routines stay disabled until the operator turns them on");
-});
-
-test("bots turned off (Settings → Labs → Bots) go quiet and start no turn, a turn that starts anyway stops, and on again they work as before", async (t) => {
-  const bots = { on: true };
-  const h = await harness(t, { bots });
-  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
-  const bob = await h.service.create({ soul: SOUL, name: "Bob" });
-  const chat = await h.chat(ada.sessionId);
-  const record = h.record(ada.sessionId)!;
-  h.tasks.push(task(ada.sessionId, "Morning"));
-  await h.service.send(ada.id, { text: "long task" });
-  assert.deepEqual(await h.service.send(ada.id, { text: "queued behind it" }), { status: "queued" });
-
-  // Turned off: what bots were doing stops, as archiving stops it, without archiving anything.
-  bots.on = false;
-  await h.service.quietAll();
-  assert.equal(chat.aborts, 1, "its running turn stopped");
-  assert.deepEqual(h.sessions.snapshot(ada.sessionId).queue.items ?? [], [], "and what waited behind it was withdrawn");
-  assert.equal(h.sessions.status(ada.sessionId), "idle");
-
-  // Nothing starts a turn: a message (a call's hand-off is one), a routine, message_bot, set_profile, a first turn.
-  await assert.rejects(h.service.send("ada", { text: "hello?" }), BotsOffError);
-  const ada1 = (await h.registry.list()).find((bot) => bot.id === ada.id)!;
-  await assert.rejects(h.service.runRoutine(ada1, record, { name: "Morning", prompt: "check" }, new AbortController().signal), BotsOffError);
-  await assert.rejects(h.service.messageBot(bob.sessionId, { to: "ada", message: "hi" }), BotsOffError);
-  await assert.rejects(h.service.setProfile(ada.sessionId, { title: "Boss" }), BotsOffError);
-  const scout = await h.service.create({ name: "Scout" });
-  const refused = await waitFor(() => h.reports.find((report) => report.action === "bot_kickoff_failed"), "the refused first turn");
-  assert.match(refused.detail ?? "", /Settings → Labs → Bots/u);
-  assert.deepEqual((await h.chat(scout.sessionId)).prompts, [], "a new bot's first turn waits for bots to be on");
-  assert.deepEqual(chat.prompts, ["long task"], "nothing else reached Ada's chat");
-
-  // A turn that starts anyway (Durable resuming a run a restart interrupted, say) stops at once.
-  await h.sessions.prompt(ada.sessionId, "resumed run");
-  await waitFor(() => chat.aborts === 2 ? true : undefined, "the resumed turn to stop");
-
-  // Nothing was deleted or disabled.
-  assert.deepEqual((await h.service.list()).map((bot) => bot.handle).sort(), ["ada", "bob", "scout"]);
-  assert.deepEqual(h.tasks.map((each) => [each.name, each.enabled]), [["Morning", true]]);
-  assert.equal(h.record(ada.sessionId)?.archived, undefined);
-
-  // On again, without a restart: messages, routines and bot messages reach the chat, and a turn runs to its end.
-  bots.on = true;
-  const reply = h.service.send("ada", { text: "back" }, { timeoutMs: 5_000 });
-  assert.equal(await chat.nextPrompt(), "back");
-  chat.answer("Welcome back.");
-  assert.deepEqual(await reply, { status: "answered", reply: "Welcome back." });
-  assert.deepEqual(await h.service.messageBot(bob.sessionId, { to: "ada", message: "hi" }), { text: "Queued for @ada.", to: "ada", status: "sent" });
-  chat.answer("Hi Bob.");
-  assert.equal(chat.aborts, 2, "turns while bots are on are left alone");
 });
 
 test("deleting an active bot stops its turn, withdraws what waits, forgets its memory and removes its routines, chat and folder", async (t) => {
@@ -1607,9 +1554,8 @@ test("the bots section lists the other active bots by handle and stays byte-iden
   assert.ok(cy);
 });
 
-test("a session's bots section lists the bots it may tag, as skills are listed, only while bots are on and one takes its tags", async (t) => {
-  const state = { on: true };
-  const h = await harness(t, { bots: state });
+test("a session's bots section lists the bots it may tag, as skills are listed, while one takes its tags", async (t) => {
+  const h = await harness(t);
   assert.equal(await h.service.section(), undefined, "no bots, no section");
   const ada = await h.service.create({ soul: SOUL, name: "Ada", title: "Release manager", description: "Writes release notes. Tag her when a PR merges." });
   await h.service.create({ soul: SOUL, name: "Dee", tagging: "mention" });
@@ -1621,9 +1567,6 @@ test("a session's bots section lists the bots it may tag, as skills are listed, 
   assert.match(section, /Bots you can tag, when a task fits what they do:\n- @ada \(Ada, Release manager\): Writes release notes\. Tag her when a PR merges\.\n\nOnly when the user's message tags them:\n- @dee \(Dee\)$/u);
   assert.doesNotMatch(section, /@cy/u);
   assert.equal(await h.service.workerSection("w-1"), section, "a session on a worker gets the same list");
-  state.on = false;
-  assert.equal(await h.service.section(), undefined, "bots off: sessions know of no bots");
-  state.on = true;
   await h.service.update("dee", { tagging: "nobody" });
   await h.service.archive(ada.id);
   assert.equal(await h.service.section(), undefined, "none takes a session's tags");

@@ -259,12 +259,12 @@ test("a conversation without OptChat sends Durable's requests unchanged and is n
   assert.deepEqual(second.messages.map((message) => message.role), ["user", "assistant", "user"], "the history goes as it is");
   assert.equal(blocks(second.messages[0]!)[0]!.text, "PLAIN_ONE first");
   assert.doesNotMatch(JSON.stringify(requests), /<chat>|You keep no memory between turns/u);
-  const offered = [...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name);
-  assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools and codemode, as before OptChat");
+  const offered = [...[...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name), "message_bot"];
+  assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools, codemode and message_bot, as before OptChat");
   assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), offered);
   const id = Number(session.sessionId) as ConversationId;
   const harness = await host.open();
-  assert.equal((await harness.snapshot(AgentDoc, id, durableContext))?.extensions, undefined, "the stored agent is untouched");
+  assert.deepEqual((await harness.snapshot(AgentDoc, id, durableContext))?.extensions, { add: ["hui-bot-tag"] }, "the stored agent only adds the bot tag");
   assert.equal(await harness.snapshot(OptChatDoc, id, durableContext), undefined);
   assert.equal(await host.optchat.status(id), undefined);
   assert.equal(existsSync(join(f.store, "optchat")), false, "no memory is kept");

@@ -21,7 +21,6 @@
 import { boundText, CALL_LIMITS, chunkUtf8 } from "./calls.ts";
 import type { CallDelegationResult, CallLine, CallTaskResult } from "../../api/schema/calls.ts";
 import type { GptLiveVoice } from "../../api/schema/bots.ts";
-import { BOTS_OFF_MESSAGE } from "../bots/bots.ts";
 
 /* ── what the call view reads ─────────────────────────────────────────── */
 
@@ -514,10 +513,8 @@ export class LiveCall {
     this.#stops.push(this.#platform.setInterval(() => this.#sample(), this.#options.sampleMs ?? 50));
     this.#stops.push(this.#platform.setInterval(() => {
       void this.#platform.heartbeat(connection.callId).catch((error: unknown) => {
-        // The session is still up at ChatGPT: it is asked to close. Bots turned off end their calls too, saying so.
-        const refusal = message(error, "");
-        if (refusal === BOTS_OFF_MESSAGE) this.#fail(BOTS_OFF_MESSAGE, true);
-        else if (/ended|not found|404/iu.test(refusal)) this.#fail("The gateway released this call.", true);
+        // The session is still up at ChatGPT: it is asked to close.
+        if (/ended|not found|404/iu.test(message(error, ""))) this.#fail("The gateway released this call.", true);
       });
     }, this.#options.heartbeatMs ?? 30_000));
     if (this.#platform.watchTools) this.#stops.push(this.#platform.watchTools((name) => this.#onTool(name)));

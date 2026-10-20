@@ -34,12 +34,7 @@ export async function loadSettings(): Promise<Settings> {
   return settings;
 }
 
-/** Resolves once every settings write this screen has started has landed or failed: the gateway has what it shows. */
-export function settingsWritten(): Promise<void> {
-  return settingsWriteQueue;
-}
-
-/** Reads the settings again, for a change another screen made (bots turned off there, say). Unlike `loadSettings`, a
+/** Reads the settings again, for a change made elsewhere (a VS Code license accepted, say). Unlike `loadSettings`, a
  * failed read changes nothing and resolves undefined. */
 export async function refreshSettings(): Promise<Settings | undefined> {
   try {

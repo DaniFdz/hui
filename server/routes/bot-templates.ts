@@ -1,6 +1,5 @@
 /**
- * Importing and exporting bots over `/__hui/bots` (HUI-18); see docs/api.md#importing-and-exporting-bots. Under the bots'
- * prefix, so Settings → Labs → Bots gates them like every bot route (409 while off).
+ * Importing and exporting bots over `/__hui/bots` (HUI-18); see docs/api.md#importing-and-exporting-bots.
  *
  *   POST /__hui/bots/import/preview     { source, pick?, worker? } → BotImportPreview; nothing is created
  *   POST /__hui/bots/import             { template, worker? } → 201 BotImportResult

@@ -935,7 +935,8 @@ requests:
    roster, a skill named by the gateway's path, lists naming the gateway's own
    tools refused, offline answers), and an isolated gateway driven in a browser
    (screens in the pull request).
-9. **Bots behind Labs while they are a preview** (implemented 2026-10-07; the
+9. **Bots behind Labs while they are a preview** (implemented 2026-10-07,
+   superseded 2026-10-20 by item 18; the
    owner's request, SPEC.md, "Bots stay behind an opt-in Labs setting while they
    are a preview"): the stack lands on `main` with bots off until Settings →
    Labs → *Bots* (`settings.labs.bots`) turns them on. Off, they are dormant
@@ -953,8 +954,8 @@ requests:
    ended), `src/views/hui-owned-surfaces.test.ts`, `src/views/bots.test.ts`,
    `src/views/settings-automation.test.ts`, `src/lib/bots/bots.test.ts`,
    `src/lib/voice/live-call.test.ts`, `cli/*.test.ts`, and an isolated gateway driven
-   in a browser ([`e2e/bots-labs.browser.md`](../e2e/bots-labs.browser.md),
-   screens in the pull request).
+   in a browser (`e2e/bots-labs.browser.md`, removed with item 18; screens in
+   the pull request).
 10. **Schedules as a CLI, and bots that schedule their own routines**
     (implemented 2026-10-07; the owner's request, SPEC.md, "Schedules are a CLI,
     and bots schedule their own routines"): `hui schedule` (alias `schedules`)
@@ -1157,6 +1158,22 @@ requests:
    `server/bots/remote.test.ts`, `server/bots/call-helper.test.ts`,
    `src/lib/bot-facts.test.ts` and the isolated Browser journey
    [`e2e/bot-facts.browser.md`](../e2e/bot-facts.browser.md).
+
+18. **Bots are always on** (implemented 2026-10-20; the owner's request,
+   SPEC.md, "Bots are always on"): Settings → Labs → *Bots* is gone, and with
+   it item 9's refusals. The Bots tab, bot chats, routines, triggers and calls
+   are always there, and every session is offered `message_bot`. A saved
+   `labs.bots` or `bots.showTab` is ignored and dropped at the next save. Proof:
+   `src/lib/settings/settings.test.ts` and `server/hui-settings.test.ts` (their
+   shared fixture), `server/bots/durable.test.ts`,
+   `server/bots/durable-access.test.ts`, `server/bots/triggers.test.ts`,
+   `src/controllers/bots-controller.test.ts`, `src/hui-app-bots.test.ts`,
+   `src/views/hui-owned-surfaces.test.ts`, `cli/*.test.ts`. Browser proof
+   (2026-10-20, an isolated gateway from this branch, desktop and 390×844): a
+   fresh install shows the Agents | Bots switch, Labs lists only its two other
+   flags, *New bot* creates a bot that greets in its chat, and a `PUT` with
+   `labs.bots: false` and `bots.showTab: false` saves neither key and leaves
+   `/__hui/bots` answering.
 
 ### HUI-19 — Agent widgets
 

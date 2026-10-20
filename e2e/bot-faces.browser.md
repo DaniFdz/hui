@@ -20,12 +20,9 @@ the old dialog.
    `NODE_USE_ENV_PROXY` unset: `node e2e/visual-verification.mjs launch --branch
    feat/bot-faces --pi-sessions`, then `doctor` on the receipt
    before and after the browser work, and `cleanup` at the end.
-2. Setup through HUI's guarded API (not the journey under test): `PUT
-   /__hui/settings {"bots":{"showTab":true}}` (since 2026-10-07
-   `{"labs":{"bots":true}}`: Settings → Labs → Bots, the one switch, replaced Show
-   the Bots tab; an old `showTab` still reads as bots on), then `POST /__hui/bots` for ten
-   bots: Scout (blob, blue), Coach (heart, magenta), Atlas (round, mint), Pixel
-   (cookie, coral), Tri (triangle, yellow), Juno (heart, lilac), Moss (cookie,
+2. Setup through HUI's guarded API (not the journey under test): `POST
+   /__hui/bots` for ten bots: Scout (blob, blue), Coach (heart, magenta), Atlas
+   (round, mint), Pixel (cookie, coral), Tri (triangle, yellow), Juno (heart, lilac), Moss (cookie,
    mint), Owl (🦉), and Ledger and Nova with no look (their ids pick it); an
    eleventh, Old, archived. States come from messages
    (`POST /__hui/bots/:id/messages`): `E2E_REPLAY` holds a streaming reply
@@ -86,7 +83,7 @@ did the real calls of the calls pull request.
 
 ## More shapes and ears (2026-10-08, `f2a2753`, clean checkout; doctor passed before and after)
 
-`visual-verification.mjs launch --pi-sessions`, bots on in Labs, nine bots through
+`visual-verification.mjs launch --pi-sessions`, nine bots through
 `POST /__hui/bots`: Nova (star, bunny), Petal (flower, sprout), Nimbus (cloud,
 bear), Dew (drop), Boo (ghost, horns), Capsule (pill, cat), Cubo (block,
 antenna), Hex (hexagon) and Plain (no look). The Browser tool's headless Chrome
@@ -113,7 +110,7 @@ Browser tool only opened the captures to inspect them.
 
 ## Sleeping, working and done (2026-10-19, `66a873d`, clean checkout; doctor passed before and after)
 
-`visual-verification.mjs launch` (default fixture), bots on in Labs, seven
+`visual-verification.mjs launch` (default fixture), seven
 bots through `POST /__hui/bots` with a `soul` so no first turn runs: Ada,
 Master (cat ears), Grace, Pedro, Sherlock, Luisma and Maria. Grace, Luisma,
 Maria and Sherlock each got one message with `wait: true`, so their turns ended

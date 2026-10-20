@@ -15,7 +15,7 @@ No real PR, account, credential or installed gateway is used.
 
 1. Launch the feature checkout with the repository verifier and run its doctor.
    Use the receipt's workspace, browser URL and isolated API URL.
-2. API setup: turn on `labs.bots`, create Grace with a short soul (no kickoff),
+2. API setup: create Grace with a short soul (no kickoff),
    and create two Durable sessions in the fixture workspace: *Implement retry
    fix* and *Unrelated PR work*. Retain their returned IDs. Bots default to
    anyone being able to tag them in this disposable fixture.

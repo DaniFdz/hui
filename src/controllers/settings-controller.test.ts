@@ -79,8 +79,8 @@ test("a save sends only its patch and renders the store's snapshot before the wr
   assert.equal(controller.saveFailed, true);
   assert.equal(controller.settings.branchPrefix, "confirmed/", "the store's answer once the write settles");
 
-  controller.patchOwnedSettings({ labs: { ...DEFAULT_SETTINGS.labs, bots: true } });
-  assert.deepEqual(fake.patches[1], { labs: { ...DEFAULT_SETTINGS.labs, bots: true } });
+  controller.patchOwnedSettings({ labs: { ...DEFAULT_SETTINGS.labs, detailedDebug: true } });
+  assert.deepEqual(fake.patches[1], { labs: { ...DEFAULT_SETTINGS.labs, detailedDebug: true } });
 });
 
 test("only the newest save reports whether it landed", async () => {

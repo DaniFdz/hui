@@ -4,8 +4,8 @@
  * `routes/order.test.ts` pins it: the routes a browser cannot send `x-hui` to (widget sandbox, presented media,
  * attachments, a bot's memory page, VS Code entry and proxy, trigger hooks) come before the `x-hui` gate; terminals,
  * files, diff, VS Code tickets and browser connect run before the diagnostics hook and are never recorded; every other
- * route is. Also owns the streams no route module writes yet (session events, session statuses, bots), the bots-off
- * refusal, theme file reads and the upgrade handlers in `attachLiveStreams`. Services come from `services.ts`.
+ * route is. Also owns the streams no route module writes yet (session events, session statuses, bots), theme file
+ * reads and the upgrade handlers in `attachLiveStreams`. Services come from `services.ts`.
  */
 import { readFile } from "node:fs/promises";
 import type { ServerResponse } from "node:http";
@@ -18,9 +18,8 @@ import { isHookPath } from "./bots/triggers-listener.ts";
 import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, type RouteRequest, type RouteResult } from "./http/route.ts";
 import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { CALLS_ROUTE } from "./routes/calls.ts";
-import { BOTS_OFF_MESSAGE, type BotsUpdate } from "./bots-format.ts";
+import type { BotsUpdate } from "./bots-format.ts";
 
-import { botsOn } from "./hui-settings.ts";
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode/proxy.ts";
 import { VSCODE_ENTER_PATH } from "./vscode/contract.ts";
 import { attachBrowserTransport } from "./browser/transport.ts";
@@ -47,7 +46,6 @@ import {
   backlogRoutes,
   botList,
   botRoutes,
-  botStreams,
   botTemplateRoutes,
   browserRoutes,
   callRoutes,
@@ -56,7 +54,6 @@ import {
   diffRoutes,
   fileRoutes,
   githubRoutes,
-  isDormantBotChat,
   jiraRoutes,
   localPathRoutes,
   managedBrowser,
@@ -197,7 +194,6 @@ export function streamSessionStatuses(
 
 /** `GET /__hui/bots/events`: the complete bot list first, then only the bots whose views changed. */
 export function streamBots(response: ServerResponse, list: Pick<typeof botList, "subscribe"> = botList): void {
-  botStreams.add(response);
   response.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-store",
@@ -215,19 +211,9 @@ export function streamBots(response: ServerResponse, list: Pick<typeof botList, 
   }, HEARTBEAT_MS);
   heartbeat.unref();
   response.on("close", () => {
-    botStreams.delete(response);
     clearInterval(heartbeat);
     unlist();
   });
-}
-
-/** Bots off: every bot route, call route and bot chat's session route answers 409 with `BOTS_OFF_MESSAGE`, which names
- * the setting. 409, not 404: the gateway's settings refuse the request, and the bots and their data are all still
- * there (404 is a bot that does not exist). True when it answered. */
-async function refusedWhileBotsOff(response: ServerResponse): Promise<boolean> {
-  if (await botsOn()) return false;
-  sendJson(response, 409, { error: BOTS_OFF_MESSAGE });
-  return true;
 }
 
 /** `/__hui/calls` and `/__hui/bots/:id/calls…` (`routes/calls.ts`). */
@@ -280,7 +266,6 @@ async function handleRequest(
       sendJson(response, 403, { error: `missing ${CLIENT_HEADER} header` });
       return;
     }
-    if (await refusedWhileBotsOff(response)) return;
     await serveBotRoute(response, routeRequest(request, response, path));
     return;
   }
@@ -367,18 +352,17 @@ async function handleRequest(
 
   if (path === BOTS_EVENTS_ROUTE) {
     if (request.method !== "GET") sendJson(response, 405, { error: "method not allowed" });
-    else if (!await refusedWhileBotsOff(response)) streamBots(response);
+    else streamBots(response);
     return;
   }
 
-  // Calls are with bots only, so their status route goes with them.
   if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
-    if (!await refusedWhileBotsOff(response)) await serveCallRoute(response, routed);
+    await serveCallRoute(response, routed);
     return;
   }
 
   if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
-    if (!await refusedWhileBotsOff(response)) await (BOT_TRIGGERS_ROUTE.test(path) ? serveTriggerRoute(response, routed) : serveBotRoute(response, routed));
+    await (BOT_TRIGGERS_ROUTE.test(path) ? serveTriggerRoute(response, routed) : serveBotRoute(response, routed));
     return;
   }
 
@@ -467,7 +451,7 @@ export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlyS
   const detachVscode = attachVscodeTransport(server, vscode, allowedHosts);
   const detachSessions = attachSessionTransport(server, async (id, send) => {
     const record = (await readRegistry()).find((session) => session.id === id);
-    if (!record || await isDormantBotChat(record)) return undefined;
+    if (!record) return undefined;
     return liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
   }, allowedHosts);
   return () => { detachBrowser(); detachVscode(); detachSessions(); };

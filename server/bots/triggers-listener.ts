@@ -14,7 +14,7 @@
  * An empty `events` is a check-in: no delivery, no turn. The service wakes the bot once per event id (it remembers the
  * ids with the delivery it decides), never for an event older than the trigger, and only for what the trigger's filter
  * passes; the GitHub pull requests an event links to are read as its delivery goes out. The listener keeps its own
- * place in what it watches: a report HUI refuses (bots off: 409) is its cue to send those events again later.
+ * place in what it watches: a report HUI refuses (409) is its cue to send those events again later.
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";

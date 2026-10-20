@@ -68,9 +68,6 @@ export const BOT_TRIGGER_MARKER = "[trigger: ";
 /** The route a trigger's listener reports to: `POST /__hui/hooks/<token>` on the gateway. */
 export const BOT_TRIGGER_HOOK_PREFIX = "/__hui/hooks/";
 
-/** Why a trigger did not fire while bots are off (Settings → Labs → Bots). */
-export const BOTS_OFF_TRIGGER_REASON = "Skipped because bots are off: turn them on in Settings → Labs → Bots.";
-
 /** One trigger as `bot-triggers.json` stores it: its URL's token only as its SHA-256. */
 export type BotTriggerRecord = Omit<BotTrigger, "pending" | "watch"> & { tokenHash: string };
 

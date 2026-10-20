@@ -27,7 +27,7 @@
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
 import { BotMemoryUnavailableError } from "../bots/memory.ts";
 import type { BotService } from "../bots/service.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } from "../bots/bots.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError } from "../bots/bots.ts";
 import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import {
@@ -58,12 +58,12 @@ type Deps = {
   readAttachments(sessionId: string, raw: unknown): Promise<{ attachments: PromptAttachment[]; cleanupRejected(): Promise<void> }>;
 };
 
-/** 400 for input, 404/409 for a bot's state, 409 while Settings → Labs → Bots is off, 503 when the chat's memory cannot
- * be read or its worker is offline, 500 for storage. */
+/** 400 for input, 404/409 for a bot's state, 503 when the chat's memory cannot be
+ * read or its worker is offline, 500 for storage. */
 export function botErrorStatus(error: unknown): number {
   if (error instanceof BotInputError || error instanceof SyntaxError) return 400;
   if (error instanceof BotNotFoundError) return 404;
-  if (error instanceof BotConflictError || error instanceof SessionBusyError || error instanceof BotsOffError) return 409;
+  if (error instanceof BotConflictError || error instanceof SessionBusyError) return 409;
   if (error instanceof BotMemoryUnavailableError || error instanceof BotWorkerOfflineError) return 503;
   // Durable and runtime refusals (an unknown model, say) are the caller's to fix; storage failures are not.
   return error instanceof Error && !/Store|Registry/u.test(error.name) ? 400 : 500;

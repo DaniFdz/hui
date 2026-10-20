@@ -30,10 +30,10 @@ a bot at once and **Edit bot…** opens the bot's Settings tab
    work). On a host whose environment sends HTTP through a proxy
    (`HTTP_PROXY` with `NODE_USE_ENV_PROXY=1`), unset those variables for the
    launcher: its ownership check talks to its own loopback instance.
-2. Open the receipt's `browserUrl` at 1440×900. The fresh instance has the
-   Bots tab off. Since 2026-10-07 bots are a preview, off until Settings →
-   Labs → **Bots** turns them on; that one switch replaced the Settings →
-   Sessions → *Show the Bots tab* steps below.
+2. Open the receipt's `browserUrl` at 1440×900. The fresh instance had the
+   Bots tab off then. Since 2026-10-20 bots are always on, so the Settings →
+   Sessions → *Show the Bots tab* steps below are history: the Agents | Bots
+   switch is there from the start.
 3. Messages over 512 bytes are summarized by a compactor call; shorter ones are
    their own summary lines. The long message below (667 characters) is
    "OPT_NOTES Notes for later, keep them word for word: ", then "the blue door
@@ -312,8 +312,7 @@ resize and expand"). He chose the profile overview with pages from three
 clickable mockups.
 
 Checked on the launcher (default fixture: deterministic provider, real gateway
-bot routes, Durable chat, OptChat and Automation), Labs → Bots turned on with
-its switch, one bot made with the empty roster's New bot. Only the provider is
+bot routes, Durable chat, OptChat and Automation), one bot made with the empty roster's New bot. Only the provider is
 mocked.
 
 1. The bot's chat opens beside the overview at 344 px: its face (88 px), name

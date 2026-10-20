@@ -473,12 +473,11 @@ export class WorkerHost {
   }
 
   /** A chat's `bots` section, from a connected gateway: a bot's from the one that owns the bot, a session's (the bots it
-   * may tag) from its own, asked only while the Settings it mirrors here have bots on. With none attached the section is
+   * may tag) from its own. With none attached the section is
    * left out, as message_bot cannot reach a bot then either. Asked before each of the chat's model requests, so a
    * gateway that has gone quiet (before the keep-alive drops it) delays a request by seconds at most. */
   async #botSection(botId: string | undefined, conversationId: ConversationId): Promise<string | undefined> {
     if (botId === undefined) {
-      if (!(await readHuiSettings()).labs.bots) return undefined;
       const peer = this.#gateway(this.#callers.get(String(conversationId)));
       const reply = await peer?.request<{ section?: unknown }>("bot.section", {}, BOT_SECTION_TIMEOUT_MS).catch(() => undefined);
       return typeof reply?.section === "string" ? reply.section : undefined;

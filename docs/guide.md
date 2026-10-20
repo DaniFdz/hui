@@ -192,7 +192,7 @@ does the quick work (session and branch names, Jira drafts, `/btw`, and for bots
 their memory summaries, quick answers on calls and call summaries): choose the
 fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Calls)
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
-are with bots only, so that section shows while [bots](#bots) are on.
+are with bots only.
 
 The composer's **Effort** slider offers the reasoning levels the session's model
 has, up to **Maximum** (PI's `max` level) where the model supports it, then
@@ -210,31 +210,6 @@ choices are kept per session and apply to its next model request; a proxy that
 does not support fast mode serves the request at standard speed or refuses it.
 
 ## Bots
-
-> **Bots are a preview.** They are still being built, so they are off until you
-> turn them on: Settings → Labs → **Bots**, their one switch. The sidebar then
-> gets its **Agents | Bots** switch ([below](#the-bots-tab)). If you had
-> Settings → Sessions → *Show the Bots tab* on before it existed, bots stay on.
-
-While bots are off they are dormant everywhere, and nothing is deleted:
-
-- The sidebar has no Agents | Bots switch, a bot's address (`/bots/…`) opens
-  the home page, and Settings hides Sessions → Bots and Models → Calls.
-  Automations leaves the bots' routines out, and the Contributions calendar
-  their chats. Bot chats never show among your sessions, on or off.
-- The gateway refuses every bot route and call, and the session routes of a
-  bot's chat, with `Bots are off on this gateway: they are a preview. Turn them
-  on in Settings → Labs → Bots.` That is also what every `hui bot` command
-  prints.
-- Routines are kept but skipped: Automations records each time that comes due
-  as *Skipped* with that reason, and a skipped time isn't run later.
-- Nothing starts a bot's turn. Turning bots off stops what they were doing, as
-  archiving does: a running turn stops, messages still queued for a bot are
-  withdrawn, and a call ends.
-
-Turn them on again and everything is back as it was (their chats, memory,
-SOUL.md, routines and settings), at once and without a restart; each routine
-runs at its next time.
 
 A **bot** is a named, persistent agent: a role, a persona it writes with you
 (its SOUL.md), its own model, a working directory, and **one chat that never
@@ -261,12 +236,11 @@ summarized, `hui bot chat` says "Summarizing memory…".
 
 ### The Bots tab
 
-While bots are on (Settings → Labs → **Bots**), an **Agents | Bots** switch tops
-the sidebar. **Agents** is the usual sidebar; **Bots** shows only your bots,
-most recently active first, with their latest message, and **+** creates one at
-once: a bot called *New Bot* whose chat opens on its greeting, asking what to call
-it and what you expect from it (the chat opens on a small note, "New Bot was
-created", where that first turn began).
+An **Agents | Bots** switch tops the sidebar. **Agents** is the usual sidebar;
+**Bots** shows only your bots, most recently active first, with their latest
+message, and **+** creates one at once: a bot called *New Bot* whose chat opens
+on its greeting, asking what to call it and what you expect from it (the chat
+opens on a small note, "New Bot was created", where that first turn began).
 A bot's chat opens beside its panel, after OpenAI's Dots. It starts on the
 bot's overview: its face, name, role and what it is doing, with **Call** and
 **Edit**; its routines and triggers, each with a switch, and **+** to add one;
@@ -587,14 +561,9 @@ says otherwise) stops the turn. `--every` takes `30s`, `5m`, `2h` or `1d`; Autom
 refuses intervals under a minute. `--cron` uses this machine's time zone unless
 `--timezone` names another.
 
-While bots are off ([above](#bots)) a routine whose time comes is skipped, not
-failed: Automations records the run as *Skipped* with the reason, the routine
-stays on, and that time isn't run later. Once bots are on again it runs at its
-next time. (A once routine whose time passes while they are off is used up, as
-the scheduler turns any one-off task off once its time comes.) Times missed
-while the gateway itself was down are different: each overdue routine runs once
-when it starts again. A skipped run doesn't count against a temporary routine's
-runs, but its end time still comes.
+A routine that came due while the gateway was down runs once when the gateway
+starts again. A skipped run doesn't count against a temporary routine's runs,
+but its end time still comes.
 
 ### Schedules from a terminal
 
@@ -622,10 +591,7 @@ Edit changes only the flags you give. `--every` takes `30s`, `5m`, `2h` or
 `1d` (a minute at least), `--cron` five fields in this machine's time zone
 unless `--timezone` names another, `--at` one ISO date and time, and
 `--timeout` how long one run may take (10–86400 seconds, 15 minutes by
-default); `--disabled` creates a schedule paused (or pauses it on edit). While
-bots are off, `hui schedule` refuses anything that names a bot or one of its
-routines with the gateway's message, and `list` leaves bots' routines out;
-sessions' schedules work as always.
+default); `--disabled` creates a schedule paused (or pauses it on edit).
 
 ### Triggers
 
@@ -691,8 +657,7 @@ being dropped. Each delivery shows under **Latest trigger runs**.
   the changed files with their additions and deletions, and the diff, each cut
   at a bound that says so (or what `gh` couldn't read).
 - **Its own place.** The listener keeps track of what it already read. While
-  bots are off, the trigger is off or its bot archived, HUI answers 409 and keeps
-  nothing, so the listener sends those events again later; `"catchUp": true`
+  the trigger is off or its bot archived, HUI answers 409 and keeps nothing, so the listener sends those events again later; `"catchUp": true`
   delivers a backlog as one message.
 - **On your tailnet.** The URL answers only this machine and your tailnet;
   exposing it to the internet with Tailscale Funnel is up to you, and then its
@@ -733,7 +698,7 @@ it**: *Anyone* (whenever a task fits), *Only when @mentioned* (only when your
 message names it) or *Nobody*. From a terminal: `hui bot edit ada --description
 "…" --tagging mention`.
 
-While bots are on, every session and every bot knows the bots it may tag and has
+Every session and every bot knows the bots it may tag and has
 a `message_bot` tool. To ask yourself, type `@` in any chat: bots come first in
 the list, and `@ada please add this to the release notes` makes that chat's agent
 send Ada the request, with the context she needs. The tag arrives in Ada's chat

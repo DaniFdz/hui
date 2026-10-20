@@ -1,7 +1,7 @@
 /**
  * One session's actions: `/__hui/sessions/:id/(open|prompt|steer|follow-up|queue|continue|clear|compact|reload|btw|
  * tools|models|commands|model|abort|rewind|fork|resume|thinking|fast|question|connect)`, with the guards they share
- * (an unknown or still-creating session, a bot's chat while bots are off, a bot's forever chat) and the request ids
+ * (an unknown or still-creating session, a bot's forever chat) and the request ids
  * that keep a resent prompt from running twice. `hui.ts` applies the `x-hui` guard before dispatching here and
  * writes the `…/events` stream for the record this module answers with `{ stream }`.
  */
@@ -27,7 +27,6 @@ import type { createSessionLifecycle } from "../sessions/lifecycle.ts";
 import { type createSessionViews, pendingSessions } from "../sessions/views.ts";
 import type { SubagentService } from "../agent-tools/subagents.ts";
 import { foreverChatRefusal, MAX_PROMPT_BYTES, sessionMutationErrorStatus } from "./sessions.ts";
-import { BOTS_OFF_MESSAGE } from "../bots-format.ts";
 import { isThinkingLevel } from "../sessions/thinking.ts";
 import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
 
@@ -45,7 +44,6 @@ export function createSessionActionRoutes(deps: {
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "updateSession" | "forkRequest" | "forkFromSession">;
   views: Pick<ReturnType<typeof createSessionViews>, "toView">;
   bots: Pick<BotService, "botForSession">;
-  isDormantBotChat(record: SessionRecord): Promise<boolean>;
   subagents: Pick<SubagentService, "cancelCollected">;
   secretRequests: Pick<SecretRequests, "answer">;
   questionnaires: Pick<Questionnaires, "answer">;
@@ -55,7 +53,7 @@ export function createSessionActionRoutes(deps: {
 
   async function handle(request: RouteRequest): Promise<JsonResult | { stream: SessionRecord } | undefined> {
     const { method, path } = request;
-    const { bots, isDormantBotChat, subagents, secretRequests, questionnaires } = deps;
+    const { bots, subagents, secretRequests, questionnaires } = deps;
     const { updateSession, forkRequest, forkFromSession } = deps.lifecycle;
     const { toView } = deps.views;
 
@@ -68,10 +66,6 @@ export function createSessionActionRoutes(deps: {
         return reply(SessionError, {
           error: pending ? pending.error ?? "The Git worktree is still being created." : `unknown session: ${id}`,
         }, pending ? 409 : 404);
-      }
-      // Bots off: nothing reaches a bot's chat this way, so nothing resumes it.
-      if (await isDormantBotChat(record)) {
-        return reply(SessionError, { error: BOTS_OFF_MESSAGE }, 409);
       }
       // A bot's chat never ends: what would reset, shorten or fork it is refused here; the model stays switchable.
       if (record.bot && method === "POST" && (action[2] === "clear" || action[2] === "compact" || action[2] === "rewind" || action[2] === "fork")) {

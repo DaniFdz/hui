@@ -18,13 +18,6 @@ import { sessionTreeIds } from "../session/tree.ts";
 
 export type { BotAvatar, BotInput, BotMemoryStatus, BotMemoryUsage, BotPatch, BotsUpdate, BotView } from "../../api/schema/bots.ts";
 
-/**
- * Bots are a preview: Settings → Labs → Bots (`settings.labs.bots`) turns them on, and they are off until then. Off,
- * every `/__hui/bots` route, every call route and the session routes of a bot's chat answer 409 with this message,
- * the CLI prints it, and a call whose gateway says it ends.
- */
-export const BOTS_OFF_MESSAGE = "Bots are off on this gateway: they are a preview. Turn them on in Settings → Labs → Bots.";
-
 /** Limits the gateway enforces at its boundary; the CLI and browser mirror them. */
 export const BOT_LIMITS = {
   name: 60,
@@ -433,9 +426,8 @@ export function withLiveChats(
 export type BotsStreamHandlers = {
   /** `first` marks the complete list each (re)connect starts with. */
   onUpdate: (update: BotsUpdate, first: boolean) => void;
-  /** `unsupported`: the gateway has no bot stream (an older build); `off`: bots are off there (Settings → Labs → Bots,
-   * a 409); either way, stop asking. */
-  onConnection: (state: "live" | "reconnecting" | "unsupported" | "off") => void;
+  /** `unsupported`: the gateway has no bot stream (an older build): stop asking. */
+  onConnection: (state: "live" | "reconnecting" | "unsupported") => void;
 };
 
 /* ── drafts ───────────────────────────────────────────────────────────────── */

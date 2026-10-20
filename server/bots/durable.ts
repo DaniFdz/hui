@@ -8,10 +8,10 @@
  *
  * The sections' extension is in every gateway's default selection: `soul`
  * renders nothing without the conversation's `hui.bot` document, and `bots` is
- * a session's list of the bots it may tag while bots are on. The tools live in
+ * a session's list of the bots it may tag. The tools live in
  * an extension of their own that only a bot's chat selects
  * (`DurableSession.applyTools`), and refuse anywhere else; `message_bot` alone
- * has a second one, which a session selects while bots are on.
+ * has a second one, which a session selects.
  *
  * `soul` is the bot's persona: its SOUL.md, read on every request from the
  * disk of the host the conversation runs on, in the bot's home folder that host
@@ -247,8 +247,8 @@ export function soulToolText(raw: string): string {
   return soul;
 }
 
-/** `section`: global; a session's `bots` while bots are on, the rest inert outside bots' chats. `tools`: installed,
- * selected by bots' chats only. `tag`: installed, `message_bot` alone, selected by sessions while bots are on. */
+/** `section`: global; a session's `bots`, the rest inert outside bots' chats. `tools`: installed,
+ * selected by bots' chats only. `tag`: installed, `message_bot` alone, selected by sessions. */
 export function huiBotsExtensions(options: BotsExtensionOptions): { section: Extension; tools: Extension; tag: Extension } {
   const messageBot: ToolRegistration = defineTool({
     name: MESSAGE_BOT_TOOL,
@@ -261,7 +261,7 @@ export function huiBotsExtensions(options: BotsExtensionOptions): { section: Ext
     replay: "unsafe",
     execute: async (args, api, context) => {
       try {
-        // The gateway decides who may tag whom: a bot's chat, or a session while bots are on.
+        // The gateway decides who may tag whom: a bot's chat, or a session.
         const result = await options.invoke(api.conversationId, MESSAGE_BOT_TOOL, { to: args.to, message: args.message });
         const text = typeof result === "object" && result !== null && typeof (result as { text?: unknown }).text === "string"
           ? (result as { text: string }).text
