@@ -4,7 +4,7 @@ Journey for tagging bots by `@handle` (HUI-18, SPEC.md "Agents and bots tag
 bots by @handle"): a bot's Settings page has a Tagging section (*When to tag
 it*, its description, and *Who can tag it*), which its panel's Setup lists
 first as *Tagging*, every session lists the bots it
-may tag and has `message_bot` while Labs → Bots is on, the composer's `@`
+may tag and has `message_bot`, the composer's `@`
 suggests bots before files, and a bot that takes tags only when mentioned is
 refused a tag the operator's message doesn't name.
 
@@ -28,8 +28,7 @@ Chrome of its own (fresh profile, real mouse and key events, reads only through
 
 ## Reproduce
 
-1. Launch, then setup through the API: `PUT /__hui/settings` with
-   `labs.bots: true`; `POST /__hui/bots` for Ada (*Release manager*, a soul so
+1. Launch, then setup through the API: `POST /__hui/bots` for Ada (*Release manager*, a soul so
    no kickoff runs) and Dee (*Finance*); `POST /__hui/sessions` for a Durable
    session titled *Release prep for PR 7* in the receipt's workspace.
 2. 1440×900. Ada's chat → her panel's Setup → **Tagging** → *When to tag it*:

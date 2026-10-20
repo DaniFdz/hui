@@ -23,7 +23,7 @@ reader against x.ai's current page (nothing of it is kept).
    gateway are started with `env -i` and only those variables (no proxy).
 2. `<agent>/models.json` points provider `hui-e2e` (models `fixture` and
    `claude-sonnet-4-5`) at the fixture; `PUT /__hui/settings` with
-   `{"labs":{"bots":true},"themeMode":"dark"}`.
+   `{"themeMode":"dark"}`.
 3. Samples: a Next.js page carrying a Grok Bot payload (pasted and as a file), an
    OpenClaw workspace folder and the same folder zipped by Python's `zipfile`, a
    Claude Code subagent, a Letta agent file, a V2 character card (JSON) and a V3
@@ -56,10 +56,7 @@ reader against x.ai's current page (nothing of it is kept).
    and `memory.md` (Python's `testzip` clean); importing it made @nova-3 with the
    same soul (one *What you already know* section), skill and disabled routine,
    and noted that @nova was taken.
-4. **Labs off.** With `labs.bots: false`, `hui bot import` and `hui bot export`
-   printed *Bots are off on this gateway…* and exited 1; `POST
-   /__hui/bots/import/preview` answered 409.
-5. **Browser, desktop.** + opens *New bot* and *Import bot…*. The dialog's File
+4. **Browser, desktop.** + opens *New bot* and *Import bot…*. The dialog's File
    or folder | Link | Paste tabs, a file chosen (the Weekend Chef page), Preview:
    the heart face in its yellow, @weekend-chef, *From Grok Bot by Sample Author*,
    the untrusted note, the facts row, SOUL.md with *What you already know*, the
@@ -97,7 +94,7 @@ is green*, and the imported bot's first turn), driven with the Browser tool,
 
 ### Reproduce
 
-1. Settings through `PUT /__hui/settings`: Labs → Bots on, utility model
+1. Settings through `PUT /__hui/settings`: utility model
    `hui-e2e/fixture`, profile name *Dani Fernandez*.
 2. A bot through `POST /__hui/bots`: Ada, title *Dani's PR review assistant*, a soul
    naming Dani Fernandez, Pat Doe, `acme/widgets`, the approval rule and
