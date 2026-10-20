@@ -29,7 +29,7 @@ rename an entry; a commit never adds a new kind of violation.
 - R1. `src/` imports only `src/` and npm packages; production `src/` code
   imports no Node module.
 - R2. `server/`, `cli/`, `desktop/` and `bin/` never import `src/`.
-- R3. Nothing imports `shared/`, and the directory goes away.
+- R3. There is no `shared/` directory.
 - R4. `server/` and `cli/` may import each other; `desktop/` imports only
   `desktop/`; `bin/` imports `cli/`, `server/`, `desktop/` and `build/`.
 - R5. Only `src/api/` calls `fetch`, `new WebSocket` or `new EventSource`.
@@ -45,6 +45,8 @@ rename an entry; a commit never adds a new kind of violation.
 - R11. Product code never imports `e2e/`, `evals/` or `scripts/`. Those may
   import either side, and tests may import their fixtures.
 - R12. No file imports both `src/` and `server/`.
+- R13. No test reads `src/hui-app.ts` or `src/controllers/` as text: tests
+  render views and drive controllers instead.
 - R14. The remote worker release ships every module that
   `server/worker/main.ts`, `server/worker/host.ts` and `server/runtimes/` load.
 - R15. `server/api/` imports only `typebox` and itself.
@@ -54,8 +56,6 @@ rename an entry; a commit never adds a new kind of violation.
   `cli/main.ts`, `cli/gateway-run.ts`, `server/runtimes/pi-sdk-worker.ts`,
   `server/worker/main.ts` and `index.html`. An installed CLI checks their built
   files before switching to a new release.
-
-R13 is not checked yet.
 
 ## A message, start to finish
 

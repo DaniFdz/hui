@@ -100,8 +100,10 @@ const edges = [];
 const unresolved = [];
 const violations = new Set();
 for (const file of files) {
-  const { imports, calls } = scan(file, await readFile(join(root, file), "utf8"));
+  const text = await readFile(join(root, file), "utf8");
+  const { imports, calls } = scan(file, text);
   const production = !TEST.test(file);
+  if (!production && /\bread(?:File(?:Sync)?)?\([^)]*(?:hui-app\.ts|controllers\/)/u.test(text)) violations.add(`${file} (R13)`);
   for (const { specifier, type } of imports) {
     const relativePath = specifier.startsWith(".") ? posix.join(posix.dirname(file), specifier.split("?")[0]) : undefined;
     if (relativePath && !under(relativePath, "build", "dist") && !existsSync(join(root, relativePath))) {
