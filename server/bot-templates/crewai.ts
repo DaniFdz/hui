@@ -4,7 +4,7 @@
  * `{placeholders}` from a crew's inputs at run time; HUI leaves them in and says so.
  */
 import { BOT_LIMITS } from "../../shared/bots.ts";
-import type { BotTemplate } from "../../shared/bot-templates.ts";
+import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, displayName, isRecord, oneLine, parseYaml, sections, str } from "./common.ts";
 
 const AGENT_KEYS = ["role", "goal", "backstory"];

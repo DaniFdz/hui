@@ -1,13 +1,13 @@
 /**
  * Reading HUI's own bot exports: a zip with `bot.json`, `SOUL.md` and the bot's own skills' folders. Version 2 is a
- * template, reviewed for personal information before it left (`shared/bot-export.ts` makes it): its open points, what it
+ * template, reviewed for personal information before it left (`server/bot-export-format.ts` makes it): its open points, what it
  * needs, its triggers and the files beside each SKILL.md come with it. Version 1 was an exact copy: its handle and, when
  * asked for, `memory.md` (its memory's view), which joins the soul's "What you already know" as every template's
  * memories do. Importing either gives the profile, soul, skills, routines (disabled, as every import's) and lists back.
  */
-import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotOpenPoint, type BotTemplateTrigger } from "../../shared/bot-export.ts";
+import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotOpenPoint, type BotTemplateTrigger } from "../bot-export-format.ts";
 import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../shared/bots.ts";
-import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateSkillFile } from "../../shared/bot-templates.ts";
+import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateSkillFile } from "./formats.ts";
 import { BOT_TRIGGER_LIMITS } from "../bot-triggers-format.ts";
 import type { AutomationSchedule } from "../automation.ts";
 import { normalizeTriggerInput } from "../bot-triggers-input.ts";

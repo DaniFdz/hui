@@ -2,8 +2,7 @@
  * Client half of importing and exporting bots (`/__hui/bots/import`, `/__hui/bots/:id/export…`; the contract is in
  * docs/api.md#importing-and-exporting-bots): the preview, the import, the export review and the zip download.
  */
-import type { BotExportAddition, BotExportGroup, BotExportReview } from "../../shared/bot-export.ts";
-import type { BotImportPreview, BotImportResult, BotImportSource, BotTemplate } from "../../shared/bot-templates.ts";
+import type { BotExportAddition, BotExportGroup, BotExportReview, BotImportPreview, BotImportResult, BotImportSource, BotTemplate } from "./schema/bot-templates.ts";
 import { downloadName, parseBotExportReview, parseBotImportPreview } from "../lib/bots/templates.ts";
 import { isRecord, parseBot } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";

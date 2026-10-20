@@ -8,8 +8,8 @@
  */
 import { lstat, readdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
-import { BOT_EXPORT_GROUPS, buildExport, withAdditions, type BotExportAddition, type BotExportGroup, type BotExportReview } from "../shared/bot-export.ts";
-import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportResult, type BotImportSource } from "../shared/bot-templates.ts";
+import { BOT_EXPORT_GROUPS, buildExport, withAdditions, type BotExportAddition, type BotExportGroup, type BotExportReview } from "../server/bot-export-format.ts";
+import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportResult, type BotImportSource } from "../server/bot-templates/formats.ts";
 import { botTriggerFilterSummary, cooldownLabel } from "../server/bot-triggers-format.ts";
 import type { BotView } from "../server/api/bots.ts";
 import { GatewayError, request, type BotFlags, type BotIO } from "./gateway-client.ts";

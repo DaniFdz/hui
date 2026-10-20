@@ -6,7 +6,7 @@
  * the opener). Example messages, alternate greetings, post-history instructions, creator notes and the image stay out.
  */
 import { BOT_LIMITS } from "../../shared/bots.ts";
-import type { BotTemplate } from "../../shared/bot-templates.ts";
+import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, isRecord, macros, oneLine, sections, str } from "./common.ts";
 import { pngTextChunks } from "./png.ts";
 

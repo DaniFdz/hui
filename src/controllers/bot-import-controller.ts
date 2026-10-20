@@ -9,7 +9,8 @@ import type { BotView } from "../lib/bots/bots.ts";
 import { importSource, pickedFile, pickedFolder, type BotExportGroup, type BotExportReview, type BotImportPreview, type BotImportTab, type PickedSource } from "../lib/bots/templates.ts";
 import { BotExportError, downloadBotExport, importBot, previewBotImport, reviewBotExport } from "../api/bot-templates.ts";
 import { ensureModal } from "../lib/modal-dialog.ts";
-import { additionChange, buildExport, picksWithoutAddition, withAdditions, type BotExportAddition } from "../../shared/bot-export.ts";
+import { additionChange, buildExport, picksWithoutAddition, withAdditions } from "../lib/bots/export-preview.ts";
+import type { BotExportAddition } from "../api/schema/bot-templates.ts";
 import type { BotExportDialogProps, BotExportDraft, BotImportDialogProps } from "../views/bot-import.ts";
 
 /** The "Missed something?" form, empty. */

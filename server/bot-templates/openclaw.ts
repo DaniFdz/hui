@@ -10,7 +10,7 @@
  * daily `memory/*.md` logs.
  */
 import { BOT_LIMITS } from "../../shared/bots.ts";
-import type { BotTemplate } from "../../shared/bot-templates.ts";
+import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, displayName, fileText, findFile, oneEmoji, oneLine, skillFromFile, unwrapFolder, type ImportFile } from "./common.ts";
 
 /** Whether files look like an OpenClaw workspace: SOUL.md or IDENTITY.md at its top. */

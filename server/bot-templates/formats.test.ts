@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { crc32 } from "node:zlib";
+import { readFile } from "node:fs/promises";
 import { BOT_FACE_COLORS } from "../../shared/bots.ts";
 import { cardFromPng, parseCharacterCard } from "./character-card.ts";
 import { parseClaudeCodeAgent } from "./claude-code.ts";
@@ -16,6 +17,12 @@ import { identityFields, parseOpenClawWorkspace } from "./openclaw.ts";
 import { isStockLettaPrompt, parseLettaAgentFile } from "./letta.ts";
 import { parseTextTemplate } from "./text.ts";
 import { writeZip } from "./zip.ts";
+import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS } from "./formats.ts";
+
+test("template formats and limits match the portable fixture", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./formats.fixture.json", import.meta.url), "utf8"));
+  assert.deepEqual({ formats: BOT_TEMPLATE_FORMATS, limits: BOT_TEMPLATE_LIMITS }, fixture);
+});
 
 const file = (path: string, text: string): ImportFile => ({ path, data: Buffer.from(text, "utf8") });
 

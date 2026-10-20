@@ -3,7 +3,7 @@
  * front matter, YAML), its name second; a folder (or a zip, unpacked) by the files at its top. Text that is no format
  * HUI knows becomes a plain persona. A source that holds no bot throws `TemplateFormatError`, naming what HUI reads.
  */
-import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotTemplate } from "../../shared/bot-templates.ts";
+import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotTemplate } from "./formats.ts";
 import { cardFromPng, isCharacterCard, parseCharacterCard } from "./character-card.ts";
 import { isClaudeCodeAgent, parseClaudeCodeAgent } from "./claude-code.ts";
 import { fileText, findFile, frontMatter, normalizeText, TemplateFormatError, unwrapFolder, type ImportFile } from "./common.ts";

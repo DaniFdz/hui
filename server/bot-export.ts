@@ -13,8 +13,8 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   buildExport, changeGroups, withAdditions, type BotExportAddition, type BotExportChange, type BotExportCleanup, type BotExportFileChange, type BotExportGroup,
   type BotExportMeta, type BotExportPart, type BotExportReview, type BotExportSchedule,
-} from "../shared/bot-export.ts";
-import { BOT_SKILL_TEXT_FILE } from "../shared/bot-templates.ts";
+} from "./bot-export-format.ts";
+import { BOT_SKILL_TEXT_FILE } from "./bot-templates/formats.ts";
 import type { BotView } from "../shared/bots.ts";
 import type { BotTrigger } from "./bot-triggers-format.ts";
 import type { AutomationTask } from "./automation.ts";

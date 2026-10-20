@@ -1099,6 +1099,421 @@
         }
       }
     },
+    "BotExportAddition": {
+      "type": "object",
+      "required": [
+        "quote",
+        "group"
+      ],
+      "properties": {
+        "quote": {
+          "type": "string"
+        },
+        "group": {
+          "enum": [
+            "remove",
+            "ask",
+            "confirm"
+          ]
+        },
+        "becomes": {
+          "type": "string"
+        }
+      }
+    },
+    "BotExportAvatar": {
+      "type": "object",
+      "properties": {
+        "emoji": {
+          "type": "string"
+        },
+        "shape": {
+          "$ref": "#/$defs/BotFaceShape"
+        },
+        "ears": {
+          "$ref": "#/$defs/BotFaceEars"
+        },
+        "color": {
+          "type": "string"
+        }
+      }
+    },
+    "BotExportChange": {
+      "type": "object",
+      "required": [
+        "id",
+        "part",
+        "quote",
+        "group",
+        "reason",
+        "replacement",
+        "label",
+        "question"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "part": {
+          "type": "string"
+        },
+        "quote": {
+          "type": "string"
+        },
+        "group": {
+          "$ref": "#/$defs/BotExportGroup"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        }
+      }
+    },
+    "BotExportCleanup": {
+      "type": "object",
+      "required": [
+        "part",
+        "field",
+        "kind",
+        "sample",
+        "count"
+      ],
+      "properties": {
+        "part": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "sample": {
+          "type": "string"
+        },
+        "count": {
+          "type": "number"
+        }
+      }
+    },
+    "BotExportField": {
+      "type": "object",
+      "required": [
+        "key",
+        "text"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "BotExportFileChange": {
+      "type": "object",
+      "required": [
+        "id",
+        "part",
+        "group",
+        "reasons",
+        "question"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "part": {
+          "type": "string"
+        },
+        "group": {
+          "enum": [
+            "keep",
+            "remove",
+            "confirm"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "question": {
+          "type": "string"
+        }
+      }
+    },
+    "BotExportGroup": {
+      "enum": [
+        "keep",
+        "remove",
+        "ask",
+        "confirm"
+      ]
+    },
+    "BotExportMeta": {
+      "type": "object",
+      "required": [
+        "routines",
+        "triggers",
+        "disabledTools",
+        "disabledSkills",
+        "skills"
+      ],
+      "properties": {
+        "avatar": {
+          "$ref": "#/$defs/BotExportAvatar"
+        },
+        "model": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "memoryModel": {
+          "type": "string"
+        },
+        "memoryThinking": {
+          "type": "string"
+        },
+        "voice": {
+          "$ref": "#/$defs/BotVoice"
+        },
+        "tagging": {
+          "enum": [
+            "mention",
+            "nobody"
+          ]
+        },
+        "routines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "schedule"
+            ],
+            "properties": {
+              "schedule": {
+                "$ref": "#/$defs/BotExportSchedule"
+              }
+            }
+          }
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "filter",
+              "cooldownSeconds"
+            ],
+            "properties": {
+              "filter": {
+                "$ref": "#/$defs/BotTriggerFilter"
+              },
+              "delivery": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "followUp"
+                  },
+                  {
+                    "type": "string",
+                    "const": "steer"
+                  }
+                ]
+              },
+              "cooldownSeconds": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "disabledTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabledSkills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "BotExportPart": {
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "kind",
+        "fields",
+        "read"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "script"
+          ]
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotExportField"
+          }
+        },
+        "read": {
+          "type": "boolean"
+        },
+        "unread": {
+          "type": "string"
+        }
+      }
+    },
+    "BotExportReview": {
+      "type": "object",
+      "required": [
+        "id",
+        "botId",
+        "name",
+        "parts",
+        "cleanup",
+        "changes",
+        "files",
+        "needs",
+        "leftOut",
+        "meta"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "botId": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "warning": {
+          "type": "string"
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotExportPart"
+          }
+        },
+        "cleanup": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotExportCleanup"
+          }
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotExportChange"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotExportFileChange"
+          }
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "text"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "leftOut": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "meta": {
+          "$ref": "#/$defs/BotExportMeta"
+        }
+      }
+    },
+    "BotExportSchedule": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "everyMs"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "every"
+            },
+            "everyMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "expression"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "cron"
+            },
+            "expression": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
     "BotFaceEars": {
       "enum": [
         "cat",
@@ -1235,6 +1650,426 @@
           }
         }
       }
+    },
+    "BotImportPreview": {
+      "type": "object",
+      "required": [
+        "template",
+        "bot",
+        "soul",
+        "memories",
+        "skills",
+        "routines",
+        "integrations",
+        "disabledTools",
+        "disabledSkills",
+        "open",
+        "needs",
+        "triggers",
+        "dropped",
+        "notes"
+      ],
+      "properties": {
+        "template": {
+          "$ref": "#/$defs/BotTemplate"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "key",
+              "name"
+            ],
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "pick": {
+          "type": "string"
+        },
+        "bot": {
+          "type": "object",
+          "required": [
+            "name",
+            "handle"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "handle": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "emoji": {
+              "type": "string"
+            },
+            "avatar": {
+              "type": "object",
+              "properties": {
+                "shape": {
+                  "$ref": "#/$defs/BotFaceShape"
+                },
+                "ears": {
+                  "$ref": "#/$defs/BotFaceEars"
+                },
+                "color": {
+                  "type": "string"
+                }
+              }
+            },
+            "worker": {
+              "type": "object",
+              "required": [
+                "id",
+                "name"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "soul": {
+          "type": "string"
+        },
+        "opener": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "utilityModel": {
+          "type": "string"
+        },
+        "memories": {
+          "type": "object",
+          "required": [
+            "included",
+            "total"
+          ],
+          "properties": {
+            "included": {
+              "type": "number"
+            },
+            "total": {
+              "type": "number"
+            }
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "description",
+              "content",
+              "original"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "content": {
+                "type": "string"
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/BotTemplateSkillFile"
+                }
+              },
+              "original": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "routines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotImportRoutine"
+          }
+        },
+        "integrations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "tool": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "label"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "disabledTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "disabledSkills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "open": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotOpenPoint"
+          }
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTemplateTrigger"
+          }
+        },
+        "dropped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "BotImportPreviewRequest": {
+      "type": "object",
+      "required": [
+        "source"
+      ],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/BotImportSource"
+        },
+        "pick": {
+          "type": "string"
+        },
+        "worker": {
+          "type": "string"
+        }
+      }
+    },
+    "BotImportRequest": {
+      "type": "object",
+      "required": [
+        "template"
+      ],
+      "properties": {
+        "template": {
+          "$ref": "#/$defs/BotTemplate"
+        },
+        "worker": {
+          "type": "string"
+        }
+      }
+    },
+    "BotImportResult": {
+      "type": "object",
+      "required": [
+        "bot",
+        "skills",
+        "routines",
+        "opener",
+        "warnings"
+      ],
+      "properties": {
+        "bot": {
+          "$ref": "#/$defs/BotView"
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "routines": {
+          "type": "number"
+        },
+        "opener": {
+          "type": "boolean"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "BotImportRoutine": {
+      "type": "object",
+      "required": [
+        "name",
+        "prompt",
+        "schedule",
+        "guessed"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "schedule": {
+          "$ref": "#/$defs/AutomationSchedule"
+        },
+        "scheduleText": {
+          "type": "string"
+        },
+        "guessed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "BotImportSource": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "name",
+            "data"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "file"
+            },
+            "name": {
+              "type": "string"
+            },
+            "data": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "files"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "files"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "data"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "url"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "url"
+            },
+            "url": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "text"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "text"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        }
+      ]
     },
     "BotInput": {
       "type": "object",
@@ -1466,6 +2301,35 @@
           "$ref": "#/$defs/BotReply"
         }
       ]
+    },
+    "BotOpenPoint": {
+      "type": "object",
+      "required": [
+        "kind",
+        "where",
+        "question"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "ask",
+            "confirm"
+          ]
+        },
+        "where": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string"
+        },
+        "excerpt": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "boolean",
+          "const": true
+        }
+      }
     },
     "BotPatch": {
       "type": "object",
@@ -1726,6 +2590,302 @@
         "mention",
         "nobody"
       ]
+    },
+    "BotTemplate": {
+      "type": "object",
+      "required": [
+        "format",
+        "name",
+        "soul",
+        "memories",
+        "skills",
+        "routines",
+        "integrations",
+        "dropped",
+        "notes"
+      ],
+      "properties": {
+        "format": {
+          "$ref": "#/$defs/BotTemplateFormat"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "author": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "emoji": {
+          "type": "string"
+        },
+        "avatar": {
+          "type": "object",
+          "properties": {
+            "shape": {
+              "$ref": "#/$defs/BotFaceShape"
+            },
+            "ears": {
+              "$ref": "#/$defs/BotFaceEars"
+            },
+            "color": {
+              "type": "string"
+            }
+          }
+        },
+        "soul": {
+          "type": "string"
+        },
+        "opener": {
+          "type": "string"
+        },
+        "memories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTemplateMemory"
+          }
+        },
+        "skills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTemplateSkill"
+          }
+        },
+        "routines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTemplateRoutine"
+          }
+        },
+        "integrations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTemplateIntegration"
+          }
+        },
+        "model": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hui": {
+          "type": "object",
+          "properties": {
+            "handle": {
+              "type": "string"
+            },
+            "thinking": {
+              "type": "string"
+            },
+            "memoryModel": {
+              "type": "string"
+            },
+            "memoryThinking": {
+              "type": "string"
+            },
+            "voice": {
+              "$ref": "#/$defs/BotVoice"
+            },
+            "tagging": {
+              "enum": [
+                "mention",
+                "nobody"
+              ]
+            },
+            "disabledTools": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "disabledSkills": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "open": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotOpenPoint"
+          }
+        },
+        "needs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "triggers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTemplateTrigger"
+          }
+        },
+        "dropped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "BotTemplateFormat": {
+      "enum": [
+        "grok",
+        "openclaw",
+        "claude-code",
+        "letta",
+        "character-card",
+        "crewai",
+        "hui",
+        "text"
+      ]
+    },
+    "BotTemplateIntegration": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "BotTemplateMemory": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "BotTemplateRoutine": {
+      "type": "object",
+      "required": [
+        "name",
+        "prompt"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "schedule": {
+          "type": "string"
+        },
+        "automation": {
+          "$ref": "#/$defs/AutomationSchedule"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "BotTemplateSkill": {
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "content"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BotTemplateSkillFile"
+          }
+        }
+      }
+    },
+    "BotTemplateSkillFile": {
+      "type": "object",
+      "required": [
+        "path",
+        "text"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "BotTemplateTrigger": {
+      "type": "object",
+      "required": [
+        "name",
+        "filter",
+        "cooldownSeconds"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "filter": {
+          "$ref": "#/$defs/BotTriggerFilter"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "delivery": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "followUp"
+            },
+            {
+              "type": "string",
+              "const": "steer"
+            }
+          ]
+        },
+        "cooldownSeconds": {
+          "type": "number"
+        }
+      }
     },
     "BotToolGroup": {
       "enum": [
@@ -10232,6 +11392,34 @@
       "WatcherLog",
       "WatcherState",
       "WatchersResponse"
+    ],
+    "bot-templates": [
+      "BotExportAddition",
+      "BotExportAvatar",
+      "BotExportChange",
+      "BotExportCleanup",
+      "BotExportField",
+      "BotExportFileChange",
+      "BotExportGroup",
+      "BotExportMeta",
+      "BotExportPart",
+      "BotExportReview",
+      "BotExportSchedule",
+      "BotImportPreview",
+      "BotImportPreviewRequest",
+      "BotImportRequest",
+      "BotImportResult",
+      "BotImportRoutine",
+      "BotImportSource",
+      "BotOpenPoint",
+      "BotTemplate",
+      "BotTemplateFormat",
+      "BotTemplateIntegration",
+      "BotTemplateMemory",
+      "BotTemplateRoutine",
+      "BotTemplateSkill",
+      "BotTemplateSkillFile",
+      "BotTemplateTrigger"
     ]
   },
   "x-hui-routes": [
@@ -10413,6 +11601,13 @@
       }
     },
     {
+      "method": "POST",
+      "path": "/__hui/bots/:id/export/review",
+      "response": {
+        "$ref": "#/$defs/BotExportReview"
+      }
+    },
+    {
       "method": "GET",
       "path": "/__hui/bots/:id/facts",
       "response": {
@@ -10547,6 +11742,26 @@
       "path": "/__hui/bots/:id/triggers/:trigger/token",
       "response": {
         "$ref": "#/$defs/BotTriggerCreated"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/import",
+      "request": {
+        "$ref": "#/$defs/BotImportRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BotImportResult"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/bots/import/preview",
+      "request": {
+        "$ref": "#/$defs/BotImportPreviewRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BotImportPreview"
       }
     },
     {

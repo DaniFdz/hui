@@ -3,7 +3,7 @@
  * from anywhere). It all becomes the soul; a short first heading names the bot.
  */
 import { BOT_LIMITS } from "../../shared/bots.ts";
-import type { BotTemplate } from "../../shared/bot-templates.ts";
+import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, displayName, normalizeText, oneLine } from "./common.ts";
 
 export function parseTextTemplate(raw: string, origin?: string): BotTemplate {

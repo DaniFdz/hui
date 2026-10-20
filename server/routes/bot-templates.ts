@@ -13,10 +13,14 @@ import { AutomationConflictError, AutomationInputError } from "../automation.ts"
 import type { BotExportService } from "../bot-export.ts";
 import type { BotTemplateService } from "../bot-template-import.ts";
 import { botErrorStatus } from "./bots.ts";
-import type { RouteRequest, RouteResult } from "../http/route.ts";
+import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
+import type { RouteSchema } from "../api/index.ts";
+import { BotExportReview, BotImportPreview, BotImportResult, routeSchemas as botTemplateRouteSchemas } from "../api/bot-templates.ts";
 import { BotInputError } from "../bots.ts";
 import { TemplateFormatError } from "../bot-templates/common.ts";
 import { TemplateFetchError } from "../bot-templates/fetch.ts";
+
+export const routeSchemas: RouteSchema[] = botTemplateRouteSchemas;
 
 export const BOT_IMPORT_ROUTE = "/__hui/bots/import";
 export const BOT_IMPORT_PREVIEW_ROUTE = "/__hui/bots/import/preview";
@@ -53,15 +57,15 @@ export function createBotTemplateRoutes(deps: { service: BotTemplateService; exp
     try {
       if (exported) {
         if (request.method !== "POST") return { status: 405, body: { error: "method not allowed" } };
-        if (exported[2]) return { status: 200, body: await exports.review(exported[1]!) };
+        if (exported[2]) return reply(BotExportReview, await exports.review(exported[1]!));
         const file = await exports.export(exported[1]!, await json(request, PICKS_BODY_BYTES));
         const ascii = file.name.replace(/[^A-Za-z0-9._-]/gu, "_");
         const disposition = `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(file.name)}`;
         return { status: 200, file: { mimeType: "application/zip", data: file.data, headers: { "content-disposition": disposition } } };
       }
       if (request.method !== "POST") return { status: 405, body: { error: "method not allowed" } };
-      if (request.path === BOT_IMPORT_PREVIEW_ROUTE) return { status: 200, body: await service.preview(await json(request, SOURCE_BODY_BYTES)) };
-      return { status: 201, body: await service.create(await json(request, TEMPLATE_BODY_BYTES)) };
+      if (request.path === BOT_IMPORT_PREVIEW_ROUTE) return reply(BotImportPreview, await service.preview(await json(request, SOURCE_BODY_BYTES)));
+      return reply(BotImportResult, await service.create(await json(request, TEMPLATE_BODY_BYTES)), 201);
     } catch (error) {
       return { status: templateErrorStatus(error), body: { error: error instanceof Error ? error.message : "The import failed." } };
     }

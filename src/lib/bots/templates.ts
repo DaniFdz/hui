@@ -3,11 +3,48 @@
  * never reads a template itself: it packs the picked file, folder, link or text for the gateway and narrows the
  * preview and export review it answers. The requests live in src/api/bot-templates.ts.
  */
-import type { BotExportReview } from "../../../shared/bot-export.ts";
-import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotImportPreview, type BotImportSource } from "../../../shared/bot-templates.ts";
+import type { BotExportReview, BotImportPreview, BotImportSource } from "../../api/schema/bot-templates.ts";
 
-export type { BotImportPreview, BotImportResult, BotImportSource } from "../../../shared/bot-templates.ts";
-export type { BotExportGroup, BotExportReview } from "../../../shared/bot-export.ts";
+export type { BotExportGroup, BotExportReview, BotImportPreview, BotImportResult, BotImportSource } from "../../api/schema/bot-templates.ts";
+
+/** The formats HUI reads, by id, with the name the preview shows. */
+export const BOT_TEMPLATE_FORMATS = {
+  grok: "Grok Bot",
+  openclaw: "OpenClaw workspace",
+  "claude-code": "Claude Code subagent",
+  letta: "Letta agent file",
+  "character-card": "Character card",
+  crewai: "CrewAI agents.yaml",
+  hui: "HUI bot export",
+  text: "Plain text",
+} as const;
+
+/** What one import may hold, as the gateway enforces them: the dialog refuses what it would refuse anyway. */
+export const BOT_TEMPLATE_LIMITS = {
+  /** One file as the import takes it (a zip, a PNG card, a JSON or Markdown file), in bytes. */
+  fileBytes: 8 * 1024 * 1024,
+  /** A folder's files, or a zip's unpacked: in bytes, and how many. */
+  totalBytes: 16 * 1024 * 1024,
+  files: 1_000,
+  /** Pasted text, in characters. */
+  text: 2_000_000,
+  /** A Grok Bot page, in bytes, as fetched. */
+  pageBytes: 4 * 1024 * 1024,
+  skills: 50,
+  /** One skill's instructions, in characters. */
+  skill: 100_000,
+  routines: 50,
+  memories: 500,
+  integrations: 100,
+  /** The files beside one skill's SKILL.md: how many, each one and all of them, in bytes. */
+  skillFiles: 50,
+  skillFileBytes: 256 * 1024,
+  skillFilesBytes: 2 * 1024 * 1024,
+  /** A HUI template's open points, needs and triggers (a bot has at most 20 triggers). */
+  open: 100,
+  needs: 30,
+  triggers: 20,
+} as const;
 
 /** Where an import's source comes from, as the dialog's tabs name them. */
 export type BotImportTab = "file" | "link" | "paste";

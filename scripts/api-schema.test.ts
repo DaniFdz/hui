@@ -81,7 +81,6 @@ const ALLOWED = [
   "missing: POST /__hui/sessions/:id/btw",
   "missing: POST /__hui/sessions/:id/model",
   "module: attachments",
-  "module: bot-templates",
   "module: calls",
   "module: diagnostics",
   "module: local-paths",

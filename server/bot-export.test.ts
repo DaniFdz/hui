@@ -4,7 +4,7 @@
  */
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { applyChanges, buildExport, changeGroups, picksWithoutAddition, withAdditions, type BotExportAddition, type BotExportManifest } from "../shared/bot-export.ts";
+import { applyChanges, buildExport, changeGroups, picksWithoutAddition, withAdditions, type BotExportAddition, type BotExportManifest } from "./bot-export-format.ts";
 import type { BotView } from "../shared/bots.ts";
 import type { BotTrigger } from "./bot-triggers-format.ts";
 import type { AutomationTask } from "./automation.ts";

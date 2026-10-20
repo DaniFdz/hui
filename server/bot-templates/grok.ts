@@ -8,7 +8,7 @@
  * best effort: a page where no bot is found is a clear error that suggests pasting the instructions instead.
  */
 import { BOT_FACE_COLORS, BOT_FACE_SHAPES, BOT_LIMITS, type BotFaceShape } from "../../shared/bots.ts";
-import type { BotTemplate, BotTemplateRoutine } from "../../shared/bot-templates.ts";
+import type { BotTemplate, BotTemplateRoutine } from "./formats.ts";
 import { blankTemplate, displayName, isRecord, oneEmoji, oneLine, str, templateSkill, TemplateFormatError } from "./common.ts";
 
 /** A marketplace bot's link: x.ai (or www.x.ai) over https, the slug, nothing else. */

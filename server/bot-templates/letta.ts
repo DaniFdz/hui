@@ -7,7 +7,7 @@
  * skipped.
  */
 import { BOT_LIMITS } from "../../shared/bots.ts";
-import type { BotTemplate } from "../../shared/bot-templates.ts";
+import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, isRecord, oneLine, sections, str } from "./common.ts";
 
 /** Letta's own memory and messaging tools: HUI's chat and its OptChat memory do their job. */

@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "vitest";
-import { base64, downloadName, importSource, parseBotExportReview, parseBotImportPreview, pickedFile, pickedFolder } from "./templates.ts";
+import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, base64, downloadName, importSource, parseBotExportReview, parseBotImportPreview, pickedFile, pickedFolder } from "./templates.ts";
+
+test("template formats and limits match the portable fixture", async () => {
+  const fixture = JSON.parse(await readFile(new URL("./templates.fixture.json", import.meta.url), "utf8"));
+  assert.deepEqual({ formats: BOT_TEMPLATE_FORMATS, limits: BOT_TEMPLATE_LIMITS }, fixture);
+});
 
 test("a picked file or folder becomes a source, refused here when the gateway would refuse it", async () => {
   const bytes = new TextEncoder().encode("You are Nova.");

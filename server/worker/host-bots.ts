@@ -25,7 +25,7 @@ import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../../sha
 import { parseCallRecord } from "../../shared/calls.ts";
 import { durableBotConversations } from "../bot-conversations.ts";
 import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bot-memory.ts";
-import { BOT_TEMPLATE_LIMITS } from "../../shared/bot-templates.ts";
+import { BOT_TEMPLATE_LIMITS } from "../bot-templates/formats.ts";
 import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bot-skills.ts";
 import { caseClash, skillFilePath } from "../bot-templates/common.ts";
 import { localBotSouls } from "../bot-souls.ts";

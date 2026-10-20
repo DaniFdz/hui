@@ -5,7 +5,7 @@
  * work. Its answer is untrusted too: a quote must stand in the part as written, every field is bounded and cleaned like
  * the bot's own text, and anything else is dropped. Pure: the export service makes the calls.
  */
-import type { BotExportGroup } from "../../shared/bot-export.ts";
+import type { BotExportGroup } from "../bot-export-format.ts";
 import { cleanText, type CleanupIdentity } from "./cleanup.ts";
 import { isRecord, oneLine } from "./common.ts";
 

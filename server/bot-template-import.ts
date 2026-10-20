@@ -9,7 +9,7 @@
  * the bot through `BotService.create`, then its own skills, then its routines and triggers (disabled): a failure there
  * deletes the new bot again. Its opener is its first turn, a kickoff that asks it to send it.
  *
- * A HUI template (`shared/bot-export.ts` makes them) brings more: `{{user}}` becomes this operator's name, its open
+ * A HUI template (`server/bot-export-format.ts` makes them) brings more: `{{user}}` becomes this operator's name, its open
  * points go into SOUL.md under "Not agreed yet", and its first turn asks the bot to go through them with the operator;
  * its triggers and the files beside its skills come with it.
  *
@@ -19,11 +19,11 @@
  * tool, and each can be turned off on the Tools & skills page. The export side is `bot-export.ts`.
  */
 import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar } from "../shared/bots.ts";
-import type { BotTemplateTrigger } from "../shared/bot-export.ts";
+import type { BotTemplateTrigger } from "./bot-export-format.ts";
 import {
   BOT_SKILL_TEXT_FILE, BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, botOpenerKickoffText, botTemplateKickoffText, notAgreedSection,
   type BotImportPreview, type BotImportResult, type BotImportRoutine, type BotTemplate,
-} from "../shared/bot-templates.ts";
+} from "./bot-templates/formats.ts";
 import type { BotTriggerInput } from "./bot-triggers-format.ts";
 import type { AutomationSchedule, AutomationTask, AutomationTaskInput } from "./automation.ts";
 import { nextScheduleAt } from "./automation.ts";

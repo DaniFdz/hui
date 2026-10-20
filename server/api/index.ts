@@ -8,6 +8,7 @@ import * as sessions from "./sessions.ts";
 import * as sessionEvents from "./session-events.ts";
 import * as bots from "./bots.ts";
 import * as botTriggers from "./bot-triggers.ts";
+import * as botTemplates from "./bot-templates.ts";
 import * as apiSchema from "./api-schema.ts";
 import * as settings from "./settings.ts";
 import * as pi from "./pi.ts";
@@ -33,7 +34,7 @@ export type RouteSchema = {
   events?: TSchema;
 };
 
-export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings, pi, providers, tools, sessions, "session-events": sessionEvents, automation, updates, workers, terminals, files, diff, browser, bots, "bot-triggers": botTriggers, backlog, "task-suggestions": taskSuggestions, worktrees, watchers };
+export const apiAreas = { "api-schema": apiSchema, power, github, datadog, jira, settings, pi, providers, tools, sessions, "session-events": sessionEvents, automation, updates, workers, terminals, files, diff, browser, bots, "bot-triggers": botTriggers, backlog, "task-suggestions": taskSuggestions, worktrees, watchers, "bot-templates": botTemplates };
 
 export function buildApiSchema(version: string) {
   const definitions = new Map<string, unknown>();

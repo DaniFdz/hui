@@ -5,7 +5,7 @@
  */
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { BOT_LIMITS } from "../../shared/bots.ts";
-import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateSkill } from "../../shared/bot-templates.ts";
+import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateSkill } from "./formats.ts";
 import { isOneGrapheme } from "../bots.ts";
 import { safeRelativePath } from "./zip.ts";
 

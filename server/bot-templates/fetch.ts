@@ -5,7 +5,7 @@
  */
 import { GROK_PASTE_HINT, grokBotUrl } from "./grok.ts";
 import { TemplateFormatError } from "./common.ts";
-import { BOT_TEMPLATE_LIMITS } from "../../shared/bot-templates.ts";
+import { BOT_TEMPLATE_LIMITS } from "./formats.ts";
 
 /** x.ai could not be reached, or refused the page: the routes answer 502 with the message. */
 export class TemplateFetchError extends Error {

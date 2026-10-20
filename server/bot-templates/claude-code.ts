@@ -5,7 +5,7 @@
  * inherits every tool, and so does the bot.
  */
 import { BOT_FACE_COLORS, BOT_LIMITS } from "../../shared/bots.ts";
-import type { BotTemplate } from "../../shared/bot-templates.ts";
+import type { BotTemplate } from "./formats.ts";
 import { blankTemplate, displayName, frontMatter, oneLine, str } from "./common.ts";
 
 /**

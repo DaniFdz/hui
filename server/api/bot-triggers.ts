@@ -17,7 +17,7 @@ export const BotTriggerFilter = Type.Object({
 }, { $id: "BotTriggerFilter" });
 export type BotTriggerFilter = Static<typeof BotTriggerFilter>;
 
-const BotTriggerDelivery = Type.Union([Type.Literal("followUp"), Type.Literal("steer")]);
+export const BotTriggerDelivery = Type.Union([Type.Literal("followUp"), Type.Literal("steer")]);
 
 export const BotTrigger = Type.Object({
   id: Type.String(),

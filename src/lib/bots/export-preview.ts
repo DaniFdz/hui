@@ -1,162 +1,29 @@
 /**
- * A bot's export as a template someone else imports (HUI-18; SPEC.md, "Bot exports are templates, reviewed for
- * personal information"): `bot.json` version 2 (`BotExportManifest`), the review the gateway answers before a download
- * (`BotExportReview`: the bot's parts after its automatic cleanup and what the utility model would change in them), and
- * `buildExport`, which turns a review and the operator's picks into the files the zip holds. Pure and shared, so the
- * export dialog shows exactly the files the gateway then saves. See docs/api.md#importing-and-exporting-bots.
+ * The browser's copy of building a bot's export (`server/bot-export-format.ts` is the gateway's): the export dialog
+ * shows exactly the files the gateway then saves, updated on every pick without a round trip. Both copies check the
+ * same fixture (`export-preview.fixture.json`).
  */
-import { handleFromName, type BotFaceEars, type BotFaceShape, type BotTagging, type BotVoice } from "./bots.ts";
-import type { BotTriggerInput } from "../server/api/bot-triggers.ts";
+import type { BotExportAddition, BotExportChange, BotExportGroup, BotExportPart, BotExportReview, BotOpenPoint } from "../../api/schema/bot-templates.ts";
 
-export const BOT_EXPORT_FORMAT = "hui-bot";
-/** 2: a template, reviewed for personal information. A version 1 export (an exact copy, memory included) still imports. */
-export const BOT_EXPORT_VERSION = 2;
-/** The zip's files: `bot.json`, `SOUL.md`, each own skill's folder under `skills/`; `memory.md` only in version 1. */
-export const BOT_EXPORT_FILES = { manifest: "bot.json", soul: "SOUL.md", memory: "memory.md", skills: "skills" } as const;
+const BOT_EXPORT_FORMAT = "hui-bot";
+const BOT_EXPORT_VERSION = 2;
+const BOT_EXPORT_FILES = { manifest: "bot.json", soul: "SOUL.md", skills: "skills" } as const;
+const HANDLE_LENGTH = 32;
 
-/** A routine's schedule in a template: a cron expression carries no time zone, so it runs in the importer's. */
-export type BotExportSchedule = { kind: "every"; everyMs: number } | { kind: "cron"; expression: string };
-
-/** A point the template leaves to its new owner, which the imported bot goes through in its first chat. */
-export type BotOpenPoint = {
-  /** ask: they give their own value where an `[ask: …]` mark stands; confirm: they agree to what is written. */
-  kind: "ask" | "confirm";
-  /** Where it is: `SOUL.md`, `Skill review: SKILL.md`, `Routine “Digest”`, `Trigger “Reviews”`. */
-  where: string;
-  question: string;
-  /** The passage a confirm point is about, shortened. */
-  excerpt?: string;
-  /** Only the operator can settle it (a trigger, on its Triggers page): the bot tells them where. */
-  operator?: true;
-};
-
-/** A trigger as a template carries it: never its URL or token, and it starts disabled. */
-export type BotTemplateTrigger = Pick<BotTriggerInput, "name" | "filter" | "prompt" | "delivery"> & { cooldownSeconds: number };
-
-/** `bot.json`, version 2: what of a bot travels once its review is done. No handle, path, date or memory. */
-export type BotExportManifest = {
-  format: typeof BOT_EXPORT_FORMAT;
-  version: typeof BOT_EXPORT_VERSION;
-  bot: {
-    name: string;
-    title?: string;
-    description?: string;
-    avatar?: { emoji?: string; shape?: BotFaceShape; ears?: BotFaceEars; color?: string };
-    /** Bare model ids: the provider stays behind. */
-    model?: string;
-    thinking?: string;
-    memoryModel?: string;
-    memoryThinking?: string;
-    voice?: BotVoice;
-    /** Who may tag it, when not anyone: a policy, it travels as it is. */
-    tagging?: Exclude<BotTagging, "anyone">;
-  };
-  routines: { name: string; description?: string; prompt: string; schedule: BotExportSchedule }[];
-  triggers: BotTemplateTrigger[];
-  /** Built-in tools it turned off. */
-  disabledTools: string[];
-  /** Its own skills it turned off, by name. */
-  disabledSkills: string[];
-  /** Its own skills: each `skills/<name>/` with SKILL.md and the files beside it. */
-  skills: string[];
-  open: BotOpenPoint[];
-  /** What it needs to work, one line each. */
-  needs: string[];
-};
-
-/* ── the review ───────────────────────────────────────────────────────── */
+function handleFromName(name: string): string {
+  const slug = name.normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-").replace(/^-+/u, "").slice(0, HANDLE_LENGTH).replace(/-+$/u, "");
+  return slug || "bot";
+}
 
 /** keep: travels as written; remove: never leaves; ask: the new owner gives theirs; confirm: they agree to it first. */
-export const BOT_EXPORT_GROUPS = ["keep", "remove", "ask", "confirm"] as const;
-export type BotExportGroup = (typeof BOT_EXPORT_GROUPS)[number];
-
-/** A passage the operator adds when the reviewer missed it: what happens to it and what it becomes (removed) or what the
- * new owner gives (asked). */
-export type BotExportAddition = { quote: string; group: Exclude<BotExportGroup, "keep">; becomes?: string };
+const BOT_EXPORT_GROUPS = ["keep", "remove", "ask", "confirm"] as const;
 
 /** What a change in this part can become. The profile (the bot's name and title) is set before its first chat, so it
  * can't hold a blank or a point to agree. */
 export function changeGroups(part: string): readonly BotExportGroup[] {
   return part === "profile" ? ["keep", "remove"] : BOT_EXPORT_GROUPS;
 }
-
-/** One text of a part: a profile field, SOUL.md, a skill's file, a routine's or a trigger's field. */
-export type BotExportField = { key: string; text: string };
-
-/** A part of the bot: text that changes in place (Markdown, its profile, prompts) or a script, kept whole or left out. */
-export type BotExportPart = {
-  /** `profile`, `SOUL.md`, `skills/<name>/<path>` (its path in the zip), `routines/<n>`, `triggers/<n>`. */
-  id: string;
-  label: string;
-  kind: "text" | "script";
-  /** Its texts after the automatic cleanup; a script's as it is, never rewritten. */
-  fields: BotExportField[];
-  /** The utility model read it; else `unread` says why. */
-  read: boolean;
-  unread?: string;
-};
-
-/** A passage the reviewer would change. A removed or asked one changes wherever it appears in the bot. */
-export type BotExportChange = {
-  id: string;
-  /** The part it was found in. */
-  part: string;
-  /** Exactly as it stands in the part's cleaned text. */
-  quote: string;
-  /** The reviewer's group, what happens unless the operator picks another: `keep` only for the bot's whole name. */
-  group: BotExportGroup;
-  reason: string;
-  /** What a removed passage becomes; may be empty. */
-  replacement: string;
-  /** What the new owner gives, should it be asked: it becomes `[ask: <label>]`. Never the passage itself. */
-  label: string;
-  /** What it asks the new owner in the reviewer's group (empty for a removed one). */
-  question: string;
-};
-
-/** A script the cleanup or the reviewer found something in: it travels as it is, travels for the new owner to confirm,
- * or stays behind. */
-export type BotExportFileChange = { id: string; part: string; group: "keep" | "remove" | "confirm"; reasons: string[]; question: string };
-
-/** What the automatic cleanup changed in a part's field (or found in a script): listed, never undone. */
-export type BotExportCleanup = { part: string; field: string; kind: string; sample: string; count: number };
-
-/** What of the bot travels that no review reads: index-aligned with its `routines/<n>` and `triggers/<n>` parts. */
-export type BotExportMeta = {
-  avatar?: BotExportManifest["bot"]["avatar"];
-  model?: string;
-  thinking?: string;
-  memoryModel?: string;
-  memoryThinking?: string;
-  voice?: BotVoice;
-  tagging?: Exclude<BotTagging, "anyone">;
-  routines: { schedule: BotExportSchedule }[];
-  /** Each trigger's filter; a `match` value is its part's `match` field. */
-  triggers: Pick<BotTemplateTrigger, "filter" | "delivery" | "cooldownSeconds">[];
-  disabledTools: string[];
-  disabledSkills: string[];
-  skills: string[];
-};
-
-/** `POST /__hui/bots/:id/export/review`: what the export would hold, and what the cleanup and the reviewer did to it. */
-export type BotExportReview = {
-  /** `POST /__hui/bots/:id/export` names it; the gateway keeps each bot's latest review until it restarts. */
-  id: string;
-  botId: string;
-  name: string;
-  /** The utility model that read it; absent when none did. */
-  model?: string;
-  /** What the operator must check themselves: the cleanup had no profile name, or the model read nothing or not everything. */
-  warning?: string;
-  parts: BotExportPart[];
-  cleanup: BotExportCleanup[];
-  changes: BotExportChange[];
-  files: BotExportFileChange[];
-  needs: { id: string; text: string }[];
-  /** What stays behind and why, one line each. */
-  leftOut: string[];
-  meta: BotExportMeta;
-};
 
 /** What `buildExport` makes: the bot's final name, the zip's file name, its files in order, its open points, and what each
  * change picked comes to in them (what a passage becomes, what it asks), for the dialog to say. */
@@ -169,11 +36,11 @@ export type BotExportBuild = {
 };
 
 /** The mark an asked passage becomes. */
-export const askMark = (label: string): string => `[ask: ${label}]`;
+const askMark = (label: string): string => `[ask: ${label}]`;
 
 /** What a change asks the new owner in the group picked: the reviewer's question in its own group, else one that fits,
  * from its label and its excerpt as they travel (an asked passage is never quoted: it is the owner's). */
-export function changeQuestion(change: Pick<BotExportChange, "group" | "question">, picked: "ask" | "confirm", words: { label: string; excerpt: string }): string {
+function changeQuestion(change: Pick<BotExportChange, "group" | "question">, picked: "ask" | "confirm", words: { label: string; excerpt: string }): string {
   if (picked === change.group && change.question) return change.question;
   return picked === "ask" ? `What should stand for ${askMark(words.label)}?` : `Keep this as it is: “${words.excerpt}”?`;
 }
@@ -241,7 +108,7 @@ const ENCLOSURES: Readonly<Record<string, string>> = { "(": ")", "[": "]", "`": 
  * with it, a whole sentence takes its stop, a clause the space before it (and an "and" or "or" joining it to the end of
  * its sentence), and a list item left with its marker alone goes, line and all.
  */
-export function applyChanges(text: string, changes: readonly { quote: string; replacement: string }[]): string {
+function applyChanges(text: string, changes: readonly { quote: string; replacement: string }[]): string {
   const ranges: { start: number; end: number; replacement: string }[] = [];
   for (const { quote, replacement } of changes) {
     if (!quote) continue;
@@ -326,7 +193,7 @@ export function applyChanges(text: string, changes: readonly { quote: string; re
 }
 
 /** The zip's name, from the bot's final name: `{{user}}` (and its `'s`) left out. */
-export function botExportFileName(name: string): string {
+function botExportFileName(name: string): string {
   return `${handleFromName(name.replace(/\{\{\s*user\s*\}\}(?:['’]s)?/giu, ""))}.hui-bot.zip`;
 }
 
@@ -432,7 +299,7 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
       ...(trigger.delivery ? { delivery: trigger.delivery } : {}),
     };
   });
-  const manifest: BotExportManifest = {
+  const manifest = {
     format: BOT_EXPORT_FORMAT,
     version: BOT_EXPORT_VERSION,
     bot: {

@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { BOT_TEMPLATE_LIMITS, type BotTemplateSkillFile } from "../shared/bot-templates.ts";
+import { BOT_TEMPLATE_LIMITS, type BotTemplateSkillFile } from "./bot-templates/formats.ts";
 import { BOTS_DIR } from "./bots.ts";
 import { caseClash, skillFilePath } from "./bot-templates/common.ts";
 
