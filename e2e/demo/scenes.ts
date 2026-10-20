@@ -72,6 +72,7 @@ function drawSignupGraph(now: number): Promise<string> {
   });
 }
 
+let pagesHook = "";
 const card = (title: string, column?: string): Target => ({ css: `${column ? `.kanban-cell--${column} ` : ""}.kanban-card__title`, text: title });
 const link = (text: string): Target => ({ css: "a", text });
 
@@ -422,6 +423,119 @@ export const scenes: Scene[] = [
       await d.click({ css: ".chat-sender-link", text: "Scout" });
       await d.waitFor({ css: ".chat-sender-link", text: "Apple Pay at checkout" }, 15_000);
       await d.zoom({ css: ".chat-group--peer", contains: "Monday" }, 1.4);
+      await d.pause(2_200);
+      await d.zoom();
+      await d.caption();
+    },
+  },
+  {
+    name: "teamwork",
+    chapter: "Bots working together",
+    viewport: [1280, 720],
+    ready: "Apple Pay at checkout",
+    async setup({ api }) {
+      const soul = (who: string) => `# Who I am\n${who} Short answers, always with the next step.\n`;
+      await api("POST", "/__hui/bots", { name: "Piper", title: "PR shepherd", avatar: { shape: "blob", color: "#34c38f" }, soul: soul("Piper, who watches pull requests until they merge.") });
+      const { bot: owl } = await api("POST", "/__hui/bots", { name: "Owl", title: "On-call SRE", avatar: { emoji: "🦉" }, soul: soul("Owl, the on-call SRE for payments.") });
+      await api("POST", "/__hui/bots", { name: "Pixel", title: "Design reviewer", avatar: { shape: "heart", color: "#ff7a6b", ears: "cat" }, soul: soul("Pixel, who reviews UI changes.") });
+      const { hook } = await api("POST", `/__hui/bots/${owl.id}/triggers`, {
+        name: "Pages", source: "listener", filter: { match: { field: "fields.channel", op: "equals", value: "payments-oncall" } },
+        prompt: "Investigate this page. Hand any code fix to @piper.", cooldownSeconds: 0,
+      });
+      pagesHook = hook.path;
+      await api("POST", pagesHook, { events: [] });
+    },
+    narration: {
+      team: "Bots don't work alone. They take work from agents, and from each other.",
+      handoff: "When an agent opens a pull request, it hands it to Piper, the P R shepherd.",
+      question: "Piper keeps C I green, and brings the reviewer's question back to the agent that wrote the code.",
+      answer: "The agent makes the call, and Piper takes it from there.",
+      trigger: "Triggers wake a bot when something happens elsewhere. Here, a small listener watches the on-call channel for Owl.",
+      page: "A page comes in, and Owl starts digging right away.",
+      bots: "Owl finds the bad deploy, and tags Piper to revert it. Bots hand work to each other, too.",
+      reverted: "Piper reverts it, and reports back to Owl.",
+      follow: "Click a name to see the other side of the conversation.",
+    },
+    async run({ director: d, api }) {
+      await d.caption("Bots work with agents, and with each other");
+      await d.say("team");
+      await d.click({ css: "#sidebar-tab-bots" });
+      await d.waitFor({ css: ".bot-row__name", text: "Pixel" });
+      await d.zoom({ css: ".bot-roster" }, 1.8);
+      await d.pause(1_800);
+      await d.zoom();
+      await d.click({ css: "#sidebar-tab-sessions" });
+      await d.click({ css: "a", contains: "Retry-safe webhooks" });
+      await d.waitFor({ contains: "Tests cover duplicates" });
+
+      await d.caption("An agent hands its PR to Piper");
+      await d.say("handoff");
+      await send(d, "Open the PR, and ask @piper to watch it until it merges");
+      await d.waitFor({ css: ".chat-handoff" }, 30_000);
+      await centre(d, { css: ".chat-handoff" });
+      await d.zoom({ css: ".chat-handoff" }, 1.6);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("Piper brings the reviewer's question back");
+      await d.say("question");
+      await d.waitFor({ css: ".chat-group--peer", contains: "Lee asks" }, 30_000);
+      await centre(d, { css: ".chat-group--peer", contains: "Lee asks" });
+      await d.zoom({ css: ".chat-group--peer", contains: "Lee asks" }, 1.5);
+      await d.pause(2_200);
+      await d.zoom();
+
+      await d.caption("The agent decides, and answers");
+      await d.say("answer");
+      await d.waitFor({ contains: "Answered Lee through Piper" }, 30_000);
+      await centre(d, { css: ".chat-handoff", last: true });
+      await d.zoom({ css: ".chat-handoff", last: true }, 1.5);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("Triggers wake a bot");
+      await d.say("trigger");
+      await d.click({ css: "#sidebar-tab-bots" });
+      await d.click({ css: ".bot-row__name", text: "Owl" });
+      await d.waitFor({ css: "section[aria-labelledby$='overview-triggers']", contains: "Pages" });
+      await d.zoom({ css: "section[aria-labelledby$='overview-triggers']" }, 1.6);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("A page wakes Owl");
+      await d.say("page");
+      await api("POST", pagesHook, { events: [{
+        id: "page-4821", summary: "High error rate on POST /refunds", fields: { channel: "payments-oncall" },
+        details: "payments-api: 12% of POST /refunds requests failed in the last 5 minutes (normally 0.1%). Started 14:02.",
+      }] });
+      await d.waitFor({ contains: "Investigate this page" }, 15_000);
+      await d.zoom({ contains: "Investigate this page" }, 1.4);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("Owl hands the revert to Piper");
+      await d.say("bots");
+      await d.waitFor({ css: ".chat-handoff" }, 30_000);
+      await centre(d, { css: ".chat-handoff" });
+      await d.zoom({ css: ".chat-handoff" }, 1.6);
+      await d.pause(1_800);
+      await d.zoom();
+
+      await d.caption("Piper reverts it, and reports back");
+      await d.say("reverted");
+      await d.waitFor({ css: ".chat-group--peer", contains: "Reverted" }, 30_000);
+      await centre(d, { css: ".chat-group--peer", contains: "Reverted" });
+      await d.zoom({ css: ".chat-group--peer", contains: "Reverted" }, 1.5);
+      await d.pause(1_800);
+      await d.zoom();
+      await d.waitFor({ contains: "Closing the page" }, 30_000);
+
+      await d.caption("Click a name to open that chat");
+      await d.say("follow");
+      await d.click({ css: ".chat-sender-link", text: "Piper" });
+      await d.waitFor({ css: ".chat-group--peer", contains: "Please revert" }, 15_000);
+      await centre(d, { css: ".chat-group--peer", contains: "Please revert" });
+      await d.zoom({ css: ".chat-group--peer", contains: "Please revert" }, 1.4);
       await d.pause(2_200);
       await d.zoom();
       await d.caption();

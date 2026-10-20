@@ -14,6 +14,7 @@ import { agentReplyTo } from "../../server/bots-format.ts";
 const logFile = process.env["HUI_E2E_PROVIDER_LOG"] || (() => { throw new Error("HUI_E2E_PROVIDER_LOG is required"); })();
 let port = Number(process.env["HUI_E2E_PROVIDER_PORT"] ?? 0);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+const workspace = process.env["HUI_E2E_WORKSPACE"] ?? "";
 
 type Call = { name: string; input: Record<string, unknown> };
 /** One model response: optional thinking, text, then tool calls. Text and calls can depend on the tool results so far, latest first,
@@ -40,6 +41,9 @@ function terminalId(results: string[]): string {
     } catch { /* Not a terminal result. */ }
   }
   throw new Error("No shared terminal is open in this conversation.");
+}
+function replyTo(prompt: string): string {
+  return agentReplyTo(prompt.slice(prompt.indexOf("[from agent: "))) ?? (() => { throw new Error("The tag carries no return address."); })();
 }
 /** A browser snapshot's ref for an element, from the latest result that has it; a page without it fails the turn. */
 function ref(results: string[], pattern: RegExp): string {
@@ -233,7 +237,7 @@ const scripts: Script[] = [
     turns: [
       // A bot takes a moment: its answer lands after the agent's handoff has had the screen.
       { wait: 3_500, think: "Monday already has refunds at 10%; Apple Pay can follow it.", calls: (_, prompt) => [{ name: "message_bot", input: {
-        to: agentReplyTo(prompt.slice(prompt.indexOf("[from agent: "))) ?? (() => { throw new Error("The tag carries no return address."); })(),
+        to: replyTo(prompt),
         message: "Apple Pay is on Monday's rollout, right after refunds reach 10%. Priya owns both rollbacks, so keep the Safari test green.",
       } }] },
       { say: "Added Apple Pay to Monday's rollout and told its agent." },
@@ -258,6 +262,52 @@ const scripts: Script[] = [
   {
     when: "[routine: Morning digest]",
     turns: [{ wait: 900, say: "Good morning! Today's digest:\n\n- Refunds go to 10% of stores today; Priya owns the rollback.\n- #142 Partial refunds endpoint is merged and CI is green.\n- #482 Signup double-submit fix is live on staging.\n\nNothing is blocked." }],
+  },
+  // Teamwork: an agent hands its pull request to Piper, who brings a reviewer's question back; a page wakes Owl, who hands Piper the revert.
+  {
+    when: "ask @piper to watch it",
+    turns: [
+      { wait: 700, think: "Tests pass, so the pull request can go up, and Piper can watch it from there.", say: "Opened acme/payments-api#151.", calls: [{ name: "message_bot", input: { to: "@piper", message: "Please watch acme/payments-api#151 until it merges: keep CI green, and send me reviewers' questions." } }] },
+      { say: "Piper is watching **#151**. I'll answer reviewers' questions as they come in." },
+    ],
+  },
+  {
+    when: "Please watch acme/payments-api#151",
+    turns: [
+      { wait: 3_500, think: "CI is green. Lee left a question only the agent can answer.", calls: (_, prompt) => [{ name: "message_bot", input: { to: replyTo(prompt), message: "Watching #151: CI is green. Lee asks whether 7 days is long enough to keep event ids, since Stripe retries for up to 3 days. Your call?" } }] },
+      { say: "Watching #151, and asked its agent Lee's question." },
+    ],
+  },
+  {
+    when: "Lee asks whether 7 days",
+    turns: [
+      { wait: 1_500, think: "Stripe stops retrying after 3 days, so 7 days covers it with room to spare.", calls: [{ name: "message_bot", input: { to: "@piper", message: "7 days is enough: Stripe stops retrying after 3. Please tell Lee, and merge once it's approved." } }] },
+      { say: "Answered Lee through Piper: 7 days covers Stripe's 3 days of retries." },
+    ],
+  },
+  {
+    when: "7 days is enough",
+    turns: [{ wait: 900, say: "Told Lee. I'll merge #151 as soon as it's approved." }],
+  },
+  {
+    when: "[trigger: Pages · High error rate on POST /refunds]",
+    turns: [
+      { wait: 1_200, think: "Errors started at 14:02. What shipped just before?", calls: [{ name: "bash", input: { command: `git -C ${workspace}/payments-api log --oneline -3`, timeout: 30 } }] },
+      { wait: 1_500, say: "The errors started right after **#142, Partial refunds endpoint**, went out. I'm asking Piper to revert it.", calls: [{ name: "message_bot", input: { to: "@piper", message: "Please revert acme/payments-api#142: since it deployed, 12% of POST /refunds requests fail. Watch the revert until it merges, and tell me." } }] },
+      { say: "Piper is reverting #142. I'll confirm once errors are back to normal." },
+    ],
+  },
+  {
+    when: "Please revert acme/payments-api#142",
+    turns: [
+      { wait: 1_500, calls: [{ name: "bash", input: { command: `git -C ${workspace}/payments-api -c user.name=Piper -c user.email=piper@acme.test -c commit.gpgsign=false -c core.hooksPath=/dev/null revert --no-edit HEAD`, timeout: 30 } }] },
+      { wait: 2_500, calls: [{ name: "message_bot", input: { to: "@owl", message: "Reverted acme/payments-api#142 in #152. CI is green, and it's merged." } }] },
+      { say: "Reverted #142 and told Owl." },
+    ],
+  },
+  {
+    when: "Reverted acme/payments-api#142",
+    turns: [{ wait: 900, say: "Resolved: #142 is reverted, and POST /refunds is back to 0.1% errors. Closing the page." }],
   },
 ];
 

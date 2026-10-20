@@ -6,7 +6,7 @@
  * with XDG_CONFIG_HOME, PI_CODING_AGENT_DIR, HUI_E2E_WORKSPACE and HUI_FAKE_GH_DIR.
  */
 import { execFileSync } from "node:child_process";
-import { mkdir, symlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, symlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { AssistantEntry, UserEntry } from "@earendil-works/pi-durable";
@@ -39,17 +39,20 @@ const repos: Record<string, Record<string, string>> = {
   docs: { "README.md": "# Acme docs\n" },
 };
 
+const gitIn = (root: string) => (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Acme", "-c", "user.email=dev@acme.test", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { stdio: "ignore" });
 for (const [name, files] of Object.entries(repos)) {
   const root = join(workspace, name);
   for (const [path, content] of Object.entries(files)) {
     await mkdir(dirname(join(root, path)), { recursive: true });
     await writeFile(join(root, path), content);
   }
-  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args], { stdio: "ignore" });
+  const git = gitIn(root);
   git("init", "-q", "-b", "main");
   git("add", ".");
-  git("-c", "user.name=Acme", "-c", "user.email=dev@acme.test", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "Initial commit");
+  git("commit", "-q", "-m", "Initial commit");
 }
+await appendFile(join(workspace, "payments-api", "src/refunds/route.js"), "\nexport const PARTIAL_REFUNDS = true;\n");
+gitIn(join(workspace, "payments-api"))("commit", "-q", "-a", "-m", "Partial refunds endpoint (#142)");
 
 type Seed = { title: string; repo: string; group: string; stage: string; ago: number; ask: string; answer: string; unread?: boolean };
 const seeds: Seed[] = [
@@ -110,6 +113,7 @@ const pull = (number: number, title: string, body: string, patch: Record<string,
 await writeFile(join(ghDir, "previews.json"), JSON.stringify({
   "acme/storefront#482": pull(482, "Fix double submit on the signup form", "Disables **Create account** while the request is in flight, so a double click no longer creates two trials.", { state: "MERGED", additions: 41, deletions: 9, changedFiles: 3 }),
   "acme/payments-api#142": pull(142, "Partial refunds endpoint", "Adds `POST /refunds` with per-line refunds and an over-refund guard."),
+  "acme/payments-api#151": pull(151, "Retry-safe Stripe webhooks", "Stores processed event ids for 7 days, so Stripe's retries are ignored.", { additions: 64, deletions: 7, changedFiles: 3 }),
 }));
 // VS Code's serve-web downloads its server build into the cli folder; a link keeps it between demo runs.
 if (process.env["HUI_DEMO_CACHE"]) {
