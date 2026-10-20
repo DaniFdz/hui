@@ -47,9 +47,9 @@ import {
   BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
-import { SessionBusyError, type HuiQuestion, type LiveSessions } from "./live-sessions.ts";
+import { SessionBusyError, type HuiQuestion, type LiveSessions } from "./sessions/live-sessions.ts";
 import type { PromptAttachment, RuntimePromptOptions, RuntimePromptResult, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
-import type { SessionRecord } from "./sessions.ts";
+import type { SessionRecord } from "./sessions/sessions.ts";
 import { rootSessionId } from "./sessions/session-tree.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";

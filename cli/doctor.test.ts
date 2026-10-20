@@ -29,7 +29,7 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
 const { normalizeSettings } = await import("../server/hui-settings.ts");
 const { formatDoctorReport, runDoctor } = await import("./doctor.ts");
-const { readRegistry, writeRegistry } = await import("../server/sessions.ts");
+const { readRegistry, writeRegistry } = await import("../server/sessions/sessions.ts");
 const { DurableHost } = await import("../server/runtimes/durable-host.ts");
 const { startDurable } = await import("../server/runtimes/durable.ts");
 

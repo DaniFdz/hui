@@ -7,7 +7,7 @@ import { readWorkspaceInspection } from "../control-surfaces.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { WorkspaceInspection, WorktreeError, WorktreeInventory, WorktreeRemovalResponse } from "../api/worktrees.ts";
 export { routeSchemas } from "../api/worktrees.ts";
-import type { SessionRecord } from "../sessions.ts";
+import type { SessionRecord } from "../sessions/sessions.ts";
 import type { WorktreeService } from "../git/worktree-inventory.ts";
 import type { WorktreeRisk } from "../api/worktrees.ts";
 

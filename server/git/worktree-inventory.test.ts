@@ -6,7 +6,7 @@ import { test } from "vitest";
 
 import { isMergedCleanupCandidate, riskAcknowledged } from "./worktrees.ts";
 
-import type { SessionRecord } from "../sessions.ts";
+import type { SessionRecord } from "../sessions/sessions.ts";
 import {
   parseGhPullRequestList,
   parseWorktreeList,

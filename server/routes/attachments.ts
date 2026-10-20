@@ -6,7 +6,7 @@
  */
 import { CLIENT_HEADER, type RouteRequest, type RouteResult } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
-import type { LiveSessions } from "../live-sessions.ts";
+import type { LiveSessions } from "../sessions/live-sessions.ts";
 import { readStoredAttachment } from "../sessions/attachments.ts";
 
 export const routeSchemas: RouteSchema[] = [];

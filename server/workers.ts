@@ -37,7 +37,7 @@ import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "
 import { parseRunOrigins } from "./runtimes/turn-origins.ts";
 import { invokeAgentTool } from "./agent-tools/bridge.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
-import { readRegistry } from "./sessions.ts";
+import { readRegistry } from "./sessions/sessions.ts";
 
 export const WORKERS_FILE = join(CONFIG_DIR, "workers.json");
 const MAX_WORKERS = 32;

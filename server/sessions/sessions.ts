@@ -11,9 +11,9 @@ import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
-import { CONFIG_DIR } from "./paths.ts";
-import type { SessionStage, SessionStageSource } from "./api/sessions.ts";
-import { isSessionStage, isSessionStageSource } from "./sessions/session-stages.ts";
+import { CONFIG_DIR } from "../paths.ts";
+import type { SessionStage, SessionStageSource } from "../api/sessions.ts";
+import { isSessionStage, isSessionStageSource } from "./session-stages.ts";
 
 const REGISTRY_FILE = join(CONFIG_DIR, "sessions.json");
 

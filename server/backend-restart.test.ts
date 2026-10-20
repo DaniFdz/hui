@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 import { fileURLToPath } from "node:url";
-import type { SessionSnapshot } from "./live-sessions.ts";
+import type { SessionSnapshot } from "./sessions/live-sessions.ts";
 
 // HUI's configuration directory (and the Durable store in it) and PI's agent
 // directory are resolved at import time; never read the operator's own.
@@ -27,8 +27,8 @@ for (const name of ["HUI_CONFIG_DIR", "HUI_DURABLE_DIR", "HUI_SESSION_RUNTIME"])
 
 const { middleware } = await import("./hui.ts");
 const { startBackend, stopBackend } = await import("./backend.ts");
-const { liveSessions } = await import("./live-sessions.ts");
-const { readRegistry } = await import("./sessions.ts");
+const { liveSessions } = await import("./sessions/live-sessions.ts");
+const { readRegistry } = await import("./sessions/sessions.ts");
 const { DURABLE_DIR } = await import("./runtimes/durable-host.ts");
 
 /** Resolves once the live session satisfies `ready`; a session that fails instead rejects with its error. */

@@ -20,7 +20,7 @@ import type { JiraDraft } from "../../server/api/jira.ts";
 import { draftJiraWorkItem } from "../../server/integrations/jira.ts";
 import { visibleContext } from "../../server/pi/model-routing.ts";
 import { runPiUtilityPrompt } from "../../server/runtimes/pi.ts";
-import { sessionDigest } from "../../server/session-digest.ts";
+import { sessionDigest } from "../../server/sessions/digest.ts";
 import { DRAFT_CASES, type DraftCase } from "./cases.ts";
 import { gradeDraft, type Grade } from "./grade.ts";
 

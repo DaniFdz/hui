@@ -5,7 +5,7 @@ import {
   liveSessions,
   type LiveSessions,
   type SubagentTaskView,
-} from "../live-sessions.ts";
+} from "../sessions/live-sessions.ts";
 import type { SessionStatus } from "../api/sessions.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import {
@@ -13,7 +13,7 @@ import {
   updateRegistry,
   type SessionRecord,
   type SubagentStatus,
-} from "../sessions.ts";
+} from "../sessions/sessions.ts";
 import { AgentToolInputError, rootSessionId } from "../sessions/session-tree.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { piThinking } from "../runtimes/model-controls.ts";

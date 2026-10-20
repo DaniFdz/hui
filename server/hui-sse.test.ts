@@ -50,13 +50,13 @@ const {
   watchers: () => ({ forget: async () => undefined }),
   managedBrowser: () => ({ closeOwner: () => undefined }),
 });
-const { LiveSessions } = await import("./live-sessions.ts");
-const { SessionRegistryError } = await import("./sessions.ts");
+const { LiveSessions } = await import("./sessions/live-sessions.ts");
+const { SessionRegistryError } = await import("./sessions/sessions.ts");
 const { runGit } = await import("./git/worktrees.ts");
-type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
-type SessionStatusUpdate = import("./live-sessions.ts").SessionStatusUpdate;
-type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;
-type SessionRecord = import("./sessions.ts").SessionRecord;
+type SessionStreamMessage = import("./sessions/live-sessions.ts").SessionStreamMessage;
+type SessionStatusUpdate = import("./sessions/live-sessions.ts").SessionStatusUpdate;
+type SessionSnapshot = import("./sessions/live-sessions.ts").SessionSnapshot;
+type SessionRecord = import("./sessions/sessions.ts").SessionRecord;
 
 test("gateway startup eagerly opens only interrupted sessions", () => {
   const now = new Date().toISOString();

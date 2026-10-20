@@ -11,7 +11,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
 
 import { PRESENTED_MEDIA_DIR } from "../paths.ts";
-import { readSessionRegistry } from "../sessions.ts";
+import { readSessionRegistry } from "../sessions/sessions.ts";
 
 const MAX_MEDIA_COUNT = 8;
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024;

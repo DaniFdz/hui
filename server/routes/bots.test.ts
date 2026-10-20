@@ -47,8 +47,8 @@ await writeFile(join(dir, "config", "hui", "settings.json"), BOTS_ON);
 
 const { middleware } = await import("../hui.ts");
 const { startBackend, stopBackend } = await import("../backend.ts");
-const { liveSessions } = await import("../live-sessions.ts");
-const { readRegistry } = await import("../sessions.ts");
+const { liveSessions } = await import("../sessions/live-sessions.ts");
+const { readRegistry } = await import("../sessions/sessions.ts");
 const { durableHost } = await import("../runtimes/durable-host.ts");
 const { optChatBotMemory } = await import("../bot-memory.ts");
 const { botChat } = await import("../../cli/bots.ts");

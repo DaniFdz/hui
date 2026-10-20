@@ -19,13 +19,13 @@ import type { SecretQuestion } from "./agent-tools/secret-requests.ts";
 
 // Paths are resolved at import time: never the operator's own configuration.
 process.env["XDG_CONFIG_HOME"] = await mkdtemp(join(tmpdir(), "hui-bot-service-config-"));
-const { LiveSessions } = await import("./live-sessions.ts");
+const { LiveSessions } = await import("./sessions/live-sessions.ts");
 const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotsOffError, BotWorkerOfflineError } = await import("./bots.ts");
 const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess, sessionBotsSection } = await import("./bot-service.ts");
 const { BotMemoryUnavailableError } = await import("./bot-memory.ts");
 const { AUTOMATION_SUSPENDED } = await import("./automation.ts");
 const { localBotSouls } = await import("./bot-souls.ts");
-type SessionRecord = import("./sessions.ts").SessionRecord;
+type SessionRecord = import("./sessions/sessions.ts").SessionRecord;
 type BotConversationInput = import("./bot-service.ts").BotConversationInput;
 type BotOffer = import("./bot-service.ts").BotOffer;
 type BotWorkers = import("./bot-service.ts").BotWorkers;

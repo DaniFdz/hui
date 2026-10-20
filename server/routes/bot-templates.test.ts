@@ -46,7 +46,7 @@ await writeFile(join(dir, "config", "hui", "settings.json"), JSON.stringify({ la
 
 const { middleware } = await import("../hui.ts");
 const { startBackend, stopBackend } = await import("../backend.ts");
-const { liveSessions } = await import("../live-sessions.ts");
+const { liveSessions } = await import("../sessions/live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 

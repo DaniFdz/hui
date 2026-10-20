@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 
-import { LiveSessions, type SessionStreamMessage } from "../live-sessions.ts";
-import type { SessionRecord } from "../sessions.ts";
+import { LiveSessions, type SessionStreamMessage } from "../sessions/live-sessions.ts";
+import type { SessionRecord } from "../sessions/sessions.ts";
 import { SubagentService } from "./subagents.ts";
 import { workers, type RemoteSessionSink } from "../workers.ts";
 import { RuntimeUnreachableError } from "../runtimes/types.ts";

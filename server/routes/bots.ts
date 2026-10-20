@@ -34,7 +34,7 @@ import {
   BotCatalog, BotDeleted, BotFactsResponse, BotMemoryResponse, BotMemoryZoom, BotMessageResult, BotResponse, BotSoul, BotsResponse,
   routeSchemas as botRouteSchemas,
 } from "../api/bots.ts";
-import { SessionBusyError } from "../live-sessions.ts";
+import { SessionBusyError } from "../sessions/live-sessions.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
 
 export const routeSchemas: RouteSchema[] = botRouteSchemas;

@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import type { TranscriptEntry } from "./runtimes/types.ts";
+import type { TranscriptEntry } from "../runtimes/types.ts";
 import { interruptedRunOriginal, interruptedRunPrompt, INTERRUPTED_RUN_PROMPT } from "./interrupted-run.ts";
-import { operatorText, sessionDigest } from "./session-digest.ts";
-import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts";
-import { CONTINUE_AFTER_ERROR_PROMPT } from "./session-digest.ts";
+import { operatorText, sessionDigest } from "./digest.ts";
+import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
+import { CONTINUE_AFTER_ERROR_PROMPT } from "./digest.ts";
 
 const user = (text: string): TranscriptEntry => ({ kind: "message", role: "user", text });
 const assistant = (text: string): TranscriptEntry => ({ kind: "message", role: "assistant", text });
@@ -70,6 +70,6 @@ test("an empty session has no goal", () => {
 });
 
 test("continuing after an error preserves the control prompt", () => {
-  const fixture: { continuePrompt: string } = JSON.parse(readFileSync(new URL("./session-digest.fixture.json", import.meta.url), "utf8"));
+  const fixture: { continuePrompt: string } = JSON.parse(readFileSync(new URL("./digest.fixture.json", import.meta.url), "utf8"));
   assert.equal(CONTINUE_AFTER_ERROR_PROMPT, fixture.continuePrompt);
 });

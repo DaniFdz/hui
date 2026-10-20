@@ -13,9 +13,9 @@
  * subagent completion events) are PI user messages but not operator intent;
  * they are dropped, and an interruption prompt contributes its wrapped request.
  */
-import type { TranscriptEntry } from "./runtimes/types.ts";
+import type { TranscriptEntry } from "../runtimes/types.ts";
 import { interruptedRunOriginal } from "./interrupted-run.ts";
-import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "./agent-tools/subagent-completion.ts";
+import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 export const CONTINUE_AFTER_ERROR_PROMPT = "Continue from where you left off.";
 
 export type SessionDigest = { text: string; goal: string };

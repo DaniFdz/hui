@@ -207,7 +207,7 @@ export type DurableBots = {
 
 /** Registry fallback: the HUI session whose resume reference names this conversation. */
 export async function registryCaller(conversationId: ConversationId): Promise<string | undefined> {
-  const { readRegistry } = await import("../sessions.ts");
+  const { readRegistry } = await import("../sessions/sessions.ts");
   const reference = `durable:${conversationId}`;
   // A worker's `durable:N` names a conversation in that worker's own store.
   return (await readRegistry()).find((record) => record.piSessionFile === reference && !record.worker)?.id;

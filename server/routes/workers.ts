@@ -12,7 +12,7 @@
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { WorkersResponse, WorkerResponse, WorkerActionResponse, WorkerError } from "../api/workers.ts";
 export { routeSchemas } from "../api/workers.ts";
-import type { SessionRecord } from "../sessions.ts";
+import type { SessionRecord } from "../sessions/sessions.ts";
 import { WorkerInputError, WorkerNotFoundError, type WorkerService } from "../workers.ts";
 
 export const WORKERS_ROUTE = "/__hui/workers";

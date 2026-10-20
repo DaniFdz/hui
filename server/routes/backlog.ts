@@ -30,11 +30,11 @@ import {
   type JiraIssueStatuses,
 } from "../integrations/jira.ts";
 import { readHuiSettings } from "../hui-settings.ts";
-import { SessionBusyError } from "../live-sessions.ts";
+import { SessionBusyError } from "../sessions/live-sessions.ts";
 import { suggestWorktreeName } from "../pi/model-routing.ts";
 import { CONFIG_DIR } from "../paths.ts";
 import { runPiUtilityPrompt } from "../runtimes/pi.ts";
-import { SessionRegistryError } from "../sessions.ts";
+import { SessionRegistryError } from "../sessions/sessions.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError } from "../agent-tools/task-suggestions.ts";
 import { existingDirectory } from "../git/working-directories.ts";
 

@@ -33,9 +33,9 @@ import {
   type JiraIssueRef,
   type JiraIssueStatuses,
 } from "./integrations/jira.ts";
-import type { liveSessions } from "./live-sessions.ts";
+import type { liveSessions } from "./sessions/live-sessions.ts";
 import { CONFIG_DIR } from "./paths.ts";
-import { readRegistry, updateRegistry, type SessionNotFoundError, type SessionRecord } from "./sessions.ts";
+import { readRegistry, updateRegistry, type SessionNotFoundError, type SessionRecord } from "./sessions/sessions.ts";
 import type { createSessionLifecycle } from "./sessions/lifecycle.ts";
 import type { SessionView } from "./api/sessions.ts";
 import type { createSessionViews } from "./sessions/views.ts";

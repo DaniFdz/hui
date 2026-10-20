@@ -762,7 +762,7 @@ requests:
    unchanged; a bot conversation's commit, persona, section and tool; with the
    real adapter, OptChat on in the creating commit, zoom and date beside
    `message_bot`, a fresh second turn and every read),
-   `server/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
+   `server/sessions/live-sessions.test.ts`, `cli/main.test.ts` and `cli/bots.test.ts`
    (a fake gateway and a scripted terminal).
    **After review (2026-10-06):** instructions became SOUL.md plus a first
    conversation (SPEC.md, "Bots write their own SOUL.md in a first
@@ -1185,7 +1185,7 @@ stores or diagnostics. Cancel, Stop and a 15-minute expiry end it. The bridge
 now passes a tool call's abort to the gateway handler for PI children and
 Durable alike, and PI children reach it over `node:http`, whose replies may
 take longer than fetch's five minutes. Proof: `server/agent-tools/secret-requests.test.ts`,
-`server/agent-tools/bridge.test.ts`, `server/live-sessions.test.ts`,
+`server/agent-tools/bridge.test.ts`, `server/sessions/live-sessions.test.ts`,
 `server/runtimes/pi-sdk.test.ts`, `server/runtimes/durable.test.ts` and
 `e2e/secret-requests.browser.md`.
 

@@ -9,7 +9,7 @@ import type { BotService } from "../bot-service.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { SessionError, SessionList, SessionOk, SessionResponse, sessionRouteSchemas } from "../api/sessions.ts";
-import { liveSessions } from "../live-sessions.ts";
+import { liveSessions } from "../sessions/live-sessions.ts";
 import {
   createSessionGroup,
   deleteSessionGroup,
@@ -19,7 +19,7 @@ import {
   SessionRegistryError,
   type SessionRecord,
   updateSessionGroup,
-} from "../sessions.ts";
+} from "../sessions/sessions.ts";
 import { type createSessionLifecycle, SESSION_GROUP_MAX, SESSION_TITLE_MAX, sessionText } from "../sessions/lifecycle.ts";
 import { type createSessionViews, pendingSessions } from "../sessions/views.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";

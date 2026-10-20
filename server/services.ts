@@ -41,7 +41,7 @@ import { ProviderService } from "./pi/providers.ts";
 import { invalidateModelCatalog } from "./pi/config.ts";
 import { PiMutationService } from "./pi/mutations.ts";
 import { WorktreeService } from "./git/worktree-inventory.ts";
-import { liveSessions } from "./live-sessions.ts";
+import { liveSessions } from "./sessions/live-sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { AutomationService, automationStoreFailure, executeAutomationTask } from "./automation.ts";
 import { BotRoutines } from "./bot-routines.ts";
@@ -79,7 +79,7 @@ import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
 import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription } from "./agent-tools/task-suggestions.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
-import { createSessionListHub } from "./session-list.ts";
+import { createSessionListHub } from "./sessions/list.ts";
 import { createFileRoutes } from "./routes/files.ts";
 import { createDiffRoutes } from "./routes/diff.ts";
 import { createAttachmentRoutes } from "./routes/attachments.ts";
@@ -111,7 +111,7 @@ import {
   SessionNotFoundError,
   updateRegistry,
   type SessionRecord,
-} from "./sessions.ts";
+} from "./sessions/sessions.ts";
 import { createSessionLifecycle, defaultSessionTool, SESSION_TITLE_MAX } from "./sessions/lifecycle.ts";
 import { setAgentStage } from "./sessions/stages.ts";
 import { createSessionViews } from "./sessions/views.ts";

@@ -10,11 +10,11 @@ import { basename } from "node:path";
 
 import type { ManagedBrowser } from "../browser/manager.ts";
 import { readHuiSettings } from "../hui-settings.ts";
-import { liveSessions, type DeleteToken } from "../live-sessions.ts";
+import { liveSessions, type DeleteToken } from "./live-sessions.ts";
 import { fallbackTitle, generateSessionNames } from "../pi/model-routing.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
-import { SessionNotFoundError, updateRegistry, upsert, type SessionRecord } from "../sessions.ts";
+import { SessionNotFoundError, updateRegistry, upsert, type SessionRecord } from "./sessions.ts";
 import type { SubagentService } from "../agent-tools/subagents.ts";
 import type { TaskSuggestionStore } from "../agent-tools/task-suggestions.ts";
 import { terminals } from "../terminals/terminals.ts";

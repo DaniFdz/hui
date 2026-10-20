@@ -4,15 +4,15 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import { CONTINUE_PROMPT } from "./agent-tools/subagent-completion.ts";
+import { CONTINUE_PROMPT } from "../agent-tools/subagent-completion.ts";
 import type { SessionRecord } from "./sessions.ts";
 
 // HUI's configuration directory is resolved at import time; never read the operator's own.
 const configDir = await mkdtemp(join(tmpdir(), "hui-activity-config-"));
 process.env["XDG_CONFIG_HOME"] = configDir;
 afterAll(() => rm(configDir, { recursive: true, force: true }));
-const { activityRange, durableScan, readSessionActivity, repositoryName } = await import("./session-activity.ts");
-const { DurableHost, durableContext } = await import("./runtimes/durable-host.ts");
+const { activityRange, durableScan, readSessionActivity, repositoryName } = await import("./activity.ts");
+const { DurableHost, durableContext } = await import("../runtimes/durable-host.ts");
 const { AssistantEntry, CompactionEntry, ToolResultEntry, UserEntry } = await import("@earendil-works/pi-durable");
 
 const MINUTE = 60_000;

@@ -51,7 +51,7 @@ await writeFile(join(ghDir, "github.json"), JSON.stringify(github));
 const { middleware } = await import("../hui.ts");
 const { startBackend, stopBackend } = await import("../backend.ts");
 const { triggerCommand } = await import("../../cli/bot-triggers.ts");
-const { liveSessions } = await import("../live-sessions.ts");
+const { liveSessions } = await import("../sessions/live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 

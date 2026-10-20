@@ -1,5 +1,5 @@
 /** The session tree: which session a subagent's tree starts at, and the error bad session-tool input raises. */
-import type { SessionRecord } from "../sessions.ts";
+import type { SessionRecord } from "./sessions.ts";
 
 export class AgentToolInputError extends Error {
   override name = "AgentToolInputError";

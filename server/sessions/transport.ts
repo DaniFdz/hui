@@ -10,7 +10,7 @@ import type { EventEmitter } from "node:events";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import { validTerminalOrigin } from "./terminals/transport.ts";
+import { validTerminalOrigin } from "../terminals/transport.ts";
 
 export const SESSION_STREAM_PATH = "/__hui/session-stream";
 /** Close code for a session that is gone; the browser stops retrying. */

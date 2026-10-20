@@ -4,7 +4,7 @@
  * so they stay where they were, unchanged, and the registry is copied to `backups/` before its first change.
  */
 import { readFile, stat } from "node:fs/promises";
-import { backupRegistry, readRegistry, updateRegistry, type SessionRecord } from "../server/sessions.ts";
+import { backupRegistry, readRegistry, updateRegistry, type SessionRecord } from "../server/sessions/sessions.ts";
 import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
 
 const ID = "pi-sessions";

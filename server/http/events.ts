@@ -3,7 +3,7 @@
  * session's messages as named events (the SSE routes and the session WebSocket both use it).
  */
 import type { ServerResponse } from "node:http";
-import { liveSessions } from "../live-sessions.ts";
+import { liveSessions } from "../sessions/live-sessions.ts";
 
 /** How long an event stream may sit idle before a comment proves it is alive. */
 export const HEARTBEAT_MS = 15_000;

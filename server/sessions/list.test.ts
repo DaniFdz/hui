@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "vitest";
-import { createSessionListHub } from "./session-list.ts";
+import { createSessionListHub } from "./list.ts";
 
 type Session = { id: string; title: string };
 type Group = { label: string; sessions: Session[] };
 type Frame = { revision: number; groups?: unknown[]; upserts: Session[] };
-const golden: { lists: Group[][]; frames: Frame[] } = JSON.parse(readFileSync(new URL("./session-list.fixture.json", import.meta.url), "utf8"));
+const golden: { lists: Group[][]; frames: Frame[] } = JSON.parse(readFileSync(new URL("./list.fixture.json", import.meta.url), "utf8"));
 
 test("screens share one list: a full list on join, then only what changed, as the golden frames", async () => {
   let next: Group[] = [];

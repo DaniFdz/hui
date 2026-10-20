@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
 
-import type { SessionStreamMessage } from "./live-sessions.ts";
-import type { SessionRecord } from "./sessions.ts";
+import type { SessionStreamMessage } from "./sessions/live-sessions.ts";
+import type { SessionRecord } from "./sessions/sessions.ts";
 
 // HUI's directory resolves at import time and hui.ts reads it as it loads: never the operator's own.
 const root = await mkdtemp(join(tmpdir(), "hui-gateway-home-"));

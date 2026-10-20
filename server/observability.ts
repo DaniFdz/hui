@@ -7,7 +7,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { platform, release } from "node:os";
 
-import type { SessionRecord } from "./sessions.ts";
+import type { SessionRecord } from "./sessions/sessions.ts";
 
 const MAX_EVENTS = 300;
 const MAX_SUMMARY_CHARS = 240;

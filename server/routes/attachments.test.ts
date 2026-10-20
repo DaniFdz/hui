@@ -56,7 +56,7 @@ test("stored attachment files are only read from inside the attachment store", a
 });
 
 test("public transcript replaces runtime attachment locations with opaque URLs", async () => {
-  const { publicTranscript } = await import("../live-sessions.ts");
+  const { publicTranscript } = await import("../sessions/live-sessions.ts");
   assert.deepEqual(publicTranscript("a b", [{ kind: "message", role: "user", text: "", attachments: [
     { name: "s.png", kind: "image", mimeType: "image/png", source: { message: 3, image: 1 } },
     { name: "n.txt", kind: "file", source: { message: 3, file: 0 } },

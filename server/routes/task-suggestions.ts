@@ -6,8 +6,8 @@ import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { TaskSuggestionBacklogResponse, TaskSuggestionError, TaskSuggestionStartResponse, TaskSuggestionsResponse } from "../api/task-suggestions.ts";
 export { routeSchemas } from "../api/task-suggestions.ts";
 import type { createBacklogLifecycle } from "../backlog.ts";
-import { SessionBusyError } from "../live-sessions.ts";
-import type { readRegistry } from "../sessions.ts";
+import { SessionBusyError } from "../sessions/live-sessions.ts";
+import type { readRegistry } from "../sessions/sessions.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError, type TaskSuggestionStore } from "../agent-tools/task-suggestions.ts";
 import { backlogErrorStatus } from "./backlog.ts";
 

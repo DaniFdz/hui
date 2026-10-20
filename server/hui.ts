@@ -25,12 +25,12 @@ import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeE
 import { VSCODE_ENTER_PATH } from "./vscode/contract.ts";
 import { attachBrowserTransport } from "./browser/transport.ts";
 import type { EventEmitter } from "node:events";
-import { liveSessions } from "./live-sessions.ts";
+import { liveSessions } from "./sessions/live-sessions.ts";
 import { diagnosticPath, recordDiagnosticEvent } from "./observability.ts";
 import { servePresentedMedia } from "./agent-tools/presented-media.ts";
 import { serveWidgetSandbox } from "./agent-tools/widget-sandbox.ts";
 import { WIDGET_SANDBOX_PATH } from "./agent-tools/widget-sandbox.ts";
-import { attachSessionTransport } from "./session-transport.ts";
+import { attachSessionTransport } from "./sessions/transport.ts";
 import { FILES_ROUTE } from "./routes/files.ts";
 import { DIFF_ROUTE } from "./routes/diff.ts";
 import { ATTACHMENT_ROUTE } from "./routes/attachments.ts";
@@ -39,7 +39,7 @@ import { AUTOMATION_ROUTE } from "./routes/automation.ts";
 import { handleApiSchemaRoute } from "./routes/api-schema.ts";
 import { DIAGNOSTICS_EXPORT_ROUTE, HEALTH_ROUTE, OBSERVABILITY_ROUTE, UI_ERRORS_ROUTE } from "./routes/diagnostics.ts";
 import { listThemes, THEME_FILE_ROUTE } from "./themes.ts";
-import { readRegistry, type SessionRecord } from "./sessions.ts";
+import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 import { pendingSessions, pendingStatus, pendingStatusSubscribers, type PendingStatusUpdate } from "./sessions/views.ts";
 import {
   attachmentRoutes,

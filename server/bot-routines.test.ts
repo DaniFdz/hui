@@ -10,7 +10,7 @@ import { AutomationService } from "./automation.ts";
 import { BotRoutines } from "./bot-routines.ts";
 import { BotConflictError, BotInputError, BotsOffError } from "./bots.ts";
 import { BOT_ROUTINE_LIMITS } from "./runtimes/durable-bot-routines.ts";
-import type { SessionRecord } from "./sessions.ts";
+import type { SessionRecord } from "./sessions/sessions.ts";
 
 function bot(id: string, handle: string, extra: Partial<BotRecord> = {}): BotRecord {
   return { id, handle, name: handle, cwd: "/tmp", sessionId: `s-${handle}`, createdAt: "", updatedAt: "", ...extra };

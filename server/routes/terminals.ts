@@ -6,7 +6,7 @@
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { TerminalSnapshot, TerminalsResponse, TerminalResponse, TerminalOperationResponse, TerminalConnectResponse, TerminalError as TerminalErrorPayload } from "../api/terminals.ts";
 export { routeSchemas } from "../api/terminals.ts";
-import type { SessionRecord } from "../sessions.ts";
+import type { SessionRecord } from "../sessions/sessions.ts";
 import { terminalTicket } from "../terminals/transport.ts";
 import { terminals, TerminalError } from "../terminals/terminals.ts";
 

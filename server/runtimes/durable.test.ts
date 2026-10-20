@@ -920,7 +920,7 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
 });
 
 test("a worker row with the same durable:N never becomes the caller of a gateway conversation", async () => {
-  const { updateRegistry } = await import("../sessions.ts");
+  const { updateRegistry } = await import("../sessions/sessions.ts");
   const base = { cwd: root, tool: "durable", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
   await updateRegistry(() => [
     { ...base, id: "remote-row", piSessionFile: "durable:7", worker: "w1" },

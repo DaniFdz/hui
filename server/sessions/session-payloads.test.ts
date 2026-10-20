@@ -1,7 +1,7 @@
 import { expectTypeOf, test } from "vitest";
 import type * as Api from "../api/sessions.ts";
 import type { SessionPullRequest } from "../api/github.ts";
-import type { SubagentRecord } from "../sessions.ts";
+import type { SubagentRecord } from "./sessions.ts";
 
 type LegacySessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 type LegacySessionStage = "investigation" | "implementation" | "testing" | "done";

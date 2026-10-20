@@ -14,14 +14,14 @@ import { SessionConnectResponse, SessionError, SessionFastResponse, SessionOk, S
 import { SessionClearResponse, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionOpenResponse, SessionThinkingResponse, SideQuestionResult, routeSchemas as sessionEventRouteSchemas } from "../api/session-events.ts";
 
 import { readHuiSettings } from "../hui-settings.ts";
-import { liveSessions, SessionBusyError } from "../live-sessions.ts";
+import { liveSessions, SessionBusyError } from "../sessions/live-sessions.ts";
 import { answerSideQuestion } from "../pi/model-routing.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import type { Questionnaires } from "../agent-tools/questionnaires.ts";
-import { REQUEST_ID, RecentRequests } from "../recent-requests.ts";
+import { REQUEST_ID, RecentRequests } from "../sessions/recent-requests.ts";
 import type { SecretRequests } from "../agent-tools/secret-requests.ts";
-import { sessionStreamTicket } from "../session-transport.ts";
-import { readRegistry, SessionNotFoundError, SessionRegistryError, type SessionRecord } from "../sessions.ts";
+import { sessionStreamTicket } from "../sessions/transport.ts";
+import { readRegistry, SessionNotFoundError, SessionRegistryError, type SessionRecord } from "../sessions/sessions.ts";
 import { AttachmentInputError, readAttachments, type PreparedAttachments } from "../sessions/attachments.ts";
 import type { createSessionLifecycle } from "../sessions/lifecycle.ts";
 import { type createSessionViews, pendingSessions } from "../sessions/views.ts";

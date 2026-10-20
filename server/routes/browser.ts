@@ -9,7 +9,7 @@ import { BrowserError, BrowserPreview, BrowserStatus, BrowserViewConnection } fr
 export { routeSchemas } from "../api/browser.ts";
 import { browserViewTicket } from "../browser/transport.ts";
 import { BrowserToolError, type ManagedBrowser } from "../browser/manager.ts";
-import type { SessionRecord } from "../sessions.ts";
+import type { SessionRecord } from "../sessions/sessions.ts";
 
 const BROWSER_ROUTE = "/__hui/browser";
 const BROWSER_TAB_PREVIEW = /^\/__hui\/browser\/tabs\/(t\d{1,6})\/preview$/u;

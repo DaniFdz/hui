@@ -11,8 +11,8 @@ import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { GitHubConnection, GitHubContributions, GitHubError, GitHubPreviewsResponse, SessionActivity, routeSchemas as githubRouteSchemas } from "../api/github.ts";
 import { botsOn } from "../hui-settings.ts";
-import { activityRange, readSessionActivity } from "../session-activity.ts";
-import { readRegistry } from "../sessions.ts";
+import { activityRange, readSessionActivity } from "../sessions/activity.ts";
+import { readRegistry } from "../sessions/sessions.ts";
 import { MAX_GITHUB_EMBEDS, parseGitHubUrl } from "../integrations/github-links.ts";
 
 export const routeSchemas: RouteSchema[] = githubRouteSchemas;

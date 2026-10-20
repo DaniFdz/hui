@@ -4,13 +4,13 @@
  */
 import { workers } from "./workers.ts";
 import { readHuiSettings } from "./hui-settings.ts";
-import { liveSessions } from "./live-sessions.ts";
+import { liveSessions } from "./sessions/live-sessions.ts";
 import { mirrorDiagnosticLogs, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { stopAgentToolBridge } from "./agent-tools/bridge.ts";
 import { terminals } from "./terminals/terminals.ts";
 import { ensureConfigDir } from "./themes.ts";
-import { readRegistry, type SessionRecord } from "./sessions.ts";
+import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 import {
   automation,
   botRegistry,

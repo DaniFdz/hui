@@ -21,8 +21,8 @@ reads, long-lived session lifecycle, and runtime adapters.
   rewrites `docs/api.schema.json` and the browser's generated types;
   `scripts/api-schema.test.ts` fails on a gap or a stale file. Schemas describe
   payloads; they don't validate requests. Internal records never get one.
-- `sessions.ts` owns HUI registry persistence. `live-sessions.ts` owns the one-live-
-  runtime-per-session invariant. `runtimes/` translates a harness protocol into the
+- `sessions/sessions.ts` owns HUI registry persistence. `sessions/live-sessions.ts` owns
+  the one-live-runtime-per-session invariant. `runtimes/` translates a harness protocol into the
   generic types in `runtimes/types.ts`.
 - PI files and transcripts are externally owned: read them through explicit adapters
   and never rename, rewrite, or delete them. HUI writes only HUI-owned state.

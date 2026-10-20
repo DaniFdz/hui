@@ -8,7 +8,7 @@ import { stat } from "node:fs/promises";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import * as schemas from "../api/vscode.ts";
 export { routeSchemas } from "../api/vscode.ts";
-import type { SessionRecord } from "../sessions.ts";
+import type { SessionRecord } from "../sessions/sessions.ts";
 import { VscodeError, type VscodeService } from "../vscode/vscode.ts";
 import { normalizeVscodeTheme, VSCODE_ACTIONS, VSCODE_STATUS_ROUTE } from "../vscode/contract.ts";
 import type { VscodeAction } from "../api/vscode.ts";

@@ -1,9 +1,9 @@
 /** The Kanban stage a session's own agent sets with `set_stage`, behind any operator placement. */
 import type { SessionStage } from "../api/sessions.ts";
 import { isSessionStage, SESSION_STAGE_LABELS, SESSION_STAGES } from "./session-stages.ts";
-import { liveSessions } from "../live-sessions.ts";
+import { liveSessions } from "./live-sessions.ts";
 import { pullRequestsFromTranscript } from "../integrations/pull-requests.ts";
-import { SessionNotFoundError, updateRegistry } from "../sessions.ts";
+import { SessionNotFoundError, updateRegistry } from "./sessions.ts";
 
 export function knownPullRequestUrls(sessionId: string): string[] {
   return pullRequestsFromTranscript(liveSessions.transcript(sessionId)).map((ref) => ref.url.toLowerCase()).slice(-20);

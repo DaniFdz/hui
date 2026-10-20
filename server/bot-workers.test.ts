@@ -65,8 +65,8 @@ await writeFile(join(root, "gateway", "config", "hui", "settings.json"), JSON.st
 const { middleware } = await import("./hui.ts");
 const { startBackend, stopBackend } = await import("./backend.ts");
 const { workers } = await import("./workers.ts");
-const { liveSessions } = await import("./live-sessions.ts");
-const { readRegistry } = await import("./sessions.ts");
+const { liveSessions } = await import("./sessions/live-sessions.ts");
+const { readRegistry } = await import("./sessions/sessions.ts");
 const { workerRelease } = await import("./worker/release.ts");
 const { remoteBots } = await import("./bot-remote.ts");
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));

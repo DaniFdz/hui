@@ -66,4 +66,4 @@ which the calendar leaves out. No operator session or PI transcript is read.
    at 1440×900 and 390×844; also check the card at 844×390.
 
 `?from=` empty, `1e3`, `0x10`, negative or more than 31 days apart return 400
-(`server/session-activity.test.ts`).
+(`server/sessions/activity.test.ts`).

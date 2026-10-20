@@ -36,7 +36,7 @@ const piRuntime = remoteRuntime("pi");
 const { workerRelease } = await import("./worker/release.ts");
 const { registerAgentToolHandler } = await import("./agent-tools/bridge.ts");
 const { GATEWAY_ONLY_TOOLS } = await import("./worker/gateway-tools.ts");
-const { readRegistry, writeRegistry } = await import("./sessions.ts");
+const { readRegistry, writeRegistry } = await import("./sessions/sessions.ts");
 const { SecretRequests } = await import("./agent-tools/secret-requests.ts");
 const durable = remoteRuntime("durable");
 const control = (path: string, init?: RequestInit) => fetch(`${baseUrl.replace(/\/v1$/u, "")}/control/${path}`, init);
@@ -644,7 +644,7 @@ test("losing the gateway during a HUI tool call fails that call, and the run set
 });
 
 test("a dropped connection leaves a session reconnecting, and HUI's own reconnect catches it up", async () => {
-  const { LiveSessions } = await import("./live-sessions.ts");
+  const { LiveSessions } = await import("./sessions/live-sessions.ts");
   const key = "remote-durable-reconnect";
   await registerRemote(key);
   const record = async () => (await readRegistry()).find((item) => item.id === key)!;
@@ -678,7 +678,7 @@ test("a dropped connection leaves a session reconnecting, and HUI's own reconnec
 });
 
 test("a session whose worker was disconnected or removed is disconnected, and no open reconnects it", async () => {
-  const { LiveSessions } = await import("./live-sessions.ts");
+  const { LiveSessions } = await import("./sessions/live-sessions.ts");
   const key = "remote-durable-disconnected";
   await registerRemote(key);
   const manager = new LiveSessions();

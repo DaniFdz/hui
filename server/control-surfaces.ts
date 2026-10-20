@@ -9,9 +9,9 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
-import { liveSessions } from "./live-sessions.ts";
+import { liveSessions } from "./sessions/live-sessions.ts";
 import type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
-import { readRegistry, type SessionRecord } from "./sessions.ts";
+import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
 
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 5_000;

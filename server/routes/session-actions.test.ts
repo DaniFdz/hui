@@ -41,7 +41,7 @@ await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvide
 
 const { middleware } = await import("../hui.ts");
 const { startBackend, stopBackend } = await import("../backend.ts");
-const { liveSessions } = await import("../live-sessions.ts");
+const { liveSessions } = await import("../sessions/live-sessions.ts");
 let origin = "";
 const server = createServer((request, response) => middleware(request, response, () => { response.writeHead(404).end(); }));
 
@@ -139,7 +139,7 @@ test("a resent request id is answered with the first send's outcome and never ru
 });
 
 test("writing to an archived conversation restores it", { timeout: 60_000 }, async () => {
-  const { readRegistry } = await import("../sessions.ts");
+  const { readRegistry } = await import("../sessions/sessions.ts");
   const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Archived" });
   assert.equal(created.status, 200, JSON.stringify(created.body));
   const id = (created.body["session"] as { id: string }).id;

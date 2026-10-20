@@ -295,7 +295,7 @@ export async function deleteSession(id: string): Promise<void> {
 /** What the gateway did with a send: `duplicate` when it had already taken this request id (the send is not repeated). */
 export type SendOutcome = { duplicate: boolean };
 
-/** `requestId` makes a resend after a failure safe: the gateway runs each id once (`server/recent-requests.ts`). */
+/** `requestId` makes a resend after a failure safe: the gateway runs each id once (`server/sessions/recent-requests.ts`). */
 export async function sendPrompt(
   id: string,
   text: string,
