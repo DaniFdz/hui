@@ -53,6 +53,14 @@ test("a caller's own signal bounds the whole request instead", async () => {
   assert.equal(seen[0], own.signal);
 });
 
+test("a caller's own deadline is not reported as the default one", async () => {
+  const { fetcher } = slowGateway(200, 0);
+  await assert.rejects(fetchWithResponseDeadline(fetcher, "/__hui/pi/skills/install", { signal: AbortSignal.timeout(10) }), (error: Error) => {
+    assert.equal(error.message, "HUI did not answer in time. Check the connection and try again.");
+    return true;
+  });
+});
+
 test("connection failures read as such; deliberate cancellation passes through", () => {
   assert.equal((gatewayRequestError(new TypeError("Failed to fetch")) as Error).message, "Could not reach HUI. Check the connection and try again.");
   assert.equal((gatewayRequestError(new DOMException("x", "TimeoutError"), 20_000) as Error).message, "HUI did not answer within 20 s. Check the connection and try again.");

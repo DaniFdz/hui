@@ -17,9 +17,10 @@ export const RESPONSE_TIMEOUT_MS = 20_000;
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 /** Messages worth showing for the two ways a request never got an answer. */
-export function gatewayRequestError(error: unknown, timeoutMs = RESPONSE_TIMEOUT_MS): unknown {
+export function gatewayRequestError(error: unknown, timeoutMs?: number): unknown {
   if (error instanceof DOMException && error.name === "TimeoutError") {
-    return new Error(`HUI did not answer within ${Math.max(1, Math.round(timeoutMs / 1000))} s. Check the connection and try again.`, { cause: error });
+    const deadline = timeoutMs === undefined ? "in time" : `within ${Math.max(1, Math.round(timeoutMs / 1000))} s`;
+    return new Error(`HUI did not answer ${deadline}. Check the connection and try again.`, { cause: error });
   }
   if (error instanceof TypeError) {
     return new Error("Could not reach HUI. Check the connection and try again.", { cause: error });
@@ -41,7 +42,7 @@ export async function fetchWithResponseDeadline(
     try {
       return await fetcher(input, init);
     } catch (error) {
-      throw gatewayRequestError(error, timeoutMs);
+      throw gatewayRequestError(error);
     }
   }
   const deadline = new AbortController();
