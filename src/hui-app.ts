@@ -123,7 +123,7 @@ import {
 } from "./lib/work-pane.ts";
 import { PANE_COLUMN_MIN_WIDTH } from "./lib/session/pane-geometry.ts";
 import { OPEN_FILE_EVENT, type OpenFileDetail } from "./lib/files/file-link-store.ts";
-import { OPEN_SETTINGS_EVENT, type OpenSettingsDetail } from "./lib/open-settings.ts";
+import { OPEN_SETTINGS_EVENT, requestOpenSettings, type OpenSettingsDetail } from "./lib/open-settings.ts";
 import { scrollSettingsSection } from "./lib/settings-section-scroll.ts";
 import "./components/work-pane.ts";
 import "./components/terminal-pane.ts";
@@ -2634,7 +2634,7 @@ export class HuiApp extends HuiElement {
       branchPrefix: this.control.settings.branchPrefix,
       worktreeProgress: this.paneCreating,
       worktreeError: this.paneCreationError,
-      onOpenBranchPrefixSettings: () => this.openSurfaceSettings("sessions"),
+      onOpenBranchPrefixSettings: () => requestOpenSettings(this, { page: "worktrees", section: "branch-prefix" }),
     };
   }
 

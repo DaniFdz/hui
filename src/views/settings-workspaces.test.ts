@@ -110,7 +110,7 @@ test("New Session exposes explicit worktree creation and Settings owns its branc
   assert.match(homeSource, /branchName: props\.workspaceBranch/);
   assert.match(homeSource, /baseRef: props\.workspaceBaseRef/);
   assert.match(homeSource, /worktree: true/);
-  assert.match(settingsSource, /Git worktrees/);
+  assert.match(settingsSource, /renderSection\("Git worktrees",[\s\S]*?name="branchPrefix"[\s\S]*?`, "branch-prefix"\)/);
   assert.match(settingsSource, /name="branchPrefix"/);
   assert.match(settingsSource, /class="settings-input settings-input--prefix"/);
   assert.match(settingsControlsCss, /\.settings-input:focus-visible/);

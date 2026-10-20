@@ -236,6 +236,17 @@ test("a group's default directory uses the themed combobox instead of a native d
   assert.doesNotMatch(dialog, /<datalist/u);
 });
 
+test("Configure default prefix opens Settings → Worktrees at the branch prefix", () => {
+  const app = shell();
+  const opened: unknown[] = [];
+  (app as unknown as EventTarget).dispatchEvent = (event: Event) => {
+    opened.push((event as CustomEvent).detail);
+    return true;
+  };
+  app.homeProps().onOpenBranchPrefixSettings();
+  assert.deepEqual(opened, [{ page: "worktrees", section: "branch-prefix" }]);
+});
+
 test("Continue without a prompt resumes the selected session; no rewind checkpoints are loaded", () => {
   const app = shell();
   app.conversation.select(session("s1"));

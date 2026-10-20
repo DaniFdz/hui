@@ -378,9 +378,3 @@ test("automation receives all sessions and controller state, and navigation star
   assert.equal(vi.mocked(app["automation"].stopPolling).mock.calls.length, 2);
 });
 
-test("the new-session branch prefix action opens Sessions settings", () => {
-  const app = setup();
-  app["openSurfaceSettings"] = vi.fn();
-  app["homeProps"]().onOpenBranchPrefixSettings();
-  assert.deepEqual(vi.mocked(app["openSurfaceSettings"]).mock.calls, [["sessions"]]);
-});
