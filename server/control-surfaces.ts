@@ -12,16 +12,14 @@ import { promisify } from "node:util";
 import { liveSessions } from "./sessions/live-sessions.ts";
 import type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
 import { readRegistry, type SessionRecord } from "./sessions/sessions.ts";
+import type { GatewayHealth } from "./api/diagnostics.ts";
+export type { GatewayHealth } from "./api/diagnostics.ts";
+export type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
 
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 5_000;
 const MAX_COMMAND_OUTPUT = 512 * 1024;
 const MAX_MEMORY_FILES = 200;
-
-import type { GatewayHealth } from "./api/diagnostics.ts";
-export type { GatewayHealth } from "./api/diagnostics.ts";
-
-export type { MemorySource, WorktreeView, WorkspaceInspection } from "./api/worktrees.ts";
 
 type CommandResult = { stdout: string; stderr: string };
 type CommandRunner = (file: string, args: readonly string[]) => Promise<CommandResult>;

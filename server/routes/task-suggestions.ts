@@ -8,24 +8,22 @@ export { routeSchemas } from "../api/task-suggestions.ts";
 import type { createBacklogLifecycle } from "../backlog.ts";
 import { SessionBusyError } from "../sessions/live-sessions.ts";
 import type { readRegistry } from "../sessions/sessions.ts";
-import { TaskSuggestionInputError, TaskSuggestionNotFoundError, type TaskSuggestionStore } from "../agent-tools/task-suggestions.ts";
+import { TASK_SUGGESTION_START_MODES, TaskSuggestionInputError, TaskSuggestionNotFoundError, type TaskSuggestionStartMode, type TaskSuggestionStore } from "../agent-tools/task-suggestions.ts";
 import { backlogErrorStatus } from "./backlog.ts";
 
 const SESSION_SUGGESTION = /^\/__hui\/sessions\/([^/]+)\/suggestions\/([^/]+?)(?:\/(start|backlog))?$/;
 
 type SuggestionLifecycle = Pick<ReturnType<typeof createBacklogLifecycle>, "startTaskSuggestion" | "saveSuggestionToBacklog">;
-type TaskSuggestionStartMode = NonNullable<Parameters<SuggestionLifecycle["startTaskSuggestion"]>[2]>;
 type TaskSuggestionRouteDeps = SuggestionLifecycle & {
   taskSuggestions: TaskSuggestionStore;
   readRegistry: typeof readRegistry;
   sessionMutationErrorStatus(error: unknown): 400 | 500;
-  TASK_SUGGESTION_START_MODES: readonly TaskSuggestionStartMode[];
 };
 
 export function createTaskSuggestionRoutes(deps: TaskSuggestionRouteDeps) {
   async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const { path } = request;
-    const { taskSuggestions, readRegistry, startTaskSuggestion, saveSuggestionToBacklog, sessionMutationErrorStatus, TASK_SUGGESTION_START_MODES } = deps;
+    const { taskSuggestions, readRegistry, startTaskSuggestion, saveSuggestionToBacklog, sessionMutationErrorStatus } = deps;
     const suggestionRoute = path.match(SESSION_SUGGESTION);
     if (suggestionRoute) {
       const starting = suggestionRoute[3] === "start";

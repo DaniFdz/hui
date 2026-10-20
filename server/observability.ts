@@ -8,14 +8,13 @@ import { readFile, stat } from "node:fs/promises";
 import { platform, release } from "node:os";
 
 import type { SessionRecord } from "./sessions/sessions.ts";
+import type { DiagnosticEvent, ObservabilitySnapshot, UsageTotals } from "./api/diagnostics.ts";
+export type { DiagnosticArea, DiagnosticEvent, DiagnosticLevel, ObservabilitySnapshot, UsageTotals } from "./api/diagnostics.ts";
 
 const MAX_EVENTS = 300;
 const MAX_SUMMARY_CHARS = 240;
 const MAX_DETAIL_CHARS = 600;
 const MAX_TRANSCRIPT_BYTES = 32 * 1024 * 1024;
-
-import type { DiagnosticEvent, ObservabilitySnapshot, UsageTotals } from "./api/diagnostics.ts";
-export type { DiagnosticArea, DiagnosticEvent, DiagnosticLevel, ObservabilitySnapshot, UsageTotals } from "./api/diagnostics.ts";
 
 let nextId = 1;
 const startedAt = new Date().toISOString();

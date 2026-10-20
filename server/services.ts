@@ -77,7 +77,6 @@ import { WatcherInputError, WatcherService } from "./agent-tools/watchers.ts";
 import { SecretFiles, SecretRequests } from "./agent-tools/secret-requests.ts";
 import { Questionnaires } from "./agent-tools/questionnaires.ts";
 import { BacklogJiraFeed, BacklogStore, createBacklogLifecycle } from "./backlog.ts";
-import { TASK_SUGGESTION_START_MODES, taskSuggestionJiraDescription } from "./agent-tools/task-suggestions.ts";
 import { terminals, TerminalError } from "./terminals/terminals.ts";
 import { createSessionListHub } from "./sessions/list.ts";
 import { createFileRoutes } from "./routes/files.ts";
@@ -617,7 +616,6 @@ export const taskSuggestionRoutes = createTaskSuggestionRoutes({
   startTaskSuggestion,
   saveSuggestionToBacklog,
   sessionMutationErrorStatus,
-  TASK_SUGGESTION_START_MODES,
 });
 export const backlogRoutes = createBacklogRoutes({
   listBacklog,
@@ -630,7 +628,6 @@ export const backlogRoutes = createBacklogRoutes({
   jiraClient,
   jiraStatuses,
   createAssignedJiraIssue,
-  taskSuggestionJiraDescription,
 });
 
 /** A bot's chat while bots are off: no session route reaches it, since opening or prompting it would resume it. The

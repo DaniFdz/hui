@@ -22,7 +22,6 @@ import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
 export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins" | "labs">;
 
-/** What a conversation's PI extensions add: their tools' snippets, and the prompt `before_agent_start` gave the run. */
 /** The skills of a bot's chat: the ones it has of a directory's, and its own `skills` section when it loads them with
  * `load_skill`. */
 export type BotSkills = {
@@ -30,6 +29,7 @@ export type BotSkills = {
   section(skills: readonly Skill[], selectedTools: readonly string[]): string | undefined;
 };
 
+/** What a conversation's PI extensions add: their tools' snippets, and the prompt `before_agent_start` gave the run. */
 export type PromptExtras = { readonly contributions: Record<string, Contribution>; readonly run?: RunPrompt };
 
 const internal = async <T>(path: string): Promise<T> =>

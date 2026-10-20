@@ -14,6 +14,8 @@ import { WORKTREES_DIR } from "../paths.ts";
 import type { WorktreeProgress } from "../api/sessions.ts";
 import type { WorktreeRow, WorktreeRisk } from "../api/worktrees.ts";
 import { worktreeSlug } from "./branch-names.ts";
+import type { GitCheckoutInfo } from "../api/local-paths.ts";
+export type { GitCheckoutInfo } from "../api/local-paths.ts";
 
 export { worktreeSlug };
 
@@ -23,9 +25,6 @@ export type GitRunner = (
   args: readonly string[],
   onProgress?: (progress: WorktreeProgress) => void,
 ) => Promise<GitResult>;
-
-import type { GitCheckoutInfo } from "../api/local-paths.ts";
-export type { GitCheckoutInfo } from "../api/local-paths.ts";
 
 export type CreatedSessionWorktree = {
   branch: string;

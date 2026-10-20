@@ -12,7 +12,6 @@ import {
   BacklogStoreError,
   splitItemId,
   type BacklogJiraFeed,
-  type BacklogLocalTask,
   type BacklogStore,
   type createBacklogLifecycle,
 } from "../backlog.ts";
@@ -35,7 +34,7 @@ import { suggestWorktreeName } from "../pi/model-routing.ts";
 import { CONFIG_DIR } from "../paths.ts";
 import { runPiUtilityPrompt } from "../runtimes/pi.ts";
 import { SessionRegistryError } from "../sessions/sessions.ts";
-import { TaskSuggestionInputError, TaskSuggestionNotFoundError } from "../agent-tools/task-suggestions.ts";
+import { TaskSuggestionInputError, TaskSuggestionNotFoundError, taskSuggestionJiraDescription } from "../agent-tools/task-suggestions.ts";
 import { existingDirectory } from "../git/working-directories.ts";
 
 const BACKLOG_ROUTE = "/__hui/backlog";
@@ -49,7 +48,6 @@ type BacklogRouteDeps = Pick<ReturnType<typeof createBacklogLifecycle>, "listBac
   jiraClient(): JiraClient;
   jiraStatuses: JiraIssueStatuses;
   createAssignedJiraIssue(client: JiraClient, body: Record<string, unknown>): Promise<{ ref: JiraIssueRef; warning: string }>;
-  taskSuggestionJiraDescription(task: Pick<BacklogLocalTask, "problem" | "fix">): string;
 };
 
 export function backlogErrorStatus(error: unknown): number {
@@ -64,7 +62,7 @@ export function backlogErrorStatus(error: unknown): number {
 export function createBacklogRoutes(deps: BacklogRouteDeps) {
   async function handle(request: RouteRequest): Promise<JsonResult | undefined> {
     const { path } = request;
-    const { listBacklog, findBacklogItem, startBacklogItem, backlogStore, backlogFeed, jiraConfigReady, jiraConfig, jiraClient, jiraStatuses, createAssignedJiraIssue, taskSuggestionJiraDescription } = deps;
+    const { listBacklog, findBacklogItem, startBacklogItem, backlogStore, backlogFeed, jiraConfigReady, jiraConfig, jiraClient, jiraStatuses, createAssignedJiraIssue } = deps;
     if (path === BACKLOG_ROUTE) {
       if (request.method !== "GET") {
         return reply(BacklogError, { error: "method not allowed" }, 405);

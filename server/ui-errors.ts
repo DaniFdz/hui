@@ -6,10 +6,10 @@
  * does not rotate.
  */
 import { diagnosticPath, recordDiagnosticEvent, type DiagnosticEvent } from "./observability.ts";
-
-export const UI_ERROR_KINDS = ["uncaught_error", "unhandled_rejection", "request_failed"] as const;
 import type { UiErrorBatch, UiErrorKind, UiErrorReport } from "./api/diagnostics.ts";
 export type { UiErrorBatch, UiErrorKind, UiErrorReport } from "./api/diagnostics.ts";
+
+export const UI_ERROR_KINDS = ["uncaught_error", "unhandled_rejection", "request_failed"] as const;
 
 export const UI_ERROR_BODY_LIMIT = 64 * 1024;
 const MAX_REPORTS = 20;

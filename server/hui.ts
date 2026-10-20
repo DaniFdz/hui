@@ -319,13 +319,13 @@ async function handleRequest(
 
   // The Files view: the conversation's working directory, never another path (`routes/files.ts`).
   if (FILES_ROUTE.test(path)) {
-    sendRouteResult(response, path, await fileRoutes.handle(routeRequest(request, response, path)));
+    sendRouteResult(response, path, await fileRoutes.handle(routed));
     return;
   }
 
   // The Diff view: Git comparisons of the conversation's working directory, read-only (`routes/diff.ts`).
   if (DIFF_ROUTE.test(path)) {
-    sendRouteResult(response, path, await diffRoutes.handle(routeRequest(request, response, path)));
+    sendRouteResult(response, path, await diffRoutes.handle(routed));
     return;
   }
 
