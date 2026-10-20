@@ -12,7 +12,7 @@ import type { BotIO } from "../../cli/gateway-client.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { completeLines } from "../test-support/json-lines.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
-import { BotCatalog as BotCatalogSchema, BotResponse, BotsResponse, BotsStreamFrame } from "../api/bots.ts";
+import { BotCatalog as BotCatalogSchema, BotInput, BotResponse, BotsResponse, BotsStreamFrame } from "../api/bots.ts";
 
 // One isolated gateway: its home, HUI's directory, PI's agent directory and a deterministic provider, all temporary.
 const dir = await mkdtemp(join(tmpdir(), "hui-bot-routes-"));
@@ -777,6 +777,7 @@ test("a bot without a soul speaks first on the primary model, writes SOUL.md its
 
 
 test("a bot created without a name is New Bot, asks what to call it, and names itself with set_profile", { timeout: 120_000 }, async () => {
+  expectSchema(BotInput, {});
   const created = await call("/__hui/bots", "POST", {});
   assert.equal(created.status, 201);
   const fresh = botOf(created);

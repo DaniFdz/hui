@@ -534,7 +534,7 @@ function cwdField(raw: unknown): string {
 
 /** Validates `POST /__hui/bots`. Optional text left empty is omitted. The directory (and the worker) are checked by the
  * service. */
-export function normalizeBotInput(value: unknown): BotInput {
+export function normalizeBotInput(value: unknown): BotInput & { name: string } {
   const input = body(value, "A bot");
   // Without a name the bot is "New Bot" until its first conversation names it (set_profile). Where it runs is chosen
   // here, once; a patch refuses it.
@@ -543,7 +543,7 @@ export function normalizeBotInput(value: unknown): BotInput {
   const worker = rawWorker === undefined ? "" : textField(rawWorker, "worker", 100, { line: true });
   // The patch rules, then empty optional text and avatar keys dropped: a new bot has nothing to clear.
   const patch = normalizeBotPatch(fields);
-  const result: BotInput = { name: patch.name! };
+  const result: BotInput & { name: string } = { name: patch.name! };
   if (worker) result.worker = worker;
   if (patch.handle) result.handle = patch.handle;
   if (patch.title) result.title = patch.title;

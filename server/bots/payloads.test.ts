@@ -91,7 +91,7 @@ type LegacyBotRecord = {
   updatedAt: string;
 };
 type LegacyBotInput = {
-  name: string;
+  name?: string;
   handle?: string;
   title?: string;
   description?: string;

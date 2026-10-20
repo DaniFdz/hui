@@ -32,7 +32,7 @@ export type BotFactPatch = { "kind"?: BotFactKind; "text"?: string; "pinned"?: b
 
 export type BotFactsResponse = { "facts": Array<BotFact>; };
 
-export type BotInput = { "name": string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "soul"?: string; "worker"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; };
+export type BotInput = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "soul"?: string; "worker"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; };
 
 export type BotLastMessage = { "role": ("user") | ("assistant"); "text": string; "at": string; };
 

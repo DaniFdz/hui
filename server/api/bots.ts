@@ -113,7 +113,7 @@ const BotInputFields = {
 };
 
 export const BotInput = Type.Object({
-  name: Type.String(),
+  name: Type.Optional(Type.String()),
   ...BotInputFields,
   soul: Type.Optional(Type.String()),
   worker: Type.Optional(Type.String()),
