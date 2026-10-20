@@ -20,7 +20,7 @@ import { dirname, isAbsolute, join, normalize } from "node:path";
 import type { BacklogItem, BacklogItemKind, BacklogView } from "./api/backlog.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
 import { isSessionStage, SESSION_STAGES } from "./sessions/session-stages.ts";
-import { taskSuggestionPrompt, type TaskSuggestionStartMode } from "./agent-tools/task-suggestions.ts";
+import { TaskSuggestionInputError, taskSuggestionPrompt, type TaskSuggestionStartMode, type TaskSuggestionStore } from "./agent-tools/task-suggestions.ts";
 import {
   JIRA_KEY,
   JiraClient,
@@ -39,7 +39,6 @@ import { readRegistry, updateRegistry, type SessionNotFoundError, type SessionRe
 import type { createSessionLifecycle } from "./sessions/lifecycle.ts";
 import type { SessionView } from "./api/sessions.ts";
 import type { createSessionViews } from "./sessions/views.ts";
-import { TaskSuggestionInputError, type TaskSuggestionStore } from "./agent-tools/task-suggestions.ts";
 
 export const BACKLOG_LIMITS = {
   title: 200,

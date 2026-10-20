@@ -15,7 +15,7 @@ import { WORKERS_ROUTE } from "./routes/workers.ts";
 import { BOT_MEMORY_PAGE, BOTS_EVENTS_ROUTE, BOTS_ROUTE } from "./routes/bots.ts";
 import { BOT_TRIGGERS_ROUTE } from "./routes/bot-triggers.ts";
 import { isHookPath } from "./bots/triggers-listener.ts";
-import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, type RouteResult } from "./http/route.ts";
+import { CLIENT_HEADER, responseFailures, routeRequest, sendFile, sendJson, type RouteRequest, type RouteResult } from "./http/route.ts";
 import { HEARTBEAT_MS, watchSessionEvents, writeEvent } from "./http/events.ts";
 import { CALLS_ROUTE } from "./routes/calls.ts";
 import { BOTS_OFF_MESSAGE, type BotsUpdate } from "./bots-format.ts";
@@ -231,20 +231,19 @@ async function refusedWhileBotsOff(response: ServerResponse): Promise<boolean> {
 }
 
 /** `/__hui/calls` and `/__hui/bots/:id/calls…` (`routes/calls.ts`). */
-async function serveCallRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
-  sendRouteResult(response, path, await callRoutes.handle(routeRequest(request, response, path)));
+async function serveCallRoute(response: ServerResponse, routed: RouteRequest): Promise<void> {
+  sendRouteResult(response, routed.path, await callRoutes.handle(routed));
 }
 
 /** `/__hui/bots` and everything under it but the events stream (`routes/bots.ts`). */
-async function serveBotRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
-  const routed = routeRequest(request, response, path);
+async function serveBotRoute(response: ServerResponse, routed: RouteRequest): Promise<void> {
   // Importing and exporting first: `import` is a reserved handle, and `export` no bot route's action.
-  sendRouteResult(response, path, await botTemplateRoutes.handle(routed) ?? await botRoutes.handle(routed));
+  sendRouteResult(response, routed.path, await botTemplateRoutes.handle(routed) ?? await botRoutes.handle(routed));
 }
 
 /** `/__hui/bots/:id/triggers…` (`routes/bot-triggers.ts`). */
-async function serveTriggerRoute(request: Connect.IncomingMessage, response: ServerResponse, path: string): Promise<void> {
-  sendRouteResult(response, path, await triggers.routes.handle(routeRequest(request, response, path)));
+async function serveTriggerRoute(response: ServerResponse, routed: RouteRequest): Promise<void> {
+  sendRouteResult(response, routed.path, await triggers.routes.handle(routed));
 }
 
 async function handleRequest(
@@ -282,7 +281,7 @@ async function handleRequest(
       return;
     }
     if (await refusedWhileBotsOff(response)) return;
-    await serveBotRoute(request, response, path);
+    await serveBotRoute(response, routeRequest(request, response, path));
     return;
   }
 
@@ -360,7 +359,7 @@ async function handleRequest(
   if (answered(response, path, await piRoutes.handle(routed))) return;
 
   if (path === WORKERS_ROUTE || path.startsWith(`${WORKERS_ROUTE}/`)) {
-    const result = await workerRoutes.handle(routeRequest(request, response, path));
+    const result = await workerRoutes.handle(routed);
     if (result) sendRouteResult(response, path, result);
     else sendJson(response, 404, { error: "not found" });
     return;
@@ -374,12 +373,12 @@ async function handleRequest(
 
   // Calls are with bots only, so their status route goes with them.
   if (path === CALLS_ROUTE || BOT_CALLS.test(path)) {
-    if (!await refusedWhileBotsOff(response)) await serveCallRoute(request, response, path);
+    if (!await refusedWhileBotsOff(response)) await serveCallRoute(response, routed);
     return;
   }
 
   if (path === BOTS_ROUTE || path.startsWith(`${BOTS_ROUTE}/`)) {
-    if (!await refusedWhileBotsOff(response)) await (BOT_TRIGGERS_ROUTE.test(path) ? serveTriggerRoute(request, response, path) : serveBotRoute(request, response, path));
+    if (!await refusedWhileBotsOff(response)) await (BOT_TRIGGERS_ROUTE.test(path) ? serveTriggerRoute(response, routed) : serveBotRoute(response, routed));
     return;
   }
 
