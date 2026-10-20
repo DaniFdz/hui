@@ -182,12 +182,14 @@ test("spawned sessions render immediately below their parent at increasing depth
   );
 });
 
-test("only the selected session's tree is expanded, and toggles flip that default", () => {
+test("subagents stay folded until opened, except the path to a selected subagent", () => {
   const source = [session("grandchild", { parentId: "child" }), session("child", { parentId: "parent" }), session("parent"), session("other")];
   const ids = (selectedId: string, toggled: string[] = []) =>
     sessionTreeRows(source, { selectedId, toggled: new Set(toggled) }).map(({ session }) => session.id);
   assert.deepEqual(ids("other"), ["parent", "other"]);
-  assert.deepEqual(ids("parent"), ["parent", "child", "other"]);
+  assert.deepEqual(ids("parent"), ["parent", "other"]);
+  assert.deepEqual(ids("parent", ["parent"]), ["parent", "child", "other"]);
+  assert.deepEqual(ids("child"), ["parent", "child", "other"]);
   assert.deepEqual(ids("grandchild"), ["parent", "child", "grandchild", "other"]);
   assert.deepEqual(ids("grandchild", ["parent"]), ["parent", "other"]);
   assert.deepEqual(ids("other", ["parent"]), ["parent", "child", "other"]);
