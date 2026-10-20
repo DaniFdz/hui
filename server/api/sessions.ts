@@ -185,7 +185,6 @@ export const sessionActionRouteSchemas = [
   { method: "DELETE", path: "/__hui/sessions/:id/compact", response: SessionOk },
   { method: "POST", path: "/__hui/sessions/:id/fork", response: SessionResponse },
   { method: "POST", path: "/__hui/sessions/:id/fast", response: SessionFastResponse },
-  { method: "POST", path: "/__hui/sessions/:id/connect", response: SessionConnectResponse },
 ];
 
 export const routeSchemas = [...sessionRouteSchemas, ...sessionActionRouteSchemas];

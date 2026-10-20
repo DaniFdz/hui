@@ -3323,6 +3323,11 @@ the just-completed turn does not disappear.
 The stream stays open across turns, sends a comment heartbeat so proxies do not
 close it, and ends with `event: closed` when the runtime exits.
 
+Each frame is a `SessionStreamFrame` (`server/api/session-events.ts`, generated browser types in
+`src/api/schema/session-events.ts`): the SSE `event:` name and `data:` payload here, `{ "event", "data" }` as one JSON
+message on the session WebSocket. Runtime events arrive as transmitted (`SessionEvent`): `history` never leaves the
+gateway and `error` carries only its `message`.
+
 Session views can include `"interrupted": true` and `"unread": true`. `"background": true` means a running watcher of that session, or a running
 subagent anywhere below it, is still working; the sidebar shows such a session as running
 even while its own turn is idle. Before submitting a normal

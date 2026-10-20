@@ -11,6 +11,7 @@ import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import { SessionTools, ToolsError, routeSchemas as toolsRouteSchemas } from "../api/tools.ts";
 import { SessionConnectResponse, SessionError, SessionFastResponse, SessionOk, SessionPromptResponse, SessionResponse, sessionActionRouteSchemas } from "../api/sessions.ts";
+import { SessionClearResponse, SessionOpenResponse, routeSchemas as sessionEventRouteSchemas } from "../api/session-events.ts";
 
 import { readHuiSettings } from "../hui-settings.ts";
 import { liveSessions, SessionBusyError } from "../live-sessions.ts";
@@ -32,6 +33,7 @@ import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdate
 
 export const routeSchemas: RouteSchema[] = [
   ...sessionActionRouteSchemas,
+  ...sessionEventRouteSchemas,
   ...toolsRouteSchemas.filter((route) => route.path === "/__hui/sessions/:id/tools"),
 ];
 
@@ -84,11 +86,11 @@ export function createSessionActionRoutes(deps: {
           return reply(SessionError, { error: `unknown session: ${id}` }, 404);
         }
         const openedRecord = await liveSessions.markRead(id);
-        return { status: 200, body: {
+        return reply(SessionOpenResponse, {
           session: toView(openedRecord, liveSessions.status(id)),
           transcript: liveSessions.transcript(id),
           snapshot: liveSessions.snapshot(id),
-        } };
+        });
       }
       if (
         (action[2] === "prompt" || action[2] === "steer" || action[2] === "follow-up") &&
@@ -177,7 +179,7 @@ export function createSessionActionRoutes(deps: {
             return reply(SessionError, { error: `unknown session: ${id}` }, 404);
           }
           const snapshot = await liveSessions.clear(id);
-          return { status: 200, body: { snapshot } };
+          return reply(SessionClearResponse, { snapshot });
         } catch (error) {
           return reply(SessionError, {
             error: error instanceof Error ? error.message : "Could not clear that session.",

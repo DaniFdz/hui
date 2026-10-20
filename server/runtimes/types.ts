@@ -13,74 +13,13 @@
  */
 import type { TranscriptMetrics } from "./transcript-metrics.ts";
 export type { RuntimeInspection, RuntimeTool, ToolCatalogEntry, ToolsCatalog, SessionTools } from "../api/tools.ts";
+export type {
+  CompactionReason, QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage,
+} from "../api/session-events.ts";
+import type { CompactionReason, RuntimeCommand, RuntimeModel, RuntimeQuestion, RuntimeQueue, RuntimeUsage } from "../api/session-events.ts";
 import type { CallRecord } from "../../shared/calls.ts";
 
-export type RuntimeQueue = {
-  steering: readonly string[];
-  followUp: readonly string[];
-  /** HUI-owned follow-ups are kept outside the runtime until they are sent, so
-   * the operator can still edit, remove, and reorder them. */
-  items?: readonly QueuedMessage[];
-};
-
-export type QueuedMessage = {
-  id: string;
-  text: string;
-  mode: "followUp";
-};
-
-export type RuntimeQuestion =
-  | {
-      id: string;
-      method: "select";
-      title: string;
-      /** Shown under the title, as a confirmation's message is (a bot's reason for an access request). */
-      message?: string;
-      options: readonly string[];
-      timeout?: number;
-    }
-  | {
-      id: string;
-      method: "confirm";
-      title: string;
-      message: string;
-      timeout?: number;
-    }
-  | {
-      id: string;
-      method: "input";
-      title: string;
-      placeholder?: string;
-      timeout?: number;
-    }
-  | {
-      id: string;
-      method: "editor";
-      title: string;
-      prefill?: string;
-      timeout?: number;
-    };
-
 export type RuntimeQuestionResponse = { value: string } | { confirmed: boolean };
-
-/** Why PI compacted: `/compact`, its context threshold, or a context overflow it recovers from. */
-export type CompactionReason = "manual" | "threshold" | "overflow";
-
-/** A compaction shown outside the transcript: one in progress, or one that
- * ended without writing a summary (a written one is a `compaction` entry).
- * Without flags it is PI's: the session is busy, input waits for it and Stop
- * cancels it. `blocking: false` marks one the runtime runs beside the
- * conversation, as Durable runs a manual or background compaction: the session
- * stays idle, input is never held and a run carries on meanwhile; a manual one
- * can be cancelled on its own. `background: true` marks the runtime's own,
- * which nothing in HUI cancels. */
-export type RuntimeCompaction = {
-  status: "running" | "failed" | "cancelled";
-  reason: CompactionReason;
-  message?: string;
-  blocking?: false;
-  background?: true;
-};
 
 /** Everything the browser needs to draw a turn, normalised across tools. */
 export type RuntimeEvent =
@@ -107,38 +46,6 @@ export type RuntimeEvent =
   /** `output` holds the last lines the runtime process wrote to stderr before
    * it failed. It feeds diagnostics only and is never sent to a browser. */
   | { type: "error"; message: string; output?: string };
-
-/**
- * A model the runtime can switch to. `id` is what the tool expects back in
- * `setModel`; `name` is only for display.
- */
-export type RuntimeModel = {
-  provider: string;
-  id: string;
-  name: string;
-  contextWindow?: number;
-  maxTokens?: number;
-  /** Reasoning levels PI sends this model, cheapest first; absent: unknown. */
-  thinkingLevels?: readonly string[];
-  /** Its provider has a fast mode HUI can ask for (`setFast`). */
-  fast?: true;
-};
-
-/** A runtime-owned command invoked through an ordinary `/name` prompt. */
-export type RuntimeCommand = {
-  name: string;
-  description: string;
-  source: "extension" | "skill" | "prompt";
-};
-
-export type RuntimeUsage = {
-  contextTokens: number | null;
-  contextWindow: number;
-  percent: number | null;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number | null;
-};
 
 /** A PI entry id, or a user message the browser shows without one yet (the
  * running prompt or one delivered mid-run), counted from the end of the branch. */

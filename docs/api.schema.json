@@ -2473,6 +2473,22 @@
         }
       }
     },
+    "CompactionReason": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "manual"
+        },
+        {
+          "type": "string",
+          "const": "threshold"
+        },
+        {
+          "type": "string",
+          "const": "overflow"
+        }
+      ]
+    },
     "DatadogConnection": {
       "type": "object",
       "required": [
@@ -5403,6 +5419,26 @@
         }
       }
     },
+    "QueuedMessage": {
+      "type": "object",
+      "required": [
+        "id",
+        "text",
+        "mode"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "const": "followUp"
+        }
+      }
+    },
     "ReleaseInfo": {
       "type": "object",
       "required": [
@@ -5419,6 +5455,77 @@
         },
         "url": {
           "type": "string"
+        }
+      }
+    },
+    "RuntimeCommand": {
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "source"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "extension"
+            },
+            {
+              "type": "string",
+              "const": "skill"
+            },
+            {
+              "type": "string",
+              "const": "prompt"
+            }
+          ]
+        }
+      }
+    },
+    "RuntimeCompaction": {
+      "type": "object",
+      "required": [
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "running"
+            },
+            {
+              "type": "string",
+              "const": "failed"
+            },
+            {
+              "type": "string",
+              "const": "cancelled"
+            }
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/CompactionReason"
+        },
+        "message": {
+          "type": "string"
+        },
+        "blocking": {
+          "type": "boolean",
+          "const": false
+        },
+        "background": {
+          "type": "boolean",
+          "const": true
         }
       }
     },
@@ -5485,6 +5592,184 @@
         }
       }
     },
+    "RuntimeModel": {
+      "type": "object",
+      "required": [
+        "provider",
+        "id",
+        "name"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "contextWindow": {
+          "type": "number"
+        },
+        "maxTokens": {
+          "type": "number"
+        },
+        "thinkingLevels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fast": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "RuntimeQuestion": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "method",
+            "title",
+            "options"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string",
+              "const": "select"
+            },
+            "title": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "timeout": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "method",
+            "title",
+            "message"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string",
+              "const": "confirm"
+            },
+            "title": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "method",
+            "title"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string",
+              "const": "input"
+            },
+            "title": {
+              "type": "string"
+            },
+            "placeholder": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "method",
+            "title"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string",
+              "const": "editor"
+            },
+            "title": {
+              "type": "string"
+            },
+            "prefill": {
+              "type": "string"
+            },
+            "timeout": {
+              "type": "number"
+            }
+          }
+        }
+      ]
+    },
+    "RuntimeQueue": {
+      "type": "object",
+      "required": [
+        "steering",
+        "followUp"
+      ],
+      "properties": {
+        "steering": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "followUp": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QueuedMessage"
+          }
+        }
+      }
+    },
     "RuntimeTool": {
       "type": "object",
       "required": [
@@ -5510,6 +5795,58 @@
         "parameters": {}
       }
     },
+    "RuntimeUsage": {
+      "type": "object",
+      "required": [
+        "contextTokens",
+        "contextWindow",
+        "percent",
+        "inputTokens",
+        "outputTokens",
+        "costUsd"
+      ],
+      "properties": {
+        "contextTokens": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contextWindow": {
+          "type": "number"
+        },
+        "percent": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inputTokens": {
+          "type": "number"
+        },
+        "outputTokens": {
+          "type": "number"
+        },
+        "costUsd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "SessionActivity": {
       "type": "object",
       "required": [
@@ -5521,6 +5858,17 @@
           "items": {
             "$ref": "#/$defs/ActivitySession"
           }
+        }
+      }
+    },
+    "SessionClearResponse": {
+      "type": "object",
+      "required": [
+        "snapshot"
+      ],
+      "properties": {
+        "snapshot": {
+          "$ref": "#/$defs/SessionSnapshot"
         }
       }
     },
@@ -5545,6 +5893,298 @@
           "type": "string"
         }
       }
+    },
+    "SessionEvent": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "delta"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "delta": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "delta"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "thinking"
+            },
+            "delta": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "id",
+            "name"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tool_start"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "args": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "id",
+            "name"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tool_update"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "output": {
+              "type": "string"
+            },
+            "details": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "id",
+            "name"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "tool_end"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "output": {
+              "type": "string"
+            },
+            "details": {},
+            "failed": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "queue"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "queue_update"
+            },
+            "queue": {
+              "$ref": "#/$defs/RuntimeQueue"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "question"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "question"
+            },
+            "question": {
+              "$ref": "#/$defs/SessionQuestion"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "message",
+            "level"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "notice"
+            },
+            "message": {
+              "type": "string"
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "info"
+                },
+                {
+                  "type": "string",
+                  "const": "warning"
+                },
+                {
+                  "type": "string",
+                  "const": "error"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "turn_start"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "turn_end"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "compaction_start"
+            },
+            "reason": {
+              "$ref": "#/$defs/CompactionReason"
+            },
+            "blocking": {
+              "type": "boolean",
+              "const": false
+            },
+            "background": {
+              "type": "boolean",
+              "const": true
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "reason",
+            "outcome",
+            "willRetry"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "compaction_end"
+            },
+            "reason": {
+              "$ref": "#/$defs/CompactionReason"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "done"
+                },
+                {
+                  "type": "string",
+                  "const": "failed"
+                },
+                {
+                  "type": "string",
+                  "const": "cancelled"
+                }
+              ]
+            },
+            "willRetry": {
+              "type": "boolean"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "settled"
+            },
+            "historyRefreshed": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "error"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
     },
     "SessionFastResponse": {
       "type": "object",
@@ -5713,6 +6353,28 @@
         }
       }
     },
+    "SessionOpenResponse": {
+      "type": "object",
+      "required": [
+        "session",
+        "transcript",
+        "snapshot"
+      ],
+      "properties": {
+        "session": {
+          "$ref": "#/$defs/SessionView"
+        },
+        "transcript": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranscriptEntry"
+          }
+        },
+        "snapshot": {
+          "$ref": "#/$defs/SessionSnapshot"
+        }
+      }
+    },
     "SessionPromptResponse": {
       "type": "object",
       "required": [
@@ -5757,6 +6419,64 @@
         }
       }
     },
+    "SessionQuestion": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RuntimeQuestion"
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "method",
+            "title",
+            "message"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string",
+              "const": "secret"
+            },
+            "title": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "method",
+            "title",
+            "questions"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string",
+              "const": "questionnaire"
+            },
+            "title": {
+              "type": "string"
+            },
+            "questions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/QuestionnaireQuestion"
+              }
+            }
+          }
+        }
+      ]
+    },
     "SessionResponse": {
       "type": "object",
       "required": [
@@ -5765,6 +6485,182 @@
       "properties": {
         "session": {
           "$ref": "#/$defs/SessionView"
+        }
+      }
+    },
+    "SessionSnapshot": {
+      "type": "object",
+      "required": [
+        "transcript",
+        "status",
+        "queue",
+        "questions",
+        "subagents"
+      ],
+      "properties": {
+        "transcript": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranscriptEntry"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/SessionStatus"
+        },
+        "model": {
+          "$ref": "#/$defs/RuntimeModel"
+        },
+        "usage": {
+          "$ref": "#/$defs/RuntimeUsage"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "fast": {
+          "type": "boolean"
+        },
+        "queue": {
+          "$ref": "#/$defs/RuntimeQueue"
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionQuestion"
+          }
+        },
+        "subagents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SubagentTaskView"
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title",
+              "problem",
+              "fix",
+              "cwd",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "problem": {
+                "type": "string"
+              },
+              "fix": {
+                "type": "string"
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "worker": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "watchers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "purpose",
+              "target",
+              "outcome",
+              "command",
+              "logPath",
+              "state",
+              "pid",
+              "startedAt",
+              "lastLine"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              },
+              "outcome": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              },
+              "logPath": {
+                "type": "string"
+              },
+              "state": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "running"
+                  },
+                  {
+                    "type": "string",
+                    "const": "done"
+                  },
+                  {
+                    "type": "string",
+                    "const": "failed"
+                  },
+                  {
+                    "type": "string",
+                    "const": "stopped"
+                  },
+                  {
+                    "type": "string",
+                    "const": "dead"
+                  }
+                ]
+              },
+              "pid": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "exitCode": {
+                "type": "number"
+              },
+              "startedAt": {
+                "type": "string"
+              },
+              "endedAt": {
+                "type": "string"
+              },
+              "lastLine": {
+                "type": "string"
+              },
+              "keepRunning": {
+                "type": "boolean",
+                "const": true
+              }
+            }
+          }
+        },
+        "compaction": {
+          "$ref": "#/$defs/RuntimeCompaction"
         }
       }
     },
@@ -5844,6 +6740,166 @@
         {
           "type": "string",
           "const": "disconnected"
+        }
+      ]
+    },
+    "SessionStreamFrame": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "snapshot"
+            },
+            "data": {
+              "$ref": "#/$defs/SessionSnapshot"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "transcript"
+            },
+            "data": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TranscriptEntry"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "status"
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "status"
+              ],
+              "properties": {
+                "status": {
+                  "$ref": "#/$defs/SessionStatus"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "event"
+            },
+            "data": {
+              "$ref": "#/$defs/SessionEvent"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "model"
+            },
+            "data": {
+              "$ref": "#/$defs/RuntimeModel"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "thinking_level"
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "level"
+              ],
+              "properties": {
+                "level": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "fast"
+            },
+            "data": {
+              "type": "object",
+              "required": [
+                "fast"
+              ],
+              "properties": {
+                "fast": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "closed"
+            },
+            "data": {
+              "type": "object",
+              "properties": {}
+            }
+          }
         }
       ]
     },
@@ -6532,6 +7588,62 @@
         }
       ]
     },
+    "SubagentTaskView": {
+      "type": "object",
+      "required": [
+        "taskId",
+        "sessionId",
+        "parentSessionId",
+        "title",
+        "task",
+        "status",
+        "startedAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string"
+        },
+        "sessionId": {
+          "type": "string"
+        },
+        "parentSessionId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SubagentStatus"
+            },
+            {
+              "type": "string",
+              "const": "queued"
+            }
+          ]
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "endedAt": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
     "TerminalConnectResponse": {
       "type": "object",
       "required": [
@@ -6964,6 +8076,253 @@
           "type": "string"
         }
       }
+    },
+    "TranscriptAttachment": {
+      "type": "object",
+      "required": [
+        "name",
+        "kind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "image"
+            },
+            {
+              "type": "string",
+              "const": "file"
+            }
+          ]
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    "TranscriptEntry": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "role",
+            "text"
+          ],
+          "properties": {
+            "metrics": {
+              "$ref": "#/$defs/TranscriptMetrics"
+            },
+            "kind": {
+              "type": "string",
+              "const": "message"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "user"
+                },
+                {
+                  "type": "string",
+                  "const": "assistant"
+                }
+              ]
+            },
+            "text": {
+              "type": "string"
+            },
+            "entryId": {
+              "type": "string"
+            },
+            "attachments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/TranscriptAttachment"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "call",
+            "startedAt",
+            "endedAt",
+            "lines"
+          ],
+          "properties": {
+            "metrics": {
+              "$ref": "#/$defs/TranscriptMetrics"
+            },
+            "kind": {
+              "type": "string",
+              "const": "call"
+            },
+            "call": {
+              "type": "string"
+            },
+            "bot": {
+              "type": "string"
+            },
+            "startedAt": {
+              "type": "number"
+            },
+            "endedAt": {
+              "type": "number"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "summaryUnavailable": {
+              "type": "boolean",
+              "const": true
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "role",
+                  "text",
+                  "at"
+                ],
+                "properties": {
+                  "role": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "user"
+                      },
+                      {
+                        "type": "string",
+                        "const": "assistant"
+                      },
+                      {
+                        "type": "string",
+                        "const": "helper"
+                      },
+                      {
+                        "type": "string",
+                        "const": "handoff"
+                      }
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "at": {
+                    "type": "number"
+                  },
+                  "request": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "summary",
+            "tokensBefore"
+          ],
+          "properties": {
+            "metrics": {
+              "$ref": "#/$defs/TranscriptMetrics"
+            },
+            "kind": {
+              "type": "string",
+              "const": "compaction"
+            },
+            "summary": {
+              "type": "string"
+            },
+            "tokensBefore": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "text"
+          ],
+          "properties": {
+            "metrics": {
+              "$ref": "#/$defs/TranscriptMetrics"
+            },
+            "kind": {
+              "type": "string",
+              "const": "thinking"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "id",
+            "name"
+          ],
+          "properties": {
+            "metrics": {
+              "$ref": "#/$defs/TranscriptMetrics"
+            },
+            "kind": {
+              "type": "string",
+              "const": "tool"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "args": {},
+            "output": {
+              "type": "string"
+            },
+            "details": {},
+            "failed": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "kind",
+            "message"
+          ],
+          "properties": {
+            "metrics": {
+              "$ref": "#/$defs/TranscriptMetrics"
+            },
+            "kind": {
+              "type": "string",
+              "const": "error"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        }
+      ]
     },
     "TranscriptMetrics": {
       "type": "object",
@@ -7727,6 +9086,25 @@
       "SubagentStatus",
       "TranscriptMetrics",
       "WorktreeProgress"
+    ],
+    "session-events": [
+      "CompactionReason",
+      "QueuedMessage",
+      "RuntimeCommand",
+      "RuntimeCompaction",
+      "RuntimeModel",
+      "RuntimeQuestion",
+      "RuntimeQueue",
+      "RuntimeUsage",
+      "SessionClearResponse",
+      "SessionEvent",
+      "SessionOpenResponse",
+      "SessionQuestion",
+      "SessionSnapshot",
+      "SessionStreamFrame",
+      "SubagentTaskView",
+      "TranscriptAttachment",
+      "TranscriptEntry"
     ],
     "automation": [
       "AutomationCancelResponse",
@@ -8510,6 +9888,13 @@
       }
     },
     {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/clear",
+      "response": {
+        "$ref": "#/$defs/SessionClearResponse"
+      }
+    },
+    {
       "method": "DELETE",
       "path": "/__hui/sessions/:id/compact",
       "response": {
@@ -8528,6 +9913,9 @@
       "path": "/__hui/sessions/:id/connect",
       "response": {
         "$ref": "#/$defs/SessionConnectResponse"
+      },
+      "events": {
+        "$ref": "#/$defs/SessionStreamFrame"
       }
     },
     {
@@ -8556,6 +9944,16 @@
       "path": "/__hui/sessions/:id/diff/file",
       "response": {
         "$ref": "#/$defs/DiffFileChanges"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/sessions/:id/events",
+      "response": {
+        "$ref": "#/$defs/SessionStreamFrame"
+      },
+      "events": {
+        "$ref": "#/$defs/SessionStreamFrame"
       }
     },
     {
@@ -8679,6 +10077,13 @@
       },
       "response": {
         "$ref": "#/$defs/JiraLinkResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/open",
+      "response": {
+        "$ref": "#/$defs/SessionOpenResponse"
       }
     },
     {

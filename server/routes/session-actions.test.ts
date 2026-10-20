@@ -10,6 +10,7 @@ import { afterAll, beforeAll, test } from "vitest";
 import { waitFor } from "../test-support/wait-for.ts";
 import { RuntimeInspection, SessionTools } from "../api/tools.ts";
 import { expectSchema } from "../test-support/api-schema.ts";
+import { SessionClearResponse, SessionOpenResponse, SessionStreamFrame } from "../api/session-events.ts";
 
 // One isolated gateway on Pi Durable: its home, HUI's directory, PI's agent directory and a deterministic provider,
 // all temporary.
@@ -151,4 +152,48 @@ test("writing to an archived conversation restores it", { timeout: 60_000 }, asy
   assert.deepEqual(sent, { status: 200, body: { ok: true } });
   assert.equal((await readRegistry()).find((record) => record.id === id)?.archived, undefined);
   await answered(id, "BACK_AGAIN");
+});
+
+test("a session's open, event stream and clear payloads match their published schemas", { timeout: 60_000 }, async () => {
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Streamed" });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const id = (created.body["session"] as { id: string }).id;
+  const opened = await call(`/__hui/sessions/${id}/open`, "POST", {});
+  assert.equal(opened.status, 200);
+  expectSchema(SessionOpenResponse, opened.body);
+  await liveSessions.booted(id);
+  await waitFor("the session's runtime", () => liveSessions.hasRuntime(id), { state: () => liveSessions.status(id) });
+
+  const stream = new AbortController();
+  const response = await fetch(`${origin}/__hui/sessions/${id}/events`, { headers: { "x-hui": "1" }, signal: stream.signal });
+  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+  const frames: unknown[] = [];
+  let buffered = "";
+  const settled = () => frames.some((frame) => (frame as { data: { type?: string } }).data.type === "settled");
+  const reading = (async () => {
+    while (!settled()) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffered += value;
+      for (let end = buffered.indexOf("\n\n"); end >= 0; end = buffered.indexOf("\n\n")) {
+        const block = buffered.slice(0, end);
+        buffered = buffered.slice(end + 2);
+        const event = block.match(/^event: (.+)$/mu)?.[1];
+        const data = block.match(/^data: (.+)$/mu)?.[1];
+        if (event && data) frames.push({ event, data: JSON.parse(data) });
+      }
+    }
+  })();
+  await waitFor("the first snapshot", () => frames.length > 0, { state: () => frames });
+  assert.deepEqual((await call(`/__hui/sessions/${id}/prompt`, "POST", { text: "STREAMED_ONE" })).status, 200);
+  await reading;
+  stream.abort();
+  const kinds = new Set(frames.map((frame) => (frame as { event: string }).event));
+  assert.ok(["snapshot", "status", "event"].every((kind) => kinds.has(kind)), [...kinds].join());
+  for (const frame of frames) expectSchema(SessionStreamFrame, frame);
+  await answered(id, "STREAMED_ONE");
+
+  const cleared = await call(`/__hui/sessions/${id}/clear`, "POST", {});
+  assert.equal(cleared.status, 200, JSON.stringify(cleared.body));
+  expectSchema(SessionClearResponse, cleared.body);
 });

@@ -4,17 +4,21 @@
  * the registry and the contract is fixed in `docs/api.md`; this module holds no session state of its own.
  */
 import type {
-  QuestionnaireQuestion, SessionList, SessionListUpdate, SessionStage, SessionStatus, SessionView, SubagentStatus, TranscriptMetrics, WorktreeProgress,
+  QuestionnaireQuestion, SessionList, SessionListUpdate, SessionStage, SessionStatus, SessionView, TranscriptMetrics, WorktreeProgress,
 } from "./schema/sessions.ts";
 
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
 export type QuestionnaireReply = { selected: readonly string[]; custom?: string };
 import type { CallRecord } from "../../shared/calls.ts";
+import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SubagentTaskView } from "./schema/session-events.ts";
 import type { TaskSuggestion } from "../../shared/task-suggestions.ts";
 import type { Watcher } from "../../shared/watchers.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 
 export type { SessionGroup, SessionList, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
+export type {
+  QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SubagentTaskView,
+} from "./schema/session-events.ts";
 
 const SESSIONS_URL = "/__hui/sessions";
 const CREATE_SESSION_TIMEOUT_MS = 120_000;
@@ -38,21 +42,6 @@ export type GitCheckoutInfo = {
   defaultBranch: string;
   branches: readonly string[];
   branchesUnavailable?: boolean;
-};
-
-export type SubagentTaskView = {
-  taskId: string;
-  sessionId: string;
-  parentSessionId: string;
-  title: string;
-  task: string;
-  /** `queued`: a collected child waiting for a free slot. */
-  status: SubagentStatus | "queued";
-  startedAt: string;
-  updatedAt: string;
-  endedAt?: string;
-  summary?: string;
-  error?: string;
 };
 
 /** `url` is an opaque gateway route (or a local data URL while pending) for images. */
@@ -85,31 +74,6 @@ export type TranscriptEntry = { metrics?: TranscriptMetrics } & (
       status?: "running" | "succeeded" | "failed";
     }
   | { kind: "error"; id?: string; message: string });
-
-/** A model the runtime offers. Mirrors the server's `RuntimeModel`. */
-export type RuntimeModel = {
-  provider: string;
-  id: string;
-  name: string;
-  /** Reasoning levels PI sends it, cheapest first; absent: unknown. */
-  thinkingLevels?: readonly string[];
-  /** Its provider has a fast mode. */
-  fast?: true;
-};
-/** Runtime-owned slash commands; mirrors the server's RuntimeCommand. */
-export type RuntimeCommand = {
-  name: string;
-  description: string;
-  source: "extension" | "skill" | "prompt";
-};
-export type RuntimeUsage = {
-  contextTokens: number | null;
-  contextWindow: number;
-  percent: number | null;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number | null;
-};
 
 /**
  * An attachment held in the browser before sending. `dataBase64` is the raw
@@ -173,12 +137,6 @@ export type RuntimeQuestion = {
  * answers (index-aligned with its questions) or a cancel. */
 export type QuestionResponse = { value?: string; confirmed?: boolean; cancelled?: boolean; answers?: readonly QuestionnaireReply[] };
 
-export type QueuedMessage = { id: string; text: string; mode: "followUp" };
-export type QueueSnapshot = {
-  steering: readonly string[];
-  followUp: readonly string[];
-  items?: readonly QueuedMessage[];
-};
 export type SessionSnapshot = {
   transcript: TranscriptEntry[];
   status: SessionStatus;
@@ -202,14 +160,6 @@ export type SessionSnapshot = {
 /** `blocking: false`: the runtime compacts beside the conversation (Durable), so
  * a run carries on and its working indicator stays. `background: true`: the
  * session is idle meanwhile. Without flags the compaction blocks (PI). */
-export type RuntimeCompaction = {
-  status: "running" | "failed" | "cancelled";
-  reason: "manual" | "threshold" | "overflow";
-  message?: string;
-  blocking?: false;
-  background?: true;
-};
-
 /** `revision` orders this full list against the status stream's changes. */
 
 function sessionList(body: Partial<SessionList>): SessionList {

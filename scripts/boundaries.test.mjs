@@ -321,7 +321,6 @@ const ALLOWED = [
   "server/runtimes/widget-code.test.ts -> shared/widgets.ts (R3)",
   "server/services.ts -> shared/bots.ts (R3)",
   "server/services.ts -> shared/task-suggestions.ts (R3)",
-  "server/session-transport.test.ts -> src/api/sessions.ts (R2)",
   "server/sessions/lifecycle.ts -> shared/branch-names.ts (R3)",
   "server/sessions/lifecycle.ts -> shared/thinking.ts (R3)",
   "server/sessions/views.ts -> shared/progress-card.ts (R3)",
