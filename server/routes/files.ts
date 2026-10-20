@@ -3,7 +3,7 @@
  * registry, refuses conversations on a remote worker (their files are on that machine, not the gateway's disk), and
  * maps requests onto `FilesRoot` (`../files.ts`). `hui.ts` applies the `x-hui` guard before dispatching here.
  */
-import { displayPath } from "../working-directories.ts";
+import { displayPath } from "../git/working-directories.ts";
 import { FilesError, FilesRoot, parseIfMatch, MAX_EDITABLE_FILE_BYTES, MAX_RAW_FILE_BYTES, MAX_RESOLVE_PATH_LENGTH, MAX_RESOLVE_PATHS } from "../files.ts";
 import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import { FileDeleted, FileEntryResponse, FileError, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "../api/files.ts";

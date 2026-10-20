@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { DIFF_COMPARISONS, isDiffComparison } from "./git-diff.ts";
+import { DIFF_COMPARISONS, isDiffComparison } from "./diff.ts";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readdir, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -20,7 +20,7 @@ import {
   resolveBranchName,
   splitPatch,
   unquoteGitPath,
-} from "./git-diff.ts";
+} from "./diff.ts";
 
 /* ── fixture repositories ── */
 
@@ -242,7 +242,7 @@ test("a stacked branch finds its parent and offers every comparison", async () =
 
 test("without %(ahead-behind) (Git before 2.41) the distances are counted one by one", async () => {
   const root = await stack();
-  const { runGit } = await import("./git-diff.ts");
+  const { runGit } = await import("./diff.ts");
   const oldGit: Parameters<typeof diffInfo>[2] = async (cwd, args, options) => args.some((arg) => arg.includes("ahead-behind"))
     ? { code: 128, stdout: "", stderr: "fatal: unknown field name: ahead-behind:HEAD", truncated: false }
     : runGit(cwd, args, options);
@@ -330,7 +330,7 @@ test("a detached HEAD has no previous branch; an empty repository only uncommitt
 test("a folder outside any repository says so", async () => {
   const folder = await mkdtemp(join(tmpdir(), "hui-not-a-repo-"));
   try {
-    const info = await diffInfo(folder, "~/plain", (cwd, args, options) => import("./git-diff.ts").then(({ runGit }) => runGit(cwd, args, { ...options, env: { ...options?.env, GIT_CEILING_DIRECTORIES: tmpdir() } })));
+    const info = await diffInfo(folder, "~/plain", (cwd, args, options) => import("./diff.ts").then(({ runGit }) => runGit(cwd, args, { ...options, env: { ...options?.env, GIT_CEILING_DIRECTORIES: tmpdir() } })));
     assert.deepEqual(info, { available: false, reason: "The conversation's working directory is not inside a Git repository.", code: "not-repo" });
   } finally {
     await rm(folder, { recursive: true, force: true });
@@ -371,7 +371,7 @@ test("CRLF lines, a missing final newline and binary files come through", async 
 });
 
 test("diff comparison guards match the portable fixtures", async () => {
-  const fixture = JSON.parse(await readFile(new URL("./git-diff.fixture.json", import.meta.url), "utf8"));
+  const fixture = JSON.parse(await readFile(new URL("./diff.fixture.json", import.meta.url), "utf8"));
   assert.deepEqual(DIFF_COMPARISONS, fixture.comparisons);
   for (const item of fixture.cases) assert.equal(isDiffComparison(item.input), item.expected);
 });

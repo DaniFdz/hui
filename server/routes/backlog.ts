@@ -36,7 +36,7 @@ import { CONFIG_DIR } from "../paths.ts";
 import { runPiUtilityPrompt } from "../runtimes/pi.ts";
 import { SessionRegistryError } from "../sessions.ts";
 import { TaskSuggestionInputError, TaskSuggestionNotFoundError } from "../task-suggestions.ts";
-import { existingDirectory } from "../working-directories.ts";
+import { existingDirectory } from "../git/working-directories.ts";
 
 const BACKLOG_ROUTE = "/__hui/backlog";
 const BACKLOG_ITEM = /^\/__hui\/backlog\/items\/([^/]+?)(?:\/(start|branch-name|jira|jira\/draft|jira\/link))?$/;

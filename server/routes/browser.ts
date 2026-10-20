@@ -7,7 +7,7 @@
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { BrowserError, BrowserPreview, BrowserStatus, BrowserViewConnection } from "../api/browser.ts";
 export { routeSchemas } from "../api/browser.ts";
-import { browserViewTicket } from "../browser-transport.ts";
+import { browserViewTicket } from "../browser/transport.ts";
 import { BrowserToolError, type ManagedBrowser } from "../browser/manager.ts";
 import type { SessionRecord } from "../sessions.ts";
 

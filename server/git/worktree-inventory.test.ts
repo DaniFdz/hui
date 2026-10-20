@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "vitest";
 
-import { isMergedCleanupCandidate, riskAcknowledged } from "./git/worktrees.ts";
+import { isMergedCleanupCandidate, riskAcknowledged } from "./worktrees.ts";
 
-import type { SessionRecord } from "./sessions.ts";
+import type { SessionRecord } from "../sessions.ts";
 import {
   parseGhPullRequestList,
   parseWorktreeList,

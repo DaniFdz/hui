@@ -8,7 +8,7 @@
  * refreshes when the conversation's agent turn ends and when it becomes visible again. On narrow screens the list and
  * the diff take turns, with Back.
  *
- * It owns presentation and per-view state (`lib/diff/view-state.ts`); the gateway runs Git (`server/git-diff.ts`). No
+ * It owns presentation and per-view state (`lib/diff/view-state.ts`); the gateway runs Git (`server/git/diff.ts`). No
  * decorators: the Work pane's view registry, which imports this lazily, also loads in Node tests.
  */
 import { html, nothing, svg, type PropertyValues, type SVGTemplateResult, type TemplateResult } from "lit";

@@ -51,7 +51,7 @@ import { SessionBusyError, type HuiQuestion, type LiveSessions } from "./live-se
 import type { PromptAttachment, RuntimePromptOptions, RuntimePromptResult, RuntimeQuestion, TranscriptEntry } from "./runtimes/types.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { rootSessionId } from "./sessions/session-tree.ts";
-import { resolveWorkingDirectory } from "./working-directories.ts";
+import { resolveWorkingDirectory } from "./git/working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 
 /** `message_bot` messages one bot may send per hour: a backstop behind the hop guard. */

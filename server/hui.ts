@@ -23,7 +23,7 @@ import { BOTS_OFF_MESSAGE, type BotsUpdate } from "./bots-format.ts";
 import { botsOn } from "./hui-settings.ts";
 import { attachVscodeTransport, isVscodeProxyPath, proxyVscodeHttp, serveVscodeEnter } from "./vscode/proxy.ts";
 import { VSCODE_ENTER_PATH } from "./vscode/contract.ts";
-import { attachBrowserTransport } from "./browser-transport.ts";
+import { attachBrowserTransport } from "./browser/transport.ts";
 import type { EventEmitter } from "node:events";
 import { liveSessions } from "./live-sessions.ts";
 import { diagnosticPath, recordDiagnosticEvent } from "./observability.ts";

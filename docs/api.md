@@ -4108,7 +4108,7 @@ refreshes on it.
 The Diff view reads the conversation's Git checkout through these routes, with
 the same guard, session lookup and root as the Files view (the recorded `cwd`,
 opened through `realpath`; a remote worker's conversation answers 409 `code:
-"remote"`). Shapes live in `server/api/diff.ts` and the generated `src/api/schema/diff.ts`; Git runs in `server/git-diff.ts`.
+"remote"`). Shapes live in `server/api/diff.ts` and the generated `src/api/schema/diff.ts`; Git runs in `server/git/diff.ts`.
 
 ### `GET /__hui/sessions/:id/diff`
 

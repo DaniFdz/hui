@@ -33,7 +33,7 @@ import { BotConflictError, BotInputError, BotNotFoundError, accessField, normali
 import { createDurableBots, type DurableBotsDeps } from "../runtimes/durable-bot-access.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId } from "../runtimes/durable.ts";
-import { resolveWorkingDirectory } from "../working-directories.ts";
+import { resolveWorkingDirectory } from "../git/working-directories.ts";
 import { isRecord, type Frame, type Peer } from "./protocol.ts";
 
 /** What `hello` lists when the host can run bots, so a gateway tells an older host from this one. */

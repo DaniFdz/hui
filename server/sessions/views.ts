@@ -3,7 +3,7 @@
  * the grouped session list (with the stages pull requests prove persisted), and worktree sessions still pending
  * creation. `createSessionViews(deps)` takes the gateway services a view reads.
  */
-import { displayPath } from "../working-directories.ts";
+import { displayPath } from "../git/working-directories.ts";
 import { liveSessions, type SessionStatusUpdate } from "../live-sessions.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { pullRequestsFromTranscript, type PullRequestStatuses } from "../integrations/pull-requests.ts";

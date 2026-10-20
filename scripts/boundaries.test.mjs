@@ -188,7 +188,7 @@ test.each([
   ["src/api/session-list.fixture.json", "server/session-list.fixture.json"],
   ["src/api/files.fixture.json", "server/files.fixture.json"],
   ["src/api/browser.fixture.json", "server/browser/transport.fixture.json"],
-  ["src/lib/diff/view-state.fixture.json", "server/git-diff.fixture.json"],
+  ["src/lib/diff/view-state.fixture.json", "server/git/diff.fixture.json"],
   ["src/lib/bots/facts.fixture.json", "server/bot-facts.fixture.json"],
   ["src/lib/bots/triggers.fixture.json", "server/bot-triggers-format.fixture.json"],
   ["src/api/backlog.fixture.json", "server/backlog.fixture.json"],

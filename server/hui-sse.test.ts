@@ -52,7 +52,7 @@ const {
 });
 const { LiveSessions } = await import("./live-sessions.ts");
 const { SessionRegistryError } = await import("./sessions.ts");
-const { runGit } = await import("./worktrees.ts");
+const { runGit } = await import("./git/worktrees.ts");
 type SessionStreamMessage = import("./live-sessions.ts").SessionStreamMessage;
 type SessionStatusUpdate = import("./live-sessions.ts").SessionStatusUpdate;
 type SessionSnapshot = import("./live-sessions.ts").SessionSnapshot;

@@ -658,7 +658,7 @@ Follow-up 2026-09-28: while the agent browses, the chat shows a live preview of
 its page under the latest browser activity (following the agent's tab, marking
 clicks and naming each action), and a browser panel beside the chat opens from
 it; both stream from a CDP screencast only while watched. Proof:
-`server/browser/manager.test.ts`, `server/browser-transport.test.ts`,
+`server/browser/manager.test.ts`, `server/browser/transport.test.ts`,
 `src/lib/browser-view.test.ts`, `src/lib/browser-view-controller.test.ts`,
 `src/views/chat/projection.test.ts`, `src/lib/session/multiplexer.test.ts` and
 the live view section of `e2e/browser-tool.browser.md`.

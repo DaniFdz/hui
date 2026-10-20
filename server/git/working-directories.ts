@@ -9,8 +9,8 @@ import { isAbsolute, join, normalize, resolve, sep } from "node:path";
 
 const MAX_SUGGESTIONS = 40;
 
-import type { LocalPathSuggestion } from "./api/local-paths.ts";
-export type { LocalPathSuggestion } from "./api/local-paths.ts";
+import type { LocalPathSuggestion } from "../api/local-paths.ts";
+export type { LocalPathSuggestion } from "../api/local-paths.ts";
 
 /** Resolve shell-like input without leaking the server process cwd into UX. */
 export function resolveWorkingDirectory(input: string, home = homedir()): string {

@@ -36,7 +36,7 @@ import { durableConversationId, startDurable } from "../runtimes/durable.ts";
 import { piRuntime } from "../runtimes/pi.ts";
 import type { RuntimeSession, TranscriptEntry } from "../runtimes/types.ts";
 import { installBrokeredCredentials, OfflineError, setCredentialTransport, setSecretEnv } from "./credentials.ts";
-import { completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
+import { completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
 import { attachPeer, isRecord, PROTOCOL_VERSION, type HostInfo, type Peer, type RemoteLaunch, type RemoteState } from "./protocol.ts";
 import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE, hostBots } from "./host-bots.ts";
 import { GATEWAY_ONLY_TOOLS } from "./gateway-tools.ts";

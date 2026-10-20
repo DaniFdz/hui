@@ -26,7 +26,7 @@ import { isRecord, oneLine } from "./bot-templates/common.ts";
 import { NEEDS_MERGE_PROMPT, parseNeeds, parseReviewAnswer, reviewChunks, reviewPrompt, reviewSystemPrompt, type ReviewAnswer, type ReviewedChange } from "./bot-templates/review.ts";
 import { writeZip } from "./bot-templates/zip.ts";
 import type { CallCompletion } from "./call-helper.ts";
-import { runCommand } from "./worktree-inventory.ts";
+import { runCommand } from "./git/worktree-inventory.ts";
 
 export type BotExportDeps = {
   bots: Pick<BotService, "get" | "list" | "soul">;

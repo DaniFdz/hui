@@ -5,9 +5,9 @@
  * comparison against its fixed list, paths with the Files path rules, and a picked branch against the branches the
  * gateway itself offers. `hui.ts` applies the `x-hui` guard before dispatching here.
  */
-import { displayPath } from "../working-directories.ts";
+import { displayPath } from "../git/working-directories.ts";
 import { FilesError, FilesRoot } from "../files.ts";
-import { diffChanges, diffFile, diffInfo, DiffError, runGit, isDiffComparison, type DiffRequest, type GitRunner } from "../git-diff.ts";
+import { diffChanges, diffFile, diffInfo, DiffError, runGit, isDiffComparison, type DiffRequest, type GitRunner } from "../git/diff.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { DiffChanges, DiffErrorResponse, DiffFileChanges, DiffInfo } from "../api/diff.ts";
 export { routeSchemas } from "../api/diff.ts";

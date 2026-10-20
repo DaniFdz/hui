@@ -17,7 +17,7 @@ import { textOf } from "./runtimes/durable.ts";
 import { WORKTREES_DIR } from "./paths.ts";
 import { operatorText } from "./session-digest.ts";
 import type { SessionRecord } from "./sessions.ts";
-import { runCommand } from "./worktree-inventory.ts";
+import { runCommand } from "./git/worktree-inventory.ts";
 
 const ACTIVITY_GAP_MS = 30 * 60_000;
 const MAX_RANGE_MS = 31 * 86_400_000;

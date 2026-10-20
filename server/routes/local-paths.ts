@@ -7,9 +7,9 @@
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { DirectoriesResponse, GitCheckoutResponse, LocalPathError, LocalPathsResponse } from "../api/local-paths.ts";
 export { routeSchemas } from "../api/local-paths.ts";
-import { completeLocalPaths, completeWorkingDirectories, resolveWorkingDirectory } from "../working-directories.ts";
+import { completeLocalPaths, completeWorkingDirectories, resolveWorkingDirectory } from "../git/working-directories.ts";
 import type { WorkerService } from "../workers.ts";
-import { inspectGitCheckout } from "../worktrees.ts";
+import { inspectGitCheckout } from "../git/worktrees.ts";
 
 const DIRECTORIES_ROUTE = "/__hui/directories";
 const LOCAL_PATHS_ROUTE = "/__hui/local-paths";
