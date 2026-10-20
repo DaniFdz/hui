@@ -543,8 +543,9 @@ export type SessionStatusesHandlers = {
   /** First frame of every (re)connect. */
   onSnapshot: (statuses: readonly SessionStatusUpdate[]) => void;
   onStatus: (update: SessionStatusUpdate) => void;
-  /** The gateway's shared session list: full on connect, then only changes. */
+  /** The gateway's shared session list: full on connect unless it is still `heldRevision`, then only changes. */
   onSessions?: (update: SessionListUpdate) => void;
+  heldRevision?: () => number;
 };
 
 /** Keeps one lightweight stream open for lifecycle updates from every live
@@ -699,7 +700,8 @@ async function connectStatusesOnce(
 ): Promise<StreamOutcome> {
   let response: Response;
   try {
-    response = await fetcher(SESSION_STATUSES_URL, {
+    const held = handlers.heldRevision?.();
+    response = await fetcher(held ? `${SESSION_STATUSES_URL}?revision=${held}` : SESSION_STATUSES_URL, {
       headers: { ...CLIENT_HEADERS, accept: "text/event-stream" },
       cache: "no-store",
       signal,

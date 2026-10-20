@@ -61,7 +61,7 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
 
   return {
     refresh,
-    subscribe(listener: (update: SessionListUpdate<S>) => void): () => void {
+    subscribe(listener: (update: SessionListUpdate<S>) => void, heldRevision?: number): () => void {
       let joined = false;
       const relay = (update: SessionListUpdate<S>) => { if (joined) listener(update); };
       listeners.add(relay);
@@ -73,7 +73,7 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
       void reading.then(() => {
         if (!listeners.has(relay)) return;
         joined = true;
-        if (loaded) listener({
+        if (loaded && heldRevision !== current.revision) listener({
           revision: current.revision,
           groups: sessionListLayout(current.groups),
           upserts: current.groups.flatMap((group) => group.sessions),

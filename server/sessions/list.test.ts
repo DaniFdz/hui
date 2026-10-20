@@ -28,8 +28,18 @@ test("screens share one list: a full list on join, then only what changed, as th
   await hub.refresh();
   const last = golden.frames.at(-1)!;
   assert.deepEqual(mac, [{ revision: first + last.revision, groups: last.groups, upserts: golden.lists.at(-1)!.flatMap((group) => group.sessions) }]);
+  // A screen that already holds the current list, from a GET or before a reconnect, is not sent it again.
+  const reconnected: Frame[] = [];
+  const stopReconnected = hub.subscribe((update) => reconnected.push(update), first + last.revision);
+  const stale: Frame[] = [];
+  const stopStale = hub.subscribe((update) => stale.push(update), first + last.revision - 1);
+  await hub.refresh();
+  assert.deepEqual(reconnected, []);
+  assert.deepEqual(stale.map((frame) => frame.revision), [first + last.revision]);
   stopPhone();
   stopMac();
+  stopReconnected();
+  stopStale();
 });
 
 test("a screen that joins after every screen left gets the list as it is now", async () => {

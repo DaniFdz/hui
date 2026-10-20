@@ -2997,7 +2997,11 @@ itself, such as a new session's generated name.
 It also carries the shared session list. After the status snapshot, the
 first `sessions` frame is the complete list as it is when the client joins
 (read again if no client was listening); later frames carry only what
-changed. `groups` (order, membership and group defaults as ordered `ids`) is
+changed. `?revision=<n>` names the list the client already holds, from
+`GET /__hui/sessions` or an earlier connection: while that is still the current
+revision, the complete list is not sent. The browser opens this stream after
+its first `GET /__hui/sessions` and reconnects with the revision it holds.
+`groups` (order, membership and group defaults as ordered `ids`) is
 present only when it changed, and `upserts` holds each session whose view
 changed. While any client listens, the gateway recomputes the list every
 second.
