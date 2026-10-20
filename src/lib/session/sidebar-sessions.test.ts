@@ -103,7 +103,8 @@ test("Swarm helpers have no sidebar rows; ordinary subagents keep theirs", () =>
   const child = (id: string, collect: boolean) => session(id, { parentId: "parent", subagent: {
     taskId: id, task: "t", status: "running", startedAt: "2026-09-20T00:00:00Z", updatedAt: "2026-09-20T00:00:00Z", ...(collect ? { collect: true } : {}),
   } });
-  const source = [{ label: "Work", sessions: [session("parent"), child("ordinary", false), child("helper", true)] }];
+  const helperChild = session("helper-child", { parentId: "helper" });
+  const source = [{ label: "Work", sessions: [session("parent"), child("ordinary", false), child("helper", true), helperChild] }];
   assert.deepEqual(ids(sidebarSessionGroups(source, "", defaults)), ["ordinary", "parent"]);
   assert.deepEqual(ids(sidebarSessionGroups(source, "helper", defaults)), []);
 });
