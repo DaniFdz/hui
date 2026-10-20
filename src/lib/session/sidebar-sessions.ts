@@ -6,6 +6,7 @@
 import { DEFAULT_SESSION_STAGE, isSessionStage, stageRank } from "../kanban.ts";
 import type { SessionGroup, SessionStatus, SessionView } from "../../api/sessions.ts";
 import { sessionGroupLabel } from "./sessions.ts";
+import { sessionTreeIds } from "./tree.ts";
 
 export type SidebarSessionOptions = {
   groupBy: "custom" | "project" | "none";
@@ -149,14 +150,16 @@ export function sidebarSessionGroups(
   } else {
     projected = [{ label: "", key: "\u0000flat", kind: "none", sessions: groups.flatMap((group) => group.sessions) }];
   }
+  const all = groups.flatMap((group) => group.sessions);
+  const swarmIds = new Set(all.filter((session) => session.subagent?.collect).flatMap((helper) => [...sessionTreeIds(all, helper.id)]));
   const query = search.trim().toLocaleLowerCase();
   const filtering = Boolean(query) || options.status !== "all";
   const hideEmpty = options.hideEmpty === "always" || (options.hideEmpty === "filtering" && filtering);
   return projected.flatMap((group) => {
     const groupMatches = group.kind !== "none" && `${group.label} ${sessionGroupLabel(group.label)}`.toLocaleLowerCase().includes(query);
-    // Like OpenClaw, Swarm helpers get no rows: the parent's Parallel tasks card lists and opens them.
+    // Like OpenClaw, Swarm helpers and their own subagents get no rows: the parent's Parallel tasks card lists and opens them.
     const sessions = group.sessions.filter((session) =>
-      !session.archived && !session.subagent?.collect &&
+      !session.archived && !swarmIds.has(session.id) &&
       (options.status === "all" || session.status === options.status) &&
       (!query || groupMatches || sessionMatches(session, query)),
     ).toSorted((a, b) => compareSessions(a, b, options.sortBy));
