@@ -131,9 +131,6 @@ test("a call shows the bot's face listening to the microphone and speaking with 
   const bar = between(source, "export function renderCallBar(", "\n}\n");
   assert.match(bar, /renderBotAvatar\(bot, "sm", \{ state: callFaceState\(state, props\.summarizing\) \}\)/u);
   assert.match(bar, /class="bot-call-bar__pulse"/u, "the bar keeps its live dot");
-  const app = read("../hui-app.ts");
-  assert.match(app, /this\.voice\.call\?\.state\.phase === "speaking" \? this\.voice\.voiceLevel\(\) : this\.voice\.micLevel\(\)/u);
-  assert.match(read("../controllers/voice-controller.ts"), /return this\.call \? this\.#session\?\.voiceLevel : 0;/u, "the bot's voice is GPT-Live's stream, as it plays");
 });
 
 test("faces are decorative, pause when unseen and keep still under reduced motion", () => {
@@ -167,53 +164,26 @@ test("emoji tiles take a face's width in rows, so names line up whichever look a
 });
 
 test("Labs → Bots is the one switch: off, the sidebar has no Agents | Bots switch, bot addresses land home and nothing of bots shows; on, it all comes back", () => {
-  const app = read("../hui-app.ts");
-  assert.doesNotMatch(app, /showTab|botsTabShown/u, "one switch: every bot surface asks botsEnabled, Settings → Labs → Bots");
-  // The switch, and with it every unread mark on the Bots tab, shows exactly while bots are on; the remembered choice stays put.
-  assert.match(between(app, "private shellBotsProps(", "private createNewBot"), /^private shellBotsProps\(\): ShellBotsProps \| undefined \{\n\s+if \(!botsEnabled\(this\.control\.settings\)\) return undefined;/u);
   assert.match(read("./shell.ts"), /\$\{props\.bots \? html`<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>` : nothing\}/u, "no props, no switch");
-  assert.doesNotMatch(between(app, "private followBotsSetting(", "private shellBotsProps("), /writeSidebarTab/u, "a remembered Bots choice shows Agents while off, and Bots again once on");
-  // /bots and /bots/:id land on the normal home; a bot's chat opens nowhere, even through a session address.
-  assert.match(between(app, "private applyNavigation(", "private openPendingSession("), /if \(target\.kind === "bot"\) \{[\s\S]*?if \(this\.embeddedPane \|\| !botsEnabled\(this\.control\.settings\)\) \{\n\s+this\.navigate\(\{ kind: "home" \}, true\);/u);
-  assert.match(between(app, "private openPendingSession(", "private selectView"), /if \(session\.bot && !botsEnabled\(this\.control\.settings\)\) \{\n\s+this\.navigate\(\{ kind: "home" \}, true\);\n\s+return;\n\s+\}\n\s+\/\/ A bot's chat opens as the bot \(with its panel\) wherever it is linked from\.\n\s+if \(!this\.embeddedPane && session\.bot\) \{/u);
-  // Bot chats stay out of the Agents list on or off: it filters by the session's bot, not by a setting.
-  assert.match(between(app, "private get listedGroups(", "private activeBot("), /if \(this\.listedGroupsSource !== this\.sessions\.groups\) \{\n\s+this\.listedGroupsSource = this\.sessions\.groups;\n\s+this\.listedGroupsCache = withoutBotSessions\(this\.sessions\.groups\);/u);
-  // Either way it applies at once: the setting's change follows here, and another screen's through the stream's 409.
-  assert.match(app, /if \(this\.renderedSettings !== this\.control\.settings\) \{\n\s+const before = this\.renderedSettings;\n\s+this\.renderedSettings = this\.control\.settings;\n\s+if \(before && botsEnabled\(before\) !== botsEnabled\(this\.control\.settings\)\) this\.followBotsSetting\(\);/u);
-  const follow = between(app, "private followBotsSetting(", "private shellBotsProps(");
-  assert.match(follow, /if \(botsEnabled\(this\.control\.settings\)\) \{\n\s+void settingsWritten\(\)\.then\(\(\) => this\.bots\.sync\(\)\);\n\s+return;\n\s+\}\n\s+this\.bots\.sync\(\);/u, "the stream starts once the gateway has the setting, and stops at once");
-  assert.match(follow, /if \(this\.voice\.call\) this\.voice\.hangUp\(\);/u, "a call ends with bots");
-  assert.match(follow, /if \(this\.view === "bot" \|\| \(this\.view === "home" && this\.conversation\.selected\?\.bot\)\) this\.navigate\(\{ kind: "home" \}, true\);/u, "a bot's page goes home, and so does its chat open as a session");
-  // Bot-only settings go too: Sessions → Bots, Models → Calls, and Automations' routines; the old tab switch is gone.
   const settings = read("./settings.ts");
   assert.match(between(settings, "function renderCallsSection(", "function renderModelsPage("), /if \(!botsEnabled\(props\.settings\)\) return nothing;/u);
   const sessions = between(settings, "function renderSessionsSettingsPage(", "function renderWorktreesSettingsPage(");
   assert.match(sessions, /\$\{botsEnabled\(props\.settings\) \? renderSection\("Bots",/u);
   assert.doesNotMatch(settings, /Show the Bots tab|onChangeBots/u, "Settings → Sessions has no second switch");
   assert.match(between(settings, "function renderModelsPage(", "PI defaults"), /Two roles: the primary model does the real work and the utility model the quick work\./u, "the models' intro names no calls while they are hidden");
-  assert.match(app, /sessions: this\.sessions\.groups\.flatMap\(\(group\) => group\.sessions\),\n\s+bots: botsEnabled\(this\.control\.settings\),/u);
 });
 
 test("+ creates a bot at once, without a name, and opens its chat, as in Grok Bot; no dialog is left", () => {
-  const app = read("../hui-app.ts");
-  assert.match(between(app, "private createNewBot = ", "/** The roster's Edit"), /this\.bots\.create\(worker\);/u,
-    "one at a time, without a name, on the machine chosen; its chat opens, and a refusal or a worker's wait shows as a toast (bots-controller.test.ts)");
-  assert.match(app, /onNew: \(\) => this\.createNewBot\(\),\n\s+workers: this\.launcher\.workers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),\n\s+onImport: this\.botImports\.openImport,\n\s+onWorkersMenu: \(\) => this\.launcher\.loadWorkers\(\),\n\s+creating: this\.bots\.creating,/u, "+ and its menu create the same way");
-  assert.doesNotMatch(app, /\bNEW_BOT_NAME\b|createBotOn/u, "one way to create a bot, without a name");
   const source = read("./bots.ts");
   const button = between(source, "export function renderNewBotButton(", "/** The menu item for this machine");
   assert.equal(button.match(/data-new-bot-trigger \?disabled=\$\{busy\} aria-busy=\$\{busy \? "true" : "false"\}/gu)?.length, 1, "+, the menu's trigger, waits for the bot it is creating");
   assert.match(read("./shell.ts"), /onCreate: botsTab\.onCreate, onImport: botsTab\.onImport, creating: botsTab\.creating,/u);
   assert.match(source, /props\.creating \? "Creating…" : "New bot"/u, "and so does the empty roster's New bot");
-  for (const file of [source, app]) assert.doesNotMatch(file, /renderBotDialog\b|bot-dialog|botDialog|botDraft/u, "the New bot and Edit dialogs are gone");
+  assert.doesNotMatch(source, /renderBotDialog\b|bot-dialog|botDialog|botDraft/u, "the New bot and Edit dialogs are gone");
   assert.match(read("../lib/bots/bots.ts"), /export type NewBotInput = Omit<BotInput, "name"> & \{ name\?: string \};/u, "the create body may leave the name out");
 });
 
 test("a bot chat offers a call whenever GPT-Live can run, and nothing of VoiceStudio", () => {
-  const app = read("../hui-app.ts");
-  assert.match(app, /call \|\| this\.bots\.callsAvailable\(\) \?/u, "with a ChatGPT login (bots-controller.test.ts)");
-  assert.match(app, /if \(!this\.embeddedPane && this\.view === "bot" && !this\.bots\.callsStatus\) void this\.bots\.loadCallsStatus\(\);/u, "read on every bot page, whatever settings.json holds");
-  assert.doesNotMatch(app, /VoiceStudio|voiceNotes|readAloud|paneVoice|VOICE_CONNECTION_EVENT|calls\.engine/u);
   const home = read("./home.ts");
   assert.match(home, /renderCallButton\(\{ botName: props\.bot\.bot\.name, inCall: props\.call\.inCall, onCall: props\.call\.onCall \}\)/u, "the phone button");
   assert.doesNotMatch(home, /renderVoiceNoteButton|renderVoiceNoteStatus|renderReadAloud|chat-read-aloud|chat-voice-btn/u, "no microphone in the composer, no Read aloud under replies");
@@ -260,23 +230,11 @@ test("the Settings page: Profile, Tagging, Model, Calls and Workspace, each chan
   assert.match(between(source, "function renderRow(", "function sectionHead("), /<span class="bot-setting__status" role="status">\$\{pending \? "Saving…" : ""\}<\/span>/u, "a pending save shows on its row");
   assert.match(between(source, "function renderRow(", "function sectionHead("), /<p class="bot-setting__error" role="alert">/u, "and so does a refusal");
   assert.doesNotMatch(source, /type="submit"|>Save</u, "no Save button");
-  const app = read("../hui-app.ts");
-  assert.match(app, /onChange: \(key, value\) => this\.bots\.changeSetting\(bot\.id, key, value\),/u, "one PATCH per change, in order, through PATCH /__hui/bots/:id (bots-controller.test.ts)");
-  assert.match(app, /const settingsCall = this\.bots\.settingsCall\(\);/u,
-    "Settings' voice, and whether calls can run once the gateway has said, as Call uses (bots-controller.test.ts)");
-  assert.match(app, /\n\s+call: settingsCall,\n/u, "the page always gets its Calls section");
 });
 
 test("the roster's Edit opens the bot's chat with its panel on Settings, docked or as the sheet", () => {
   const source = read("./bots.ts");
   assert.match(source, /<span class="session-menu__text">Edit bot…<\/span>/u, "the ellipsis of a place to make choices, as Settings… has, and as the header's ⋯ menu says");
-  const app = read("../hui-app.ts");
-  assert.match(between(app, "private openEditBot = ", "private showBotSettings("), /this\.showBotSettings\(bot\.id\);/u);
-  const show = between(app, "private showBotSettings(", "private toggleBotSettings(");
-  assert.match(show, /this\.navigate\(\{ kind: "bot", id: botId \}\)/u);
-  assert.match(show, /this\.bots\.openPanel\(this\.mobileNavLayout\);/u, "the sheet on narrow screens; docked, it opens at the width it had (bots-controller.test.ts)");
-  assert.match(show, /this\.selectBotPanelView\("settings"\);/u);
-  assert.doesNotMatch(app, /mode: "edit"/u, "the old Edit dialog is gone");
 });
 
 test("the panel opens on the bot's overview, whose rows open its pages with a way back; Ctrl+Shift+, toggles Settings", () => {
@@ -286,17 +244,11 @@ test("the panel opens on the bot's overview, whose rows open its pages with a wa
   assert.ok(order.every((at, index) => at > (order[index - 1] ?? -1)), "who it is, what it does on its own, then how it is set up");
   assert.match(between(source, "function renderPanelHeader(", "/** The panel beside the bot's chat"), /bot-panel__back" aria-label=\$\{`Back to \$\{props\.bot\.name\}`\}/u, "every page has a way back");
   assert.doesNotMatch(between(source, "/* ── side panel", "/* ── archive confirmation"), /role="tab"|SOUL\.md/iu, "no tabs or Soul editor");
-  const app = read("../hui-app.ts");
-  assert.match(app, /if \(isBotSettingsShortcut\(event\)\) \{\n\s+if \(this\.view !== "bot" \|\| this\.settingsOpen \|\| this\.commandPaletteOpen \|\| document\.querySelector\("dialog\[open\]"\)\) return;/u);
-  assert.match(between(app, "private toggleBotSettings(", "private utilityModelName("), /if \(this\.botPanelVisible\(\) && this\.bots\.panelView === "settings"\) this\.closeBotPanel\(\);\n\s+else this\.showBotSettings\(bot\.id\);/u);
-  assert.match(app, /if \(this\.view !== "bot" \|\| this\.activeBotId !== target\.id\) \{\n\s+this\.bots\.resetPanel\(\);/u, "a bot opens on its overview, docked, also when it is opened again (bots-controller.test.ts)");
 });
 
 test("an expanded panel keeps the chat mounted underneath, and Escape brings the chat back instead of stopping its turn", () => {
   const css = readFileSync(new URL("../styles/bots.css", import.meta.url), "utf8");
   assert.match(css, /\.bot-workspace--expanded > \.bot-workspace__chat \{ position: absolute; inset: 0; visibility: hidden; pointer-events: none; \}/u, "hidden, never unmounted: its stream, draft and scroll survive");
-  const app = read("../hui-app.ts");
-  assert.match(between(app, "private handleGlobalEscape(", "private readonly onPageHide"), /if \(this\.botPanelShownExpanded\(\)\) \{\n\s+event\.preventDefault\(\);\n\s+this\.expandBotPanel\(false\);\n\s+return;\n\s+\}\n\s+this\.botPaneApp\(\)\?\.handleGlobalEscape\(event\);/u);
 });
 
 test("the Settings page uses no fixed heights that could clip it", () => {
@@ -337,10 +289,6 @@ test("the roster's + is a menu, New bot (on Local or on each worker while a work
   assert.match(css, /\.sidebar-recent-sessions__toolbar \.new-bot-menu \{[^}]*text-transform: none;/u, "its items are not the toolbar's small caps");
   const shell = read("./shell.ts");
   assert.match(shell, /\$\{botsTab \? renderNewBotButton\(\{\n\s+workers: botsTab\.workers, onNew: botsTab\.onNew, onCreate: botsTab\.onCreate,/u);
-  const app = read("../hui-app.ts");
-  assert.match(app, /workers: this\.launcher\.workers,\n\s+onCreate: \(worker\) => this\.createNewBot\(worker\),/u);
-  assert.match(between(app, "private createNewBot = ", "/** The roster's Edit"), /this\.bots\.create\(worker\);/u,
-    "created at once, where it was chosen, without a name, and its chat opens; a refusal shows as an error toast (bots-controller.test.ts)");
 });
 
 test("Settings → Workspace shows the machine a bot runs on, read-only, and offers only that machine's folders", () => {
@@ -356,10 +304,6 @@ test("Settings → Workspace shows the machine a bot runs on, read-only, and off
   assert.match(workspace, /\$\{sectionHead\(props, "workspace", "Workspace", renderBotMachineField\(props\)\)\}/u, "Runs on beside the heading, as Model's note: no height, so the tab still fits 1440×900 with a worker around");
   assert.match(workspace, /<\/div>\n\s+\$\{renderMachineHint\(props\.bot\)\}\n\s+<\/section>/u, "a bot on a worker says why under the section");
   assert.doesNotMatch(source, /renderPicker\(\{ label: "Runs on"/u, "a bot's machine is chosen with +, never changed");
-  const app = read("../hui-app.ts");
-  assert.match(app, /suggestions: this\.launcher\.directorySuggestionsFrom === \(bot\.worker\?\.id \?\? ""\) \? this\.launcher\.directorySuggestions : \[\],\n\s+onInput: \(value\) => this\.launcher\.loadDirectorySuggestions\(value, bot\.worker\?\.id\),/u,
-    "a bot on a worker is offered its worker's folders, never this machine's");
-  assert.match(app, /workersExist: this\.launcher\.workers\.length > 0,/u);
 });
 
 test("a bot on a worker shows the machine compactly in its roster row, its chat header and its confirmations", () => {

@@ -4,7 +4,6 @@ import { test } from "vitest";
 
 const settingsSource = readFileSync(new URL("./settings.ts", import.meta.url), "utf8");
 const homeSource = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-const appSource = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
 const workspaceCss = readFileSync(
   new URL("../styles/openclaw-workspaces.css", import.meta.url),
   "utf8",
@@ -103,7 +102,6 @@ test("New Session exposes explicit worktree creation and Settings owns its branc
   assert.doesNotMatch(homeSource, /new-session-page__menu-link/);
   assert.doesNotMatch(homeSource, /new-session-page__branch-prefix/);
   assert.match(homeSource, /onOpenBranchPrefixSettings/);
-  assert.match(appSource, /this\.openSurfaceSettings\("sessions"\)/);
   assert.match(homeSource, /class="new-session-page__group-picker"/);
   assert.doesNotMatch(homeSource, /list="launch-groups"/);
   assert.match(homeSource, /class="new-session-page__select new-session-page__checkout-popover/);

@@ -211,6 +211,4 @@ const ALLOWED = [
   "src/lib/message-context-menu.test.ts -> src/views/home.ts (R6)",
   "src/lib/subagent-completion.test.ts -> src/views/chat/projection.ts (R6)",
   "src/lib/terminal-font.test.ts -> src/views/settings.ts (R6)",
-  "src/views/settings-automation.test.ts -> src/hui-app.ts (R7)",
-  "src/views/settings-workspaces.test.ts -> src/hui-app.ts (R7)",
 ];

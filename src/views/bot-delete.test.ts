@@ -20,8 +20,6 @@ test("the bot's chat header has a ⋯ menu: Edit bot…, Archive… and Delete�
   }
   assert.match(menu, /aria-label=\$\{`Actions for \$\{bot\.bot\.name\}`\}/u);
   assert.match(home, /\$\{props\.bot\?\.onAction \? renderBotHeaderMenu\(props\.bot\) : nothing\}/u);
-  const app = read("../hui-app.ts");
-  assert.match(app, /if \(action === "edit"\) this\.openEditBot\(bot\);\n\s+else if \(action === "archive"\) this\.requestArchiveBot\(bot\);\n\s+else this\.bots\.requestDelete\(bot\);/u, "each opens its dialog; deleting the open bot returns home (bots-controller.test.ts)");
 });
 
 test("the delete confirmation says what goes and what stays", () => {

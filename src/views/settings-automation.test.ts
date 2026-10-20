@@ -238,12 +238,6 @@ test("the create form shows only the selected schedule kind", () => {
   }
 });
 
-test("the automation page lists every session and reads its state from the controller", () => {
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-
-  assert.match(app, /\.\.\.this\.automation\.props\(\),\s*\n\s*sessions: this\.sessions\.groups\.flatMap\(\(group\) => group\.sessions\)/);
-});
-
 test("a refused task action is reported next to the list, not inside the create form", () => {
   const source = readFileSync(new URL("./settings-automation.ts", import.meta.url), "utf8");
 
@@ -252,13 +246,6 @@ test("a refused task action is reported next to the list, not inside the create 
   const css = readFileSync(new URL("../styles/app.css", import.meta.url), "utf8");
   assert.match(css, /\.automation-action-error\s*\{[^}]*border: 1px solid var\(--danger\);/s);
   assert.match(css, /\.automation-action-error\s*\{[^}]*background: var\(--danger-subtle\);/s);
-});
-
-test("the open automation page re-reads scheduler state and stops when it closes", () => {
-  const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
-
-  assert.match(app, /if \(target\.page === "automation"\) this\.automation\.startPolling\(\);\s*\n\s*else this\.automation\.stopPolling\(\);/);
-  assert.match(app, /this\.settingsOpen = false;\s*\n\s*this\.automation\.stopPolling\(\);/);
 });
 
 test("the create form only clears once the scheduler accepted the task", () => {
