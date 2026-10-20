@@ -27,6 +27,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../..");
 /** The stage is captured at 4K (its 1920×1080 layout drawn at 2×, for sharp text) and the clips keep that size. */
 const STAGE = { width: 3840, height: 2160 };
+const VOICE_SPEED = 1.25;
+const PACE = 0.7;
 /** Kokoro speaks near -19 LUFS: a little louder reads well; the bed sits about 15 LU under it. */
 const VOICE_GAIN_DB = 3;
 const MUSIC_GAIN_DB = -17;
@@ -261,7 +263,7 @@ export class Director {
       const { x, y } = await this.#point(target);
       await this.stage(`stage.zoom(${x}, ${y}, ${factor})`);
     }
-    await sleep(1_050);
+    await sleep(750);
   }
 
   async caption(text = "") {
@@ -270,7 +272,7 @@ export class Director {
 
   /** Lets the viewer read; the only fixed waits in a scene are pacing, never synchronization. */
   pause(ms: number) {
-    return sleep(ms);
+    return sleep(ms * PACE);
   }
 
   /** The scene's narration, synthesized before recording; absent without --voice. */
@@ -517,11 +519,11 @@ async function narrate(scene: Scene): Promise<Map<string, Line> | undefined> {
   const lines = new Map<string, Line>();
   await mkdir(join(out, ".voice"), { recursive: true });
   for (const [key, text] of Object.entries(scene.narration ?? {})) {
-    const file = join(out, ".voice", `${createHash("sha256").update(`${voiceModel}\n${text}`).digest("hex").slice(0, 16)}.wav`);
+    const file = join(out, ".voice", `${createHash("sha256").update(`${voiceModel}\n${VOICE_SPEED}\n${text}`).digest("hex").slice(0, 16)}.wav`);
     if (!existsSync(file)) {
       const response = await fetch(new URL("/v1/audio/speech", voiceUrl), {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ model, voice: voiceName, input: text, response_format: "wav", language: "en" }),
+        body: JSON.stringify({ model, voice: voiceName, input: text, response_format: "wav", language: "en", speed: VOICE_SPEED }),
       });
       if (!response.ok || !response.headers.get("content-type")?.startsWith("audio/")) throw new Error(`VoiceStudio could not say "${text}": ${response.status} ${await response.text()}`);
       await writeFile(file, Buffer.from(await response.arrayBuffer()));
