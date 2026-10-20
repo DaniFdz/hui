@@ -656,7 +656,7 @@ function renderLaunchForm(props: HomeProps) {
   const initialGroupLabel = initialGroup || "ungrouped";
   const recent = props.groups
     .flatMap((group) => group.sessions)
-    .filter((session) => !session.archived)
+    .filter((session) => !session.archived && !session.parentId)
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
     .slice(0, 5);
   return html`

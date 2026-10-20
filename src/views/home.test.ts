@@ -389,6 +389,14 @@ test("recent chats on New Session reopen an existing session", () => {
   assert.match(readStyles("../styles/openclaw-chat.css"), /\.agent-chat__recent\s*\{[^}]*padding: 8px 12px;/s);
 });
 
+test("recent chats list top-level sessions only, never subagents", async () => {
+  const at = "2026-10-20T00:00:00Z";
+  const row = (id: string, parentId?: string) => ({ id, title: id, group: "", cwd: "/repo", tool: "durable", status: "idle", createdAt: at, updatedAt: at, ...(parentId ? { parentId } : {}) });
+  const html = await renderWorkerSession("idle", { session: undefined, workers: [], directorySuggestions: [], launchModels: [], groups: [{ label: "", sessions: [row("Parent"), row("Helper", "Parent"), row("Grandchild", "Helper")] }] });
+  assert.match(html, /aria-label=Open Parent/u);
+  assert.doesNotMatch(html, /Open (Helper|Grandchild)/u);
+});
+
 test("session actions live in the sidebar instead of the chat header", () => {
   const homeSource = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const shellSource = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
