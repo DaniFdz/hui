@@ -1,6 +1,6 @@
 # Plan: a native iOS app for HUI, and one e2e suite for the web UI and the app
 
-Status: a plan. Nothing in it is built yet. It was checked against `main` at `20f0c38` and against
+Status: a plan. Nothing in it is built yet. It was checked against `main` at `11cc68a` and against
 [tester-army/e2e](https://github.com/tester-army/e2e) 0.21.2 (commit `d7c6b5e`, documented at
 <https://e2e.tester.army/docs>). A statement marked "(assumption, S*n*)" is not proven yet; spike S*n* in milestone
 M0 settles it before work depends on it.
@@ -12,7 +12,7 @@ M0 settles it before work depends on it.
   IDs of the use cases it covers. One `e2e.config.ts` declares a `web` target (Playwright Chromium through
   `@e2e-dev/web`) and an `ios` target (an iPhone simulator through `@e2e-dev/mobile` and agent-device). Every test
   runs on both unless the catalogue records an approved exception. HUI writes no runner and no driver. It keeps
-  one fixture file, `e2e/hui.ts`, for its gateway, test setup, the provider's barriers and the four steps whose
+  one fixture file, `e2e/fixtures/hui.ts`, for its gateway, test setup, the provider's barriers and the four steps whose
   gesture differs per platform.
 - **The same isolated world as today.** Each target's `app.command` starts the existing
   `e2e/visual-verification.mjs` launcher: real HUI, real Pi Durable and the deterministic model provider. Shared
@@ -27,8 +27,9 @@ M0 settles it before work depends on it.
   on the web and on iOS in that same PR, and every PR runs the whole shared suite on both. Existing features start
   in a baseline that may only shrink. Until iOS catches up, a web feature in an area iOS hasn't reached has to bring
   that area's iOS screens with it, or wait.
-- **A SwiftUI app.** Its transcript logic (the reducer and the chat projection) reuses HUI's own TypeScript in
-  JavaScriptCore, which ships with iOS, if spike S3 shows it is fast enough. Otherwise it is ported to Swift and
+- **A SwiftUI app.** Its API types are generated from `docs/api.schema.json`, the published schema that already
+  generates the web's types. Its transcript logic (the reducer and the chat projection) reuses HUI's own TypeScript
+  in JavaScriptCore, which ships with iOS, if spike S3 shows it is fast enough. Otherwise it is ported to Swift and
   checked against fixtures the TypeScript tests write. Content that is web content already (VS Code, agent widgets,
   math, diagrams and charts, the CodeMirror editor, the GPT-Live call) runs in `WKWebView`.
 - **Distribution.** CI builds an unsigned IPA for every nightly and release, with a SideStore source file beside
@@ -51,7 +52,7 @@ M0 settles it before work depends on it.
 | Enforcement | Vitest guards on the catalogue and on `list()`, a baseline that only shrinks, required web and iOS jobs that run the whole suite | 3 |
 | iOS UI | SwiftUI on iOS 18+, UIKit only where a view needs it | 4 |
 | Shared logic | Transcript reducer and projection in JavaScriptCore, decided by spike S3 | 4.4 |
-| Contract | The same `/__hui/` routes; the app sends `x-hui` and an `Origin`; no gateway change expected | 4.3 |
+| Contract | The same `/__hui/` routes; the app sends `x-hui` and an `Origin`; Swift types generated from `docs/api.schema.json`; no gateway change expected | 4.3, 4.5 |
 | Distribution | Unsigned IPA and SideStore source files as GitHub Release assets | 6 |
 | Notifications | In-app parity (notices, unread, waiting); local notifications only for events the running app receives; no push | 4.7 |
 | Telemetry | Off everywhere with `E2E_TELEMETRY_DISABLED=1`, which also stops the library's update check | 2.13, 9 |
@@ -90,14 +91,14 @@ export type UseCase = {
 | `spec` | The `SPEC.md#anchor` or `docs/api.md#anchor` that defines it. |
 | `surfaces` | The code surfaces it owns, as `kind:key` strings (3.2). |
 | `journeys` | The `e2e/*.browser.md` files it came from. |
-| `web`, `ios` | `required`: a shared test must pass on that platform. `backlog`: an existing feature with no passing test there yet; only IDs listed in `e2e/baseline.json` may use it. An exclusion gives its reason and the `SPEC.md` heading that records the decision. |
+| `web`, `ios` | `required`: a shared test must pass on that platform. `backlog`: an existing feature with no passing test there yet; only IDs listed in `e2e/catalogue/baseline.json` may use it. An exclusion gives its reason and the `SPEC.md` heading that records the decision. |
 
 The areas are `SHELL` (navigation, palette, loading, update notice), `SESS` (sidebar, groups, launch, menus,
 split chats), `CHAT` (composer, streaming, queue, tool cards, errors, rewind, fork, compaction, commands), `RICH`
 (Markdown, math, diagrams, charts, embeds, media, widgets, file links), `AGENT` (questions, secrets, subagents,
-watchers, suggestions, progress, the browser and terminal tools), `WORK` (Work pane, terminal, browser view, files,
-diff, VS Code), `BOARD` (Kanban, worktrees, GitHub, Jira, contributions, calendar), `SET` (Settings pages), `PAGE`
-(routed pages), `BOT`, `CALL`, and `IOS` for behaviour only the app has.
+Swarm, watchers, suggestions, progress, the browser and terminal tools), `WORK` (Work pane, terminal, browser view,
+files, diff, VS Code), `BOARD` (Kanban, worktrees, GitHub, Jira, Datadog, contributions, calendar), `SET` (Settings
+pages), `PAGE` (routed pages), `BOT`, `CALL`, and `IOS` for behaviour only the app has.
 
 Tests point at use cases through the library's `tags` option, `tags: ['CHAT-001', 'CHAT-002']`, so
 `npx e2e run --tag CHAT-001` selects every test of a use case on every target.
@@ -107,7 +108,7 @@ Tests point at use cases through the library's `tags` option, `tags: ['CHAT-001'
 | Document | Role after this change |
 |---|---|
 | `SPEC.md` | Still the product spec. Every use case cites the section that defines it, and every exclusion cites a Decisions entry. |
-| `docs/api.md` | Still the normative contract. A use case claims the routes it exercises. Routes no screen uses go into `e2e/catalogue/not-ui.ts` with a reason. |
+| `docs/api.md`, `docs/api.schema.json` | Still the normative contract and its published schema. A use case claims the routes it exercises. Routes no screen uses go into `e2e/catalogue/not-ui.ts` with a reason. |
 | `e2e/*.browser.md` | Each journey gets a class in `e2e/catalogue/journeys.ts` (2.15). A journey is retired once every use case derived from it is required on the web. Journeys that judge looks stay as agent-run visual checks. |
 | `.agents/skills/hui-visual-verification/references/features.md` | Maps each feature to its shared test files and tags. |
 
@@ -116,14 +117,14 @@ Tests point at use cases through the library's `tags` option, `tags: ['CHAT-001'
 The sources, all read from the checkout:
 
 1. The code surfaces that the collectors in 3.2 enumerate: pages, Settings pages, navigation kinds, Work views,
-   tools, slash commands, shortcuts, transcript row kinds, settings keys, `docs/api.md` routes and static accessible
-   names.
-2. The UI actions no collector enumerates: `src/hui-app.ts`, `src/views/home.ts`, the session row, menu and group
-   modules, `src/components/` and `src/lib/session-multiplexer.ts`, including their hidden, archived, narrow, empty
-   and disconnected states.
-3. The 95 agent-run journeys (`e2e/*.browser.md`, 659 numbered steps). Each step becomes one or more use cases,
+   tools, slash commands, shortcuts, transcript row kinds, settings keys, the routes of `docs/api.schema.json` and
+   `docs/api.md`, and static accessible names.
+2. The UI actions no collector enumerates: `src/hui-app.ts`, `src/controllers/`, `src/views/home.ts`, the session
+   modules in `src/lib/session/`, `src/components/` and `src/components/session-multiplexer.ts`, including their
+   hidden, archived, narrow, empty and disconnected states.
+3. The 102 agent-run journeys (`e2e/*.browser.md`, 738 numbered steps). Each step becomes one or more use cases,
    then duplicates are merged.
-4. `SPEC.md`: the 36 bullets of Part 1 "Behaviour", the 23 `##` sections of Part 2 and the Decisions entries. Every
+4. `SPEC.md`: the 39 bullets of Part 1 "Behaviour", the 23 `##` sections of Part 2 and the Decisions entries. Every
    behaviour sentence maps to a use case or to an explicit "not user-visible" note. Superseded decisions and the
    features SPEC removed (approvals, agent management) stay out.
 5. `docs/api.md` route headings and route tables, for behaviour no journey shows.
@@ -142,34 +143,37 @@ possible user intent is listed; 3.2 names the gaps.
 
 ```bash
 grep -c '^  \["' src/lib/pages.ts                                                    # 21 routed pages
-sed -n '/ROUTABLE_SETTINGS_PAGES = \[/,/\]/p' src/lib/navigation.ts | grep -c '^  "' # 14 Settings pages
+sed -n '/ROUTABLE_SETTINGS_PAGES = \[/,/\]/p' src/lib/navigation.ts | grep -c '^  "' # 13 Settings pages
 sed -n '/export type NavigationTarget/,/;$/p' src/lib/navigation.ts | grep -o 'kind: "[a-z]*"' | wc -l  # 6 navigation kinds
-ls src/lib/work-views/*.ts | grep -vc test                                            # 5 Work views
-grep -ho 'name: "[a-z_]*"' server/runtimes/*-extension.mjs | sort -u | wc -l          # 16 HUI tools
-grep -o 'name: "[a-z]*"' src/lib/slash-commands.ts | sort -u | wc -l                  # 6 HUI slash commands
+ls src/views/work/*.ts | grep -vc test                                                # 5 Work views
+grep -ho 'name: "[a-z_]*"' server/runtimes/*-extension.mjs | sort -u | wc -l          # 17 HUI tools
+grep -o 'name: "[a-z]*"' src/lib/composer/slash-commands.ts | sort -u | wc -l         # 6 HUI slash commands
 sed -n '/WORK_SHORTCUTS = {/,/} as const/p' src/lib/work-shortcuts.ts | grep -c '"Mod' # 7 Work pane shortcuts
 sed -n '/export type ChatProjectionRow/,/;$/p' src/views/chat/projection.ts | grep -o 'kind: "[a-zA-Z]*"' | wc -l  # 6 row kinds
-node --input-type=module -e 'const {DEFAULT_SETTINGS:s}=await import("./src/lib/settings.ts");const l=[];const w=(v,p)=>v&&typeof v==="object"&&!Array.isArray(v)?Object.entries(v).forEach(([k,x])=>w(x,p?p+"."+k:k)):l.push(p);w(s,"");console.log(l.length)'  # 32 settings keys
-grep -oE '(GET|POST|PUT|PATCH|DELETE|HEAD)(\|[A-Z]+)* /__hui/[^` ?),]*' docs/api.md | sort -u | wc -l   # 142 method and path strings
-grep -oE '^\| `/__hui/[^`]*`' docs/api.md | sort -u | wc -l                          # 22 more paths in route tables
+node --input-type=module -e 'const {DEFAULT_SETTINGS:s}=await import("./src/lib/settings/settings.ts");const l=[];const w=(v,p)=>v&&typeof v==="object"&&!Array.isArray(v)?Object.entries(v).forEach(([k,x])=>w(x,p?p+"."+k:k)):l.push(p);w(s,"");console.log(l.length)'  # 33 settings keys
+node -e 'console.log(require("./docs/api.schema.json")["x-hui-routes"].length)'      # 181 routes in the published schema
+grep -oE '(GET|POST|PUT|PATCH|DELETE|HEAD)(\|[A-Z]+)* /__hui/[^` ?),]*' docs/api.md | sort -u | wc -l   # 189 method and path strings in docs/api.md
 grep -rhoE 'aria-label="[^"$]+"' src --include='*.ts' --exclude='*.test.ts' | sort -u | wc -l   # 198 static accessible names
-grep -cE '^[0-9]+\. ' e2e/*.browser.md | awk -F: '{s+=$2} END{print s}'               # 659 journey steps in 95 files
-awk 'NR>=460' SPEC.md | grep -c '^## '; awk 'NR>=22 && NR<460' SPEC.md | grep -c '^- ' # 23 sections, 36 bullets
+grep -cE '^[0-9]+\. ' e2e/*.browser.md | awk -F: '{s+=$2} END{print s}'               # 738 journey steps in 102 files
+awk '/^# Part 2/{p=1} p' SPEC.md | grep -c '^## '                                       # 23 Part 2 sections
+awk '/^## Behaviour/{p=1} /^# Part 2/{p=0} p' SPEC.md | grep -c '^- '                   # 39 Part 1 behaviour bullets
 ```
 
-PI's 8 built-in tools (`PI_TOOLS` in `server/runtimes/tool-catalog.ts`) come on top of the 16 HUI tools. These are
-counts of evidence, not of use cases: one page holds several use cases, and one use case can cross several
-modules.
+PI's 8 built-in tools (`PI_TOOLS` in `server/runtimes/tool-catalog.ts`) come on top of the 17 HUI tools. The
+schema's 181 routes are its JSON routes; about ten more, which answer with files, pages or binary data (media,
+attachments, raw files, the widget sandbox, the memory page, a bot export, webhooks), appear only in `docs/api.md`.
+These are counts of evidence, not of use cases: one page holds several use cases, and one use case can cross
+several modules.
 
-The 95 journeys, grouped by file name (every file falls in exactly one group):
+The 102 journeys, grouped by file name into the catalogue's areas (every file falls in exactly one area):
 
-| Group | Journeys | Group | Journeys |
-|---|---:|---|---:|
-| Sessions and workspaces | 19 | Settings and resources | 9 |
-| Composer, runtime and recovery | 15 | Bots and calls | 8 |
-| Rendered output | 11 | Shell and interaction | 8 |
-| Work tools | 9 | Integrations and operations | 4 |
-| Agent controls | 8 | Installation and updates | 4 |
+| Area | Journeys | Steps | Area | Journeys | Steps |
+|---|---:|---:|---|---:|---:|
+| SESS | 20 | 111 | SHELL | 10 | 48 |
+| CHAT | 19 | 106 | SET | 9 | 60 |
+| BOT (with calls) | 11 | 214 | WORK | 7 | 46 |
+| AGENT | 10 | 59 | BOARD | 4 | 32 |
+| RICH | 10 | 45 | packaging | 2 | 17 |
 
 At the granularity of the examples below, expect a few hundred use cases: many journey steps check two or three
 behaviours, and some SPEC behaviour appears in no journey. PR 1 reports the real count.
@@ -267,27 +271,32 @@ decision anchors cited by the `IOS-*` and `WORK-002` exclusions are new SPEC hea
 | Driving the iOS app | `@e2e-dev/mobile`: agent-device, an XCTest-based driver with its own runner | nothing |
 | Locators, actions, waiting assertions | `screen.getByRole/getByLabel/getByText/getByTestId`, `tap/fill/longPress/hover/dragTo`, `expect(locator)` | nothing |
 | Starting the gateway and provider | `app.command`, `readyUrl`, port `0` | `visual-verification.mjs launch` gains `--port` and `--receipt-dir` |
-| Per-test setup, cleanup, provider barriers, deep links | `test.extend` | `e2e/hui.ts`, the `hui` fixture |
-| Use cases, baseline, lockstep | `tags`, `platforms`, `requires`, `list()` | `e2e/catalogue/`, `e2e/baseline.json`, `scripts/use-cases.test.mjs` |
+| Per-test setup, cleanup, provider barriers, deep links | `test.extend` | `e2e/fixtures/hui.ts`, the `hui` fixture |
+| Use cases, baseline, lockstep | `tags`, `platforms`, `requires`, `list()` | `e2e/catalogue/`, `e2e/catalogue/baseline.json`, `scripts/use-cases.test.mjs` |
 | The label and test-id contract | the query vocabulary | both apps render the same names and ids (2.7) |
 | CI | documented GitHub Actions jobs | `e2e.yml`, nightly and release steps |
 
 ### 2.2 Layout
 
 ```
-e2e.config.ts                  targets, the launcher command, retries 0, reporters
+e2e.config.ts                    targets, the launcher command, retries 0, reporters
 e2e/
-  hui.ts                       the `hui` fixture: gateway, setup and cleanup, provider barriers, open, reload, peek, attach
-  hui-env.ts                   the fixture world, the iOS gateway port and simulator, read from the environment
-  tests/<area>/<slug>.e2e.ts   shared tests, tagged with the use-case IDs they cover
-  catalogue/<area>.ts          use cases (section 1); types.ts, not-ui.ts, journeys.ts and surfaces.ts beside them
-  baseline.json                { backlog: { web: ID[], ios: ID[] }, unexercisedLabels: string[] }; only shrinks
-  baseline-check.ts            fails a PR that grows the baseline or changes a backlog use case without graduating it
-  report-check.ts              fails a run whose report is missing or stale, or has a flaky, skipped or interrupted test
-  files/                       attachment fixtures (a tiny PNG, notes.txt)
-  visual-verification.mjs, pi-provider-fixture.mjs, ...   the existing fixtures, kept
-  *.browser.md                 the existing journeys, retired as their use cases are automated (2.15)
+  tests/<area>/<slug>.e2e.ts     shared tests, tagged with the use-case IDs they cover
+  catalogue/<area>.ts            use cases (section 1); types.ts, not-ui.ts, journeys.ts and surfaces.ts beside them
+  catalogue/baseline.json        { backlog: { web: ID[], ios: ID[] }, unexercisedLabels: string[] }; only shrinks
+  fixtures/hui.ts                the `hui` fixture: gateway, setup and cleanup, provider barriers, open, reload, peek, attach
+  fixtures/hui-env.ts            the fixture world, the iOS gateway port and simulator, read from the environment
+  fixtures/files/                attachment fixtures (a tiny PNG, notes.txt)
+  visual-verification.mjs, fixtures/, probes/, demo/   the existing launcher, fixtures and probes, kept
+  *.browser.md                   the existing journeys, retired as their use cases are automated (2.15)
+scripts/
+  e2e-baseline-check.ts          fails a PR that grows the baseline or changes a backlog use case without graduating it
+  e2e-report-check.ts            fails a run whose report is missing or stale, or has a flaky, skipped or interrupted test
+  use-cases.test.mjs             the catalogue guards (3.1), collected by npm test
 ```
+
+This follows `e2e/AGENTS.md`: fixtures live in `e2e/fixtures/`, probes in `e2e/probes/`, and procedures and entry
+points at the top level.
 
 The tests glob is `e2e/tests/**/*.e2e.ts`, so the runner never collects the demo recorder, probes or fixtures.
 Vitest's `include` (`{bin,cli,desktop,evals,scripts,server,src}/**/*.test.*`) never collects `*.e2e.ts` files.
@@ -302,7 +311,7 @@ import { execFileSync } from 'node:child_process';
 import type { E2EConfig } from 'e2e';
 import { web } from '@e2e-dev/web';
 import { mobile } from '@e2e-dev/mobile';
-import { IOS_GATEWAY_PORT, IOS_SIMULATOR, WORLD_FLAGS } from './e2e/hui-env.ts';
+import { IOS_GATEWAY_PORT, IOS_SIMULATOR, WORLD_FLAGS } from './e2e/fixtures/hui-env.ts';
 
 const branch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim() || 'HEAD';
 
@@ -372,13 +381,13 @@ The launcher changes are small, in `e2e/visual-verification.mjs` and `e2e/visual
 `e2e/visual-verification.test.mjs` extended. `--port <n>` makes the Vite server listen on that port instead of `0`.
 `--receipt-dir <dir>` removes any old `receipt-<port>.json` at start, then writes the public receipt (`url`,
 `providerUrl`, `workspace`, `artifacts`, `world`, never the control token) there once the launcher is ready, the
-way `save()` already writes its private receipt. `e2e/hui-env.ts` maps `HUI_E2E_WORLD` (`default`, `jira`,
-`github`, `activity`, `quota`, `pi-sessions`) to the launcher's existing fixture flags and reads `HUI_E2E_IOS_PORT`
-and `HUI_E2E_SIMULATOR`.
+way `save()` already writes its private receipt. `e2e/fixtures/hui-env.ts` maps `HUI_E2E_WORLD` (`default`, `jira`,
+`github`, `datadog`, `activity`, `quota`, `pi-sessions`) to the launcher's existing fixture flags and reads
+`HUI_E2E_IOS_PORT` and `HUI_E2E_SIMULATOR`.
 
 ### 2.4 The `hui` fixture
 
-Every shared test imports `test` from `e2e/hui.ts`, not from `e2e`. The fixture runs before each test and tears
+Every shared test imports `test` from `e2e/fixtures/hui.ts`, not from `e2e`. The fixture runs before each test and tears
 down after it, failures included (the library's [test reference](https://e2e.tester.army/docs/reference/test),
 "Your own fixtures").
 
@@ -452,8 +461,8 @@ export const test = base.extend<{ hui: Hui }>({
       reload: () => (web ? browser().reload() : fixtures.app.restart()),
       peek: (target) => (web ? target.hover() : target.longPress()),
       attach: async (target, files) => {
-        if (web) return target.setInputFiles(files.map((name) => `e2e/files/${name}`));
-        for (const name of files) execFileSync('xcrun', ['simctl', 'addmedia', IOS_SIMULATOR ?? 'booted', `e2e/files/${name}`]);
+        if (web) return target.setInputFiles(files.map((name) => `e2e/fixtures/files/${name}`));
+        for (const name of files) execFileSync('xcrun', ['simctl', 'addmedia', IOS_SIMULATOR ?? 'booted', `e2e/fixtures/files/${name}`]);
         await target.tap();
         await pickNewestPhotos(fixtures.screen, files.length);
       },
@@ -488,7 +497,7 @@ export const test = base.extend<{ hui: Hui }>({
 
 ### 2.5 Worked example: send, stream, tool card, stop (CHAT-001, CHAT-002, CHAT-003)
 
-The prompts are real triggers of `e2e/pi-provider-fixture.mjs`. `E2E_REPLAY` streams `Replay prefix — ` and holds
+The prompts are real triggers of `e2e/fixtures/pi-provider-fixture.mjs`. `E2E_REPLAY` streams `Replay prefix — ` and holds
 the rest until `POST /control/release-replay`. `E2E_RICH` streams thinking and a `read` of the workspace's
 `fixture.txt` (the launcher writes `Real SDK browser fixture` into it), then a `# Tool complete` heading.
 `E2E_ABORT` streams `Abort prefix` and holds until the client goes away. Any other prompt gets `Fixture response.`
@@ -496,7 +505,7 @@ the rest until `POST /control/release-replay`. `E2E_RICH` streams thinking and a
 ```ts
 /** Sending a prompt streams the reply, its folded tool card opens to its output, and Stop ends a run (CHAT-001, CHAT-002, CHAT-003). */
 import { expect } from 'e2e';
-import { test } from '../../hui.ts';
+import { test } from '../../fixtures/hui.ts';
 
 test('a reply streams, its tool card opens, and Stop ends the next run', { tags: ['CHAT-001', 'CHAT-002', 'CHAT-003', 'smoke'] }, async ({ app, screen, hui }) => {
   const message = screen.getByRole('textbox', 'Message');
@@ -649,8 +658,8 @@ for screenshots and the remaining visual checks.
   the provider started, so tests sharing a launcher run one at a time. Shards run in parallel, each with its own
   launcher.
 - **Network faults.** `device.setNetwork('offline')` is unsupported on iOS simulators. Reconnect tests put the
-  existing `e2e/slow-link-proxy.mjs` between the app and the gateway and give it a control to drop connections, so
-  both platforms see the same fault and the owner's own network never changes.
+  existing `e2e/fixtures/slow-link-proxy.mjs` between the app and the gateway and give it a control to drop
+  connections, so both platforms see the same fault and the owner's own network never changes.
 
 ### 2.10 Synchronization without sleeps
 
@@ -662,7 +671,7 @@ for screenshots and the remaining visual checks.
   on `/control/wait-command` and `/control/wait-subagent-parent`.
 - `toBeHidden()` on something that could still appear means something only after a positive sync point, as in 2.5.
   `e2e/AGENTS.md` states this rule, and review checks it.
-- A guard fails any file under `e2e/tests/`, or `e2e/hui.ts`, that contains `setTimeout`, `sleep(`,
+- A guard fails any file under `e2e/tests/`, or `e2e/fixtures/hui.ts`, that contains `setTimeout`, `sleep(`,
   `waitForTimeout` or `delay(`.
 
 ### 2.11 Agent steps
@@ -694,7 +703,7 @@ That would hide a failure, which root
 - **No retries.** `retries: 0` in the config, `--retries 0` on every CI command, and a guard rejects a `retries`
   option in any shared test. The library's `e2e run || e2e run --last-failed` recipe isn't used.
 - **The report decides, not the exit code.** Every invocation writes to a fresh `--output` directory.
-  `e2e/report-check.ts` reads that `report.json` and fails the job when the report is missing or older than the run,
+  `scripts/e2e-report-check.ts` reads that `report.json` and fails the job when the report is missing or older than the run,
   when any test is `flaky`, `interrupted` or failed, or when a use-case-tagged test is `skipped`, which also catches
   a runtime `test.skip(…)` that collection can't see.
 - **Flakes get fixed where the state is owned.** The nightly runs the smoke tests and the tests changed that day
@@ -729,9 +738,9 @@ npx agent-device doctor                               # Xcode, simulator and run
 | Job | Runner | When | Runs | Fails the PR when |
 |---|---|---|---|---|
 | `test` (existing `test.yml`) | ubuntu | every PR, main | `npm run typecheck`, `npm test` with the guards in `scripts/`, including the `list()` coverage guard | any guard in 3.1 fails |
-| `e2e / catalogue` (new `e2e.yml`) | ubuntu | every PR, including description edits | `node e2e/baseline-check.ts origin/$GITHUB_BASE_REF`; lists new exclusions and changed backlog use cases in the job summary | the baseline grew, or a changed backlog use case didn't graduate (3.3) |
-| `e2e / web` | ubuntu, sharded | every PR, main | every shared test on `web` (`--shard i/N`), then each non-default world | a test fails, or `report-check.ts` fails |
-| `e2e / ios` | `macos-26`, sharded | every PR, main | Swift unit tests, the Release simulator build, a pinned simulator, every shared test on `ios` and each world | the build, a unit test or a test fails, or `report-check.ts` fails |
+| `e2e / catalogue` (new `e2e.yml`) | ubuntu | every PR, including description edits | `node scripts/e2e-baseline-check.ts origin/$GITHUB_BASE_REF`; lists new exclusions and changed backlog use cases in the job summary | the baseline grew, or a changed backlog use case didn't graduate (3.3) |
+| `e2e / web` | ubuntu, sharded | every PR, main | every shared test on `web` (`--shard i/N`), then each non-default world | a test fails, or `scripts/e2e-report-check.ts` fails |
+| `e2e / ios` | `macos-26`, sharded | every PR, main | Swift unit tests, the Release simulator build, a pinned simulator, every shared test on `ios` and each world | the build, a unit test or a test fails, or `scripts/e2e-report-check.ts` fails |
 | Nightly (`nightly.yml`) | macOS and ubuntu | each main push | `web-phone`, `--repeat-each 3` on smoke and changed tests, `--video retain-on-failure` on iOS, the nightly IPA | blocks the nightly prerelease and its IPA |
 | Release (`release.yml`) | macOS and ubuntu | approved version PR | every test on `web` and `ios`, the release IPA, the SideStore source | blocks the release |
 
@@ -756,15 +765,15 @@ npx agent-device doctor                               # Xcode, simulator and run
 - **Runtime.** Not measured yet. Spike S7 measures the Release build, agent-device's first start and the cost per
   test on GitHub's runners; the shard counts follow from that (assumption, S7).
 
-### 2.15 Migrating the 95 agent-run journeys
+### 2.15 Migrating the 102 agent-run journeys
 
 PR 1 gives every `e2e/*.browser.md` file a class in `e2e/catalogue/journeys.ts`:
 
 | Class | Examples | What happens to it |
 |---|---|---|
 | `automate` | `chat-composer`, `message-queue`, `slash-commands`, `session-groups`, `kanban`, `widgets`, `work-pane`, `bots` | Its steps become use cases and shared tests in the default world. The file is deleted once every use case derived from it is required on the web; git keeps the history |
-| `world:<name>` | `jira-integration` (jira), `github-integration` and `contributions` (github), `session-calendar` (activity), `providers` (quota), `sdk-backend` and `plugin-disable-sdk` (pi-sessions) | The same, in that world's run |
-| `external` | `vscode-view` (a real openvscode-server), `bots-workers` (a remote worker), `remote-loading` (the slow-link proxy) | Automated where CI can supply the program (`HUI_OPENVSCODE_SERVER_MIRROR` points at a local server, and the slow-link proxy is already in `e2e/`); otherwise it stays an agent-run procedure with the gap recorded |
+| `world:<name>` | `jira-integration` (jira), `github-integration` and `contributions` (github), `datadog-embeds` (datadog), `session-calendar` (activity), `providers` (quota), `sdk-backend` and `plugin-disable-sdk` (pi-sessions) | The same, in that world's run |
+| `external` | `vscode-view` (a real openvscode-server), `bots-workers` (a remote worker), `remote-loading` (the slow-link proxy) | Automated where CI can supply the program (`HUI_OPENVSCODE_SERVER_MIRROR` points at a local server, and the slow-link proxy is already in `e2e/fixtures/`); otherwise it stays an agent-run procedure with the gap recorded |
 | `visual` | `openclaw-primary-ui-parity`, `visual-parity-2026-09-24`, the look parts of `miami-theme`, `webawesome-controls`, `font-preferences` | Stays an agent-run visual check, because it judges looks, not behaviour |
 | `packaging` | `package`, `desktop-package` | Already automated by `npm run test:package`; the journey is retired |
 
@@ -816,13 +825,14 @@ option, instead of parsing test files.
 | Every ID required on a platform has a test with its tag that `list()` says runs on that target | `list()` | same | PR 2 (web), PR 3 (iOS) |
 | A test that `list()` skips on `web` or `ios` covers only IDs that are backlog or excluded there | `list()` | same | PR 2 |
 | Every shared test has an ID tag, and every ID-shaped tag exists in the catalogue | `list()` | same | PR 2 |
-| No shared test uses `agent`, sets `retries`, reads `platform`, `device` or `browser` (only `e2e/hui.ts` may), or sleeps | source scan of `e2e/tests/` | same | PR 2 |
+| No shared test uses `agent`, sets `retries`, reads `platform`, `device` or `browser` (only `e2e/fixtures/hui.ts` may), or sleeps | source scan of `e2e/tests/` | same | PR 2 |
 | Roles stay within `button`, `textbox`, `switch`, `tab` and `listitem` unless every ID the test covers is web-only; every `getByTestId` id exists as `data-testid` in `src/`, and as `.accessibilityIdentifier` in `ios/` for tests that run on iOS | source scan and `list()` | same | PR 2 (web half), PR 3 (iOS half) |
 | Every static accessible name in `src/` appears in a shared test or in `baseline.unexercisedLabels` | label scan | same | PR 2 |
 | Every workflow job and npm script that runs `e2e` sets `E2E_TELEMETRY_DISABLED`; every `world:<name>` tag has its run | workflow and script scan | same | PR 2 |
-| The baseline never grows, and a backlog use case the PR changes leaves the backlog (3.3) | diff against the base branch | `e2e / catalogue` (`e2e/baseline-check.ts`) | PR 2, PR 3 |
-| The run's own report exists, and every selected test passed on its first attempt | `report.json` | `e2e/report-check.ts` in each e2e job | PR 2 |
-| TypeScript unions the app mirrors match their Swift enums | literal-set compare | `scripts/ios-contract.test.mjs` | PR 3 |
+| The baseline never grows, and a backlog use case the PR changes leaves the backlog (3.3) | diff against the base branch | `e2e / catalogue` (`scripts/e2e-baseline-check.ts`) | PR 2, PR 3 |
+| The run's own report exists, and every selected test passed on its first attempt | `report.json` | `scripts/e2e-report-check.ts` in each e2e job | PR 2 |
+| The Swift payload types in `ios/HUI/Gateway/Schema/` are what `scripts/api-schema.ts` generates from `docs/api.schema.json` | regenerate and compare | `scripts/api-schema.test.ts` | PR 3 |
+| The unions of the core's output that Swift mirrors (row kinds, transcript item kinds) match their Swift enums | literal-set compare | `scripts/ios-contract.test.mjs` | PR 4 |
 | Swift modules start with a header comment; `docs/map.md` names the `ios/` directories | the existing guard, extended | `scripts/module-headers.test.mjs` | PR 3 |
 | The tests pass on the web, and on iOS | `e2e / web`, `e2e / ios` | `e2e.yml` | PR 2, PR 3 |
 
@@ -840,15 +850,15 @@ imports it where the module loads in Node without a DOM:
 | Kind | Source | How |
 |---|---|---|
 | `page:` | `HUI_PAGES` in `src/lib/pages.ts` | import (21) |
-| `settings-page:` | `ROUTABLE_SETTINGS_PAGES` in `src/lib/navigation.ts` | import (14) |
+| `settings-page:` | `ROUTABLE_SETTINGS_PAGES` in `src/lib/navigation.ts` | import (13) |
 | `nav:` | `NavigationTarget` in `src/lib/navigation.ts` | literal scan of the type (6) |
-| `work-view:` | `src/lib/work-views/*.ts` | file names (5) |
-| `tool:` | `shippedTools()` in `server/runtimes/tool-catalog.ts`, plus the bot tools | import (8 PI and 16 HUI tools, plus the bot tools) |
-| `command:` | `HUI_COMMANDS` and `HUI_SESSION_COMMANDS` in `src/lib/slash-commands.ts` | import (6) |
+| `work-view:` | `src/views/work/*.ts` | file names (5) |
+| `tool:` | `shippedTools()` in `server/runtimes/tool-catalog.ts`, plus the bot tools | import (8 PI and 17 HUI tools, plus the bot tools) |
+| `command:` | `HUI_COMMANDS` and `HUI_SESSION_COMMANDS` in `src/lib/composer/slash-commands.ts` | import (6) |
 | `shortcut:` | `WORK_SHORTCUTS` in `src/lib/work-shortcuts.ts`, and the palette's chord | import (7 and 1) |
 | `row:` | `ChatProjectionRow` in `src/views/chat/projection.ts` | literal scan (6) |
-| `setting:` | the leaves of `DEFAULT_SETTINGS` in `src/lib/settings.ts` | import and walk (32) |
-| `route:` | `docs/api.md` route headings, inline `METHOD /__hui/…` strings and route-table rows | regex (142 and 22) |
+| `setting:` | the leaves of `DEFAULT_SETTINGS` in `src/lib/settings/settings.ts` | import and walk (33) |
+| `route:` | `x-hui-routes` in `docs/api.schema.json`, plus the `METHOD /__hui/…` strings of `docs/api.md` the schema doesn't list | JSON (181) and regex (about ten) |
 | labels | `aria-label="…"` literals in `src/**/*.ts` | regex (198); must appear in a shared test, not in the catalogue |
 
 A PR that adds a page, a Settings page, a Work view, a tool, a slash command, a shortcut, a transcript row kind, a
@@ -858,9 +868,9 @@ same PR.
 
 The known gaps:
 
-- A server route missing from `docs/api.md` isn't seen. The repo rule is already to update `api.md` with every
-  route; `server/hui.ts` matches routes with conditions and regular expressions that can't be enumerated reliably.
-- A control whose label is computed is seen only through its page or row: 160 of the 384 `aria-label=`
+- A server route missing from both the schema and `docs/api.md` isn't seen. JSON routes come with their schema in
+  `server/api/`, and the repo rule is already to update `api.md` with every route.
+- A control whose label is computed is seen only through its page or row: 167 of the 391 `aria-label=`
   occurrences in `src/` are `aria-label=${…}`. Those labels can move into `const` tables later if the owner wants
   them collected.
 - A behaviour change that adds no surface, edits no catalogue entry and touches no shared test is seen only by
@@ -879,7 +889,7 @@ its shared test passing on both. The plan works under that rule as stated.
   iOS job exists, it must be required on both, and the coverage guard and the iOS job prove it in that PR.
 - **A changed use case graduates in the same PR.** A use case counts as changed when its catalogue entry changes
   (`behaviour`, `surfaces` or `spec`) or when a shared test tagged with it changes. If it is still iOS backlog,
-  `baseline-check.ts` requires the same PR to take it off the iOS backlog, so the change ships on iOS with its test
+  `scripts/e2e-baseline-check.ts` requires the same PR to take it off the iOS backlog, so the change ships on iOS with its test
   passing there. One transition doesn't count as a change, so the web catch-up stays possible: a use case may go
   from web backlog to web required in a PR that adds its first test and leaves its `behaviour` text alone.
 - **A test fix that changes no behaviour.** When a PR edits a backlog use case's test without changing what it
@@ -892,11 +902,11 @@ its shared test passing on both. The plan works under that rule as stated.
 - **What strictness costs.** Until iOS reaches parity, a web feature in an area iOS hasn't built has to build the iOS
   screens it sits on in the same PR, or wait. A new bot routine option, for example, needs the iOS Bots and Routines
   screens. In practice that pauses web feature work in areas iOS hasn't reached. The plan keeps the pause short in
-  three ways. The milestones catch up the busiest areas first: of the last 100 commits, 31 touched chat files in
-  `src/`, 25 session files, 17 Settings files, 17 bot files, 12 Work view files and 5 Kanban, Jira or GitHub files
-  (`git log -100 --name-only`, classified by path). The iOS core reuses the web's transcript logic (4.4), so a
-  change there costs nothing extra on iOS. And the milestone order is published, so the owner can see in advance
-  which areas a web feature would pull in.
+  three ways. The milestones catch up the busiest areas first: of the last 100 commits on `main`, 19 touched
+  session files in `src/`, 16 chat files, 14 bot files, 12 Settings files, 6 Work view files and 3 Kanban, Jira,
+  GitHub or Datadog files (`git log -100 --name-only`, classified by path). The iOS core reuses the web's transcript
+  logic (4.4), so a change there costs nothing extra on iOS. And the milestone order is published, so the owner can
+  see in advance which areas a web feature would pull in.
 - **The order inside a catch-up milestone.** First the area's shared tests turn required on the web, which needs no
   iOS work and gives the web regression tests early. While the area is iOS backlog its tests carry
   `platforms: ['web']`, which the guard allows only for backlog or excluded IDs. Then the iOS screens land, the
@@ -925,10 +935,11 @@ its shared test passing on both. The plan works under that rule as stated.
 
 ```
 ios/
-  AGENTS.md                  Swift rules, the core boundary, contract mirrors, no extensions or entitlements
+  AGENTS.md                  Swift rules, the core boundary, generated types, no extensions or entitlements
   HUI.xcodeproj              committed, with folder-synchronized groups, so adding a file doesn't touch it
   HUI/App/                   entry, AppRoute (parsed by the core's resolveNavigation), scene phase, notifications
-  HUI/Gateway/               GatewayClient (x-hui, deadlines), the SSE reader, SessionSocket, Contract/*.swift
+  HUI/Gateway/               GatewayClient (x-hui, deadlines), the SSE reader, SessionSocket
+  HUI/Gateway/Schema/        one Swift file per API area, generated from docs/api.schema.json (committed)
   HUI/Core/                  HUICore.swift (the JavaScriptCore host) and the view-model types it decodes
   HUI/Chat|Sessions|Work|Kanban|Settings|Pages|Bots|Calls/   features
   HUI/Rendering/             Markdown token renderer, RichBlockRenderer, WidgetView, MediaViewer, EmbeddedWeb
@@ -959,14 +970,14 @@ build. CI pins the Xcode version, and `ios/AGENTS.md` records it.
 
 | Concern | How |
 |---|---|
-| Headers | Every request, attachment and media fetches included, goes through one client that sends `x-hui: 1`. Deadlines follow `src/lib/gateway-request.ts`. Error bodies keep their status and message. |
+| Headers | Every request, attachment and media fetches included, goes through one client that sends `x-hui: 1`, as `src/api/request.ts` does on the web, with the same response deadlines. Error bodies keep their status and message. |
 | Gateway-wide SSE | `GET /__hui/sessions/events` (and `GET /__hui/bots/events`) over `URLSession.bytes(for:)`. The reader handles multi-byte characters split across chunks, multi-line `data:`, CRLF and heartbeat comments, then hands each frame to the core's `decodeSseFrame`. The first frame is a snapshot; a session absent from it is idle. |
-| Session stream | `POST /__hui/sessions/:id/connect` returns a relative `url`. The app resolves it against the gateway, switches the scheme to `ws` or `wss`, and connects at once with `URLSessionWebSocketTask` and an `Origin` header equal to the gateway's own origin, because the upgrade requires an `Origin` whose host and port equal `Host` (`validTerminalOrigin` in `server/terminal-transport.ts`) (assumption, S2; the fallback is `NWProtocolWebSocket` with additional headers). Frames are `{event, data}` per `docs/api.md`. If URLSession doesn't offer permessage-deflate, the server sends plain frames. |
-| Terminals and the browser view | `POST …/terminals/:id/connect` and `…/browser/connect`, with the same ticket and Origin flow. Binary PTY frames and JSON control frames per `shared/terminal-stream.ts` and `shared/browser.ts`. Terminal input is disabled while disconnected, never buffered for later. |
+| Session stream | `POST /__hui/sessions/:id/connect` returns a relative `url`. The app resolves it against the gateway, switches the scheme to `ws` or `wss`, and connects at once with `URLSessionWebSocketTask` and an `Origin` header equal to the gateway's own origin, because the upgrade requires an `Origin` whose host and port equal `Host` (`validTerminalOrigin` in `server/terminals/transport.ts`) (assumption, S2; the fallback is `NWProtocolWebSocket` with additional headers). Frames are `{event, data}` per `docs/api.md` and the `events` schemas in `docs/api.schema.json`. If URLSession doesn't offer permessage-deflate, the server sends plain frames. |
+| Terminals and the browser view | `POST …/terminals/:id/connect` and `…/browser/connect`, with the same ticket and Origin flow. Binary PTY frames and JSON control frames per `docs/api.md` and `server/api/terminals.ts`; browser frames as `src/api/browser.ts` decodes them. Terminal input is disabled while disconnected, never buffered for later. |
 | Tickets | One use, 15 seconds: minted right before each connect, never cached. 429 means retry later; close code 4404 means the session was deleted. |
 | Reconnects | Backoff from the core's `reconnectDelay(attempt)`. Every reconnect mints a new ticket, and the snapshot replaces local state. `NWPathMonitor` and the scene becoming active trigger reconnects. Going to the background closes sockets cleanly, since iOS would suspend them anyway; runs continue on the gateway. |
 | Late answers | Each request and stream carries a generation number, so a late response never overwrites a newer selection or a newer snapshot. |
-| Request ids | The core's `SendRequests` (`src/lib/send-requests.ts`), with Swift supplying `UUID().uuidString`, so a resend reuses its id exactly as the web does. Drafts and request ids are keyed by gateway and session, so switching gateways never sends an old draft to another session. There is no offline outbox: an ambiguous send shows a retry that reuses the id. |
+| Request ids | The core's `SendRequests` (`src/lib/composer/send-requests.ts`), with Swift supplying `UUID().uuidString`, so a resend reuses its id exactly as the web does. Drafts and request ids are keyed by gateway and session, so switching gateways never sends an old draft to another session. There is no offline outbox: an ambiguous send shows a retry that reuses the id. |
 | Versions | `GET /__hui/update` gives the gateway's running version. The app knows the oldest gateway version it supports, its own release unless a later gateway change says otherwise. An older gateway gets a notice naming both versions and blocks sending; a newer one gets a notice and keeps working; a development gateway with no version is shown as unverified. A gateway change that breaks older apps ships with the app update in the same release, which lockstep makes the normal case. |
 
 No gateway change is expected for any of this. `docs/api.md` gains a short "Native clients" section saying what a
@@ -985,51 +996,64 @@ The core starts small and grows only when a screen needs a function:
   `src/lib/transcript-state.ts`) and the projection (`projectChatTranscript`, `activityLabel`, `workingLabel` in
   `src/views/chat/projection.ts`), which carry the subtle rules: `historyRefreshed: false` keeps the live
   projection, a tool update applies to the latest matching id, and `turn_end` alone doesn't unlock the composer;
-- `SendRequests`, `reconnectDelay` and `decodeSseFrame`, after moving the last two out of
-  `src/lib/sessions-store.ts` into their own module so the bundle doesn't pull in the store;
+- `SendRequests` (`src/lib/composer/send-requests.ts`), and `reconnectDelay` and `decodeSseFrame`, after moving
+  those two out of `src/api/sessions.ts` into `src/lib/`, so the bundle doesn't pull in the fetch client (the
+  repo's boundary rule R5 keeps `fetch` in `src/api/`);
 - `resolveNavigation` and `navigationPath` (`src/lib/navigation.ts`);
-- later, when their screens land: the Markdown parser half of `src/lib/markdown.ts`, the slash-command and
-  file-reference parsers, diff hunks, `parseTerminalControlFrame`, and the `shared/*` normalizers.
+- later, when their screens land: the Markdown parser half of `src/lib/markdown/markdown.ts`, the slash-command
+  parser in `src/lib/composer/slash-commands.ts`, file references (`src/lib/files/references.ts`), diff hunks
+  (`src/lib/diff/hunks.ts`), `parseTerminalControlFrame` (moved out of `src/api/terminals.ts` the same way), and
+  normalizers such as `src/lib/browser-status.ts`.
 
-The web side gets small refactors with no behaviour change: `src/lib/markdown.ts` splits into a parser half
-(markdown-it and its plugins, returning tokens) and a Lit rendering half, and `STATUS_TEXT` moves into a pure
-module. A Vitest test loads the built bundle in `node:vm` with an empty global object and calls every export, so a
+The web side gets small refactors with no behaviour change: `src/lib/markdown/markdown.ts` splits into a parser half
+(markdown-it and its plugins, returning tokens) and a Lit rendering half, and `STATUS_TEXT` moves out of
+`src/views/home.ts` into a pure module. A Vitest test loads the built bundle in `node:vm` with an empty global object and calls every export, so a
 DOM, `fetch`, timer, `navigator` or `requestAnimationFrame` dependency fails `npm test`. Swift supplies ids and the
 clock. The core keeps in-memory state per session and returns only changed rows, keyed by stable ids. Swift owns
 all I/O, lifecycle and UI.
 
 One `JSContext` runs on a dedicated serial executor, and stream events are coalesced to at most one core call per
 display frame. Spike S3 measures load time, bundle size, and reduce-plus-project time on the 2 MB conversation from
-`e2e/long-session-fixture.ts` at streaming rates, on the simulator and on the owner's iPhone. If S3 fails, the
+`e2e/fixtures/long-session-fixture.ts` at streaming rates, on the simulator and on the owner's iPhone. If S3 fails, the
 reducer and projection are ported to Swift instead, and the existing Vitest tests write JSON conformance fixtures
 (events in, rows out) that Swift tests replay, so the two implementations can't drift silently.
 
-### 4.5 Keeping Swift types in sync with `shared/` and `docs/api.md`
+### 4.5 Keeping Swift types in sync with the API
 
-1. Payloads the core normalizes are decoded from the core's output, so the TypeScript normalizer stays the only
-   validator and Swift mirrors only the view models.
-2. One mirror file per source, `ios/HUI/Gateway/Contract/<name>.swift`, whose header names its source (for example
-   "Mirrors shared/terminal-stream.ts and docs/api.md 'Shared terminal API and tool'").
-3. `scripts/ios-contract.test.mjs`, which runs on Linux, compares the string literals of listed TypeScript unions
-   with the matching Swift `enum …: String` cases: `ChatProjectionRow` kinds, `TranscriptItem` kinds, session
-   statuses, `NavigationTarget` kinds, Work view kinds, session-stream event names, terminal control frames and
-   `ROUTABLE_SETTINGS_PAGES`. A new row kind or status fails `npm test` until Swift handles it.
-4. Swift unit tests decode real responses recorded from the fixture gateway (sessions, snapshots, events, settings,
+The gateway already publishes its contract. The TypeBox payloads in `server/api/` build `docs/api.schema.json` (JSON
+Schema 2020-12: 395 types in 30 areas, and 181 routes with their request, response and event types), and
+`scripts/api-schema.ts` generates the web's types in `src/api/schema/` from that file; `scripts/api-schema.test.ts`
+fails when either is stale (boundary rule R16). The iOS app takes its types from the same file:
+
+1. `scripts/api-schema.ts` gains a Swift emitter beside `generateBrowserTypes`, writing one file per area to
+   `ios/HUI/Gateway/Schema/`. It accepts the same keyword subset and throws on anything else, as the TypeScript
+   emitter does. Objects become `Codable` structs, `const` and `enum` unions become `String` enums, a union of
+   objects with a `const` discriminator becomes an enum with associated values and a decoder keyed on it, and an
+   open object (`Record<string, unknown>`, arbitrary tool arguments) becomes a `JSONValue`. `scripts/api-schema.test.ts`
+   compares the committed Swift files with a fresh run, so `npm run api:schema` regenerates both clients and a
+   schema change that Swift doesn't take fails `npm test`.
+2. The core's own output (projection rows, transcript items) is not API payload, so Swift mirrors those view models
+   by hand, and `scripts/ios-contract.test.mjs` compares the string literals of their unions (`ChatProjectionRow`
+   kinds, `TranscriptItem` kinds) with the matching Swift enums.
+3. Swift unit tests decode real responses recorded from the fixture gateway (sessions, snapshots, events, settings,
    errors, a large transcript, an unknown future event), and a decode failure logged during an e2e run fails the
    test.
 
-Generating Swift from TypeScript is left out: HUI's wire types use conditional and `Extract<>` types that
-generators handle badly, and the core plus the union guard catch the drift that matters with less machinery.
+No code-generation dependency is needed: the emitter is the repo's own, beside the one that already exists.
 
 ### 4.6 State
 
-| Store (`@Observable`) | Mirrors | Holds |
+One `@Observable` model per web controller in `src/controllers/`, so a feature's state has the same owner on both
+clients:
+
+| Model | Mirrors | Holds |
 |---|---|---|
-| `GatewayModel` | `settings-store`, `update-store` | URL, version, connection state, settings |
-| `SessionList` | the session list in `sessions-store` and the status SSE | groups, sessions, status, unread, background |
-| `SessionModel`, one per open session | `subscribeSession` | socket, the core's transcript handle, rows, status, queue, questions, model, usage, thinking |
-| `WorkModel`, per conversation | `src/lib/work-pane.ts` | open views and the active view, kept on the device as the web keeps them in the browser |
-| Feature stores | `files-store`, `diff-store`, `terminals-store`, `browser-store`, `vscode-store`, `tools-store`, `theme-store` | per feature |
+| `GatewayModel` | `settings-controller.ts`, `update-controller.ts`, `src/lib/settings/settings-store.ts` | URL, version, connection state, settings, theme |
+| `SessionsModel` | `sessions-controller.ts`, `src/api/session-list.ts` | groups, sessions, status, unread, background, notices |
+| `ConversationModel`, one per open session | `conversation-controller.ts` | socket, the core's transcript handle, rows, status, models, usage, questions |
+| `ComposerModel`, one per open session | `composer-controller.ts` | draft, completion, queue, sending |
+| `WorkModel`, per conversation | `work-layout-controller.ts`, `src/lib/work-pane.ts` | open views and the active view, kept on the device as the web keeps them in the browser |
+| Feature models | `launch-controller.ts`, `backlog-controller.ts`, `automation-controller.ts`, `bots-controller.ts`, `voice-controller.ts`, `browser-view-controller.ts` | per feature |
 
 The transcript is a `ScrollView` and `LazyVStack` keyed by the core's row ids and anchored at the bottom. Drafts and
 the Work pane state live on the device, as they live in the browser on the web (`docs/api.md`, "Browser-owned
@@ -1040,28 +1064,28 @@ do.
 
 | Surface | Web today | iOS approach | Spike |
 |---|---|---|---|
-| Markdown | `src/lib/markdown*.ts` (markdown-it, CJK, task lists, file references, Slack, GitHub and X rules) | The core returns markdown-it tokens with the same plugins and rules. Swift renders them: `AttributedString` for inline text, views for blocks, tables as a `Grid` in a horizontal scroll | none |
+| Markdown | `src/lib/markdown/` (markdown-it, CJK, task lists, file references, Slack, GitHub, Datadog and X rules) | The core returns markdown-it tokens with the same plugins and rules. Swift renders them: `AttributedString` for inline text, views for blocks, tables as a `Grid` in a horizontal scroll | none |
 | KaTeX, Mermaid, Vega-Lite | the npm packages | `RichBlockRenderer`: one offscreen `WKWebView` loads the embedded bundle (same versions) and returns images and SVG, cached by source, theme and width, shown as native images with the source as accessibility label. A tap opens the media viewer (zoom, save, copy SVG) | S8 |
 | Code highlighting | lezer through `src/lib/code-languages.ts` | The core tokenizes; Swift colours an `AttributedString` | S3 |
 | Tool cards | `src/views/chat/*-tool-card.ts`, `src/views/home.ts` | One SwiftUI view per card kind (read, command, codemode, generic, watcher activity, task suggestion, progress, browser preview); unknown extension tools get the generic card with bounded JSON and text | none |
 | Terminals | Gespenst over a WebSocket | SwiftTerm's `TerminalView`, fed the binary frames, sending input and resize JSON. The key bar is an input accessory with the "Terminal keys" labels. Both apps expose the visible screen as the terminal's accessible value (a small web change), so tests read terminal text the same way | S2, S5 |
-| Managed browser view | `src/components/browser-pane.ts`, view-only frames | `shared/browser.ts` frames decoded into an `Image`, a tab picker, the follow toggle and the click-mark overlay. It shows the gateway's Chromium; it isn't a browser on the phone | none |
-| Files | tree, search, CodeMirror | A native tree, search, upload (`fileImporter`), delete and image preview. The editor is CodeMirror from the embedded bundle in a `WKWebView`; saves and version conflicts go through native calls to the files routes, with their `ETag` and `If-Match` contract | none |
-| Diff | `src/lib/diff-hunks.ts`, `src/lib/diff-highlight.ts` | The core parses and highlights; SwiftUI renders unified, and side by side when the width rule in SPEC "Diff" allows it (landscape) | none |
+| Managed browser view | `src/components/browser-pane.ts`, view-only frames | The frames `src/api/browser.ts` decodes, drawn into an `Image`, with a tab picker, the follow toggle and the click-mark overlay. It shows the gateway's Chromium; it isn't a browser on the phone | none |
+| Files | tree, search, CodeMirror (`src/lib/files/editor.ts`) | A native tree, search, upload (`fileImporter`), delete and image preview. The editor is CodeMirror from the embedded bundle in a `WKWebView`; saves and version conflicts go through native calls to the files routes, with their `ETag` and `If-Match` contract | none |
+| Diff | `src/lib/diff/hunks.ts`, `src/lib/diff/highlight.ts` | The core parses and highlights; SwiftUI renders unified, and side by side when the width rule in SPEC "Diff" allows it (landscape) | none |
 | VS Code | a proxied web app in a frame | A `WKWebView` loads the `url` from `POST /__hui/sessions/:id/vscode/connect`, a `/__hui/vscode/enter?ticket=…` redirect that sets the proxy's cookie in that web view's data store. Licence consent and provider settings are native | S5 |
-| Agent widgets | an opaque-origin sandbox iframe | A `WKWebView` host page, loaded with the gateway origin as `baseURL`, frames the gateway's own `/__hui/widget-sandbox` and speaks the same frame protocol (`docs/api.md`, "Frame protocol"). The web view uses its own non-persistent `WKWebsiteDataStore` and gets no `x-hui`. Swift accepts host messages only from the host page's main frame (`frameInfo.isMainFrame` and its security origin), only of the protocol's kinds and sizes, and opens a link only for a credential-free http(s) URL after a user tap. `E2E_WIDGET_PROBE` must report every probe blocked on iOS too | S9 |
-| Attachments | file input, paste, drop | `PhotosPicker`, `fileImporter`, the camera and paste, with the server's limits (8 files, 12 MB each, 16 MB in total; `server/hui.ts`) checked before sending | S13 |
+| Agent widgets | an opaque-origin sandbox iframe (`server/agent-tools/widget-sandbox.ts`, `src/lib/widgets.ts`) | A `WKWebView` host page, loaded with the gateway origin as `baseURL`, frames the gateway's own `/__hui/widget-sandbox` and speaks the same frame protocol (`docs/api.md`, "Frame protocol"). The web view uses its own non-persistent `WKWebsiteDataStore` and gets no `x-hui`. Swift accepts host messages only from the host page's main frame (`frameInfo.isMainFrame` and its security origin), only of the protocol's kinds and sizes, and opens a link only for a credential-free http(s) URL after a user tap. `E2E_WIDGET_PROBE` must report every probe blocked on iOS too | S9 |
+| Attachments | file input, paste, drop | `PhotosPicker`, `fileImporter`, the camera and paste, with the server's limits (8 files, 12 MB each, 16 MB in total; `server/sessions/attachments.ts`) checked before sending | S13 |
 | Presented media | img, video, audio and the viewer | `AsyncImage` (media URLs carry a random id and need no `x-hui`), `AVPlayer` and QuickLook, with native zoom and pan and the share sheet to save | none |
-| Voice calls (Labs) | WebRTC in the browser (`src/lib/live-call*.ts`) | A `WKWebView` call engine runs the same `live-call.ts` and `live-call-platform.ts` from the embedded bundle, with native call controls over a message bridge. It needs the microphone permission and a secure context (HTTPS or loopback), as browsers do. A call that iOS suspends ends with a notice and its record | S10 |
+| Voice calls | WebRTC in the browser (`src/lib/voice/live-call.ts`, `live-call-platform.ts`) | A `WKWebView` call engine runs the same `live-call.ts` and `live-call-platform.ts` from the embedded bundle, with native call controls over a message bridge. It needs the microphone permission and a secure context (HTTPS or loopback), as browsers do. A call that iOS suspends ends with a notice and its record | S10 |
 | Notifications | in-app notices (`role=status` and `alert`), unread and waiting indicators; no system notifications | The same in-app behaviour. The iOS-only extra (IOS-002): local notifications through `UNUserNotificationCenter` for settled and waiting sessions the app sees while it runs or right after it is backgrounded. Nothing is promised after iOS suspends the app; the list shows the result on return. Push would need APNs, which free accounts don't get, or a relay (owner decision D4) | S12 |
 | Kanban drag and drop | HTML drag, "Options for X", then Move to | Columns in a horizontal scroll, `.draggable` and `.dropDestination`, and the same menu | S5 |
-| Settings (14) and pages (21) | Lit forms | A SwiftUI `Form` or `List` per page with the same labels; usage charts in Swift Charts, a system framework | none |
+| Settings (13) and pages (21) | Lit forms | A SwiftUI `Form` or `List` per page with the same labels; usage charts in Swift Charts, a system framework | none |
 | Command palette | a dialog | A search sheet opened from a visible control; ⌘K with a hardware keyboard | none |
 | Themes and fonts | `themes/*.json`, `src/styles/tokens.css`, `public/fonts` | Theme JSON from the gateway mapped to SwiftUI colours; the same font files bundled and registered | none |
-| Bot faces | `src/lib/bot-face.ts` | State from the core, drawn with SwiftUI `Canvas` and `TimelineView` | none |
+| Bot faces | `src/lib/bots/face.ts`, `src/components/bot-face.ts` | State from the core, drawn with SwiftUI `Canvas` and `TimelineView` | none |
 | Split chats | columns on desktop, the active pane below 1100 px | The narrow behaviour: one chat visible, the others stay connected, drafts survive switching | none |
 | Downloads (bot export, diagnostics) | a browser download | `fileExporter` or the share sheet | none |
-| "Open in a new tab" (memory page) | a new browser tab on the same origin | An in-app `WKWebView` whose request sends `x-hui`, because the memory page requires it or a same-origin fetch (`server/hui.ts`); Safari would get neither | none |
+| "Open in a new tab" (memory page) | a new browser tab on the same origin | An in-app `WKWebView` whose request sends `x-hui`, because the memory page (`server/routes/bots.ts`) passes the gateway's `x-hui` gate only with that header or a same-origin page load; Safari would have neither | none |
 
 ### 4.8 Reachability and security
 
@@ -1123,8 +1147,8 @@ N = native SwiftUI, E = embedded web view, A = adapted to the phone, X = exclude
 | Settings: appearance, gateway and power, integrations, workers, models and providers, plugins, skills, tools, memory, automation, privacy, sessions, worktrees, diagnostics | N | Power settings control the Mac that runs the gateway |
 | Pages: about, activity, config, contributions, connection, cron, debug, labs, logs, memory import, model providers, model setup, new session, plugin(s), profile, sessions, skill workshop, skills, tasks, usage | N | |
 | Gateway update (`/update` and the update dialog) | N | Updates the gateway; the app itself updates through SideStore |
-| Bots (Labs): roster, chat, soul, tools, routines, triggers, templates, export, faces, workers | N | Export through the share sheet |
-| GPT-Live calls (Labs) | E | Call engine in `WKWebView`, native controls |
+| Bots: roster, chat, soul, facts, tools, routines, triggers, templates, export, faces, workers | N | Export through the share sheet |
+| GPT-Live calls with bots | E | Call engine in `WKWebView`, native controls |
 | Notices, run errors, interrupted recovery, slow-link loading | N | |
 | "Open in a new tab" (VS Code, memory page) | A | VS Code opens in Safari at the same gateway URL; the memory page opens in an in-app web view (4.7) |
 | Desktop app (Electron) and package install | X | Not a UI capability; `npm run test:package` covers it |
@@ -1183,7 +1207,7 @@ The only exclusions are behaviour SPEC already calls desktop-only, keyboard-only
 | S10 | (before M11) Call engine: `getUserMedia` and `RTCPeerConnection` in `WKWebView` against GPT-Live | A native WebRTC framework (dependency 5) |
 | S11 | App Transport Security: loopback HTTP, the tailnet address over HTTP, the `ts.net` name over HTTPS | HTTPS only for remote gateways (owner decision D13) |
 | S12 | Local notifications under free signing | Notifications only while the app is in the foreground |
-| S13 | Can agent-device pick seeded photos in `PhotosPicker` and a file in `fileImporter`? | Owner decision D10: one test-only launch argument that lists `e2e/files` in the app's own picker sheet |
+| S13 | Can agent-device pick seeded photos in `PhotosPicker` and a file in `fileImporter`? | Owner decision D10: one test-only launch argument that lists `e2e/fixtures/files` in the app's own picker sheet |
 | S14 | With `E2E_TELEMETRY_DISABLED=1`, does anything still call out (`E2E_TELEMETRY_DEBUG=1` prints what would be sent)? Does agent-device send telemetry of its own? | Set agent-device's own opt-out in the same places, or report it to the owner before PR 3 |
 
 S1, S4 and S14 gate PR 2. S2, S3, S5, S6, S7 and S13 gate milestones M3 and M4. S8 and S9 gate M6, S10 gates
@@ -1203,11 +1227,11 @@ are deleted, and the owner installs the nightly IPA through SideStore and uses t
 | M4 | Chat: open, stream, tool cards, Stop, queue, attachments, errors, relaunch recovery, slash commands, model and thinking pickers, Markdown | CHAT | PR 4 and the next ones |
 | M5 | Sessions and navigation: new session, groups, search, menus, palette, split-chat narrow behaviour | SESS, SHELL | |
 | M6 | Agent interactions and rich content: questions, secrets, subagents, watchers, suggestions, progress, widgets, media, math, diagrams, charts, embeds | AGENT, RICH | |
-| M7 | Bots (Labs), among the most active areas | BOT | |
+| M7 | Bots, among the most active areas | BOT | |
 | M8 | Settings and pages | SET, PAGE | |
 | M9 | Work views: terminal, browser view, files, diff, VS Code | WORK | |
 | M10 | Integrations: Kanban, worktrees, GitHub, Jira, contributions, calendar (worlds `jira`, `github`, `activity`) | BOARD | |
-| M11 | Calls (Labs) | CALL | |
+| M11 | Calls | CALL | |
 
 In every milestone the area's web tests land first and its iOS screens second, so the web gains automated coverage
 early and the window in which a behaviour change can slip past the tests (3.2) closes area by area. The web
@@ -1219,7 +1243,7 @@ the owner wants the skeleton on the phone sooner.
 **PR 1: `test: add the use-case catalogue and a guard that finds uncatalogued surfaces`**
 
 - Adds `e2e/catalogue/*.ts` with the full first inventory (drafted per area by subagents and checked by a
-  second-reader pass), `types.ts`, `not-ui.ts`, `journeys.ts` and `surfaces.ts` beside it, `e2e/baseline.json`,
+  second-reader pass), `types.ts`, `not-ui.ts`, `journeys.ts` and `surfaces.ts` beside it, `e2e/catalogue/baseline.json`,
   `scripts/use-cases.test.mjs` with the PR 1 rows of 3.1, a `docs/map.md` row, and `tsconfig.json` including
   `e2e/catalogue`. No new dependency yet; the rows that need `list()` arrive with the library in PR 2.
 - `SPEC.md` gets a decision "Use cases live in one catalogue", plus Decisions entries for any exclusion.
@@ -1231,13 +1255,13 @@ the owner wants the skeleton on the phone sooner.
 
 - Adds `e2e@0.21.2`, `@e2e-dev/web@0.15.2` and `@e2e-dev/mobile@0.12.3` as exact dev dependencies, with
   `package-lock.json`. The mobile package comes now so the lockfile changes once; PR 3 starts using it.
-- Adds `e2e.config.ts` with the `web` and `web-phone` targets, `e2e/hui.ts`, `e2e/hui-env.ts`, and the launcher's
+- Adds `e2e.config.ts` with the `web` and `web-phone` targets, `e2e/fixtures/hui.ts`, `e2e/fixtures/hui-env.ts`, and the launcher's
   `--port` and `--receipt-dir`, with `e2e/visual-verification.test.mjs` extended.
 - Adds the worked example `e2e/tests/chat/send-stream-tool-stop.e2e.ts`, plus `e2e/tests/sess/start-session.e2e.ts`
   (SESS-001) and `e2e/tests/set/color-mode.e2e.ts` (SET-001), and the two invisible web changes: the session status
   element named `Session status: <status>`, and `data-testid="transcript"`.
 - Adds the PR 2 rows of 3.1 (the `list()` rows, no `agent`, no `retries`, no sleeps, roles, the web half of the
-  test-id rule, the label tripwire, telemetry, worlds), `e2e/report-check.ts`, `e2e/baseline-check.ts`, `e2e.yml`
+  test-id rule, the label tripwire, telemetry, worlds), `scripts/e2e-report-check.ts`, `scripts/e2e-baseline-check.ts`, `e2e.yml`
   with the `catalogue` and `web` jobs, the `e2e` and `e2e:world` scripts and the `.gitignore` entries.
 - Updates `e2e/AGENTS.md` and `CONTRIBUTING.md` (Node 24.8+ for contributors, the browser install, telemetry off).
 - Verified by spikes S1, S4 and S14; the CI web job green and a local `npm run e2e`; renaming "Stop" locally fails
@@ -1248,13 +1272,14 @@ the owner wants the skeleton on the phone sooner.
 
 **PR 3: `feat: add the iOS app skeleton and run the shared tests on an iPhone simulator`**
 
-- Adds `ios/` with the project and `ios/AGENTS.md`; `HUICore` with a first core of `resolveNavigation`,
-  `decodeSseFrame` and session-list normalization (after moving those pure helpers out of
-  `src/lib/sessions-store.ts`); a Connect screen; the version check; the live session list from `/__hui/sessions`
+- Adds `ios/` with the project and `ios/AGENTS.md`; `HUICore` with a first core of `resolveNavigation` and
+  `decodeSseFrame` (after moving `decodeSseFrame` and `reconnectDelay` out of `src/api/sessions.ts` into
+  `src/lib/`); the Swift emitter in `scripts/api-schema.ts` and the generated `ios/HUI/Gateway/Schema/`, checked by
+  `scripts/api-schema.test.ts`; a Connect screen; the version check; the live session list from `/__hui/sessions`
   and `/__hui/sessions/events`; the `hui://` scheme; and `HUITests`.
 - Adds `npm run build:ios`, `npm run ios:build` and `npm run e2e:ios`, the `ios` target in `e2e.config.ts`, the
-  `e2e / ios` job (pinned simulator, Release build, `~/.agent-device` cache), `scripts/ios-contract.test.mjs`
-  (statuses and navigation kinds), module headers for `ios/` and `.swift`, and the iOS half of the test-id rule.
+  `e2e / ios` job (pinned simulator, Release build, `~/.agent-device` cache), module headers for `ios/` and
+  `.swift`, a boundary rule for `ios/core/` in `scripts/boundaries.test.mjs`, and the iOS half of the test-id rule.
 - IOS-001 and the session-list use cases are required on both. CHAT-001 to 003 are iOS backlog for now, so the worked
   example carries `platforms: ['web']`, which the guard allows only because they are backlog. From this PR on, new
   and changed use cases must pass on both platforms.
@@ -1270,9 +1295,10 @@ the owner wants the skeleton on the phone sooner.
 **PR 4: `feat: chat on iOS: open a session, stream replies, tool cards, Stop`**
 
 - Adds the session WebSocket with tickets, `Origin` and reconnects; the core's transcript reducer, projection,
-  `SendRequests` and Markdown tokens (with the `markdown.ts` parser split and the `STATUS_TEXT` move on the web
-  side); the composer, Send and Stop; read, command, codemode and generic tool cards; the basic Markdown renderer;
-  and `.accessibilityLabel("Session status: …")` and `.accessibilityIdentifier("transcript")`.
+  `SendRequests` and Markdown tokens (with the `src/lib/markdown/markdown.ts` parser split and the `STATUS_TEXT` move
+  on the web side); `scripts/ios-contract.test.mjs` for the core's row and transcript-item kinds; the composer,
+  Send and Stop; read, command, codemode and generic tool cards; the basic Markdown renderer; and
+  `.accessibilityLabel("Session status: …")` and `.accessibilityIdentifier("transcript")`.
 - The worked example loses `platforms: ['web']`, and CHAT-001 to 003 leave the iOS baseline, so it runs on both.
 - Verified by the e2e jobs on both targets, the S3 numbers in the PR description, screenshots from both targets, and
   the core's `node:vm` boundary test.
@@ -1355,7 +1381,7 @@ Electron.
 - **Pre-1.0 risk.** The library is three months old (created 2026-07-22), changes daily, and its README says APIs and
   config can change between minor releases. In return: exact pins; one grouped Dependabot update for the three
   packages (`.github/dependabot.yml` exists); every upgrade runs the full suite on both targets before it merges;
-  platform-specific API use stays in `e2e/hui.ts`; and the Apache-2.0 licence allows a fork if the project stalls.
+  platform-specific API use stays in `e2e/fixtures/hui.ts`; and the Apache-2.0 licence allows a fork if the project stalls.
   The tests are plain TypeScript with a Playwright-like API, which keeps a way out.
 - **What gets installed.** The three packages have no install scripts, so `npm ci --ignore-scripts` keeps working.
   Their dependency tree is not small (`@modelcontextprotocol/server`, `oxc-parser` and `oxc-transform` with native
@@ -1375,7 +1401,8 @@ Electron.
 
 Considered and rejected: Appium with WebdriverIO, Maestro, Playwright Test directly, XcodeGen or Tuist, MarkdownUI
 or swift-markdown (a different parser than markdown-it), SwiftMath, Runestone (a different editor than the web's
-CodeMirror), and Swift code generation with quicktype, ts-json-schema-generator or TypeBox schemas.
+CodeMirror), and quicktype or another schema-to-Swift tool (the repo's own emitter in `scripts/api-schema.ts` already
+covers the schema's keywords).
 
 ---
 
@@ -1398,8 +1425,8 @@ CodeMirror), and Swift code generation with quicktype, ts-json-schema-generator 
 | `.agents/skills/hui-visual-verification/` | The three steps in 2.15; features mapped to test files and tags |
 | `.github/workflows/` | `e2e.yml` (new: catalogue, web, ios); `nightly.yml` and `release.yml` gain the iOS and `web-phone` runs and the IPA; every e2e job sets `E2E_TELEMETRY_DISABLED` |
 | `.github/dependabot.yml` | One group for `e2e`, `@e2e-dev/web` and `@e2e-dev/mobile` |
-| `scripts/` | `use-cases.test.mjs`, `ios-contract.test.mjs`, `ios-build.mjs`, `sidestore-source.mjs` and its test; `module-headers.test.mjs` covers `ios/` and `.swift`; `build.mjs` builds the iOS bundles |
-| `e2e.config.ts`, `package.json`, `package-lock.json`, `tsconfig.json`, `.gitignore` | The config; three dev dependencies and the `e2e`, `e2e:world`, `e2e:ios`, `ios:build` and `build:ios` scripts; `tsconfig.json` includes `e2e.config.ts`, `e2e/hui*.ts`, `e2e/tests`, `e2e/catalogue`, `ios/core` and `ios/embedded`; ignore the `.e2e/` outputs, `ios/HUI/Resources/Generated/`, `ios/build/`, `DerivedData` and `*.xcresult` |
+| `scripts/` | `use-cases.test.mjs`, `ios-contract.test.mjs`, `ios-build.mjs`, `sidestore-source.mjs` and its test; `api-schema.ts` and its test also cover the Swift output; `module-headers.test.mjs` covers `ios/` and `.swift`; `boundaries.test.mjs` gains a rule for `ios/core/` (it imports only DOM-free modules); `build.mjs` builds the iOS bundles |
+| `e2e.config.ts`, `package.json`, `package-lock.json`, `tsconfig.json`, `.gitignore` | The config; three dev dependencies and the `e2e`, `e2e:world`, `e2e:ios`, `ios:build` and `build:ios` scripts; `tsconfig.json` includes `e2e.config.ts`, `e2e/fixtures/hui*.ts`, `e2e/tests`, `e2e/catalogue`, `ios/core` and `ios/embedded`; ignore the `.e2e/` outputs, `ios/HUI/Resources/Generated/`, `ios/build/`, `DerivedData` and `*.xcresult` |
 
 No persisted gateway format changes. If an implementation PR changes one anyway, it follows `CONTRIBUTING.md` and
 ships a `hui doctor` check.
@@ -1413,7 +1440,7 @@ ships a `hui doctor` check.
 | Risk | Likelihood, impact | Mitigation |
 |---|---|---|
 | Strict lockstep pauses web feature work in areas iOS hasn't reached | high, high | Catch up the busiest areas first; the core makes transcript-logic changes free on iOS; the milestone order is public |
-| tester-army/e2e is pre-1.0; a minor release breaks an API or the config | high, medium | Exact pins, grouped upgrades that run the full suite, platform-specific API use kept in `e2e/hui.ts`, Apache-2.0 fork as a last resort |
+| tester-army/e2e is pre-1.0; a minor release breaks an API or the config | high, medium | Exact pins, grouped upgrades that run the full suite, platform-specific API use kept in `e2e/fixtures/hui.ts`, Apache-2.0 fork as a last resort |
 | agent-device's iOS runner wedges, or reads a SwiftUI control differently from the contract | medium, high | S5 on the real runner image; a pinned simulator runtime; the library's recovery steps (`agent-device daemon stop`, reboot by UDID) in the job; test ids where names don't reach |
 | The JavaScriptCore core is too slow on long transcripts or awkward to debug | medium, medium | S3 gate; a protocol that returns only changed rows; the Swift port with conformance fixtures as the fallback |
 | The full iOS suite on every PR is too slow for macOS runner capacity | medium, high | S7 measures; shards; owner decision D2 |
@@ -1449,7 +1476,7 @@ ships a `hui doctor` check.
 | D7 | iPad and Mac targets | Not now; decide on iPad after M6 |
 | D8 | Make `e2e / web` and `e2e / ios` required checks | Yes: the web from PR 2, iOS from PR 3 |
 | D9 | An optional exploratory suite with a model key (`ai` and one provider), never gating | Later, if wanted |
-| D10 | If S13 fails, one test-only launch argument that lists `e2e/files` in the app's own picker | Accept only if S13 fails |
+| D10 | If S13 fails, one test-only launch argument that lists `e2e/fixtures/files` in the app's own picker | Accept only if S13 fails |
 | D11 | Raise `engines.node` to `>=24.8.0`, or keep `>=24.0.0` for users and state 24.8+ for contributors | Keep it, and state it for contributors |
 | D12 | Keyboard-only affordances (Work pane chords, ⌘K, Escape to close) are web-only on the iPhone | Accept; every action they trigger has a tested visible control |
 | D13 | If ATS blocks plain HTTP to the tailnet address, support only HTTPS (`tailscale serve`) for remote gateways | Accept |
@@ -1467,7 +1494,8 @@ ships a `hui doctor` check.
 - **New gateway authentication, APNs push, a push relay, background refresh.** Parity doesn't need them; D4 and D5.
 - **App extensions** (share sheet, home-screen widgets, Live Activities) and **App Intents or Siri.** Each extension
   costs a free-account app ID, and the web has none of these.
-- **Generating Swift types from TypeScript.** The core and the union guard cover drift with less machinery (4.5).
+- **Generating Swift from TypeScript directly, or with a third-party tool.** Swift comes from the published schema
+  through the repo's own emitter (4.5).
 - **Pixel parity between the web and iOS.** Shared tests check behaviour; looks go in PR screenshots and the remaining
   visual journeys.
 - **A separate `MIGRATION.md`.** The catalogue's `journeys` fields and journey classes record migration progress.
