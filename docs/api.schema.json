@@ -10042,7 +10042,6 @@
         "sessionId",
         "parentSessionId",
         "title",
-        "task",
         "status",
         "startedAt",
         "updatedAt"
@@ -10058,9 +10057,6 @@
           "type": "string"
         },
         "title": {
-          "type": "string"
-        },
-        "task": {
           "type": "string"
         },
         "status": {

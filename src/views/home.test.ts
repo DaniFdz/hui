@@ -540,7 +540,7 @@ test("the Parallel tasks card counts the latest batch of subagents and folds a b
   const startedAt = new Date(Date.now() - 60_000).toISOString();
   const endedAt = new Date(Date.now() - 10_000).toISOString();
   const task = (taskId: string, status: string, extra: Record<string, unknown> = {}) =>
-    ({ taskId, sessionId: `s-${taskId}`, parentSessionId: "s", title: `Check ${taskId}`, task: "t", status, startedAt, updatedAt: endedAt, ...extra });
+    ({ taskId, sessionId: `s-${taskId}`, parentSessionId: "s", title: `Check ${taskId}`, status, startedAt, updatedAt: endedAt, ...extra });
   const card = (html: string) => html.slice(html.indexOf('<aside class="chat-swarm"'), html.indexOf("</aside>"));
 
   const active = card(await renderWorkerSession("idle", { subagents: [

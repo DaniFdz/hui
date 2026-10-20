@@ -70,7 +70,6 @@ export type SubagentTaskView = {
   sessionId: string;
   parentSessionId: string;
   title: string;
-  task: string;
   /** `queued`: a collected child waiting for a free slot (only in memory; saved as `starting`). */
   status: import("./sessions.ts").SubagentStatus | "queued";
   startedAt: string;

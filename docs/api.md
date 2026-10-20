@@ -840,8 +840,9 @@ type SubagentRecord = {
   completionDelivery?: "pending" | "delivered"; // absent for legacy tasks
   collect?: true; // collected by the parent with agents_wait (Swarm)
 };
-type SubagentTaskView = Omit<SubagentRecord, "status"> & {
+type SubagentTaskView = Omit<SubagentRecord, "status" | "task"> & {
   status: SubagentStatus | "queued"; // queued: a collected child waiting for a slot
+  summary?: string;    // the report's first 280 characters, for the card's one-line preview
   sessionId: string;
   parentSessionId: string;
   title: string;

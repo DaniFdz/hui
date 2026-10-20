@@ -543,6 +543,17 @@ function pendingChild(id = "done", patch: Partial<SessionRecord> = {}): SessionR
   }, ...patch });
 }
 
+test("a parent's snapshot shows each child's card, not its whole task and report", async (t) => {
+  const report = `Verified result. ${"Every check passed and the report goes on. ".repeat(40)}`;
+  const state = harness([record("parent"), pendingChild("done", { subagent: { ...pendingChild().subagent!, task: "Review ".repeat(400), summary: report } })]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  await state.service.initialize();
+  const [card] = state.service.snapshot("parent");
+  assert.equal(card && "task" in card, false);
+  assert.ok(card?.summary?.startsWith("Verified result.") && card.summary.length <= 280);
+  assert.equal(state.records()[1]?.subagent?.summary, report, "the record keeps the whole report");
+});
+
 test("a refused completion remains durable and retries without changing the child result", async (t) => {
   const state = harness([record("parent"), pendingChild()]);
   t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });

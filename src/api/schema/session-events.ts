@@ -50,7 +50,7 @@ export type SessionThinkingResponse = { "level": (string) | (null); };
 
 export type SideQuestionResult = { "question": string; "answer": string; "model": string; };
 
-export type SubagentTaskView = { "taskId": string; "sessionId": string; "parentSessionId": string; "title": string; "task": string; "status": (SubagentStatus) | ("queued"); "startedAt": string; "updatedAt": string; "endedAt"?: string; "summary"?: string; "error"?: string; };
+export type SubagentTaskView = { "taskId": string; "sessionId": string; "parentSessionId": string; "title": string; "status": (SubagentStatus) | ("queued"); "startedAt": string; "updatedAt": string; "endedAt"?: string; "summary"?: string; "error"?: string; };
 
 export type TranscriptAttachment = { "name": string; "kind": ("image") | ("file"); "mimeType"?: string; "url"?: string; };
 

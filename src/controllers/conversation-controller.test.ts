@@ -176,7 +176,7 @@ test("a conversation keeps its transcript through a snapshot without one, and re
   vi.stubGlobal("window", globalThis);
   const { controller, refreshes } = conversation({ selected: { id: "s1" } as SessionView });
   const child = (status: SubagentTaskView["status"]): SubagentTaskView =>
-    ({ taskId: "t1", sessionId: "c1", parentSessionId: "s1", title: "child", task: "look", status, startedAt: "2026-10-20T10:00:00.000Z", updatedAt: status === "running" ? "2026-10-20T10:00:00.000Z" : "2026-10-20T10:05:00.000Z" });
+    ({ taskId: "t1", sessionId: "c1", parentSessionId: "s1", title: "child", status, startedAt: "2026-10-20T10:00:00.000Z", updatedAt: status === "running" ? "2026-10-20T10:00:00.000Z" : "2026-10-20T10:05:00.000Z" });
   const sideUpdate = (status: SubagentTaskView["status"]) => ({ status: "idle" as const, queue: { steering: [], followUp: [] }, questions: [], subagents: [child(status)] });
   void controller.open("s1");
   fake.opens[0]?.resolve("idle", { transcript: [{ kind: "message", role: "user", text: "hello" }], subagents: [child("running")] });

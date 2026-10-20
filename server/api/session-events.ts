@@ -83,7 +83,7 @@ export const RuntimeCompaction = Type.Object({
 export type RuntimeCompaction = Static<typeof RuntimeCompaction>;
 
 export const SubagentTaskView = Type.Object({
-  taskId: Type.String(), sessionId: Type.String(), parentSessionId: Type.String(), title: Type.String(), task: Type.String(),
+  taskId: Type.String(), sessionId: Type.String(), parentSessionId: Type.String(), title: Type.String(),
   status: Type.Union([SubagentStatus, Type.Literal("queued")]), startedAt: Type.String(), updatedAt: Type.String(),
   endedAt: Type.Optional(Type.String()), summary: Type.Optional(Type.String()), error: Type.Optional(Type.String()),
 }, { $id: "SubagentTaskView" });
