@@ -323,7 +323,7 @@ test("returning to the still-selected session restores its composer draft key", 
   const app = readFileSync(new URL("../hui-app.ts", import.meta.url), "utf8");
   assert.match(
     app,
-    /if \(this\.selected\?\.id === target\.id\) \{[^}]*this\.switchComposerDraft\(sessionDraftKey\(target\.id\)\);[^}]*return;/s,
+    /if \(this\.conversation\.selected\?\.id === target\.id\) \{[^}]*this\.switchComposerDraft\(sessionDraftKey\(target\.id\)\);[^}]*return;/s,
   );
 });
 

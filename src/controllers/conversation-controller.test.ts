@@ -30,11 +30,11 @@ function conversation(state: { selected?: SessionView; streaming?: boolean } = {
   let updates = 0;
   const host = { addController: () => {}, removeController: () => {}, requestUpdate: () => { updates += 1; }, updateComplete: Promise.resolve(true), renderRoot: { querySelector: () => null } as unknown as HTMLElement };
   const controller = new ConversationController(host, {
-    selected: () => state.selected,
     streaming: () => state.streaming ?? false,
     showError: (message) => errors.push(message),
     refreshSessions: async () => {},
   });
+  controller.selected = state.selected;
   return { controller, errors, updates: () => updates };
 }
 
@@ -73,7 +73,7 @@ test("thinking waits while the session runs and only follows the session still s
   assert.equal(controller.props().thinking, "high");
 
   controller.props().onSelectThinking("low");
-  state.selected = { id: "s2" } as SessionView;
+  controller.select({ id: "s2" } as SessionView);
   fake.thinking[1]?.resolve("low");
   await settle();
   assert.equal(controller.props().thinking, "high");

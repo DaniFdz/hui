@@ -1,8 +1,8 @@
 /**
- * `ConversationController` owns the open conversation's runtime state outside `hui-app.ts`: the models the session
- * can switch to and the one it runs on, its context usage, thinking level and fast mode, with the requests that change
- * them and the once-per-selection model list request; the pending question with the focus it returns to; and the live
- * compaction. The shell feeds it the stream's frames and reads its props.
+ * `ConversationController` owns the open conversation's runtime state outside `hui-app.ts`: the session on screen;
+ * the models it can switch to and the one it runs on, its context usage, thinking level and fast mode, with the
+ * requests that change them and the once-per-selection model list request; the pending question with the focus it
+ * returns to; and the live compaction. The shell feeds it the stream's frames and reads its props.
  */
 import type { LitElement, ReactiveControllerHost } from "lit";
 import { loadModels, setSessionFast, setSessionModel, setSessionThinking, type RuntimeCompaction, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionSnapshot, type SessionStatus, type SessionView } from "../api/sessions.ts";
@@ -10,7 +10,6 @@ import { isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels 
 import type { HomeProps } from "../views/home.ts";
 
 type ConversationDeps = {
-  selected: () => SessionView | undefined;
   streaming: () => boolean;
   showError: (message: string) => void;
   refreshSessions: () => Promise<void>;
@@ -19,6 +18,7 @@ type ConversationDeps = {
 type ConversationHost = ReactiveControllerHost & Pick<LitElement, "renderRoot">;
 
 export class ConversationController {
+  selected: SessionView | undefined;
   /** Models the open session can switch to, and the one it is running on. */
   models: readonly RuntimeModel[] = [];
   currentModel: RuntimeModel | undefined;
@@ -37,6 +37,11 @@ export class ConversationController {
   constructor(host: ConversationHost, deps: ConversationDeps) {
     this.#host = host;
     this.#deps = deps;
+  }
+
+  select(session: SessionView | undefined): void {
+    this.selected = session;
+    this.#host.requestUpdate();
   }
 
   resetModels(): void {
@@ -109,7 +114,7 @@ export class ConversationController {
     this.#modelsRequestedFor = id;
     void loadModels(id)
       .then((models) => {
-        if (this.#deps.selected()?.id === id) {
+        if (this.selected?.id === id) {
           this.models = models;
           this.#host.requestUpdate();
         }
@@ -120,19 +125,19 @@ export class ConversationController {
         this.#modelsRequestedFor = modelRequestMarkerAfterFailure(
           this.#modelsRequestedFor,
           id,
-          this.#deps.selected()?.id,
+          this.selected?.id,
         );
       });
   }
 
   #selectModel = (provider: string, modelId: string) => {
-    const session = this.#deps.selected();
+    const session = this.selected;
     if (!session) {
       return;
     }
     void setSessionModel(session.id, provider, modelId)
       .then((model) => {
-        if (!isSelectedSession(session.id, this.#deps.selected()?.id)) {
+        if (!isSelectedSession(session.id, this.selected?.id)) {
           return;
         }
         if (model) {
@@ -143,7 +148,7 @@ export class ConversationController {
         return this.#deps.refreshSessions();
       })
       .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.#deps.selected()?.id)) {
+        if (!isSelectedSession(session.id, this.selected?.id)) {
           return;
         }
         this.#deps.showError(error instanceof Error ? error.message : "Could not switch model.");
@@ -151,17 +156,17 @@ export class ConversationController {
   };
 
   #selectThinking = (level: string) => {
-    const session = this.#deps.selected();
+    const session = this.selected;
     if (!session || this.#deps.streaming()) return;
     void setSessionThinking(session.id, level)
       .then((authoritative) => {
-        if (isSelectedSession(session.id, this.#deps.selected()?.id)) {
+        if (isSelectedSession(session.id, this.selected?.id)) {
           this.thinking = authoritative;
           this.#host.requestUpdate();
         }
       })
       .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.#deps.selected()?.id)) return;
+        if (!isSelectedSession(session.id, this.selected?.id)) return;
         // The backend broadcasts either the compensated level or the live
         // divergent level. Never overwrite that authoritative SSE state with
         // this request's stale optimistic value.
@@ -170,17 +175,17 @@ export class ConversationController {
   };
 
   #selectFast = (fast: boolean) => {
-    const session = this.#deps.selected();
+    const session = this.selected;
     if (!session || this.#deps.streaming()) return;
     void setSessionFast(session.id, fast)
       .then((authoritative) => {
-        if (isSelectedSession(session.id, this.#deps.selected()?.id)) {
+        if (isSelectedSession(session.id, this.selected?.id)) {
           this.fast = authoritative;
           this.#host.requestUpdate();
         }
       })
       .catch((error: unknown) => {
-        if (!isSelectedSession(session.id, this.#deps.selected()?.id)) return;
+        if (!isSelectedSession(session.id, this.selected?.id)) return;
         // The gateway broadcasts the speed the session kept.
         this.#deps.showError(error instanceof Error ? error.message : "Could not change the speed.");
       });

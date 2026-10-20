@@ -183,7 +183,7 @@ test("Labs → Bots is the one switch: off, the sidebar has no Agents | Bots swi
   const follow = between(app, "private followBotsSetting(", "private shellBotsProps(");
   assert.match(follow, /if \(botsEnabled\(this\.control\.settings\)\) \{\n\s+void settingsWritten\(\)\.then\(\(\) => this\.bots\.sync\(\)\);\n\s+return;\n\s+\}\n\s+this\.bots\.sync\(\);/u, "the stream starts once the gateway has the setting, and stops at once");
   assert.match(follow, /if \(this\.voice\.call\) this\.voice\.hangUp\(\);/u, "a call ends with bots");
-  assert.match(follow, /if \(this\.view === "bot" \|\| \(this\.view === "home" && this\.selected\?\.bot\)\) this\.navigate\(\{ kind: "home" \}, true\);/u, "a bot's page goes home, and so does its chat open as a session");
+  assert.match(follow, /if \(this\.view === "bot" \|\| \(this\.view === "home" && this\.conversation\.selected\?\.bot\)\) this\.navigate\(\{ kind: "home" \}, true\);/u, "a bot's page goes home, and so does its chat open as a session");
   // Bot-only settings go too: Sessions → Bots, Models → Calls, and Automations' routines; the old tab switch is gone.
   const settings = read("./settings.ts");
   assert.match(between(settings, "function renderCallsSection(", "function renderModelsPage("), /if \(!botsEnabled\(props\.settings\)\) return nothing;/u);
