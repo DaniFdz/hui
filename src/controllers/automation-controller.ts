@@ -27,6 +27,7 @@ export class AutomationController implements ReactiveController {
   readonly #host: ReactiveControllerHost & { renderRoot: ParentNode };
   readonly #api: AutomationApi;
   #poll: ReturnType<typeof setInterval> | undefined;
+  #loadRequest = 0;
 
   constructor(host: ReactiveControllerHost & { renderRoot: ParentNode }, api: AutomationApi = automationApi) {
     this.#host = host;
@@ -44,13 +45,14 @@ export class AutomationController implements ReactiveController {
   }
 
   load = () => {
+    const request = ++this.#loadRequest;
     this.#set({ error: "" });
     void this.#api.loadAutomation()
       .then((snapshot) => {
-        this.#set({ snapshot });
+        if (request === this.#loadRequest) this.#set({ snapshot });
       })
       .catch((error: unknown) => {
-        this.#set({ error: error instanceof Error ? error.message : "Could not read automation state." });
+        if (request === this.#loadRequest) this.#set({ error: error instanceof Error ? error.message : "Could not read automation state." });
       });
   };
 
@@ -80,8 +82,10 @@ export class AutomationController implements ReactiveController {
     this.#set({ pending: true, formError: "", actionError: "" });
     return mutate()
       .then((snapshot) => {
-        if (snapshot) this.#set({ snapshot });
-        else this.load();
+        if (snapshot) {
+          this.#loadRequest += 1;
+          this.#set({ snapshot });
+        } else this.load();
         return true;
       })
       .catch((error: unknown) => {

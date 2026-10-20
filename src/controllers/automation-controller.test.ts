@@ -103,6 +103,23 @@ test("only one mutation runs at a time; another resolves false without a request
   assert.deepEqual(calls, ["create a"]);
 });
 
+test("a read that answers after a newer snapshot was adopted, or after a newer read, is dropped", async () => {
+  const reads: ((value: AutomationSnapshot) => void)[] = [];
+  const { controller } = setup({ loadAutomation: () => new Promise((resolve) => reads.push(resolve)) });
+  controller.load();
+  assert.equal(await controller.create({ name: "Nightly review", sessionId: "session-1", prompt: "Review", schedule: TASK.schedule }), true);
+  reads[0]!(snapshot());
+  await settle();
+  assert.deepEqual(controller.snapshot, snapshot([TASK]));
+
+  controller.load();
+  controller.load();
+  reads[2]!(snapshot([TASK, { ...TASK, id: "task-2" }]));
+  reads[1]!(snapshot());
+  await settle();
+  assert.deepEqual(controller.snapshot, snapshot([TASK, { ...TASK, id: "task-2" }]));
+});
+
 test("switching a task on or off keeps every other field of it", async () => {
   const { controller, calls } = setup();
   controller.setEnabled(TASK, false);
