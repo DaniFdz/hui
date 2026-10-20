@@ -416,5 +416,7 @@ export function renderBotSettings(props: BotSettingsProps) {
     ${renderModels(props)}
     ${renderCalls(props)}
     ${renderWorkspace(props)}
+    <p class="bot-settings__note">The same settings from a terminal on this machine:
+      <code>hui bot show ${props.bot.handle}</code>, <code>hui bot edit ${props.bot.handle}</code> and <code>hui bot list</code>.</p>
   </div>`;
 }

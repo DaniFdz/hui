@@ -1,15 +1,17 @@
 /**
  * The session list and its groups: `/__hui/session-groups` (create, reorder) and `/__hui/session-groups/:label`
- * (rename or change defaults, delete), `GET/POST /__hui/sessions` (the list, a new session or a worktree launch) and
- * `PATCH/DELETE /__hui/sessions/:id` (change or remove one session), over `sessions.ts` and `sessions/lifecycle.ts`.
+ * (rename or change defaults, delete), `GET/POST /__hui/sessions` (the list, a new session or a worktree launch),
+ * `GET /__hui/sessions/search` (transcript search) and `PATCH/DELETE /__hui/sessions/:id` (change or remove one
+ * session), over `sessions.ts`, `sessions/lifecycle.ts` and `sessions/search.ts`.
  * `hui.ts` applies the `x-hui` guard before dispatching here and keeps the `/__hui/sessions/events` stream.
  */
 import { stat } from "node:fs/promises";
 import type { BotService } from "../bots/service.ts";
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
-import { SessionError, SessionList, SessionOk, SessionResponse, sessionRouteSchemas } from "../api/sessions.ts";
+import { SessionError, SessionList, SessionOk, SessionResponse, SessionSearchResult, sessionRouteSchemas } from "../api/sessions.ts";
 import { liveSessions } from "../sessions/live-sessions.ts";
+import { searchSessions } from "../sessions/search.ts";
 import {
   createSessionGroup,
   deleteSessionGroup,
@@ -26,6 +28,8 @@ import { resolveWorkingDirectory } from "../git/working-directories.ts";
 export const routeSchemas: RouteSchema[] = sessionRouteSchemas;
 
 const SESSIONS_ROUTE = "/__hui/sessions";
+const SESSIONS_SEARCH_ROUTE = "/__hui/sessions/search";
+const SEARCH_QUERY_MAX = 200;
 const SESSION_GROUPS_ROUTE = "/__hui/session-groups";
 const SESSION_GROUP_ONE = /^\/__hui\/session-groups\/([^/]+)$/;
 const SESSION_GROUP_ORDER_MAX = 1_000;
@@ -168,6 +172,14 @@ export function createSessionRoutes(deps: {
           error: error instanceof Error ? error.message : "Could not update that group.",
         }, sessionMutationErrorStatus(error));
       }
+    }
+
+    if (path === SESSIONS_SEARCH_ROUTE && method === "GET") {
+      const query = request.query.get("q")?.trim() ?? "";
+      if (query.length < 2 || query.length > SEARCH_QUERY_MAX) {
+        return reply(SessionError, { error: `Search for 2-${SEARCH_QUERY_MAX} characters.` }, 400);
+      }
+      return reply(SessionSearchResult, await searchSessions(query, request.signal));
     }
 
     if (path === SESSIONS_ROUTE) {

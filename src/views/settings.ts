@@ -67,7 +67,6 @@ export const SETTINGS_PAGES = [
   { id: "memory", label: "Memory", group: "Agents & Tools", icon: "book" },
   { id: "automation", label: "Automation", group: "Agents & Tools", icon: "terminal" },
   { id: "security", label: "Privacy & Security", group: "Privacy & Security", icon: "shieldCheck" },
-  { id: "sessions", label: "Sessions", group: "System", icon: "fileText" },
   { id: "worktrees", label: "Worktrees", group: "System", icon: "gitBranch" },
   { id: "diagnostics", label: "Diagnostics", group: "System", icon: "bug" },
 ] as const;
@@ -965,33 +964,6 @@ function renderDiagnosticsPage(props: SettingsProps) {
     ${props.observabilityError ? html`<div class="settings-page__note settings-page__intro" role="alert">${props.observabilityError}</div>` : nothing}`;
 }
 
-function renderSessionsSettingsPage(props: SettingsProps) {
-  const sessions = props.sessions;
-  const groups = new Set(sessions.map((session) => session.group || "ungrouped"));
-  const running = sessions.filter(
-    (session) => session.status === "running" || session.status === "waiting",
-  ).length;
-  const runtimes = new Map<string, number>();
-  for (const session of sessions) runtimes.set(session.tool, (runtimes.get(session.tool) ?? 0) + 1);
-  return html`<p class="settings-page__intro">Session registry ownership, history and runtime defaults.</p>
-    ${renderSection("Registry", "HUI owns session metadata; PI owns every conversation transcript.", html`
-      ${renderRow("Registered sessions", "Rows in ~/.config/hui/sessions.json.", html`<strong>${sessions.length}</strong>`)}
-      ${renderRow("Groups", "Flat HUI groups, including ungrouped sessions.", html`<strong>${groups.size}</strong>`)}
-      ${renderRow("Running now", "Live status is process state and is never persisted.", html`<strong>${running}</strong>`)}
-    `)}
-    ${renderSection("Runtimes", "The runtime is fixed when a session is registered.", html`${[...runtimes.entries()].map(([runtime, count]) => renderRow(runtime === "pi" ? "PI" : runtime, "Registered sessions using this adapter.", html`<span class="settings-row__value">${count}</span>`))}${runtimes.size ? nothing : renderRow("No sessions", "Create a session from Home to register a runtime.", html`<span class="settings-row__muted">—</span>`)}`)}
-    ${renderSection("Retention", "Deleting HUI metadata never deletes PI conversation files.", html`
-      ${renderRow("Transcript authority", "History is resumed directly from the runtime-owned session file.", html`<span class="settings-row__value">PI</span>`)}
-      ${renderRow("Remove from HUI", "Stops tracking the row and runtime without deleting the transcript.", html`<span class="settings-row__value">Metadata only</span>`)}
-    `)}
-    ${renderSection("Bots", "Named agents with one permanent chat, their own model and a memory that summarizes older messages by itself.", html`
-      ${renderRow("Command line", "Everything the Bots tab does is also available from a terminal on this machine.", html`<code>hui bot list</code>`)}
-    `)}
-    <p class="settings-page__note settings-page__intro">
-      ${props.saveFailed ? "Could not write settings.json — changes apply now but will not be remembered." : "Saved to ~/.config/hui/settings.json"}
-    </p>`;
-}
-
 function renderWorktreesSettingsPage(props: SettingsProps) {
   return html`${renderWorktreesPage(props.worktrees)}
     ${renderSection("Git worktrees", "New Session can create an isolated checkout from the selected repository.", html`
@@ -1029,7 +1001,7 @@ function renderSecurityPage(props: SettingsProps) {
     ${props.piError || props.healthError ? html`<div class="settings-page__note settings-page__intro" role="alert">${[props.piError, props.healthError].filter(Boolean).join(" ")}<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button></div>` : nothing}`;
 }
 
-const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "sessions" | "security" | "worktrees" | "workers">, string> = {
+const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
   integrations: "Connections to external services such as Jira and GitHub.",
   plugins: "Packages, extensions, permissions and provider adapters.",
@@ -1156,7 +1128,7 @@ export function renderSettingsPage(props: SettingsProps) {
         </div>
       </header>
       <div class="settings-workspace"><div class="settings-workspace__body">
-        <div class="settings-page ${["plugins", "skills", "automation", "sessions", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}">
+        <div class="settings-page ${["plugins", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
             : props.page === "skills"
@@ -1179,9 +1151,7 @@ export function renderSettingsPage(props: SettingsProps) {
                           ? renderAutomationPage(props, renderSection)
                           : props.page === "diagnostics"
                             ? renderDiagnosticsPage(props)
-                            : props.page === "sessions"
-                              ? renderSessionsSettingsPage(props)
-                              : props.page === "security"
+                            : props.page === "security"
                                 ? renderSecurityPage(props)
                               : props.page === "worktrees"
                                 ? renderWorktreesSettingsPage(props)

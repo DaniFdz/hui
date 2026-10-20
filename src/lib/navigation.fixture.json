@@ -27,7 +27,6 @@
     "/settings/connection",
     "/settings/integrations",
     "/settings/workers",
-    "/settings/sessions",
     "/settings/worktrees",
     "/settings/models",
     "/settings/tools",

@@ -94,6 +94,22 @@ test("folder suggestions list directories on the worker, not the gateway", async
   }
 });
 
+test("transcript search reads the worker's own session files", async () => {
+  const file = join(root, "remote-session.jsonl");
+  await writeFile(file, [
+    { type: "session", version: 3, id: "s", timestamp: "2026-10-01T10:00:00.000Z", cwd: root },
+    { type: "message", id: "u1", parentId: null, timestamp: "2026-10-01T10:00:00.000Z", message: { role: "user", content: [{ type: "text", text: "Ship the remote widget" }], timestamp: 1 } },
+  ].map((line) => JSON.stringify(line)).join("\n") + "\n");
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  try {
+    const { hits } = await peer.request<{ hits: unknown[] }>("sessions.search", { sessionFiles: [file, "durable:999999"], q: "remote WIDGET" });
+    assert.deepEqual(hits, [{ sessionFile: file, snippet: "Ship the remote widget", matches: 1 }]);
+  } finally {
+    socket.destroy();
+  }
+});
+
 /** A gateway's view of the host's bot operations: requests, and the frames the host sends it. */
 async function botGateway() {
   const socket = connect(host.paths.socket);

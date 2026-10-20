@@ -29,6 +29,7 @@ const { estimateContext } = await import(new URL("./harness/compaction.js", impo
 };
 const { durableConversationId, durableReference, expandSkill, startDurable } = await import("./durable.ts");
 const { importPiSession } = await import("./pi-import.ts");
+const { searchTranscripts } = await import("./transcript-search.ts");
 const { aggregateUsage } = await import("../observability.ts");
 type DurableHost = import("./durable-host.ts").DurableHost;
 
@@ -894,6 +895,29 @@ test("a PI session moved to Durable keeps its history and spend, and the model r
   assert.match(request, /AFTER_MOVE/u);
   assert.doesNotMatch(request, /PI_ONE|PI_TWO|PI_ABANDONED/u);
   assert.equal(await readFile(source, "utf8"), content, "the PI file is unchanged");
+});
+
+test("transcript search finds a text in a Durable conversation and in a PI file, without starting either", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const message = (id: string, parentId: string | null, role: string, text: string) => ({ type: "message", id, parentId, timestamp: "2026-10-01T10:00:00.000Z",
+    message: { role, content: [{ type: "text", text }], timestamp: 1, ...(role === "assistant" ? { api: "anthropic-messages", provider: "hui-e2e", model: "fixture", stopReason: "stop" } : {}) } });
+  const content = [
+    { type: "session", version: 3, id: "pi-1", timestamp: "2026-10-01T10:00:00.000Z", cwd: f.cwd },
+    message("u1", null, "user", "Where is the Flux Capacitor wired?"), message("a1", "u1", "assistant", "The flux capacitor sits behind the seat."),
+    message("u2", "a1", "user", '<skill name="time" location="/skills/time/SKILL.md">\nReferences are relative to /skills/time.\n\nThe warp drive manual.\n</skill>\n\nAny news?'),
+  ].map((line) => JSON.stringify(line)).join("\n") + "\n";
+  const source = join(f.dir, "pi-session.jsonl");
+  await writeFile(source, content);
+  const host = f.host();
+  const { conversationId } = await importPiSession(host, { id: "searched", cwd: f.cwd, source, model: "hui-e2e/fixture" }, content);
+  const moved = durableReference(conversationId);
+
+  assert.deepEqual(await searchTranscripts(host, [source, moved, "/missing.jsonl"], "  FLUX capacitor "), [
+    { sessionFile: source, snippet: "The flux capacitor sits behind the seat.", matches: 2 },
+    { sessionFile: moved, snippet: "The flux capacitor sits behind the seat.", matches: 2 },
+  ]);
+  assert.deepEqual(await searchTranscripts(host, [source, moved], "warp drive"), [], "an inlined skill is not what the chat shows");
+  assert.equal((await searchTranscripts(host, [moved], "any NEWS"))[0]?.snippet, "Any news?");
 });
 
 test("model and thinking changes persist on the conversation", { timeout: 30_000 }, async (t) => {

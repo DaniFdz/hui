@@ -160,6 +160,12 @@ export type SessionError = Static<typeof SessionError>;
 export const SessionOk = Type.Object({ ok: Type.Literal(true) }, { $id: "SessionOk" });
 export type SessionOk = Static<typeof SessionOk>;
 
+export const SessionSearchResult = Type.Object({
+  hits: Type.Array(Type.Object({ id: Type.String(), snippet: Type.String(), matches: Type.Number() })),
+  unsearched: Type.Array(Type.Object({ worker: Type.String(), error: Type.String() })),
+}, { $id: "SessionSearchResult" });
+export type SessionSearchResult = Static<typeof SessionSearchResult>;
+
 export const SessionResponse = Type.Object({ session: SessionView }, { $id: "SessionResponse" });
 export type SessionResponse = Static<typeof SessionResponse>;
 
@@ -198,6 +204,7 @@ export type SessionStatusStreamFrame = Static<typeof SessionStatusStreamFrame>;
 export const sessionRouteSchemas = [
   { method: "GET", path: "/__hui/sessions/events", response: SessionStatusStreamFrame, events: SessionStatusStreamFrame },
   { method: "GET", path: "/__hui/sessions", response: SessionList },
+  { method: "GET", path: "/__hui/sessions/search", response: SessionSearchResult },
   { method: "POST", path: "/__hui/sessions", response: SessionResponse },
   { method: "PATCH", path: "/__hui/sessions/:id", response: SessionResponse },
   { method: "DELETE", path: "/__hui/sessions/:id", response: SessionOk },

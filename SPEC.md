@@ -1063,6 +1063,13 @@ Unsupported or failed measurements remain explicitly unavailable. HUI never
 persists process ids or resource telemetry, and cold sessions have no invented
 runtime cost.
 
+The Sessions page is the one place for the session registry; Settings has no
+Sessions area, and its old link opens the page. The page's transcript search
+finds the sessions whose user or assistant messages contain a text, reading
+each conversation where it is stored (the gateway's Durable store, a PI file
+or the connected remote worker that runs it) without starting a runtime. A host that
+cannot answer is named under the results, and the rest are still shown.
+
 Before handing a prompt to a runtime, HUI persists a temporary recovery marker
 and the originating prompt in its own registry. The journal is necessary because
 PI may not create its JSONL until the first turn settles; it is never returned in

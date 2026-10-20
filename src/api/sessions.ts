@@ -4,7 +4,7 @@
  * the registry and the contract is fixed in `docs/api.md`; this module holds no session state of its own.
  */
 import type {
-  QuestionnaireQuestion, SessionList, SessionListUpdate, SessionStage, SessionStatus, SessionView, TranscriptMetrics,
+  QuestionnaireQuestion, SessionList, SessionListUpdate, SessionSearchResult, SessionStage, SessionStatus, SessionView, TranscriptMetrics,
 } from "./schema/sessions.ts";
 
 /** One question's answer from the questionnaire card: chosen labels and typed text. */
@@ -15,7 +15,7 @@ import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 
-export type { SessionGroup, SessionList, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
+export type { SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
 export type {
   QueuedMessage, RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SubagentTaskView,
 } from "./schema/session-events.ts";
@@ -155,6 +155,11 @@ function sessionList(body: Partial<SessionList>): SessionList {
 
 export async function loadSessions(): Promise<SessionList> {
   return sessionList(await fetchJson<Partial<SessionList>>(SESSIONS_URL));
+}
+
+/** Sessions whose transcripts contain `query`, on this machine and on its remote workers. */
+export function searchSessionTranscripts(query: string, signal: AbortSignal): Promise<SessionSearchResult> {
+  return fetchJson<SessionSearchResult>(`${SESSIONS_URL}/search?q=${encodeURIComponent(query)}`, { signal });
 }
 
 export async function createSessionGroup(name: string): Promise<SessionList> {
