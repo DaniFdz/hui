@@ -9,6 +9,7 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session/tree.ts";
+import { isSubagentActive } from "./lib/subagent-activity.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
@@ -317,6 +318,7 @@ export class HuiApp extends HuiElement {
   /** The bot's triggers, read while its overview or Triggers page shows. */
   private botTriggers = new BotTriggersController(this, { visible: () => this.botTriggersVisible() });
   private botRosterTick = 0;
+  private transcriptClockTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
   @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
@@ -534,7 +536,7 @@ export class HuiApp extends HuiElement {
     this.sessionProgressPoll = window.setInterval(() => {
       // Not on macOS stays not on macOS; otherwise the banner follows the gateway.
       if (!this.embeddedPane && !document.hidden && this.control.power !== null) void this.control.refreshPower();
-      if (!document.hidden && this.conversation.transcript.length) this.requestUpdate();
+      if (!document.hidden && this.conversation.transcript.length && (this.conversation.subagents.some((task) => isSubagentActive(task.status)) || ++this.transcriptClockTick % 10 === 0)) this.requestUpdate();
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.control.refreshGatewayHealth();
       }
