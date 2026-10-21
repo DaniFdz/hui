@@ -404,6 +404,26 @@ test("every session announces a prompt with a snapshot before its run, so screen
   manager.disposeAll();
 });
 
+test("answering or cancelling a question sends a page the session's state without its transcript", async () => {
+  const { watchSessionEvents } = await import("./http/events.ts");
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor(`question-${crypto.randomUUID()}`);
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const snapshots: string[] = [];
+  const stop = watchSessionEvents(record.id, (event, data) => {
+    if (event === "snapshot") snapshots.push("transcript" in (data as object) ? "with transcript" : "without transcript");
+  }, manager, { slim: true, heldRevision: manager.revision(record.id) });
+  started[0]!.emit({ type: "question", question: { id: "q-1", method: "input", title: "Name" } });
+  await manager.respondQuestion(record.id, "q-1", { value: "Ada" });
+  started[0]!.emit({ type: "question", question: { id: "q-2", method: "confirm", title: "Continue?", message: "Proceed" } });
+  await manager.cancelQuestion(record.id, "q-2");
+  assert.deepEqual(snapshots, ["without transcript", "without transcript", "without transcript"]);
+  stop();
+  manager.disposeAll();
+});
+
 test("a browser's stream starts from the transcript it holds: nothing again, or only what happened since; scripts get whole snapshots", async () => {
   const { watchSessionEvents } = await import("./http/events.ts");
   const started: FakeSession[] = [];
