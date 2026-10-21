@@ -3454,6 +3454,8 @@ continues, including a compaction summary that is the whole context after a
 rewind. When the tail is a normally
 completed assistant response, HUI instead sends one explicit continuation
 prompt ("Continue from where you left off…") as a normal user turn. Running, queued or waiting sessions return 409.
+A runtime without prompt-free continuation, such as Pi Durable, returns 400 with
+the reason.
 
 ### Subagent completion events
 
