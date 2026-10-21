@@ -189,3 +189,25 @@ test("a conversation keeps its transcript through a snapshot without one, and re
   assert.equal(refreshes(), 1);
   assert.equal(controller.transcript.length, 1);
 });
+
+test("streamed text, thinking and tool output redraw the conversation once per animation frame; other events at once", async () => {
+  vi.stubGlobal("window", globalThis);
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
+  const { controller, updates } = conversation({ selected: { id: "s1" } as SessionView });
+  void controller.open("s1");
+  fake.opens[0]?.resolve("running", { transcript: [{ kind: "message", role: "user", text: "go" }] });
+  await settle();
+  const before = updates();
+  const stream = fake.streams[0]!.handlers;
+  for (let index = 0; index < 10; index += 1) {
+    stream.onEvent({ type: "text", delta: "word " });
+    stream.onEvent({ type: "thinking", delta: "hmm " });
+  }
+  assert.equal(updates(), before, "nothing redraws before the frame");
+  assert.equal(frames.length, 1, "the burst shares one frame");
+  frames.shift()!(0);
+  assert.equal(updates(), before + 1);
+  stream.onEvent({ type: "tool_start", id: "t1", name: "bash" });
+  assert.equal(updates(), before + 2, "a new tool row redraws at once");
+});
