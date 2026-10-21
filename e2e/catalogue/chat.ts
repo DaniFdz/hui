@@ -268,7 +268,7 @@ const cases: UseCase[] = [
     behaviour: "A codemode call is one card whose row names the tools the script called (\"read ×3, bash\") with a failed or \"N failed\" badge and its wall time once it ends. Expanded, it shows the script, one row per call in order with status, arguments, duration and error, and the output the model got, with a Full output reference when PI cut it; calls fill in live and never appear as separate tool rows.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:codemode", "item:tool"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
