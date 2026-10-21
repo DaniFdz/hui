@@ -30,6 +30,8 @@ export type Hui = {
   url(): Promise<string>;
   phoneScreen(): Promise<{ width: number; height: number }>;
   failNextRequest(method: string, path: string, error: string): Promise<void>;
+  clipboard(options?: { refuse?: boolean }): Promise<void>;
+  copied(): Promise<string>;
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
@@ -112,6 +114,16 @@ export const test = base.extend<{ hui: Hui }>({
           await browser().unroute(pattern);
         });
       },
+      clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
+        const page = window as unknown as { huiCopied: string };
+        page.huiCopied = "";
+        navigator.clipboard.writeText = async (text) => {
+          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+          page.huiCopied = text;
+        };
+        if (refused) document.execCommand = () => false;
+      }, refuse),
+      copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
       phoneScreen: async () => {
         const phone = { width: 390, height: 844 };
         await browser().setViewport(phone);
