@@ -62,8 +62,9 @@ test("the archive toast expires untouched, and a failed restore keeps its error 
   await hui.sessionMenu("Fragile restore");
   await screen.getByText("Archive session", { visible: true }).tap();
   await expect(screen.getByText("Archived “Fragile restore”.")).toBeVisible();
-  await hui.failNextRequest("PATCH", `/__hui/sessions/${session.id}`, "The registry is read-only right now.");
+  const restoring = await hui.intercept("PATCH", new RegExp(`/__hui/sessions/${session.id}$`, "u"));
   await restore.tap();
+  await restoring.reject(503, "The registry is read-only right now.");
   await expect(screen.getByText("The registry is read-only right now.")).toBeVisible();
   await expect(restore).toBeEnabled();
   await expect(screen.getByLabel(row("Fragile restore"))).toBeHidden();

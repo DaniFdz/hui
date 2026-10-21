@@ -33,10 +33,11 @@ test("a failed move shows its error and leaves the session where it was", { tags
   const session = await hui.createSession({ title: "Stuck session", group: "Inbox" });
   await hui.createSession({ title: "Elsewhere anchor", group: "Elsewhere" });
   await hui.open(`/sessions/${session.id}`);
-  await hui.failNextRequest("PATCH", `/__hui/sessions/${session.id}`, "The registry is read-only right now.");
+  const move = await hui.intercept("PATCH", new RegExp(`/__hui/sessions/${session.id}$`, "u"));
   await hui.sessionMenu("Stuck session");
   await screen.getByText("Move to group", { visible: true }).tap();
   await screen.getByTestId("session-row").filter({ hasText: "Stuck session" }).getByText("ELSEWHERE", { exact: true, visible: true }).tap();
+  await move.reject(503, "The registry is read-only right now.");
   await expect(screen.getByText("The registry is read-only right now.")).toBeVisible();
   await expect(screen.getByText("durable · INBOX · Idle", { visible: true })).toBeVisible();
 });

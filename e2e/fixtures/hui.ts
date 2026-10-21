@@ -2,8 +2,8 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
  * its answer, and the steps whose gesture differs per platform, such as holding a control, attaching files from
- * `files/`, reading what a download saved or what the page copied, opening a session's menu and failing a request.
- * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * `files/`, reading what a download saved or what the page copied and opening a session's menu. Test files import
+ * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -30,7 +30,6 @@ export type Hui = {
   reload(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(): Promise<{ width: number; height: number }>;
-  failNextRequest(method: string, path: string, error: string): Promise<void>;
   clipboard(options?: { refuse?: boolean }): Promise<void>;
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
@@ -111,14 +110,6 @@ export const test = base.extend<{ hui: Hui }>({
       open: (path) => fixtures.app.open(path),
       reload: () => browser().reload(),
       url: () => browser().url(),
-      failNextRequest: async (method, path, error) => {
-        const pattern = new RegExp(`${path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "u");
-        await browser().route(pattern, async (route) => {
-          if (route.request.method !== method) return route.fallback();
-          await route.fulfill({ status: 503, json: { error } });
-          await browser().unroute(pattern);
-        });
-      },
       clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
         const page = window as unknown as { huiCopied: string };
         page.huiCopied = "";
