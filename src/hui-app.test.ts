@@ -296,3 +296,28 @@ test("the thread follows the live compaction divider like new transcript rows", 
   app.updated(new Map());
   assert.equal(follows, settled + 1);
 });
+
+test("an idle conversation redraws for its clocks every 30 seconds, and every 3 while a subagent runs", () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("document", { querySelector: () => null, hidden: false });
+  const app = shell() as Shell & { firstUpdated: () => void; requestUpdate: () => void };
+  app.embeddedPane = true;
+  app.composer.switchDraft = () => {};
+  app.composer.refreshDraftIndicators = () => {};
+  app.conversation.transcript = [{ kind: "message", id: "m1", role: "user", text: "hello" }];
+  let redraws = 0;
+  app.requestUpdate = () => { redraws += 1; };
+  try {
+    app.firstUpdated();
+    vi.advanceTimersByTime(60_000);
+    assert.equal(redraws, 2);
+    app.conversation.subagents = [{ taskId: "t1", status: "running" } as ConversationController["subagents"][number]];
+    redraws = 0;
+    vi.advanceTimersByTime(30_000);
+    assert.equal(redraws, 10);
+  } finally {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  }
+});
