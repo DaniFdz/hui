@@ -36,6 +36,7 @@ test("attached images and files are sent and open again from the transcript", { 
   await expect(composerAttachments.getByRole("button", "Remove shot.png")).toBeVisible();
   await send.tap();
   await expect(transcript.getByLabel("Open shot.png")).toBeVisible();
+  await expect(transcript.getByText("Attachment received by PI.")).toBeVisible();
   await expect(status("Idle")).toBeVisible();
 
   await hui.reload();

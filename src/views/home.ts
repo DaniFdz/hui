@@ -800,7 +800,7 @@ function attachmentName(item: string | { name: string }): string {
 
 function attachmentCard(attachment: string | { name: string }, url?: string): TemplateResult {
   const name = attachmentName(attachment);
-  const open = url ? html`<a class="chat-assistant-attachment-card__action" href=${url} target="_blank" rel="noopener" aria-label=${`Open ${name}`} title="Open in new tab">${icons.externalLink}</a>` : nothing;
+  const open = url ? html`<a class="chat-assistant-attachment-card__action" href=${url} target="_blank" rel="noopener" aria-label=${`Open ${name}`} title=${`Open ${name}`}>${icons.externalLink}</a>` : nothing;
   return html`<div class="chat-assistant-attachment-card chat-assistant-attachment-card--compact" role="listitem"><div class="chat-assistant-attachment-card__header"><div class="chat-assistant-attachment-card__identity">${renderAttachmentFileIcon({ filename: name, mode: "large-placeholder" })}<span class="chat-assistant-attachment-card__details"><span class="chat-assistant-attachment-card__title" title=${name}>${name}</span><span class="chat-assistant-attachment-card__meta">${resolveAttachmentFileIcon(name).extensionLabel}</span></span></div><span class="chat-assistant-attachment-card__actions">${open}</span></div></div>`;
 }
 

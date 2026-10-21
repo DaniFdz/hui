@@ -5,6 +5,7 @@
  * never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
 import type { Browser } from "@e2e-dev/web";
 
@@ -66,7 +67,7 @@ export const test = base.extend<{ hui: Hui }>({
       reload: () => browser().reload(),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
-      attach: (target, files) => target.setInputFiles(files.map((name) => `e2e/fixtures/files/${name}`)),
+      attach: (target, files) => target.setInputFiles(files.map((name) => fileURLToPath(new URL(`files/${name}`, import.meta.url)))),
       download: async (target) => {
         const file = await browser().waitForDownload(() => target.tap());
         return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };

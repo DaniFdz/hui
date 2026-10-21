@@ -317,7 +317,7 @@ export function imageFromMessages(
   return { mimeType: mimeType.toLowerCase(), data: Buffer.from(data, "base64") };
 }
 
-/** The stored path of one file a user attached to a PI history message. */
+/** The original name and stored path of one file a user attached to a PI history message. */
 export function fileFromMessages(messages: readonly unknown[], message: number, file: number): { name: string; path: string } | undefined {
   const raw = messages[message];
   if (!isRecord(raw) || raw["role"] !== "user") return undefined;
