@@ -47,8 +47,9 @@ export const runCommand: CommandRunner = (file, args, options = {}) => new Promi
     env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1", NO_COLOR: "1", LC_ALL: "C" },
   }, (error, stdout, stderr) => {
     const code = error ? (typeof (error as { code?: unknown }).code === "number" ? (error as { code: number }).code : 1) : 0;
-    const timedOut = error?.killed === true && typeof error.code !== "string";
-    resolveResult({ code, stdout: stdout ?? "", stderr: timedOut ? `${file} timed out after ${timeoutMs} ms\n${stderr}`.trimEnd() : stderr ?? "" });
+    const timedOut = error?.killed === true;
+    const failure = typeof error?.code === "string" ? error.message : "";
+    resolveResult({ code, stdout, stderr: timedOut ? `${file} timed out after ${timeoutMs} ms\n${stderr}`.trimEnd() : stderr || failure });
   });
 });
 

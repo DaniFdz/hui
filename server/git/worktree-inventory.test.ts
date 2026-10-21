@@ -79,6 +79,12 @@ test("a command killed by its timeout says so", async () => {
   assert.equal(result.stderr, `${process.execPath} timed out after 100 ms`);
 });
 
+test("a command that cannot start says why", async () => {
+  const result = await runCommand("hui-no-such-program", []);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /spawn hui-no-such-program ENOENT/u);
+});
+
 test("parses NUL worktree porcelain including locked and prunable records", () => {
   const records = parseWorktreeList("worktree /r\0HEAD a\0branch refs/heads/main\0\0worktree /w\0HEAD b\0detached\0locked\0prunable gitdir file points to non-existent location\0\0");
   assert.deepEqual(records.map((record) => [record.path, record.branch, record.detached, record.locked, record.prunable]), [
@@ -154,7 +160,7 @@ test("merged cleanup removes only eligible worktrees and deletes the branch at t
   assert.equal(await stat(f.managed("merged")).then(() => true, () => false), false);
   assert.equal(await stat(f.managed("dirty")).then(() => true, () => false), true);
   assert.equal(await stat(f.external).then(() => true, () => false), true);
-  assert.equal((await gitResult(f.repo, "show-ref", "--verify", "refs/heads/hui/merged")).code !== 0, true);
+  assert.equal(await git(f.repo, "branch", "--list", "hui/merged"), "");
   assert.equal(calls.some((args) => args.includes("--force") || args.includes("-f")), false);
 });
 
