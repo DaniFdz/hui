@@ -57,11 +57,13 @@ actor HUICore {
     }
 
     func sidebarSessionGroups(_ groups: [API.SessionGroup]) throws -> [SidebarGroup] {
-        guard let options = exports.objectForKeyedSubscript("DEFAULT_SIDEBAR_SESSION_OPTIONS") else { return [] }
+        guard let options = exports.objectForKeyedSubscript("DEFAULT_SIDEBAR_SESSION_OPTIONS"), options.isObject else {
+            throw ScriptError(description: "hui-core.js has no DEFAULT_SIDEBAR_SESSION_OPTIONS")
+        }
         return try decode(invoke("sidebarSessionGroups", [json(groups), "", options]))
     }
 
-    private func call<Result: Decodable>(_ name: String, _ arguments: any Encodable...) throws -> Result {
+    private func call<Answer: Decodable>(_ name: String, _ arguments: any Encodable...) throws -> Answer {
         try decode(invoke(name, arguments.map(json)))
     }
 
@@ -80,9 +82,9 @@ actor HUICore {
         return try invoke(global: "JSON", "parse", text)
     }
 
-    private func decode<Result: Decodable>(_ value: JSValue) throws -> Result {
+    private func decode<Answer: Decodable>(_ value: JSValue) throws -> Answer {
         let text = value.isUndefined ? "null" : try invoke(global: "JSON", "stringify", value).toString() ?? "null"
-        return try JSONDecoder().decode(Result.self, from: Data(text.utf8))
+        return try JSONDecoder().decode(Answer.self, from: Data(text.utf8))
     }
 
     private func invoke(global: String, _ name: String, _ argument: Any) throws -> JSValue {
