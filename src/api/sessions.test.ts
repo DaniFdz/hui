@@ -110,10 +110,10 @@ test("a status stream that goes silent reconnects to resync", async (t) => {
   assert.equal(connections, 2);
 });
 
-test("the browser reads every event stream with readEventStream, which parses it in linear time", () => {
+test("the browser reads every event stream through readEventStream", () => {
   const src = new URL("../", import.meta.url);
   const readers = readdirSync(src, { recursive: true, encoding: "utf8" })
     .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "api/sessions.ts")
-    .filter((file) => readFileSync(new URL(file, src), "utf8").includes(".getReader("));
+    .filter((file) => /\.getReader\(|\.pipeTo\(|for await \(.+\.body\b/u.test(readFileSync(new URL(file, src), "utf8")));
   assert.deepEqual(readers, [], "Read an event stream with readEventStream from src/api/sessions.ts instead of its own reader");
 });

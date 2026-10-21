@@ -73,13 +73,13 @@ corrects a new kind of slowness, and enforce it with a type, check or test.
 
 | Rule | Enforced by |
 | --- | --- |
-| A snapshot that leaves the transcript as the page has it goes out without it. | `#broadcast` takes no snapshot, only `#broadcastState` or `#broadcastTranscript` (`server/sessions/live-sessions.ts`, typecheck); `server/live-sessions.test.ts` "answering or cancelling a question…" and "a browser's stream starts from the transcript it holds…" |
+| A snapshot that leaves the transcript as the page has it goes out without it. | `#broadcast` takes no snapshot, only `#broadcastState` or `#broadcastTranscript` (`server/sessions/live-sessions.ts`, typecheck); `server/live-sessions.test.ts` "answering a question or settling without refreshed history…" and "a browser's stream starts from the transcript it holds…" |
 | A list or card carries what it shows: a subagent's card, not its task or report. | `server/sessions/session-payloads.test.ts` (`Api.SessionSubagent` type); `server/agent-tools/subagents.test.ts` "a parent's snapshot shows each child's card…" |
-| The browser reads event streams with `readEventStream`, which is linear. | `src/api/sessions.test.ts` "the browser reads every event stream with readEventStream…" |
+| The browser reads event streams with `readEventStream`, which is linear. | `src/api/sessions.test.ts` "the browser reads every event stream through readEventStream" |
 | A long conversation draws its latest rows; a folded activity draws its items when it opens. | `src/views/home.test.ts` "a long conversation renders its latest rows…" |
 | A session row draws its actions menu when it opens. | `src/views/shell.test.ts` "a session row draws its actions menu only once it opens…" |
 | Streamed frames redraw at most once per animation frame. | `src/controllers/conversation-controller.test.ts` "streamed text, thinking and tool output redraw…" |
-| An idle conversation redraws only for its clocks, and a poll assigns state only when it changed. | `src/hui-app.test.ts` "an idle conversation redraws for its clocks…"; `src/controllers/settings-controller.test.ts` "the newest power read wins…" |
+| An idle conversation redraws only for its clocks, and a poll assigns state only when it changed. | `src/hui-app.test.ts` "an idle conversation redraws for its clocks…" and "the main app's bot roster redraws…"; `src/controllers/settings-controller.test.ts` "the newest power read wins…" |
 | A change to what opening, streaming or listing a session sends or draws is measured on a slow link. | Judgment: the procedure and the last numbers are in `e2e/remote-loading.browser.md`. |
 
 ## Change Discipline

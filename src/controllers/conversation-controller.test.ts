@@ -198,16 +198,18 @@ test("streamed text, thinking and tool output redraw the conversation once per a
   void controller.open("s1");
   fake.opens[0]?.resolve("running", { transcript: [{ kind: "message", role: "user", text: "go" }] });
   await settle();
-  const before = updates();
   const stream = fake.streams[0]!.handlers;
+  stream.onEvent({ type: "tool_start", id: "t1", name: "bash" });
+  const before = updates();
   for (let index = 0; index < 10; index += 1) {
-    stream.onEvent({ type: "text", delta: "word " });
     stream.onEvent({ type: "thinking", delta: "hmm " });
+    stream.onEvent({ type: "tool_update", id: "t1", name: "bash", output: `line ${index}` });
+    stream.onEvent({ type: "text", delta: "word " });
   }
   assert.equal(updates(), before, "nothing redraws before the frame");
   assert.equal(frames.length, 1, "the burst shares one frame");
   frames.shift()!(0);
   assert.equal(updates(), before + 1);
-  stream.onEvent({ type: "tool_start", id: "t1", name: "bash" });
+  stream.onEvent({ type: "tool_start", id: "t2", name: "bash" });
   assert.equal(updates(), before + 2, "a new tool row redraws at once");
 });

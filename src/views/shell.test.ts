@@ -734,20 +734,18 @@ function markup(value: unknown): string {
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
-function sidebar(count: number, menuFor = ""): string {
+function sidebar(count: number, open = ""): string {
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
+  if (open) sessions.push(session(open, "Open", "Work"));
   const data = {
     view: "home", selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
     draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
-    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor,
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
     bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
   };
-  const handlers = (target: object): object => new Proxy(target, {
-    get: (object, key) => key in object || !String(key).startsWith("on") ? (object as Record<PropertyKey, unknown>)[key] : () => {},
-  });
-  return markup(renderSidebar(handlers({ ...data, bots: handlers(data.bots) }) as Parameters<typeof renderSidebar>[0]));
+  return markup(renderSidebar(data as unknown as Parameters<typeof renderSidebar>[0]));
 }
 
 test("a session row draws its actions menu only once it opens, so a long list stays light", () => {
@@ -755,6 +753,6 @@ test("a session row draws its actions menu only once it opens, so a long list st
   const closed = sidebar(100);
   const perRow = (elements(sidebar(200)) - elements(closed)) / 100;
   assert.doesNotMatch(closed, /value="pin"/u, "a closed row's menu has no items");
-  assert.ok(perRow <= 40, `each session row draws ${perRow} elements; draw what a row only shows on demand when it is asked for`);
-  assert.equal(sidebar(100, "s7").split('value="pin"').length - 1, 1, "the open row's menu has its items");
+  assert.ok(perRow > 5 && perRow <= 40, `each session row draws ${perRow} elements; draw what a row only shows on demand when it is asked for`);
+  assert.equal(sidebar(100, `open-${crypto.randomUUID()}`).split('value="pin"').length - 1, 1, "the open row's menu has its items");
 });

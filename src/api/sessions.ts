@@ -824,7 +824,7 @@ function sseFrameReader(): (text: string) => string[] {
   };
 }
 
-/** One SSE frame; shared with other HUI event streams (bots). */
+/** One SSE frame. */
 function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
   let name = "message";
   const data: string[] = [];
