@@ -404,6 +404,48 @@ test("every session announces a prompt with a snapshot before its run, so screen
   manager.disposeAll();
 });
 
+test("a browser's stream starts from the transcript it holds: nothing again, or only what happened since; scripts get whole snapshots", async () => {
+  const { watchSessionEvents } = await import("./http/events.ts");
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor(`held-${crypto.randomUUID()}`);
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const opened = manager.revision(record.id);
+  const watch = (options: { slim?: boolean; heldRevision?: number }) => {
+    const frames: string[] = [];
+    const stop = watchSessionEvents(record.id, (event, data) => {
+      frames.push(event === "snapshot" ? ("transcript" in (data as object) ? "snapshot" : "snapshot without transcript")
+        : event === "event" ? (data as RuntimeEvent).type : event);
+    }, manager, options);
+    return { frames, stop };
+  };
+  const browser = watch({ slim: true, heldRevision: opened });
+  const script = watch({});
+  manager.notifySnapshot(record.id);
+  assert.deepEqual(browser.frames, ["snapshot without transcript", "snapshot without transcript"]);
+  assert.deepEqual(script.frames, ["snapshot", "snapshot"]);
+  started[0]!.emit({ type: "text", delta: "Working on it" });
+  started[0]!.emit({ type: "tool_start", id: "build", name: "bash" });
+  started[0]!.emit({ type: "tool_update", id: "build", name: "bash", output: "compiling" });
+  started[0]!.emit({ type: "tool_update", id: "build", name: "bash", output: "compiling\nlinking" });
+  manager.notifySnapshot(record.id);
+  const late = watch({ slim: true, heldRevision: opened });
+  assert.deepEqual(late.frames, ["text", "tool_start", "tool_update", "snapshot without transcript"],
+    "what changed since the open, in order, without what a later frame replaces");
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now + 61_000);
+  started[0]!.emit({ type: "text", delta: " still" });
+  clock.mockRestore();
+  const slow = watch({ slim: true, heldRevision: opened });
+  assert.deepEqual(slow.frames, ["snapshot"], "frames from more than a minute ago are gone, so the whole snapshot comes");
+  await manager.prompt(record.id, "Next step");
+  const stale = watch({ slim: true, heldRevision: opened });
+  assert.deepEqual(stale.frames, ["snapshot"], "a revision from before a new transcript gets the whole one");
+  for (const watcher of [browser, script, late, slow, stale]) watcher.stop();
+  manager.disposeAll();
+});
+
 test("restart boots an idle session again from a new record and keeps its listeners", async () => {
   const started: FakeSession[] = [];
   const options: StartOptions[] = [];

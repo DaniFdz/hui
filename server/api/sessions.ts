@@ -61,9 +61,9 @@ export const SubagentStatus = Type.Union([
 export type SubagentStatus = Static<typeof SubagentStatus>;
 
 export const SessionSubagent = Type.Object({
-  taskId: Type.String(), task: Type.String(), label: Type.Optional(Type.String()), status: SubagentStatus,
+  taskId: Type.String(), label: Type.Optional(Type.String()), status: SubagentStatus,
   startedAt: Type.String(), updatedAt: Type.String(), endedAt: Type.Optional(Type.String()),
-  summary: Type.Optional(Type.String()), error: Type.Optional(Type.String()),
+  error: Type.Optional(Type.String()),
   completionDelivery: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("delivered")])),
   collect: Type.Optional(Type.Literal(true)),
 }, { $id: "SessionSubagent" });

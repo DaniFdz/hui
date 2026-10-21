@@ -188,8 +188,10 @@ export class SettingsController implements ReactiveController {
       // Unknown rather than stale: no banner or switches until the gateway answers.
     }
     if (request !== this.#powerRequest) return;
+    const dismissed = this.powerNoticeDismissed && Boolean(power?.lidOn);
+    if (JSON.stringify(power) === JSON.stringify(this.power) && dismissed === this.powerNoticeDismissed) return;
     this.power = power;
-    if (!power?.lidOn) this.powerNoticeDismissed = false;
+    this.powerNoticeDismissed = dismissed;
     this.#changed();
   }
 

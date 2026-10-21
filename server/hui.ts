@@ -122,10 +122,7 @@ function answered(response: ServerResponse, path: string, result: RouteResult | 
 export function streamSession(
   response: ServerResponse,
   record: SessionRecord,
-  sessions: Pick<
-    typeof liveSessions,
-    "ensure" | "watch"
-  > = liveSessions,
+  sessions: Pick<typeof liveSessions, "ensure" | "watch" | "replaySince"> = liveSessions,
 ): void {
   if (!sessions.ensure(record)) {
     sendJson(response, 404, { error: `unknown session: ${record.id}` });
@@ -164,6 +161,7 @@ export function streamSessionStatuses(
   response: ServerResponse,
   sessions: Pick<typeof liveSessions, "watchStatuses"> = liveSessions,
   list: Pick<typeof sessionList, "subscribe"> = sessionList,
+  heldRevision?: number,
 ): void {
   response.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -177,7 +175,7 @@ export function streamSessionStatuses(
   const watched = sessions.watchStatuses(write);
   pendingStatusSubscribers.add(write);
   writeEvent(response, "snapshot", { statuses: [...watched.statuses, ...[...pendingSessions.values()].map(pendingStatus)] });
-  const unlist = list.subscribe((update) => writeEvent(response, "sessions", update));
+  const unlist = list.subscribe((update) => writeEvent(response, "sessions", update), heldRevision);
 
   const heartbeat = setInterval(() => {
     if (!response.writableEnded) response.write(": heartbeat\n\n");
@@ -393,7 +391,8 @@ async function handleRequest(
 
   if (path === SESSION_STATUSES_ROUTE) {
     if (request.method === "GET") {
-      streamSessionStatuses(response);
+      const held = routed.query.get("revision");
+      streamSessionStatuses(response, liveSessions, sessionList, held === null ? undefined : Number(held));
     } else {
       sendJson(response, 405, { error: "method not allowed" });
     }
@@ -449,10 +448,10 @@ export const middleware: Connect.NextHandleFunction = (request, response, next) 
 export function attachLiveStreams(server: EventEmitter, allowedHosts?: ReadonlySet<string>): () => void {
   const detachBrowser = attachBrowserTransport(server, managedBrowser, allowedHosts);
   const detachVscode = attachVscodeTransport(server, vscode, allowedHosts);
-  const detachSessions = attachSessionTransport(server, async (id, send) => {
+  const detachSessions = attachSessionTransport(server, async (id, send, view) => {
     const record = (await readRegistry()).find((session) => session.id === id);
     if (!record) return undefined;
-    return liveSessions.ensure(record) ? watchSessionEvents(id, send) : undefined;
+    return liveSessions.ensure(record) ? watchSessionEvents(id, send, liveSessions, view) : undefined;
   }, allowedHosts);
   return () => { detachBrowser(); detachVscode(); detachSessions(); };
 }

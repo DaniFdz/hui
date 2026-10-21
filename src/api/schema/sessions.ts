@@ -53,7 +53,7 @@ export type SessionStatusStreamFrame = ({ "event": "snapshot"; "data": { "status
 
 export type SessionStatusUpdate = { "id": string; "status": SessionStatus; "unread"?: boolean; "creating"?: WorktreeProgress; "creationError"?: string; "title"?: string; };
 
-export type SessionSubagent = { "taskId": string; "task": string; "label"?: string; "status": SubagentStatus; "startedAt": string; "updatedAt": string; "endedAt"?: string; "summary"?: string; "error"?: string; "completionDelivery"?: ("pending") | ("delivered"); "collect"?: true; };
+export type SessionSubagent = { "taskId": string; "label"?: string; "status": SubagentStatus; "startedAt": string; "updatedAt": string; "endedAt"?: string; "error"?: string; "completionDelivery"?: ("pending") | ("delivered"); "collect"?: true; };
 
 export type SessionView = { "progress"?: ProgressCard; "pullRequests"?: Array<SessionPullRequest>; "jiraIssues"?: Array<SessionJiraIssue>; "id": string; "title": string; "group": string; "cwd": string; "displayCwd": string; "worker"?: { "id": string; "name": string; }; "tool": string; "status": SessionStatus; "creating"?: WorktreeProgress; "creationError"?: string; "initialPrompt"?: string; "runtime"?: { "active": true; "memoryBytes"?: number; "bootDurationMs"?: number; }; "interrupted"?: true; "background"?: true; "model"?: string; "thinking"?: string; "pinned"?: true; "archived"?: true; "unread"?: true; "icon"?: string; "parentId"?: string; "subagent"?: SessionSubagent; "bot"?: { "id": string; "handle": string; "name": string; }; "stage": SessionStage; "stageOrigin": SessionStageOrigin; "createdAt": string; "updatedAt": string; };
 

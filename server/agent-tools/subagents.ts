@@ -27,6 +27,7 @@ const MAX_RUNNING_COLLECTED = 32;
 const MAX_LIVE_COLLECTED = 50;
 const MAX_WAIT_IDS = 100;
 const READY_TIMEOUT_MS = 30_000;
+const CARD_SUMMARY_CHARS = 280;
 const DELIVERY_RETRY_MS = 5_000;
 const HISTORY_MAX_BYTES = 80 * 1024;
 const OVERSIZED_HISTORY_ENTRY: TranscriptEntry = {
@@ -113,12 +114,11 @@ function taskView(record: SessionRecord): SubagentTaskView | undefined {
     sessionId: record.id,
     parentSessionId: record.parentId,
     title: record.title,
-    task: record.subagent.task,
     status: record.subagent.status,
     startedAt: record.subagent.startedAt,
     updatedAt: record.subagent.updatedAt,
     ...(record.subagent.endedAt ? { endedAt: record.subagent.endedAt } : {}),
-    ...(record.subagent.summary ? { summary: record.subagent.summary } : {}),
+    ...(record.subagent.summary ? { summary: truncate(record.subagent.summary, CARD_SUMMARY_CHARS) } : {}),
     ...(record.subagent.error ? { error: record.subagent.error } : {}),
   };
 }

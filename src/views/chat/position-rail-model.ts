@@ -3,7 +3,7 @@
  * position, and how keys move between markers. It reads projected rows and measured positions only; the view does
  * the measuring and scrolling.
  */
-import { attributedMessage, type ChatProjectionRow, type MessageSender } from "./projection.ts";
+import { attributedMessage, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./projection.ts";
 
 export type ConversationMarker = {
   id: string;
@@ -15,19 +15,27 @@ export type ConversationMarker = {
 const senderLabel = (sender: MessageSender) => `From ${sender.kind === "bot" ? `@${sender.handle}` : sender.kind === "session" ? sender.title
   : sender.kind === "parent" ? "the parent session" : sender.name}`;
 
+const markers = new WeakMap<ChatMessage, ConversationMarker>();
+
 /** Index the rendered messages, never the tools/reasoning inside disclosures. */
 export function conversationMarkers(rows: readonly ChatProjectionRow[]): ConversationMarker[] {
   return rows.flatMap((row) => row.kind === "messages" ? row.messages.map((message) => {
-    const shown = row.sender ? attributedMessage(message.text)?.body ?? message.text : message.text;
-    const text = (shown.trim() || message.attachments?.join(", ") || "Empty message").replace(/\s+/g, " ");
-    // Bound by code points so previews cannot split an emoji's surrogate pair.
-    const preview = Array.from(text).slice(0, 140).join("");
-    return {
-      id: message.id,
-      label: row.sender ? senderLabel(row.sender) : message.role === "user" ? "User message" : "Assistant message",
-      preview: preview.length < text.length ? `${preview}…` : preview,
-    };
+    let marker = markers.get(message);
+    if (!marker) markers.set(message, marker = messageMarker(message, row.sender));
+    return marker;
   }) : []);
+}
+
+function messageMarker(message: ChatMessage, sender: MessageSender | undefined): ConversationMarker {
+  const shown = sender ? attributedMessage(message.text)?.body ?? message.text : message.text;
+  const text = (shown.trim() || message.attachments?.join(", ") || "Empty message").replace(/\s+/g, " ");
+  // Bound by code points so previews cannot split an emoji's surrogate pair.
+  const preview = Array.from(text.slice(0, 600)).slice(0, 140).join("");
+  return {
+    id: message.id,
+    label: sender ? senderLabel(sender) : message.role === "user" ? "User message" : "Assistant message",
+    preview: preview.length < text.length ? `${preview}…` : preview,
+  };
 }
 
 export type MessagePosition = { id: string; top: number; bottom: number };

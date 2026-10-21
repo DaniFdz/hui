@@ -8,6 +8,7 @@ type Handlers = {
   onSnapshot: (updates: readonly SessionStatusUpdate[]) => void;
   onStatus: (update: SessionStatusUpdate) => void;
   onSessions: (update: { revision: number; groups?: { label: string; ids: string[] }[]; upserts: SessionView[] }) => void;
+  heldRevision: () => number;
 };
 const fake = vi.hoisted(() => ({
   streams: [] as { handlers: Handlers; stopped: boolean }[],
@@ -71,9 +72,11 @@ test("one status stream keeps the registry current until it stops", async () => 
   const { sessions, calls } = controller("b");
   sessions.start();
   sessions.start();
-  assert.equal(fake.streams.length, 1, "the shell holds one status stream however often it starts");
+  assert.equal(fake.streams.length, 0, "the stream waits for the first list, so it need not send the list again");
   fake.list = { revision: 1, groups: [group(session("a"), session("b"))] };
   await sessions.refresh();
+  assert.equal(fake.streams.length, 1, "the shell holds one status stream however often it starts");
+  assert.equal(fake.streams[0]!.handlers.heldRevision(), 1, "it tells the gateway which list it holds");
   assert.equal(sessions.loading, false);
   assert.deepEqual(calls.received, [["a", "b"]]);
 
@@ -96,6 +99,7 @@ test("one status stream keeps the registry current until it stops", async () => 
   assert.equal(fake.streams[0]!.stopped, true);
   sessions.start();
   assert.equal(fake.streams.length, 2, "a stopped stream starts again");
+  assert.equal(fake.streams[1]!.handlers.heldRevision(), 2);
 });
 
 test("collapsed groups are remembered in the browser", () => {

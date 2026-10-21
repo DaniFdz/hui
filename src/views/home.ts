@@ -8,6 +8,7 @@ import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/mes
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
+import { repeat } from "lit/directives/repeat.js";
 import { renderPaneMoveHandle } from "./pane-move-handle.ts";
 import { matchesModelSearch, modelSearchText } from "../lib/model-selection.ts";
 import { sessionGroupLabel, unreachableHost } from "../lib/session/sessions.ts";
@@ -59,7 +60,7 @@ import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/markdown/slack-link.ts";
-import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./chat/projection.ts";
+import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./chat/projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard, renderToolFileReference, toolFilePath } from "./chat/read-tool-card.ts";
@@ -250,6 +251,7 @@ export type HomeProps = {
   copiedId: string;
   /** Activity disclosures explicitly opened by the user. Runs are collapsed by default. */
   expandedActivityIds: ReadonlySet<string>;
+  transcriptWindowStart?: number;
   showScrollToBottom: boolean;
   /** Models the session can switch to; empty when the tool cannot list any. */
   models: readonly RuntimeModel[];
@@ -338,6 +340,7 @@ export type HomeProps = {
   onAnswerQuestion: (answer: QuestionResponse) => void;
   onTranscriptScroll: (element: HTMLElement) => void;
   onTranscriptNavigate: (thread: HTMLElement, top: number) => void;
+  onShowEarlier: (start: number) => Promise<void>;
   onScrollToBottom: () => void;
   renaming: boolean;
   confirmingDelete: boolean;
@@ -1251,12 +1254,18 @@ function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }
   </div>`;
 }
 
-function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[]): TemplateResult {
+function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[], start: number): TemplateResult {
   const latestAssistantRowId = rows.findLast((row) => row.kind === "messages" && row.role === "assistant")?.id;
   const latestSent = (role: ChatMessage["role"]) => rows.flatMap((row) => row.kind === "messages" && row.role === role ? row.messages : []).findLast((item) => !item.pending && !item.failed);
   const withEmbeds = [latestSent("user"), latestSent("assistant")];
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
-  return html`${rows.map((row, rowIndex) => {
+  const earlier = start > 0 ? html`<div class="chat-history-boundary">
+    <span class="chat-history-boundary__line"></span>
+    <button type="button" class="chat-history-boundary__action" @click=${() => void props.onShowEarlier(Math.max(0, start - TRANSCRIPT_WINDOW_ROWS))}>Show earlier messages</button>
+    <span class="chat-history-boundary__line"></span>
+  </div>` : nothing;
+  return html`${earlier}${repeat(rows.slice(start), (_row, index) => start + index, (row, index) => {
+    const rowIndex = start + index;
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
     if (row.kind === "botCreated") return renderBotCreated(props, row);
     if (row.kind === "compaction") return renderCompaction(row);
@@ -1278,11 +1287,12 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       const handoff = handoffActivity(row.items);
       if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
+      const open = props.expandedActivityIds.has(expansionId);
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
           <details
             class="chat-activity-group"
-            .open=${props.expandedActivityIds.has(expansionId)}
+            .open=${open}
             @toggle=${(event: Event) => {
               const details = event.currentTarget as HTMLDetailsElement;
               props.onActivityExpanded(expansionId, details.open);
@@ -1292,7 +1302,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
               <span class="chat-activity-group__icon">${chevronDownIcon}</span>
               <span class="chat-activity-group__label">${activityLabel(row.items, props.streaming)}</span>
             </summary>
-            <div class="chat-activity-group__body">${row.items.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>
+            ${open ? html`<div class="chat-activity-group__body">${row.items.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
           </details>
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>
@@ -1338,7 +1348,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
   })}`;
 }
 
-function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow[]) {
+function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow[], start: number) {
   if (props.worktreeProgress) {
     return html`<div class="agent-chat__empty agent-chat__creating" role="status" aria-live="polite">
       <div class="agent-chat__creating-copy">
@@ -1382,7 +1392,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
       ? html`<div class="agent-chat__empty bot-chat-empty" data-face-stage>${renderBotAvatar(props.bot.bot, "lg", { state: botFaceState(props) })}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
       : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${renderTranscriptRows(props, rows)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+  return html`${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
 }
 
 /** The same divider while PI summarizes, or why it wrote no summary. The
@@ -2515,8 +2525,21 @@ function renderHeader(props: HomeProps, session: SessionView) {
   `;
 }
 
+const projections = new WeakMap<readonly TranscriptItem[], readonly ChatProjectionRow[]>();
+
+function projectedRows(transcript: readonly TranscriptItem[]): readonly ChatProjectionRow[] {
+  let rows = projections.get(transcript);
+  if (!rows) projections.set(transcript, rows = projectChatTranscript(transcript.filter((item) => item.kind !== "tool" || item.name !== "progress_card")));
+  return rows;
+}
+
 function renderTranscript(props: HomeProps, session: SessionView) {
-  const rows = projectChatTranscript(props.transcript.filter((item) => item.kind !== "tool" || item.name !== "progress_card"));
+  const rows = projectedRows(props.transcript);
+  const start = transcriptWindowStart(rows.length, props.transcriptWindowStart);
+  const reveal = (messageId: string) => {
+    const row = rowOfMessage(rows, messageId);
+    return row >= 0 && row < start ? props.onShowEarlier(row) : undefined;
+  };
   return html`
     ${renderHeader(props, session)}
     <section class="card chat">
@@ -2531,11 +2554,11 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   : nothing}
                 <div class="chat-main__conversation">
                   ${props.taskSuggestions?.suggestions.length ? html`<div class="chat-gutter-stack">${renderTaskSuggestionCard(props.taskSuggestions)}</div>` : nothing}
-                  <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript"
+                  <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
                     @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
-                    ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
+                    ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

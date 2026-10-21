@@ -811,7 +811,7 @@ type SessionView = {
   model?: string;       // "provider/id"
   pinned?: true;
   parentId?: string;
-  subagent?: SubagentRecord;
+  subagent?: Omit<SubagentRecord, "task" | "summary">; // the task and report stay out of lists: see SubagentTaskView
   bot?: { id: string; handle: string; name: string }; // the bot whose forever chat this is; see Bots
   pullRequests?: SessionPullRequest[]; // oldest first, at most 20
   jiraIssues?: SessionJiraIssue[];     // oldest first, at most 20
@@ -840,8 +840,9 @@ type SubagentRecord = {
   completionDelivery?: "pending" | "delivered"; // absent for legacy tasks
   collect?: true; // collected by the parent with agents_wait (Swarm)
 };
-type SubagentTaskView = Omit<SubagentRecord, "status"> & {
+type SubagentTaskView = Omit<SubagentRecord, "status" | "task"> & {
   status: SubagentStatus | "queued"; // queued: a collected child waiting for a slot
+  summary?: string;    // the report's first 280 characters, for the card's one-line preview
   sessionId: string;
   parentSessionId: string;
   title: string;
@@ -2997,7 +2998,11 @@ itself, such as a new session's generated name.
 It also carries the shared session list. After the status snapshot, the
 first `sessions` frame is the complete list as it is when the client joins
 (read again if no client was listening); later frames carry only what
-changed. `groups` (order, membership and group defaults as ordered `ids`) is
+changed. `?revision=<n>` names the list the client already holds, from
+`GET /__hui/sessions` or an earlier connection: while that is still the current
+revision, the complete list is not sent. The browser opens this stream after
+its first `GET /__hui/sessions` and reconnects with the revision it holds.
+`groups` (order, membership and group defaults as ordered `ids`) is
 present only when it changed, and `upserts` holds each session whose view
 changed. While any client listens, the gateway recomputes the list every
 second.
@@ -3026,8 +3031,12 @@ Ensures a runtime exists for the session, starting it if needed, and returns wha
 to paint immediately:
 
 ```json
-{ "session": SessionView, "transcript": [ /* compatibility */ ], "snapshot": SessionSnapshot }
+{ "session": SessionView, "snapshot": SessionSnapshot, "revision": 42 }
 ```
+
+`revision` names the live state the snapshot shows. A WebSocket opened with it
+(see `POST /__hui/sessions/:id/connect`) starts without the transcript the
+caller already holds, as long as nothing has changed since.
 
 Idempotent: opening an already-open session must not spawn a second pi. For a
 session with a `piSessionFile`, the runtime resumes it so the old conversation
@@ -3350,7 +3359,18 @@ would otherwise stall every other request. Like terminal and browser streams,
 the upgrade also requires a same-origin `Origin` and an allowed `Host`, and it
 is refused with 403 otherwise. Each text message is
 `{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "closed", "data": … }`
-with the SSE payloads above, beginning with the snapshot. The server negotiates
+with the SSE payloads above, beginning with the snapshot. An upgrade URL with
+`&slim=1` asks for snapshots without `transcript` when it has not changed: one
+that only updates watchers, task suggestions, questions or subagents. With
+`&revision=<n>` from the `POST …/open` answer as well, the stream starts from
+that state: a snapshot without `transcript` when nothing has changed since, or
+else the frames sent since then, in order, leaving out a snapshot or tool
+output that a later one replaces. When the transcript was replaced since (a
+settled turn, a clear, a rewind), or the session no longer keeps every frame
+since then (it drops frames a minute old when it sends new ones), it starts
+with the whole snapshot.
+The browser asks for both and keeps the transcript it has; its reconnects send
+no revision and get the whole snapshot. The server negotiates
 `permessage-deflate` (messages of at least 1 KiB, no context takeover in either
 direction), so the snapshot's transcript crosses a slow link compressed; a
 client that does not offer it gets uncompressed frames. After `closed` the

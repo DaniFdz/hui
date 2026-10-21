@@ -9,10 +9,10 @@ import { recordDiagnosticEvent } from "../observability.ts";
 import { pullRequestsFromTranscript, type PullRequestStatuses } from "../integrations/pull-requests.ts";
 import { runtimeMemoryByPid } from "../runtimes/resources.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
-import { groupSessions, readSessionRegistry, updateRegistry, type SessionRecord } from "./sessions.ts";
+import { groupSessions, readSessionRegistry, updateRegistry, type SessionRecord, type SubagentRecord } from "./sessions.ts";
 import type { WatcherService } from "../agent-tools/watchers.ts";
 import { workers } from "../workers.ts";
-import type { SessionJiraIssue, SessionStatus, SessionView, WorktreeProgress } from "../api/sessions.ts";
+import type { SessionJiraIssue, SessionStatus, SessionSubagent, SessionView, WorktreeProgress } from "../api/sessions.ts";
 import { progressCardFromTranscript } from "./progress-card.ts";
 import { effectiveSessionStage, stageRank } from "./session-stages.ts";
 
@@ -80,6 +80,10 @@ export function markBackgroundWork(views: SessionView[], watching: (id: string) 
   }
 }
 
+function subagentView({ task: _task, summary: _summary, ...view }: SubagentRecord): SessionSubagent {
+  return view;
+}
+
 export type SessionViewDeps = {
   bots: () => { identity(botId: string): SessionView["bot"] };
   botRegistry: { list(): Promise<unknown> };
@@ -121,7 +125,7 @@ export function createSessionViews(deps: SessionViewDeps) {
       ...(record.unread ? { unread: true } : {}),
       ...(record.icon ? { icon: record.icon } : {}),
       ...(record.parentId ? { parentId: record.parentId } : {}),
-      ...(record.subagent ? { subagent: record.subagent } : {}),
+      ...(record.subagent ? { subagent: subagentView(record.subagent) } : {}),
       ...(bot ? { bot } : {}),
       ...effectiveSessionStage(record, pullRequests),
       createdAt: record.createdAt,

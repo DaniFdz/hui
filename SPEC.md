@@ -486,12 +486,18 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   when PI cut the output. The calls fill in live while the script runs and
   never appear as tool rows of their own. Settings → Tools → Codemode turns the
   tool off for every session from its next request; it is on by default.
+- A conversation of more than 50 rows opens on its latest 50, under **Show
+  earlier messages**, which adds up to 50 rows before them without moving what
+  is on screen; **Scroll to latest** goes back to the latest 50. A folded
+  activity draws its items when it is opened. This keeps a long session or a
+  bot's chat quick to open on a phone.
 - The desktop transcript has OpenClaw's left conversation-position rail: one
   marker per visible user/assistant message, a bounded text preview, current and
   visible-position feedback, and click/keyboard jumps. Collapsed activity is not
   indexed. Arrow keys and Home/End browse without scrolling the conversation;
   Enter/Space jump, Escape returns focus, and Tab leaves the rail. Long rails
-  scroll independently without dropping markers. Jumps pause live auto-follow;
+  scroll independently without dropping markers, and a marker above the drawn
+  rows brings them in from its message before it jumps. Jumps pause live auto-follow;
   **Scroll to latest** restores it. The rail is hidden when the transcript is
   too narrow/short or lacks the original left gutter, including mobile layouts.
   This is browser-only presentation; PI transcripts and the API are unchanged.
@@ -1039,7 +1045,10 @@ projection of the turn currently streaming. That projection includes text,
 thinking, correlated tool calls, queue state and pending extension-UI questions.
 Every event stream connection (SSE, or the WebSocket each browser view uses)
 begins with one atomic snapshot; reconnecting during a turn therefore cannot
-lose the prefix already emitted. At `agent_end`, the
+lose the prefix already emitted. A browser view that has just opened a session
+already holds that snapshot from the open answer, so its first connection
+starts with what changed since, or a snapshot without the transcript when
+nothing did. At `agent_end`, the
 projection is replaced with PI's refreshed transcript rather than persisted by
 HUI as a competing conversation store. If that refresh fails, HUI retains the
 completed projection and reports the error instead of replacing it with stale

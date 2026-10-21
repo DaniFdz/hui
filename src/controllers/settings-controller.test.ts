@@ -95,7 +95,7 @@ test("only the newest save reports whether it landed", async () => {
 });
 
 test("the newest power read wins, and a lid turned off brings its notice back", async () => {
-  const { controller } = setup();
+  const { controller, host } = setup();
   const older = controller.refreshPower();
   const newer = controller.refreshPower();
   fake.power[1]!(power(true));
@@ -109,6 +109,11 @@ test("the newest power read wins, and a lid turned off brings its notice back", 
   fake.power[2]!(power(false));
   await off;
   assert.equal(controller.powerNoticeDismissed, false);
+  const updates = host.updates;
+  const same = controller.refreshPower();
+  fake.power[3]!(power(false));
+  await same;
+  assert.equal(host.updates, updates, "a poll that changes nothing redraws nothing");
 });
 
 test("the resource reader's Copied mark clears after 1.5 s, and closing returns the focus", async () => {

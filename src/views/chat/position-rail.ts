@@ -1,6 +1,7 @@
 /** Conversation-position interaction adapted from OpenClaw 2026.9.5.
  * Uses the pinned chat/message-layout.css; see THIRD_PARTY_NOTICES.md.
- * HUI measures its non-virtualized PI projection instead of OpenClaw sessions. */
+ * HUI measures the rows its PI projection renders instead of OpenClaw sessions;
+ * a marker above the rendered window brings its row in before the jump. */
 import { html, nothing } from "lit";
 import { AsyncDirective } from "lit/async-directive.js";
 import { directive } from "lit/directive.js";
@@ -17,6 +18,7 @@ type RailProps = {
   sessionId: string;
   markers: readonly ConversationMarker[];
   onNavigate: (thread: HTMLElement, top: number) => void;
+  onReveal: (id: string) => Promise<void> | undefined;
 };
 
 const HINT = "Use arrow keys or Home and End to choose a marker, Enter or Space to jump, and Escape to return to the conversation. Tab leaves the rail.";
@@ -200,7 +202,17 @@ class ConversationPositionRail extends AsyncDirective {
     // Measure at activation too: expanded code, fonts or activity may have moved.
     const target = this.targets.get(id);
     const thread = this.thread;
-    if (!target || !thread) return;
+    if (!target) {
+      // Safari has no scroll anchoring: jump before its next scroll event finds the reader at the bottom and drops the row again.
+      void Promise.resolve(this.props?.onReveal(id)).then(() => {
+        const revealed = this.inner?.querySelector<HTMLElement>(`.chat-bubble[data-message-id="${CSS.escape(id)}"]`);
+        if (!revealed) return;
+        this.targets.set(id, revealed);
+        this.jump(id);
+      });
+      return;
+    }
+    if (!thread) return;
     const top = target.getBoundingClientRect().top - thread.getBoundingClientRect().top + thread.scrollTop - 16;
     this.props?.onNavigate(thread, Math.max(0, top));
     this.schedule();

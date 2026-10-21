@@ -193,6 +193,16 @@ export function workingLabel(items: readonly TranscriptItem[]): string {
  * holding the conversation's latest `browser` call (an index, since tool call
  * ids and so row ids can repeat across turns). `pending` while that call runs;
  * `currentTurn` while no later prompt started another turn. */
+export const TRANSCRIPT_WINDOW_ROWS = 50;
+
+export function transcriptWindowStart(rowCount: number, heldStart?: number): number {
+  return Math.min(heldStart ?? Number.POSITIVE_INFINITY, Math.max(0, rowCount - TRANSCRIPT_WINDOW_ROWS));
+}
+
+export function rowOfMessage(rows: readonly ChatProjectionRow[], messageId: string): number {
+  return rows.findIndex((row) => row.kind === "messages" && row.messages.some((message) => message.id === messageId));
+}
+
 export function browserPreviewRow(rows: readonly ChatProjectionRow[]): { index: number; pending: boolean; currentTurn: boolean } | undefined {
   for (let index = rows.length - 1; index >= 0; index -= 1) {
     const row = rows[index]!;

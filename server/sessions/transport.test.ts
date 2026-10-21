@@ -9,9 +9,11 @@ import { attachSessionTransport, SESSION_STREAM_GONE, sessionStreamTicket } from
 test("session views stream over one-use, same-origin WebSocket tickets", { timeout: 10_000 }, async (t) => {
   let emit: (event: string, data: unknown) => void = () => {};
   let unsubscribed = 0;
+  const views: { slim: boolean; heldRevision?: number }[] = [];
   const server = createServer((_request, response) => { response.writeHead(404).end(); });
-  const attach = () => attachSessionTransport(server, async (id, send) => {
+  const attach = () => attachSessionTransport(server, async (id, send, view) => {
     if (id === "gone") return undefined;
+    views.push(view);
     emit = send;
     send("snapshot", { transcript: [], status: "idle" });
     return () => { unsubscribed += 1; };
@@ -34,10 +36,15 @@ test("session views stream over one-use, same-origin WebSocket tickets", { timeo
   await refused(sessionStreamTicket("alpha")!, "https://outside.example");
   await refused("/__hui/session-stream?ticket=invented");
   const ticket = sessionStreamTicket("alpha")!;
-  const first = new NodeWebSocket(socketUrl(ticket), { origin });
+  const first = new NodeWebSocket(socketUrl(`${ticket}&slim=1&revision=12`), { origin });
   await once(first, "message");
   first.close();
   await refused(ticket);
+  assert.deepEqual(views, [{ slim: true, heldRevision: 12 }], "a page that asks for slim snapshots says which transcript it holds");
+  const malformed = new NodeWebSocket(socketUrl(`${sessionStreamTicket("alpha")!}&slim=1&revision=abc`), { origin });
+  await once(malformed, "message");
+  malformed.close();
+  assert.deepEqual(views.at(-1), { slim: true }, "a revision that is not a number holds no transcript");
 
   const connect = (id: string) => {
     const socket = new NodeWebSocket(socketUrl(sessionStreamTicket(id)!), { origin });
@@ -54,6 +61,7 @@ test("session views stream over one-use, same-origin WebSocket tickets", { timeo
 
   const alpha = connect("alpha");
   await until(() => alpha.frames.length === 1);
+  assert.deepEqual(views.at(-1), { slim: false }, "a page that does not ask, such as one loaded before an update, gets whole snapshots");
   emit("status", { status: "running" });
   await until(() => alpha.frames.length === 2);
   assert.deepEqual(alpha.frames, [{ event: "snapshot", data: { transcript: [], status: "idle" } }, { event: "status", data: { status: "running" } }]);

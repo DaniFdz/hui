@@ -58,6 +58,24 @@ the streaming check uses the local deterministic provider, not operator secrets.
 - Light and dark views were visually inspected. The final Browser error log and
   console error list are both empty.
 
+## Long transcripts (2026-10-21)
+
+A conversation of more than 50 rows renders its latest 50 under *Show earlier
+messages*; the rail keeps a marker for every message. Checked in headless
+Chrome at 1600×1000 on the 900-turn fixture of
+[remote-loading.browser.md](remote-loading.browser.md) (1,800 markers, 2,700
+rows):
+
+- Opened at the bottom, 50 rows render. A click on the first marker renders
+  the rows from there down and puts the first prompt 16px below the top. The
+  same happens with `overflow-anchor: none` on the transcript, which stands in
+  for Safari's missing scroll anchoring.
+- At the top of the rendered rows, *Show earlier messages* adds 50 rows and the
+  reader's distance from the bottom stays 2,860px before and after.
+  *Scroll to latest* goes back to the latest 50 rows.
+- A click on the marker of a row that rendered in the same frame, right after
+  *Show earlier messages*, jumps to it.
+
 ## Checks and evidence
 
 - Focused model/projection tests: **11 passed**, including 1,200 ordered markers,
@@ -66,8 +84,9 @@ the streaming check uses the local deterministic provider, not operator secrets.
   `git diff --check`: passed.
 
 The geometry and CSS are the pinned OpenClaw 2026.9.5 presentation already in
-HUI. The controller targets HUI's non-virtualized visible message projection;
-this is not a claim of parity with OpenClaw's virtualizer or hidden transcript
-activity. No API, PI format, HUI persisted format or dependencies were changed.
+HUI. The controller targets HUI's visible message projection, which renders a
+long conversation's latest rows and brings in earlier ones for a marker above
+them; this is not a claim of parity with OpenClaw's virtualizer or hidden
+transcript activity. No API, PI format, HUI persisted format or dependencies were changed.
 Stop only the disposable gateway/provider/browser processes and retain the
 temporary root for inspection; never clean operator PI/HUI directories.
