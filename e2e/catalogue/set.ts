@@ -118,7 +118,7 @@ const cases: UseCase[] = [
   {
     id: "SET-011",
     title: "Change the text size",
-    behaviour: "“Text size” offers Small (90%), Default (100%), Large (110%), XL (125%) and XXL (140%); the chosen stop scales the text of Settings, the sidebar, the conversation and the composer together and persists across reloads.",
+    behaviour: "“Text size” offers Small (90%), Default (100%), Large (110%), XL (125%) and XXL (140%); the chosen stop scales every text size in the interface together and persists across reloads.",
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:textScale"],
     web: "required",

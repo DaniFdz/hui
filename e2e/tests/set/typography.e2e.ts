@@ -81,19 +81,19 @@ test("the terminal font lists monospace and Nerd Fonts, takes a typed local fami
   }
 });
 
-test("Text size scales the text of Settings, the sidebar, the conversation and the composer together, and persists", { tags: ["SET-011"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Text size scales every text size in the interface together (Settings, the sessions sidebar, the conversation and the composer), and persists", { tags: ["SET-011"], platforms: ["web"] }, async ({ screen, hui }) => {
   const sizes = screen.getByLabel("Text size");
   const transcript = screen.getByTestId("transcript");
   const session = await hui.createSession({ title: "Scaled" });
   await hui.prompt(session, "E2E_MARKDOWN_PARITY");
   const settingsText = () => [screen.getByText("Message width", { exact: true }), screen.getByText("Controls the maximum width of the conversation and composer."), screen.getByLabel("Settings pages").getByText("Gateway")];
-  const chatText = () => [transcript.getByText("Final paragraph."), transcript.getByText("inline code"), screen.getByLabel("Message")];
+  const sessionText = () => [transcript.getByText("Final paragraph."), transcript.getByText("inline code"), screen.getByLabel("Message"), screen.getByTestId("session-row").getByText("Scaled", { exact: true })];
   const measure = async (targets: Locator[]) => Promise.all(targets.map(async (target) => Math.round((await hui.look(target)).size * 100) / 100));
   const scaled = (sizes: number[], factor: number) => sizes.map((size) => Math.round(size * factor * 100) / 100);
 
   await hui.open(`/sessions/${session.id}`);
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
-  const chat = await measure(chatText());
+  const sessionPage = await measure(sessionText());
   await hui.open("/settings/appearance");
   for (const name of ["Small 90%", "Large 110%", "XL 125%", "XXL 140%"]) await expect(sizes.getByRole("button", { name, pressed: false })).toBeVisible();
   await expect(sizes.getByRole("button", { name: "Default 100%", pressed: true })).toBeVisible();
@@ -104,11 +104,11 @@ test("Text size scales the text of Settings, the sidebar, the conversation and t
   await expect.poll(() => measure(settingsText())).toEqual(scaled(settings, 1.25));
   await hui.open(`/sessions/${session.id}`);
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
-  expect(await measure(chatText())).toEqual(scaled(chat, 1.25));
+  expect(await measure(sessionText())).toEqual(scaled(sessionPage, 1.25));
 
   await hui.reload();
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
-  expect(await measure(chatText())).toEqual(scaled(chat, 1.25));
+  expect(await measure(sessionText())).toEqual(scaled(sessionPage, 1.25));
   await hui.open("/settings/appearance");
   await expect(sizes.getByRole("button", { name: "XL 125%", pressed: true })).toBeVisible();
 
