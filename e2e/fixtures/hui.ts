@@ -1,13 +1,13 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's barriers, and the steps whose gesture differs per platform, such as attaching
- * files from `files/` and reading what a download saved. Test files import `test` from here, never from `e2e`, and
- * never read `platform`, `device` or `browser` themselves.
+ * its API, the deterministic provider's barriers, a gateway answer a test holds and rejects, and the steps whose
+ * gesture differs per platform, such as attaching files from `files/` and reading what a download saved. Test files
+ * import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
-import type { Browser } from "@e2e-dev/web";
+import type { Browser, WebRoute } from "@e2e-dev/web";
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
 type SessionList = { groups: { sessions: { id: string }[] }[] };
@@ -24,6 +24,16 @@ export type Hui = {
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: string[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
+  hold(target: Locator, until: Locator): Promise<void>;
+  intercept(method: string, path: RegExp): Promise<{ reject(status: number, error: string): Promise<void> }>;
+};
+
+const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "pointerup" }) => {
+  const target = document.elementFromPoint(x, y);
+  const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y };
+  target?.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "touch", isPrimary: true }));
+  if (type === "pointerup") target?.dispatchEvent(new MouseEvent("click", init));
+  return null;
 };
 
 export const test = base.extend<{ hui: Hui }>({
@@ -91,6 +101,40 @@ export const test = base.extend<{ hui: Hui }>({
           db.close();
         }
       }),
+      hold: async (target, until) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("hold: the target is not on screen");
+        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        await browser().evaluate(touch, { ...point, type: "pointerdown" });
+        await expect(until).toBeVisible();
+        await browser().evaluate(touch, { ...point, type: "pointerup" });
+      },
+      intercept: async (method, path) => {
+        let arrive: () => void = () => undefined;
+        let decide: (handle: (route: WebRoute) => Promise<void>) => void = () => undefined;
+        let done: () => void = () => undefined;
+        const arrival = new Promise<void>((resolve) => { arrive = resolve; });
+        const decision = new Promise<(route: WebRoute) => Promise<void>>((resolve) => { decide = resolve; });
+        const handled = new Promise<void>((resolve) => { done = resolve; });
+        await browser().route(path, async (route) => {
+          if (route.request.method !== method) return route.fallback();
+          arrive();
+          try {
+            await (await decision)(route);
+          } finally {
+            done();
+          }
+        });
+        const settle = async (handle: (route: WebRoute) => Promise<void>) => {
+          await arrival;
+          decide(handle);
+          await handled;
+          await browser().unroute(path);
+        };
+        return {
+          reject: (status, error) => settle((route) => route.fulfill({ status, json: { error } })),
+        };
+      },
     });
 
     await control("POST", "/control/release-replay");
