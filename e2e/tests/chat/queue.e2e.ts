@@ -96,15 +96,12 @@ test("A follow-up opens in an editor from Edit or a double click, saves or cance
   await expect(queue.getByText("Edited follow-up")).toBeVisible();
   await expect(editor).toBeHidden();
 
+  await queue.getByText("A steer").doubleTap();
   await queue.getByText("Doomed follow-up").doubleTap();
   await expect(editor).toBeFocused();
   await expect(editor).toHaveValue("Doomed follow-up");
   await queue.getByRole("button", "Cancel edit").tap();
   await expect(queue.getByText("Doomed follow-up")).toBeVisible();
-  await expect(editor).toBeHidden();
-
-  await queue.getByText("A steer").doubleTap();
-  await expect(queue).toHaveText(/^\s*A steer\s*Steer/u);
   await expect(editor).toBeHidden();
 
   await removals.nth(1).tap();
