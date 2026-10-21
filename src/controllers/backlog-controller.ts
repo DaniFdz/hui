@@ -253,10 +253,7 @@ export class BacklogController {
       void this.refresh();
       return;
     }
-    if (this.#deps.kanbanOpen()) {
-      this.#deps.notify(`Linked Jira work item ${detail.key}.`);
-      void this.refresh();
-    }
+    if (this.#deps.kanbanOpen()) void this.refresh();
     this.#deps.notify(`Linked Jira work item ${detail.key}.`);
     void this.#deps.refreshSessions();
   };

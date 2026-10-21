@@ -141,12 +141,12 @@ test("linking Jira to a backlog task reads the backlog again; linking a session 
   assert.deepEqual(notes, ["Linked Jira work item HUI-1 to the backlog task.", "Linked Jira work item HUI-2."]);
 });
 
-test("on the board, a session link also reads the backlog", () => {
+test("on the board, a session link reads the backlog and the sessions and toasts once", () => {
   const { backlog, notes, sessionRefreshes } = setup({ kanban: true });
   backlog.jiraLinked({ key: "HUI-3", url: "https://jira/HUI-3" });
   assert.deepEqual(fake.calls.map(({ call }) => call), ["load"]);
   assert.equal(sessionRefreshes(), 1);
-  assert.deepEqual(notes, ["Linked Jira work item HUI-3.", "Linked Jira work item HUI-3."]);
+  assert.deepEqual(notes, ["Linked Jira work item HUI-3."]);
 });
 
 test("a filed suggestion leaves its card at once and the panes hear of it", async () => {
