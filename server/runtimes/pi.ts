@@ -317,8 +317,8 @@ export function imageFromMessages(
   return { mimeType: mimeType.toLowerCase(), data: Buffer.from(data, "base64") };
 }
 
-/** The stored path of one file a user attached to a PI history message. */
-export function fileFromMessages(messages: readonly unknown[], message: number, file: number): string | undefined {
+/** The original name and stored path of one file a user attached to a PI history message. */
+export function fileFromMessages(messages: readonly unknown[], message: number, file: number): { name: string; path: string } | undefined {
   const raw = messages[message];
   if (!isRecord(raw) || raw["role"] !== "user") return undefined;
   const content = raw["content"];
@@ -327,7 +327,7 @@ export function fileFromMessages(messages: readonly unknown[], message: number, 
   for (const part of parts) {
     if (!isRecord(part) || part["type"] !== "text" || typeof part["text"] !== "string") continue;
     const attachments = restoreAttachmentNames(part["text"], imageCount).attachments;
-    if (attachments) return attachments.flatMap((item) => item.kind === "file" ? [item.path] : [])[file];
+    if (attachments) return attachments.flatMap((item) => item.kind === "file" ? [{ name: item.name, path: item.path }] : [])[file];
   }
   return undefined;
 }
@@ -1280,7 +1280,7 @@ export class PiSession implements RuntimeSession {
     return imageFromMessages(this.#messages, message, image);
   }
 
-  attachmentFile(message: number, file: number): string | undefined {
+  attachmentFile(message: number, file: number): { name: string; path: string } | undefined {
     return fileFromMessages(this.#messages, message, file);
   }
 

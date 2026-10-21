@@ -1483,7 +1483,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return imageFromMessages(this.#visible(), message, image);
   }
 
-  attachmentFile(message: number, file: number): string | undefined {
+  attachmentFile(message: number, file: number): { name: string; path: string } | undefined {
     return fileFromMessages(this.#visible(), message, file);
   }
 

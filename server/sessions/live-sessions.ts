@@ -442,7 +442,7 @@ export class LiveSessions {
     return this.#live.get(id)?.runtime?.attachmentImage?.(message, image);
   }
 
-  attachmentFile(id: string, message: number, file: number): string | undefined {
+  attachmentFile(id: string, message: number, file: number): { name: string; path: string } | undefined {
     return this.#live.get(id)?.runtime?.attachmentFile?.(message, file);
   }
 

@@ -17,7 +17,6 @@ export const NOT_UI: Readonly<Record<string, string>> = {
   "route:GET /__hui/providers/:provider/quota": "Settings → Models reads quota per account; no screen asks for the provider-wide figure.",
   "route:GET /__hui/sessions/:id/thinking": "The thinking level arrives in the session stream's snapshot and frames; no screen reads it separately.",
   "route:GET /__hui/sessions/:id/events": "The browser streams a session over the WebSocket that POST /connect opens; this server-sent events route is for other clients.",
-  "route:GET /__hui/sessions/:id/attachments/:message/files/:file": "File attachments carry this address, but their card renders no link, so no screen opens it.",
   "route:GET /__hui/sessions/:owner/terminals/:id": "The terminal view replays over its WebSocket and the agent's terminal tool calls the terminal manager directly; no screen calls this route.",
   "route:HEAD /__hui/media/:id/:name": "For probes and tools; the media players fetch with GET and byte ranges.",
   "route:HEAD /__hui/widget-sandbox": "For probes and tools; the widget frame loads the page with GET.",

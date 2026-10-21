@@ -855,8 +855,11 @@ type SubagentTaskView = Omit<SubagentRecord, "status"> & {
 // `x-content-type-options: nosniff`; 403 without x-hui, 404 for an unknown
 // session, index or non-image part, 405 for other methods.
 // Files a user attached have `url` GET /__hui/sessions/:id/attachments/:message/files/:file
-// with the same guard and headers, served as `application/octet-stream`; 404 also
-// when the stored path is missing or resolves outside HUI's attachment store.
+// with the same guard and headers plus `content-security-policy: default-src 'none'; sandbox`.
+// An image or PDF (by the file's name) is served as its type with `content-disposition: inline`;
+// anything else as `application/octet-stream` with `attachment`, both naming the original file.
+// The chat links each one as "Open <name>". 404 also when the stored path is missing or
+// resolves outside HUI's attachment store.
 type TranscriptAttachment = { name: string; kind: "image" | "file"; mimeType?: string; url?: string };
 
 type TranscriptEntry =

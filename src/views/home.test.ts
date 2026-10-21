@@ -96,11 +96,9 @@ test("the composer attachment button exposes camera, photo and file pickers", ()
   assert.match(source, /input\.closest\("details"\)\?\.removeAttribute\("open"\)/);
 });
 
-test("sent file cards retain original compact geometry and the empty action slot", () => {
+test("sent file cards retain original compact geometry", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   assert.match(source, /chat-assistant-attachment-card chat-assistant-attachment-card--compact/);
-  assert.match(source, /<span class="chat-assistant-attachment-card__actions"><\/span>/);
-  assert.match(source, /chat-assistant-attachment-card__title" title=\$\{attachmentName\(attachment\)\}/);
 });
 
 test("sent attachments do not render stray template syntax", () => {

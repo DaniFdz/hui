@@ -5,7 +5,7 @@ import { test } from "vitest";
 
 test("transcript attachments use the original sized file-icon component", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  assert.match(source, /renderAttachmentFileIcon\(\{ filename: attachmentName\(attachment\), mode: "large-placeholder" \}\)/);
+  assert.match(source, /renderAttachmentFileIcon\(\{ filename: name, mode: "large-placeholder" \}\)/);
   assert.doesNotMatch(source, /chat-assistant-attachment-card__identity">\$\{icons\.fileText\}/);
 });
 

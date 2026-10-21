@@ -798,15 +798,18 @@ function attachmentName(item: string | { name: string }): string {
   return typeof item === "string" ? item : item.name;
 }
 
-function attachmentCard(attachment: string | { name: string }): TemplateResult {
-  return html`<div class="chat-assistant-attachment-card chat-assistant-attachment-card--compact" role="listitem"><div class="chat-assistant-attachment-card__header"><div class="chat-assistant-attachment-card__identity">${renderAttachmentFileIcon({ filename: attachmentName(attachment), mode: "large-placeholder" })}<span class="chat-assistant-attachment-card__details"><span class="chat-assistant-attachment-card__title" title=${attachmentName(attachment)}>${attachmentName(attachment)}</span><span class="chat-assistant-attachment-card__meta">${resolveAttachmentFileIcon(attachmentName(attachment)).extensionLabel}</span></span></div><span class="chat-assistant-attachment-card__actions"></span></div></div>`;
+function attachmentCard(attachment: string | { name: string }, url?: string): TemplateResult {
+  const name = attachmentName(attachment);
+  const open = url ? html`<a class="chat-assistant-attachment-card__action" href=${url} target="_blank" rel="noopener" aria-label=${`Open ${name}`} title=${`Open ${name}`}>${icons.externalLink}</a>` : nothing;
+  return html`<div class="chat-assistant-attachment-card chat-assistant-attachment-card--compact" role="listitem"><div class="chat-assistant-attachment-card__header"><div class="chat-assistant-attachment-card__identity">${renderAttachmentFileIcon({ filename: name, mode: "large-placeholder" })}<span class="chat-assistant-attachment-card__details"><span class="chat-assistant-attachment-card__title" title=${name}>${name}</span><span class="chat-assistant-attachment-card__meta">${resolveAttachmentFileIcon(name).extensionLabel}</span></span></div><span class="chat-assistant-attachment-card__actions">${open}</span></div></div>`;
 }
 
 /** Image attachments with a URL render as a thumbnail; a failed load swaps
  * back to the generic file card. */
 function renderMessageAttachment(attachment: string | { name: string; kind?: string; url?: string }): TemplateResult {
   const name = attachmentName(attachment);
-  if (typeof attachment === "string" || attachment.kind !== "image" || !attachment.url) return attachmentCard(attachment);
+  if (typeof attachment === "string") return attachmentCard(attachment);
+  if (attachment.kind !== "image" || !attachment.url) return attachmentCard(attachment, attachment.url);
   const fallback = (event: Event) => {
     const figure = (event.target as HTMLElement).closest(".hui-message-attachment-image");
     if (figure) figure.setAttribute("data-failed", "");
