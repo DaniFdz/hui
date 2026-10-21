@@ -481,10 +481,10 @@ export const test = base.extend<{ hui: Hui }>({
   `visual-verification.mjs`.
 - Each test starts with `app.clearState()`, which clears the browser's or the app's persisted state (drafts, Work
   pane layout, the last route) and reopens the app. Teardown releases any reply the provider still holds, deletes
-  every session the test created (`DELETE /__hui/sessions/:id` also stops its runtime and terminals) and writes the
-  gateway's settings back. Tests that create other gateway state (backlog items, bots, automation tasks) delete it
-  through the same `api`, so the gateway returns to its starting state. If tests still interfere, the fallback is a
-  fresh launcher per test on the same port, at a cost spike S7 measures.
+  every automation task, session and session group the test created (`DELETE /__hui/sessions/:id` also stops its
+  runtime and terminals) and writes the gateway's settings back. Tests that create other gateway state (backlog
+  items, bots) delete it through the same `api`, so the gateway returns to its starting state. If tests still
+  interfere, the fallback is a fresh launcher per test on the same port, at a cost spike S7 measures.
 - Only the fixture's setup calls carry `x-hui`. The web engine gets no extra `headers`, so a UI request that forgot
   `x-hui` still fails the test.
 - `open`, `reload`, `peek` and `attach` are the only steps whose gesture differs per platform, and a guard keeps

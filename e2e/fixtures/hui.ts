@@ -83,6 +83,7 @@ export const test = base.extend<{ hui: Hui }>({
     const groups = async () => (await api<SessionList>("GET", "/__hui/sessions")).groups;
     const sessions = async () => (await groups()).flatMap((group) => group.sessions);
     const sessionIds = async () => (await sessions()).map((session) => session.id);
+    const taskIds = async () => (await api<{ tasks: { id: string }[] }>("GET", "/__hui/automation")).tasks.map((task) => task.id);
     const prompt = async (session: { id: string }, text: string) => {
       await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
@@ -91,6 +92,7 @@ export const test = base.extend<{ hui: Hui }>({
 
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
+    const existingTasks = new Set(await taskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
 
@@ -256,6 +258,9 @@ export const test = base.extend<{ hui: Hui }>({
     });
 
     await control("POST", "/control/release-replay");
+    for (const id of await taskIds()) {
+      if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+    }
     for (const id of await sessionIds()) {
       if (existing.has(id)) continue;
       const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });

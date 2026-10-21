@@ -6,7 +6,7 @@ test("Escape clears the search, then leaves Settings; it closes an open select, 
   const search = screen.getByLabel("Search settings");
   const title = screen.getByTestId("settings-page-title");
   const session = await hui.createSession({ title: "Scheduled" });
-  const { task } = await hui.api<{ task: { id: string } }>("POST", "/__hui/automation/tasks", {
+  await hui.api("POST", "/__hui/automation/tasks", {
     name: "Nightly check", sessionId: session.id, prompt: "Check", schedule: { kind: "every", everyMs: 3_600_000 }, enabled: false,
   });
 
@@ -35,7 +35,6 @@ test("Escape clears the search, then leaves Settings; it closes an open select, 
   await screen.getByRole("menuitem", "Edit").press("Escape");
   await expect(screen.getByRole("menuitem", "Edit")).toBeHidden();
   await expect(title).toHaveText("Automation");
-  await hui.api("DELETE", `/__hui/automation/tasks/${task.id}`);
 
   await search.press("Escape");
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
