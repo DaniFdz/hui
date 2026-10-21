@@ -6,7 +6,7 @@
 import type { BotInput, BotPatch, BotView } from "./schema/bots.ts";
 import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
-import { decodeSseFrame, reconnectDelay, sseFrameReader, STATUS_STREAM_STALL_MS } from "./sessions.ts";
+import { readEventStream, reconnectDelay } from "./sessions.ts";
 
 const BOTS_URL = "/__hui/bots";
 
@@ -58,33 +58,20 @@ async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal
     return "dropped";
   }
   if (!response.ok || !response.body) return response.status === 404 || response.status === 405 ? "unsupported" : "dropped";
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  const frames = sseFrameReader();
   let first = true;
-  let stall: ReturnType<typeof setTimeout> | undefined;
   try {
-    for (;;) {
-      clearTimeout(stall);
-      stall = setTimeout(() => void reader.cancel(), STATUS_STREAM_STALL_MS);
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const text of frames(decoder.decode(value, { stream: true }))) {
-        const frame = decodeSseFrame(text);
-        const update = frame?.name === "bots" ? parseBotsUpdate(frame.payload) : undefined;
-        if (!update) continue;
-        if (first) {
-          onLive();
-          handlers.onConnection("live");
-        }
-        handlers.onUpdate(update, first);
-        first = false;
+    await readEventStream(response.body, (frame) => {
+      const update = frame.name === "bots" ? parseBotsUpdate(frame.payload) : undefined;
+      if (!update) return;
+      if (first) {
+        onLive();
+        handlers.onConnection("live");
       }
-    }
+      handlers.onUpdate(update, first);
+      first = false;
+    });
   } catch {
     return "dropped";
-  } finally {
-    clearTimeout(stall);
   }
   return "dropped";
 }
