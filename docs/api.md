@@ -2992,7 +2992,8 @@ A `status` frame may also carry `title` when the gateway renamed the session
 itself, such as a new session's generated name.
 
 It also carries the shared session list. After the status snapshot, the
-first `sessions` frame is the complete list; later frames carry only what
+first `sessions` frame is the complete list as it is when the client joins
+(read again if no client was listening); later frames carry only what
 changed. `groups` (order, membership and group defaults as ordered `ids`) is
 present only when it changed, and `upserts` holds each session whose view
 changed. While any client listens, the gateway recomputes the list every
