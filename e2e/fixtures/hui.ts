@@ -11,7 +11,8 @@ import { expect, test as base, type Locator } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
-type SessionList = { groups: { sessions: { id: string }[] }[] };
+type SessionList = { groups: { sessions: ListedSession[] }[] };
+type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
 type Intercepted = {
   arrived(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
@@ -22,11 +23,13 @@ export type Hui = {
   workspace: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi" }): Promise<{ id: string }>;
+  createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   provider: { held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(): Promise<{ width: number; height: number }>;
+  failNextRequest(method: string, path: string, error: string): Promise<void>;
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
@@ -66,8 +69,8 @@ export const test = base.extend<{ hui: Hui }>({
       const response = await fetch(receipt.providerUrl + path, { method });
       if (!response.ok) throw new Error(`provider ${path} answered ${response.status}`);
     };
-    const sessionIds = async () =>
-      (await api<SessionList>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions.map((session) => session.id));
+    const sessions = async () => (await api<SessionList>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions);
+    const sessionIds = async () => (await sessions()).map((session) => session.id);
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
 
     const existing = new Set(await sessionIds());
@@ -79,6 +82,21 @@ export const test = base.extend<{ hui: Hui }>({
       api,
       createSession: async (input) =>
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+      createSubagent: async (parent) => {
+        const status = async (id: string) => (await sessions()).find((session) => session.id === id)?.status;
+        await expect.poll(() => status(parent.id), { timeout: 30_000 }).toBe("idle");
+        await api("POST", `/__hui/sessions/${parent.id}/prompt`, { text: "E2E_SUBAGENTS_START" });
+        const settled = async () => {
+          const all = await sessions();
+          const child = all.find((session) => session.parentId === parent.id);
+          const done = child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
+            && all.find((session) => session.id === parent.id)?.status === "idle";
+          return done ? child : undefined;
+        };
+        await expect.poll(async () => (await settled()) !== undefined, { timeout: 30_000 }).toBe(true);
+        const child = (await settled())!;
+        return { id: child.id, title: child.title };
+      },
       provider: {
         held: () => control("GET", "/control/wait-replay-ready"),
         release: () => control("POST", "/control/release-replay"),
@@ -86,6 +104,14 @@ export const test = base.extend<{ hui: Hui }>({
       open: (path) => fixtures.app.open(path),
       reload: () => browser().reload(),
       url: () => browser().url(),
+      failNextRequest: async (method, path, error) => {
+        const pattern = new RegExp(`${path.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "u");
+        await browser().route(pattern, async (route) => {
+          if (route.request.method !== method) return route.fallback();
+          await route.fulfill({ status: 503, json: { error } });
+          await browser().unroute(pattern);
+        });
+      },
       phoneScreen: async () => {
         const phone = { width: 390, height: 844 };
         await browser().setViewport(phone);
@@ -170,7 +196,11 @@ export const test = base.extend<{ hui: Hui }>({
     });
 
     await control("POST", "/control/release-replay");
-    for (const id of await sessionIds()) if (!existing.has(id)) await api("DELETE", `/__hui/sessions/${id}`);
+    for (const id of await sessionIds()) {
+      if (existing.has(id)) continue;
+      const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });
+      if (!response.ok && response.status !== 404) throw new Error(`DELETE /__hui/sessions/${id} answered ${response.status}`);
+    }
     await api("PUT", "/__hui/settings", settings);
   },
 });
