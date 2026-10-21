@@ -759,6 +759,15 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "CHAT-079",
+    title: "Follow mid-turn messages and folded activity on a phone",
+    behaviour: "On a 390 px wide screen, messages that arrive while a turn runs and the turn's folded activity fit the width, with no sideways scrolling, and expanding the activity keeps them readable.",
+    spec: ["SPEC.md#live-chat-projection"],
+    surfaces: [],
+    web: "backlog",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
