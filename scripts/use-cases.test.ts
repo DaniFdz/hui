@@ -39,7 +39,7 @@ const testSources = await sourcesIn("e2e/tests", (name) => name.endsWith(".ts"))
 const fixtureSource = await read("e2e/fixtures/hui.ts");
 const appSources = [...(await sourcesIn("src", (name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))).values()].join("\n");
 const withoutCommentsAndStrings = (source: string) =>
-  source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|(["'`])(?:\\.|(?!\1)[^\\])*\1|\/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n])+\/[dgimsuyv]*/gu, (match) => (match.startsWith("/") ? "" : '""'));
+  source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|(["'`])(?:\\.|(?!\1)[^\\])*\1|\/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[dgimsuyv]*/gu, (match) => (match.startsWith("/") ? "" : '""'));
 
 const cites = (reference: string) => {
   const [document, anchor] = reference.split("#") as [keyof typeof documents, string | undefined];
