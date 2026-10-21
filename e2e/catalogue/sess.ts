@@ -48,11 +48,11 @@ const cases: UseCase[] = [
   {
     id: "SESS-005",
     title: "Start a session in a group",
-    behaviour: "A group's \"New session in <GROUP>\" opens New Session with that group selected in \"Choose session group\" and the group's directory filled in; the Group picker can change it. The new session appears under that group and the group's count goes up.",
+    behaviour: "A group's \"New session in <GROUP>\" opens New Session with that group selected in \"Choose session group\" and the group's directory filled in; the Group picker can change it. The new session appears under that group.",
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessions"],
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-groups", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -268,7 +268,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisession-groupsname"],
     surfaces: ["route:PATCH /__hui/session-groups/:name", "route:GET /__hui/git-checkout", "route:GET /__hui/directories"],
     journeys: ["session-groups", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -278,7 +278,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#git-workspace-sessions"],
     surfaces: ["page:new-session", "route:POST /__hui/sessions", "route:GET /__hui/git-checkout"],
     journeys: ["session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

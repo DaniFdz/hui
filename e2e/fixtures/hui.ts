@@ -7,10 +7,14 @@
  * menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a piece of the screen
  * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
- * keyboard). Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
- * themselves.
+ * keyboard), and a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
+ * `sub` directory) that it removes at teardown. Test files import `test` from here, never from `e2e`, and never read
+ * `platform`, `device` or `browser` themselves.
  */
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
@@ -52,6 +56,7 @@ export type Hui = {
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
+  repository(): Promise<{ path: string; git(...args: string[]): string }>;
 };
 
 const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "pointerup" }) => {
@@ -97,6 +102,7 @@ export const test = base.extend<{ hui: Hui }>({
     const existingTasks = new Set(await taskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
+    const repositories: string[] = [];
 
     await use({
       workspace: receipt.workspace,
@@ -263,6 +269,22 @@ export const test = base.extend<{ hui: Hui }>({
           }),
         };
       },
+      repository: async () => {
+        const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
+        repositories.push(path);
+        const git = (...args: string[]) => execFileSync("git", ["-C", path, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com",
+          "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
+        git("init", "--quiet", "--initial-branch=main");
+        await mkdir(join(path, "sub"));
+        await writeFile(join(path, "sub", "keep.txt"), "sub\n");
+        git("add", ".");
+        git("commit", "--quiet", "-m", "main");
+        git("switch", "--quiet", "-c", "release/1.0");
+        git("commit", "--quiet", "--allow-empty", "-m", "release");
+        git("switch", "--quiet", "-c", "feature/current", "main");
+        git("commit", "--quiet", "--allow-empty", "-m", "feature");
+        return { path, git };
+      },
     });
 
     await control("POST", "/control/release-replay");
@@ -278,5 +300,6 @@ export const test = base.extend<{ hui: Hui }>({
       if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
     }
     await api("PUT", "/__hui/settings", settings);
+    for (const path of repositories) await rm(path, { recursive: true, force: true });
   },
 });
