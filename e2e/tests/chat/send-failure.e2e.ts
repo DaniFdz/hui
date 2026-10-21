@@ -7,14 +7,14 @@ const PROMPT = /\/__hui\/sessions\/[^/]+\/prompt$/u;
 test("a send locks the composer until the gateway answers, and one it rejects gives its text and attachment back once, with the reason", { tags: ["CHAT-012"], platforms: ["web"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message", { visible: true });
   const send = screen.getByRole("button", "Send message", { visible: true });
-  const attached = screen.getByRole("button", "Remove fixture.txt", { visible: true });
+  const attached = screen.getByRole("button", "Remove notes.txt", { visible: true });
   const transcript = screen.getByTestId("transcript", { visible: true });
 
   const session = await hui.createSession({ title: "Rejected send" });
   await hui.open(`/sessions/${session.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await message.fill("Recover me");
-  await hui.attach([`${hui.workspace}/fixture.txt`]);
+  await hui.attach(screen.getByLabel("Choose files"), ["notes.txt"]);
   await expect(attached).toBeVisible();
 
   const held = await hui.intercept("POST", PROMPT);
