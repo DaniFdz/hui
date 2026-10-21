@@ -46,7 +46,7 @@ test("resending a send whose answer was lost doesn't run it twice", { tags: ["CH
   const lost = await hui.intercept("POST", PROMPT);
   await send.tap();
   await lost.deliverAndDrop();
-  await expect(transcript.getByText("Not sent — draft recovered.")).toBeVisible();
+  await expect(screen.getByText("Could not reach HUI. Check the connection and try again.")).toBeVisible();
   await expect(message).toHaveValue("Run me once");
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
