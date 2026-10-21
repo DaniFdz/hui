@@ -41,3 +41,6 @@ npm-shrinkwrap.json
 
 # The shared e2e suite's reports, traces and launcher receipts.
 .e2e/
+
+# What npm run ios:core builds for the iOS app.
+/ios/HUI/Resources/Generated/

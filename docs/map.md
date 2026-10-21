@@ -49,12 +49,16 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 - R14. The remote worker release ships every module that
   `server/worker/main.ts`, `server/worker/host.ts` and `server/runtimes/` load.
 - R15. `server/api/` imports only `typebox` and itself.
-- R16. `src/api/schema/` matches the types generated from `docs/api.schema.json`,
-  checked by `scripts/api-schema.test.ts`.
+- R16. `src/api/schema/` and `ios/HUI/Gateway/Schema/` match the types generated
+  from `docs/api.schema.json`, checked by `scripts/api-schema.test.ts`.
 - R17. Installed entry points keep their paths: `bin/hui.mjs`, `cli/launch.ts`,
   `cli/main.ts`, `cli/gateway-run.ts`, `server/runtimes/pi-sdk-worker.ts`,
   `server/worker/main.ts` and `index.html`. An installed CLI checks their built
   files before switching to a new release.
+- R18. Everything `ios/core/` loads, directly or through other modules, is in
+  `ios/core/` or `src/lib/`, and none of it is a `*-store.ts`, an npm package or
+  a Node module. The core runs in JavaScriptCore, which has no DOM, network or
+  timers, and `ios/core/entry.test.ts` runs its bundle without them.
 
 ## A message, start to finish
 
@@ -84,7 +88,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Area | Start here |
 |---|---|
 | HTTP entry and routing | `hui.ts` (the `/__hui/` dispatch: the `x-hui` gate, the diagnostics hook, route modules in order, the session and bot event streams), `services.ts` (the gateway's services and route modules, built at import time), `backend.ts` (backend start, startup recovery and stop), `vite-plugin.ts` (`huiConfig`: the API, backend and upgrades inside Vite's dev and preview servers), `server/routes/` (one `createXRoutes(deps)` module per area; `order.test.ts`: which handler answers each route family, in dispatch order), `server/http/` (`route.ts`: the request and result every route module speaks, request body reading and JSON answers; `events.ts`: server-sent events and the session event feed; `static-files.ts`; `compression.ts`: Brotli/gzip for files and JSON), `gateway.ts` (process start), `host.ts` (bind address) |
-| Published API schema | `server/api/` (TypeBox payloads and route metadata; `index.ts`: area catalog and JSON Schema document; `diagnostics.ts`: health, redacted snapshots and UI error reports), `docs/api.schema.json` (generated contract), `scripts/api-schema.ts` (publication and browser type generation), `server/test-support/api-schema.ts` (test-only conformance checks) |
+| Published API schema | `server/api/` (TypeBox payloads and route metadata; `index.ts`: area catalog and JSON Schema document; `diagnostics.ts`: health, redacted snapshots and UI error reports), `docs/api.schema.json` (generated contract), `scripts/api-schema.ts` (publication, and the payload types of the browser and the iOS app), `server/test-support/api-schema.ts` (test-only conformance checks) |
 | Session registry and lifecycle | `server/sessions/sessions.ts` (HUI registry), `server/api/sessions.ts` (session, group, stage, list-update, questionnaire and metric payloads), `server/api/session-events.ts` (session stream frames, snapshots, transcripts, transmitted runtime events, open and clear responses), `server/sessions/` (`session-tree.ts`: a session's tree root and descendants; `slash-commands.ts`: reserved command parsing; `lifecycle.ts`: create, fork, worktree launch, update and delete; `views.ts`: session views and the session list; `session-stages.ts`: stage rules and precedence; `attachments.ts`: prompt attachment limits, decoding and the attachment store; `stages.ts`: an agent's `set_stage`; `progress-card.ts`: transcript progress snapshots; `thinking.ts`: accepted reasoning levels; `live-sessions.ts`: running sessions; `list.ts`: the shared list and its update frames; `transport.ts`: the session view WebSocket; `activity.ts`: when each session was worked on; `digest.ts`: a session summary for utility drafting; `interrupted-run.ts`: resuming a lost run; `recent-requests.ts`: a resent request id's first outcome), `routes/attachments.ts` (`GET /__hui/sessions/:id/attachments/…`), `routes/sessions.ts` (the session list and groups, `POST /__hui/sessions`, `PATCH/DELETE /__hui/sessions/:id`), `routes/session-actions.ts` (`/__hui/sessions/:id/<action>`: open, prompt, queue, model, fork and the rest) |
 | Runtimes | `runtimes/types.ts` (contract), `runtimes/command-references.ts` (runtime command aliases), `runtimes/durable*.ts` (Pi Durable: host, adapter, prompt, tools, PI extensions, questions, image limits; `durable-offer.ts`: the tool offer every conversation shares), `runtimes/turn-origins.ts` (history entries every conversation may hold, and who started a bot's turn), `runtimes/pi*.ts` (PI SDK worker and CLI fallback), `runtimes/pi-import.ts` (moves PI sessions to Durable for `hui doctor --fix`), `runtimes/model-controls.ts` (a model's reasoning levels, fast mode and the level HUI's Ultra is sent) |
 | HUI agent tools | `runtimes/hui-tools.ts` (definitions), `server/agent-tools/` (`bridge.ts`: loopback bridge for PI workers; `subagents.ts`; `subagent-completion.ts`: completion event writing and continuation prompts; `watchers.ts` with `routes/watchers.ts`; `task-suggestions.ts`: the suggestion store, limits, start modes and prompt text, with `routes/task-suggestions.ts`; `secret-requests.ts`; `questionnaires.ts`; `presented-media.ts`: files shown with present_media; `widget-sandbox.ts`: the widget sandbox page, its CSP and reserved messages; `tools.ts`: the Tools page catalog) |
@@ -108,7 +112,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Client stores and API | `src/api/` (requests to `/__hui/`: `request.ts` (fetch boundary, `x-hui` header, response deadline), `settings.ts`, `ui-errors.ts` (browser errors batched to the gateway), `sessions.ts` (session API), `session-list.ts` (applies session-list update frames), `terminals.ts`, `browser.ts`, `files.ts`, `diff.ts`, and one client per area: `automation.ts`, `backlog.ts`, `bots.ts`, `bot-facts.ts`, `bot-templates.ts`, `bot-tools.ts`, `bot-triggers.ts`, `calls.ts`, `datadog.ts`, `jira.ts`, `github.ts`, `github-previews.ts`, `pi.ts`, `providers.ts`, `themes.ts`, `vscode.ts`, `workers.ts`, …), `src/lib/settings/settings-store.ts` (settings cache and write queue), other `lib/*-store.ts` |
 | Generated API types | `src/api/schema/`, generated only from `docs/api.schema.json` by `npm run api:schema` |
 | Controllers | `src/controllers/` (Lit controllers holding a feature's state and calling `src/api/`): `conversation-controller.ts` (the open session's transcript, stream, models and question), `composer-controller.ts` (drafts, completion, the queue and sending), `sessions-controller.ts` (the session registry, the sidebar and the shell toasts), `launch-controller.ts` (New Session), `work-layout-controller.ts` (split panes and the Work pane), `backlog-controller.ts` (the Kanban board, its Jira dialogs and task suggestions), `settings-controller.ts` (HUI settings, theme, PI and the control surfaces), `automation-controller.ts`, `update-controller.ts`, `bots-controller.ts` and the bot `import`, `tools`, `triggers` and `facts` controllers, `voice-controller.ts` (calls), `browser-view-controller.ts` (the browser live view) |
-| Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file), `lib/markdown/github-links.ts` and `lib/markdown/datadog-links.ts` (browser-local Markdown link detection; portable JSON fixtures match the gateway copies), `lib/jira.ts` and `lib/pull-requests.ts` (work-item and pull-request labels), `lib/widgets.ts` (widget documents, theme bridge and frame messages; CSP fixtures match the gateway copy) |
+| Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file), `lib/markdown/github-links.ts` and `lib/markdown/datadog-links.ts` (browser-local Markdown link detection; portable JSON fixtures match the gateway copies), `lib/jira.ts` and `lib/pull-requests.ts` (work-item and pull-request labels), `lib/widgets.ts` (widget documents, theme bridge and frame messages; CSP fixtures match the gateway copy), `lib/event-stream.ts` (server-sent event frames and reconnect backoff, shared with the iOS core) |
 | Chat | `views/chat/` (projection, tool cards, position rail), `src/lib/markdown/`, `src/lib/composer/` (drafts, state, textarea, send requests); file references that open in the Files view: `lib/files/references.ts` (which text is a path), `lib/files/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
 | Sidebar and sessions | `src/lib/session/sidebar-sessions.ts`, `lib/session/sessions.ts` (group labels, transcript Markdown, unreachable hosts), `lib/session/tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |
 | Pages | `views/*.ts` (settings, automation, kanban, bots, worktrees); self-loading settings sections in `src/components/settings/`, `components/contributions.ts`, `components/session-calendar.ts`; the bots pages' parsers and state in `src/lib/bots/`, voice and live calls in `src/lib/voice/` |
@@ -118,6 +122,17 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Work views | `src/views/work/` (one kind per Work pane view: launch, title, render — terminal, browser, files, vscode, diff), `components/files-view.ts` with `api/files.ts` and `src/lib/files/` (`draft.ts`, `editor.ts`: CodeMirror, loaded on demand; `view-state.ts`); `components/vscode-view.ts` through `lib/vscode-store.ts`, with HUI's colors for it read by `lib/theme/vscode-theme.ts`; `components/diff-view.ts` with `api/diff.ts` and `src/lib/diff/` (`view-state.ts`, `hunks.ts`: patch parsing, side-by-side rows; `highlight.ts`: syntax colours through `lib/code-languages.ts`, shared with the Files editor) |
 | Visual tokens | `styles/tokens.css` first, then the per-surface stylesheets; themes through `src/lib/theme/theme-store.ts` (loading through `api/themes.ts`, user accent) and `lib/theme/shadcn-theme.ts` (token mapping, contrast rules), with color math in `lib/theme/color-contrast.ts` |
 
+## ios/ (the iPhone app)
+
+`ios/` holds the native iPhone app's code, with its rules in `ios/AGENTS.md`. So far it has the
+JavaScriptCore core the app shares with the web and the gateway's payload types in Swift.
+
+| Path | Owns |
+|---|---|
+| `ios/core/` | The JavaScriptCore core: `entry.ts` re-exports pure `src/lib/` functions (navigation, server-sent event frames, reconnect backoff). `npm run ios:core` (`scripts/ios-build.ts`) bundles it into `ios/HUI/Resources/Generated/hui-core.js`, with `hui-core.sha256` beside it listing the bundle and its inputs for the Xcode build to check; git ignores both |
+| `ios/HUI/Gateway/` | `API.swift`: the `API` namespace of the payload types, and the `JSONValue` they use for open values |
+| `ios/HUI/Gateway/Schema/` | The payload types, one Swift file per API area, generated from `docs/api.schema.json` by `npm run api:schema` |
+
 ## Elsewhere
 
 | Path | Owns |
@@ -125,7 +140,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | `cli/` | The `hui` command: gateway lifecycle (`gateway*.ts`, `state.ts`), installed releases and updates (`releases.ts`, `update*.ts`, `installation.ts`), `hui doctor` (`doctor*.ts`), the `/__hui/` client of `hui bot` and `hui schedule` (`gateway-client.ts`) |
 | `desktop/` | Electron wrapper (`main.cjs`, `policy.cjs`) and macOS app registration (`install.mjs`) |
 | `bin/` | Entry points: `hui.mjs` (installed CLI), `hui-dev.mjs` (`npm run dev`) |
-| `scripts/` | Build, release and nightly versioning |
+| `scripts/` | Build, release and nightly versioning, and the iOS core bundle (`ios-build.ts`) |
 | `e2e/` | Browser-tool E2E procedures (`*.browser.md`), the launcher (`visual-verification.mjs`) and the package test; `e2e/catalogue/` (every user outcome HUI supports, one file per area, with the collectors of code surfaces that `scripts/use-cases.test.ts` checks it against), `e2e/tests/` (the shared e2e suite that `e2e.config.ts` runs, with its fixture in `e2e/fixtures/hui.ts`), `e2e/fixtures/` (fake providers, CLIs and services, seeds and PI extensions the launcher and tests start), `e2e/probes/` (in-page probes and oracles a procedure loads into the running app) |
 | `nix/` | Flake package, NixOS module and smoke checks |
 | `skills/` | Skills shipped with HUI |
