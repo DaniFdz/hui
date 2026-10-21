@@ -55,6 +55,7 @@ test("a command shows a bounded preview and opens to its output, state and copy"
   await transcript.getByText("Ran 1 command").tap();
   await expect(transcript.getByText("failed")).toBeVisible();
   await transcript.getByRole("button", "false failed").tap();
+  await expect(transcript.getByText("false")).toHaveCount(2);
   await expect(transcript.getByText("failed")).toBeVisible();
 });
 
@@ -107,13 +108,14 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await expect(transcript.getByText("No output")).toBeVisible();
 
   await openSession(hui, "Failed tool");
-  await message.fill(call("CALL", "ls", { path: hui.workspace }));
+  await message.fill(call("CALL", "fixture_echo", { text: "fail" }));
   await send.tap();
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
   await transcript.getByText("Ran 1 command").tap();
-  await expect(transcript.getByText("ls", { visible: true })).toBeVisible();
-  await expect(transcript.getByText("Failed")).toBeVisible();
+  await expect(transcript.getByText("fixture_echo", { visible: true })).toBeVisible();
+  await transcript.getByText("Failed").tap();
+  await expect(transcript.getByText("Fixture echo failed on purpose.")).toBeVisible();
 });
 
 test("a failed tool call keeps its error live and after a reload", { tags: ["CHAT-029"], platforms: ["web"] }, async ({ screen, hui }) => {

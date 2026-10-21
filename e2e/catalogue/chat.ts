@@ -32,7 +32,7 @@ const cases: UseCase[] = [
   {
     id: "CHAT-003",
     title: "See what the agent is doing while it works",
-    behaviour: "While a turn runs, a working indicator below the transcript names the current step: Running command… while a shell command runs, Working… while another tool runs and Writing response… while the reply streams. It disappears when the turn settles, leaving the full reply.",
+    behaviour: "While a turn runs, a working indicator names the current step: Running command… while a shell command runs, Working… while another tool runs and Writing response… while the reply streams. It disappears when the turn settles, leaving the full reply.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",

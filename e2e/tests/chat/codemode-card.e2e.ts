@@ -32,14 +32,12 @@ test("a codemode script shows its calls live, then its tools, time, failures and
   await expect(idle).toBeVisible();
 
   await expect(transcript.getByText(/^Completed in [\d.]+s · 5 calls, 1 failed$/u)).toBeVisible();
-  await expect(transcript.getByText("read ×3, fixture_echo, bash")).toBeVisible();
-  await expect(transcript.getByText("1 failed")).toBeVisible();
-  await expect(transcript.getByText(/^[\d.]+s$/u)).toBeVisible();
+  await expect(transcript.getByRole("button", /^codemode read ×3, fixture_echo, bash 1 failed [\d.]+s$/u)).toBeVisible();
   await expect(transcript.getByLabel("Script")).toBeVisible();
   await expect(transcript.getByText("Calls · 5")).toBeVisible();
   await expect(transcript.getByLabel("Done")).toHaveCount(4);
   await expect(transcript.getByLabel("Failed")).toBeVisible();
-  await expect(transcript.getByText(/^(\d+ms|\d+\.\ds)$/u)).toHaveCount(6);
+  await expect(transcript.getByLabel("Calls").getByText(/^(\d+ms|[\d.]+s)$/u)).toHaveCount(5);
   await expect(transcript.getByText(/^ENOENT: no such file or directory, open '.+missing\.txt'$/u)).toBeVisible();
   const args = ['{"path":"fixture.txt"}', '{"path":"missing.txt"}', '{"text":"held"}', '{"command":"echo script-bash"}'].map((text) => transcript.getByText(text));
   await expect(args[0]!).toHaveCount(2);
