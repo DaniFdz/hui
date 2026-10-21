@@ -716,6 +716,15 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "CHAT-074",
+    title: "Use the queue on a phone",
+    behaviour: "At 390 px wide, while a run is busy with a Steer and a Follow up row queued and the draft empty, the Queued messages tray above the composer, the Message field, the composer's controls and Stop all stay on screen, and nothing overflows sideways.",
+    spec: ["SPEC.md#live-chat-projection"],
+    surfaces: [],
+    web: "backlog",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
