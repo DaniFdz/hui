@@ -26,6 +26,7 @@ export type Hui = {
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   url(): Promise<string>;
+  phoneScreen(): Promise<{ width: number; height: number }>;
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
@@ -85,6 +86,11 @@ export const test = base.extend<{ hui: Hui }>({
       open: (path) => fixtures.app.open(path),
       reload: () => browser().reload(),
       url: () => browser().url(),
+      phoneScreen: async () => {
+        const phone = { width: 390, height: 844 };
+        await browser().setViewport(phone);
+        return phone;
+      },
       peek: (target) => target.hover(),
       sessionMenu: async (title) => {
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
