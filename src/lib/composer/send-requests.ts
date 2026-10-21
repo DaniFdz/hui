@@ -23,7 +23,9 @@ export class SendRequests {
   readonly #failed = new Map<string, Failed>();
   readonly #newId: () => string;
 
-  constructor(newId: () => string = () => crypto.randomUUID()) {
+  // Not crypto.randomUUID, which a page on plain HTTP (a tailnet name) lacks:
+  // https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID
+  constructor(newId: () => string = () => crypto.getRandomValues(new Uint32Array(4)).join("-")) {
     this.#newId = newId;
   }
 
