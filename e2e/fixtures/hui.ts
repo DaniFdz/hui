@@ -11,7 +11,7 @@ import { expect, test as base, type Locator } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
-type SessionList = { groups: { sessions: ListedSession[] }[] };
+type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
 type Intercepted = {
   arrived(): Promise<void>;
@@ -73,7 +73,8 @@ export const test = base.extend<{ hui: Hui }>({
       const response = await fetch(receipt.providerUrl + path, { method });
       if (!response.ok) throw new Error(`provider ${path} answered ${response.status}`);
     };
-    const sessions = async () => (await api<SessionList>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions);
+    const groups = async () => (await api<SessionList>("GET", "/__hui/sessions")).groups;
+    const sessions = async () => (await groups()).flatMap((group) => group.sessions);
     const sessionIds = async () => (await sessions()).map((session) => session.id);
     const prompt = async (session: { id: string }, text: string) => {
       await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
@@ -82,6 +83,7 @@ export const test = base.extend<{ hui: Hui }>({
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
 
     const existing = new Set(await sessionIds());
+    const existingGroups = new Set((await groups()).map((group) => group.label));
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
 
@@ -218,6 +220,9 @@ export const test = base.extend<{ hui: Hui }>({
       if (existing.has(id)) continue;
       const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });
       if (!response.ok && response.status !== 404) throw new Error(`DELETE /__hui/sessions/${id} answered ${response.status}`);
+    }
+    for (const { label } of await groups()) {
+      if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
     }
     await api("PUT", "/__hui/settings", settings);
   },
