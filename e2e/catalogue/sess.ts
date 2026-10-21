@@ -695,15 +695,6 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
-  {
-    id: "SESS-071",
-    title: "Search sessions by pull request or Jira key",
-    behaviour: "The Search sessions field also matches a session's linked pull requests (repository#number and title) and Jira work items (key and summary).",
-    spec: ["SPEC.md#behaviour"],
-    surfaces: [],
-    web: "backlog",
-    ios: "backlog",
-  },
 ];
 
 export default cases;
