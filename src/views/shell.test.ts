@@ -8,6 +8,7 @@ import {
   isSessionGroupCollapsed,
   normalizeCustomSessionIcon,
   PRIMARY_NAV,
+  renderSidebar,
   sessionAccessibleName,
   sessionMoveGroupOptions,
   setNavigationDrawer,
@@ -23,6 +24,7 @@ import {
   SETTINGS_PAGES,
 } from "./settings.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
+import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
 
 function session(
   id: string,
@@ -715,4 +717,42 @@ test("session link names retain upstream single-line navigation semantics", () =
   assert.equal(sessionAccessibleName({ ...row, stage: "investigation" }), "Build, status idle, tool pi, stage investigation");
   // A legacy Backlog stage from an older gateway is not a session stage any more.
   assert.equal(sessionAccessibleName({ ...row, stage: "backlog" as never }), "Build, status idle, tool pi");
+});
+
+function markup(value: unknown): string {
+  if (Array.isArray(value)) return value.map(markup).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + markup(template.values[i])).join("");
+  }
+  if (value && typeof value === "object" && "_$litDirective$" in value && "values" in value) {
+    const values = (value as { values: unknown[] }).values;
+    const [items, , template] = values;
+    if (Array.isArray(items) && typeof template === "function") return markup(items.map((item, index) => (template as (item: unknown, index: number) => unknown)(item, index)));
+    return markup(values);
+  }
+  return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
+}
+
+function sidebar(count: number, open = ""): string {
+  const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
+  if (open) sessions.push(session(open, "Open", "Work"));
+  const data = {
+    view: "home", selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
+    groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
+    groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  };
+  return markup(renderSidebar(data as unknown as Parameters<typeof renderSidebar>[0]));
+}
+
+test("a session row draws its actions menu only once it opens, so a long list stays light", () => {
+  const elements = (text: string) => text.match(/<[a-z][\w-]*/gu)?.length ?? 0;
+  const closed = sidebar(100);
+  const perRow = (elements(sidebar(200)) - elements(closed)) / 100;
+  assert.doesNotMatch(closed, /value="pin"/u, "a closed row's menu has no items");
+  assert.ok(perRow > 5 && perRow <= 40, `each session row draws ${perRow} elements; draw what a row only shows on demand when it is asked for`);
+  assert.equal(sidebar(100, `open-${crypto.randomUUID()}`).split('value="pin"').length - 1, 1, "the open row's menu has its items");
 });

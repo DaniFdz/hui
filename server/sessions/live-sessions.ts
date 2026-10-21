@@ -402,14 +402,14 @@ export class LiveSessions {
     this.#aborted = listener;
   }
 
-  /** Re-emits a complete snapshot after coordination state changes outside the
+  /** Re-emits the session's state after coordination state changes outside the
    * runtime event stream. */
   notifySnapshot(id: string): void {
     const live = this.#live.get(id);
     if (!live) return;
     // A HUI question starts or ends a wait, which the session list shows.
     this.#setStatus(live, this.#reported(live));
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id), transcriptUnchanged: true });
+    this.#broadcastState(live);
   }
 
   revision(id: string): number | undefined {
@@ -626,7 +626,7 @@ export class LiveSessions {
       ...(attachments?.length ? { attachments: attachments.map((item) => ({ name: item.name, kind: item.kind, ...(item.kind === "image" ? { mimeType: item.mimeType } : {}) })) } : {}),
     };
     live.transcript.push(prompted);
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastTranscript(live);
     this.#setStatus(live, "running");
     live.submissions += 1;
     try {
@@ -655,7 +655,7 @@ export class LiveSessions {
       const at = live.transcript.lastIndexOf(prompted);
       if (at >= 0) live.transcript.splice(at, 1);
       this.#setStatus(live, this.#reported(live));
-      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+      this.#broadcastTranscript(live);
       throw error;
     } finally {
       live.submissions -= 1;
@@ -832,16 +832,14 @@ export class LiveSessions {
       if (runtimeCleared) {
         const message = "The live context was cleared, but HUI could not persist the new session identity. Reopening may restore the previous context.";
         this.#broadcast(live, { kind: "event", event: { type: "error", message } });
-        this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+        this.#broadcastTranscript(live);
         throw new SessionRegistryError(message, { cause: error });
       }
       throw error;
     }
     live.promptPending = false;
     this.#setStatus(live, "idle", false);
-    const snapshot = this.snapshot(id);
-    this.#broadcast(live, { kind: "snapshot", snapshot });
-    return snapshot;
+    return this.#broadcastTranscript(live);
   }
 
   async reload(id: string): Promise<void> {
@@ -889,7 +887,7 @@ export class LiveSessions {
       live.promptPending = false;
       this.#setStatus(live, this.#reported(live), false);
     }
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastTranscript(live);
   }
 
   /** Copies the session's history up to `entryId` (its latest settled point when absent) into a new runtime
@@ -1159,7 +1157,7 @@ export class LiveSessions {
       throw error;
     }
     this.#setStatus(live, this.#reported(live));
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastState(live);
   }
 
   async cancelQuestion(id: string, questionId: string): Promise<void> {
@@ -1176,7 +1174,7 @@ export class LiveSessions {
       throw error;
     }
     this.#setStatus(live, this.#reported(live));
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastState(live);
   }
 
   /** Why a session without a runtime cannot take a request yet. */
@@ -1388,7 +1386,7 @@ export class LiveSessions {
       }
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.
-      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+      this.#broadcastTranscript(live);
       // Messages queued here before the runtime was lost (a worker's run that
       // settled while this gateway was away) run now.
       void this.#drainFollowUp(live);
@@ -1439,7 +1437,7 @@ export class LiveSessions {
       // since replacing the projection mid-turn would drop what it streamed.
       if (!live.promptPending && !runtime.isStreaming && !live.turnStarted) {
         live.transcript = [...runtime.transcript()];
-        this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+        this.#broadcastTranscript(live);
       }
       return;
     }
@@ -1554,7 +1552,7 @@ export class LiveSessions {
         live.transcript.push({ kind: "message", role: "user", text });
       }
       if (delivered.length) {
-        this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+        this.#broadcastTranscript(live);
       }
     } else if (event.type === "question") {
       live.questions.set(event.question.id, event.question);
@@ -1575,9 +1573,8 @@ export class LiveSessions {
           ? { type: "error", message: event.message }
           : event,
     });
-    if (event.type === "settled" || refreshed) {
-      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
-    }
+    if (refreshed || (event.type === "settled" && event.historyRefreshed !== false)) this.#broadcastTranscript(live);
+    else if (event.type === "settled") this.#broadcastState(live);
   }
 
   async #routeSettledTurn(live: Live, runtime: RuntimeSession): Promise<void> {
@@ -1774,7 +1771,22 @@ export class LiveSessions {
     });
   }
 
-  #broadcast(live: Live, message: SessionStreamMessage): void {
+  #broadcastState(live: Live): void {
+    this.#send(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id), transcriptUnchanged: true });
+  }
+
+  #broadcastTranscript(live: Live): SessionSnapshot {
+    const snapshot = this.snapshot(live.record.id);
+    this.#send(live, { kind: "snapshot", snapshot });
+    return snapshot;
+  }
+
+  /** A snapshot goes through #broadcastState, or #broadcastTranscript when the transcript changed without an event. */
+  #broadcast(live: Live, frame: Exclude<SessionStreamMessage, { kind: "snapshot" }>): void {
+    this.#send(live, frame);
+  }
+
+  #send(live: Live, message: SessionStreamMessage): void {
     live.revision = ++this.#revisions;
     if (message.kind === "snapshot" && !message.transcriptUnchanged) this.#forgetRecent(live);
     else this.#remember(live, message);

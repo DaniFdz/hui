@@ -715,43 +715,53 @@ async function connectStatusesOnce(
       : { kind: "refused", message: `The session status stream returned HTTP ${response.status}.` };
   }
 
-  const reader = response.body.getReader();
+  let live = false;
+  try {
+    await readEventStream(response.body, (frame) => {
+      if (frame.name === "snapshot") {
+        handlers.onSnapshot((frame.payload as { statuses?: SessionStatusUpdate[] }).statuses ?? []);
+      } else if (frame.name === "status") {
+        handlers.onStatus(frame.payload as SessionStatusUpdate);
+      } else if (frame.name === "sessions") {
+        handlers.onSessions?.(frame.payload as SessionListUpdate);
+      }
+    }, () => {
+      if (live) return;
+      live = true;
+      onLive();
+    });
+  } catch {
+    return { kind: "dropped" };
+  }
+  return { kind: "dropped" };
+}
+
+/** Reads an event stream to its end and hands each frame to onFrame, in linear time. A phone changing networks can
+ * leave the socket open but silent; the gateway heartbeats every 15 s, so a longer silence cancels the read. */
+export async function readEventStream(
+  body: ReadableStream<Uint8Array>,
+  onFrame: (frame: { name: string; payload: unknown }) => void,
+  onData?: () => void,
+): Promise<void> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   const frames = sseFrameReader();
-  let live = false;
-  // A phone changing networks can leave the socket open but silent; the gateway
-  // heartbeats every 15 s, so a longer silence means reconnect and resync.
   let stall: ReturnType<typeof setTimeout> | undefined;
   try {
     for (;;) {
       clearTimeout(stall);
       stall = setTimeout(() => void reader.cancel(), STATUS_STREAM_STALL_MS);
       const { done, value } = await reader.read();
-      if (done) break;
-      if (!live) {
-        live = true;
-        onLive();
-      }
+      if (done) return;
+      onData?.();
       for (const text of frames(decoder.decode(value, { stream: true }))) {
         const frame = decodeSseFrame(text);
-        if (!frame) continue;
-        if (frame.name === "snapshot") {
-          handlers.onSnapshot(
-            (frame.payload as { statuses?: SessionStatusUpdate[] }).statuses ?? [],
-          );
-        } else if (frame.name === "status") {
-          handlers.onStatus(frame.payload as SessionStatusUpdate);
-        } else if (frame.name === "sessions") {
-          handlers.onSessions?.(frame.payload as SessionListUpdate);
-        }
+        if (frame) onFrame(frame);
       }
     }
-  } catch {
-    return { kind: "dropped" };
   } finally {
     clearTimeout(stall);
   }
-  return { kind: "dropped" };
 }
 
 /** Returns true for the server's terminal `closed` event. */
@@ -786,7 +796,7 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
   return false;
 }
 
-export function sseFrameReader(): (text: string) => string[] {
+function sseFrameReader(): (text: string) => string[] {
   let pending: string[] = [];
   let carriageReturn = false;
   let endsWithNewline = false;
@@ -814,8 +824,8 @@ export function sseFrameReader(): (text: string) => string[] {
   };
 }
 
-/** One SSE frame; shared with other HUI event streams (bots). */
-export function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
+/** One SSE frame. */
+function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
   let name = "message";
   const data: string[] = [];
   for (const line of chunk.split("\n")) {
