@@ -317,7 +317,7 @@ const cases: UseCase[] = [
     behaviour: "The menu's Icon panel offers the preset emoji grid, No icon and Custom emoji…, which opens a Custom emoji field whose Set button enables once an emoji is entered. The icon shows on the session row and survives a reload; the panel stays inside a phone screen.",
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
-    journeys: ["session-custom-icon", "session-menu-parity"],
+    journeys: ["session-menu-parity"],
     web: "required",
     ios: "backlog",
   },
