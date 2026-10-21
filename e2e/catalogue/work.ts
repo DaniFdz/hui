@@ -83,7 +83,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "backlog",
-    ios: { excluded: "Maximized is per conversation and desktop only; narrow screens, already one panel at a time, ignore it.", decision: "SPEC.md#behaviour" },
+    ios: { excluded: "\"Maximized is per conversation and desktop only\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-009",
