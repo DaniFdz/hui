@@ -175,11 +175,11 @@ const cases: UseCase[] = [
   {
     id: "SESS-019",
     title: "Search the session list",
-    behaviour: "The Search sessions field below the sidebar header filters rows by title, directory, group, pull request and Jira key (\"miami\" leaves Miami appearance); a group whose name matches keeps all its rows, and collapsed groups open while filtering and are collapsed again once the search is cleared. No match shows \"No matching sessions.\" The mobile top bar's Search opens the drawer with the field focused.",
+    behaviour: "The Search sessions field below the sidebar header filters rows by title, directory and group (\"miami\" leaves Miami appearance); a group whose name matches keeps all its rows, and collapsed groups open while filtering and are collapsed again once the search is cleared. No match shows \"No matching sessions.\" The mobile top bar's Search opens the drawer with the field focused.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-groups", "session-registry", "sidebar-toolbar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -189,7 +189,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -199,7 +199,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:new-session"],
     journeys: ["session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -209,7 +209,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -683,6 +683,15 @@ const cases: UseCase[] = [
     behaviour: "With Group by Project, dropping a session row on a project group changes nothing: project groups follow the session's directory, so only custom groups accept a drop.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
+    id: "SESS-071",
+    title: "Search sessions by pull request or Jira key",
+    behaviour: "The Search sessions field also matches a session's linked pull requests (repository#number and title) and Jira work items (key and summary).",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
     web: "backlog",
     ios: "backlog",
   },
