@@ -1,6 +1,7 @@
 // The one client for a gateway's /__hui/ routes, as src/api/request.ts is on the web: every request carries
 // `x-hui: 1` and the same 20 s response deadline, answers decode into the generated API types, and a refusal keeps
-// its status and the gateway's own message.
+// its status and the gateway's own message. A timeout or lost connection, while asking or while reading a stream,
+// reads as one of HUI's own messages instead of Foundation's.
 import Foundation
 
 struct GatewayError: Error, Equatable, LocalizedError {
@@ -24,7 +25,7 @@ struct GatewayClient: Sendable {
     }
 
     func get<Response: Decodable>(_ path: String, as _: Response.Type = Response.self) async throws -> Response {
-        let (data, response) = try await reach { try await URLSession.shared.data(for: request(path)) }
+        let (data, response) = try await reach(timeout: Self.responseTimeout) { try await URLSession.shared.data(for: request(path)) }
         try Self.check(response, path: path, body: data)
         return try JSONDecoder().decode(Response.self, from: data)
     }
@@ -32,7 +33,7 @@ struct GatewayClient: Sendable {
     func stream(_ path: String) async throws -> URLSession.AsyncBytes {
         var request = try request(path, timeout: Self.streamStallTimeout)
         request.setValue("text/event-stream", forHTTPHeaderField: "accept")
-        let (bytes, response) = try await reach { try await URLSession.shared.bytes(for: request) }
+        let (bytes, response) = try await reach(timeout: Self.streamStallTimeout) { try await URLSession.shared.bytes(for: request) }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw GatewayError(status: http.statusCode, message: "\(path) returned HTTP \(http.statusCode)")
         }
@@ -45,14 +46,20 @@ struct GatewayClient: Sendable {
         throw GatewayError(status: http.statusCode, message: detail?.error ?? "\(path) returned HTTP \(http.statusCode)")
     }
 
-    private func reach<T>(_ operation: () async throws -> T) async throws -> T {
+    private func reach<T>(timeout: TimeInterval, _ operation: () async throws -> T) async throws -> T {
         do {
             return try await operation()
-        } catch let error as URLError where error.code == .timedOut {
-            throw GatewayError(message: "HUI did not answer within \(Int(Self.responseTimeout)) s. Check the connection and try again.")
-        } catch let error as URLError where error.code != .cancelled {
-            throw GatewayError(message: "Could not reach HUI. Check the connection and try again.")
+        } catch {
+            throw Self.described(error, timeout: timeout)
         }
+    }
+
+    static func described(_ error: any Error, timeout: TimeInterval) -> any Error {
+        guard let error = error as? URLError, error.code != .cancelled else { return error }
+        if error.code == .timedOut {
+            return GatewayError(message: "HUI did not answer within \(Int(timeout)) s. Check the connection and try again.")
+        }
+        return GatewayError(message: "Could not reach HUI. Check the connection and try again.")
     }
 
     private struct ErrorBody: Decodable {

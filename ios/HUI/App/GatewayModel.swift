@@ -29,6 +29,7 @@ final class GatewayModel {
     }
 
     func connect(defaults: UserDefaults = .standard) async {
+        guard state != .connecting else { return }
         guard let base = URL(string: url.trimmingCharacters(in: .whitespaces)), base.scheme == "http" || base.scheme == "https", base.host() != nil else {
             state = .failed("Enter the gateway's address, such as http://127.0.0.1:4000.")
             return
@@ -41,6 +42,8 @@ final class GatewayModel {
             self.client = client
             defaults.set(base.absoluteString, forKey: Self.urlKey)
             state = .connected
+        } catch is DecodingError {
+            state = .failed("This address doesn't answer as a HUI gateway.")
         } catch {
             state = .failed(error.localizedDescription)
         }
