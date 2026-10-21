@@ -805,7 +805,7 @@ function attachmentCard(attachment: string | { name: string }, url?: string): Te
 }
 
 /** Image attachments with a URL render as a thumbnail; a failed load swaps
- * back to the generic file card. A file with a URL gets an Open link. */
+ * back to the generic file card. */
 function renderMessageAttachment(attachment: string | { name: string; kind?: string; url?: string }): TemplateResult {
   const name = attachmentName(attachment);
   if (typeof attachment === "string") return attachmentCard(attachment);
