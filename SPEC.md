@@ -1136,8 +1136,10 @@ size in a tab (a modified click opens the tab directly), and fall back to the
 file card if the bytes cannot load. Their `url` is an opaque gateway route that
 reads the image from PI's in-memory history; local paths and PI storage are
 never exposed and PI's persisted format is unchanged. Optimistic user messages
-use the local data URL until PI's history replaces them.
-
+use the local data URL until PI's history replaces them. A file attachment's
+card has an Open <name> link to its own gateway route, which reads the stored
+file back from HUI's attachment store: an image or PDF opens in a new tab and
+any other file downloads under its original name.
 
 The composer accepts pasted browser images as native model input. PNG, JPEG,
 GIF and WebP can form an image-only prompt; every other pasted or selected file,

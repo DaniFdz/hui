@@ -164,8 +164,8 @@ export type RuntimeSession = {
   /** Bytes of an image attached to a history message, located by the
    * `source` of a transcript attachment. */
   attachmentImage?(message: number, image: number): Promise<{ mimeType: string; data: Buffer } | undefined>;
-  /** Stored path of a file the user attached; the gateway confines it to HUI's attachment store. */
-  attachmentFile?(message: number, file: number): string | undefined;
+  /** Name and stored path of a file the user attached; the gateway confines the path to HUI's attachment store. */
+  attachmentFile?(message: number, file: number): { name: string; path: string } | undefined;
   /** Messages already in the conversation, for a first paint. */
   transcript(): TranscriptEntry[];
   dispose(): void;

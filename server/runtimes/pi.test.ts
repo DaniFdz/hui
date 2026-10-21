@@ -655,7 +655,7 @@ test("settled transcript restores image and file names without exposing transpor
   assert.deepEqual(await session.attachmentImage(0, 0), { mimeType: "image/png", data: Buffer.from("AAAA", "base64") });
   assert.equal(await session.attachmentImage(0, 1), undefined);
   assert.equal(await session.attachmentImage(5, 0), undefined);
-  assert.equal(session.attachmentFile(0, 0), "/tmp/uuid-report.txt");
+  assert.deepEqual(session.attachmentFile(0, 0), { name: "report.txt", path: "/tmp/uuid-report.txt" });
   assert.equal(session.attachmentFile(0, 1), undefined);
   assert.equal(session.attachmentFile(5, 0), undefined);
   const restored = transcript[0];

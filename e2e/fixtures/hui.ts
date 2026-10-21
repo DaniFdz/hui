@@ -1,10 +1,11 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's barriers, and the steps whose gesture differs per platform. Test files import
- * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * its API, the deterministic provider's barriers, and the steps whose gesture differs per platform, such as attaching
+ * files from `files/` and reading what a download saved. Test files import `test` from here, never from `e2e`, and
+ * never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
-import { expect, test as base } from "e2e";
+import { expect, test as base, type Locator } from "e2e";
 import type { Browser } from "@e2e-dev/web";
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
@@ -20,6 +21,8 @@ export type Hui = {
   appearance(): Promise<"light" | "dark">;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
+  attach(target: Locator, files: string[]): Promise<void>;
+  download(target: Locator): Promise<{ name: string; text: string }>;
 };
 
 export const test = base.extend<{ hui: Hui }>({
@@ -63,6 +66,11 @@ export const test = base.extend<{ hui: Hui }>({
       reload: () => browser().reload(),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
+      attach: (target, files) => target.setInputFiles(files.map((name) => `e2e/fixtures/files/${name}`)),
+      download: async (target) => {
+        const file = await browser().waitForDownload(() => target.tap());
+        return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
+      },
       newSessionDraft: () => browser().evaluate(async () => {
         if (!(await indexedDB.databases()).some(({ name }) => name === "hui-control-ui")) return "";
         const db = await new Promise<IDBDatabase>((resolve, reject) => {
