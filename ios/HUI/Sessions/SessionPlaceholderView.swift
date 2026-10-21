@@ -1,5 +1,5 @@
 // Where a session opens until the chat screen exists: its title and its status, labelled as the web's chat header
-// labels it ("Session status: Idle").
+// labels it ("Session status: Idle"). Any listed session opens, including ones the sidebar hides.
 import SwiftUI
 
 struct SessionPlaceholderView: View {
@@ -7,17 +7,17 @@ struct SessionPlaceholderView: View {
     let sessions: SessionsModel
 
     var body: some View {
-        let row = sessions.row(id)
+        let title = sessions.session(id)?.title
         VStack(spacing: 12) {
-            Text(row?.title ?? "Loading session…").font(.title2)
-            if let status = row?.statusText {
+            Text(title ?? "Loading session…").font(.title2)
+            if let status = sessions.statusLabels[id] {
                 Text(status)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Session status: \(status)")
             }
         }
         .padding()
-        .navigationTitle(row?.title ?? "")
+        .navigationTitle(title ?? "")
         .navigationBarTitleDisplayMode(.inline)
     }
 }

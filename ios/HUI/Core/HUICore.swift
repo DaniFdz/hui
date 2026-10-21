@@ -52,6 +52,10 @@ actor HUICore {
         try call("sessionStatusText", status)
     }
 
+    func sessionStatusLabel(_ session: API.SessionView) throws -> String {
+        try call("sessionStatusLabel", session)
+    }
+
     func sessionGroupLabel(_ label: String) throws -> String {
         try call("sessionGroupLabel", label)
     }
@@ -61,6 +65,12 @@ actor HUICore {
             throw ScriptError(description: "hui-core.js has no DEFAULT_SIDEBAR_SESSION_OPTIONS")
         }
         return try decode(invoke("sidebarSessionGroups", [json(groups), "", options]))
+    }
+
+    func foldedSessionTree(_ sessions: [API.SessionView]) throws -> [API.SessionView] {
+        guard let fold = context.evaluateScript("({ selectedId: \"\", toggled: new Set() })") else { throw ScriptError(description: "could not build a fold") }
+        let rows: [SidebarTreeRow] = try decode(invoke("sessionTreeRows", [json(sessions), fold]))
+        return rows.map(\.session)
     }
 
     private func call<Answer: Decodable>(_ name: String, _ arguments: any Encodable...) throws -> Answer {
@@ -108,6 +118,10 @@ struct SidebarGroup: Decodable, Sendable {
     var key: String
     var label: String
     var sessions: [API.SessionView]
+}
+
+struct SidebarTreeRow: Decodable, Sendable {
+    var session: API.SessionView
 }
 
 struct NavigationResolution: Decodable, Equatable, Sendable {
