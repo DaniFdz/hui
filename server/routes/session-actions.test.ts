@@ -167,6 +167,19 @@ test("opening a live session after a rename answers with the new title", { timeo
   assert.deepEqual({ title: (opened.body["session"] as { title: string }).title, pinned: (opened.body["session"] as { pinned?: boolean }).pinned }, { title: "After rename", pinned: true });
 });
 
+test("opening a live session clears an unread mark set by hand", { timeout: 60_000 }, async () => {
+  const { readRegistry } = await import("../sessions/sessions.ts");
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Marked by hand" });
+  const id = (created.body["session"] as { id: string }).id;
+  assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(id);
+  assert.equal((await call(`/__hui/sessions/${id}`, "PATCH", { unread: true })).status, 200);
+
+  const opened = await call(`/__hui/sessions/${id}/open`, "POST", {});
+  assert.equal((opened.body["session"] as { unread?: boolean }).unread, undefined);
+  assert.equal((await readRegistry()).find((record) => record.id === id)?.unread, undefined);
+});
+
 test("session catalogs, preferences and side answers match their published schemas", { timeout: 60_000 }, async () => {
   expectTypeOf<{ question: string; answer: string; model: string }>().toEqualTypeOf<SideQuestionResult>();
   const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Catalogs" });

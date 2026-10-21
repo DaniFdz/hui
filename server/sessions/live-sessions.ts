@@ -653,10 +653,10 @@ export class LiveSessions {
   }
 
   /** Opening or presenting a conversation acknowledges its latest activity. */
-  async markRead(id: string): Promise<SessionRecord> {
+  async markRead(id: string, registryUnread = false): Promise<SessionRecord> {
     const live = this.#live.get(id);
     if (!live) throw new Error(`Unknown live session: ${id}`);
-    if (live.record.unread !== true) return live.record;
+    if (live.record.unread !== true && !registryUnread) return live.record;
     live.record = { ...live.record, unread: undefined };
     this.#publishStatus(live, this.#reported(live), true, false);
     try {
