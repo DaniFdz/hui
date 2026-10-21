@@ -5,7 +5,7 @@ import { test } from "../../fixtures/hui.ts";
 const FACES = /^\s*Instrument Sans.*Geist.*DM Sans.*IBM Plex Sans.*Space Grotesk.*Atkinson Hyperlegible.*Fraunces.*Lora.*JetBrains Mono.*System/su;
 
 test("the interface font restyles navigation, settings and controls, the chat prose font the conversation, code stays monospace, and both persist", { tags: ["SET-009"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const face = async (target: Locator) => (await hui.look(target)).font.split(",")[0]!.replaceAll('"', "").trim();
+  const face = async (target: Locator) => (await hui.look(target)).fonts[0];
   const caption = screen.getByText("HUI · A little clarity goes a long way");
   const prose = screen.getByText("Good typography makes room for the conversation. Choose a face that feels comfortable to read.");
   const transcript = screen.getByTestId("transcript");
@@ -46,11 +46,12 @@ test("the interface font restyles navigation, settings and controls, the chat pr
 });
 
 test("the terminal font lists monospace and Nerd Fonts, takes a typed local family over the bundled symbols, persists, and falls back to JetBrains Mono", { tags: ["SET-010"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const stack = async () => (await hui.look(screen.getByLabel("Terminal font preview"))).font;
+  const families = async () => (await hui.look(screen.getByLabel("Terminal font preview"))).fonts;
+  const stack = (first: string) => [first, "HUI Nerd Font Symbols", "JetBrains Mono", "ui-monospace", "monospace"];
   const fonts = screen.getByLabel("Terminal font");
 
   await hui.open("/settings/appearance");
-  expect(await stack()).toMatch(/^"JetBrains Mono", "HUI Nerd Font Symbols"/u);
+  expect(await families()).toEqual(stack("JetBrains Mono"));
   await screen.getByRole("button", "Terminal font: JetBrains Mono").tap();
   await expect(fonts).toHaveText(/JetBrains Mono.*MesloLGS NF.*MesloLGS Nerd Font Mono.*JetBrainsMono Nerd Font Mono.*FiraCode Nerd Font Mono.*Hack Nerd Font Mono.*CaskaydiaCove Nerd Font Mono.*Menlo.*Consolas/su);
   const search = screen.getByLabel("Search or type a font name");
@@ -60,17 +61,17 @@ test("the terminal font lists monospace and Nerd Fonts, takes a typed local fami
   await search.fill("DejaVu Sans Mono");
   await fonts.getByText("Use this local font").tap();
   await expect(screen.getByRole("button", "Terminal font: DejaVu Sans Mono")).toBeVisible();
-  await expect.poll(stack).toMatch(/^"DejaVu Sans Mono", "HUI Nerd Font Symbols", "JetBrains Mono"/u);
+  await expect.poll(families).toEqual(stack("DejaVu Sans Mono"));
 
   await hui.reload();
   await expect(screen.getByRole("button", "Terminal font: DejaVu Sans Mono")).toBeVisible();
-  expect(await stack()).toMatch(/^"DejaVu Sans Mono", "HUI Nerd Font Symbols"/u);
+  expect(await families()).toEqual(stack("DejaVu Sans Mono"));
 
   for (const typed of ["   ", "Mono; color: red"]) {
     await hui.api("PUT", "/__hui/settings", { ...(await hui.api<Record<string, unknown>>("GET", "/__hui/settings")), fontTerminal: typed });
     await hui.reload();
     await expect(screen.getByRole("button", "Terminal font: JetBrains Mono")).toBeVisible();
-    expect(await stack()).toMatch(/^"JetBrains Mono", "HUI Nerd Font Symbols"/u);
+    expect(await families()).toEqual(stack("JetBrains Mono"));
   }
 });
 

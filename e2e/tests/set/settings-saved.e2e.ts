@@ -24,9 +24,9 @@ test("the footer and Appearance say a change was saved, and a failed write appli
   await expect(notSaved).toBeVisible();
   await expect(saved).toBeHidden();
   await expect(screen.getByText("Could not write settings.json — changes apply now but will not be remembered.")).toBeVisible();
-  const [r, g, b] = (await hui.look(notSaved)).color.match(/\d+/gu)!.map(Number) as [number, number, number];
+  const [r, g, b] = (await hui.look(notSaved)).color;
   expect(r - Math.max(g, b)).toBeGreaterThan(80);
-  expect((await hui.look(notSaved)).color).not.toBe(ok.color);
+  expect((await hui.look(notSaved)).color).not.toEqual(ok.color);
   await expect(chosen("XL 125%")).toBeVisible();
   expect((await hui.look(probe)).size).toBeCloseTo((large * 125) / 110, 0);
 

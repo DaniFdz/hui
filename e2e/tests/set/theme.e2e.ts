@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-const MIAMI_DARK = "rgb(20, 15, 30)";
+const MIAMI_DARK = [20, 15, 30];
 
 test("a theme card recolours the app at once, stays chosen after a reload, and a theme that fails to load changes nothing", { tags: ["SET-005"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = (name: string, pressed = true) => screen.getByRole("button", { name, pressed });
@@ -21,16 +21,16 @@ test("a theme card recolours the app at once, stays chosen after a reload, and a
   await screen.getByRole("button", "Miami").tap();
   await expect(card("Miami")).toBeVisible();
   await expect(card("Claw", false)).toBeVisible();
-  await expect.poll(async () => (await hui.look(title)).background).toBe(MIAMI_DARK);
-  expect((await hui.look(pages)).color).not.toBe(claw.color);
+  await expect.poll(async () => (await hui.look(title)).background).toEqual(MIAMI_DARK);
+  expect((await hui.look(pages)).color).not.toEqual(claw.color);
   await expect.poll(async () => (await hui.api<{ theme: string }>("GET", "/__hui/settings")).theme).toBe("miami");
 
   await hui.reload();
   await expect(card("Miami")).toBeVisible();
-  expect((await hui.look(title)).background).toBe(MIAMI_DARK);
+  expect((await hui.look(title)).background).toEqual(MIAMI_DARK);
   await screen.getByRole("button", "Exit Settings").tap();
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
-  expect((await hui.look(home)).background).not.toBe(clawHome.background);
+  expect((await hui.look(home)).background).not.toEqual(clawHome.background);
   await hui.open("/settings/appearance");
   await expect(card("Miami")).toBeVisible();
 
@@ -39,7 +39,7 @@ test("a theme card recolours the app at once, stays chosen after a reload, and a
   await file.reject(500, "unreadable");
   await expect(card("Miami")).toBeVisible();
   await expect(card("Dracula", false)).toBeVisible();
-  expect((await hui.look(title)).background).toBe(MIAMI_DARK);
+  expect((await hui.look(title)).background).toEqual(MIAMI_DARK);
   expect((await hui.api<{ theme: string }>("GET", "/__hui/settings")).theme).toBe("miami");
 });
 

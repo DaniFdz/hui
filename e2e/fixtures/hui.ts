@@ -3,8 +3,9 @@
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
  * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
  * attaching files from `files/`, reading what a download saved or what the page copied, opening a session's menu and
- * reading how a piece of the screen looks (its text colour, the colour behind it, its font and its text size). Test
- * files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its font families and its
+ * text size in pixels). Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or
+ * `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,7 @@ import { expect, test as base, type Locator } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
+type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
 type Intercepted = {
@@ -37,7 +39,7 @@ export type Hui = {
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
-  look(target: Locator): Promise<{ color: string; background: string; font: string; size: number }>;
+  look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; size: number }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: string[]): Promise<void>;
@@ -148,13 +150,20 @@ export const test = base.extend<{ hui: Hui }>({
             return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
           });
           if (!element) throw new Error("look: no element has the target's box");
+          const rgb = (color: string) => {
+            const channels = /^(?:rgba?\(|color\(srgb )([\d.e-]+),? ([\d.e-]+),? ([\d.e-]+)/u.exec(color);
+            if (!channels) throw new Error(`look: ${color} is not an sRGB colour`);
+            const scale = color.startsWith("color(") ? 255 : 1;
+            return channels.slice(1).map((value) => Math.round(Number(value) * scale)) as [number, number, number];
+          };
           let behind: Element | null = element;
-          while (behind && /^rgba\(.*, 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
+          while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
+          if (!behind) throw new Error("look: nothing opaque is behind the target");
           const style = getComputedStyle(element);
           return {
-            color: style.color,
-            background: behind ? getComputedStyle(behind).backgroundColor : "",
-            font: style.fontFamily,
+            color: rgb(style.color),
+            background: rgb(getComputedStyle(behind).backgroundColor),
+            fonts: style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1")),
             size: Number.parseFloat(style.fontSize),
           };
         }, box);
