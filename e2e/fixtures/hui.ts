@@ -13,7 +13,7 @@ type SessionList = { groups: { sessions: { id: string }[] }[] };
 export type Hui = {
   workspace: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
-  createSession(input: { title: string }): Promise<{ id: string }>;
+  createSession(input: { title: string; tool?: "pi" }): Promise<{ id: string }>;
   provider: { held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
   reload(): Promise<void>;

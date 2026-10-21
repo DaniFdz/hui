@@ -73,7 +73,7 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.match(source, /renderActionTooltip\(rewindTooltipId, props\.rewindPending \? "Rewinding…" : "Rewind"/u);
   assert.match(source, /props\.onRewind\(rewindTo, last\?\.text \?\? "", last\?\.attachments\)/u);
   assert.doesNotMatch(source, /row\.role === "user" && !props\.streaming/u);
-  assert.match(source, /aria-label="Continue without a prompt"/u);
+  assert.match(source, /\$\{session\.tool === "pi" \? html`<button[^`]*aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
   // The rewind itself, also while the session runs, is composer-controller.test.ts's.
 });

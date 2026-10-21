@@ -3005,8 +3005,8 @@ per HUI session, as a PI worker gets one in its environment. Durable's own
 tools are its read/write/edit/bash tools and HUI's tools, which call the
 gateway's agent-tool handler in process as the conversation's bound HUI
 session. A rewind forks the conversation, so the abandoned branch stays
-stored. Prompt-free Continue is not available on Durable; an aborted run
-continues from a new prompt.
+stored. Prompt-free Continue is not available on Durable, so its header does
+not offer it; an aborted run continues from a new prompt.
 
 Each Durable session also loads the PI extensions its PI worker would: the
 packages and extensions PI settings name and the `extensions/` directories,
