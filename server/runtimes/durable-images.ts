@@ -29,7 +29,7 @@ async function fitPart(part: Part, images: ImageProcessor): Promise<Part> {
   const key = createHash("sha256").update(part.data).digest("base64");
   const cached = shrunk.get(key);
   if (cached) return cached;
-  const prepared = await images.prepare(Buffer.from(part.data, "base64"), part.mimeType, DEFAULT_IMAGE_LIMITS).catch(() => undefined);
+  const prepared = await images.prepare(new Uint8Array(Buffer.from(part.data, "base64")), part.mimeType, DEFAULT_IMAGE_LIMITS).catch(() => undefined);
   if (!prepared) return { type: "text", text: "[An image was left out: it is larger than the model accepts and could not be shrunk.]" };
   const image: Part = { type: "image", data: prepared.data, mimeType: prepared.mimeType };
   shrunk.set(key, image);
