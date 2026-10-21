@@ -90,7 +90,7 @@ const cases: UseCase[] = [
   {
     id: "CHAT-009",
     title: "Reorder and edit the queue with the keyboard",
-    behaviour: "ArrowUp and ArrowDown on a focused Reorder queued message handle move that follow-up one place. In the inline editor Enter saves and Escape cancels without changing the row.",
+    behaviour: "A Reorder queued message handle advertises ArrowUp and ArrowDown as its keyboard shortcuts, and either key on a focused handle moves that follow-up one place. In the inline editor Enter saves and Escape cancels without changing the row.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",

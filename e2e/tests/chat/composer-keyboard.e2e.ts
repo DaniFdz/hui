@@ -66,6 +66,7 @@ test("Arrow keys on a queued message's handle move it, and the inline editor sav
     await expect(queue.getByText(text)).toBeVisible();
   }
 
+  await expect(handles.first()).toHaveAttribute("aria-keyshortcuts", "ArrowUp ArrowDown");
   await handles.first().press("ArrowDown");
   await expect(queue).toHaveText(/Second follow-up.*First follow-up/su);
   await handles.nth(1).press("ArrowUp");
