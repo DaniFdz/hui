@@ -1,4 +1,4 @@
-/** Archive session hides a session and its subagents without stopping their work, the toast's Restore and the Sessions page bring the tree back, and a message to an archived session restores it too (SESS-034, SESS-035, SESS-036). */
+/** Archive session hides a session and its subagents without stopping their work, the toast's Restore (inside a phone screen too) and the Sessions page bring the tree back, and a message to an archived session restores it too (SESS-034, SESS-035, SESS-036). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -76,6 +76,34 @@ test("the archive toast expires untouched, and a failed restore keeps its error 
   await expect(screen.getByText("Archived “Fragile restore”.")).toBeVisible();
   await expect(screen.getByText("Archived “Fragile restore”.")).toBeHidden({ timeout: 20_000 });
   await expect(screen.getByLabel(row("Fragile restore"))).toBeHidden();
+});
+
+test("on a phone screen the archive toast keeps Restore and its dismiss button inside the screen, and both work", { tags: ["SESS-035"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const toast = screen.getByText("Archived “Pocket session”.");
+  const restore = screen.getByRole("button", "Restore");
+  const dismiss = screen.getByRole("button", "Dismiss archive notification");
+  const archive = async () => {
+    await hui.sessionMenu("Pocket session");
+    await screen.getByText("Archive session", { visible: true }).tap();
+    await expect(toast).toBeVisible();
+  };
+  await hui.createSession({ title: "Pocket session" });
+  const phone = await hui.phoneScreen();
+  await hui.open("/");
+  await screen.getByRole("button", "Open navigation").tap();
+  await archive();
+  for (const control of [restore, dismiss]) {
+    await expect(control).toBeVisible();
+    await expect.poll(async () => {
+      const box = await control.boundingBox();
+      return box !== null && box.x >= 0 && box.y >= 0 && box.x + box.width <= phone.width && box.y + box.height <= phone.height;
+    }).toBe(true);
+  }
+  await restore.tap();
+  await expect(screen.getByText("Session restored.")).toBeVisible();
+  await archive();
+  await dismiss.tap();
+  await expect(toast).toBeHidden();
 });
 
 test("Sessions, Archived restores a tree that stays restored, and a message to an archived session restores its tree", { tags: ["SESS-036"], platforms: ["web"] }, async ({ screen, hui }) => {

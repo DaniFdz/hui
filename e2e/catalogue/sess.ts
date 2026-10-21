@@ -334,7 +334,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-035",
     title: "Undo an archive from its toast",
-    behaviour: "The archive toast's Restore brings the whole tree back to the sidebar and reports \"Session restored.\" Left untouched, the toast goes away on its own. If restoring fails, the toast keeps the error and an enabled Restore to retry.",
+    behaviour: "The archive toast's Restore brings the whole tree back to the sidebar and reports \"Session restored.\" Left untouched, the toast goes away on its own. If restoring fails, the toast keeps the error and an enabled Restore to retry. On a phone screen Restore and the dismiss button stay inside the screen.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-shortcuts"],

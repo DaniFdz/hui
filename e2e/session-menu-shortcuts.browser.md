@@ -1,9 +1,9 @@
 # Archive toast stays while you read it
 
-The session menu's single keys, the archive toast's Restore, a failed restore and the toast expiring are proven by
-the shared tests `e2e/tests/sess/session-menu-keys.e2e.ts` and `e2e/tests/sess/archive-restore.e2e.ts` (SESS-034,
-SESS-035, SESS-040). What is left here is SESS-064, which needs more than 15 seconds of observation and so stays an
-agent-run check until a fixture can control the page's clock.
+The session menu's single keys, the archive toast's Restore (with Enter and on a phone screen too), a failed restore
+and the toast expiring are proven by the shared tests `e2e/tests/sess/session-menu-keys.e2e.ts` and
+`e2e/tests/sess/archive-restore.e2e.ts` (SESS-034, SESS-035, SESS-040). What is left here is SESS-064, which needs
+more than 15 seconds of observation and so stays an agent-run check until a fixture can control the page's clock.
 
 ## Browser journey
 

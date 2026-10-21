@@ -35,7 +35,7 @@ test("a session menu's single keys pin, rename, mark unread, delete and archive"
   }
   await press("a");
   await expect(screen.getByText("Archived “Keyed session”.")).toBeVisible();
-  await screen.getByRole("button", "Restore").tap();
+  await screen.getByRole("button", "Restore").press("Enter");
   await expect(state()).toBeVisible();
   await press("Shift+A");
   await expect(screen.getByText("Archived “Keyed session”.")).toBeVisible();
