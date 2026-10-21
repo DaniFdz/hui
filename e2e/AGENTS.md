@@ -10,6 +10,23 @@ Procedures (`*.browser.md`) and the entry points `package.json` and the skill na
 Fake providers, CLIs, services, seeds and PI extensions go in `fixtures/`; scripts a procedure loads into the
 running app (probes and oracles) go in `probes/`.
 
+## The use-case catalogue
+
+`catalogue/` lists every user outcome HUI supports, one file per area (`shell.ts`, `sess.ts`, `chat.ts` and so on,
+in the order of `AREAS` in `catalogue/types.ts`). It is the checklist the shared web and iOS suite proves.
+
+- An entry is one outcome a test can prove: an `AREA-NNN` ID that is never renumbered or reused, a title, the
+  behaviour a user observes (with the labels the UI renders today), the `SPEC.md` or `docs/api.md` anchors that
+  define it, the code surfaces it owns, the journeys it came from, and a status on the web and on iOS.
+- `backlog` means the feature exists but has no passing shared test there yet. Only IDs listed in
+  `catalogue/baseline.json` may be backlog. The list shrinks as shared tests land and grows only for an existing
+  feature found later; until the shared suite exists, a new feature's use case joins it too. An exclusion needs a
+  reason and the `SPEC.md` anchor of the decision behind it.
+- `scripts/use-cases.test.ts` collects the code's surfaces (`catalogue/surfaces-src.ts`,
+  `catalogue/surfaces-server.ts`) and fails when no use case claims one. A surface no screen uses goes into
+  `catalogue/not-ui.ts` with its reason. Every journey has a class in `catalogue/journeys.ts`.
+- A change that adds or changes a user outcome adds or updates its entry in the same PR.
+
 ## Priorities
 
 - Cover the highest-value real journeys first: start/open/resume a PI session,

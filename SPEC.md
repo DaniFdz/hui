@@ -1993,6 +1993,47 @@ The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
 
+### Use cases live in one catalogue (2026-10-21)
+
+The owner wants a native iOS app with the web UI's capabilities, and a way to
+make sure no use case is missed, now or when new features are built: "we will
+have a shared e2e tests folder, each test will run in the web ui and the ios
+app".
+
+- **One list.** Every user outcome HUI supports is an entry in
+  `e2e/catalogue/<area>.ts`, with an ID that never changes, the `SPEC.md` or
+  `docs/api.md` section that defines it, the code surfaces it owns and its
+  status on the web and on iOS. `e2e/AGENTS.md` describes the format.
+- **The code says what exists.** `scripts/use-cases.test.ts` collects the
+  routed pages, Settings pages, navigation kinds, Work views, tools, slash
+  commands, shortcuts, transcript row and item kinds, settings keys and
+  routes, and fails when no use case claims one. A surface no screen uses is set aside in
+  `e2e/catalogue/not-ui.ts` with its reason.
+- **Existing features start as backlog.** `e2e/catalogue/baseline.json` lists
+  the use cases that have no passing shared test yet, per platform. It shrinks
+  as tests land and grows only for an existing feature found later; until the
+  shared suite exists, a new feature's use case joins it too.
+
+### Keyboard-only affordances stay on the web (2026-10-21)
+
+Some use cases are keyboard paths: chords, single-key shortcuts, arrow, Home,
+End and Tab navigation, and Escape. An iPhone has no hardware keyboard to press
+them, so they are web-only use cases. The outcome each one reaches is its own
+use case on both platforms. On the web a visible control usually reaches it
+too (Close for Escape, the Work pane's + menu for its chords); where only a key
+does (searching from the command palette, copying and pasting in a terminal),
+the iOS app needs its own gesture for it.
+
+### Browser and wide-layout mechanics stay on the web (2026-10-21)
+
+Some use cases exist because HUI runs in a browser tab: the boot screen while
+the page's code downloads and its failure, copying where the page has no
+Clipboard API, opening a session or VS Code in another tab or window or the
+session's folder in the desktop VS Code app, and resizing the window. Others
+exist only in the wide layout HUI shows from 1100px, such as collapsing the
+sidebar. The iPhone app ships its code, uses the system clipboard, has no tabs
+and is always narrow, so these are web-only use cases.
+
 ### Bots are always on (2026-10-20)
 
 The owner: "in this version, bots should be available by default as well,
