@@ -70,14 +70,17 @@ export const test = base.extend<{ hui: Hui }>({
           open.onsuccess = () => resolve(open.result);
           open.onerror = () => reject(open.error);
         });
-        if (!db.objectStoreNames.contains("composerDrafts")) return "";
-        const record = await new Promise<{ text?: string } | undefined>((resolve, reject) => {
-          const get = db.transaction("composerDrafts").objectStore("composerDrafts").get("new-session");
-          get.onsuccess = () => resolve(get.result);
-          get.onerror = () => reject(get.error);
-        });
-        db.close();
-        return record?.text ?? "";
+        try {
+          if (!db.objectStoreNames.contains("composerDrafts")) return "";
+          const record = await new Promise<{ text?: string } | undefined>((resolve, reject) => {
+            const get = db.transaction("composerDrafts").objectStore("composerDrafts").get("new-session");
+            get.onsuccess = () => resolve(get.result);
+            get.onerror = () => reject(get.error);
+          });
+          return record?.text ?? "";
+        } finally {
+          db.close();
+        }
       }),
     });
 

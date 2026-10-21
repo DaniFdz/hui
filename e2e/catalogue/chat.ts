@@ -656,7 +656,7 @@ const cases: UseCase[] = [
   {
     id: "CHAT-067",
     title: "See a read tool call while it runs",
-    behaviour: "While PI's read runs, its row says Running; it turns Completed, or failed, when the call ends.",
+    behaviour: "While PI's read runs, its row says Running; it turns Completed when the call ends.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:read", "item:tool"],
     journeys: ["chat-composer"],
@@ -669,7 +669,6 @@ const cases: UseCase[] = [
     behaviour: "The context menu of a read call's row copies the content PI read.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:read"],
-    journeys: ["chat-composer"],
     web: "backlog",
     ios: "backlog",
   },
