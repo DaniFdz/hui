@@ -28,22 +28,23 @@ async function enqueue(screen: Screen, hui: Hui, text: string) {
   await expect(queue.getByText(text)).toBeVisible();
 }
 
-test("Send steers a busy run, and PI takes the steer before the reply it causes", { tags: ["CHAT-005"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Send steers a busy run, and PI takes the steer before a follow-up queued ahead of it", { tags: ["CHAT-005"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { message, steer, queue, transcript, idle } = chat(screen);
 
   await startHeldRun(screen, hui, "Steer a run");
+  await enqueue(screen, hui, "Queued before the steer");
   await message.fill("Use tabs, not spaces");
   await steer.tap();
-  await expect(queue).toHaveText(/^\s*Use tabs, not spaces\s*Steer\s*$/u);
-  await expect(queue.getByRole("button", "Edit queued message")).toHaveCount(0);
+  await expect(queue).toHaveText(/^\s*Use tabs, not spaces\s*Steer\s*Queued before the steer\s*Follow up/u);
+  await expect(queue.getByRole("button", "Edit queued message")).toHaveCount(1);
   await expect(message).toHaveValue("");
   await message.fill("The next draft");
   await expect(message).toHaveValue("The next draft");
   await expect(transcript.getByText("Use tabs, not spaces")).toBeHidden();
 
   await hui.provider.release();
-  await expect(transcript.getByText("Fixture response.")).toBeVisible();
-  await expect(transcript).toHaveText(/Replay prefix — replay suffix.*Use tabs, not spaces.*Fixture response\./su);
+  await expect(transcript.getByText("Fixture response.")).toHaveCount(2);
+  await expect(transcript).toHaveText(/Replay prefix — replay suffix.*Use tabs, not spaces.*Fixture response\..*Queued before the steer.*Fixture response\./su);
   await expect(idle).toBeVisible();
   await expect(queue).toBeHidden();
   await expect(message).toHaveValue("The next draft");
