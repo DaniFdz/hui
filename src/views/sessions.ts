@@ -175,7 +175,7 @@ export function formatBootDuration(milliseconds: number | undefined): string {
 
 function sessionRow(session: SessionView, props: SessionsPageProps): TemplateResult {
   return html`
-      <tr class="session-data-row ${session.archived ? "session-data-row--archived" : ""}" data-session-id=${session.id}>
+      <tr class="session-data-row ${session.archived ? "session-data-row--archived" : ""}" data-testid="session-data-row" data-session-id=${session.id}>
         <td class="data-table-checkbox-col">
           <input type="checkbox" aria-label=${`Select ${session.title}`} .checked=${props.selected.has(session.id)}
             @change=${(event: Event) => props.onSelect([session.id], (event.target as HTMLInputElement).checked)} />

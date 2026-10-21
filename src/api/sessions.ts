@@ -14,6 +14,7 @@ import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as Q
 import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
+import { decodeSseFrame, reconnectDelay } from "../lib/event-stream.ts";
 
 export type { SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
 export type {
@@ -520,18 +521,6 @@ export type SessionStreamHandlers = {
   onConnection: (state: SessionConnection, detail: string) => void;
 };
 
-/** The first retry is ~0.5s and the delay doubles to a 4s ceiling, so a gateway
- * restart recovers in a few seconds without hammering the port while it is
- * down. Equal jitter keeps a screenful of tabs off the same retry schedule. */
-const RECONNECT_BASE_MS = 500;
-const RECONNECT_MAX_MS = 4_000;
-
-/** Exported so the backoff curve can be exercised without a live stream. */
-export function reconnectDelay(attempt: number, random: () => number = Math.random): number {
-  const ceiling = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** (attempt - 1));
-  return Math.round(ceiling / 2 + random() * (ceiling / 2));
-}
-
 type StreamOutcome =
   | { kind: "ended" }
   | { kind: "refused"; message: string }
@@ -778,30 +767,4 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
       break;
   }
   return false;
-}
-
-/** One SSE frame; shared with other HUI event streams (bots). */
-export function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
-  let name = "message";
-  const data: string[] = [];
-  for (const line of chunk.split("\n")) {
-    if (line === "" || line.startsWith(":")) {
-      continue;
-    }
-    const colon = line.indexOf(":");
-    const field = colon === -1 ? line : line.slice(0, colon);
-    let value = colon === -1 ? "" : line.slice(colon + 1);
-    if (value.startsWith(" ")) {
-      value = value.slice(1);
-    }
-    if (field === "event") {
-      name = value;
-    } else if (field === "data") {
-      data.push(value);
-    }
-  }
-  if (data.length === 0) {
-    return undefined;
-  }
-  return { name, payload: JSON.parse(data.join("\n")) as unknown };
 }
