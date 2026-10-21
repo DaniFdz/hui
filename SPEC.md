@@ -13,7 +13,7 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 | OpenClaw region | HUI |
 |---|---|
 | `sidebar-agent-card` — identity card at the top | removed; HUI has no agent identity selector |
-| `sidebar-brand` — brand line with actions | only the collapse toggle, at the top-left; session search is the field below it |
+| `sidebar-brand` — brand line with actions | the collapse toggle at the top-left (wide layout), then the Agents and Bots switch; session search is the field below it |
 | `sidebar-nav` — page destinations | Contributions, Kanban, Sessions, then Settings; no Home entry. Automations, Plugins and Skills live in Settings. Other retained pages stay reachable by URL and the command palette; dropped OpenClaw routes are absent |
 | `sidebar-online` / session sections — collapsible groups of rows | groups, flattened, with session rows |
 | `sidebar-footer-bar` — identity + connection state | removed; Settings is the last sidebar destination |
@@ -35,11 +35,12 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - Session search is the field directly below the sidebar header; it filters the
   session list and is not duplicated in the Sessions toolbar or a bottom footer.
   The mobile top bar's Search opens it, and Ctrl+K (⌘K) finds sessions in the
-  command palette. The header holds only the collapse toggle, at its top-left,
-  where the restore control appears while the sidebar is collapsed, so toggling
-  needs no mouse travel (the owner dropped the header's New session and Search
-  buttons on 2026-10-06; new sessions start from a group's +). Settings is the
-  last primary-navigation destination, not a header button.
+  command palette. The header holds the collapse toggle, at its top-left, where
+  the restore control appears while the sidebar is collapsed, so toggling needs
+  no mouse travel, and then the Agents and Bots switch (the owner dropped the
+  header's New session and Search buttons on 2026-10-06; new sessions start from
+  a group's +). Settings is the last primary-navigation destination, not a
+  header button.
 - Appearance includes the native OpenClaw Miami palette in light, dark and
   system modes. Theme, accent, interface-font and chat-prose-font preferences
   persist in HUI settings. A custom or imported theme's colors must read where
@@ -1131,11 +1132,12 @@ image/file display names and order.
 
 Image attachments on transcript messages render as bounded thumbnails (about
 240 px) that open in the media viewer, whose Open in new tab shows them full
-size in a tab, and fall back to the file card if the
-bytes cannot load. Their `url` is an opaque gateway route that reads the image
-from PI's in-memory history; local paths and PI storage are never exposed and
-PI's persisted format is unchanged. Optimistic user messages use the local data
-URL until PI's history replaces them.
+size in a tab (a modified click opens the tab directly), and fall back to the
+file card if the bytes cannot load. Their `url` is an opaque gateway route that
+reads the image from PI's in-memory history; local paths and PI storage are
+never exposed and PI's persisted format is unchanged. Optimistic user messages
+use the local data URL until PI's history replaces them.
+
 
 The composer accepts pasted browser images as native model input. PNG, JPEG,
 GIF and WebP can form an image-only prompt; every other pasted or selected file,
@@ -2750,8 +2752,8 @@ it, that section is the first conversation: short and conversational, never a
 questionnaire, and a ritual rather than a gate, since the operator's request
 always comes first. The bot writes the file itself with a `write_soul` tool of
 its own (bots may have no file tools), mentions any change it makes, and the
-operator can replace or clear it with `hui bot soul` (clearing brings the
-first conversation back); the bot panel neither shows nor edits it. Right after a create without a soul HUI
+operator can edit or clear it (clearing
+brings the first conversation back). Right after a create without a soul HUI
 starts the bot's first turn with a kickoff message that clients show as a note,
 so the bot's opener is waiting when the operator opens the chat. Name and look
 stay in the dialog, so the bot never asks for them. The `instructions` field
