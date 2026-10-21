@@ -38,15 +38,17 @@ const MAX_PULL_REQUESTS = 20;
 const MAX_MANAGED_ENTRIES = 500;
 
 export const runCommand: CommandRunner = (file, args, options = {}) => new Promise((resolveResult) => {
+  const timeoutMs = options.timeoutMs ?? 15_000;
   execFile(file, [...args], {
     cwd: options.cwd,
-    timeout: options.timeoutMs ?? 15_000,
+    timeout: timeoutMs,
     maxBuffer: MAX_OUTPUT,
     encoding: "utf8",
     env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1", NO_COLOR: "1", LC_ALL: "C" },
   }, (error, stdout, stderr) => {
     const code = error ? (typeof (error as { code?: unknown }).code === "number" ? (error as { code: number }).code : 1) : 0;
-    resolveResult({ code, stdout: stdout ?? "", stderr: stderr ?? (error?.message ?? "") });
+    const timedOut = error?.killed === true && typeof error.code !== "string";
+    resolveResult({ code, stdout: stdout ?? "", stderr: timedOut ? `${file} timed out after ${timeoutMs} ms\n${stderr}`.trimEnd() : stderr ?? "" });
   });
 });
 
