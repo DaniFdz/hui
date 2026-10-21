@@ -9,8 +9,9 @@
  * the database.
  */
 import { randomUUID } from "node:crypto";
-import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
+import { uptime } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
@@ -79,6 +80,12 @@ function alive(pid: number): boolean {
   catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
+/** A lock written before the last boot is stale; its PID now belongs to another
+ * process. The margin keeps clock adjustments after boot on the safe side. */
+function lockedBeforeBoot(path: string): boolean {
+  return statSync(path).mtimeMs < Date.now() - uptime() * 1000 - 60_000;
+}
+
 /** One owner per store: Durable has no cross-process locking of its own. */
 function acquireStoreLock(path: string): () => void {
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -92,7 +99,7 @@ function acquireStoreLock(path: string): () => void {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const pid = Number(readFileSync(path, "utf8").trim());
-      if (Number.isInteger(pid) && pid > 0 && alive(pid)) {
+      if (Number.isInteger(pid) && pid > 0 && alive(pid) && !lockedBeforeBoot(path)) {
         throw new Error(pid === process.pid
           ? "The Durable session store is already open in this process."
           : `The Durable session store is already open in another HUI gateway (pid ${pid}).`);
