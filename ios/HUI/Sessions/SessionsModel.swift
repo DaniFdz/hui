@@ -41,6 +41,7 @@ final class SessionsModel {
 
     func start(_ client: GatewayClient) {
         stream?.cancel()
+        revision = -.infinity
         stream = Task { await run(client) }
     }
 
