@@ -110,6 +110,7 @@ final class SessionsModel {
         session.status = update.status
         session.unread = update.unread ?? session.unread
         session.creating = update.creating
+        session.creationError = update.creationError
         session.title = update.title ?? session.title
         sessions[update.id] = session
     }
