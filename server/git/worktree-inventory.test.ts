@@ -23,8 +23,12 @@ function session(id: string, cwd: string, archived = false): SessionRecord {
   };
 }
 
+function gitResult(cwd: string, ...args: string[]) {
+  return runCommand("git", ["-C", cwd, ...args], { timeoutMs: 120_000 });
+}
+
 async function git(cwd: string, ...args: string[]) {
-  const result = await runCommand("git", ["-C", cwd, ...args]);
+  const result = await gitResult(cwd, ...args);
   assert.equal(result.code, 0, result.stderr);
   return result.stdout.trim();
 }
@@ -68,6 +72,18 @@ function runner(prs: Record<string, unknown[]>, calls: string[][] = []): Command
 function pr(number: number, state: string, headRefOid: string, isDraft = false) {
   return { number, state, isDraft, title: `PR ${number}`, url: `https://github.com/o/r/pull/${number}`, body: "", headRefOid };
 }
+
+test("a command killed by its timeout says so", async () => {
+  const result = await runCommand(process.execPath, ["-e", "setTimeout(() => {}, 30_000)"], { timeoutMs: 100 });
+  assert.equal(result.code, 1);
+  assert.equal(result.stderr, `${process.execPath} timed out after 100 ms`);
+});
+
+test("a command that cannot start says why", async () => {
+  const result = await runCommand("hui-no-such-program", []);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /spawn hui-no-such-program ENOENT/u);
+});
 
 test("parses NUL worktree porcelain including locked and prunable records", () => {
   const records = parseWorktreeList("worktree /r\0HEAD a\0branch refs/heads/main\0\0worktree /w\0HEAD b\0detached\0locked\0prunable gitdir file points to non-existent location\0\0");
@@ -144,7 +160,7 @@ test("merged cleanup removes only eligible worktrees and deletes the branch at t
   assert.equal(await stat(f.managed("merged")).then(() => true, () => false), false);
   assert.equal(await stat(f.managed("dirty")).then(() => true, () => false), true);
   assert.equal(await stat(f.external).then(() => true, () => false), true);
-  assert.equal((await runCommand("git", ["-C", f.repo, "show-ref", "--verify", "refs/heads/hui/merged"])).code !== 0, true);
+  assert.equal(await git(f.repo, "branch", "--list", "hui/merged"), "");
   assert.equal(calls.some((args) => args.includes("--force") || args.includes("-f")), false);
 });
 
@@ -154,7 +170,7 @@ test("single removal refuses unconfirmed local changes and deletes them once con
   const service = new WorktreeService({ root: f.root, run: runner({}, calls) });
   const [open, dirty] = await service.remove([], [f.managed("open"), f.managed("dirty")], "single");
   assert.deepEqual([open?.removed, open?.branchDeleted], [true, false]);
-  assert.equal((await runCommand("git", ["-C", f.repo, "show-ref", "--verify", "refs/heads/hui/open"])).code, 0);
+  assert.equal((await gitResult(f.repo, "show-ref", "--verify", "refs/heads/hui/open")).code, 0);
   assert.equal(calls.some((args) => args.includes("remove") && args.includes("--force") && args.includes(f.managed("open"))), false);
   assert.equal(dirty?.removed, false);
   assert.match(dirty?.error ?? "", /uncommitted or untracked files since you confirmed/u);
@@ -164,7 +180,7 @@ test("single removal refuses unconfirmed local changes and deletes them once con
   const [confirmed] = await service.remove([], [f.managed("dirty")], "single", ["dirty"]);
   assert.equal(confirmed?.removed, true);
   assert.equal(await stat(f.managed("dirty")).then(() => true, () => false), false);
-  assert.equal((await runCommand("git", ["-C", f.repo, "show-ref", "--verify", "refs/heads/hui/dirty"])).code, 0);
+  assert.equal((await gitResult(f.repo, "show-ref", "--verify", "refs/heads/hui/dirty")).code, 0);
 });
 
 test("a locked worktree is removed only after the lock override is confirmed", async () => {
@@ -186,7 +202,7 @@ test("a merged PR whose head differs from the branch keeps the branch", async ()
   const service = new WorktreeService({ root: f.root, run: runner({ "hui/merged": [pr(1, "MERGED", f.head)] }) });
   const [result] = await service.remove([], [f.managed("merged")], "single");
   assert.deepEqual([result?.removed, result?.branchDeleted], [true, false]);
-  assert.equal((await runCommand("git", ["-C", f.repo, "show-ref", "--verify", "refs/heads/hui/merged"])).code, 0);
+  assert.equal((await gitResult(f.repo, "show-ref", "--verify", "refs/heads/hui/merged")).code, 0);
 });
 
 test("a running linked session is stopped only after the user confirms", async () => {
@@ -235,7 +251,7 @@ test("a worktree created outside HUI is removable once confirmed, without --forc
   const [result] = await service.remove([], [f.external], "single", ["external"]);
   assert.deepEqual([result?.removed, result?.branchDeleted], [true, false]);
   assert.equal(await stat(f.external).then(() => true, () => false), false);
-  assert.equal((await runCommand("git", ["-C", f.repo, "show-ref", "--verify", "refs/heads/external"])).code, 0);
+  assert.equal((await gitResult(f.repo, "show-ref", "--verify", "refs/heads/external")).code, 0);
   assert.equal(calls.some((args) => args.includes("--force")), false);
 });
 
