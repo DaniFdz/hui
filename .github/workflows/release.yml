@@ -51,6 +51,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
       - run: npm test
+      - run: npx e2e-web install chromium --with-deps
+      - run: npm run e2e
       - run: npm run test:package
       - name: Pack and checksum
         run: |

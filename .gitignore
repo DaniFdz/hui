@@ -37,3 +37,6 @@ npm-shrinkwrap.json
 /USER.md
 /MEMORY.md
 /memory/
+
+# The shared e2e suite's reports, traces and launcher receipts.
+.e2e/

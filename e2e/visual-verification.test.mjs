@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, readFile, rmdir, unlink, writeFile } from "node:fs/promises";
-import { get, request } from "node:http";
+import { createServer, get, request } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,6 +61,34 @@ test("provenance distinguishes tracked and untracked content, branch, and commit
   assert.equal(detached.detached, true);
 });
 
+test("--port and --receipt-dir are checked before launch", () => {
+  for (const [options, message] of [[["--port", "abc"], /--port needs a port number/u], [["--receipt-dir", tmpdir()], /--receipt-dir needs --port/u]]) {
+    assert.throws(() => execFileSync(process.execPath, [cli, "launch", "--branch", branch, ...options], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }), (error) => {
+      assert.match(error.stderr, message);
+      return true;
+    });
+  }
+});
+
+test("--port fixes the app's port and --receipt-dir gets the public receipt once ready", { timeout: 60_000 }, async (context) => {
+  const free = createServer();
+  await new Promise((resolveListen) => free.listen(0, "127.0.0.1", resolveListen));
+  const { port } = free.address();
+  await new Promise((resolveClose) => free.close(resolveClose));
+  const receiptDir = await mkdtemp(join(tmpdir(), "hui-receipts-"));
+  const fixture = startFixture("--port", String(port), "--receipt-dir", receiptDir);
+  context.after(async () => {
+    if (fixture.child.exitCode !== null || fixture.child.signalCode !== null) return;
+    const exit = once(fixture.child, "exit");
+    fixture.child.kill("SIGTERM");
+    await exit;
+  });
+  const printed = await fixture.ready;
+  assert.equal(new URL(printed.url).port, String(port));
+  assert.deepEqual(JSON.parse(await readFile(join(receiptDir, `receipt-${port}.json`), "utf8")), printed);
+  assert.equal((await cleanup(printed.receipt)).portsClosed, true);
+});
+
 test("wrong branch fails before launch", () => {
   assert.throws(() => execFileSync(process.execPath, [cli, "launch", "--branch", `${branch}-not-this-branch`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }), (error) => {
     assert.match(error.stderr, /Wrong branch/u);
@@ -68,8 +96,8 @@ test("wrong branch fails before launch", () => {
   });
 });
 
-function startFixture() {
-  const child = spawn(process.execPath, [cli, "launch", "--branch", branch], { cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
+function startFixture(...options) {
+  const child = spawn(process.execPath, [cli, "launch", "--branch", branch, ...options], { cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
   let stderr = "";
   child.stderr.on("data", (data) => { stderr += data; });
   const ready = new Promise((resolveReady, reject) => {

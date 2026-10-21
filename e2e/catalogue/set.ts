@@ -59,7 +59,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:themeMode"],
     journeys: ["miami-theme"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

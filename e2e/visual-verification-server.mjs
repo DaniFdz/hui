@@ -16,7 +16,7 @@ const server = await createServer({
   envDir: false,
   cacheDir: process.env.HUI_VERIFICATION_CACHE,
   logLevel: "warn",
-  server: { host: "127.0.0.1", port: 0, strictPort: true, hmr: false },
+  server: { host: "127.0.0.1", port: Number(process.env.HUI_VERIFICATION_PORT ?? 0), strictPort: true, hmr: false },
   plugins: [{
     name: "hui-visual-verification-identity",
     configureServer(vite) {
