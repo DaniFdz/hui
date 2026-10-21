@@ -4,10 +4,11 @@
  * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
  * turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
  * input), attaching files from `files/`, reading what a download saved or what the page copied, opening a session's
- * menu and reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its font families,
- * those of HUI's bundled faces that have loaded to draw its text, its text size in pixels and the colour of the focus
- * ring it shows when reached from the keyboard). Test files import `test` from here, never from `e2e`, and never read
- * `platform`, `device` or `browser` themselves.
+ * menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a piece of the screen
+ * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
+ * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
+ * keyboard). Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
+ * themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -27,7 +28,7 @@ type Intercepted = {
 export type Hui = {
   workspace: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
-  createSession(input: { title: string; tool?: "pi"; group?: string }): Promise<{ id: string }>;
+  createSession(input: { title: string; tool?: "pi"; group?: string; model?: string }): Promise<{ id: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
   provider: { held(): Promise<void>; release(): Promise<void> };
@@ -40,6 +41,7 @@ export type Hui = {
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
+  glyph(title: string): Promise<{ label: string; animated: boolean }>;
   appearance(): Promise<"light" | "dark">;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
@@ -142,6 +144,12 @@ export const test = base.extend<{ hui: Hui }>({
         await row.hover();
         await row.getByRole("button", `Actions for ${title}`).tap();
       },
+      glyph: (title) => browser().evaluate((name) => {
+        const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+        const indicator = row?.querySelector(".sidebar-session-indicator");
+        if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
+        return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
+      }, title),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
       look: async (target) => {

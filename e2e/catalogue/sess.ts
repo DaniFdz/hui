@@ -149,7 +149,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidopen"],
     surfaces: ["nav:session", "route:POST /__hui/sessions/:id/open", "route:GET /__hui/sessions/:id/models"],
     journeys: ["session-lifecycle", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -159,7 +159,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessionsevents", "docs/api.md#get-__huisessions"],
     surfaces: ["route:GET /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-lifecycle", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
