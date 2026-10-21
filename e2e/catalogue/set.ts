@@ -88,6 +88,15 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
+    id: "SET-079",
+    title: "Use Appearance on a phone",
+    behaviour: "On a phone screen (390 × 844, and turned to 844 × 390), Settings → Appearance fits the width in light and dark mode: its theme cards, font pickers and terminal font field stay reachable, and neither the page nor its sections and rows scroll sideways.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: ["settings-page:appearance"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
     id: "SET-008",
     title: "Import a theme from tweakcn",
     behaviour: "The “Import” card opens a form whose “Import theme” button is enabled once a tweakcn link or id is entered; importing shows “Importing…”, then “Imported <id>.”, adds the theme's card and applies it. A bad link or failed download shows its error in the form and changes nothing.",
