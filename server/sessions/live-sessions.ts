@@ -402,7 +402,7 @@ export class LiveSessions {
     this.#aborted = listener;
   }
 
-  /** Re-emits a complete snapshot after coordination state changes outside the
+  /** Re-emits the session's state after coordination state changes outside the
    * runtime event stream. */
   notifySnapshot(id: string): void {
     const live = this.#live.get(id);
@@ -1573,9 +1573,8 @@ export class LiveSessions {
           ? { type: "error", message: event.message }
           : event,
     });
-    if (event.type === "settled" || refreshed) {
-      this.#broadcastTranscript(live);
-    }
+    if (refreshed || (event.type === "settled" && event.historyRefreshed !== false)) this.#broadcastTranscript(live);
+    else if (event.type === "settled") this.#broadcastState(live);
   }
 
   async #routeSettledTurn(live: Live, runtime: RuntimeSession): Promise<void> {

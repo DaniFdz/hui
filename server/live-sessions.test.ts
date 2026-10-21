@@ -404,7 +404,7 @@ test("every session announces a prompt with a snapshot before its run, so screen
   manager.disposeAll();
 });
 
-test("answering or cancelling a question sends a page the session's state without its transcript", async () => {
+test("answering a question or settling without refreshed history sends a page the session's state without its transcript", async () => {
   const { watchSessionEvents } = await import("./http/events.ts");
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
@@ -419,7 +419,10 @@ test("answering or cancelling a question sends a page the session's state withou
   await manager.respondQuestion(record.id, "q-1", { value: "Ada" });
   started[0]!.emit({ type: "question", question: { id: "q-2", method: "confirm", title: "Continue?", message: "Proceed" } });
   await manager.cancelQuestion(record.id, "q-2");
-  assert.deepEqual(snapshots, ["without transcript", "without transcript", "without transcript"]);
+  started[0]!.emit({ type: "settled", historyRefreshed: false });
+  assert.deepEqual(snapshots, ["without transcript", "without transcript", "without transcript", "without transcript"]);
+  started[0]!.emit({ type: "settled" });
+  assert.equal(snapshots.at(-1), "with transcript", "PI's refreshed history replaces the streamed one");
   stop();
   manager.disposeAll();
 });
