@@ -8,6 +8,7 @@ struct HUICoreTests {
         let core = try HUICore.bundled()
         #expect(try await core.resolveNavigation("/sessions/a%20b") == NavigationResolution(target: .session("a b"), path: "/sessions/a%20b"))
         #expect(try await core.resolveNavigation("/settings/appearance").target == .settings("appearance"))
+        #expect(try await core.resolveNavigation("/sessions").target == .page("sessions"))
         #expect(try await core.resolveNavigation("/nowhere") == NavigationResolution(target: .home, path: "/"))
     }
 

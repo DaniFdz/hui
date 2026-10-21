@@ -15,22 +15,16 @@ struct GatewayClient: Sendable {
     static let streamStallTimeout: TimeInterval = 40
 
     let baseURL: URL
-    var session: URLSession = .shared
 
-    func request(_ path: String, method: String = "GET", body: (any Encodable)? = nil, timeout: TimeInterval = responseTimeout) throws -> URLRequest {
+    func request(_ path: String, timeout: TimeInterval = responseTimeout) throws -> URLRequest {
         guard let url = URL(string: path, relativeTo: baseURL) else { throw GatewayError(message: "\(path) is not a gateway route") }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
-        request.httpMethod = method
         request.setValue("1", forHTTPHeaderField: "x-hui")
-        if let body {
-            request.setValue("application/json", forHTTPHeaderField: "content-type")
-            request.httpBody = try JSONEncoder().encode(body)
-        }
         return request
     }
 
-    func send<Response: Decodable>(_ path: String, method: String = "GET", body: (any Encodable)? = nil, as _: Response.Type = Response.self) async throws -> Response {
-        let (data, response) = try await reach { try await session.data(for: request(path, method: method, body: body)) }
+    func get<Response: Decodable>(_ path: String, as _: Response.Type = Response.self) async throws -> Response {
+        let (data, response) = try await reach { try await URLSession.shared.data(for: request(path)) }
         try Self.check(response, path: path, body: data)
         return try JSONDecoder().decode(Response.self, from: data)
     }
@@ -38,7 +32,7 @@ struct GatewayClient: Sendable {
     func stream(_ path: String) async throws -> URLSession.AsyncBytes {
         var request = try request(path, timeout: Self.streamStallTimeout)
         request.setValue("text/event-stream", forHTTPHeaderField: "accept")
-        let (bytes, response) = try await reach { try await session.bytes(for: request) }
+        let (bytes, response) = try await reach { try await URLSession.shared.bytes(for: request) }
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw GatewayError(status: http.statusCode, message: "\(path) returned HTTP \(http.statusCode)")
         }

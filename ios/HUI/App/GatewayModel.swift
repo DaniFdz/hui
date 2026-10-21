@@ -36,7 +36,7 @@ final class GatewayModel {
         state = .connecting
         let client = GatewayClient(baseURL: base)
         do {
-            let update = try await client.send("/__hui/update", as: API.UpdateSnapshot.self)
+            let update = try await client.get("/__hui/update", as: API.UpdateSnapshot.self)
             notice = Self.versionNotice(gateway: update.currentVersion, app: appVersion)
             self.client = client
             defaults.set(base.absoluteString, forKey: Self.urlKey)

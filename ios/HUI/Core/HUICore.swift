@@ -102,12 +102,10 @@ struct SSEFrame: Decodable, Sendable {
     var payload: API.JSONValue
 }
 
-struct SidebarGroup: Decodable, Sendable, Identifiable {
+struct SidebarGroup: Decodable, Sendable {
     var key: String
     var label: String
     var sessions: [API.SessionView]
-
-    var id: String { key }
 }
 
 struct NavigationResolution: Decodable, Equatable, Sendable {
@@ -122,7 +120,6 @@ enum NavigationTarget: Decodable, Equatable, Sendable {
     case settings(String)
     case session(String)
     case bot(String)
-    case unrecognized(String)
 
     private enum CodingKeys: String, CodingKey {
         case kind, page, id
@@ -130,15 +127,14 @@ enum NavigationTarget: Decodable, Equatable, Sendable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let kind = try container.decode(String.self, forKey: .kind)
-        switch kind {
+        switch try container.decode(String.self, forKey: .kind) {
         case "home": self = .home
         case "kanban": self = .kanban
-        case "page": self = .page(try container.decode(String.self, forKey: .page))
+        case "page": self = .page(try container.nestedContainer(keyedBy: CodingKeys.self, forKey: .page).decode(String.self, forKey: .id))
         case "settings": self = .settings(try container.decode(String.self, forKey: .page))
         case "session": self = .session(try container.decode(String.self, forKey: .id))
         case "bot": self = .bot(try container.decode(String.self, forKey: .id))
-        default: self = .unrecognized(kind)
+        default: throw DecodingError.dataCorruptedError(forKey: .kind, in: container, debugDescription: "unknown navigation target")
         }
     }
 }

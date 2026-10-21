@@ -49,7 +49,7 @@ final class SessionsModel {
         var attempt = 0
         while !Task.isCancelled {
             do {
-                apply(try await client.send("/__hui/sessions", as: API.SessionList.self))
+                apply(try await client.get("/__hui/sessions", as: API.SessionList.self))
                 await project()
                 let bytes = try await client.stream("/__hui/sessions/events")
                 error = nil
@@ -91,7 +91,7 @@ final class SessionsModel {
         case .status(let status):
             apply(status.data)
         case .sessions(let list):
-            guard list.data.revision >= revision else { return }
+            guard list.data.revision > revision else { return }
             revision = list.data.revision
             for session in list.data.upserts { sessions[session.id] = session }
             if let groups = list.data.groups {
