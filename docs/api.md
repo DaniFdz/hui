@@ -3354,7 +3354,7 @@ client that does not offer it gets uncompressed frames. After `closed` the
 server closes normally; a session deleted before the upgrade closes with code
 4404. 429 means too many tickets are pending, so retry later.
 
-### `POST /__hui/sessions/:id/resume`
+### `POST /__hui/sessions/:id/continue`
 
 Available as a fallback after automatic recovery is exhausted and the view still
 reports `"interrupted": true`. HUI starts a new prompt containing the journaled request
@@ -3439,7 +3439,7 @@ that is unknown or still waiting on its tool calls, or a session whose runtime
 cannot fork (PI) returns 400. A bot's chat answers 409
 ([a forever chat](#a-forever-chat)).
 
-### `POST /__hui/sessions/:id/continue`
+### `POST /__hui/sessions/:id/resume`
 
 Continues from the active leaf with PI's native prompt-free continuation
 primitive and returns `{ "ok": true }` once the run has entered. No synthetic
