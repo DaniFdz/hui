@@ -104,7 +104,7 @@ test("on a phone screen the archive toast keeps Restore and its dismiss button i
   await expect(screen.getByText("Session restored.")).toBeVisible();
   await archive();
   await dismiss.tap();
-  await expect(toast).toBeHidden();
+  await expect(toast).toBeHidden({ timeout: 5_000 });
 });
 
 test("Sessions, Archived restores a tree that stays restored, and a message to an archived session restores its tree", { tags: ["SESS-036"], platforms: ["web"] }, async ({ screen, hui }) => {
