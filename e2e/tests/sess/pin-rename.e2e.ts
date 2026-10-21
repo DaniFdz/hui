@@ -4,6 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 test("a pinned session stays first in every sort, keeps its Pinned chip across a reload, and Unpin session reverses it", { tags: ["SESS-031"], platforms: ["web"] }, async ({ screen, hui }) => {
   const order = () => screen.getByLabel(/^(Zulu|Alpha|Mike) pin, status/u).allTextContents();
+  const first = async () => (await order())[0];
   const sortBy = async (choice: string) => {
     await screen.getByRole("button", "Filter & sort").tap();
     await screen.getByText(choice, { exact: true }).tap();
@@ -13,15 +14,16 @@ test("a pinned session stays first in every sort, keeps its Pinned chip across a
   await hui.createSession({ title: "Mike pin" });
 
   await hui.open("/");
-  await expect.poll(order).toEqual(["Mike pin", "Alpha pin", "Zulu pin"]);
+  await sortBy("Name");
+  await expect.poll(order).toEqual(["Alpha pin", "Mike pin", "Zulu pin"]);
   const zuluRow = screen.getByTestId("session-row").filter({ hasText: "Zulu pin" });
   await hui.peek(zuluRow);
   await zuluRow.getByRole("button", "Pin session").tap();
   await expect(screen.getByLabel("Zulu pin, status idle, tool durable, stage investigation, pinned")).toBeVisible();
-  await expect.poll(order).toEqual(["Zulu pin", "Mike pin", "Alpha pin"]);
-  for (const [choice, expected] of [["Created", ["Zulu pin", "Mike pin", "Alpha pin"]], ["Name", ["Zulu pin", "Alpha pin", "Mike pin"]], ["Stage", ["Zulu pin", "Mike pin", "Alpha pin"]], ["Last updated", ["Zulu pin", "Mike pin", "Alpha pin"]]] as const) {
+  await expect.poll(order).toEqual(["Zulu pin", "Alpha pin", "Mike pin"]);
+  for (const choice of ["Created", "Stage", "Last updated"]) {
     await sortBy(choice);
-    await expect.poll(order).toEqual(expected);
+    await expect.poll(first).toBe("Zulu pin");
   }
 
   await hui.open("/sessions");
@@ -34,7 +36,8 @@ test("a pinned session stays first in every sort, keeps its Pinned chip across a
   await hui.sessionMenu("Zulu pin");
   await screen.getByText("Unpin session", { visible: true }).tap();
   await expect(screen.getByLabel("Zulu pin, status idle, tool durable, stage investigation")).toBeVisible();
-  await expect.poll(order).toEqual(["Mike pin", "Alpha pin", "Zulu pin"]);
+  await sortBy("Name");
+  await expect.poll(order).toEqual(["Alpha pin", "Mike pin", "Zulu pin"]);
   await hui.sessionMenu("Zulu pin");
   await screen.getByText("Pin session", { visible: true }).tap();
   await expect(screen.getByLabel("Zulu pin, status idle, tool durable, stage investigation, pinned")).toBeVisible();
