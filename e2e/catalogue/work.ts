@@ -233,7 +233,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "backlog",
-    ios: "backlog",
+    ios: { excluded: "Layouts an older version saved in the browser; the iOS app has no older version.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
 
   {

@@ -2030,10 +2030,33 @@ the iOS app needs its own gesture for it.
 Some use cases exist because HUI runs in a browser tab: the boot screen while
 the page's code downloads and its failure, copying where the page has no
 Clipboard API, opening a session or VS Code in another tab or window or the
-session's folder in the desktop VS Code app, and resizing the window. Others
-exist only in the wide layout HUI shows from 1100px, such as collapsing the
-sidebar. The iPhone app ships its code, uses the system clipboard, has no tabs
-and is always narrow, so these are web-only use cases.
+session's folder in the desktop VS Code app, restoring layouts an older version
+saved in the browser, and resizing the window. Others exist only in the wide
+layout HUI shows from 1100px, such as collapsing the sidebar. The iPhone app
+ships its code, uses the system clipboard, has no tabs, has no older version and
+is always narrow, so these are web-only use cases.
+
+### On a touch screen, a tap opens a preview (2026-10-21)
+
+Some previews open only on hover: the card of a pull request mark or of a pull
+request link card in the chat, a Jira mark's card, and a contribution day's or
+week's count. A touch screen has no hover, so the iPhone would lose them. The
+owner: "if for example they click on the pr or the jira task, they see the
+popover, and if they click on the popover they navigate to the link".
+
+- **Touch.** A tap on a pull request mark or link card, a Jira mark, or a
+  contribution day or week opens its preview. A tap on a pull request's or Jira
+  item's preview opens the pull request or the work item; a tap elsewhere closes
+  it.
+- **Pointer.** Unchanged: hover opens the preview, as does keyboard focus on a
+  pull request or Jira mark, and activating one of those marks opens its link.
+- **Where.** The iOS app will open previews this way. The web on a touch screen
+  should match it; until it does, a tap there follows the mark's link as a click
+  does.
+- **Tests.** One shared test serves both: the fixture opens a preview with hover
+  on the web and a tap on iOS, and follows the link by clicking the mark on the
+  web and tapping the preview on iOS, so these use cases stay ordinary, not
+  excluded.
 
 ### Bots are always on (2026-10-20)
 
