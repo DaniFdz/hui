@@ -2,8 +2,8 @@
  * The request and result shape every route module (`server/routes/`) speaks. `hui.ts` turns an incoming message
  * into a `RouteRequest` (`routeRequest`) and writes the module's `RouteResult` back, so a module reads its body and
  * headers and answers JSON, HTML or a file without touching Node's HTTP objects. Also owns reading request bodies,
- * writing JSON answers (compressed when large, with the error text a failed answer's diagnostic records) and the
- * `x-hui` header name every guard checks.
+ * writing JSON answers (compressed when large, with the error text a failed answer's diagnostic records), the
+ * `Content-Disposition` a file answer names itself with, and the `x-hui` header name every guard checks.
  */
 import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
 import type { Static, TSchema } from "typebox";
@@ -39,6 +39,11 @@ export type RouteResult =
 
 export function reply<S extends TSchema>(_schema: S, body: Static<S>, status = 200): JsonResult {
   return { status, body };
+}
+
+export function contentDisposition(disposition: "inline" | "attachment", name: string): string {
+  const encoded = encodeURIComponent(name.replace(/\p{Cs}/gu, "\uFFFD")).replace(/['()*]/gu, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `${disposition}; filename*=UTF-8''${encoded}`;
 }
 
 /** A request body as bytes, refusing anything past `maxBytes`. */

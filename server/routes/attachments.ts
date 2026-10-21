@@ -5,7 +5,7 @@
  * `x-hui`, so `hui.ts` dispatches here before its guard, and this route accepts that header or a browser-attested
  * same-origin fetch and refuses everything cross-site.
  */
-import { CLIENT_HEADER, type RouteRequest, type RouteResult } from "../http/route.ts";
+import { CLIENT_HEADER, contentDisposition, type RouteRequest, type RouteResult } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import type { LiveSessions } from "../sessions/live-sessions.ts";
 import { readStoredAttachment } from "../sessions/attachments.ts";
@@ -42,7 +42,7 @@ export function createAttachmentRoutes(deps: Deps) {
       return { status: 200, file: { mimeType, data, headers: {
         "cross-origin-resource-policy": "same-origin",
         "content-security-policy": "default-src 'none'; sandbox",
-        "content-disposition": `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+        "content-disposition": contentDisposition(disposition, file.name),
       } } };
     }
     const image = await deps.liveSessions.attachmentImage(id, message, index);
