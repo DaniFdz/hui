@@ -82,3 +82,17 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
 - `HUITests/Fixtures/` holds responses recorded from a fixture gateway
   (`node e2e/visual-verification.mjs launch --branch <branch> --port <port> --receipt-dir .e2e/hui`), with the
   temporary workspace path replaced by `/tmp/hui-fixture/workspace`. Record them again when their payloads change.
+
+## Screens
+
+- The gateway URL comes from the `-HUIGatewayURL <url>` launch argument or the Connect screen, and both use the
+  `HUIGatewayURL` defaults key, so the last gateway that answered is remembered. `npm run ios:build` sets the app's
+  version to `package.json`'s; `GatewayModel.versionNotice` compares it with `GET /__hui/update`'s
+  `currentVersion` (older and newer gateways get a notice naming both, `null` reads as an unverified development
+  gateway).
+- Labels a shared test reads come from the core, not Swift copies: rows use `sessionAccessibleName` and
+  `sidebarSessionGroups` with the web sidebar's default options, and statuses use `sessionStatusText`, read as
+  `Session status: <text>` like the web's chat header.
+- `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
+  has a destination, and anything else returns to the list. `xcrun simctl openurl` shows iOS's "Open in “HUI”?"
+  confirmation first, which a test has to accept.
