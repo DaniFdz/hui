@@ -1,0 +1,42 @@
+{
+    "revision": 1792610058661,
+    "groups": [
+        {
+            "label": "ungrouped",
+            "sessions": [
+                {
+                    "id": "8f0b7f00-fa30-404a-a9f0-bb0217d3a990",
+                    "title": "Write release notes",
+                    "group": "",
+                    "cwd": "/tmp/hui-fixture/workspace",
+                    "displayCwd": "/tmp/hui-fixture/workspace",
+                    "tool": "pi",
+                    "status": "starting",
+                    "runtime": {
+                        "active": true
+                    },
+                    "stage": "investigation",
+                    "stageOrigin": "default",
+                    "createdAt": "2026-10-21T19:14:41.725Z",
+                    "updatedAt": "2026-10-21T19:14:41.725Z"
+                },
+                {
+                    "id": "489e1c3d-b1f6-453a-809d-915f402a5eba",
+                    "title": "Fix the login bug",
+                    "group": "",
+                    "cwd": "/tmp/hui-fixture/workspace",
+                    "displayCwd": "/tmp/hui-fixture/workspace",
+                    "tool": "pi",
+                    "status": "starting",
+                    "runtime": {
+                        "active": true
+                    },
+                    "stage": "investigation",
+                    "stageOrigin": "default",
+                    "createdAt": "2026-10-21T19:14:41.666Z",
+                    "updatedAt": "2026-10-21T19:14:41.666Z"
+                }
+            ]
+        }
+    ]
+}

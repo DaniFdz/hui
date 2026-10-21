@@ -68,3 +68,17 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
 - `npm run ios:core` builds only the core.
 - Unit tests: `xcodebuild test -project ios/HUI.xcodeproj -scheme HUI -destination 'platform=iOS Simulator,name=HUI iPhone'`
   (run `npm run ios:core` first).
+
+## Talking to the gateway
+
+- Every request goes through `GatewayClient`, which sends `x-hui: 1` and the web's 20 s response deadline as the
+  request's idle timeout, so a slow download isn't cut short. The session events stream uses the web's 40 s stall
+  timeout instead, which the gateway's 15 s heartbeat keeps alive. A refusal throws `GatewayError` with the status and
+  the body's `error` message.
+- `HUICore` is an actor on its own `DispatchSerialQueue` holding the one `JSContext`. Arguments cross as JSON and
+  answers come back through `JSON.stringify`, decoded into Swift types; a script exception throws.
+- `SSEFramer` cuts frames at the byte level, so a character split across chunks is decoded whole, and hands each
+  frame's text to the core's `decodeSseFrame`.
+- `HUITests/Fixtures/` holds responses recorded from a fixture gateway
+  (`node e2e/visual-verification.mjs launch --branch <branch> --port <port> --receipt-dir .e2e/hui`), with the
+  temporary workspace path replaced by `/tmp/hui-fixture/workspace`. Record them again when their payloads change.

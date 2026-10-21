@@ -5,3 +5,6 @@
  */
 export { navigationPath, resolveNavigation } from "../../src/lib/navigation.ts";
 export { decodeSseFrame, reconnectDelay } from "../../src/lib/event-stream.ts";
+export { sessionAccessibleName, sessionStatusText } from "../../src/lib/session/labels.ts";
+export { sessionGroupLabel } from "../../src/lib/session/sessions.ts";
+export { DEFAULT_SIDEBAR_SESSION_OPTIONS, sidebarSessionGroups } from "../../src/lib/session/sidebar-sessions.ts";

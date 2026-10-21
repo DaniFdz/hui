@@ -8,12 +8,12 @@ import {
   isSessionGroupCollapsed,
   normalizeCustomSessionIcon,
   PRIMARY_NAV,
-  sessionAccessibleName,
   sessionMoveGroupOptions,
   setNavigationDrawer,
   SHELL_DRAWER_DEFAULT_OPEN,
   SHELL_NARROW_MEDIA,
 } from "./shell.ts";
+import { sessionAccessibleName } from "../lib/session/labels.ts";
 import {
   adaptedSettingsCopy,
   filterSettingsPages,

@@ -12,7 +12,7 @@ import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.t
 import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/session/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
 import { kanbanIcon } from "./kanban.ts";
-import { isSessionStage, SESSION_STAGE_LABELS } from "../lib/kanban.ts";
+import { isSessionStage } from "../lib/kanban.ts";
 export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
 import { HUI_PAGES, type HuiPage } from "../lib/pages.ts";
 import { navigationPath } from "../lib/navigation.ts";
@@ -22,6 +22,7 @@ import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../lib/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
+import { sessionAccessibleName } from "../lib/session/labels.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bots/roster.ts";
@@ -209,19 +210,6 @@ export function sessionMoveGroupOptions(groups: readonly SessionGroup[]): Array<
   const labels = ["ungrouped", ...groups.map((group) => group.label)];
   return [...new Set(labels.map((label) => label || "ungrouped"))]
     .map((label) => ({ label: sessionGroupLabel(label), value: storedSessionGroup(label) }));
-}
-
-export function sessionAccessibleName(session: SessionView): string {
-  return [
-    session.title,
-    session.creating ? worktreeProgressLabel(session.creating) : `status ${session.status}`,
-    ...(session.background && session.status !== "running" ? ["watcher or subagent running"] : []),
-    `tool ${session.tool}`,
-    ...(isSessionStage(session.stage) ? [`stage ${SESSION_STAGE_LABELS[session.stage].toLocaleLowerCase()}`] : []),
-    ...(session.pinned ? ["pinned"] : []),
-    ...(session.unread ? ["unread"] : []),
-    ...(session.archived ? ["archived"] : []),
-  ].join(", ");
 }
 
 const SESSION_ICONS = ["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯"] as const;
