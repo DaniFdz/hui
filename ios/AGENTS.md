@@ -94,5 +94,6 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   `sidebarSessionGroups` with the web sidebar's default options, and statuses use `sessionStatusText`, read as
   `Session status: <text>` like the web's chat header.
 - `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
-  has a destination, and anything else returns to the list. `xcrun simctl openurl` shows iOS's "Open in “HUI”?"
-  confirmation first, which a test has to accept.
+  has a destination, and anything else returns to the list. On the iOS 27.0 simulator `xcrun simctl openurl` opens
+  the app directly, whether HUI or another app is in front; if iOS shows its "Open in “HUI”?" confirmation instead,
+  a test has to accept it.
