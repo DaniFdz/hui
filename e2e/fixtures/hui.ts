@@ -2,8 +2,8 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
  * its answer, and the steps whose gesture differs per platform, such as holding a control, attaching files from
- * `files/` and reading what a download saved. Test files import `test` from here, never from `e2e`, and never read
- * `platform`, `device` or `browser` themselves.
+ * `files/`, reading what a download saved or what the page copied and opening a session's menu. Test files import
+ * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,8 @@ import { expect, test as base, type Locator } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
-type SessionList = { groups: { sessions: { id: string }[] }[] };
+type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
+type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
 type Intercepted = {
   arrived(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
@@ -21,10 +22,19 @@ type Intercepted = {
 export type Hui = {
   workspace: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
-  createSession(input: { title: string; tool?: "pi" }): Promise<{ id: string }>;
+  createSession(input: { title: string; tool?: "pi"; group?: string }): Promise<{ id: string }>;
+  createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
+  prompt(session: { id: string }, text: string): Promise<void>;
   provider: { held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
   reload(): Promise<void>;
+  url(): Promise<string>;
+  phoneScreen(): Promise<{ width: number; height: number }>;
+  clipboard(options?: { refuse?: boolean }): Promise<void>;
+  copied(): Promise<string>;
+  keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
+  peek(target: Locator): Promise<void>;
+  sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
@@ -62,11 +72,17 @@ export const test = base.extend<{ hui: Hui }>({
       const response = await fetch(receipt.providerUrl + path, { method });
       if (!response.ok) throw new Error(`provider ${path} answered ${response.status}`);
     };
-    const sessionIds = async () =>
-      (await api<SessionList>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions.map((session) => session.id));
+    const groups = async () => (await api<SessionList>("GET", "/__hui/sessions")).groups;
+    const sessions = async () => (await groups()).flatMap((group) => group.sessions);
+    const sessionIds = async () => (await sessions()).map((session) => session.id);
+    const prompt = async (session: { id: string }, text: string) => {
+      await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
+      await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
+    };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
 
     const existing = new Set(await sessionIds());
+    const existingGroups = new Set((await groups()).map((group) => group.label));
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
 
@@ -75,12 +91,47 @@ export const test = base.extend<{ hui: Hui }>({
       api,
       createSession: async (input) =>
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+      prompt,
+      createSubagent: async (parent) => {
+        await prompt(parent, "E2E_SUBAGENTS_START");
+        let child: ListedSession | undefined;
+        await expect.poll(async () => {
+          const all = await sessions();
+          child = all.find((session) => session.parentId === parent.id);
+          return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
+            && all.find((session) => session.id === parent.id)?.status === "idle";
+        }, { timeout: 30_000 }).toBe(true);
+        return { id: child!.id, title: child!.title };
+      },
       provider: {
         held: () => control("GET", "/control/wait-replay-ready"),
         release: () => control("POST", "/control/release-replay"),
       },
       open: (path) => fixtures.app.open(path),
       reload: () => browser().reload(),
+      url: () => browser().url(),
+      clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
+        const page = window as unknown as { huiCopied: string };
+        page.huiCopied = "";
+        navigator.clipboard.writeText = async (text) => {
+          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+          page.huiCopied = text;
+        };
+        if (refused) document.execCommand = () => false;
+      }, refuse),
+      copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
+      keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+      phoneScreen: async () => {
+        const phone = { width: 390, height: 844 };
+        await browser().setViewport(phone);
+        return phone;
+      },
+      peek: (target) => target.hover(),
+      sessionMenu: async (title) => {
+        const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
+        await row.hover();
+        await row.getByRole("button", `Actions for ${title}`).tap();
+      },
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
       attach: (target, files) => target.setInputFiles(files.map((name) => fileURLToPath(new URL(`files/${name}`, import.meta.url)))),
@@ -154,7 +205,14 @@ export const test = base.extend<{ hui: Hui }>({
     });
 
     await control("POST", "/control/release-replay");
-    for (const id of await sessionIds()) if (!existing.has(id)) await api("DELETE", `/__hui/sessions/${id}`);
+    for (const id of await sessionIds()) {
+      if (existing.has(id)) continue;
+      const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });
+      if (!response.ok && response.status !== 404) throw new Error(`DELETE /__hui/sessions/${id} answered ${response.status}`);
+    }
+    for (const { label } of await groups()) {
+      if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
+    }
     await api("PUT", "/__hui/settings", settings);
   },
 });

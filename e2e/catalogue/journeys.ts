@@ -71,7 +71,6 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "sdk-backend": { kind: "world:pi-sessions" },
   "secret-requests": { kind: "automate" },
   "session-calendar": { kind: "world:activity" },
-  "session-custom-icon": { kind: "automate" },
   "session-groups": { kind: "automate" },
   "session-header-overflow": { kind: "automate" },
   "session-hovercard": { kind: "automate" },

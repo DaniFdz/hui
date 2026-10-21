@@ -413,6 +413,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   return html`
     <div
       class="session-row-wrap session-row-host sidebar-recent-session sidebar-recent-session--single-line ${depth > 0 ? "sidebar-recent-session--child" : ""} ${selected ? "sidebar-recent-session--active" : ""} ${splitOpen ? "sidebar-recent-session--split" : ""} ${session.pinned ? "session-row-host--pinned" : ""} ${session.unread ? "sidebar-recent-session--unread" : ""} ${stage ? "sidebar-recent-session--staged" : ""} ${session.status === "running" ? "session-row-host--running" : ""} ${hasDraft ? "sidebar-recent-session--has-draft" : ""} ${session.status === "error" ? "sidebar-recent-session--attention-danger" : ""} ${dragging ? "sidebar-recent-session--dragging" : ""} ${props.sessionMovePendingId === session.id ? "sidebar-recent-session--moving" : ""}"
+      data-testid="session-row"
       data-session-id=${session.id}
       data-session-key=${session.id}
       data-session-stage=${stage ?? nothing}
@@ -477,8 +478,10 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
       <wa-dropdown class="session-menu" placement="bottom-end" distance="4" .open=${open}
         id=${menuId(session.id)} aria-label=${`Actions for ${session.title}`}
         @keydown=${sessionMenuShortcuts}
+        @wa-after-show=${sessionMenuShortcuts}
+        @wa-after-hide=${sessionMenuShortcuts}
         @wa-show=${(event: Event) => { (event.currentTarget as HTMLElement).dispatchEvent(new Event("openclaw-session-menu-open", { bubbles: true })); labelDropdown(event); if (!open) props.onToggleMenu(session.id); }}
-        @wa-hide=${() => { if (open) props.onCloseMenu(); }}
+        @wa-hide=${(event: Event) => { sessionMenuShortcuts.handleEvent(event); if (open) props.onCloseMenu(); }}
         @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
           const trigger = (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]');
           trigger?.focus();
