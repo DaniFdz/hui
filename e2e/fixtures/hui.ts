@@ -2,8 +2,9 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
  * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
- * attaching files from `files/`, reading what a download saved or what the page copied and opening a session's menu.
- * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * attaching files from `files/`, reading what a download saved or what the page copied, opening a session's menu and
+ * reading how a piece of the screen looks (its text colour, the colour behind it, its font and its text size). Test
+ * files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -36,6 +37,7 @@ export type Hui = {
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
+  look(target: Locator): Promise<{ color: string; background: string; font: string; size: number }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: string[]): Promise<void>;
@@ -135,6 +137,28 @@ export const test = base.extend<{ hui: Hui }>({
       },
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
+      look: async (target) => {
+        await target.scrollIntoView();
+        const box = await target.boundingBox();
+        if (!box) throw new Error("look: the target lays out no box");
+        return browser().evaluate(({ x, y, width, height }) => {
+          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+          const element = document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
+            const rect = candidate.getBoundingClientRect();
+            return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
+          });
+          if (!element) throw new Error("look: no element has the target's box");
+          let behind: Element | null = element;
+          while (behind && /^rgba\(.*, 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
+          const style = getComputedStyle(element);
+          return {
+            color: style.color,
+            background: behind ? getComputedStyle(behind).backgroundColor : "",
+            font: style.fontFamily,
+            size: Number.parseFloat(style.fontSize),
+          };
+        }, box);
+      },
       attach: (target, files) => target.setInputFiles(files.map((name) => fileURLToPath(new URL(`files/${name}`, import.meta.url)))),
       download: async (target) => {
         const file = await browser().waitForDownload(() => target.tap());

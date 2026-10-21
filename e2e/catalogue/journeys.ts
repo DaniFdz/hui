@@ -38,7 +38,6 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "diff-view": { kind: "automate" },
   "durable-extensions": { kind: "automate" },
   "files-view": { kind: "automate" },
-  "font-preferences": { kind: "automate" },
   "gateway-settings": { kind: "automate" },
   "github-embeds": { kind: "automate" },
   "github-integration": { kind: "world:github" },

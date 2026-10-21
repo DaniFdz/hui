@@ -1863,7 +1863,7 @@ function renderTaskProgress(props: HomeProps) {
     ?? card.steps.at(-1);
   const allComplete = card.steps.length > 0 && completed === card.steps.length;
   return html`<div class="agent-chat__progress-float">
-    <details class="session-progress-card session-progress-card--composer" ?open=${!props.chatPreferences.collapseTaskProgress && !allComplete}>
+    <details class="session-progress-card session-progress-card--composer" data-testid="task-progress" ?open=${!props.chatPreferences.collapseTaskProgress && !allComplete}>
       <summary class="session-progress-card__summary">
         <span class="session-progress-card__summary-indicator ${allComplete ? "session-progress-card__summary-indicator--complete" : ""}" data-status=${current?.status ?? "pending"} aria-hidden="true">${allComplete ? checkIcon : current?.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span>
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
