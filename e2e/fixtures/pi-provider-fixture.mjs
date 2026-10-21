@@ -773,6 +773,14 @@ const server = createServer(async (request, response) => {
     request.on("close", () => response.end());
     return;
   }
+  if (source.includes("E2E_THINKING")) {
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Weighing the fixture." } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "e2e-signature" } });
+    event(response, { type: "content_block_stop", index: 0 });
+    text(response, "Thought it through.", 1);
+    return finish(response);
+  }
   if (source.includes("E2E_REPLAY")) {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: null } });
     event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Replay prefix — " } });

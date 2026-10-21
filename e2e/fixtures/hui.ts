@@ -53,12 +53,6 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
   return null;
 };
 
-const openContextMenu = ({ x, y }: { x: number; y: number }) => {
-  const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 2 };
-  document.elementFromPoint(x, y)?.dispatchEvent(new MouseEvent("contextmenu", init));
-  return null;
-};
-
 export const test = base.extend<{ hui: Hui }>({
   hui: async (fixtures, use) => {
     const port = new URL(fixtures.app.baseUrl!).port;
@@ -173,11 +167,7 @@ export const test = base.extend<{ hui: Hui }>({
         await expect(until).toBeVisible();
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
-      contextMenu: async (target) => {
-        const box = await target.boundingBox();
-        if (!box) throw new Error("contextMenu: the target is not on screen");
-        await browser().evaluate(openContextMenu, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
-      },
+      contextMenu: (target) => target.secondaryTap(),
       intercept: async (method, path) => {
         let arrive: () => void = () => undefined;
         let decide: (handle: (route: WebRoute) => Promise<void>) => void = () => undefined;
