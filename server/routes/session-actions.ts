@@ -79,9 +79,9 @@ export function createSessionActionRoutes(deps: {
         if (!liveSessions.ensure(record)) {
           return reply(SessionError, { error: `unknown session: ${id}` }, 404);
         }
-        const { unread } = await liveSessions.markRead(id, record.unread === true);
+        const openedRecord = await liveSessions.markRead(id);
         return reply(SessionOpenResponse, {
-          session: toView({ ...record, unread }, liveSessions.status(id)),
+          session: toView(openedRecord, liveSessions.status(id)),
           transcript: liveSessions.transcript(id),
           snapshot: liveSessions.snapshot(id),
         });

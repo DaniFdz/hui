@@ -653,10 +653,10 @@ export class LiveSessions {
   }
 
   /** Opening or presenting a conversation acknowledges its latest activity. */
-  async markRead(id: string, registryUnread = false): Promise<SessionRecord> {
+  async markRead(id: string): Promise<SessionRecord> {
     const live = this.#live.get(id);
     if (!live) throw new Error(`Unknown live session: ${id}`);
-    if (live.record.unread !== true && !registryUnread) return live.record;
+    if (live.record.unread !== true) return live.record;
     live.record = { ...live.record, unread: undefined };
     this.#publishStatus(live, this.#reported(live), true, false);
     try {
@@ -667,6 +667,15 @@ export class LiveSessions {
       throw error;
     }
     return live.record;
+  }
+
+  /** Takes a registry write made elsewhere, such as a rename or a hand-set unread mark, into a live session's record. */
+  follow(record: SessionRecord): void {
+    const live = this.#live.get(record.id);
+    if (!live) return;
+    const unread = live.record.unread === true;
+    live.record = this.#withUnsaved(live, record);
+    if ((live.record.unread === true) !== unread) this.#publishStatus(live, this.#reported(live), false, !unread);
   }
 
   /** The model in use, so a header can render before it asks for the full list. */
