@@ -124,12 +124,14 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 
 ## ios/ (the iPhone app)
 
-`ios/` holds the native iPhone app's code, with its rules in `ios/AGENTS.md`. So far it has the
-JavaScriptCore core the app shares with the web and the gateway's payload types in Swift.
+`ios/` holds the native iPhone app's code, with its rules in `ios/AGENTS.md`. `ios/HUI.xcodeproj` builds the
+`HUI` app and its `HUITests` unit tests from the `ios/HUI/` and `ios/HUITests/` folders, so adding a file never
+edits the project; `npm run ios:build` builds the core, then the app, and installs it on the simulator.
 
 | Path | Owns |
 |---|---|
 | `ios/core/` | The JavaScriptCore core: `entry.ts` re-exports pure `src/lib/` functions (navigation, server-sent event frames, reconnect backoff). `npm run ios:core` (`scripts/ios-build.ts`) bundles it into `ios/HUI/Resources/Generated/hui-core.js`, with `hui-core.sha256` beside it listing the bundle and its inputs for the Xcode build to check; git ignores both |
+| `ios/HUI/App/` | `HUIApp.swift`: the app's entry point |
 | `ios/HUI/Gateway/` | `API.swift`: the `API` namespace of the payload types, and the `JSONValue` they use for open values |
 | `ios/HUI/Gateway/Schema/` | The payload types, one Swift file per API area, generated from `docs/api.schema.json` by `npm run api:schema` |
 

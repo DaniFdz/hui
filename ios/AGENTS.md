@@ -43,3 +43,28 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   holds Swift files (`scripts/module-headers.test.mjs` checks both).
 - Swift refuses two files with the same name in one module, so the generated files end in `Payloads.swift`. Don't
   give a hand-written file one of their names.
+
+## The Xcode project
+
+- `HUI.xcodeproj` uses folder-synchronized groups: every file under `HUI/` belongs to the `HUI` target and every
+  file under `HUITests/` to the `HUITests` target, so adding a file never edits `project.pbxproj`. Files that must
+  stay out of the app bundle (`Info.plist`, `hui-core.sha256`) are listed in the `HUI` folder's exception set.
+- `HUI`: bundle id `dev.hui.ios`, iOS 18.0, Swift 6, iPhone only, no signing, no entitlements, no extensions and no
+  Swift packages. `Info.plist` holds only what build settings can't: the `hui` URL scheme and
+  `NSAllowsLocalNetworking`. `HUITests` is hosted by the app, so tests `@testable import HUI`.
+- The `Check hui-core.js` build phase runs `shasum -a 256 -c` on `hui-core.sha256` and fails with "run npm run
+  ios:core" when the bundle is missing or stale. The `HUI` target turns user script sandboxing off for it, because
+  the list of inputs changes with the core's imports and a sandboxed script could not read them.
+- Built and tested with Xcode 27.1 (27A9275) and an iPhone 17 simulator on the iOS 27.0 runtime (the 27.1 runtime
+  only offers iPhone Duo).
+
+## Commands
+
+- `npm run ios:build` builds the core, then runs
+  `xcodebuild -project ios/HUI.xcodeproj -scheme HUI -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build`
+  and `xcrun simctl install "HUI iPhone" ios/build/Build/Products/Release-iphonesimulator/HUI.app`. Boot the
+  simulator first; create it once with
+  `xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0`.
+- `npm run ios:core` builds only the core.
+- Unit tests: `xcodebuild test -project ios/HUI.xcodeproj -scheme HUI -destination 'platform=iOS Simulator,name=HUI iPhone'`
+  (run `npm run ios:core` first).
