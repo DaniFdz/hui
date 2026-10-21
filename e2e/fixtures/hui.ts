@@ -22,7 +22,7 @@ type Intercepted = {
 export type Hui = {
   workspace: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
-  createSession(input: { title: string; tool?: "pi" }): Promise<{ id: string }>;
+  createSession(input: { title: string; tool?: "pi"; group?: string }): Promise<{ id: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   provider: { held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
