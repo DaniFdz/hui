@@ -52,11 +52,12 @@ conversation that fails to load says so and offers a retry.
 At 600 ms / 300 kbit/s the branch shows the boot screen, then *Still loading —
 the connection is slow* after 6 s, and the conversation arrives intact.
 
-## Long sessions, subagents and a watcher on a phone (2026-10-20)
+## Long sessions, subagents and a watcher on a phone (2026-10-21)
 
-macOS, Node 24, headless Chrome 155 with a 430×932 phone viewport and DevTools
-network throttling (4G: 70 ms, 12 Mbit/s; slow: 300 ms, 1.6 Mbit/s), production
-builds of `origin/main` and the branch, each on its own copy of one seeded state.
+macOS, Node 24, headless Chrome 155 with a 430×932 phone viewport, 2× CPU
+throttling and DevTools network throttling (4G: 70 ms, 12 Mbit/s; slow:
+300 ms, 1.6 Mbit/s), production builds of `origin/main` and the branch, each on
+its own copy of one seeded state. Two loads of each; ranges show both.
 
 1. Seed a 900-turn session (a 5.9 MB transcript of bash calls) with 450
    subagent sessions and a watcher that logs every two seconds:
@@ -69,19 +70,26 @@ builds of `origin/main` and the branch, each on its own copy of one seeded state
    `/sessions/e2e-long-session` (until the first message paints) in a fresh
    browser profile.
 3. With the conversation open, count what its WebSocket receives for a minute
-   while the watcher logs.
+   while the watcher logs, and how busy the main thread is once it has loaded.
+4. In the conversation, *Show earlier messages* sits above the latest 50 rows
+   and the position rail still has a marker for every message
+   ([position-rail.browser.md](position-rail.browser.md)).
 
 | | `origin/main` | branch |
 | --- | --- | --- |
-| Session list (raw JSON) | 2,205,149 B | 258,256 B |
-| Home on 4G / slow, *Recent chats* shown | 2.5 s / 10.6 s | 1.4 s / 6.5 s |
-| Long conversation on 4G / slow, first message shown | 7.6 s / 40.5 s | 4.2 s / 19.3 s |
-| `POST …/open` answer (raw JSON) | 11,562,882 B (the transcript twice) | 5,896,343 B |
-| WebSocket in the first minute | 7 snapshots with the whole transcript, 41 MB of JSON, 16.3 MB on the wire | 7 snapshots without it, 1.6 MB of JSON, 0.97 MB on the wire |
-| Main thread busy while idle, 2× CPU throttling | 12.5 % | 5.1 % |
+| Session list (raw JSON) | 2,206,739 B | 261,654 B |
+| Home on 4G, *Recent chats* shown | 2.2–2.3 s, 3,340 KB transferred | 1.3–1.7 s, 795 KB transferred |
+| Home elements | 19,242 | 2,829–3,587 |
+| Long conversation on 4G / slow, first message shown | 8.7–9.6 s / 41.6–42.1 s | 2.8–3.0 s / 16.7–16.8 s |
+| Long tasks while it loads (longest) | 4.3–5.2 s (1.7–2.2 s) | 0.26–0.45 s (0.10–0.16 s) |
+| Its elements, JS heap | 141,435, 85 MB | 10,887, 18 MB |
+| `POST …/open` answer (raw JSON) | 11,562,882 B (the transcript twice) | 5,694,699 B |
+| WebSocket in the first minute | 7 snapshots with the whole transcript, 41 MB of JSON, 16.3 MB on the wire | 7 snapshots without it, 194 KB of JSON, 75 KB on the wire |
+| Main thread busy while idle | 5.8 % on average, 25 % at most | 0.2 %, 3 % |
 
-The conversation renders the same, the watcher's last line keeps updating,
-and after a gateway restart the page reconnects with the whole transcript.
+The latest rows look the same in both builds, the watcher's last line keeps
+updating, and after a gateway restart the page reconnects with the whole
+transcript.
 
 ## Limits
 
