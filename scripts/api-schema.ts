@@ -125,7 +125,7 @@ export function generateBrowserTypes(document: unknown): Record<string, string> 
   }));
 }
 
-const SWIFT_KEYWORDS = new Set(["Any", "as", "associatedtype", "await", "break", "case", "catch", "class", "continue", "default", "defer", "deinit", "do", "else", "enum", "extension", "fallthrough", "false", "fileprivate", "for", "func", "guard", "if", "import", "in", "init", "inout", "internal", "is", "let", "nil", "open", "operator", "precedencegroup", "private", "protocol", "public", "repeat", "rethrows", "return", "self", "Self", "static", "struct", "subscript", "super", "switch", "throw", "throws", "true", "try", "typealias", "var", "where", "while"]);
+const SWIFT_KEYWORDS = new Set(["Any", "Protocol", "Self", "Type", "as", "associatedtype", "await", "break", "case", "catch", "class", "continue", "default", "defer", "deinit", "do", "else", "enum", "extension", "fallthrough", "false", "fileprivate", "for", "func", "guard", "if", "import", "in", "init", "inout", "internal", "is", "let", "nil", "open", "operator", "precedencegroup", "private", "protocol", "public", "repeat", "rethrows", "return", "self", "Self", "static", "struct", "subscript", "super", "switch", "throw", "throws", "true", "try", "typealias", "var", "where", "while"]);
 const SWIFT_TAKEN_NAMES = ["Any", "Bool", "Codable", "CodingKey", "CodingKeys", "Data", "Date", "Decoder", "Discriminator", "Double", "Encoder", "Error", "Hashable", "Int", "JSONValue", "Protocol", "Result", "Self", "Sendable", "String", "Task", "Type", "URL", "UUID"];
 const SWIFT_AWKWARD_CASES = new Set(["Protocol", "Self", "Type", "init", "none", "self", "unrecognized"]);
 
@@ -292,6 +292,8 @@ export function generateSwiftTypes(document: unknown): Record<string, string> {
     const scope = new Scope();
     const required = list(schema["required"] ?? [], `${path}/required`);
     const keys = new Map<string, string>();
+    const writes: string[] = [];
+    let writesNull = false;
     const fields = Object.entries(object(schema["properties"], `${path}/properties`)).map(([key, child]) => {
       const at = `${path}/properties/${key}`;
       const field = /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) ? key : camel(key);
@@ -299,13 +301,19 @@ export function generateSwiftTypes(document: unknown): Record<string, string> {
       keys.set(field, key);
       const type = swiftType(child, at, pascal(key), scope);
       const property = node(child, at);
-      if (!required.includes(key) || unconstrained(property)) return `var ${escaped(field)}: ${type.endsWith("?") ? type : `${type}?`}`;
+      const optional = !required.includes(key) || unconstrained(property) || type.endsWith("?");
+      writesNull ||= optional && required.includes(key);
+      writes.push(`    try container.${optional && !required.includes(key) ? "encodeIfPresent" : "encode"}(${escaped(field)}, forKey: .${escaped(field)})`);
+      if (optional) return `var ${escaped(field)}: ${type.endsWith("?") ? type : `${type}?`}`;
       return "const" in property ? `var ${escaped(field)}: ${type} = ${swiftLiteral(literalValue(property["const"], `${at}/const`))}` : `var ${escaped(field)}: ${type}`;
     });
-    const codingKeys = [...keys].some(([field, key]) => field !== key)
+    const codingKeys = writesNull || [...keys].some(([field, key]) => field !== key)
       ? ["", "enum CodingKeys: String, CodingKey {", ...[...keys].map(([field, key]) => `    case ${escaped(field)}${field === key ? "" : ` = ${swiftLiteral(key)}`}`), "}"]
       : [];
-    return [`struct ${name}: Codable, Hashable, Sendable {`, ...indent([...fields, ...codingKeys]), ...scope.lines(), "}"];
+    const encode = writesNull
+      ? ["", "func encode(to encoder: any Encoder) throws {", "    var container = encoder.container(keyedBy: CodingKeys.self)", ...writes, "}"]
+      : [];
+    return [`struct ${name}: Codable, Hashable, Sendable {`, ...indent([...fields, ...codingKeys, ...encode]), ...scope.lines(), "}"];
   };
 
   const literalEnum = (name: string, values: Literal[], raw: string): string[] => {

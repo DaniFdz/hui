@@ -1,5 +1,5 @@
 /**
- * Builds what the iOS app bundles from this repository. `--core-only` builds the JavaScriptCore core: Vite bundles
+ * Builds what the iOS app bundles from this repository, for now the JavaScriptCore core: Vite bundles
  * `ios/core/entry.ts` into `ios/HUI/Resources/Generated/hui-core.js`, an IIFE that defines the global `HUICore`, and
  * writes `hui-core.sha256` beside it, a `shasum -a 256 -c` list (paths from the repository root) of the bundle and
  * every file it was built from, so the Xcode build can refuse a missing or stale bundle. Building the app with
@@ -35,6 +35,5 @@ export async function buildCore(outDir: string): Promise<void> {
 
 const entry = process.argv[1];
 if (import.meta.main ?? (entry !== undefined && import.meta.url === pathToFileURL(realpathSync(entry)).href)) {
-  if (!process.argv.includes("--core-only")) throw new Error("Only --core-only exists until the Xcode project lands.");
   await buildCore(join(root, "ios/HUI/Resources/Generated"));
 }

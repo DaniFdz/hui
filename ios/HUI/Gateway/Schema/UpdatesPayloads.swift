@@ -14,6 +14,23 @@ extension API {
         var canInstall: Bool
         var message: String
 
+        enum CodingKeys: String, CodingKey {
+            case currentVersion
+            case latest
+            case status
+            case canInstall
+            case message
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(currentVersion, forKey: .currentVersion)
+            try container.encode(latest, forKey: .latest)
+            try container.encode(status, forKey: .status)
+            try container.encode(canInstall, forKey: .canInstall)
+            try container.encode(message, forKey: .message)
+        }
+
         enum Status: RawRepresentable, Codable, Hashable, Sendable {
             case available
             case current
@@ -88,5 +105,18 @@ extension API {
         var currentVersion: String?
         var check: UpdateCheck?
         var job: UpdateJob?
+
+        enum CodingKeys: String, CodingKey {
+            case currentVersion
+            case check
+            case job
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(currentVersion, forKey: .currentVersion)
+            try container.encode(check, forKey: .check)
+            try container.encode(job, forKey: .job)
+        }
     }
 }

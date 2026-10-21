@@ -12,8 +12,9 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   bundle and calls every export in an empty `node:vm` context. A new export needs a call there, or the test fails.
 - `npm run ios:core` writes `HUI/Resources/Generated/hui-core.js`, which defines the global `HUICore`, and
   `hui-core.sha256`, a `shasum -a 256 -c` list of the bundle and every file it was built from. Git ignores both. The
-  Xcode build checks the list to refuse a missing or stale bundle; Xcode sandboxes build scripts, so that phase has
-  to declare the listed files as inputs or turn the sandbox off.
+  Xcode build checks the list to refuse a missing or stale bundle. User script sandboxing
+  (`ENABLE_USER_SCRIPT_SANDBOXING`) is a setting of the whole target, and the list changes between builds, so the
+  Xcode project either turns that setting off or reads the inputs from an `.xcfilelist` the build script writes.
 
 ## Payload types
 
@@ -26,10 +27,12 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   objects told apart by one literal property becomes an enum with a case per member, decoded by that property. Any
   other union, and any value the schema leaves open, is `JSONValue`.
 - A newer gateway keeps working: a value or union tag the app doesn't know decodes as `.unrecognized`, and encodes
-  back unchanged. A missing required property still fails the payload.
+  back unchanged. A missing required property that can't be null still fails the payload.
 - A required `const` property is a stored property with that value as its default, so callers never pass it.
-- Optional and nullable properties are both Swift optionals, and encoding leaves out `nil`, so a request can't send
-  an explicit `null` yet.
+- Optional and nullable properties are both Swift optionals. Encoding leaves out an optional property that is `nil`,
+  but writes `null` for a required one that can be null, so a request keeps every key the schema requires.
+- CI type-checks the generated Swift (`swiftc -typecheck -swift-version 6`), which catches names or recursive types
+  the emitter gets wrong.
 - A nested type that would hide a schema type or a common Swift name (`Data`, `Error`, `Task`, `Type`) gets a `Value`
   suffix, and so does an enum case Swift reserves (`init`, `self`) or would confuse with `Optional.none`.
 

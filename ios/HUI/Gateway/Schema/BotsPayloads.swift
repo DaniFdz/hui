@@ -590,6 +590,15 @@ extension API {
 
     struct BotSoul: Codable, Hashable, Sendable {
         var soul: String?
+
+        enum CodingKeys: String, CodingKey {
+            case soul
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(soul, forKey: .soul)
+        }
     }
 
     struct BotSoulRequest: Codable, Hashable, Sendable {

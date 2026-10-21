@@ -11,6 +11,15 @@ extension API {
 
     struct PowerResponse: Codable, Hashable, Sendable {
         var power: PowerStatus?
+
+        enum CodingKeys: String, CodingKey {
+            case power
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(power, forKey: .power)
+        }
     }
 
     struct PowerState: Codable, Hashable, Sendable {

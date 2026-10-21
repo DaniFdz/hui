@@ -206,6 +206,35 @@ extension API {
         var models: [ModelsItem]
         var unavailable: [String]
 
+        enum CodingKeys: String, CodingKey {
+            case sessions
+            case filesRead
+            case records
+            case inputTokens
+            case outputTokens
+            case cacheReadTokens
+            case cacheWriteTokens
+            case totalTokens
+            case costUsd
+            case models
+            case unavailable
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(sessions, forKey: .sessions)
+            try container.encode(filesRead, forKey: .filesRead)
+            try container.encode(records, forKey: .records)
+            try container.encode(inputTokens, forKey: .inputTokens)
+            try container.encode(outputTokens, forKey: .outputTokens)
+            try container.encode(cacheReadTokens, forKey: .cacheReadTokens)
+            try container.encode(cacheWriteTokens, forKey: .cacheWriteTokens)
+            try container.encode(totalTokens, forKey: .totalTokens)
+            try container.encode(costUsd, forKey: .costUsd)
+            try container.encode(models, forKey: .models)
+            try container.encode(unavailable, forKey: .unavailable)
+        }
+
         struct ModelsItem: Codable, Hashable, Sendable {
             var model: String
             var tokens: Double

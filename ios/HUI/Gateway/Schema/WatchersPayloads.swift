@@ -15,6 +15,39 @@ extension API {
         var endedAt: String?
         var lastLine: String
         var keepRunning: Bool?
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case purpose
+            case target
+            case outcome
+            case command
+            case logPath
+            case state
+            case pid
+            case exitCode
+            case startedAt
+            case endedAt
+            case lastLine
+            case keepRunning
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(purpose, forKey: .purpose)
+            try container.encode(target, forKey: .target)
+            try container.encode(outcome, forKey: .outcome)
+            try container.encode(command, forKey: .command)
+            try container.encode(logPath, forKey: .logPath)
+            try container.encode(state, forKey: .state)
+            try container.encode(pid, forKey: .pid)
+            try container.encodeIfPresent(exitCode, forKey: .exitCode)
+            try container.encode(startedAt, forKey: .startedAt)
+            try container.encodeIfPresent(endedAt, forKey: .endedAt)
+            try container.encode(lastLine, forKey: .lastLine)
+            try container.encodeIfPresent(keepRunning, forKey: .keepRunning)
+        }
     }
 
     struct WatcherError: Codable, Hashable, Sendable {

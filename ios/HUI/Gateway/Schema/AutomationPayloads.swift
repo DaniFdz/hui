@@ -237,6 +237,19 @@ extension API {
             var enabled: Bool = true
             var activeRuns: Double
             var nextWakeAt: String?
+
+            enum CodingKeys: String, CodingKey {
+                case enabled
+                case activeRuns
+                case nextWakeAt
+            }
+
+            func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(enabled, forKey: .enabled)
+                try container.encode(activeRuns, forKey: .activeRuns)
+                try container.encode(nextWakeAt, forKey: .nextWakeAt)
+            }
         }
     }
 
@@ -255,6 +268,41 @@ extension API {
         var createdBy: AutomationCreator?
         var until: String?
         var runsLeft: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case id
+            case name
+            case description
+            case sessionId
+            case prompt
+            case schedule
+            case enabled
+            case timeoutSeconds
+            case createdAt
+            case updatedAt
+            case nextRunAt
+            case createdBy
+            case until
+            case runsLeft
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(name, forKey: .name)
+            try container.encode(description, forKey: .description)
+            try container.encode(sessionId, forKey: .sessionId)
+            try container.encode(prompt, forKey: .prompt)
+            try container.encode(schedule, forKey: .schedule)
+            try container.encode(enabled, forKey: .enabled)
+            try container.encode(timeoutSeconds, forKey: .timeoutSeconds)
+            try container.encode(createdAt, forKey: .createdAt)
+            try container.encode(updatedAt, forKey: .updatedAt)
+            try container.encode(nextRunAt, forKey: .nextRunAt)
+            try container.encodeIfPresent(createdBy, forKey: .createdBy)
+            try container.encodeIfPresent(until, forKey: .until)
+            try container.encodeIfPresent(runsLeft, forKey: .runsLeft)
+        }
     }
 
     struct AutomationTaskInput: Codable, Hashable, Sendable {

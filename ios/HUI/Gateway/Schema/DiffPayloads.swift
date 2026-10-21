@@ -97,6 +97,15 @@ extension API {
 
     struct DiffFileChanges: Codable, Hashable, Sendable {
         var file: DiffFile?
+
+        enum CodingKeys: String, CodingKey {
+            case file
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(file, forKey: .file)
+        }
     }
 
     enum DiffFileStatus: RawRepresentable, Codable, Hashable, Sendable {

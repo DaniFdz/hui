@@ -44,6 +44,23 @@ extension API {
         var source: String
         var active: Bool
         var parameters: JSONValue?
+
+        enum CodingKeys: String, CodingKey {
+            case name
+            case description
+            case source
+            case active
+            case parameters
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(name, forKey: .name)
+            try container.encode(description, forKey: .description)
+            try container.encode(source, forKey: .source)
+            try container.encode(active, forKey: .active)
+            try container.encode(parameters, forKey: .parameters)
+        }
     }
 
     enum SessionTools: Codable, Hashable, Sendable {

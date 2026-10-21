@@ -185,6 +185,25 @@ extension API {
         var inputTokens: Double
         var outputTokens: Double
         var costUsd: Double?
+
+        enum CodingKeys: String, CodingKey {
+            case contextTokens
+            case contextWindow
+            case percent
+            case inputTokens
+            case outputTokens
+            case costUsd
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(contextTokens, forKey: .contextTokens)
+            try container.encode(contextWindow, forKey: .contextWindow)
+            try container.encode(percent, forKey: .percent)
+            try container.encode(inputTokens, forKey: .inputTokens)
+            try container.encode(outputTokens, forKey: .outputTokens)
+            try container.encode(costUsd, forKey: .costUsd)
+        }
     }
 
     struct SessionBtwRequest: Codable, Hashable, Sendable {
@@ -403,6 +422,15 @@ extension API {
 
     struct SessionModelResponse: Codable, Hashable, Sendable {
         var model: RuntimeModel?
+
+        enum CodingKeys: String, CodingKey {
+            case model
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(model, forKey: .model)
+        }
     }
 
     struct SessionModelsResponse: Codable, Hashable, Sendable {
@@ -577,6 +605,15 @@ extension API {
 
     struct SessionThinkingResponse: Codable, Hashable, Sendable {
         var level: String?
+
+        enum CodingKeys: String, CodingKey {
+            case level
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(level, forKey: .level)
+        }
     }
 
     struct SideQuestionResult: Codable, Hashable, Sendable {

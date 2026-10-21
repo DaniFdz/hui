@@ -147,6 +147,33 @@ extension API {
         var error: String
         var hint: String
 
+        enum CodingKeys: String, CodingKey {
+            case supported
+            case reason
+            case version
+            case arch
+            case size
+            case dir
+            case installed
+            case task
+            case error
+            case hint
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(supported, forKey: .supported)
+            try container.encode(reason, forKey: .reason)
+            try container.encode(version, forKey: .version)
+            try container.encode(arch, forKey: .arch)
+            try container.encode(size, forKey: .size)
+            try container.encode(dir, forKey: .dir)
+            try container.encode(installed, forKey: .installed)
+            try container.encode(task, forKey: .task)
+            try container.encode(error, forKey: .error)
+            try container.encode(hint, forKey: .hint)
+        }
+
         struct Installed: Codable, Hashable, Sendable {
             var version: String
             var path: String
@@ -206,6 +233,21 @@ extension API {
         var desktop: VscodeProvider?
         var install: Bool
         var download: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case needed
+            case desktop
+            case install
+            case download
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(needed, forKey: .needed)
+            try container.encode(desktop, forKey: .desktop)
+            try container.encode(install, forKey: .install)
+            try container.encode(download, forKey: .download)
+        }
     }
 
     enum VscodeState: RawRepresentable, Codable, Hashable, Sendable {
@@ -261,6 +303,55 @@ extension API {
         var connections: Double
         var idleMinutes: Double
         var dataDir: String
+
+        enum CodingKeys: String, CodingKey {
+            case platform
+            case enabled
+            case configuredExecutable
+            case preference
+            case providers
+            case problems
+            case active
+            case activeError
+            case setup
+            case license
+            case install
+            case state
+            case running
+            case preparing
+            case instance
+            case pid
+            case startedAt
+            case lastError
+            case connections
+            case idleMinutes
+            case dataDir
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(platform, forKey: .platform)
+            try container.encode(enabled, forKey: .enabled)
+            try container.encode(configuredExecutable, forKey: .configuredExecutable)
+            try container.encode(preference, forKey: .preference)
+            try container.encode(providers, forKey: .providers)
+            try container.encode(problems, forKey: .problems)
+            try container.encode(active, forKey: .active)
+            try container.encode(activeError, forKey: .activeError)
+            try container.encode(setup, forKey: .setup)
+            try container.encode(license, forKey: .license)
+            try container.encode(install, forKey: .install)
+            try container.encode(state, forKey: .state)
+            try container.encode(running, forKey: .running)
+            try container.encode(preparing, forKey: .preparing)
+            try container.encode(instance, forKey: .instance)
+            try container.encodeIfPresent(pid, forKey: .pid)
+            try container.encodeIfPresent(startedAt, forKey: .startedAt)
+            try container.encode(lastError, forKey: .lastError)
+            try container.encode(connections, forKey: .connections)
+            try container.encode(idleMinutes, forKey: .idleMinutes)
+            try container.encode(dataDir, forKey: .dataDir)
+        }
 
         struct License: Codable, Hashable, Sendable {
             var accepted: Bool

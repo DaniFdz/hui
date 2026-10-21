@@ -105,6 +105,37 @@ extension API {
         var lastError: String
         var tabs: [BrowserTabView]
 
+        enum CodingKeys: String, CodingKey {
+            case enabled
+            case headless
+            case executablePath
+            case executable
+            case executableError
+            case state
+            case mode
+            case version
+            case startedAt
+            case profileDir
+            case lastError
+            case tabs
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(enabled, forKey: .enabled)
+            try container.encode(headless, forKey: .headless)
+            try container.encode(executablePath, forKey: .executablePath)
+            try container.encode(executable, forKey: .executable)
+            try container.encode(executableError, forKey: .executableError)
+            try container.encode(state, forKey: .state)
+            try container.encodeIfPresent(mode, forKey: .mode)
+            try container.encodeIfPresent(version, forKey: .version)
+            try container.encodeIfPresent(startedAt, forKey: .startedAt)
+            try container.encode(profileDir, forKey: .profileDir)
+            try container.encode(lastError, forKey: .lastError)
+            try container.encode(tabs, forKey: .tabs)
+        }
+
         enum Mode: RawRepresentable, Codable, Hashable, Sendable {
             case headless
             case windowed
@@ -155,6 +186,17 @@ extension API {
     struct BrowserViewControl: Codable, Hashable, Sendable {
         var action: String = "select"
         var tabId: String?
+
+        enum CodingKeys: String, CodingKey {
+            case action
+            case tabId
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(action, forKey: .action)
+            try container.encode(tabId, forKey: .tabId)
+        }
     }
 
     enum BrowserViewMessage: Codable, Hashable, Sendable {
@@ -191,6 +233,27 @@ extension API {
             var current: String?
             var watching: String?
             var following: Bool
+
+            enum CodingKeys: String, CodingKey {
+                case type
+                case running
+                case mode
+                case tabs
+                case current
+                case watching
+                case following
+            }
+
+            func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(type, forKey: .type)
+                try container.encode(running, forKey: .running)
+                try container.encodeIfPresent(mode, forKey: .mode)
+                try container.encode(tabs, forKey: .tabs)
+                try container.encode(current, forKey: .current)
+                try container.encode(watching, forKey: .watching)
+                try container.encode(following, forKey: .following)
+            }
 
             enum Mode: RawRepresentable, Codable, Hashable, Sendable {
                 case headless
@@ -236,6 +299,25 @@ extension API {
         var current: String?
         var watching: String?
         var following: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case running
+            case mode
+            case tabs
+            case current
+            case watching
+            case following
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(running, forKey: .running)
+            try container.encodeIfPresent(mode, forKey: .mode)
+            try container.encode(tabs, forKey: .tabs)
+            try container.encode(current, forKey: .current)
+            try container.encode(watching, forKey: .watching)
+            try container.encode(following, forKey: .following)
+        }
 
         enum Mode: RawRepresentable, Codable, Hashable, Sendable {
             case headless

@@ -189,6 +189,15 @@ extension API {
 
         struct StopValue: Codable, Hashable, Sendable {
             var other: Other?
+
+            enum CodingKeys: String, CodingKey {
+                case other
+            }
+
+            func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(other, forKey: .other)
+            }
         }
 
         struct ItemsItem: Codable, Hashable, Sendable {
@@ -198,6 +207,15 @@ extension API {
 
         struct DataValue: Codable, Hashable, Sendable {
             var args: JSONValue?
+
+            enum CodingKeys: String, CodingKey {
+                case args
+            }
+
+            func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(args, forKey: .args)
+            }
         }
     }
 

@@ -44,6 +44,25 @@ extension API {
         var enabled: [String]
         var authenticated: [String]
         var catalog: [PiModelCatalogEntry]
+
+        enum CodingKeys: String, CodingKey {
+            case defaultProvider
+            case defaultModel
+            case thinking
+            case enabled
+            case authenticated
+            case catalog
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(defaultProvider, forKey: .defaultProvider)
+            try container.encode(defaultModel, forKey: .defaultModel)
+            try container.encode(thinking, forKey: .thinking)
+            try container.encode(enabled, forKey: .enabled)
+            try container.encode(authenticated, forKey: .authenticated)
+            try container.encode(catalog, forKey: .catalog)
+        }
     }
 
     struct PiModelCatalogEntry: Codable, Hashable, Sendable {
