@@ -1,7 +1,9 @@
 /**
  * Collects the gateway's user-facing surfaces as `kind:key` strings for the use-case catalogue: the tools agents and
- * bots get (bots' tool switches included), and the `/__hui/` routes, from the published schema plus the routes only `docs/api.md` documents (they
- * answer with files, pages or binary data). The browser's surfaces are in `surfaces-src.ts` (rule R12 in docs/map.md).
+ * bots get (bots' tool switches included), and the `/__hui/` routes, from the published schema plus the routes only
+ * `docs/api.md` documents (they answer with files, pages or binary data). A documented route ends in a path
+ * character, so trailing punctuation never becomes part of it. The browser's surfaces are in `surfaces-src.ts` (rule
+ * R12 in docs/map.md).
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -12,7 +14,6 @@ import { BOT_ALWAYS_ON, BOT_TOOLS, CODING_TOOLS } from "../../server/bots/durabl
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const read = (path: string) => readFile(join(root, path), "utf8");
 
-/** `METHOD /__hui/…` on one line, ending in a path character so trailing punctuation never becomes part of a route. */
 const DOCUMENTED_ROUTE = /\b((?:GET|POST|PUT|PATCH|DELETE|HEAD)(?:\|[A-Z]+)*) (\/__hui\/[A-Za-z0-9_:/.<>-]*[A-Za-z0-9_>])/gu;
 
 export async function gatewaySurfaces(): Promise<string[]> {

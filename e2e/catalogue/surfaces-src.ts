@@ -1,8 +1,8 @@
 /**
  * Collects the browser's user-facing surfaces as `kind:key` strings for the use-case catalogue: routed pages,
  * Settings pages, navigation kinds, Work views, HUI's slash commands, Work pane shortcuts, session menu mnemonics,
- * transcript row and item kinds and settings keys. The gateway's surfaces are in `surfaces-server.ts`, because no file may
- * import both `src/` and `server/` (rule R12 in docs/map.md).
+ * transcript row and item kinds and settings keys. The gateway's surfaces are in `surfaces-server.ts`, because no
+ * file may import both `src/` and `server/` (rule R12 in docs/map.md).
  */
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";

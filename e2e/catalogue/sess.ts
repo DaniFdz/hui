@@ -509,7 +509,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-multiplexing", "session-header-overflow"],
     web: "backlog",
-    ios: { excluded: "Divider arrow, Home and End keys are a keyboard path; dragging the divider is the visible equivalent.", decision: KEYBOARD },
+    ios: { excluded: "\"Below 1100px only the active pane is visible\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "SESS-053",

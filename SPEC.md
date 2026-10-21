@@ -2028,8 +2028,8 @@ the iOS app needs its own gesture for it.
 
 Some use cases exist because HUI runs in a browser tab: the boot screen while
 the page's code downloads and its failure, copying where the page has no
-Clipboard API, opening a session or VS Code in another tab or window, and
-resizing the window. Others exist only in the wide layout HUI shows from
+Clipboard API, opening a session or VS Code in another tab or window or the
+session's folder in the desktop VS Code app, and resizing the window. Others exist only in the wide layout HUI shows from
 1100px, such as collapsing the sidebar. The iPhone app ships its code, uses the
 system clipboard, has no tabs and is always narrow, so these are web-only use
 cases.

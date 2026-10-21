@@ -93,7 +93,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["work-pane"],
     web: "backlog",
-    ios: { excluded: "Below 1100px the pane is a full-screen destination", decision: "SPEC.md#behaviour" },
+    ios: { excluded: "\"Below 1100px the pane is a full-screen destination\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-010",
@@ -173,7 +173,7 @@ const cases: UseCase[] = [
     surfaces: ["shortcut:maximizePane"],
     journeys: ["work-pane"],
     web: "backlog",
-    ios: chord("Maximizing the Work pane with Ctrl+Alt+Shift+M"),
+    ios: { excluded: "\"Maximized is per conversation and desktop only\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
     id: "WORK-018",

@@ -212,7 +212,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "backlog",
-    ios: { excluded: "The edge's arrow, Home and End keys are a keyboard-only affordance; dragging is BOT-020.", decision: KEYBOARD_ONLY },
+    ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to resize.", decision: "SPEC.md#bots" },
   },
   {
     id: "BOT-022",
@@ -222,7 +222,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots"],
     web: "backlog",
-    ios: "backlog",
+    ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no Expand.", decision: "SPEC.md#bots" },
   },
   {
     id: "BOT-023",
@@ -232,7 +232,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["bots", "bot-setup"],
     web: "backlog",
-    ios: { excluded: "Escape is a keyboard-only affordance; the panel's Show the chat and Close buttons are BOT-022 and BOT-024.", decision: KEYBOARD_ONLY },
+    ios: { excluded: "Escape is a keyboard-only affordance; the sheet's Close button (BOT-024) is the visible equivalent.", decision: KEYBOARD_ONLY },
   },
   {
     id: "BOT-024",
