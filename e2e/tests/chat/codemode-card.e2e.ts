@@ -1,0 +1,70 @@
+/** A codemode script is one card: the tools it called, its calls filling in live, its output, a failure and a cut output (CHAT-027). */
+import { expect } from "e2e";
+import { test } from "../../fixtures/hui.ts";
+
+const codemode = (verb: "CALL" | "HOLD", code: string) =>
+  `E2E_${verb}:${Buffer.from(JSON.stringify({ name: "codemode", input: { code } })).toString("base64url")}`;
+
+test("a codemode script shows its calls live, then its tools, time, failures and output", { tags: ["CHAT-027"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const message = screen.getByLabel("Message");
+  const send = screen.getByRole("button", "Send message");
+  const transcript = screen.getByTestId("transcript");
+  const idle = screen.getByLabel("Session status: Idle");
+  const session = await hui.createSession({ title: "Codemode" });
+  await hui.open(`/sessions/${session.id}`);
+  await expect(idle).toBeVisible();
+
+  await message.fill(codemode("HOLD", [
+    'await tools.read({ path: "fixture.txt" });',
+    'await tools.read({ path: "fixture.txt" });',
+    'await tools.read({ path: "missing.txt" }).catch(() => "");',
+    'await tools.fixture_echo({ text: "held" });',
+    'await tools.bash({ command: "echo script-bash" });',
+    'return "script output";',
+  ].join("\n")));
+  await send.tap();
+  await hui.provider.held();
+  await transcript.getByText("codemode…").tap();
+  await transcript.getByRole("button", /^codemode read ×3, fixture_echo…/u).tap();
+  await expect(transcript.getByText("Running · 4 calls, 1 failed so far")).toBeVisible();
+  await expect(transcript.getByLabel("Running")).toBeVisible();
+  await hui.provider.release();
+  await expect(idle).toBeVisible();
+
+  await expect(transcript.getByText(/^Completed in [\d.]+s · 5 calls, 1 failed$/u)).toBeVisible();
+  await expect(transcript.getByRole("button", /^codemode read ×3, fixture_echo, bash 1 failed [\d.]+s$/u)).toBeVisible();
+  await expect(transcript.getByLabel("Script")).toBeVisible();
+  await expect(transcript.getByText("Calls · 5")).toBeVisible();
+  await expect(transcript.getByLabel("Done")).toHaveCount(4);
+  await expect(transcript.getByLabel("Failed")).toBeVisible();
+  await expect(transcript.getByLabel("Calls").getByText(/^(\d+ms|[\d.]+s)$/u)).toHaveCount(5);
+  await expect(transcript.getByText(/^ENOENT: no such file or directory, open '.+missing\.txt'$/u)).toBeVisible();
+  const args = ['{"path":"fixture.txt"}', '{"path":"missing.txt"}', '{"text":"held"}', '{"command":"echo script-bash"}'].map((text) => transcript.getByText(text));
+  await expect(args[0]!).toHaveCount(2);
+  const tops: number[] = [];
+  for (const row of [args[0]!.first(), args[0]!.last(), ...args.slice(1)]) tops.push((await row.boundingBox())!.y);
+  expect(tops).toEqual([...tops].sort((a, b) => a - b));
+  await expect(transcript.getByLabel("Output").getByText("script output")).toBeVisible();
+  await expect(transcript.getByRole("button", "Read fixture.txt")).toBeHidden();
+
+  await message.fill(codemode("CALL", 'throw new Error("script broke");'));
+  await send.tap();
+  await expect(transcript.getByText(/^tool answered: /u).last()).toBeVisible();
+  await expect(idle).toBeVisible();
+  await transcript.getByText("Ran 1 command").last().tap();
+  await transcript.getByRole("button", /^codemode no tool calls failed/u).tap();
+  await expect(transcript.getByLabel("Output").last().getByText("Script error: Error: script broke", { exact: false })).toBeVisible();
+});
+
+test("a codemode output PI cut links its full output", { tags: ["CHAT-027"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const transcript = screen.getByTestId("transcript");
+  const session = await hui.createSession({ title: "Codemode full output" });
+  await hui.open(`/sessions/${session.id}`);
+  await screen.getByLabel("Message").fill(codemode("CALL", 'return "x".repeat(50000);'));
+  await screen.getByRole("button", "Send message").tap();
+  await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await transcript.getByText("Ran 1 command").tap();
+  await transcript.getByRole("button", /^codemode no tool calls/u).tap();
+  await expect(transcript.getByText("Full output:")).toBeVisible();
+});

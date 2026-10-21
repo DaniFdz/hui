@@ -1,9 +1,9 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
- * its answer, and the steps whose gesture differs per platform, such as holding a control, attaching files from
- * `files/`, reading what a download saved or what the page copied and opening a session's menu. Test files import
- * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
+ * attaching files from `files/`, reading what a download saved or what the page copied and opening a session's menu.
+ * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -41,6 +41,7 @@ export type Hui = {
   attach(target: Locator, files: string[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
+  contextMenu(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
 };
 
@@ -166,6 +167,7 @@ export const test = base.extend<{ hui: Hui }>({
         await expect(until).toBeVisible();
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
+      contextMenu: (target) => target.secondaryTap(),
       intercept: async (method, path) => {
         let arrive: () => void = () => undefined;
         let decide: (handle: (route: WebRoute) => Promise<void>) => void = () => undefined;

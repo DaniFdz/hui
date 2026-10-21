@@ -252,19 +252,21 @@ const server = createServer(async (request, response) => {
   }
 
   // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
-  // response, and the next answer quotes every result.
+  // response, and the next answer quotes every result. E2E_HOLD:<the same> does too, and a `fixture_echo` call among
+  // them runs until POST /control/release-replay.
   // E2E_ASK_USER:<name> does the same with ask_user_question and the workspace's `ask-<name>.json`: its input, or an
   // array of inputs for parallel calls.
-  const chosen = /E2E_CALL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
+  const chosen = /E2E_(CALL|HOLD):([A-Za-z0-9_-]+)/u.exec(source);
   const asked = /E2E_ASK_USER:([a-z0-9-]+)/u.exec(source)?.[1];
   if (chosen || asked) {
     const calls = asked
       ? [JSON.parse(await readFile(`${workspace}/ask-${asked}.json`, "utf8"))].flat().map((input) => ({ name: "ask_user_question", input }))
-      : [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
-    calls.forEach((call, index) => toolUse(response, `tool-e2e-call-${index}`, call.name, call.input ?? {}, index));
+      : [JSON.parse(Buffer.from(chosen[2], "base64url").toString("utf8"))].flat();
+    const id = chosen?.[1] === "HOLD" ? "tool-e2e-hold" : "tool-e2e-call";
+    calls.forEach((call, index) => toolUse(response, `${id}-${index}`, call.name, call.input ?? {}, index));
     return finish(response, "tool_use");
   }
-  if (String(latestToolResult?.id ?? "").startsWith("tool-e2e-call-")) {
+  if (/^tool-e2e-(call|hold)-/u.test(String(latestToolResult?.id ?? ""))) {
     text(response, `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
     return finish(response);
   }
@@ -770,6 +772,14 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Abort prefix" } });
     request.on("close", () => response.end());
     return;
+  }
+  if (source.includes("E2E_THINKING")) {
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Weighing the fixture." } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "e2e-signature" } });
+    event(response, { type: "content_block_stop", index: 0 });
+    text(response, "Thought it through.", 1);
+    return finish(response);
   }
   if (source.includes("E2E_REPLAY")) {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: null } });

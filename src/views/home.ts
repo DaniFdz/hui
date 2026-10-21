@@ -1406,11 +1406,12 @@ function renderLiveCompaction(compaction: RuntimeCompaction | undefined, onCance
 
 function renderWorkingIndicator(props: HomeProps) {
   if (!props.streaming || props.question || compactionBlocks(props.compaction)) return nothing;
+  const label = workingLabel(props.transcript);
   return html`<div class="chat-group assistant chat-group--working" aria-live="polite">
     <div class="chat-group-messages">
-      <div class="chat-working-indicator" role="status">
+      <div class="chat-working-indicator" role="status" aria-label=${`Agent activity: ${label}`}>
         <span class="chat-working-indicator__mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="chat-working-indicator__label">${workingLabel(props.transcript)}</span>
+        <span class="chat-working-indicator__label">${label}</span>
       </div>
     </div>
   </div>`;
