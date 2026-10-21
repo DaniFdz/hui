@@ -219,7 +219,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisession-groups"],
     surfaces: ["route:POST /__hui/session-groups"],
     journeys: ["session-groups", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -229,7 +229,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#patch-__huisession-groupsname"],
     surfaces: ["route:PATCH /__hui/session-groups/:name"],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -239,7 +239,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#delete-__huisession-groupsname"],
     surfaces: ["route:DELETE /__hui/session-groups/:name"],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -248,7 +248,7 @@ const cases: UseCase[] = [
     behaviour: "Dragging a group header above or below another, or Move group up and Move group down in its menu, reorders custom groups and reports \"Moved <GROUP>.\"; the order survives a reload. OTHER always stays last and cannot be dragged. A failed reorder shows an error and the previous order.",
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisession-groups"],
     surfaces: ["route:PUT /__hui/session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -258,7 +258,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -683,6 +683,15 @@ const cases: UseCase[] = [
     behaviour: "With Group by Project, dropping a session row on a project group changes nothing: project groups follow the session's directory, so only custom groups accept a drop.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
+    id: "SESS-071",
+    title: "Search sessions by pull request or Jira key",
+    behaviour: "The Search sessions field also matches a session's linked pull requests (repository#number and title) and Jira work items (key and summary).",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
     web: "backlog",
     ios: "backlog",
   },
