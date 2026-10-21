@@ -4,7 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 const MIAMI_DARK = [20, 15, 30];
 
-test("a theme card recolours the app at once, stays chosen after a reload, and a theme that fails to load changes nothing", { tags: ["SET-005"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a theme card recolours the app at once in dark and light mode, stays chosen after a reload, and a theme that fails to load changes nothing", { tags: ["SET-005"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = (name: string, pressed = true) => screen.getByRole("button", { name, pressed });
   const title = screen.getByTestId("settings-page-title");
   const pages = screen.getByLabel("Settings pages");
@@ -24,6 +24,9 @@ test("a theme card recolours the app at once, stays chosen after a reload, and a
   await expect.poll(async () => (await hui.look(title)).background).toEqual(MIAMI_DARK);
   expect((await hui.look(pages)).color).not.toEqual(claw.color);
   await expect.poll(async () => (await hui.api<{ theme: string }>("GET", "/__hui/settings")).theme).toBe("miami");
+  await hui.deviceAppearance("light");
+  await expect.poll(async () => (await hui.look(title)).background).toEqual([247, 243, 246]);
+  await hui.deviceAppearance("dark");
 
   await hui.reload();
   await expect(card("Miami")).toBeVisible();
