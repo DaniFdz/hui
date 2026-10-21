@@ -45,7 +45,7 @@ test("Message width narrows or widens the conversation and the composer in every
 });
 
 test("Collapse task progress starts an agent's progress card collapsed but expandable, and off it starts expanded", { tags: ["SET-013"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const toggle = screen.getByRole("switch", "Collapse task progress");
+  const collapse = screen.getByRole("switch", "Collapse task progress");
   const card = screen.getByTestId("task-progress");
   const steps = card.getByLabel("Task progress");
   const progress = async (title: string) => {
@@ -56,8 +56,8 @@ test("Collapse task progress starts an agent's progress card collapsed but expan
   };
 
   await hui.open("/settings/appearance");
-  await toggle.press("Space");
-  await expect(toggle).toBeChecked();
+  await hui.flip(collapse);
+  await expect(collapse).toBeChecked();
   await progress("Collapsed progress");
   await expect(card.getByText("1/2", { visible: true })).toBeVisible();
   await expect(steps).toBeHidden();
@@ -66,8 +66,8 @@ test("Collapse task progress starts an agent's progress card collapsed but expan
   await expect(card.getByText("1 of 2", { visible: true })).toBeVisible();
 
   await hui.open("/settings/appearance");
-  await toggle.press("Space");
-  await expect(toggle).toBeChecked({ checked: false });
+  await hui.flip(collapse);
+  await expect(collapse).toBeChecked({ checked: false });
   await progress("Expanded progress");
   await expect(steps.getByText("Read fixture")).toBeVisible();
   await expect(card.getByText("1 of 2", { visible: true })).toBeVisible();

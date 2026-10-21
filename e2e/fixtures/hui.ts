@@ -2,10 +2,11 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
  * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
- * attaching files from `files/`, reading what a download saved or what the page copied, opening a session's menu and
- * reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its font families, those of
- * HUI's bundled faces that have loaded to draw its text, its text size in pixels and the colour of the focus ring it
- * shows when reached from the keyboard). Test files import `test` from here, never from `e2e`, and never read
+ * turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
+ * input), attaching files from `files/`, reading what a download saved or what the page copied, opening a session's
+ * menu and reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its font families,
+ * those of HUI's bundled faces that have loaded to draw its text, its text size in pixels and the colour of the focus
+ * ring it shows when reached from the keyboard). Test files import `test` from here, never from `e2e`, and never read
  * `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
@@ -47,6 +48,7 @@ export type Hui = {
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
+  flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
 };
 
@@ -210,6 +212,11 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      flip: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("flip: the switch is not on screen");
+        await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
+      },
       intercept: async (method, path) => {
         let arrive: () => void = () => undefined;
         let decide: (handle: (route: WebRoute) => Promise<void>) => void = () => undefined;
