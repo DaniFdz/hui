@@ -2,8 +2,8 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
  * its answer, and the steps whose gesture differs per platform, such as holding a control, attaching files from
- * `files/` and reading what a download saved. Test files import `test` from here, never from `e2e`, and never read
- * `platform`, `device` or `browser` themselves.
+ * `files/`, reading what a download saved or what the page copied, opening a session's menu and failing a request.
+ * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
