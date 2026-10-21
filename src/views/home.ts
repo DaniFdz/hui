@@ -2478,9 +2478,9 @@ function renderHeader(props: HomeProps, session: SessionView) {
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
           ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
-          ${session.tool === "durable" ? nothing : html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
+          ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
             <span class="session-history-action__icon">${continueIcon}</span><span class="session-history-action__label">${props.continuing ? "Continuing…" : "Continue"}</span>
-          </button>`}
+          </button>` : nothing}
           ${props.onSplitPane ? props.onClosePane ? html`
             <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-pane__split-down" aria-label="Split down" title="Split down" @click=${() => props.onSplitPane?.("down")}>${icons.panelBottomOpen}</button>
             <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-pane__split-right" aria-label="Split right" title="Split right" @click=${() => props.onSplitPane?.("right")}>${icons.panelRightOpen}</button>
