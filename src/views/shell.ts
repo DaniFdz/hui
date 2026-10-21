@@ -19,7 +19,7 @@ import { navigationPath } from "../lib/navigation.ts";
 import { writeSessionDrag } from "../lib/session/pane-layout.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
-import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../lib/jira.ts";
+import { primaryJiraIssue } from "../lib/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
 import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import { sessionAccessibleName } from "../lib/session/labels.ts";
@@ -425,7 +425,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
         draggable="false"
         data-status=${session.status}
         aria-current=${selected ? "true" : "false"}
-        aria-label=${`${sessionAccessibleName(session)}${hasDraft ? ", draft" : ""}${splitOpen ? ", open in split pane" : ""}${session.jiraIssues?.length ? `, ${jiraIssueAccessibleLabel(session.jiraIssues.at(-1)!, session.jiraIssues.length)}` : ""}`}
+        aria-label=${sessionAccessibleName(session, [...(hasDraft ? ["draft"] : []), ...(splitOpen ? ["open in split pane"] : [])])}
         @click=${(event: MouseEvent) => {
           if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
           event.preventDefault();

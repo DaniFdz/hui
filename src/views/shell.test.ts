@@ -159,6 +159,10 @@ test("session accessible names expose live status, tool and pinned state", () =>
     sessionAccessibleName({ ...base, status: "idle", background: true }),
     "Fix navigation, status idle, watcher or subagent running, tool pi",
   );
+  assert.equal(
+    sessionAccessibleName({ ...base, jiraIssues: [{ key: "CI-1", url: "https://x/CI-1", status: "To Do" }, { key: "CI-2", url: "https://x/CI-2", status: "In Progress", summary: "Fix flake" }] }, ["draft"]),
+    "Fix navigation, status running, tool pi, draft, Jira CI-2, in progress: Fix flake, 1 more linked",
+  );
 });
 
 test("session move targets always include OTHER once and preserve stored group labels", () => {

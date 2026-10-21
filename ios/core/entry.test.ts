@@ -27,9 +27,12 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     decodeSseFrame: () => assert.deepEqual(json(core.decodeSseFrame('event: status\ndata: {"id":"a"}')), { name: "status", payload: { id: "a" } }),
     reconnectDelay: () => assert.equal(core.reconnectDelay(1, () => 0), 250),
     sessionAccessibleName: () => assert.equal(core.sessionAccessibleName(session), "Build, status idle, tool pi, stage testing"),
+    sessionStatusLabel: () => assert.equal(core.sessionStatusLabel({ status: "reconnecting", worker: { id: "w", name: "devbox" } }), "Reconnecting to devbox…"),
     sessionStatusText: () => assert.equal(core.sessionStatusText("waiting"), "Waiting for your answer"),
     sessionGroupLabel: () => assert.equal(core.sessionGroupLabel("ungrouped"), "OTHER"),
     DEFAULT_SIDEBAR_SESSION_OPTIONS: () => assert.equal(core.DEFAULT_SIDEBAR_SESSION_OPTIONS.groupBy, "custom"),
+    sessionTreeRows: () => assert.deepEqual(
+      json(core.sessionTreeRows([session, { ...session, id: "b", parentId: "a" }], { selectedId: "", toggled: new Set() }).map((row) => [row.session.id, row.collapsed])), [["a", true]]),
     sidebarSessionGroups: () => assert.deepEqual(
       core.sidebarSessionGroups([{ label: "ungrouped", sessions: [session] }], "", core.DEFAULT_SIDEBAR_SESSION_OPTIONS).map((group) => group.key), ["ungrouped"]),
   };
