@@ -49,7 +49,6 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "markdown-tables": { kind: "automate" },
   "media-viewer": { kind: "automate" },
   "message-metadata": { kind: "automate" },
-  "miami-theme": { kind: "automate" },
   "model-routing": { kind: "automate" },
   "openclaw-primary-ui-parity": { kind: "visual", reason: "Compares looks against the OpenClaw reference, not behaviour." },
   "package": { kind: "packaging", reason: "Covered by npm run test:package." },

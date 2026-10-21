@@ -166,7 +166,9 @@ short-landscape scrolling checks are recorded in the
   [typography.e2e.ts](../e2e/tests/set/typography.e2e.ts).
 - Done: the native Miami palette from OpenClaw 2026.9.5, including light/dark
   variants, system-mode switching, saved selection and accent overrides.
-  Desktop/mobile and keyboard proof: [Miami Browser report](../e2e/miami-theme.browser.md).
+  Proof: the shared tests in [theme.e2e.ts](../e2e/tests/set/theme.e2e.ts),
+  [color-mode.e2e.ts](../e2e/tests/set/color-mode.e2e.ts) and
+  [accent.e2e.ts](../e2e/tests/set/accent.e2e.ts).
 - Done: message width, task-progress collapse and Enter shortcut persist through
   HUI settings and drive the real chat UI.
 - Next: portable Sidebar/session-source preferences, then PI-backed model

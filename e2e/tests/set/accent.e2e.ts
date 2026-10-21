@@ -1,4 +1,4 @@
-/** An accent recolours highlights over any theme and Current accent names it; Theme default restores the theme's own, and a colour too faint for the mode is moved until it reads (SET-007). */
+/** An accent recolours highlights and the keyboard focus ring over any theme and Current accent names it; Theme default restores the theme's own, and a colour too faint for the mode is moved until it reads (SET-007, SET-076). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -72,4 +72,30 @@ test("an accent too faint for a light page is darkened just until it reads, and 
   expect(contrast(color, background)).toBeLessThan(5.5);
   const [r, g, b] = color;
   expect(r > g && g > b).toBe(true);
+});
+
+test("a control reached from the keyboard draws its focus ring in the accent over any theme, and in the theme's own after Theme default", { tags: ["SET-076"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const accents = screen.getByLabel("Accent color");
+  const rings = async () => {
+    await accents.getByRole("button", "Blue").press("Tab");
+    const swatch = (await hui.look(accents.getByRole("button", "Violet"))).ring;
+    await screen.getByLabel("Search settings").press("Tab");
+    return [swatch, (await hui.look(screen.getByTestId("settings-page-link").filter({ hasText: "Appearance" }))).ring];
+  };
+  const blue = [91, 156, 246];
+
+  await hui.deviceAppearance("dark");
+  await hui.open("/settings/appearance");
+  await accents.getByRole("button", "Blue").tap();
+  await expect(accents.getByRole("button", { name: "Blue", pressed: true })).toBeVisible();
+  await expect.poll(rings).toEqual([blue, blue]);
+
+  await screen.getByRole("button", "Miami").tap();
+  await expect(screen.getByRole("button", { name: "Miami", pressed: true })).toBeVisible();
+  await expect.poll(async () => (await hui.look(screen.getByTestId("settings-page-title"))).background).toEqual([20, 15, 30]);
+  expect(await rings()).toEqual([blue, blue]);
+
+  await accents.getByRole("button", "Theme default").tap();
+  await expect(accents.getByRole("button", { name: "Theme default", pressed: true })).toBeVisible();
+  await expect.poll(rings).toEqual([[244, 114, 182], [244, 114, 182]]);
 });
