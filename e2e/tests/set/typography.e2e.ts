@@ -6,6 +6,7 @@ const FACES = /^\s*Instrument Sans.*Geist.*DM Sans.*IBM Plex Sans.*Space Grotesk
 
 test("the interface font restyles navigation, settings and controls, the chat prose font the conversation, code stays monospace, and both persist", { tags: ["SET-009"], platforms: ["web"] }, async ({ screen, hui }) => {
   const face = async (target: Locator) => (await hui.look(target)).fonts[0];
+  const loaded = async (target: Locator) => (await hui.look(target)).loaded;
   const caption = screen.getByText("HUI · A little clarity goes a long way");
   const prose = screen.getByText("Good typography makes room for the conversation. Choose a face that feels comfortable to read.");
   const transcript = screen.getByTestId("transcript");
@@ -22,6 +23,8 @@ test("the interface font restyles navigation, settings and controls, the chat pr
   }
   await expect.poll(() => face(caption)).toBe("Geist");
   expect(await face(prose)).toBe("Lora");
+  await expect.poll(() => loaded(caption)).toContain("Geist");
+  await expect.poll(() => loaded(prose)).toContain("Lora");
   expect(await face(screen.getByText("Message width", { exact: true }))).toBe("Geist");
   expect(await face(screen.getByLabel("Settings pages").getByText("Gateway"))).toBe("Geist");
   await expect.poll(async () => (await hui.api<{ fontUi: string; fontChat: string }>("GET", "/__hui/settings")).fontChat).toBe("lora");
@@ -37,6 +40,7 @@ test("the interface font restyles navigation, settings and controls, the chat pr
   await hui.reload();
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
   expect(await face(transcript.getByText("Final paragraph."))).toBe("Lora");
+  await expect.poll(() => loaded(transcript.getByText("Final paragraph."))).toContain("Lora");
   expect(await face(screen.getByLabel("Message"))).toBe("Geist");
   await hui.open("/settings/appearance");
   await expect(screen.getByRole("button", "Interface font: Geist")).toBeVisible();
@@ -46,7 +50,8 @@ test("the interface font restyles navigation, settings and controls, the chat pr
 });
 
 test("the terminal font lists monospace and Nerd Fonts, takes a typed local family over the bundled symbols, persists, and falls back to JetBrains Mono", { tags: ["SET-010"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const families = async () => (await hui.look(screen.getByLabel("Terminal font preview"))).fonts;
+  const preview = screen.getByLabel("Terminal font preview");
+  const families = async () => (await hui.look(preview)).fonts;
   const stack = (first: string) => [first, "HUI Nerd Font Symbols", "JetBrains Mono", "ui-monospace", "monospace"];
   const fonts = screen.getByLabel("Terminal font");
 
@@ -66,6 +71,7 @@ test("the terminal font lists monospace and Nerd Fonts, takes a typed local fami
   await hui.reload();
   await expect(screen.getByRole("button", "Terminal font: DejaVu Sans Mono")).toBeVisible();
   expect(await families()).toEqual(stack("DejaVu Sans Mono"));
+  await expect.poll(async () => (await hui.look(preview)).loaded).toContain("HUI Nerd Font Symbols");
 
   for (const typed of ["   ", "Mono; color: red"]) {
     await hui.api("PUT", "/__hui/settings", { ...(await hui.api<Record<string, unknown>>("GET", "/__hui/settings")), fontTerminal: typed });

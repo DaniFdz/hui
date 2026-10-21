@@ -3,9 +3,9 @@
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
  * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
  * attaching files from `files/`, reading what a download saved or what the page copied, opening a session's menu and
- * reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its font families and its
- * text size in pixels). Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or
- * `browser` themselves.
+ * reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its font families, those of
+ * HUI's bundled faces that have loaded to draw its text, and its text size in pixels). Test files import `test` from
+ * here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -39,7 +39,7 @@ export type Hui = {
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
-  look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; size: number }>;
+  look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; loaded: string[]; size: number }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: string[]): Promise<void>;
@@ -160,10 +160,14 @@ export const test = base.extend<{ hui: Hui }>({
           while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
           if (!behind) throw new Error("look: nothing opaque is behind the target");
           const style = getComputedStyle(element);
+          const fonts = style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1"));
+          const faces = [...document.fonts];
           return {
             color: rgb(style.color),
             background: rgb(getComputedStyle(behind).backgroundColor),
-            fonts: style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1")),
+            fonts,
+            loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
+              && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
             size: Number.parseFloat(style.fontSize),
           };
         }, box);
