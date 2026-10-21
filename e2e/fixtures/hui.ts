@@ -1,9 +1,9 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
- * its answer, and the steps whose gesture differs per platform, such as holding a control, attaching files from
- * `files/`, reading what a download saved or what the page copied and opening a session's menu. Test files import
- * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
+ * attaching files from `files/`, reading what a download saved or what the page copied and opening a session's menu.
+ * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -41,6 +41,7 @@ export type Hui = {
   attach(target: Locator, files: string[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
+  contextMenu(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
 };
 
@@ -49,6 +50,12 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
   const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y };
   target?.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "touch", isPrimary: true }));
   if (type === "pointerup") target?.dispatchEvent(new MouseEvent("click", init));
+  return null;
+};
+
+const openContextMenu = ({ x, y }: { x: number; y: number }) => {
+  const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 2 };
+  document.elementFromPoint(x, y)?.dispatchEvent(new MouseEvent("contextmenu", init));
   return null;
 };
 
@@ -165,6 +172,11 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerdown" });
         await expect(until).toBeVisible();
         await browser().evaluate(touch, { ...point, type: "pointerup" });
+      },
+      contextMenu: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("contextMenu: the target is not on screen");
+        await browser().evaluate(openContextMenu, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
       },
       intercept: async (method, path) => {
         let arrive: () => void = () => undefined;
