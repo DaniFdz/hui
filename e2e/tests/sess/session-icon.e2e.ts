@@ -36,21 +36,21 @@ test("Icon sets a preset, a custom emoji or no icon, and the icon survives a rel
   await expect(row.getByText("🐧")).toBeVisible();
 });
 
-test("the Icon panel's custom emoji entry stays inside a phone screen", { tags: ["SESS-033"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the Icon panel's grid and custom emoji entry stay inside a phone screen", { tags: ["SESS-033"], platforms: ["web"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Phone icon" });
   const phone = await hui.phoneScreen();
+  const inside = async (control: ReturnType<typeof screen.getByLabel>) => {
+    await expect(control).toBeVisible();
+    await expect.poll(async () => {
+      const box = await control.boundingBox();
+      return box !== null && box.x >= 0 && box.y >= 0 && box.x + box.width <= phone.width && box.y + box.height <= phone.height;
+    }).toBe(true);
+  };
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open navigation").tap();
   await hui.sessionMenu("Phone icon");
   await screen.getByText("Icon", { exact: true, visible: true }).tap();
+  for (const control of [screen.getByRole("button", "Set icon 🦞"), screen.getByRole("button", "Set icon 🎯"), screen.getByRole("button", "No icon"), screen.getByRole("button", "Custom emoji…")]) await inside(control);
   await screen.getByRole("button", "Custom emoji…").tap();
-  for (const control of [screen.getByLabel("Custom emoji", { visible: true }), screen.getByRole("button", "Set"), screen.getByRole("button", "Back")]) {
-    await expect(control).toBeVisible();
-    const box = await control.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.x).toBeGreaterThanOrEqual(0);
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.x + box!.width).toBeLessThanOrEqual(phone.width);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(phone.height);
-  }
+  for (const control of [screen.getByLabel("Custom emoji", { visible: true }), screen.getByRole("button", "Set"), screen.getByRole("button", "Back")]) await inside(control);
 });

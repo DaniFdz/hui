@@ -18,7 +18,7 @@ test("Copy puts the session link, the session ID and the open conversation on th
 
   await copy("Session link");
   await expect(screen.getByText("Session link copied.")).toBeVisible();
-  await expect.poll(() => hui.copied()).toMatch(new RegExp(`^http://127\\.0\\.0\\.1:\\d+/sessions/${session.id}$`, "u"));
+  await expect.poll(() => hui.copied()).toBe(new URL(`/sessions/${session.id}`, await hui.url()).href);
   await copy("Session ID");
   await expect(screen.getByText("Session ID copied.")).toBeVisible();
   await expect.poll(() => hui.copied()).toBe(session.id);

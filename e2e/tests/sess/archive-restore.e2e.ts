@@ -49,6 +49,7 @@ test("archiving a session closes its split pane and leaves the open conversation
   await hui.sessionMenu("Split parent");
   await screen.getByText("Archive session", { visible: true }).tap();
   await expect(screen.getByText("Archived “Split parent”.")).toBeVisible();
+  await expect(screen.getByTestId("session-title", { visible: true })).toHaveCount(1);
   await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Main conversation");
   await expect.poll(() => hui.url()).toMatch(new RegExp(`/sessions/${other.id}$`, "u"));
   await expect(screen.getByLabel(row("Split parent"))).toBeHidden();
@@ -60,6 +61,7 @@ test("the archive toast expires untouched, and a failed restore keeps its error 
   await hui.open("/");
   await hui.sessionMenu("Fragile restore");
   await screen.getByText("Archive session", { visible: true }).tap();
+  await expect(screen.getByText("Archived “Fragile restore”.")).toBeVisible();
   await hui.failNextRequest("PATCH", `/__hui/sessions/${session.id}`, "The registry is read-only right now.");
   await restore.tap();
   await expect(screen.getByText("The registry is read-only right now.")).toBeVisible();
@@ -100,6 +102,8 @@ test("Sessions, Archived restores a tree that stays restored, and a message to a
 
   await hui.api("PATCH", `/__hui/sessions/${parent.id}`, { archived: true });
   await hui.open(`/sessions/${parent.id}`);
+  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Archived plan");
+  await expect(screen.getByLabel(row("Archived plan"))).toBeHidden();
   await screen.getByLabel("Message", { visible: true }).fill("Wake up");
   await screen.getByRole("button", "Send message").tap();
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();

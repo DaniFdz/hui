@@ -334,7 +334,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-035",
     title: "Undo an archive from its toast",
-    behaviour: "The archive toast's Restore brings the whole tree back to the sidebar and reports \"Session restored.\" The toast expires after 15 seconds untouched. If restoring fails, the toast keeps the error and an enabled Restore to retry.",
+    behaviour: "The archive toast's Restore brings the whole tree back to the sidebar and reports \"Session restored.\" Left untouched, the toast goes away on its own. If restoring fails, the toast keeps the error and an enabled Restore to retry.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-shortcuts"],
@@ -621,9 +621,9 @@ const cases: UseCase[] = [
   {
     id: "SESS-064",
     title: "Keep the archive toast while reading it",
-    behaviour: "While the pointer is over the archive toast or focus is inside it, the toast stays past its 15 seconds; leaving it starts the countdown again.",
+    behaviour: "Left untouched, the archive toast stays for 15 seconds. While the pointer is over it or focus is inside it, it stays longer; leaving it starts the countdown again.",
     spec: ["SPEC.md#behaviour"],
-    surfaces: ["route:PATCH /__hui/sessions/:id"],
+    surfaces: [],
     journeys: ["session-menu-shortcuts"],
     web: "backlog",
     ios: "backlog",
@@ -641,7 +641,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-066",
     title: "See a removed session end in another tab",
-    behaviour: "When a session is removed from HUI, another browser tab that shows it reports \"pi exited — this session is no longer streaming.\" without a reload.",
+    behaviour: "When a session is removed from HUI, another browser tab that shows it reports \"The runtime exited — this session is no longer streaming.\" without a reload.",
     spec: ["docs/api.md#delete-__huisessionsid"],
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-lifecycle"],
@@ -672,7 +672,7 @@ const cases: UseCase[] = [
     title: "See unavailable session-menu choices disabled",
     behaviour: "In a session's menu, Move to group shows the session's current group disabled, and Copy's Conversation as Markdown is disabled unless the session is the open one.",
     spec: ["SPEC.md#behaviour"],
-    surfaces: ["route:PATCH /__hui/sessions/:id"],
+    surfaces: [],
     journeys: ["session-move", "session-menu-parity"],
     web: "backlog",
     ios: "backlog",
