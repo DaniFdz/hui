@@ -2,8 +2,12 @@
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
  * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
- * attaching files from `files/`, reading what a download saved or what the page copied and opening a session's menu.
- * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
+ * input), attaching files from `files/`, reading what a download saved or what the page copied, opening a session's
+ * menu and reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its font families,
+ * those of HUI's bundled faces that have loaded to draw its text, its text size in pixels and the colour of the focus
+ * ring it shows when reached from the keyboard). Test files import `test` from here, never from `e2e`, and never read
+ * `platform`, `device` or `browser` themselves.
  */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -11,6 +15,7 @@ import { expect, test as base, type Locator } from "e2e";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
+type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
 type Intercepted = {
@@ -36,12 +41,14 @@ export type Hui = {
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
+  look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: string[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
+  flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
 };
 
@@ -76,6 +83,7 @@ export const test = base.extend<{ hui: Hui }>({
     const groups = async () => (await api<SessionList>("GET", "/__hui/sessions")).groups;
     const sessions = async () => (await groups()).flatMap((group) => group.sessions);
     const sessionIds = async () => (await sessions()).map((session) => session.id);
+    const taskIds = async () => (await api<{ tasks: { id: string }[] }>("GET", "/__hui/automation")).tasks.map((task) => task.id);
     const prompt = async (session: { id: string }, text: string) => {
       await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
@@ -84,6 +92,7 @@ export const test = base.extend<{ hui: Hui }>({
 
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
+    const existingTasks = new Set(await taskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
 
@@ -135,6 +144,43 @@ export const test = base.extend<{ hui: Hui }>({
       },
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
+      look: async (target) => {
+        await target.scrollIntoView();
+        const box = await target.boundingBox();
+        if (!box) throw new Error("look: the target lays out no box");
+        return browser().evaluate(({ x, y, width, height }) => {
+          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+          const element = document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
+            const rect = candidate.getBoundingClientRect();
+            return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
+          });
+          if (!element) throw new Error("look: no element has the target's box");
+          const rgb = (color: string) => {
+            const channels = /^(?:rgba?\(|color\(srgb )([\d.e-]+),? ([\d.e-]+),? ([\d.e-]+)/u.exec(color);
+            if (!channels) throw new Error(`look: ${color} is not an sRGB colour`);
+            const scale = color.startsWith("color(") ? 255 : 1;
+            return channels.slice(1).map((value) => Math.round(Number(value) * scale)) as [number, number, number];
+          };
+          let behind: Element | null = element;
+          while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
+          if (!behind) throw new Error("look: nothing opaque is behind the target");
+          const style = getComputedStyle(element);
+          const fonts = style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1"));
+          const faces = [...document.fonts];
+          const outerShadow = style.boxShadow.split(/,(?![^(]*\))/u).at(-1)!.trim();
+          return {
+            color: rgb(style.color),
+            background: rgb(getComputedStyle(behind).backgroundColor),
+            fonts,
+            loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
+              && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
+            size: Number.parseFloat(style.fontSize),
+            ring: !element.matches(":focus-visible") ? null
+              : style.outlineStyle !== "none" ? rgb(style.outlineColor)
+              : outerShadow === "none" ? null : rgb(outerShadow),
+          };
+        }, box);
+      },
       attach: (target, files) => target.setInputFiles(files.map((name) => fileURLToPath(new URL(`files/${name}`, import.meta.url)))),
       download: async (target) => {
         const file = await browser().waitForDownload(() => target.tap());
@@ -168,6 +214,11 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      flip: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("flip: the switch is not on screen");
+        await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
+      },
       intercept: async (method, path) => {
         let arrive: () => void = () => undefined;
         let decide: (handle: (route: WebRoute) => Promise<void>) => void = () => undefined;
@@ -207,6 +258,9 @@ export const test = base.extend<{ hui: Hui }>({
     });
 
     await control("POST", "/control/release-replay");
+    for (const id of await taskIds()) {
+      if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+    }
     for (const id of await sessionIds()) {
       if (existing.has(id)) continue;
       const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });

@@ -481,10 +481,10 @@ export const test = base.extend<{ hui: Hui }>({
   `visual-verification.mjs`.
 - Each test starts with `app.clearState()`, which clears the browser's or the app's persisted state (drafts, Work
   pane layout, the last route) and reopens the app. Teardown releases any reply the provider still holds, deletes
-  every session the test created (`DELETE /__hui/sessions/:id` also stops its runtime and terminals) and writes the
-  gateway's settings back. Tests that create other gateway state (backlog items, bots, automation tasks) delete it
-  through the same `api`, so the gateway returns to its starting state. If tests still interfere, the fallback is a
-  fresh launcher per test on the same port, at a cost spike S7 measures.
+  every automation task, session and session group the test created (`DELETE /__hui/sessions/:id` also stops its
+  runtime and terminals) and writes the gateway's settings back. Tests that create other gateway state (backlog
+  items, bots) delete it through the same `api`, so the gateway returns to its starting state. If tests still
+  interfere, the fallback is a fresh launcher per test on the same port, at a cost spike S7 measures.
 - Only the fixture's setup calls carry `x-hui`. The web engine gets no extra `headers`, so a UI request that forgot
   `x-hui` still fails the test.
 - `open`, `reload`, `peek` and `attach` are the only steps whose gesture differs per platform, and a guard keeps
@@ -784,7 +784,7 @@ PR 1 gives every `e2e/*.browser.md` file a class in `e2e/catalogue/journeys.ts`:
 | `automate` | `chat-composer`, `message-queue`, `slash-commands`, `session-groups`, `kanban`, `widgets`, `work-pane`, `bots` | Its steps become use cases and shared tests in the default world. The file is deleted once every use case derived from it is required on the web; git keeps the history |
 | `world:<name>` | `jira-integration` (jira), `github-integration` and `contributions` (github), `datadog-embeds` (datadog), `session-calendar` (activity), `providers` (quota), `sdk-backend` and `plugin-disable-sdk` (pi-sessions) | The same, in that world's run |
 | `external` | `vscode-view` (a real openvscode-server), `bots-workers` (a remote worker), `remote-loading` (the slow-link proxy) | Automated where CI can supply the program (`HUI_OPENVSCODE_SERVER_MIRROR` points at a local server, and the slow-link proxy is already in `e2e/fixtures/`); otherwise it stays an agent-run procedure with the gap recorded |
-| `visual` | `openclaw-primary-ui-parity`, `visual-parity-2026-09-24`, the look parts of `miami-theme`, `webawesome-controls`, `font-preferences` | Stays an agent-run visual check for now, because it judges looks, not behaviour. The library's `toHaveScreenshot` could automate it on both targets, but it compares against PNGs committed next to the tests, and the repo keeps screenshots out of Git; owner decision D14 |
+| `visual` | `openclaw-primary-ui-parity`, `visual-parity-2026-09-24`, `webawesome-controls` | Stays an agent-run visual check for now, because it judges looks, not behaviour. The library's `toHaveScreenshot` could automate it on both targets, but it compares against PNGs committed next to the tests, and the repo keeps screenshots out of Git; owner decision D14 |
 | `packaging` | `package`, `desktop-package` | Already automated by `npm run test:package`; the journey is retired |
 
 - Journeys migrate area by area in the order of the milestones (7.3). A journey keeps its steps until the shared

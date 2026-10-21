@@ -1095,6 +1095,7 @@ export function renderSettingsPage(props: SettingsProps) {
                 <a
                   class="settings-sidebar__item settings-nav__item ${page.id === props.page ? "settings-sidebar__item--active" : ""}"
                   href="#"
+                  data-testid="settings-page-link"
                   data-settings-search=${`${page.label} ${page.group}`.toLocaleLowerCase()}
                   aria-current=${page.id === props.page ? "page" : "false"}
                   @click=${(event: Event) => {
@@ -1123,7 +1124,7 @@ export function renderSettingsPage(props: SettingsProps) {
     <main class="content settings-main" @keydown=${(event: KeyboardEvent) => handleSettingsEscape(event, props)}>
       <header class="content-header content-header--settings">
         <div>
-          <div class="page-title" tabindex="-1">${SETTINGS_PAGES.find((page) => page.id === props.page)?.label}</div>
+          <div class="page-title" tabindex="-1" data-testid="settings-page-title">${SETTINGS_PAGES.find((page) => page.id === props.page)?.label}</div>
           <div class="page-subtitle">HUI and PI preferences for this workspace.</div>
         </div>
       </header>
