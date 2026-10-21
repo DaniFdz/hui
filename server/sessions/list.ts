@@ -1,6 +1,7 @@
 /** Owns the one in-memory session list every screen shares. While anyone
  * listens it is recomputed on an interval and only changes are broadcast, as
- * revisioned update frames (`SessionListUpdate`) this module encodes.
+ * revisioned update frames (`SessionListUpdate`) this module encodes. A screen
+ * that joins after nobody listened waits for a fresh read, not the stale cache.
  * ponytail: timer-driven; hook registry/runtime events if 1 s lag matters. */
 type SessionListGroup<S> = { label: string; cwd?: string; workspaceMode?: "branch" | "worktree"; baseRef?: string; sessions: S[] };
 type Layout = (Omit<SessionListGroup<never>, "sessions"> & { ids: string[] })[];
@@ -33,6 +34,7 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
   let queue: Promise<unknown> = Promise.resolve();
   let timer: ReturnType<typeof setInterval> | undefined;
   let ticking = false;
+  let reading: Promise<unknown> = Promise.resolve();
 
   /** Serialized so revisions and diffs always advance in order. */
   function refresh(): Promise<{ revision: number; groups: Groups<S> }> {
@@ -60,19 +62,25 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
   return {
     refresh,
     subscribe(listener: (update: SessionListUpdate<S>) => void): () => void {
-      listeners.add(listener);
-      if (loaded) listener({
-        revision: current.revision,
-        groups: sessionListLayout(current.groups),
-        upserts: current.groups.flatMap((group) => group.sessions),
-      });
+      let joined = false;
+      const relay = (update: SessionListUpdate<S>) => { if (joined) listener(update); };
+      listeners.add(relay);
       if (!timer) {
-        tick();
+        reading = refresh().catch(() => {});
         timer = setInterval(tick, intervalMs);
         timer.unref();
       }
+      void reading.then(() => {
+        if (!listeners.has(relay)) return;
+        joined = true;
+        if (loaded) listener({
+          revision: current.revision,
+          groups: sessionListLayout(current.groups),
+          upserts: current.groups.flatMap((group) => group.sessions),
+        });
+      });
       return () => {
-        listeners.delete(listener);
+        listeners.delete(relay);
         if (listeners.size || !timer) return;
         clearInterval(timer);
         timer = undefined;
