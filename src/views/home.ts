@@ -2458,7 +2458,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
         >${icons.menu}</button>` : nothing}
         ${props.renaming ? renderSessionEditor(props, session) : props.bot ? renderBotIdentity(props.bot, session, botFaceState(props)) : html`<div class="transcript__identity chat-pane__crumbs">
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
-          <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
+          <h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
             ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(unreachableHost(session)?.status ?? STATUS_TEXT[session.status])}
           </span>

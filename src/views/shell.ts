@@ -413,6 +413,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   return html`
     <div
       class="session-row-wrap session-row-host sidebar-recent-session sidebar-recent-session--single-line ${depth > 0 ? "sidebar-recent-session--child" : ""} ${selected ? "sidebar-recent-session--active" : ""} ${splitOpen ? "sidebar-recent-session--split" : ""} ${session.pinned ? "session-row-host--pinned" : ""} ${session.unread ? "sidebar-recent-session--unread" : ""} ${stage ? "sidebar-recent-session--staged" : ""} ${session.status === "running" ? "session-row-host--running" : ""} ${hasDraft ? "sidebar-recent-session--has-draft" : ""} ${session.status === "error" ? "sidebar-recent-session--attention-danger" : ""} ${dragging ? "sidebar-recent-session--dragging" : ""} ${props.sessionMovePendingId === session.id ? "sidebar-recent-session--moving" : ""}"
+      data-testid="session-row"
       data-session-id=${session.id}
       data-session-key=${session.id}
       data-session-stage=${stage ?? nothing}

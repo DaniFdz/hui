@@ -25,6 +25,9 @@ export type Hui = {
   provider: { held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
   reload(): Promise<void>;
+  url(): Promise<string>;
+  peek(target: Locator): Promise<void>;
+  sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
@@ -81,6 +84,13 @@ export const test = base.extend<{ hui: Hui }>({
       },
       open: (path) => fixtures.app.open(path),
       reload: () => browser().reload(),
+      url: () => browser().url(),
+      peek: (target) => target.hover(),
+      sessionMenu: async (title) => {
+        const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
+        await row.hover();
+        await row.getByRole("button", `Actions for ${title}`).tap();
+      },
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
       attach: (target, files) => target.setInputFiles(files.map((name) => fileURLToPath(new URL(`files/${name}`, import.meta.url)))),
