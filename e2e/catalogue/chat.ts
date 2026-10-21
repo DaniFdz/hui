@@ -673,7 +673,7 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "CHAT-069",
+    id: "CHAT-070",
     title: "Resume an interrupted run without a prompt",
     behaviour: "On a session on PI's SDK worker whose branch ends in a stopped or failed reply, Continue reads Continuing… and resumes the agent from the last user message or tool result with no new user message.",
     spec: ["SPEC.md#behaviour"],
