@@ -1,15 +1,20 @@
-/** Appearance's Chat preferences change the conversation: Message width narrows or widens it and the composer, Collapse task progress starts a progress card collapsed, and Send shortcut decides what Enter does (SET-012, SET-013, SET-014). */
+/** Appearance's Chat preferences change the conversation: Message width narrows or widens it and the composer in every open session, Collapse task progress starts a progress card collapsed, and Send shortcut decides what Enter does (SET-012, SET-013, SET-014). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Message width narrows or widens the conversation and the composer", { tags: ["SET-012"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const session = await hui.createSession({ title: "Width" });
-  await hui.prompt(session, "E2E_MARKDOWN_PARITY");
+test("Message width narrows or widens the conversation and the composer in every open session", { tags: ["SET-012"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const first = await hui.createSession({ title: "First width" });
+  const second = await hui.createSession({ title: "Second width" });
+  await hui.prompt(first, "E2E_MARKDOWN_PARITY");
+  await hui.prompt(second, "E2E_MARKDOWN_PARITY");
+  const titles = screen.getByTestId("session-title", { visible: true });
+  const replies = screen.getByTestId("transcript").getByText("Final paragraph.");
   const widths = async () => {
-    await hui.open(`/sessions/${session.id}`);
-    const reply = screen.getByTestId("transcript").getByText("Final paragraph.");
-    await expect(reply).toBeVisible();
-    return [(await reply.boundingBox())!.width, (await screen.getByLabel("Message").boundingBox())!.width] as const;
+    await hui.open(`/sessions/${first.id}`);
+    await expect(titles).toHaveText(["First width", "Second width"]);
+    await expect(replies).toHaveCount(2);
+    const targets = [...await replies.all(), ...await screen.getByLabel("Message", { visible: true }).all()];
+    return Promise.all(targets.map(async (target) => (await target.boundingBox())!.width));
   };
   const choose = async (from: string, to: string) => {
     await hui.open("/settings/appearance");
@@ -18,15 +23,25 @@ test("Message width narrows or widens the conversation and the composer", { tags
     await expect(screen.getByRole("button", `Message width: ${to}`)).toBeVisible();
   };
 
+  await hui.open(`/sessions/${first.id}`);
+  await hui.sessionMenu("Second width");
+  await screen.getByText("Open in split pane", { visible: true }).tap();
+  await screen.getByRole("button", "Pane actions").tap();
+  await screen.getByText("Split down", { visible: true }).tap();
+  await expect(titles).toHaveCount(3);
+  await titles.filter({ hasText: "First width" }).tap();
+  await screen.getByRole("button", "Close session pane").tap();
+  await expect(titles).toHaveCount(2);
   const comfortable = await widths();
   await choose("Comfortable", "Compact");
   const compact = await widths();
   await choose("Compact", "Wide");
   const wide = await widths();
-  expect(compact[0]).toBeLessThan(comfortable[0]);
-  expect(compact[1]).toBeLessThan(comfortable[1]);
-  expect(wide[0]).toBeGreaterThan(comfortable[0]);
-  expect(wide[1]).toBeGreaterThan(comfortable[1]);
+  expect(comfortable).toHaveLength(4);
+  comfortable.forEach((width, index) => {
+    expect(compact[index]).toBeLessThan(width);
+    expect(wide[index]).toBeGreaterThan(width);
+  });
 });
 
 test("Collapse task progress starts an agent's progress card collapsed but expandable, and off it starts expanded", { tags: ["SET-013"], platforms: ["web"] }, async ({ screen, hui }) => {

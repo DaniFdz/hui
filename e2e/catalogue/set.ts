@@ -88,15 +88,6 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
-    id: "SET-078",
-    title: "See the message width in every open pane",
-    behaviour: "With two sessions open side by side, changing “Message width” narrows or widens the conversation and composer of both panes at once.",
-    spec: ["docs/api.md#hui-owned-presentation-state"],
-    surfaces: ["setting:chat.messageWidth"],
-    web: "backlog",
-    ios: "backlog",
-  },
-  {
     id: "SET-008",
     title: "Import a theme from tweakcn",
     behaviour: "The “Import” card opens a form whose “Import theme” button is enabled once a tweakcn link or id is entered; importing shows “Importing…”, then “Imported <id>.”, adds the theme's card and applies it. A bad link or failed download shows its error in the form and changes nothing.",
@@ -136,7 +127,7 @@ const cases: UseCase[] = [
   {
     id: "SET-012",
     title: "Set the message width",
-    behaviour: "“Message width” offers Compact, Comfortable and Wide; the conversation and composer narrow or widen to match (side-by-side panes are SET-078).",
+    behaviour: "“Message width” offers Compact, Comfortable and Wide; the conversation and composer narrow or widen to match in every open session.",
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:chat.messageWidth"],
     web: "required",
