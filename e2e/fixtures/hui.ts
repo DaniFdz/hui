@@ -95,16 +95,14 @@ export const test = base.extend<{ hui: Hui }>({
       prompt,
       createSubagent: async (parent) => {
         await prompt(parent, "E2E_SUBAGENTS_START");
-        const settled = async () => {
+        let child: ListedSession | undefined;
+        await expect.poll(async () => {
           const all = await sessions();
-          const child = all.find((session) => session.parentId === parent.id);
-          const done = child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
+          child = all.find((session) => session.parentId === parent.id);
+          return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
             && all.find((session) => session.id === parent.id)?.status === "idle";
-          return done ? child : undefined;
-        };
-        await expect.poll(async () => (await settled()) !== undefined, { timeout: 30_000 }).toBe(true);
-        const child = (await settled())!;
-        return { id: child.id, title: child.title };
+        }, { timeout: 30_000 }).toBe(true);
+        return { id: child!.id, title: child!.title };
       },
       provider: {
         held: () => control("GET", "/control/wait-replay-ready"),
