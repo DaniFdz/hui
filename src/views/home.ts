@@ -2432,8 +2432,12 @@ function renderBotIdentity(bot: HomeBot, session: SessionView, face: BotFaceStat
     <h2 class="transcript__title chat-pane__session-title" title=${bot.bot.name}>${bot.bot.name}</h2>
     <span class="transcript__meta" title=${worker ? `${worker.name}:${session.cwd}` : session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${worker
       ? html`<span class="bot-chat-identity__machine" title=${`Runs on ${worker.name}`}><span class="sr-only">on </span>${icons.globe}<span>${worker.name}</span></span> · `
-      : nothing}${status}</span>
+      : nothing}${renderSessionStatus(status)}</span>
   </div>`;
+}
+
+function renderSessionStatus(status: string) {
+  return html`<span role="status" aria-label=${`Session status: ${status}`}>${status}</span>`;
 }
 
 function renderHeader(props: HomeProps, session: SessionView) {
@@ -2453,7 +2457,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${unreachableHost(session)?.status ?? STATUS_TEXT[session.status]}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(unreachableHost(session)?.status ?? STATUS_TEXT[session.status])}
           </span>
         </div>`}
         ${session.parentId ? html`<button
@@ -2524,7 +2528,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   : nothing}
                 <div class="chat-main__conversation">
                   ${props.taskSuggestions?.suggestions.length ? html`<div class="chat-gutter-stack">${renderTaskSuggestionCard(props.taskSuggestions)}</div>` : nothing}
-                  <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0"
+                  <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript"
                     @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
                     @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}

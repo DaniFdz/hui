@@ -18,5 +18,5 @@
     "types": ["node", "vite/client"],
     "noEmit": true
   },
-  "include": ["src", "bin", "server", "cli", "evals", "scripts/**/*.ts", "e2e/demo", "e2e/catalogue", "vite.config.ts", "vitest.config.ts", "vitest.setup.ts"]
+  "include": ["src", "bin", "server", "cli", "evals", "scripts/**/*.ts", "e2e/demo", "e2e/catalogue", "e2e/fixtures/hui.ts", "e2e/tests", "e2e.config.ts", "vite.config.ts", "vitest.config.ts", "vitest.setup.ts"]
 }

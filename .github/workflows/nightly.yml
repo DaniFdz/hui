@@ -33,6 +33,10 @@ jobs:
       - run: npx vitest run cli/release-workflow.test.mjs
       - run: npm run typecheck
       - run: npm test
+      - run: npx e2e-web install chromium --with-deps
+      - run: npm run e2e
+      # Retries are off, so the nightly runs the smoke tests three times more to catch a flaky one.
+      - run: npm run e2e -- --tag smoke --repeat-each 3
       # The installed-package proof derives its fixture versions from a stable
       # package.json, so it runs before the nightly version is stamped.
       - run: npm run test:package

@@ -2011,8 +2011,9 @@ app".
   `e2e/catalogue/not-ui.ts` with its reason.
 - **Existing features start as backlog.** `e2e/catalogue/baseline.json` lists
   the use cases that have no passing shared test yet, per platform. It shrinks
-  as tests land and grows only for an existing feature found later; until the
-  shared suite exists, a new feature's use case joins it too.
+  as tests land and grows only for an existing feature found later, and, until
+  the shared suite has an iOS target, for a new use case's iOS entry. A new use
+  case is required on the web, with its shared test.
 
 ### Keyboard-only affordances stay on the web (2026-10-21)
 
