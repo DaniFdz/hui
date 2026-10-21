@@ -1,7 +1,7 @@
 /**
- * Enforces the dependency rules listed in docs/map.md: which areas may import which, where network calls and
- * custom elements live, no cycles, a worker release that ships what it imports, and installed entry paths that
- * never move. There are no exceptions: a violation fails the test.
+ * Enforces the dependency rules listed in docs/map.md: which areas may import which, what the iOS core may load,
+ * where network calls and custom elements live, no cycles, a worker release that ships what it imports, and
+ * installed entry paths that never move. There are no exceptions: a violation fails the test.
  */
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
@@ -14,7 +14,7 @@ import { test } from "vitest";
 import { workerRelease } from "../server/worker/release.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
-const AREAS = ["bin", "cli", "desktop", "evals", "e2e", "scripts", "server", "src"];
+const AREAS = ["bin", "cli", "desktop", "evals", "e2e", "ios/core", "scripts", "server", "src"];
 const CODE = /\.[cm]?[jt]s$/u;
 const TEST = /\.test\.[cm]?[jt]s$/u;
 const ENTRIES = ["bin/hui.mjs", "cli/launch.ts", "cli/main.ts", "cli/gateway-run.ts", "server/runtimes/pi-sdk-worker.ts", "server/worker/main.ts", "index.html"];
@@ -116,6 +116,7 @@ function rule(from, to, specifier, type) {
 
 const files = (await Promise.all(AREAS.map(sources))).flat().sort();
 const edges = [];
+const loads = new Map();
 const unresolved = [];
 const violations = new Set();
 for (const file of files) {
@@ -129,6 +130,7 @@ for (const file of files) {
       if (production) unresolved.push(`${file} -> ${specifier}`);
       continue;
     }
+    if (!type) loads.set(file, [...loads.get(file) ?? [], relativePath ?? specifier]);
     if (relativePath) edges.push({ from: file, to: relativePath, type });
     const broken = rule(file, relativePath, specifier, type);
     if (broken) violations.add(`${file} -> ${relativePath ?? specifier} (${broken})`);
@@ -145,6 +147,14 @@ for (const file of files) {
 for (const file of files.filter((path) => under(path, "e2e", "evals", "scripts"))) {
   const targets = edges.filter((edge) => edge.from === file);
   if (targets.some((edge) => under(edge.to, "src")) && targets.some((edge) => under(edge.to, "server"))) violations.add(`${file} (R12)`);
+}
+
+const core = new Set(files.filter((file) => under(file, "ios/core") && !TEST.test(file)));
+for (const file of core) {
+  for (const target of loads.get(file) ?? []) {
+    if (under(target, "ios/core", "src/lib") && !target.endsWith("-store.ts")) core.add(target);
+    else violations.add(`${file} -> ${target} (R18)`);
+  }
 }
 
 const inside = new Map();
