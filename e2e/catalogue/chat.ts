@@ -702,6 +702,16 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "CHAT-072",
+    title: "Read the earlier part of a long conversation",
+    behaviour: "A conversation of more than 50 rows opens on its latest 50, under Show earlier messages. Show earlier messages adds the rows before them without moving what is on screen, and Scroll to latest goes back to the latest 50.",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
+    journeys: ["position-rail", "remote-loading"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
