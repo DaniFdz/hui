@@ -91,7 +91,9 @@ test("Sessions, Archived restores a tree that stays restored, and a message to a
   await screen.getByRole("button", "Archived").tap();
   await expect(screen.getByRole("button", "Restore Archived plan")).toBeVisible();
   await expect(screen.getByRole("button", `Restore ${child.title}`)).toBeVisible();
-  await expect(screen.getByText("Archived", { exact: true, visible: true })).toHaveCount(3);
+  for (const title of ["Archived plan", child.title]) {
+    await expect(screen.getByTestId("session-data-row").filter({ hasText: title }).getByText("Archived", { exact: true })).toBeVisible();
+  }
   await screen.getByRole("button", "Restore Archived plan").tap();
   await expect(screen.getByText("No matching sessions")).toBeVisible();
   await expect(screen.getByLabel(row("Archived plan"))).toBeVisible();
