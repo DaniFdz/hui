@@ -19,6 +19,7 @@ test("Enter sends and steers, Shift+Enter breaks a line, Command or Ctrl+Enter q
   await expect(transcript.getByText(/^First line\s+second line$/u)).toBeVisible();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(message).toHaveValue("");
+  await expect(idle).toBeVisible();
 
   await message.fill("E2E_REPLAY");
   await message.press("Enter");
