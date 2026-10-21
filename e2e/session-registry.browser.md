@@ -1,8 +1,10 @@
 # Browser journey: session registry and gateway restart
 
 This HUI-03 journey exercises only visible controls against real PI processes.
-It proves registry metadata, grouped search, a gateway restart, transparent
-resume, and delete-without-transcript-deletion.
+The shared tests in `e2e/tests/sess/` now prove pinning, renaming, search,
+collapsing and the group actions. What is left here is a gateway restart and
+transparent resume (SESS-057), the Sessions page (SESS-058), PI's session file
+after a rename (SESS-063) and the delete dialog's Escape (SESS-041).
 
 ## Isolated setup
 
@@ -29,31 +31,17 @@ directories.
 ## Visible-control journey
 
 1. Create `Alpha session` in group `Sprint 03` with the isolated workspace and
-   wait for `Idle`.
-2. Create `Beta session` in the same group and wait for `Idle`.
-3. Open navigation, pin Alpha, then open it. Use **Rename** to change its title
-   to `Alpha renamed` and its group to `Archive 03`.
-4. Search the sidebar by `Archive`, then collapse that group. Search by `Alpha`
-   and assert the matching row appears; clear the search and assert the group is
-   still collapsed.
-5. Stop the gateway with `Ctrl+C`. Assert the open session visibly reports
+   wait for `Idle`. Create `Beta session` in the same group and wait for `Idle`.
+2. Open Alpha and use **Rename** to change its title to `Alpha renamed`. PI's
+   session file for Alpha keeps its name and contents.
+3. Stop the gateway with `Ctrl+C`. Assert the open session visibly reports
    `Reconnecting…`. Restart the exact setup command so it binds the same URL.
    Assert the same route returns to `Idle` without a page reload or duplicate
    registry row.
-6. Open a group's `⋯` menu and assert the OpenClaw action set: **New session
-   defaults**, **Rename group**, **New group**, and **Delete group**. Save a cwd
-   and runtime default, then use the group's `+` action and assert the New
-   Session form is prefilled. Rename the group and verify its rows move
-   atomically. Create and delete an empty group. On mobile, assert choosing an
-   action closes the navigation drawer before its modal opens.
-7. Navigate through the sidebar to **Sessions**. Search by group, open a result,
+4. Navigate through the sidebar to **Sessions**. Search by group, open a result,
    and verify **New Session** navigates to the functional creation form.
-8. Open Alpha, click **Delete**, press Escape, and assert focus returns to the
-   Delete button. Open the dialog again and assert it explicitly says the PI
-   transcript remains. Click **Remove from HUI**.
-9. Assert Alpha is absent from `sessions.json`, Beta remains, and Alpha's
-   isolated PI transcript sentinel/file still exists. Delete Beta through the
-   same UI and assert the sidebar reports `0 sessions`.
+5. Open Alpha, click **Delete**, press Escape, and assert focus returns to the
+   Delete button.
 
 Inspect Browser page errors and requests. SSE failures while the gateway is
 deliberately down, stream aborts during navigation/deletion, and the known

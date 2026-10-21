@@ -90,7 +90,7 @@ const cases: UseCase[] = [
     behaviour: "Choosing New worktree changes the trigger to \"New worktree from <ref>\" and adds an optional Name (\"Generated from the prompt\") with a note naming the branch it creates under the branch prefix. The session works in a new checkout under HUI's worktrees folder on that branch, started from the chosen ref, and the original checkout is unchanged. Without a name, the utility model writes a short one from the prompt.",
     spec: ["SPEC.md#git-workspace-sessions"],
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "setting:branchPrefix"],
-    journeys: ["checkout-selector", "worktree-progress", "session-groups"],
+    journeys: ["checkout-selector", "worktree-progress"],
     web: "backlog",
     ios: "backlog",
   },
