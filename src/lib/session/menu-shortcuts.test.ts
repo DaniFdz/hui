@@ -49,12 +49,18 @@ test("the capture handler activates the item once and prevents typeahead", () =>
   assert.deepEqual(opened.result(), { clicks: 1, prevented: 1, stopped: 1 });
 });
 
-test("a key pressed while the menu opens runs its item once the menu has opened, and not after it closed", () => {
+test("a key pressed while the menu opens runs its item once the menu is open, and not after it closed", () => {
   const opening = menu();
   opening.press();
   assert.deepEqual(opening.result(), { clicks: 0, prevented: 1, stopped: 1 });
   opening.send("wa-after-show");
   assert.deepEqual(opening.result(), { clicks: 1, prevented: 1, stopped: 1 });
+
+  const reopenedWhileClosing = menu();
+  reopenedWhileClosing.send("wa-hide");
+  reopenedWhileClosing.press();
+  reopenedWhileClosing.send("wa-after-hide");
+  assert.equal(reopenedWhileClosing.result().clicks, 1);
 
   const closedFirst = menu();
   closedFirst.press();
@@ -62,11 +68,13 @@ test("a key pressed while the menu opens runs its item once the menu has opened,
   closedFirst.send("wa-after-show");
   assert.equal(closedFirst.result().clicks, 0);
 
-  const shownAfterClosing = menu({ open: false });
-  shownAfterClosing.send("wa-after-show");
-  shownAfterClosing.dropdown.open = true;
-  shownAfterClosing.press();
-  assert.equal(shownAfterClosing.result().clicks, 0);
+  for (const type of ["wa-after-show", "wa-after-hide"]) {
+    const shownAfterClosing = menu({ open: false });
+    shownAfterClosing.send(type);
+    shownAfterClosing.dropdown.open = true;
+    shownAfterClosing.press();
+    assert.equal(shownAfterClosing.result().clicks, 0);
+  }
 });
 
 test("closed menus, disabled actions, text entry and submenus keep their native keys", () => {

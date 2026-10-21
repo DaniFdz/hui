@@ -21,7 +21,10 @@ export function sessionMenuAction(event: ShortcutInput): string | undefined {
   return ACTIONS[event.key.toLowerCase()];
 }
 
-/** Listens on the dropdown for `keydown`, `wa-after-show` and `wa-hide`; capture runs before its typeahead handler. */
+/**
+ * Listens on the dropdown for `keydown`, `wa-hide`, `wa-after-show` and `wa-after-hide`: a menu reopened while it was
+ * still closing shows again without `wa-after-show`. Capture runs before its typeahead handler.
+ */
 export const sessionMenuShortcuts = {
   capture: true,
   handleEvent(event: Event): void {
@@ -31,7 +34,7 @@ export const sessionMenuShortcuts = {
       pending.delete(dropdown);
       return;
     }
-    if (event.type === "wa-after-show") {
+    if (event.type === "wa-after-show" || event.type === "wa-after-hide") {
       if (!dropdown.open) return;
       opened.add(dropdown);
       pending.get(dropdown)?.click();

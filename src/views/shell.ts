@@ -479,6 +479,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
         id=${menuId(session.id)} aria-label=${`Actions for ${session.title}`}
         @keydown=${sessionMenuShortcuts}
         @wa-after-show=${sessionMenuShortcuts}
+        @wa-after-hide=${sessionMenuShortcuts}
         @wa-show=${(event: Event) => { (event.currentTarget as HTMLElement).dispatchEvent(new Event("openclaw-session-menu-open", { bubbles: true })); labelDropdown(event); if (!open) props.onToggleMenu(session.id); }}
         @wa-hide=${(event: Event) => { sessionMenuShortcuts.handleEvent(event); if (open) props.onCloseMenu(); }}
         @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
