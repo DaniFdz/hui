@@ -4,7 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 const FACES = /^\s*Instrument Sans.*Geist.*DM Sans.*IBM Plex Sans.*Space Grotesk.*Atkinson Hyperlegible.*Fraunces.*Lora.*JetBrains Mono.*System/su;
 
-test("the interface font restyles navigation, settings and controls, the chat prose font the conversation, code stays monospace, and both persist", { tags: ["SET-009"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the interface font restyles navigation, settings and controls, the chat prose font the conversation, code stays monospace, and both load and persist", { tags: ["SET-009"], platforms: ["web"] }, async ({ screen, hui }) => {
   const face = async (target: Locator) => (await hui.look(target)).fonts[0];
   const loaded = async (target: Locator) => (await hui.look(target)).loaded;
   const caption = screen.getByText("HUI · A little clarity goes a long way");
@@ -49,7 +49,7 @@ test("the interface font restyles navigation, settings and controls, the chat pr
   expect(await face(prose)).toBe("Lora");
 });
 
-test("the terminal font lists monospace and Nerd Fonts, takes a typed local family over the bundled symbols, persists, and falls back to JetBrains Mono", { tags: ["SET-010"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the terminal font lists monospace and Nerd Fonts, takes a typed local family over the bundled symbols that load to draw its icons, persists, and falls back to JetBrains Mono", { tags: ["SET-010"], platforms: ["web"] }, async ({ screen, hui }) => {
   const preview = screen.getByLabel("Terminal font preview");
   const families = async () => (await hui.look(preview)).fonts;
   const stack = (first: string) => [first, "HUI Nerd Font Symbols", "JetBrains Mono", "ui-monospace", "monospace"];
