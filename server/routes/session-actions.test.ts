@@ -154,6 +154,19 @@ test("writing to an archived conversation restores it", { timeout: 60_000 }, asy
   await answered(id, "BACK_AGAIN");
 });
 
+test("opening a live session after a rename answers with the new title", { timeout: 60_000 }, async () => {
+  const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Before rename" });
+  assert.equal(created.status, 200, JSON.stringify(created.body));
+  const id = (created.body["session"] as { id: string }).id;
+  assert.equal((await call(`/__hui/sessions/${id}/open`, "POST", {})).status, 200);
+  await liveSessions.booted(id);
+  assert.equal((await call(`/__hui/sessions/${id}`, "PATCH", { title: "After rename", pinned: true })).status, 200);
+
+  const opened = await call(`/__hui/sessions/${id}/open`, "POST", {});
+  assert.equal(opened.status, 200);
+  assert.deepEqual({ title: (opened.body["session"] as { title: string }).title, pinned: (opened.body["session"] as { pinned?: boolean }).pinned }, { title: "After rename", pinned: true });
+});
+
 test("session catalogs, preferences and side answers match their published schemas", { timeout: 60_000 }, async () => {
   expectTypeOf<{ question: string; answer: string; model: string }>().toEqualTypeOf<SideQuestionResult>();
   const created = await call("/__hui/sessions", "POST", { cwd: workspace, title: "Catalogs" });
