@@ -42,7 +42,6 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "gateway-settings": { kind: "automate" },
   "github-embeds": { kind: "automate" },
   "github-integration": { kind: "world:github" },
-  "hui-working-indicator": { kind: "automate" },
   "interrupted-recovery": { kind: "automate" },
   "jira-integration": { kind: "world:jira" },
   "kanban": { kind: "automate" },
