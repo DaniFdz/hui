@@ -6,6 +6,8 @@ import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { crc32, deflateSync } from "node:zlib";
+import { getImageDimensions } from "@earendil-works/pi-tui";
 import { afterAll, test, type TestContext } from "vitest";
 import { normalizeSettings } from "../hui-settings.ts";
 import type { DurableSession } from "./durable.ts";
@@ -204,6 +206,39 @@ test("the live view streams an answer Durable sends whole, exactly once", { time
   // The fixture's short reply reaches Durable's stream as one partial; the live view shows it from these events.
   assert.equal(streamed.join(""), "Fixture response.");
   await transcriptWhere(session, answered("Fixture response."));
+});
+
+function solidPng(width: number, height: number): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const framed = Buffer.alloc(body.length + 8);
+    framed.writeUInt32BE(data.length);
+    body.copy(framed, 4);
+    framed.writeUInt32BE(crc32(body), body.length + 4);
+    return framed;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width); header.writeUInt32BE(height, 4); header[8] = 8; header[9] = 2;
+  const rows = Buffer.alloc((width * 3 + 1) * height, 0x80);
+  for (let row = 0; row < height; row += 1) rows[row * (width * 3 + 1)] = 0;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+test("an image larger than the provider accepts reaches it shrunk, on every turn, and stays whole in the history", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { contextWindow: 200_000 });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-image-limits" }, f.host());
+  const tall = solidPng(40, 8192).toString("base64");
+  await session.prompt("look at this", [{ kind: "image", mimeType: "image/png", dataBase64: tall, name: "tall.png" }]);
+  await transcriptWhere(session, (entries) => answers(entries) === 1 && !session.isStreaming);
+  await turns(session, ["and again"]);
+  const sent = (await providerRequests(f.log)).map((request) => JSON.stringify(request.messages).match(/"data":"([^"]+)"/u)?.[1]);
+  assert.equal(sent.length, 2);
+  for (const data of sent) {
+    assert(data);
+    const size = getImageDimensions(data, "image/png");
+    assert.deepEqual(size && [size.widthPx, size.heightPx], [10, 2000]);
+  }
+  assert.equal((await session.attachmentImage(0, 0))?.data.toString("base64"), tall);
 });
 
 test("fast mode asks a Claude Opus model for speed: fast, while the session has it on", { timeout: 45_000 }, async (t) => {
