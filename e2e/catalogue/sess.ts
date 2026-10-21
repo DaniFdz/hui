@@ -388,7 +388,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:session-menu.pin", "shortcut:session-menu.rename", "shortcut:session-menu.unread", "shortcut:session-menu.archive", "shortcut:session-menu.delete"],
     journeys: ["session-menu-shortcuts"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Single-key menu mnemonics need a hardware keyboard; each menu item is its own visible use case.", decision: KEYBOARD },
   },
   {

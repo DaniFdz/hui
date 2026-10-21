@@ -32,6 +32,7 @@ export type Hui = {
   failNextRequest(method: string, path: string, error: string): Promise<void>;
   clipboard(options?: { refuse?: boolean }): Promise<void>;
   copied(): Promise<string>;
+  keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   appearance(): Promise<"light" | "dark">;
@@ -124,6 +125,7 @@ export const test = base.extend<{ hui: Hui }>({
         if (refused) document.execCommand = () => false;
       }, refuse),
       copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
+      keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
       phoneScreen: async () => {
         const phone = { width: 390, height: 844 };
         await browser().setViewport(phone);
