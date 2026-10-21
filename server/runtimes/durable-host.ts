@@ -31,6 +31,7 @@ import { DurablePrompt, type PromptSettings } from "./durable-prompt.ts";
 import { huiDurableTools, type DurableToolInvoker } from "./durable-tools.ts";
 import type { Contribution, DurableExtensions, ExtensionHost } from "./durable-extensions.ts";
 import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
+import { ImageLimits } from "./durable-images.ts";
 import type { BotChat, OfferedTool, ToolOrigin } from "./durable-offer.ts";
 import { invokeAgentTool } from "../agent-tools/bridge.ts";
 
@@ -514,7 +515,7 @@ export class DurableHost implements ExtensionHost {
       // selection: only an OptChat conversation, or a bot's chat, adds them.
       // Codemode is in the default selection, last, so a conversation stores nothing while Settings keep it on.
       const bots = this.#botExtensions;
-      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, ...(bots ? [bots.section] : []), this.codemode];
+      const base = [CodingTools, this.#tools, this.prompt.extension, this.#identity, this.optchat.extension, ImageLimits, ...(bots ? [bots.section] : []), this.codemode];
       for (const extension of [...base, this.optchat.toolsExtension, ...(bots ? [bots.tools, bots.tag] : [])]) this.#registry.install(extension);
       const harness = await Harness.open(await openNodeSqliteStorage(join(this.dir, "harness.sqlite")), {
         models: this.#models.view,
