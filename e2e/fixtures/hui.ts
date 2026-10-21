@@ -24,6 +24,7 @@ export type Hui = {
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string }): Promise<{ id: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
+  prompt(session: { id: string }, text: string): Promise<void>;
   provider: { held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
   reload(): Promise<void>;
@@ -74,6 +75,10 @@ export const test = base.extend<{ hui: Hui }>({
     };
     const sessions = async () => (await api<SessionList>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions);
     const sessionIds = async () => (await sessions()).map((session) => session.id);
+    const prompt = async (session: { id: string }, text: string) => {
+      await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
+      await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
+    };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
 
     const existing = new Set(await sessionIds());
@@ -85,10 +90,9 @@ export const test = base.extend<{ hui: Hui }>({
       api,
       createSession: async (input) =>
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+      prompt,
       createSubagent: async (parent) => {
-        const status = async (id: string) => (await sessions()).find((session) => session.id === id)?.status;
-        await expect.poll(() => status(parent.id), { timeout: 30_000 }).toBe("idle");
-        await api("POST", `/__hui/sessions/${parent.id}/prompt`, { text: "E2E_SUBAGENTS_START" });
+        await prompt(parent, "E2E_SUBAGENTS_START");
         const settled = async () => {
           const all = await sessions();
           const child = all.find((session) => session.parentId === parent.id);

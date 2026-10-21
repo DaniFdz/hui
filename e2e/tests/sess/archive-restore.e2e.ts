@@ -13,7 +13,7 @@ test("Archive session hides the whole tree, returns an open view Home and keeps 
 
   await hui.open(`/sessions/${child.id}`);
   await expect(screen.getByLabel(row(child.title))).toBeVisible();
-  await hui.api("POST", `/__hui/sessions/${parent.id}/prompt`, { text: "E2E_REPLAY" });
+  await hui.prompt(parent, "E2E_REPLAY");
   await hui.provider.held();
   await hui.sessionMenu("Plan website");
   await screen.getByText("Archive session", { visible: true }).tap();

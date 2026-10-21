@@ -41,7 +41,7 @@ test("a background session that settles stays unread until it is opened, and the
 
   await hui.open(`/sessions/${here.id}`);
   await expect(read).toBeVisible();
-  await hui.api("POST", `/__hui/sessions/${background.id}/prompt`, { text: "Hello from elsewhere" });
+  await hui.prompt(background, "Hello from elsewhere");
   await expect(unread).toBeVisible();
   await hui.reload();
   await expect(unread).toBeVisible();
