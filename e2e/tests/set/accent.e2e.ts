@@ -24,7 +24,6 @@ test("an accent recolours the highlights over any theme, Current accent names it
   await hui.open("/settings/appearance");
   await expect(swatch("Theme default")).toBeVisible();
   await expect(screen.getByText("Theme default", { exact: true })).toBeVisible();
-  const claw = (await hui.look(title)).color;
 
   await accents.getByRole("button", "Blue").tap();
   await expect(swatch("Blue")).toBeVisible();
@@ -33,11 +32,12 @@ test("an accent recolours the highlights over any theme, Current accent names it
   await expect.poll(async () => (await hui.look(title)).color).toEqual([91, 156, 246]);
   expect((await hui.look(highlight)).background).toEqual([91, 156, 246]);
 
-  await screen.getByRole("button", "Dracula").tap();
-  await expect(screen.getByRole("button", { name: "Dracula", pressed: true })).toBeVisible();
+  await screen.getByRole("button", "Miami").tap();
+  await expect(screen.getByRole("button", { name: "Miami", pressed: true })).toBeVisible();
+  await expect.poll(async () => (await hui.look(title)).background).toEqual([20, 15, 30]);
   await expect(swatch("Blue")).toBeVisible();
-  const [r, g, b] = (await hui.look(title)).color;
-  expect(b > g && g > r && r < 120).toBe(true);
+  expect((await hui.look(title)).color).toEqual([91, 156, 246]);
+  expect((await hui.look(highlight)).background).toEqual([91, 156, 246]);
 
   await screen.getByLabel("Custom accent color").fill("#2dd4bf");
   await expect(screen.getByText("Custom color", { exact: true })).toBeVisible();
@@ -47,21 +47,22 @@ test("an accent recolours the highlights over any theme, Current accent names it
   await accents.getByRole("button", "Theme default").tap();
   await expect(swatch("Theme default")).toBeVisible();
   await expect(screen.getByText("Theme default", { exact: true })).toBeVisible();
-  await expect.poll(async () => (await hui.look(title)).color).toEqual([189, 147, 249]);
-  expect(claw).not.toEqual([189, 147, 249]);
+  await expect.poll(async () => (await hui.look(title)).color).toEqual([244, 114, 182]);
 
   await hui.reload();
   await expect(swatch("Theme default")).toBeVisible();
-  expect((await hui.look(title)).color).toEqual([189, 147, 249]);
+  expect((await hui.look(title)).color).toEqual([244, 114, 182]);
 });
 
-test("an accent too faint for a light page is darkened just until it reads, and kept as chosen on a dark one", { tags: ["SET-007"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("an accent too faint for the page or its cards is darkened or lightened just until it reads, and kept as chosen where it reads", { tags: ["SET-007"], platforms: ["web"] }, async ({ screen, hui }) => {
   const title = screen.getByTestId("settings-page-title");
+  const accents = screen.getByLabel("Accent color");
   const amber = [245, 185, 66];
+  const blue = [91, 156, 246];
 
   await hui.deviceAppearance("dark");
   await hui.open("/settings/appearance");
-  await screen.getByLabel("Accent color").getByRole("button", "Amber").tap();
+  await accents.getByRole("button", "Amber").tap();
   await expect.poll(async () => (await hui.look(title)).color).toEqual(amber);
 
   await hui.deviceAppearance("light");
@@ -72,6 +73,21 @@ test("an accent too faint for a light page is darkened just until it reads, and 
   expect(contrast(color, background)).toBeLessThan(5.5);
   const [r, g, b] = color;
   expect(r > g && g > b).toBe(true);
+
+  await hui.deviceAppearance("dark");
+  await screen.getByRole("button", "Dracula").tap();
+  await expect.poll(async () => (await hui.look(title)).background).toEqual([40, 42, 54]);
+  const card = (await hui.look(screen.getByText("Current accent", { exact: true }))).background;
+  await accents.getByRole("button", "Blue").tap();
+  await expect.poll(async () => {
+    const [red, green, blueness] = (await hui.look(title)).color;
+    return blueness > green && green > red;
+  }).toBe(true);
+  const lightened = (await hui.look(title)).color;
+  expect(contrast(blue, card)).toBeLessThan(4.5);
+  expect(contrast(lightened, card)).toBeGreaterThanOrEqual(4.5);
+  expect(contrast(lightened, card)).toBeLessThan(5.5);
+  expect(luminance(lightened)).toBeGreaterThan(luminance(blue));
 });
 
 test("a control reached from the keyboard draws its focus ring in the accent over any theme, and in the theme's own after Theme default", { tags: ["SET-076"], platforms: ["web"] }, async ({ screen, hui }) => {
