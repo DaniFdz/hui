@@ -11,12 +11,16 @@ struct SessionsPageView: View {
     var body: some View {
         let rows = sessions.page(state)
         List {
-            Picker("Session state", selection: $state) {
-                Text("All").tag("all")
-                Text("Active").tag("active")
-                Text("Archived").tag("archived")
+            HStack {
+                ForEach([("all", "All"), ("active", "Active"), ("archived", "Archived")], id: \.0) { choice in
+                    Button(choice.1) { state = choice.0 }
+                        .buttonStyle(.bordered)
+                        .tint(state == choice.0 ? .accentColor : .secondary)
+                        .accessibilityAddTraits(state == choice.0 ? .isSelected : [])
+                }
             }
-            .pickerStyle(.segmented)
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel("Session state")
             ForEach(rows, id: \.id) { session in
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {

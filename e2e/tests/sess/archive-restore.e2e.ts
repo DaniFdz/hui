@@ -4,7 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 const row = (title: string) => new RegExp(`^${title}, status `, "u");
 
-test("Archive session hides the whole tree, returns an open view Home and keeps its run going", { tags: ["SESS-034", "SESS-035"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Archive session hides the whole tree, returns an open view Home and keeps its run going", { tags: ["SESS-034", "SESS-035"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const toast = screen.getByText("Archived “Plan website”.");
   const parent = await hui.createSession({ title: "Plan website" });
@@ -12,6 +12,7 @@ test("Archive session hides the whole tree, returns an open view Home and keeps 
   await hui.createSession({ title: "Independent conversation" });
 
   await hui.open(`/sessions/${child.id}`);
+  await hui.sessionList();
   await expect(screen.getByLabel(row(child.title))).toBeVisible();
   await hui.prompt(parent, "E2E_REPLAY");
   await hui.provider.held();
@@ -31,9 +32,10 @@ test("Archive session hides the whole tree, returns an open view Home and keeps 
   await expect(toast).toBeHidden();
   await expect(screen.getByLabel(row("Plan website"))).toBeVisible();
   await hui.open(`/sessions/${parent.id}`);
+  await expect(transcript.getByText("Replay prefix — replay suffix")).toBeVisible();
+  await hui.sessionList();
   await screen.getByRole("button", "Expand subagents of Plan website").tap();
   await expect(screen.getByLabel(row(child.title))).toBeVisible();
-  await expect(transcript.getByText("Replay prefix — replay suffix")).toBeVisible();
 });
 
 test("archiving a session closes its split pane and leaves the open conversation alone", { tags: ["SESS-034"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -107,7 +109,7 @@ test("on a phone screen the archive toast keeps Restore and its dismiss button i
   await expect(toast).toBeHidden({ timeout: 5_000 });
 });
 
-test("Sessions, Archived restores a tree that stays restored, and a message to an archived session restores its tree", { tags: ["SESS-036"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Sessions, Archived restores a tree that stays restored, and a message to an archived session restores its tree", { tags: ["SESS-036"] }, async ({ screen, hui }) => {
   const tree = async () => {
     await screen.getByRole("button", "Expand subagents of Archived plan").tap();
     await expect(screen.getByLabel(row(child.title))).toBeVisible();
@@ -125,6 +127,7 @@ test("Sessions, Archived restores a tree that stays restored, and a message to a
   }
   await screen.getByRole("button", "Restore Archived plan").tap();
   await expect(screen.getByText("No matching sessions")).toBeVisible();
+  await hui.sessionList();
   await expect(screen.getByLabel(row("Archived plan"))).toBeVisible();
   await tree();
   await hui.reload();
@@ -134,10 +137,13 @@ test("Sessions, Archived restores a tree that stays restored, and a message to a
   await hui.api("PATCH", `/__hui/sessions/${parent.id}`, { archived: true });
   await hui.open(`/sessions/${parent.id}`);
   await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Archived plan");
+  await hui.sessionList();
   await expect(screen.getByLabel(row("Archived plan"))).toBeHidden();
+  await hui.open(`/sessions/${parent.id}`);
   await screen.getByLabel("Message", { visible: true }).fill("Wake up");
   await screen.getByRole("button", "Send message").tap();
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
+  await hui.sessionList();
   await expect(screen.getByLabel(row("Archived plan"))).toBeVisible();
   await tree();
 });

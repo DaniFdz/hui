@@ -5,7 +5,8 @@
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
- * clipboard, the session menu (on iOS the open chat's toolbar menu, else a long press on the row), status glyphs (on iOS the row's session-glyph label
+ * clipboard, the session list (the phone drawer on the web, Back on iOS), the session menu (on iOS the open chat's
+ * toolbar menu, else a long press on the row), status glyphs (on iOS the row's session-glyph label
  * and whether it is a spinner), how a piece of the
  * screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
@@ -74,6 +75,7 @@ export type Hui = {
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   peek(target: Locator): Promise<void>;
+  sessionList(): Promise<void>;
   sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
@@ -344,6 +346,10 @@ export const test = base.extend<{ hui: Hui }>({
         back: () => browser().back(),
         forward: () => browser().forward(),
         peek: (target) => target.hover(),
+        sessionList: async () => {
+          const drawer = fixtures.screen.getByRole("button", "Open navigation", { visible: true });
+          if (await drawer.count() > 0) await drawer.tap();
+        },
         sessionMenu: async (title) => {
           const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
           await row.hover();
@@ -524,6 +530,13 @@ export const test = base.extend<{ hui: Hui }>({
       };
 
       const iosSteps: Partial<typeof webSteps> = {
+        sessionList: async () => {
+          for (let address = await iosSteps.url!(); new URL(address).pathname !== "/";) {
+            const shown = address;
+            await fixtures.screen.getByTestId("BackButton").tap();
+            await expect.poll(async () => (address = await iosSteps.url!())).not.toBe(shown);
+          }
+        },
         sessionMenu: async (title) => {
           const open = (await sessions()).find((session) => session.title === title);
           if (open && (await iosSteps.url!()).endsWith(`/sessions/${encodeURIComponent(open.id)}`)) {

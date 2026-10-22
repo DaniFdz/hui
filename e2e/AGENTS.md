@@ -62,7 +62,14 @@ throws "not on iOS yet" from the steps only the web engine has (hover, a refused
 looks and the rest), so a test that needs one keeps `platforms: ['web']`. A device reports no text for a container,
 only its label, so a test reads a container's text in order with `hui.textOf(container)` (on iOS its texts and control
 labels joined) rather than `toHaveText` on the container. On iOS `hui.glyph` reads the row's session-glyph label and
-whether it is a spinner.
+whether it is a spinner, and `hui.sessionMenu(title)` opens the open chat's toolbar menu when that session is the
+open screen and long-presses its row otherwise, returning the menu's scope (the row on the web).
+
+An iPhone shows one screen at a time, so a test calls `hui.sessionList()` before it checks session rows while a chat
+or the Sessions page is open: on the web's wide layout the sidebar is always there and it does nothing, on the web's
+phone layout it opens the navigation drawer, and on iOS it taps Back until the list shows (the list keeps the session
+it came back from selected, as the web's sidebar does). It never stands in for a check: when a test goes on in the
+chat, it opens that chat again.
 
 - Import `test` from `fixtures/hui.ts` and `expect` from `e2e`. The fixture owns the gateway's API setup and cleanup,
   the fixture provider's barriers and the steps that differ per platform; a test never reads `platform`, `device` or

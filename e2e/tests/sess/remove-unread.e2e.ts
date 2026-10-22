@@ -4,7 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 const row = (title: string) => new RegExp(`^${title}, status `, "u");
 
-test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI removes it and returns Home", { tags: ["SESS-037"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI removes it and returns Home", { tags: ["SESS-037"] }, async ({ screen, hui }) => {
   const question = screen.getByText("Remove Retire me from HUI?");
   const parent = await hui.createSession({ title: "Retire me" });
   const child = await hui.createSubagent(parent);
@@ -17,10 +17,12 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   await expect(screen.getByText("HUI will remove this session and all its subagents, including nested subagents, and stop their runtimes. Their PI transcripts remain on disk and are not deleted.")).toBeVisible();
   await screen.getByRole("button", "Cancel").tap();
   await expect(question).toBeHidden();
+  await hui.sessionList();
   await expect(screen.getByLabel(row("Retire me"))).toBeVisible();
   await screen.getByRole("button", "Expand subagents of Retire me").tap();
   await expect(screen.getByLabel(row(child.title))).toBeVisible();
 
+  await hui.open(`/sessions/${parent.id}`);
   await hui.sessionMenu("Retire me");
   await screen.getByText("Delete…", { visible: true }).tap();
   await screen.getByRole("button", "Remove from HUI").tap();

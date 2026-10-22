@@ -3,8 +3,10 @@
 // replaces that stack at once, as an address does; a link that arrives before the gateway connects opens once it does.
 // The open screen's address is kept in the preferences after its gateway's, so the app opens it again when it restarts
 // against the same gateway, as a reload keeps the web's address. Archiving or deleting the open session's tree from its
-// menu returns to the list, as the web returns Home. The screen's container carries the address it shows as its
-// accessibility value, under the identifier app-route, for tests; VoiceOver doesn't speak a container's value.
+// menu returns to the list, as the web returns Home. Going back to the list keeps the session it came from selected,
+// so its tree stays expanded as the web's sidebar keeps it beside the open chat. The screen's container carries the
+// address it shows as its accessibility value, under the identifier app-route, for tests; VoiceOver doesn't speak a
+// container's value.
 import SwiftUI
 
 struct RootView: View {
@@ -53,7 +55,7 @@ struct RootView: View {
             if path.isEmpty, openSession.hasPrefix("\(gateway.url)/") { Task { await go(String(openSession.dropFirst(gateway.url.count))) } }
         }
         .onChange(of: path) {
-            sessions.selected = path.last?.session ?? ""
+            if let id = path.last?.session { sessions.selected = id }
             let last = path.last
             Task {
                 let address = switch last {
@@ -69,6 +71,7 @@ struct RootView: View {
         }
         .onChange(of: sessions.closed) {
             if path.contains(where: { $0.session.map(sessions.closed.contains) == true }) { path = [] }
+            if sessions.closed.contains(sessions.selected) { sessions.selected = "" }
             sessions.closed = []
         }
         .onOpenURL { url in
