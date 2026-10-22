@@ -139,7 +139,7 @@ test("shared tests use no agent steps, retries, skips, platform reads, app.clear
 });
 
 test("shared tests find controls by roles iOS has too, and by test ids the web app sets and, when they run on iOS, the app too", () => {
-  const portable = new Set(["button", "textbox", "switch", "tab", "listitem", "link"]);
+  const portable = new Set(["button", "textbox", "switch", "tab", "listitem"]);
   const parts = [...testSources].flatMap(([file, source]) => {
     const inFile = pairs.filter((pair) => pair.file === file && pair.source);
     const pairLines = [...new Set(inFile.map((pair) => pair.source!.line))].sort((a, b) => a - b);

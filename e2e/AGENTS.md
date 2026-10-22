@@ -49,12 +49,16 @@ locally, create and boot the simulator once (the commands are in `../ios/AGENTS.
 time on a second simulator: set `E2E_IOS_DEVICE` to its name and `E2E_IOS_PORT` to another port for `ios:build` and
 `e2e:ios` alike; that run keeps agent-device's state in `~/.agent-device-<port>` unless `AGENT_DEVICE_STATE_DIR` names
 another folder, because two runs sharing one fail with "already bound". On iOS the fixture relaunches
-`dev.hui.ios` with `-HUIGatewayURL <gateway>` and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
+`dev.hui.ios` with `-HUIGatewayURL` pointing at a proxy in front of the gateway, which holds the requests a test
+intercepts with `hui.intercept` and passes everything else through, WebSocket upgrades included, and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
 `hui.reload`, deletes the app's preferences through `defaults` before each test (the app keeps nothing else) and also
 empties its data container through the engine for `hui.clearState` (a test never calls `app.clearState()`, whose
 deleted preferences `cfprefsd` can still hand the relaunched app), long-presses for `hui.hold` and `hui.contextMenu`,
-empties and reads the simulator's pasteboard (`simctl pbcopy`, `pbpaste`) for `hui.clipboard` and `hui.copied`, and
-throws "not on iOS yet" from the steps only the web engine has (hover, request interception, a refused clipboard,
+empties and reads the simulator's pasteboard (`simctl pbcopy`, `pbpaste`) for `hui.clipboard` and `hui.copied`, reads
+the address the app shows from its `app-route` marker for `hui.url`, swipes a container (at most 20 times each way)
+until the target is on screen for `hui.scrollTo`, finds a link by its name inside a container and checks the
+accessibility identifier the platform sets to its URL for `hui.expectLinkTo(container, name, href)`, and
+throws "not on iOS yet" from the steps only the web engine has (hover, a refused clipboard,
 looks and the rest), so a test that needs one keeps `platforms: ['web']`. A device reports no text for a container,
 only its label, so a test reads a container's text in order with `hui.textOf(container)` (on iOS its texts and control
 labels joined) rather than `toHaveText` on the container. On iOS `hui.glyph` reads the row's session-glyph label and
@@ -66,7 +70,8 @@ whether it is a spinner.
 - Tag each test with the IDs of the use cases it proves, and make those `required` where it runs. While a use case
   is iOS backlog, its test carries `platforms: ['web']`; a use case excluded on the web carries `platforms: ['ios']`.
 - Find controls by label, text, placeholder or test id, or by the roles iOS also has: `button`, `textbox`, `switch`,
-  `tab` and `listitem`. A test id must exist as a `data-testid` in `src/`, and in a test that runs on iOS (or in code
+  `tab` and `listitem`; a test checks a link inside a message's Markdown with `hui.expectLinkTo`, which owns the
+  `link` role. A test id must exist as a `data-testid` in `src/`, and in a test that runs on iOS (or in code
   its file shares with one), as an `.accessibilityIdentifier("…")` under `ios/HUI/` too. Every test starts a line with
   `test(`, which is how the check tells a file's tests apart.
 - No agent steps, `retries`, `test.skip(` or sleeps, in the tests or the fixture. Wait on state: `expect`,

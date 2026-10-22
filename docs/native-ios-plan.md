@@ -632,7 +632,8 @@ deliberately smaller than ARIA:
 | Content | text | `Text` | `getByText(text)` |
 | A container, or rows that names don't tell apart | `data-testid` | `.accessibilityIdentifier` | `getByTestId(id)` |
 
-Shared tests use the roles `button`, `textbox`, `switch`, `tab` and `listitem`, and everything else goes through a
+Shared tests use the roles `button`, `textbox`, `switch`, `tab` and `listitem` (a link inside a message's Markdown is
+checked through `hui.expectLinkTo`, which owns the `link` role), and everything else goes through a
 label, text or a test id. Test ids stay rare, for containers like `transcript`, because accessible names also serve
 screen readers and a renamed label then fails the test the way a user would notice. Two guards hold the contract
 (3.1). Spike S5 checks the SwiftUI side of the table: a multi-line `TextField` as `textbox`, `DisclosureGroup`
