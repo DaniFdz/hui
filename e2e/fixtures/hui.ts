@@ -1,8 +1,8 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
  * its API, the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
- * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
- * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
+ * delivers while dropping its answer or answers in its place, and the steps whose gesture differs per platform, such as
+ * holding a control, opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
  * point instead of the input), attaching files from `files/` or made up of a name and a size, reading what a download
  * saved or what the page copied, opening a session's menu, reading a sidebar row's status glyph (its tooltip and
  * whether it spins) and whether its unread dot has the accent colour, and reading how a piece of the screen looks (its
@@ -16,9 +16,10 @@
  * On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of loading a page, and
  * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
  * would otherwise hand the relaunched app the deleted values; the web-only steps throw. On the web it also goes Back and
- * Forward through the browser's history, sizes the window as a phone held upright or sideways or as the desktop, and
- * presses the command palette's chord (⌘K where the page runs on an Apple platform, Ctrl+K elsewhere). Test files import `test` from
- * here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * Forward through the browser's history, sizes the window as a phone held upright or sideways, and tells whether the
+ * page or its main area scrolls sideways and whether a tap at a control's centre reaches it (nothing covers it and it
+ * is not inert). Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or
+ * `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -38,6 +39,7 @@ type Intercepted = {
   arrived(): Promise<void>;
   deliver(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
+  answer(json: string): Promise<void>;
   deliverAndDrop(): Promise<void>;
 };
 
@@ -57,10 +59,10 @@ export type Hui = {
   clearState(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
-  wideScreen(): Promise<void>;
   back(): Promise<void>;
   forward(): Promise<void>;
-  paletteChord(): Promise<void>;
+  overflowsSideways(): Promise<boolean>;
+  reachable(target: Locator): Promise<boolean>;
   clipboard(options?: { refuse?: boolean }): Promise<void>;
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
@@ -176,13 +178,22 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().setViewport(phone);
         return phone;
       },
-      wideScreen: () => browser().setViewport({ width: 1440, height: 900 }),
+      overflowsSideways: () => browser().evaluate(() => [document.documentElement, document.querySelector(".main")]
+        .some((element) => element !== null && element.scrollWidth > element.clientWidth)),
+      reachable: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("reachable: the target lays out no box");
+        return browser().evaluate(({ x, y, width, height }) => {
+          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+          for (let element = document.elementFromPoint(x + width / 2, y + height / 2); element; element = element.parentElement) {
+            const rect = element.getBoundingClientRect();
+            if (same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height)) return element.closest("[inert]") === null;
+          }
+          return false;
+        }, box);
+      },
       back: () => browser().back(),
       forward: () => browser().forward(),
-      paletteChord: async () => {
-        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
-        await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
-      },
       peek: (target) => target.hover(),
       sessionMenu: async (title) => {
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
@@ -334,6 +345,7 @@ export const test = base.extend<{ hui: Hui }>({
           arrived: () => arrival,
           deliver: () => settle((route) => route.continue()),
           reject: (status, error) => settle((route) => route.fulfill({ status, json: { error } })),
+          answer: (json) => settle((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
           deliverAndDrop: () => settle(async (route) => {
             const response = await fetch(route.request.url, {
               method,

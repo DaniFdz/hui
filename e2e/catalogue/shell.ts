@@ -86,7 +86,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page"],
     journeys: ["shell-navigation", "update-notice", "openclaw-primary-ui-parity", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -126,7 +126,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: [],
     journeys: ["sidebar-toolbar", "shell-navigation", "openclaw-primary-ui-parity", "update-notice"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The collapse toggle exists only in the wide layout; the iPhone app is always narrow.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {

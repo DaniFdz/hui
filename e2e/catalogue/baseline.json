@@ -1,11 +1,9 @@
 {
   "backlog": {
     "web": [
-      "SHELL-011",
       "SHELL-012",
       "SHELL-013",
       "SHELL-014",
-      "SHELL-015",
       "SHELL-018",
       "SHELL-019",
       "SHELL-020",
@@ -1080,7 +1078,6 @@
     "Choose where the session runs",
     "Close",
     "Close files navigator",
-    "Close navigation",
     "Close provider dialog",
     "Close reader",
     "Close side chat",
@@ -1111,7 +1108,6 @@
     "Ears",
     "Enable word wrap",
     "Event field",
-    "Expand sidebar",
     "Files and folders",
     "Files navigator",
     "Filter changed files",
@@ -1119,7 +1115,6 @@
     "Filter worktrees",
     "GitHub links",
     "Group by",
-    "HUI update available",
     "Hang up",
     "Hide Work pane",
     "Interval unit",
