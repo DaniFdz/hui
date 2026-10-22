@@ -101,12 +101,14 @@ The operator clicked the banners and Notification Center entries by hand.
 
 | Case | Observed |
 | --- | --- |
-| HUI not running | `open -g` started it in the background with no window and the front app unchanged; the banner appeared 3 to 5 s after the call and the tool returned `queued`. Clicking it opened a window on that chat. |
+| First launch | Opening HUI asked for notification permission before any alert was sent. |
+| HUI not running | `open -g` started it in the background with no window and the front app unchanged; the banner appeared 1.5 to 5 s after the call and the tool returned `queued`. Clicking it opened a window on that chat. |
 | Another chat open | The window stayed on its chat and in the background while the alert arrived. Clicking opened the alert's chat and brought HUI to the front within 2 s. |
 | Bot chat | Clicking opened `/bots/<id>`, the bot's stable address. |
 | Three alerts at once | All three returned `queued`. Clicked in Notification Center in a different order, each opened its own chat. |
 | Window closed | HUI kept running without a window; clicking created a window on the alert's chat. |
 | Quit with an unread alert | Quitting HUI removed the alert from Notification Center. |
+| Force Quit with an unread alert | The alert stayed. Clicking it started HUI on its home page, not the alert's chat. |
 | macOS refuses | The tool failed within the launch time with "Allow notifications for HUI in System Settings"; HUI showed no dialog and did not come to the front. |
 
 Known limits:
@@ -117,5 +119,4 @@ Known limits:
 - Each alert sent while HUI runs starts a second HUI instance for about a
   second, and a visible Dock shows a second HUI icon in that time.
 - After a crash or Force Quit, a leftover banner opens HUI without switching
-  chats: macOS hands the identifier only to Electron's `ready` event, which HUI
-  does not read.
+  chats, because the new HUI process has no record of that banner.
