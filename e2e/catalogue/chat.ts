@@ -161,7 +161,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidconnect"],
     surfaces: ["route:POST /__hui/sessions/:id/connect"],
     journeys: ["interrupted-recovery", "message-metadata"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
