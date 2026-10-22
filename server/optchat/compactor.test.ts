@@ -73,39 +73,41 @@ test("short messages and lines that fit are their own nodes, with no model call"
   assert.deepEqual(memory.status().usage.calls, 0);
 });
 
-test("messages are compressed one at a time, in order, and no context ever holds an unsummarized line", { timeout: 10_000 }, async (t) => {
-  const requests: SummaryRequest[] = [];
-  let running = 0;
-  let peak = 0;
-  const summarize: Summarize = async (request) => {
-    requests.push(request);
-    running++;
-    peak = Math.max(peak, running);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    running--;
-    const step = blocks(request)[1]!;
-    const message = /\nuser: (M\d+)/u.exec(step)?.[1];
-    // 40-byte lines: two of them (81 bytes with the newline) need a model call to merge.
-    return message ? `S-${message}`.padEnd(40, "-") : "MERGED";
-  };
-  const memory = await open(t, { summarize, node: 64, jobs: 4 });
+test("up to JOBS messages are compressed at once, in order, and no context ever holds an unsummarized line", { timeout: 10_000 }, async (t) => {
+  const gate = gated();
+  const memory = await open(t, { summarize: gate.summarize, node: 64, jobs: 4 });
   for (let i = 0; i < 6; i++) await memory.append("user", `M${i} ${"y".repeat(97)}`);
+  const message = (request: SummaryRequest) => /\nuser: (M\d+)/u.exec(blocks(request)[1]!)?.[1];
+  // 40-byte lines: two of them (81 bytes with the newline) need a model call to merge.
+  const answer = (k: number) => {
+    const name = message(gate.calls[k]!.request);
+    gate.calls[k]!.reply(name ? `S-${name}`.padEnd(40, "-") : "MERGED");
+  };
+  await gate.call(4);
+  assert.deepEqual(gate.calls.map(({ request }) => [message(request), blocks(request)[0]]),
+    ["M0", "M1", "M2", "M3"].map((name) => [name, "<chat>\n\n</chat>"]), "four start at once, before any line is built");
+  // M1 finishes first: M0 still waits, and fewer than JOBS lines before M4 do, so M4 starts with a context that
+  // stops at M0.
+  answer(1);
+  await gate.call(5);
+  assert.deepEqual([message(gate.calls[4]!.request), blocks(gate.calls[4]!.request)[0]], ["M4", "<chat>\n\n</chat>"],
+    "a freed job goes to the next message, whose context stops at the first line not built");
+  answer(0);
+  for (let k = 2; k < 9; k++) {
+    await gate.call(k + 1);
+    answer(k);
+  }
   await allBuilt(memory);
-  const compressed = requests.filter((request) => blocks(request)[1]!.includes("Compress this message"));
-  assert.deepEqual(compressed.map((request) => /\nuser: (M\d+)/u.exec(blocks(request)[1]!)?.[1]), ["M0", "M1", "M2", "M3", "M4", "M5"]);
-  compressed.forEach((request, index) => {
-    const before = Array.from({ length: index }, (_, k) => `S-M${k}`.padEnd(40, "-"));
-    assert.equal(blocks(request)[0], `<chat>\n${before.join("\n")}\n</chat>`, "the lines before the message, bare");
-  });
-  const merges = requests.filter((request) => blocks(request)[1]!.includes("Merge these two lines"));
-  assert.equal(merges.length, 3, "three level-1 merges; the level-2 one fits for free");
+  const requests = gate.calls.map(({ request }) => request);
+  assert.deepEqual(requests.map(message).filter(Boolean), ["M0", "M1", "M2", "M3", "M4", "M5"]);
+  assert.equal(requests.filter((request) => blocks(request)[1]!.includes("Merge these two lines")).length, 3, "three level-1 merges; the level-2 one fits for free");
   assert.equal(memory.tree.text(2, 0), "MERGED\nMERGED");
   for (const request of requests) {
     assert(!blocks(request)[0]!.includes(PLACEHOLDER), "rule 3: the compactor only ever sees summaries");
     assert(!/^\d+\+\d+\|/mu.test(blocks(request).join("\n")), "no ids in a compactor call");
     assert.equal(request.system, compactPrompt("Grok"));
   }
-  assert(peak <= 4, String(peak));
+  assert(gate.peak() <= 4, String(gate.peak()));
 });
 
 test("over the limit, the same conversation shows the cut, and after TRIES replies the shortest wins", { timeout: 10_000 }, async (t) => {
