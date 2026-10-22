@@ -1,8 +1,8 @@
 // The chat's view models as the core's `chatRows` returns them (src/lib/chat-rows.ts): transcript items
 // (`TranscriptItem` in src/api/sessions.ts) grouped into rows, each row and item with a unique `key`, activity rows with
 // their labels and tool items with their cards. Mirrored by hand, so scripts/ios-contract.test.mjs checks both kind
-// enums against the TypeScript unions. A kind a newer gateway adds decodes as `unrecognized` and draws nothing, and a
-// row that fails to decode is logged and left out, so the rest of the chat keeps working.
+// enums against the TypeScript unions. A kind a newer gateway adds is logged, decodes as `unrecognized` and draws
+// nothing, and a row that fails to decode is logged and left out, so the rest of the chat keeps working.
 import Foundation
 import OSLog
 
@@ -12,7 +12,13 @@ protocol ForwardCompatibleKind: RawRepresentable<String>, Decodable {
 
 extension ForwardCompatibleKind {
     init(from decoder: any Decoder) throws {
-        self = Self(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .unrecognized
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if let known = Self(rawValue: raw) {
+            self = known
+        } else {
+            Logger(subsystem: "dev.hui.ios", category: "chat").notice("Drew nothing for an unknown \(String(describing: Self.self)) \(raw, privacy: .public)")
+            self = .unrecognized
+        }
     }
 }
 
