@@ -7,8 +7,10 @@ async function reply(screen: Screen, hui: Hui, prompt: string, session?: { id: s
   await hui.open(`/sessions/${session.id}`);
   await screen.getByLabel("Message").fill(prompt);
   await screen.getByRole("button", "Send message").tap();
+  const transcript = screen.getByTestId("transcript");
+  await expect(transcript.getByRole("button", "Copy response").first()).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  return screen.getByTestId("transcript");
+  return transcript;
 }
 
 test("Copy response copies a reply and turns to Copied, and a sent prompt's context menu copies it, a selection or code", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -32,6 +34,7 @@ test("Copy response copies a reply and turns to Copied, and a sent prompt's cont
 
   await screen.getByLabel("Message").fill("E2E_CODE_PARITY");
   await screen.getByRole("button", "Send message").tap();
+  await expect(transcript.getByRole("button", "Copy response")).toHaveCount(2);
   const code = transcript.getByText(/^line 1: fixture/u);
   await hui.contextMenu(code);
   await screen.getByText("Copy code").tap();
@@ -75,13 +78,14 @@ test("A refused clipboard write leaves the menu item saying Copy failed — retr
   expect(await hui.copied()).toBe("");
 });
 
-test("On a phone screen the latest reply's Copy response is visible and copies on the first tap", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("On a phone screen the latest reply's Copy response is visible and copies on the first touch", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
   await hui.phoneScreen();
   await hui.clipboard();
   const transcript = await reply(screen, hui, "Copy on a phone");
   const copy = transcript.getByRole("button", "Copy response");
   await expect(copy).toBeVisible();
-  await copy.tap();
+  expect((await hui.look(copy)).opacity).toBeGreaterThan(0.5);
+  await hui.touchTap(copy);
   await expect(transcript.getByRole("button", "Copied")).toBeVisible();
   await expect.poll(() => hui.copied()).toBe("Fixture response.");
 });
