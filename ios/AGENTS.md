@@ -116,7 +116,8 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   `Read <file>`, `Agent activity: <step>`) and takes every label from the core: the core's `chatRows` returns the rows with
   their activity labels and tool cards (`src/lib/chat-rows.ts`), and a `key` per row and item that the screen uses for
   identity, opening and scrolling (tool call ids repeat across turns); the working indicator comes from `workingLabel`. The transcript follows the bottom
-  until a card or activity row is opened, which scrolls to it, and follows again after the next send. A plain button
+  while the reader's scroll leaves it within 48 points of the end, as the web's does; opening a card or activity row
+  scrolls to it and stops following, and a send follows again. A plain button
   whose label has a `Spacer` needs `.contentShape(Rectangle())`, or a tap at its centre misses it.
 - `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
   has a destination, and anything else returns to the list. On the iOS 27.0 simulator `xcrun simctl openurl` opens

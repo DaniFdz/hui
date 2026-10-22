@@ -12,6 +12,7 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var expanded: Set<String> = []
     @State private var following = true
+    @State private var userScrolling = false
 
     init(id: String, client: GatewayClient, core: HUICore, title: String?) {
         self.core = core
@@ -81,7 +82,7 @@ struct ChatView: View {
                     if following { proxy.scrollTo("end", anchor: .bottom) }
                 }
                 .onChange(of: following) {
-                    if following { proxy.scrollTo("end", anchor: .bottom) }
+                    if following, !userScrolling { proxy.scrollTo("end", anchor: .bottom) }
                 }
         }
     }
@@ -105,6 +106,14 @@ struct ChatView: View {
             .padding()
         }
         .defaultScrollAnchor(.bottom)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentSize.height + geometry.contentInsets.bottom - geometry.visibleRect.maxY < 48
+        } action: { _, nearBottom in
+            if userScrolling { following = nearBottom }
+        }
+        .onScrollPhaseChange { _, phase in
+            userScrolling = [.tracking, .interacting, .decelerating].contains(phase)
+        }
         .scrollDismissesKeyboard(.interactively)
         .accessibilityIdentifier("transcript")
     }
