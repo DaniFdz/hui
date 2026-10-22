@@ -8,6 +8,10 @@ import { test } from "vitest";
 import { buildCore } from "../../scripts/ios-build.ts";
 
 const json = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
+const session = {
+  id: "a", title: "Build", group: "ungrouped", cwd: "/w", displayCwd: "/w", tool: "pi", status: "idle", stage: "testing",
+  stageOrigin: "agent", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+} as const;
 
 test("the core bundle runs with no DOM, network or timers, and every export answers there", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "hui-ios-core-"));
@@ -22,6 +26,15 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     navigationPath: () => assert.equal(core.navigationPath({ kind: "session", id: "a b" }), "/sessions/a%20b"),
     decodeSseFrame: () => assert.deepEqual(json(core.decodeSseFrame('event: status\ndata: {"id":"a"}')), { name: "status", payload: { id: "a" } }),
     reconnectDelay: () => assert.equal(core.reconnectDelay(1, () => 0), 250),
+    sessionAccessibleName: () => assert.equal(core.sessionAccessibleName(session), "Build, status idle, tool pi, stage testing"),
+    sessionStatusLabel: () => assert.equal(core.sessionStatusLabel({ status: "reconnecting", worker: { id: "w", name: "devbox" } }), "Reconnecting to devbox…"),
+    sessionStatusText: () => assert.equal(core.sessionStatusText("waiting"), "Waiting for your answer"),
+    sessionGroupLabel: () => assert.equal(core.sessionGroupLabel("ungrouped"), "OTHER"),
+    DEFAULT_SIDEBAR_SESSION_OPTIONS: () => assert.equal(core.DEFAULT_SIDEBAR_SESSION_OPTIONS.groupBy, "custom"),
+    sessionTreeRows: () => assert.deepEqual(
+      json(core.sessionTreeRows([session, { ...session, id: "b", parentId: "a" }], { selectedId: "", toggled: new Set() }).map((row) => [row.session.id, row.collapsed])), [["a", true]]),
+    sidebarSessionGroups: () => assert.deepEqual(
+      core.sidebarSessionGroups([{ label: "ungrouped", sessions: [session] }], "", core.DEFAULT_SIDEBAR_SESSION_OPTIONS).map((group) => group.key), ["ungrouped"]),
   };
   assert.deepEqual(Object.keys(core).sort(), Object.keys(calls).sort());
   for (const call of Object.values(calls)) call();

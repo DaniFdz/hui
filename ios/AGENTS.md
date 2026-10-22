@@ -12,9 +12,7 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   bundle and calls every export in an empty `node:vm` context. A new export needs a call there, or the test fails.
 - `npm run ios:core` writes `HUI/Resources/Generated/hui-core.js`, which defines the global `HUICore`, and
   `hui-core.sha256`, a `shasum -a 256 -c` list of the bundle and every file it was built from. Git ignores both. The
-  Xcode build checks the list to refuse a missing or stale bundle. User script sandboxing
-  (`ENABLE_USER_SCRIPT_SANDBOXING`) is a setting of the whole target, and the list changes between builds, so the
-  Xcode project either turns that setting off or reads the inputs from an `.xcfilelist` the build script writes.
+  Xcode build checks the list to refuse a missing or stale bundle.
 
 ## Payload types
 
@@ -43,3 +41,63 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   holds Swift files (`scripts/module-headers.test.mjs` checks both).
 - Swift refuses two files with the same name in one module, so the generated files end in `Payloads.swift`. Don't
   give a hand-written file one of their names.
+
+## The Xcode project
+
+- `HUI.xcodeproj` uses folder-synchronized groups: every file under `HUI/` belongs to the `HUI` target and every
+  file under `HUITests/` to the `HUITests` target, so adding a file never edits `project.pbxproj`. Files that must
+  stay out of the app bundle (`Info.plist`, `hui-core.sha256`) are listed in the `HUI` folder's exception set.
+- `HUI`: bundle id `dev.hui.ios`, iOS 18.0, Swift 6, iPhone only, no signing, no entitlements, no extensions and no
+  Swift packages. `Info.plist` holds only what build settings can't: the `hui` URL scheme and
+  `NSAllowsLocalNetworking`. `HUITests` is hosted by the app, so tests `@testable import HUI`.
+- The `Check hui-core.js` build phase runs `shasum -a 256 -c` on `hui-core.sha256` and fails with "run npm run
+  ios:core" when the bundle is missing or stale. The `HUI` target turns user script sandboxing off for it, because
+  the list of inputs changes with the core's imports and a sandboxed script could not read them.
+- Built and tested with Xcode 27.1 (27A9275) and an iPhone 17 simulator on the iOS 27.0 runtime (the 27.1 runtime
+  only offers iPhone Duo).
+
+## Commands
+
+- `npm run ios:build` builds the core, then runs
+  `xcodebuild -project ios/HUI.xcodeproj -scheme HUI -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build`
+  and `xcrun simctl install "HUI iPhone" ios/build/Build/Products/Release-iphonesimulator/HUI.app`. Boot the
+  simulator first; create it once with
+  `xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0`.
+- `npm run ios:core` builds only the core.
+- Unit tests: `xcodebuild test -project ios/HUI.xcodeproj -scheme HUI -destination 'platform=iOS Simulator,name=HUI iPhone'`
+  (run `npm run ios:core` first).
+
+## Talking to the gateway
+
+- Every request goes through `GatewayClient`, which sends `x-hui: 1` and the web's 20 s response deadline as the
+  request's idle timeout, so a slow download isn't cut short. The session events stream uses the web's 40 s stall
+  timeout instead, which the gateway's 15 s heartbeat keeps alive. A refusal throws `GatewayError` with the status and
+  the body's `error` message. `GatewayClient.described` turns a timeout or lost connection, while asking or while
+  reading a stream, into HUI's own message. When the Connect screen's address answers with something other than
+  `GET /__hui/update`'s payload, it says "This address doesn't answer as a HUI gateway."
+- `HUICore` is an actor on its own `DispatchSerialQueue` holding the one `JSContext`. Arguments cross as JSON and
+  answers come back through `JSON.stringify`, decoded into Swift types; a script exception throws.
+- `SSEFramer` cuts frames at the byte level, so a character split across chunks is decoded whole, and hands each
+  frame's text to the core's `decodeSseFrame`.
+- `HUITests/Fixtures/` holds responses recorded from a fixture gateway
+  (`node e2e/visual-verification.mjs launch --branch <branch> --port <port> --receipt-dir .e2e/hui`), with the
+  temporary workspace path replaced by `/tmp/hui-fixture/workspace`. Record them again when their payloads change.
+
+## Screens
+
+- The gateway URL comes from the `-HUIGatewayURL <url>` launch argument or the Connect screen, and both use the
+  `HUIGatewayURL` defaults key, so the last gateway that answered is remembered. `npm run ios:build` sets the app's
+  version to `package.json`'s; `GatewayModel.versionNotice` compares it with `GET /__hui/update`'s
+  `currentVersion` (older and newer gateways get a notice naming both, `null` reads as an unverified development
+  gateway).
+- Labels a shared test reads come from the core, not Swift copies: rows use `sessionAccessibleName` (with its Jira
+  part), `sidebarSessionGroups` with the web sidebar's default options and `sessionTreeRows` with every subagent tree
+  folded, and statuses use `sessionStatusLabel`, the chat header's label (a worker session reads "Reconnecting to
+  devbox…"), read as `Session status: <text>`.
+- `SessionsModel` opens the events stream before it loads the list, then reads the stream, as the web does. Once the
+  stream's snapshot arrived its statuses win over every list and upsert, and a session the snapshot leaves out is idle.
+  Every listed session has a status label, so a deep link to one the sidebar hides (archived, a Swarm helper) opens.
+- `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
+  has a destination, and anything else returns to the list. On the iOS 27.0 simulator `xcrun simctl openurl` opens
+  the app directly, whether HUI or another app is in front; if iOS shows its "Open in “HUI”?" confirmation instead,
+  a test has to accept it.

@@ -25,6 +25,7 @@
     "desktop": "npm run build && node bin/hui.mjs desktop",
     "build": "node scripts/build.mjs",
     "api:schema": "node scripts/api-schema.ts",
+    "ios:build": "node scripts/ios-build.ts --app",
     "ios:core": "node scripts/ios-build.ts",
     "prepack": "npm run build",
     "preview": "vite preview",

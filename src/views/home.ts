@@ -24,7 +24,6 @@ import type {
   TranscriptAttachment,
   SessionConnection,
   SessionGroup,
-  SessionStatus,
   SessionView,
   SubagentTaskView,
   TranscriptItem,
@@ -37,6 +36,7 @@ import { latestSubagentBatch, subagentElapsed, subagentVisualState, type Subagen
 import { composerEnterMode, composerPlaceholder } from "../lib/composer/state.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
+import { sessionStatusLabel } from "../lib/session/labels.ts";
 import { adjustTextareaHeight as syncComposerTextarea } from "../lib/composer/textarea.ts";
 import { icons } from "../lib/icons.ts";
 import { isThinkingLevel, PI_THINKING_LEVELS, THINKING_LABELS, THINKING_LEVELS, type ThinkingLevel } from "../lib/thinking.ts";
@@ -99,16 +99,6 @@ if (typeof document !== "undefined") {
     document.querySelectorAll<HTMLDetailsElement>(".agent-chat__input details[open]").forEach(positionNativePicker);
   });
 }
-
-const STATUS_TEXT: Record<SessionStatus, string> = {
-  idle: "Idle",
-  running: "Running",
-  waiting: "Waiting for your answer",
-  starting: "Starting",
-  error: "Error",
-  reconnecting: "Reconnecting",
-  disconnected: "Disconnected",
-};
 
 const SEND_LONG_PRESS_MS = 450;
 export const TRANSCRIPT_SCROLLER_SELECTOR = ".chat-thread";
@@ -2429,7 +2419,7 @@ function botFaceState(props: HomeProps): BotFaceState {
 
 /** A bot's chat names the bot, its role, the worker it runs on and whether it is summarizing memory. */
 function renderBotIdentity(bot: HomeBot, session: SessionView, face: BotFaceState) {
-  const status = bot.bot.memory?.waiting ? "Summarizing memory…" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status];
+  const status = bot.bot.memory?.waiting ? "Summarizing memory…" : sessionStatusLabel(session);
   const worker = bot.bot.worker;
   return html`<div class="transcript__identity chat-pane__crumbs bot-chat-identity">
     ${renderBotAvatar(bot.bot, "md", { state: face })}
@@ -2461,7 +2451,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" data-testid="session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(unreachableHost(session)?.status ?? STATUS_TEXT[session.status])}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(sessionStatusLabel(session))}
           </span>
         </div>`}
         ${session.parentId ? html`<button
