@@ -71,7 +71,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huilocal-pathscwddirectoryqpath-prefix"],
     surfaces: ["route:GET /__hui/local-paths"],
     journeys: ["local-path-autocomplete"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Arrow, Enter and Tab completion is a keyboard path; choosing an option is the visible equivalent.", decision: KEYBOARD },
   },
   {
