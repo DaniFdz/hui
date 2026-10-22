@@ -1,10 +1,11 @@
 /**
  * The catalogue job's check of a pull request against its base: the baseline grows only for a use case the base
  * already had the surfaces, journeys and SPEC text for (one the first inventory missed); a use case the pull request
- * changes, in its catalogue entry or a shared test tagged with it, leaves the web and iOS backlogs; and a static
- * accessible name new in `src/` appears in a shared test that runs on both targets. A use case whose test alone changed,
- * and a new name, may instead be listed on the description's `Unchanged behaviour:` line, which it reads from the pull
- * request event. It prints what moved to the job summary. Run it as `node scripts/e2e-baseline-check.ts <base-commit>`.
+ * changes, in its catalogue entry, a shared test tagged with it or the code that test's file shares between its tests
+ * (its header comment aside), leaves the web and iOS backlogs; and a static accessible name new in `src/` appears in a
+ * shared test that runs on both targets. A use case whose test alone changed, and a new name, may instead be listed on
+ * the description's `Unchanged behaviour:` line, which it reads from the pull request event. It prints what moved to
+ * the job summary. Run it as `node scripts/e2e-baseline-check.ts <base-commit>`.
  */
 import { execFileSync } from "node:child_process";
 import { appendFile, mkdtemp, readdir, readFile, rm, symlink } from "node:fs/promises";
@@ -76,10 +77,15 @@ for (const line of git("diff", "-U0", base, "--", "e2e/tests").split("\n")) {
   const hunk = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/u.exec(line);
   if (hunk) changedLines.set(diffFile, [...changedLines.get(diffFile) ?? [], ...Array.from({ length: Math.max(1, Number(hunk[2] ?? 1)) }, (_, offset) => Number(hunk[1]) + offset)]);
 }
+const firstTestLine = (file: string) => Math.min(...[...tests.values()].filter((test) => test.file === file).map((test) => test.line));
 const testBodies = await Promise.all([...tests.values()].map(async (test) => {
+  const lines = (await readFile(join(root, test.file), "utf8")).split("\n");
+  const headerEnd = lines[0]?.startsWith("/**") ? lines.findIndex((line) => line.includes("*/")) + 1 : 0;
   const end = Math.min(...[...tests.values()].filter((other) => other.file === test.file && other.line > test.line).map((other) => other.line - 1));
-  const body = (await readFile(join(root, test.file), "utf8")).split("\n").slice(test.line - 1, Number.isFinite(end) ? end : undefined).join("\n");
-  return { ...test, body, changed: (changedLines.get(test.file) ?? []).some((line) => line >= test.line && line <= end) };
+  const body = lines.slice(test.line - 1, Number.isFinite(end) ? end : undefined).join("\n");
+  const shared = (line: number) => line > headerEnd && line < firstTestLine(test.file);
+  const changed = (changedLines.get(test.file) ?? []).some((line) => shared(line) || (line >= test.line && line <= end));
+  return { ...test, body, changed };
 }));
 const testedChanges = new Set(testBodies.filter((test) => test.changed).flatMap((test) => test.tags));
 const event = process.env["GITHUB_EVENT_PATH"] ? JSON.parse(await readFile(process.env["GITHUB_EVENT_PATH"], "utf8")) : {};
@@ -115,7 +121,7 @@ for (const entry of changed) {
 
 const onBothTargets = testBodies.filter((test) => test.targets.has("web") && test.targets.has("ios")).map((test) => test.body);
 const newNames = [...after.labels].filter((label) => !before.labels.has(label));
-for (const name of newNames.filter((label) => !onBothTargets.some((body) => body.includes(`"${label}"`) || body.includes(`'${label}'`)))) {
+for (const name of newNames.filter((label) => !onBothTargets.some((body) => ["\"", "'", "`"].some((quote) => body.includes(`${quote}${label}${quote}`))))) {
   if (unchanged.has(name)) listedUnchanged.push(`"${name}"`);
   else problems.push(`"${name}" is a new accessible name, so a shared test that runs on the web and on iOS must use it. If it names an existing control, list it on the description's Unchanged behaviour: line.`);
 }

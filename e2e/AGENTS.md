@@ -29,10 +29,11 @@ in the order of `AREAS` in `catalogue/types.ts`). It is the checklist the shared
 - A change that adds or changes a user outcome adds or updates its entry in the same PR, and a use case it changes
   leaves the web and iOS backlogs with its shared test. An accessible name new in `src/` appears in a shared test that
   runs on both targets. A use case changes when its entry's behaviour, surfaces or spec change, or when the body of a
-  test tagged with it does; the PR that adds a backlog use case's first test and takes it off one platform's backlog
-  doesn't count. A test fix that leaves the behaviour alone, or a new name for a control that already existed, goes on
-  the PR description's `Unchanged behaviour:` line instead (IDs, and names in quotes, separated by commas).
-  `scripts/e2e-baseline-check.ts` (the E2E catalogue workflow) checks all of this against the pull request's base.
+  test tagged with it, or the file code it shares other than the header comment, does; the PR that adds a backlog use
+  case's first test and takes it off one platform's backlog doesn't count. A test fix that leaves the behaviour alone,
+  or a new name for a control that already existed, goes on the PR description's `Unchanged behaviour:` line instead
+  (IDs, and names in quotes, separated by commas). `scripts/e2e-baseline-check.ts` (the E2E catalogue workflow) checks
+  all of this against the pull request's base.
 
 ## The shared e2e suite
 
