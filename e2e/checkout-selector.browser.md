@@ -11,32 +11,20 @@ app.
 - Vite gateway at `http://localhost:5173/`.
 - Desktop viewport: 1440 x 900. Mobile viewport: 390 x 844.
 
+The shared tests `e2e/tests/sess/checkout.e2e.ts` and `new-session-choices.e2e.ts` now prove the Checkout
+popover's modes, branch suggestions, starting on another branch or in a new worktree and the Configure default prefix
+link (SESS-003, SESS-009 to SESS-011). What is left here is landing on the prefix field on a long Settings page
+(SESS-075) and the popover's layout.
+
 ## Journey
 
-1. Open New Session and enter the disposable repository as the project
-   directory.
-2. Observe the checkout trigger resolve to the repository's current `main`
-   branch.
-3. Open the Checkout popover and select **New worktree**.
-4. Observe the trigger change to **New worktree from main**, the `From` field
-   offer discovered refs with HUI-owned menu rows instead of the browser's
-   native datalist dropdown, keep the repository default branch first, and the
-   optional `Name` field explain that the session title supplies its default.
-   Selecting a branch writes it into `From` and closes the branch suggestion
-   list while keeping the checkout popover open.
-5. Return to **Current checkout**, choose `topic` from the same `From`
-   suggestions, and verify the selector stays in Current checkout mode, the
-   worktree `Name` field remains hidden, and the branch suggestion list closes.
-6. Use **Configure default prefix** to open `/settings/worktrees` scrolled to
+1. Open New Session, enter the disposable repository as the project
+   directory, open the Checkout popover and select **New worktree**.
+2. Use **Configure default prefix** to open `/settings/worktrees` scrolled to
    its Git worktrees section, where the `branchPrefix` input lives.
-7. Inspect the rendered popover at desktop and mobile widths. The mobile popup
+3. Inspect the rendered popover at desktop and mobile widths. The mobile popup
    repositions above its trigger, remains fully visible and introduces no
    horizontal document overflow.
-
-The server-side integration test separately creates a real worktree from an
-explicit non-current base ref and verifies the selected commit is checked out.
-The Browser journey intentionally stops before submission so it does not start
-PI or create a transcript.
 
 No page runtime errors were observed. The prefix Settings follow-up used a
 temporary Brave/CDP profile after the shared browser profile reported
