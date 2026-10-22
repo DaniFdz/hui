@@ -58,8 +58,9 @@ clipboard, glyphs, looks and the rest), so a test that needs one keeps `platform
 - Tag each test with the IDs of the use cases it proves, and make those `required` where it runs. While a use case
   is iOS backlog, its test carries `platforms: ['web']`; a use case excluded on the web carries `platforms: ['ios']`.
 - Find controls by label, text, placeholder or test id, or by the roles iOS also has: `button`, `textbox`, `switch`,
-  `tab` and `listitem`. A test id must exist as a `data-testid` in `src/`, and in a file with a test that runs on iOS,
-  as an `.accessibilityIdentifier("…")` under `ios/HUI/` too.
+  `tab` and `listitem`. A test id must exist as a `data-testid` in `src/`, and in a test that runs on iOS (or in code
+  its file shares with one), as an `.accessibilityIdentifier("…")` under `ios/HUI/` too. Every test starts a line with
+  `test(`, which is how the check tells a file's tests apart.
 - No agent steps, `retries`, `test.skip(` or sleeps, in the tests or the fixture. Wait on state: `expect`,
   `expect.poll` and the provider's barriers. Check `toBeHidden()` only after a positive check has synchronized, and
   prefer it to `.not.toBeVisible()`.
