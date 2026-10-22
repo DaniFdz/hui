@@ -16,6 +16,7 @@ final class SessionsModel {
         var title: String
         var accessibleName: String
         var glyph: SessionGlyph
+        var icon: String
         var pinned: Bool
         var unread: Bool
         var group: String
@@ -52,6 +53,8 @@ final class SessionsModel {
     var closed: Set<String> = []
     var removing: API.SessionView?
     var renaming = ""
+    var choosingIcon: API.SessionView?
+    private(set) var icons: [String] = []
     var selected = "" {
         didSet { if selected != oldValue { reproject() } }
     }
@@ -201,6 +204,15 @@ final class SessionsModel {
         }
     }
 
+    func setIcon(_ session: API.SessionView, _ icon: String, client: GatewayClient) async {
+        guard await update(session.id, ["icon": .string(icon)], client: client) != nil else { return }
+        notify(icon.isEmpty ? "Session icon removed." : "Session icon set to \(icon).")
+    }
+
+    func normalizedIcon(_ value: String) async -> String? {
+        try? await core.normalizeCustomSessionIcon(value)
+    }
+
     func copy(_ id: String, _ action: String, client: GatewayClient, markdown: () async throws -> String = { "" }, write: (String) -> Void) async {
         do {
             let text = action == "id" ? id : action == "markdown" ? try await markdown() : client.origin + (try await core.sessionPath(id))
@@ -232,6 +244,7 @@ final class SessionsModel {
     }
 
     private func run(_ client: GatewayClient) async {
+        if icons.isEmpty { icons = (try? await core.sessionIcons()) ?? [] }
         if options == nil {
             options = try? await core.sidebarOptions(stored: UserDefaults.standard.string(forKey: Self.optionsKey))
             if options == nil { options = try? await core.sidebarOptions(stored: nil) }
@@ -329,7 +342,7 @@ final class SessionsModel {
                 for tree in try await core.sessionTree(group.sessions, selected: selected, toggled: toggled) {
                     let session = tree.session
                     rows.append(Row(id: session.id, title: session.title, accessibleName: try await core.sessionAccessibleName(session), glyph: try await core.sessionGlyph(session),
-                                    pinned: session.pinned == true, unread: session.unread == true, group: session.group,
+                                    icon: session.icon ?? "", pinned: session.pinned == true, unread: session.unread == true, group: session.group,
                                     depth: tree.depth, hasChildren: tree.hasChildren, collapsed: tree.collapsed))
                 }
                 projected.append(Group(id: group.key, label: try await core.sessionGroupLabel(group.label), rows: rows))

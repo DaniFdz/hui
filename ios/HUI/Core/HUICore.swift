@@ -72,6 +72,14 @@ actor HUICore {
         try call("sessionMoveGroupOptions", groups)
     }
 
+    func sessionIcons() throws -> [String] {
+        try decode(exports.forProperty("SESSION_ICONS"))
+    }
+
+    func normalizeCustomSessionIcon(_ value: String) throws -> String? {
+        try call("normalizeCustomSessionIcon", value)
+    }
+
     func sessionCopiedNotice(_ action: String) throws -> String {
         try call("sessionCopiedNotice", action)
     }

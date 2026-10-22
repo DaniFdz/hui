@@ -1,7 +1,9 @@
 // The web's session menu for one session, shared by a row's touch-and-hold menu and the chat's toolbar: Pin or Unpin,
-// Rename… (which opens the session with its title as a Session name field), Mark as read or unread, Archive, Move to group, Copy (Session link, Session ID and, for the open conversation,
-// Conversation as Markdown) and Delete…. `SessionNotices` puts its notices, the archive toast and the Delete…
-// confirmation on every screen of the stack.
+// Rename… (which opens the session with its title as a Session name field), Icon (a sheet, as the web's panel: the
+// shared preset emoji, No icon, and Custom emoji… whose Set enables once the core accepts the entry), Mark as read or
+// unread, Archive, Move to group, Copy (Session link, Session ID and, for the open conversation, Conversation as
+// Markdown) and Delete…. `SessionNotices` puts its notices, the archive toast, the Delete… confirmation and the Icon
+// panel on every screen of the stack.
 import SwiftUI
 import UIKit
 
@@ -18,6 +20,7 @@ struct SessionMenu: View {
         Button("Rename…", systemImage: "pencil") {
             sessions.renaming = session.id
         }
+        Button("Icon", systemImage: "paintpalette") { sessions.choosingIcon = session }
         Button(session.unread == true ? "Mark as read" : "Mark as unread", systemImage: "circle") {
             Task { await sessions.setUnread(session, client: client) }
         }
@@ -65,6 +68,9 @@ struct SessionNotices: ViewModifier {
             } message: { _ in
                 Text("HUI will remove this session and all its subagents, including nested subagents, and stop their runtimes. Their PI transcripts remain on disk and are not deleted.")
             }
+            .sheet(isPresented: Binding(get: { sessions.choosingIcon != nil }, set: { if !$0 { sessions.choosingIcon = nil } })) {
+                if let client, let session = sessions.choosingIcon { IconPanel(session: session, sessions: sessions, client: client).presentationDetents([.medium]) }
+            }
     }
 
     @ViewBuilder
@@ -97,5 +103,63 @@ struct SessionNotices: ViewModifier {
             }
         }
         .padding(.horizontal)
+    }
+}
+
+private struct IconPanel: View {
+    let session: API.SessionView
+    let sessions: SessionsModel
+    let client: GatewayClient
+    @Environment(\.dismiss) private var dismiss
+    @State private var entering = false
+    @State private var emoji = ""
+    @State private var custom: String?
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if entering {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            TextField("Custom emoji", text: $emoji)
+                                .accessibilityLabel("Custom emoji")
+                                .textFieldStyle(.roundedBorder)
+                            Button("Set") { if let custom { choose(custom) } }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(custom == nil)
+                        }
+                        Text("Any emoji works.").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .task(id: emoji) { custom = await sessions.normalizedIcon(emoji) }
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Back", systemImage: "chevron.left") { entering = false }
+                        }
+                    }
+                } else {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
+                        ForEach(sessions.icons, id: \.self) { icon in
+                            Button(icon) { choose(icon) }
+                                .font(.title2)
+                                .accessibilityLabel("Set icon \(icon)")
+                                .accessibilityAddTraits(session.icon == icon ? .isSelected : [])
+                        }
+                        Button("Custom emoji…", systemImage: "ellipsis") { entering = true }
+                        Button("No icon", systemImage: "xmark.circle") { choose("") }
+                            .accessibilityAddTraits(session.icon?.isEmpty != false ? .isSelected : [])
+                    }
+                    .labelStyle(.iconOnly)
+                }
+            }
+            .padding()
+            .frame(maxHeight: .infinity, alignment: .top)
+            .navigationTitle(entering ? "" : "Icon")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private func choose(_ icon: String) {
+        dismiss()
+        Task { await sessions.setIcon(session, icon, client: client) }
     }
 }

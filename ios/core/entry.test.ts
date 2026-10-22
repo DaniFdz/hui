@@ -31,6 +31,8 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     sessionGlyph: () => assert.deepEqual(json(core.sessionGlyph({ ...session, status: "idle", background: true })),
       { background: true, busy: true, unread: false, label: "Watcher or subagent running" }),
     sessionStatusText: () => assert.equal(core.sessionStatusText("waiting"), "Waiting for your answer"),
+    SESSION_ICONS: () => assert.equal(core.SESSION_ICONS.length, 11),
+    normalizeCustomSessionIcon: () => assert.equal(core.normalizeCustomSessionIcon("  🐧  "), "🐧"),
     sessionGroupLabel: () => assert.equal(core.sessionGroupLabel("ungrouped"), "OTHER"),
     sessionMoveGroupOptions: () => assert.deepEqual(json(core.sessionMoveGroupOptions([{ label: "Atlas", sessions: [] }])),
       [{ label: "OTHER", value: "" }, { label: "ATLAS", value: "Atlas" }]),
