@@ -4,9 +4,9 @@ import { test } from "../../fixtures/hui.ts";
 
 test("Copy puts the session link, the session ID and the open conversation on the clipboard", { tags: ["SESS-038"] }, async ({ screen, hui }) => {
   const copy = async (choice: string) => {
-    await hui.sessionMenu("Copy source");
-    await screen.getByText("Copy", { exact: true, visible: true }).tap();
-    await screen.getByText(choice, { exact: true, visible: true }).tap();
+    const menu = await hui.sessionMenu("Copy source");
+    await menu.getByText("Copy", { exact: true, visible: true }).tap();
+    await menu.getByText(choice, { exact: true, visible: true }).tap();
   };
   const session = await hui.createSession({ title: "Copy source" });
   await hui.clipboard();

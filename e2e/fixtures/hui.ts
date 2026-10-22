@@ -65,7 +65,7 @@ export type Hui = {
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   peek(target: Locator): Promise<void>;
-  sessionMenu(title: string): Promise<void>;
+  sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
@@ -228,6 +228,7 @@ export const test = base.extend<{ hui: Hui }>({
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
         await row.hover();
         await row.getByRole("button", `Actions for ${title}`).tap();
+        return row;
       },
       glyph: (title) => browser().evaluate((name) => {
         const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
@@ -432,9 +433,11 @@ export const test = base.extend<{ hui: Hui }>({
       sessionMenu: async (title) => {
         const open = (await sessions()).find((session) => session.title === title);
         if (open && (await iosSteps.url!()).endsWith(`/sessions/${encodeURIComponent(open.id)}`)) {
-          return fixtures.screen.getByRole("button", `Actions for ${title}`).tap();
+          await fixtures.screen.getByRole("button", `Actions for ${title}`).tap();
+        } else {
+          await fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress();
         }
-        await fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress();
+        return fixtures.screen;
       },
       glyph: async (title) => {
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
