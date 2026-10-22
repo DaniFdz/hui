@@ -27,6 +27,7 @@ makes the provider hold PI's summary until `POST <providerUrl>/control/release-r
 1. Send `E2E_SLOW_COMPACT first turn`, then a ~2,000-character `LONG kept …`
    turn. `/comp` lists **/compact** among HUI's commands; complete it, add
    `keep the API decisions` and send. The summarizer request carries the focus text.
+   Release the hold: **Context compacted** lands.
 2. Open the context meter and choose **Compact now**: PI has nothing new to
    summarize, so a **Compaction failed** divider shows "Nothing to compact
    (session too small)" while idle. It disappears when the next turn starts.
@@ -64,6 +65,7 @@ conversation, which stays idle.
 Automatic threshold compaction is covered by
 `server/runtimes/pi-sdk.test.ts` rather than this journey: the fixture model
 reports tiny token counts, and lowering PI's reserve would compact every
-launcher session. The shared test's `E2E_OVERFLOW` turn covers an overflow. Durable's background compaction (idle session, survives Stop
+launcher session. `worker-compaction.e2e.ts`'s `E2E_OVERFLOW` turn
+covers an overflow. Durable's background compaction (idle session, survives Stop
 and Cancel, dropped by `/clear`) and Stop cancelling a manual compaction are
 covered by `server/runtimes/durable.test.ts`.

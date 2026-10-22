@@ -66,7 +66,7 @@ test("The context ring opens Context usage with occupancy, the latest run's toke
   await ring.tap();
   await compactNow.tap();
   await expect(failed).toBeVisible();
-  await expect(transcript).toHaveText(/Compaction failed\s*\S.*$/su);
+  await expect(transcript).toHaveText(/Compaction failed\s*Nothing to compact \(session too small\)\s*$/su);
   await expect(idle).toBeVisible();
 
   await send(screen, "E2E_REPLAY");

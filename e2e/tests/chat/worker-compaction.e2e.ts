@@ -119,6 +119,7 @@ test("on PI's worker a rewind into the kept turns keeps the summary, and one int
   await expect(transcript.getByText("COMPACT_TWO second turn")).toBeVisible();
   await submit(screen, ask);
   await expect(transcript.getByText("Earlier context: FIXTURE_SUMMARY yes, COMPACT_ONE no")).toBeVisible();
+  await expect(chat(screen).idle).toBeVisible();
 
   await rewindTo(screen, hui, 1, "COMPACT_TWO second turn");
   await expect(marker).toBeHidden();
