@@ -33,6 +33,7 @@ type Intercepted = {
 
 export type Hui = {
   workspace: string;
+  gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
@@ -113,7 +114,7 @@ export const test = base.extend<{ hui: Hui }>({
     if (!web) await launch();
     const repositories: string[] = [];
 
-    const webSteps: Omit<Hui, "workspace" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "repository"> = {
+    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "repository"> = {
       url: () => browser().url(),
       clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
         const page = window as unknown as { huiCopied: string };
@@ -262,6 +263,7 @@ export const test = base.extend<{ hui: Hui }>({
       ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
       ...(web ? {} : { keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") } }),
       workspace: receipt.workspace,
+      gateway: receipt.url,
       api,
       createSession: async (input) =>
         (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
