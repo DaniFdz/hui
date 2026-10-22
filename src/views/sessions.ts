@@ -417,7 +417,7 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
   return html`
     <section class="settings-workspace hui-workspace-page sessions-workspace">
       <header class="content-header content-header--settings content-header--page">
-        <div><div class="page-title">Sessions</div><div class="page-subtitle">Active sessions and defaults.</div></div>
+        <div><div class="page-title" data-testid="page-title">Sessions</div><div class="page-subtitle">Active sessions and defaults.</div></div>
       </header>
       <div class="settings-workspace__body">
         <div class="settings-page settings-page--wide sessions-page">

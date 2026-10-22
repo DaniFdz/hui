@@ -6,7 +6,12 @@
 > search field below the header remains; the mobile top bar's Search opens it.
 > See the latest section of e2e/bots.browser.md for that check. Searching the
 > session list, on desktop and from the mobile top bar, is now proven by
-> `e2e/tests/sess/sidebar-filters.e2e.ts` (SESS-019).
+> `e2e/tests/sess/sidebar-filters.e2e.ts` (SESS-019). The header's single
+> control, Collapse and Expand sidebar, Exit Settings returning Home and the
+> phone's drawers are proven by `e2e/tests/shell/routes.e2e.ts` and
+> `e2e/tests/shell/drawers.e2e.ts` (SHELL-001, SHELL-007, SHELL-011, SHELL-012,
+> SHELL-015); the touch targets, keyboard order and short-landscape scrolling
+> below are not.
 
 Verified on 2026-09-24 in the running HUI app through the Browser tool.
 
