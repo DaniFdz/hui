@@ -53,12 +53,41 @@ struct SessionsModelTests {
         #expect(row(model, notes)?.title == "Write release notes")
     }
 
-    private func start(_ frames: [String]) throws -> (SessionsModel, String) {
+    @Test func pinningPatchesTheSessionAndMovesItFirst() async throws {
+        let (model, host) = try start([snapshot([notes: "idle", login: "idle"])], routes: ["/__hui/sessions/\(login)": [(200, try answer(login) { $0.pinned = true })]])
+        try await until { model.loaded }
+        let client = GatewayClient(baseURL: URL(string: "http://\(host)")!)
+        #expect(model.groups.first { $0.rows.contains { $0.id == login } }?.rows.first?.id != login)
+        await model.update(login, ["pinned": .bool(true)], client: client)
+        try await until { row(model, login)?.pinned == true }
+        #expect(model.groups.first { $0.rows.contains { $0.id == login } }?.rows.first?.id == login)
+    }
+
+    @Test func aFailedRestoreKeepsTheArchiveToastWithItsError() async throws {
+        let (model, host) = try start([snapshot([notes: "idle", login: "idle"])], routes: ["/__hui/sessions/\(notes)": [(200, try answer(notes) { $0.archived = true }), (500, Data(#"{"error":"Disk full"}"#.utf8))]])
+        try await until { model.loaded }
+        let client = GatewayClient(baseURL: URL(string: "http://\(host)")!)
+        let archived = try #require(row(model, notes))
+        await model.archive(archived, client: client)
+        #expect(model.archiveToast?.title == archived.title)
+        await model.restoreArchived(client: client)
+        #expect(model.archiveToast?.error != nil)
+        #expect(model.archiveToast?.restoring == false)
+    }
+
+    private func start(_ frames: [String], routes: [String: [(status: Int, body: Data)]] = [:]) throws -> (SessionsModel, String) {
         let host = "\(UUID().uuidString.lowercased()).stub.test"
-        GatewayStub.serve(host, list: try fixture("sessions.json"), events: Data(frames.map { $0 + "\n\n" }.joined().utf8))
+        GatewayStub.serve(host, list: try fixture("sessions.json"), events: Data(frames.map { $0 + "\n\n" }.joined().utf8), routes: routes)
         let model = SessionsModel(core: try HUICore.bundled())
         model.start(GatewayClient(baseURL: URL(string: "http://\(host)")!))
         return (model, host)
+    }
+
+    private func answer(_ id: String, _ change: (inout API.SessionView) -> Void) throws -> Data {
+        let list = try JSONDecoder().decode(API.SessionList.self, from: fixture("sessions.json"))
+        var session = try #require(list.groups.flatMap(\.sessions).first { $0.id == id })
+        change(&session)
+        return Data(#"{"session":\#(String(decoding: try JSONEncoder().encode(session), as: UTF8.self))}"#.utf8)
     }
 
     private func row(_ model: SessionsModel, _ id: String) -> SessionsModel.Row? {
@@ -93,9 +122,9 @@ final class GatewayStub: URLProtocol, @unchecked Sendable {
     private static let hosts = Mutex<[String: Host]>([:])
     private static let registered: Void = { URLProtocol.registerClass(GatewayStub.self) }()
 
-    static func serve(_ host: String, list: Data, events: Data) {
+    static func serve(_ host: String, list: Data, events: Data, routes: [String: [(status: Int, body: Data)]] = [:]) {
         _ = registered
-        hosts.withLock { $0[host] = Host(list: list, events: events) }
+        hosts.withLock { $0[host] = Host(list: list, events: events, routes: routes) }
     }
 
     static func serve(_ host: String, routes: [String: [(status: Int, body: Data)]]) {

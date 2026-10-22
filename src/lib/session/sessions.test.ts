@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { transcriptAsMarkdown, unreachableHost } from "./sessions.ts";
+import { sessionMoveGroupOptions, transcriptAsMarkdown, unreachableHost } from "./sessions.ts";
 
 test("conversation Markdown preserves visible message, thinking, tool and error rows", () => {
   assert.equal(transcriptAsMarkdown([
@@ -24,4 +24,15 @@ test("a session on a machine HUI cannot reach reads as reconnecting or disconnec
   for (const status of ["idle", "running", "waiting", "starting", "error"] as const) {
     assert.equal(unreachableHost({ status, worker }), undefined, status);
   }
+});
+
+test("session move targets always include OTHER once and preserve stored group labels", () => {
+  assert.deepEqual(sessionMoveGroupOptions([{ label: "ungrouped", sessions: [] }, { label: "Frontend", sessions: [] }, { label: "Runtime", sessions: [] }]), [
+    { label: "OTHER", value: "" },
+    { label: "FRONTEND", value: "Frontend" },
+    { label: "RUNTIME", value: "Runtime" },
+  ]);
+  assert.deepEqual(sessionMoveGroupOptions([{ label: "ungrouped", sessions: [] }]), [
+    { label: "OTHER", value: "" },
+  ]);
 });
