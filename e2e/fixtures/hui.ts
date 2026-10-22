@@ -8,9 +8,9 @@
  * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
  * keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory) that it removes at teardown, and the files of the gateway's own state and the secret directories it
- * wrote that hold a text. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or
- * `browser` themselves.
+ * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and the
+ * secret directories the gateway wrote. Test files import `test` from here, never from `e2e`, and never read `platform`,
+ * `device` or `browser` themselves.
  */
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -236,8 +236,9 @@ export const test = base.extend<{ hui: Hui }>({
         const files = (await readdir(root, { recursive: true, withFileTypes: true }))
           .filter((entry) => entry.isFile())
           .map((entry) => relative(root, join(entry.parentPath, entry.name)))
-          .filter((file) => !/^(vite-cache|workspace)\//u.test(file));
-        const holding = await Promise.all(files.map(async (file) => ((await readFile(join(root, file), "latin1").catch(() => "")).includes(text) ? [file] : [])));
+          .filter((file) => !file.startsWith("vite-cache/"));
+        const read = (file: string) => readFile(join(root, file), "latin1").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error));
+        const holding = await Promise.all(files.map(async (file) => ((await read(file)).includes(text) ? [file] : [])));
         return holding.flat();
       },
       secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
