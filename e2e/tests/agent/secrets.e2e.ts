@@ -5,8 +5,8 @@ import { test, type Hui } from "../../fixtures/hui.ts";
 const LABEL = "Fixture API key";
 const REASON = "The fixture proves an agent can use a secret without seeing it.";
 
-const requestSecret = async (hui: Hui, screen: Screen, title: string) => {
-  const session = await hui.createSession({ title });
+const requestSecret = async (hui: Hui, screen: Screen, title: string, tool?: "pi") => {
+  const session = await hui.createSession({ title, tool });
   await hui.open(`/sessions/${session.id}`);
   await screen.getByLabel("Message").fill("E2E_SECRET_REQUEST");
   await screen.getByRole("button", "Send message").tap();
@@ -49,8 +49,15 @@ test("a secret request opens a masked card and the agent gets a file it uses", {
     await expect(transcript.getByText(value, { exact: false })).toBeHidden();
   }
 
+  const pi = await requestSecret(hui, screen, "Provided secret on PI", "pi");
+  await field.fill(value);
+  await card.getByRole("button", "Submit").tap();
+  await expect(transcript.getByText("I used the secret in a command without seeing it, then deleted its file.")).toBeVisible();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+
   const records = JSON.stringify(await Promise.all([
     hui.api("POST", `/__hui/sessions/${session.id}/open`),
+    hui.api("POST", `/__hui/sessions/${pi.id}/open`),
     hui.api("GET", "/__hui/sessions"),
     hui.api("GET", `/__hui/sessions/search?q=${encodeURIComponent(value)}`),
     hui.api("GET", "/__hui/diagnostics/export"),
@@ -59,7 +66,7 @@ test("a secret request opens a masked card and the agent gets a file it uses", {
   expect(records).toContain(LABEL);
   expect(records).toContain(REASON);
   expect(records).not.toContain(value);
-  expect(await hui.stored(LABEL)).not.toEqual([]);
+  expect(await hui.stored(LABEL)).toEqual(expect.arrayContaining([expect.stringMatching(/^config\/hui\/durable\//u), expect.stringMatching(/^agent\/sessions\//u)]));
   expect(await hui.stored(value)).toEqual([]);
 });
 

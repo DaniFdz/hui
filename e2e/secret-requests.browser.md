@@ -12,11 +12,11 @@ strings; no operator credential was used.
 
 The shared tests `e2e/tests/agent/secrets.e2e.ts` and `e2e/tests/agent/waiting-cards.e2e.ts`
 cover a local session's card, Submit, the value staying out of the conversation, the
-gateway's API and its state files, Cancel, Escape, Stop and a reload (AGENT-007,
-AGENT-008, AGENT-015 to AGENT-018). This journey keeps the checks no shared test makes
-yet: the card at 390×844, the 15-minute expiry (AGENT-019), a remote worker
-(AGENT-020), a gateway stop and start (AGENT-021) and what Stop settles the request as
-(AGENT-064).
+gateway's API and the stores of Durable and PI's SDK worker, Cancel, Escape, Stop and a
+reload (AGENT-007, AGENT-008, AGENT-015 to AGENT-018). This journey keeps the checks no
+shared test makes yet: the card at 390×844, the 15-minute expiry (AGENT-019), a remote
+worker (AGENT-020), a gateway stop and start (AGENT-021) and what Stop settles the
+request as (AGENT-064).
 
 ## Reproduce
 
