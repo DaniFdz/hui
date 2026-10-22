@@ -88,10 +88,15 @@ actor HUICore {
         try decode(invoke("normalizeSidebarSessionOptions", [invoke(global: "JSON", "parse", json ?? "null")]))
     }
 
-    func foldedSessionTree(_ sessions: [API.SessionView]) throws -> [API.SessionView] {
-        guard let fold = context.evaluateScript("({ selectedId: \"\", toggled: new Set() })") else { throw ScriptError(description: "could not build a fold") }
-        let rows: [SidebarTreeRow] = try decode(invoke("sessionTreeRows", [json(sessions), fold]))
-        return rows.map(\.session)
+    func sessionTree(_ sessions: [API.SessionView], selected: String, toggled: Set<String>) throws -> [SidebarTreeRow] {
+        guard let fold = context.evaluateScript("(selectedId, toggled) => ({ selectedId, toggled: new Set(toggled) })")?.call(withArguments: [selected, Array(toggled)]) else {
+            throw ScriptError(description: "could not build a fold")
+        }
+        return try decode(invoke("sessionTreeRows", [json(sessions), fold]))
+    }
+
+    func transcriptMarkdown(_ handle: String) throws -> String {
+        try decode(invoke("transcriptAsMarkdown", [items(handle)]))
     }
 
     func transcript(_ handle: String, snapshot entries: [API.TranscriptEntry], streaming: Bool) throws -> ChatProjection {
@@ -254,6 +259,9 @@ struct SidebarOptions: Codable, Equatable, Sendable {
 
 struct SidebarTreeRow: Decodable, Sendable {
     var session: API.SessionView
+    var depth: Int
+    var hasChildren: Bool
+    var collapsed: Bool
 }
 
 struct NavigationResolution: Decodable, Equatable, Sendable {

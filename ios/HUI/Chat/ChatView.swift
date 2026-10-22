@@ -1,4 +1,5 @@
-// The chat screen for one session, named as the web's chat names its controls: the header (the title as a heading,
+// The chat screen for one session, named as the web's chat names its controls: the toolbar's "Actions for <title>"
+// session menu (`SessionMenu`, with Conversation as Markdown), the header (the title as a heading,
 // "Session status: …" from the core's label), the transcript of the core's rows anchored at the bottom, activity rows
 // that open to their thinking and tool cards (`ToolCardView`), the working indicator ("Agent activity: …"), the message
 // queue and the composer (Message and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
@@ -9,7 +10,8 @@ import SwiftUI
 
 struct ChatView: View {
     let core: HUICore
-    let title: String?
+    let client: GatewayClient
+    let sessions: SessionsModel
     @State private var model: ConversationModel
     @State private var draft = ""
     @State private var expanded: Set<String> = []
@@ -18,9 +20,10 @@ struct ChatView: View {
     @State private var nearBottom = true
     @FocusState private var composing: Bool
 
-    init(id: String, client: GatewayClient, core: HUICore, title: String?) {
+    init(id: String, client: GatewayClient, core: HUICore, sessions: SessionsModel) {
         self.core = core
-        self.title = title
+        self.client = client
+        self.sessions = sessions
         _model = State(initialValue: ConversationModel(id: id, client: client, core: core))
     }
 
@@ -49,13 +52,22 @@ struct ChatView: View {
             composer
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let session = sessions.session(model.id) {
+                Menu {
+                    SessionMenu(session: session, sessions: sessions, client: client, markdown: model.markdown)
+                } label: {
+                    Label("Actions for \(session.title)", systemImage: "ellipsis.circle")
+                }
+            }
+        }
         .task { model.start() }
         .onDisappear { model.stop() }
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(model.session?.title ?? title ?? "")
+            Text(model.session?.title ?? sessions.session(model.id)?.title ?? "")
                 .font(.headline)
                 .accessibilityIdentifier("session-title")
                 .accessibilityAddTraits(.isHeader)

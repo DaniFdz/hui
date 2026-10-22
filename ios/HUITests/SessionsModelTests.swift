@@ -67,7 +67,7 @@ struct SessionsModelTests {
         let (model, host) = try start([snapshot([notes: "idle", login: "idle"])], routes: ["/__hui/sessions/\(notes)": [(200, try answer(notes) { $0.archived = true }), (500, Data(#"{"error":"Disk full"}"#.utf8))]])
         try await until { model.loaded }
         let client = GatewayClient(baseURL: URL(string: "http://\(host)")!)
-        let archived = try #require(row(model, notes))
+        let archived = try #require(model.session(notes))
         await model.archive(archived, client: client)
         #expect(model.archiveToast?.title == archived.title)
         await model.restoreArchived(client: client)

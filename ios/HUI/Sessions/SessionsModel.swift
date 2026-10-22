@@ -19,6 +19,9 @@ final class SessionsModel {
         var pinned: Bool
         var unread: Bool
         var group: String
+        var depth: Int
+        var hasChildren: Bool
+        var collapsed: Bool
     }
 
     struct Notice: Equatable {
@@ -46,6 +49,12 @@ final class SessionsModel {
     private(set) var moveGroups: [MoveGroupOption] = []
     private(set) var notice: Notice?
     private(set) var archiveToast: ArchiveToast?
+    var closed: Set<String> = []
+    var removing: API.SessionView?
+    var selected = "" {
+        didSet { if selected != oldValue { reproject() } }
+    }
+    private var toggled: Set<String> = []
 
     var filtering: Bool {
         options.map { $0.status != "all" } ?? false
@@ -69,6 +78,26 @@ final class SessionsModel {
 
     func session(_ id: String) -> API.SessionView? {
         sessions[id]
+    }
+
+    func page(_ state: String) -> [API.SessionView] {
+        layout.flatMap(\.ids).compactMap { sessions[$0] }.filter { state == "all" || ($0.archived == true) == (state == "archived") }
+    }
+
+    func toggleTree(_ id: String) {
+        toggled.formSymmetricDifference([id])
+        reproject()
+    }
+
+    private func tree(_ id: String) -> Set<String> {
+        var ids: Set<String> = [id]
+        var grew = true
+        while grew {
+            let children = sessions.values.filter { !ids.contains($0.id) && $0.parentId.map(ids.contains) == true }.map(\.id)
+            grew = !children.isEmpty
+            ids.formUnion(children)
+        }
+        return ids
     }
 
     func setOptions(_ options: SidebarOptions) {
@@ -108,23 +137,26 @@ final class SessionsModel {
         }
     }
 
-    func setUnread(_ row: Row, client: GatewayClient) async {
-        if await update(row.id, ["unread": .bool(!row.unread)], client: client) != nil {
-            notify(row.unread ? "Marked as read." : "Marked as unread.")
+    func setUnread(_ session: API.SessionView, client: GatewayClient) async {
+        let unread = session.unread == true
+        if await update(session.id, ["unread": .bool(!unread)], client: client) != nil {
+            notify(unread ? "Marked as read." : "Marked as unread.")
         }
     }
 
-    func move(_ row: Row, to group: String, client: GatewayClient) async {
-        guard let moved = await update(row.id, ["group": .string(group)], client: client) else { return }
+    func move(_ session: API.SessionView, to group: String, client: GatewayClient) async {
+        guard let moved = await update(session.id, ["group": .string(group)], client: client) else { return }
         guard let label = try? await core.sessionGroupLabel(moved.group) else { return }
         notify("Moved \(moved.title) to \(label).")
     }
 
-    func archive(_ row: Row, client: GatewayClient) async {
-        guard await update(row.id, ["archived": .bool(true)], client: client) != nil else { return }
+    func archive(_ session: API.SessionView, client: GatewayClient) async {
+        let ids = tree(session.id)
+        guard await update(session.id, ["archived": .bool(true)], client: client) != nil else { return }
+        closed = ids
         noticeTimer?.cancel()
         notice = nil
-        archiveToast = ArchiveToast(id: row.id, title: row.title)
+        archiveToast = ArchiveToast(id: session.id, title: session.title)
         expireArchiveToast()
     }
 
@@ -154,17 +186,23 @@ final class SessionsModel {
         }
     }
 
-    func remove(_ row: Row, client: GatewayClient) async {
+    func restore(_ session: API.SessionView, client: GatewayClient) async {
+        if await update(session.id, ["archived": .bool(false)], client: client) != nil { notify("Session restored.") }
+    }
+
+    func remove(_ session: API.SessionView, client: GatewayClient) async {
+        let ids = tree(session.id)
         do {
-            let _: API.JSONValue = try await client.send("DELETE", "/__hui/sessions/\(Self.escaped(row.id))")
+            let _: API.JSONValue = try await client.send("DELETE", "/__hui/sessions/\(Self.escaped(session.id))")
+            closed = ids
         } catch {
             notify(error.localizedDescription, failed: true)
         }
     }
 
-    func copy(_ row: Row, _ action: String, client: GatewayClient, write: (String) -> Void) async {
+    func copy(_ id: String, _ action: String, client: GatewayClient, markdown: () async throws -> String = { "" }, write: (String) -> Void) async {
         do {
-            let text = action == "id" ? row.id : client.origin + (try await core.sessionPath(row.id))
+            let text = action == "id" ? id : action == "markdown" ? try await markdown() : client.origin + (try await core.sessionPath(id))
             write(text)
             notify(try await core.sessionCopiedNotice(action))
         } catch {
@@ -287,9 +325,11 @@ final class SessionsModel {
             var projected: [Group] = []
             for group in try await core.sidebarSessionGroups(input, options: options) {
                 var rows: [Row] = []
-                for session in try await core.foldedSessionTree(group.sessions) {
+                for tree in try await core.sessionTree(group.sessions, selected: selected, toggled: toggled) {
+                    let session = tree.session
                     rows.append(Row(id: session.id, title: session.title, accessibleName: try await core.sessionAccessibleName(session), glyph: try await core.sessionGlyph(session),
-                                    pinned: session.pinned == true, unread: session.unread == true, group: session.group))
+                                    pinned: session.pinned == true, unread: session.unread == true, group: session.group,
+                                    depth: tree.depth, hasChildren: tree.hasChildren, collapsed: tree.collapsed))
                 }
                 projected.append(Group(id: group.key, label: try await core.sessionGroupLabel(group.label), rows: rows))
             }

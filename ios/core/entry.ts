@@ -6,7 +6,7 @@
 export { navigationPath, resolveNavigation } from "../../src/lib/navigation.ts";
 export { decodeSseFrame, reconnectDelay } from "../../src/lib/event-stream.ts";
 export { sessionAccessibleName, sessionGlyph, sessionStatusLabel, sessionStatusText } from "../../src/lib/session/labels.ts";
-export { sessionCopiedNotice, sessionGroupLabel, sessionMoveGroupOptions } from "../../src/lib/session/sessions.ts";
+export { sessionCopiedNotice, sessionGroupLabel, sessionMoveGroupOptions, transcriptAsMarkdown } from "../../src/lib/session/sessions.ts";
 export { normalizeSidebarSessionOptions, sessionTreeRows, sidebarSessionGroups } from "../../src/lib/session/sidebar-sessions.ts";
 export { appendPendingUser, dropDuplicateSend, failPendingUser, normalizeTranscript, reduceTranscript, settlePendingUser } from "../../src/lib/transcript-state.ts";
 export { workingLabel } from "../../src/lib/chat-projection.ts";

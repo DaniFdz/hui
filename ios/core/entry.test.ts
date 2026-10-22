@@ -35,6 +35,7 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     sessionMoveGroupOptions: () => assert.deepEqual(json(core.sessionMoveGroupOptions([{ label: "Atlas", sessions: [] }])),
       [{ label: "OTHER", value: "" }, { label: "ATLAS", value: "Atlas" }]),
     sessionCopiedNotice: () => assert.equal(core.sessionCopiedNotice("id"), "Session ID copied."),
+    transcriptAsMarkdown: () => assert.equal(core.transcriptAsMarkdown([{ kind: "message", id: "m", role: "user", text: "Hi" }]), "## User\n\nHi"),
     normalizeSidebarSessionOptions: () => assert.deepEqual(json(core.normalizeSidebarSessionOptions({ sortBy: "title", status: "nope" })),
       { groupBy: "custom", sortBy: "title", status: "all", hideEmpty: "filtering" }),
     sessionTreeRows: () => assert.deepEqual(

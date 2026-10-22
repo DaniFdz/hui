@@ -65,6 +65,10 @@ final class ConversationModel {
         Task { [core] in await core.closeTranscript(handle) }
     }
 
+    func markdown() async throws -> String {
+        try await core.transcriptMarkdown(handle)
+    }
+
     enum SendMode: String {
         case prompt
         case steer

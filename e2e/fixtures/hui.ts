@@ -424,7 +424,16 @@ export const test = base.extend<{ hui: Hui }>({
     };
 
     const iosSteps: Partial<typeof webSteps> = {
-      sessionMenu: (title) => fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress(),
+      url: async () => {
+        const container = execFileSync("xcrun", ["simctl", "get_app_container", IOS_DEVICE, "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
+        const read = spawnSync("xcrun", ["simctl", "spawn", IOS_DEVICE, "defaults", "read", join(container, "Library/Preferences/dev.hui.ios"), "HUIOpenSession"], { encoding: "utf8" });
+        return read.status === 0 ? read.stdout.trim() : `${receipt.url}/`;
+      },
+      sessionMenu: async (title) => {
+        const actions = fixtures.screen.getByRole("button", `Actions for ${title}`);
+        if (await actions.count() > 0) return actions.tap();
+        await fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress();
+      },
       glyph: async (title) => {
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
         await expect(row).toHaveCount(1);
