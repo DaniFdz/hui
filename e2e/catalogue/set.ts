@@ -462,7 +462,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#put-__huisettings"],
     surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "route:PUT /__hui/settings"],
     journeys: ["model-routing"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -482,7 +482,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#post-__huisessionsidbtw"],
     surfaces: ["setting:models.utility", "command:btw", "route:POST /__hui/sessions/:id/btw"],
     journeys: ["model-routing"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -502,7 +502,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huipi", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
