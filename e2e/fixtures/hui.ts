@@ -23,8 +23,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
-import { connect, type Socket } from "node:net";
-import type { AddressInfo } from "node:net";
+import { connect, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -100,24 +99,27 @@ export type Hui = {
 const holding = <R>() => {
   let arrive: () => void = () => undefined;
   let decide: (handle: (route: R) => Promise<void>) => void = () => undefined;
-  let done: () => void = () => undefined;
+  let done: (failure?: unknown) => void = () => undefined;
   const arrival = new Promise<void>((resolve) => { arrive = resolve; });
   const decision = new Promise<(route: R) => Promise<void>>((resolve) => { decide = resolve; });
-  const handled = new Promise<void>((resolve) => { done = resolve; });
+  const handled = new Promise<unknown>((resolve) => { done = resolve; });
   return {
     arrival,
     hold: async (route: R) => {
       arrive();
       try {
         await (await decision)(route);
-      } finally {
         done();
+      } catch (failure) {
+        done(failure ?? new Error("the held request's handler failed"));
+        throw failure;
       }
     },
     settle: async (handle: (route: R) => Promise<void>) => {
       await arrival;
       decide(handle);
-      await handled;
+      const failure = await handled;
+      if (failure) throw failure;
     },
   };
 };
@@ -142,10 +144,14 @@ const gatewayProxy = async (gateway: string) => {
     outgoing.end(body);
   });
   const server = createServer(async (incoming, response) => {
-    const route = { incoming, body: Buffer.concat(await incoming.toArray()), response };
-    const href = new URL(incoming.url ?? "/", gateway).href;
-    const held = [...holds].find((hold) => hold.method === incoming.method && hold.path.test(href));
-    await (held ? held.hold(route) : forward(route)).catch(() => response.destroy());
+    try {
+      const route = { incoming, body: Buffer.concat(await incoming.toArray()), response };
+      const href = new URL(incoming.url ?? "/", gateway).href;
+      const held = [...holds].find((hold) => hold.method === incoming.method && hold.path.test(href));
+      await (held ? held.hold(route) : forward(route));
+    } catch {
+      response.destroy();
+    }
   });
   server.on("connection", (socket) => {
     sockets.add(socket);
@@ -172,18 +178,19 @@ const gatewayProxy = async (gateway: string) => {
       const { arrival, hold, settle } = holding<GatewayRequest>();
       const held = { method, path, hold };
       holds.add(held);
-      const answer = (status: number, json: string) => settle(async ({ response }) => {
+      const decide = (handle: (route: GatewayRequest) => Promise<void>) => settle(handle).finally(() => holds.delete(held));
+      const answer = (status: number, json: string) => decide(async ({ response }) => {
         response.writeHead(status, { "content-type": "application/json" }).end(json);
-      }).finally(() => holds.delete(held));
+      });
       return {
         arrived: () => arrival,
-        deliver: () => settle(forward).finally(() => holds.delete(held)),
+        deliver: () => decide(forward),
         reject: (status, error) => answer(status, JSON.stringify({ error })),
         answer: (json) => answer(200, json),
-        deliverAndDrop: () => settle(async ({ incoming, body, response }) => {
+        deliverAndDrop: () => decide(async ({ incoming, body, response }) => {
           await deliverBehind(method, new URL(incoming.url ?? "/", gateway).href, body.toString() || undefined);
           response.destroy();
-        }).finally(() => holds.delete(held)),
+        }),
       };
     },
     close: async () => {
@@ -467,7 +474,7 @@ export const test = base.extend<{ hui: Hui }>({
       },
       contextMenu: (target) => target.secondaryTap(),
       scrollTo: (_within, target) => target.scrollIntoView(),
-      expectLinkTo: async (link, href) => expect(await link.getAttribute("href")).toBe(href),
+      expectLinkTo: (link, href) => expect(link).toHaveAttribute("href", href),
       textOf: async (target) => (await target.textContent()) ?? "",
       scrollSideways: async (target) => {
         const box = await target.boundingBox();
