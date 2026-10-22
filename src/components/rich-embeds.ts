@@ -70,6 +70,7 @@ async function renderVegaChart(source: string, target: HTMLElement): Promise<() 
   if (spec["width"] === undefined || spec["width"] === "container") spec["width"] = Math.max(240, Math.min(640, target.clientWidth - 32));
   if (spec["height"] === undefined) spec["height"] = 280;
   spec["background"] ??= "transparent";
+  spec["description"] ??= target.getAttribute("aria-label");
   spec["config"] = {
     axis: { gridColor: border, labelColor: muted, titleColor: foreground },
     legend: { labelColor: muted, titleColor: foreground },

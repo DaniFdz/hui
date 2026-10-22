@@ -1,16 +1,16 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
- * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, searches of
- * the gateway's state and secret directories, and every step whose gesture or reading differs per platform: taps,
+ * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, searches
+ * of the gateway's state and secret directories, and every step whose gesture or reading differs per platform: taps,
  * holds, context menus, switches (a Web Awesome switch draws its track over its input, so the web taps the point),
- * attachments, downloads, the clipboard, status glyphs, how a piece of the screen looks, and on the web the window's
- * size, Back and Forward, sideways overflow, whether a tap reaches a control and the command palette's chord. The web
- * page never opens Vite's development socket, whose client reloads the page when the gateway restarts, which no
- * installed gateway does. On iOS it relaunches the app pointed at the gateway, follows `hui://open` links, and clears
- * the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd` would
- * otherwise hand the relaunched app the deleted values; steps only the web has throw there. Test files import `test`
- * from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * attachments, sideways scrolling, downloads, the clipboard, status glyphs, how a piece of the screen looks, and on the
+ * web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control and the command palette's
+ * chord. The web page never opens Vite's development socket, whose client reloads the page when the gateway restarts,
+ * which no installed gateway does. On iOS it relaunches the app pointed at the gateway, follows `hui://open` links, and
+ * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
+ * would otherwise hand the relaunched app the deleted values; steps only the web has throw there. Test files import
+ * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -64,13 +64,15 @@ export type Hui = {
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
-  look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
+  look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
+  overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
   touchTap(target: Locator): Promise<void>;
+  scrollSideways(target: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
@@ -166,6 +168,11 @@ export const test = base.extend<{ hui: Hui }>({
           if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
           page.huiCopied = text;
         };
+        navigator.clipboard.write = async (items) => {
+          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+          const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
+          page.huiCopied = blobs.map((blob) => blob.type).join(",");
+        };
         if (refused) document.execCommand = () => false;
       }, refuse),
       copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
@@ -231,6 +238,7 @@ export const test = base.extend<{ hui: Hui }>({
         accent.remove();
         return shown;
       }, title),
+      overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
       look: async (target) => {
@@ -267,6 +275,8 @@ export const test = base.extend<{ hui: Hui }>({
             loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
               && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
             size: Number.parseFloat(style.fontSize),
+            weight: Number(style.fontWeight),
+            align: style.textAlign,
             ring: !element.matches(":focus-visible") ? null
               : style.outlineStyle !== "none" ? rgb(style.outlineColor)
               : outerShadow === "none" ? null : rgb(outerShadow),
@@ -322,6 +332,12 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      scrollSideways: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("scrollSideways: the target is not on screen");
+        await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
+        await browser().mouse.wheel(240, 0);
+      },
       stored: async (text) => {
         const root = dirname(receipt.workspace);
         const files = (await readdir(root, { recursive: true, withFileTypes: true }))
