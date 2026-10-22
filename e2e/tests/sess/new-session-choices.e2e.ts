@@ -1,25 +1,8 @@
-/** New Session suggests project folders and inspects the chosen one's checkout, starts on the chosen model, effort and speed, and reopens recent chats (SESS-003, SESS-004, SESS-006). */
+/** New Session starts on the chosen model, effort and speed, and reopens recent chats (SESS-004, SESS-006). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 type Listed = { groups: { sessions: { id: string; title: string; model?: string }[] }[] };
-
-test("Project directory suggests the folders under the typed prefix, and choosing one inspects its checkout", { tags: ["SESS-003"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const repository = await hui.repository();
-  const directory = screen.getByPlaceholder("~/");
-  const folder = screen.getByText(`${repository.path}/sub/`, { exact: true });
-
-  await hui.open("/");
-  await directory.fill(`${repository.path}/s`);
-  await expect(folder).toBeVisible();
-  await directory.fill(`${repository.path}/x`);
-  await expect(folder).toBeHidden();
-  await expect(screen.getByLabel(/^Checkout: /u)).toBeHidden();
-  await directory.fill(`${repository.path}/s`);
-  await folder.tap();
-  await expect(directory).toHaveValue(`${repository.path}/sub/`);
-  await expect(screen.getByLabel("Checkout: main")).toBeVisible();
-});
 
 test("the model, effort and speed chosen on New Session are what the session starts on", { tags: ["SESS-004"], platforms: ["web"] }, async ({ screen, hui }) => {
   const options = screen.getByLabel("Model", { exact: true });

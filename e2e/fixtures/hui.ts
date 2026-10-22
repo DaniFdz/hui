@@ -8,17 +8,15 @@
  * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
  * keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory, optionally with a filtered file whose checkout Git holds until the test lets it succeed or fail) that
- * it removes at teardown, failing any checkout still held, the files of the gateway's state and workspace that hold a
- * text, and the secret directories the gateway wrote. On iOS it relaunches the app pointed at the gateway, follows a `hui://open`
+ * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and
+ * the secret directories the gateway wrote. On iOS it relaunches the app pointed at the gateway, follows a `hui://open`
  * link instead of loading a page, and clears the app's preferences through `defaults` before the engine empties its
  * data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps
  * throw. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
  * themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { constants } from "node:fs";
-import { chmod, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,7 +64,7 @@ export type Hui = {
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
-  repository(options?: { holdCheckout?: boolean }): Promise<{ path: string; git(...args: string[]): string; releaseCheckout(outcome: "succeed" | "fail"): Promise<void> }>;
+  repository(): Promise<{ path: string; git(...args: string[]): string }>;
   stored(text: string): Promise<string[]>;
   secretDirectories(): Promise<string[]>;
 };
@@ -123,12 +121,6 @@ export const test = base.extend<{ hui: Hui }>({
     const notOnIos = (step: string) => () => {
       throw new Error(`hui.${step} is not on iOS yet; keep the test on platforms: ['web']`);
     };
-    const writeGate = async (gate: string, outcome: string) => {
-      const held = await open(gate, constants.O_WRONLY | constants.O_NONBLOCK).catch((error: NodeJS.ErrnoException) => error.code === "ENXIO" ? undefined : Promise.reject(error));
-      await held?.writeFile(`${outcome}\n`);
-      await held?.close();
-      return held !== undefined;
-    };
 
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
@@ -137,7 +129,6 @@ export const test = base.extend<{ hui: Hui }>({
     await clearState();
     if (!web) await launch();
     const repositories: string[] = [];
-    const gates: string[] = [];
 
     const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "clearState" | "repository"> = {
       url: () => browser().url(),
@@ -327,7 +318,7 @@ export const test = base.extend<{ hui: Hui }>({
       },
       reload: () => (web ? browser().reload() : fixtures.app.restart()),
       clearState,
-      repository: async ({ holdCheckout = false } = {}) => {
+      repository: async () => {
         const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
         repositories.push(path);
         const git = (...args: string[]) => execFileSync("git", ["-C", path, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com",
@@ -337,36 +328,15 @@ export const test = base.extend<{ hui: Hui }>({
         await writeFile(join(path, "sub", "keep.txt"), "sub\n");
         git("add", ".");
         git("commit", "--quiet", "-m", "main");
-        const gate = join(path, ".git", "checkout-gate");
-        if (holdCheckout) {
-          const filter = join(path, ".git", "hold-checkout");
-          await writeFile(join(path, ".gitattributes"), "*.held filter=held\n");
-          await writeFile(join(path, "a.txt"), "a\n");
-          await writeFile(join(path, "b.held"), "b\n");
-          git("add", ".");
-          git("commit", "--quiet", "-m", "held");
-          execFileSync("mkfifo", [gate]);
-          gates.push(gate);
-          await writeFile(filter, `#!/bin/sh\ncat\nread outcome < '${gate}'\n[ "$outcome" = succeed ]\n`);
-          await chmod(filter, 0o755);
-          git("config", "filter.held.smudge", filter);
-          git("config", "filter.held.clean", "cat");
-          git("config", "filter.held.required", "true");
-        }
         git("switch", "--quiet", "-c", "release/1.0");
         git("commit", "--quiet", "--allow-empty", "-m", "release");
         git("switch", "--quiet", "-c", "feature/current", "main");
         git("commit", "--quiet", "--allow-empty", "-m", "feature");
-        return { path, git, releaseCheckout: (outcome) => expect.poll(() => writeGate(gate, outcome), { timeout: 30_000 }).toBe(true) };
+        return { path, git };
       },
     });
 
     await control("POST", "/control/release-replay");
-    const failHeldCheckouts = async () => {
-      for (const gate of gates) await writeGate(gate, "fail");
-      return (await sessions()).some(({ id, status }) => !existing.has(id) && status === "starting");
-    };
-    if (gates.length > 0) await expect.poll(failHeldCheckouts, { timeout: 30_000 }).toBe(false);
     for (const id of await taskIds()) {
       if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
     }

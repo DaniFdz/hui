@@ -5,12 +5,13 @@ Verified on 2026-09-24 with the OpenClaw Browser tool against the running HUI ap
 ## Scope
 
 The shared tests `e2e/tests/sess/launch-errors.e2e.ts` and `new-session-choices.e2e.ts` now prove the
-failed launch's alert, detail and kept draft (SESS-002) and starting on a model whose ID has a slash after its
-provider (SESS-004). What is left here is where the alert sits and how it looks (SESS-074), and correcting the
-directory and starting again from the keyboard.
+failed launch's alert and detail directly below the composer with its edges, a long path wrapping without scrolling
+sideways on wide and phone screens, the kept draft (SESS-002) and starting on a model whose ID has a slash after its
+provider (SESS-004). What is left here is how the alert looks in each theme, and correcting the directory and starting
+again from the keyboard.
 
-- A failed launch displays a theme-aware callout immediately below the composer, with matching edges, an icon, a
-  heading, `role="alert"`, and a form `aria-describedby` association.
+- A failed launch displays a theme-aware callout with an icon, a heading, `role="alert"`, and a form
+  `aria-describedby` association.
 - This verifies real PI against the deterministic local Anthropic-compatible
   provider, **not** a live AI Gateway account or its credentials.
 
@@ -71,12 +72,10 @@ check. Retain the disposable artifacts for inspection; do not touch user data.
 
 1. Open Home. Enter a nonexistent directory beneath the disposable workspace
    and the prompt `Ping`, then click **Start session**.
-2. Inspect and capture desktop, then resize to mobile. Both alert edges match
-   the composer exactly; the long path wraps without horizontal overflow.
-3. Correct the directory to the existing disposable workspace. Escape the
+2. Correct the directory to the existing disposable workspace. Escape the
    directory suggestions, Tab through the controls to **Start session**, and
    press Enter. The unchanged draft is submitted.
-4. Through Settings, switch to Claw and Light, exit Settings, open New Session,
+3. Through Settings, switch to Claw and Light, exit Settings, open New Session,
    and repeat the invalid-directory submission. Inspect and capture the alert.
 
 ### Geometry and contrast
