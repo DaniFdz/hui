@@ -123,6 +123,7 @@ export const test = base.extend<{ hui: Hui }>({
     const sessions = async () => (await groups()).flatMap((group) => group.sessions);
     const sessionIds = async () => (await sessions()).map((session) => session.id);
     const taskIds = async () => (await api<{ tasks: { id: string }[] }>("GET", "/__hui/automation")).tasks.map((task) => task.id);
+    const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
     const prompt = async (session: { id: string }, text: string) => {
       await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
@@ -146,6 +147,7 @@ export const test = base.extend<{ hui: Hui }>({
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
+    const existingBots = new Set(await botIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     if (web) await browser().addInitScript(trackSockets);
     await clearState();
@@ -395,6 +397,9 @@ export const test = base.extend<{ hui: Hui }>({
     await control("POST", "/control/release-replay");
     for (const id of await taskIds()) {
       if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+    }
+    for (const id of await botIds()) {
+      if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
     }
     for (const id of await sessionIds()) {
       if (existing.has(id)) continue;

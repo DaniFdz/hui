@@ -338,7 +338,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessionsidrewind"],
     surfaces: ["route:POST /__hui/sessions/:id/rewind"],
     journeys: ["rewind-continue", "compaction-rewind"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
