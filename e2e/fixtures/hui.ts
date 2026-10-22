@@ -5,16 +5,18 @@
  * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
  * point instead of the input), attaching files from `files/` or made up of a name and a size, reading what a download
  * saved or what the page copied, opening a session's menu, reading a sidebar row's status glyph (its tooltip and
- * whether it spins) and reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its
- * font families, those of HUI's bundled faces that have loaded to draw its text, its text size in pixels and the colour
- * of the focus ring it shows when reached from the keyboard), a disposable Git repository (on `feature/current`, with
- * `main`, a `release/1.0` at its own commit and a `sub` directory) that it removes at teardown, the files of the
- * gateway's state and workspace that hold a text, the secret directories the gateway wrote, and a restart of the
- * gateway against the same state and port. On iOS it relaunches the app pointed at the gateway, follows a `hui://open`
- * link instead of loading a page, and clears the app's preferences through `defaults` before the engine empties its
- * data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps
- * throw. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
- * themselves.
+ * whether it spins) and whether its unread dot has the accent colour, and reading how a piece of the screen looks (its
+ * text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have loaded to draw
+ * its text, its text size in pixels and the colour of the focus ring it shows when reached from the keyboard), a
+ * disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a `sub`
+ * directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, the secret
+ * directories the gateway wrote, a restart of the gateway against the same state and port, the end of its PI worker
+ * processes, and, on the web, closing the page's WebSockets as a dropped connection would. The web page never opens
+ * Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway does.
+ * On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of loading a page, and
+ * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
+ * would otherwise hand the relaunched app the deleted values; the web-only steps throw. Test files import `test` from
+ * here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -46,6 +48,8 @@ export type Hui = {
   prompt(session: { id: string }, text: string): Promise<void>;
   provider: { url: string; held(): Promise<void>; release(): Promise<void> };
   restartGateway(): Promise<void>;
+  exitRuntimes(): Promise<void>;
+  dropStreams(): Promise<void>;
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   clearState(): Promise<void>;
@@ -57,6 +61,7 @@ export type Hui = {
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
+  accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
@@ -78,6 +83,18 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
   target?.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "touch", isPrimary: true }));
   if (type === "pointerup") target?.dispatchEvent(new MouseEvent("click", init));
   return null;
+};
+
+const trackSockets = () => {
+  const sockets = new Set<WebSocket>();
+  (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets = sockets;
+  window.WebSocket = class extends WebSocket {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(protocols === "vite-hmr" ? "ws://127.0.0.1:1/" : url, protocols);
+      sockets.add(this);
+      this.addEventListener("close", () => sockets.delete(this));
+    }
+  };
 };
 
 export const test = base.extend<{ hui: Hui }>({
@@ -130,11 +147,12 @@ export const test = base.extend<{ hui: Hui }>({
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
+    if (web) await browser().addInitScript(trackSockets);
     await clearState();
     if (!web) await launch();
     const directories: string[] = [];
 
-    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "open" | "reload" | "clearState" | "repository"> = {
+    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
       url: () => browser().url(),
       clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
         const page = window as unknown as { huiCopied: string };
@@ -163,6 +181,21 @@ export const test = base.extend<{ hui: Hui }>({
         const indicator = row?.querySelector(".sidebar-session-indicator");
         if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
         return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
+      }, title),
+      dropStreams: () => browser().evaluate(() => {
+        for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
+        return null;
+      }),
+      accentDot: (title) => browser().evaluate((name) => {
+        const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+        const dot = row?.querySelector(".sidebar-session-unread-dot");
+        if (!dot) return false;
+        const accent = document.createElement("span");
+        accent.style.color = "var(--accent)";
+        dot.append(accent);
+        const shown = getComputedStyle(dot).backgroundColor === getComputedStyle(accent).color;
+        accent.remove();
+        return shown;
       }, title),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
@@ -329,6 +362,9 @@ export const test = base.extend<{ hui: Hui }>({
         process.kill(receipt.runnerPid, "SIGUSR2");
         await expect.poll(async () => (await readReceipt()).serverPid !== stopped, { timeout: 60_000 }).toBe(true);
         receipt.serverPid = (await readReceipt()).serverPid;
+      },
+      exitRuntimes: async () => {
+        execFileSync("pkill", ["-P", String(receipt.serverPid), "-f", "pi-sdk-worker"]);
       },
       open: async (path) => {
         if (web) return fixtures.app.open(path);
