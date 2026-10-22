@@ -14,7 +14,7 @@ const inOrder = async (...items: Locator[]) => {
 const call = (verb: "CALL" | "HOLD", calls: { name: string; input: Record<string, unknown> }[]) =>
   `E2E_${verb}:${Buffer.from(JSON.stringify(calls)).toString("base64url")}`;
 
-test("a message written mid-turn keeps its own row with its links, live and after a reload", { tags: ["CHAT-024"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a message written mid-turn keeps its own row with its links, live and after a reload", { tags: ["CHAT-024"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const session = await hui.createSession({ title: "Mid-turn message" });
   await hui.open(`/sessions/${session.id}`);
@@ -25,9 +25,9 @@ test("a message written mid-turn keeps its own row with its links, live and afte
 
   for (const pass of ["live", "reloaded"]) {
     if (pass === "reloaded") await hui.reload();
-    await expect(transcript.getByText("What to check")).toBeVisible();
-    expect(await transcript.getByText("service dashboard").getAttribute("href")).toBe("https://example.com/dashboard/checkout");
-    expect(await transcript.getByText("error logs").getAttribute("href")).toBe("https://example.com/logs?query=status%3Aerror");
+    await expect(transcript.getByText("What to check for the checkout alert")).toBeVisible();
+    await hui.expectLinkTo(transcript.getByRole("link", "service dashboard"), "https://example.com/dashboard/checkout");
+    await hui.expectLinkTo(transcript.getByRole("link", "error logs"), "https://example.com/logs?query=status%3Aerror");
     await expect(transcript.getByText("Started two helpers in the background; I'll report when they're back.")).toBeVisible();
     await transcript.getByText("Ran 1 command").tap();
     await expect(transcript.getByRole("button", "Read fixture.txt")).toBeVisible();

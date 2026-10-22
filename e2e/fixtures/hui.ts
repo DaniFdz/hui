@@ -11,8 +11,9 @@
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
  * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
  * included, with the app's own `Origin` and `Host`; it follows `hui://open` links, reads the address the app shows
- * from its app-route marker and scrolls a container by swiping it until the target is on screen (the device reports
- * only on-screen nodes); each test starts by deleting only the app's preferences through `defaults`, and
+ * from its app-route marker, scrolls a container by swiping it until the target is on screen (the device reports only
+ * on-screen nodes), and checks a link's address through its accessibility identifier, which the platform sets to the
+ * link's URL; each test starts by deleting only the app's preferences through `defaults`, and
  * `clearState` deletes them too before the engine empties the data container, because `cfprefsd` would otherwise hand
  * the relaunched app the deleted values; it reads a container's text as its texts and labels in order, since a device
  * reports no text for a container, and what the app copied from the simulator's pasteboard; steps only the web has
@@ -87,6 +88,7 @@ export type Hui = {
   touchTap(target: Locator): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
+  expectLinkTo(link: Locator, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
@@ -465,6 +467,7 @@ export const test = base.extend<{ hui: Hui }>({
       },
       contextMenu: (target) => target.secondaryTap(),
       scrollTo: (_within, target) => target.scrollIntoView(),
+      expectLinkTo: async (link, href) => expect(await link.getAttribute("href")).toBe(href),
       textOf: async (target) => (await target.textContent()) ?? "",
       scrollSideways: async (target) => {
         const box = await target.boundingBox();
@@ -541,6 +544,10 @@ export const test = base.extend<{ hui: Hui }>({
             }
           }
           throw new Error("scrollTo: the target is nowhere in the scroll container");
+        },
+        expectLinkTo: async (link: Locator, href: string) => {
+          await expect(link).toHaveCount(1);
+          await expect(fixtures.screen.getByTestId(href).filter({ hasText: (await link.textContent()) ?? "" })).toHaveCount(1);
         },
         ...iosSteps,
       }),
