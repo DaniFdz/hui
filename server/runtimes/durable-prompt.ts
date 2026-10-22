@@ -20,7 +20,7 @@ import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
-export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins">;
+export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins" | "notifications">;
 
 /** The skills of a bot's chat: the ones it has of a directory's, and its own `skills` section when it loads them with
  * `load_skill`. */

@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   questions: { timeoutMinutes: 0 },
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
+  notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
   models: { primary: "", fallback: "", utility: "" },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
@@ -70,6 +71,7 @@ export function normalizeSettings(raw: unknown): Settings {
     questions: { timeoutMinutes: QUESTION_TIMEOUTS.find((minutes) => isRecord(source["questions"]) && source["questions"]["timeoutMinutes"] === minutes) ?? 0 },
     vscode: normalizeVscodeSettings(source["vscode"]),
     power: normalizePower(source["power"]),
+    notifications: normalizeNotifications(source["notifications"]),
     // VoiceStudio's `voice` (its voice-notes switch) is not read either: the next save leaves it out.
     models: normalizeModels(source["models"]),
     calls: normalizeCalls(source["calls"]),
@@ -117,6 +119,17 @@ export function normalizeVscodeSettings(value: unknown): VscodeSettings {
 /** Opt-out: only an explicit false lets the Mac idle-sleep. */
 function normalizePower(value: unknown): Settings["power"] {
   return { keepAwake: !(isRecord(value) && value["keepAwake"] === false) };
+}
+
+/** The tool and finished runs are opt-in; failed runs and waits for the operator are opt-out. */
+function normalizeNotifications(value: unknown): Settings["notifications"] {
+  const source = isRecord(value) ? value : {};
+  return {
+    tool: source["tool"] === true,
+    runFinished: source["runFinished"] === true,
+    runFailed: source["runFailed"] !== false,
+    needsInput: source["needsInput"] !== false,
+  };
 }
 
 function normalizeModelRef(value: unknown): string {

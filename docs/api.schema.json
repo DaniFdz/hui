@@ -9609,6 +9609,7 @@
         "questions",
         "vscode",
         "power",
+        "notifications",
         "models",
         "calls",
         "disabledSkills",
@@ -9846,6 +9847,29 @@
           ],
           "properties": {
             "keepAwake": {
+              "type": "boolean"
+            }
+          }
+        },
+        "notifications": {
+          "type": "object",
+          "required": [
+            "tool",
+            "runFinished",
+            "runFailed",
+            "needsInput"
+          ],
+          "properties": {
+            "tool": {
+              "type": "boolean"
+            },
+            "runFinished": {
+              "type": "boolean"
+            },
+            "runFailed": {
+              "type": "boolean"
+            },
+            "needsInput": {
               "type": "boolean"
             }
           }

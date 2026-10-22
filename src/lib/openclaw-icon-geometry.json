@@ -97,6 +97,12 @@
       "sha256": "a2dda2460536b75142049c6b4dbd4ad52ac5f1aa427a0f518bc0e1e9d0b56172"
     },
     {
+      "name": "bell",
+      "upstream": "bell",
+      "source": "ui/src/components/icons-tools.ts",
+      "sha256": "9d169a7d65eb607671a9f1ac07934c6a9a021b799bd5cd6d0d525d48eeffeb7b"
+    },
+    {
       "name": "palette",
       "upstream": "palette",
       "source": "ui/src/components/icons-tools.ts",

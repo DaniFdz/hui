@@ -35,6 +35,7 @@ export const Settings = Type.Object({
   profileName: Type.String(), profileHandle: Type.String(), branchPrefix: Type.String(),
   browser: BrowserSettings, codemode: Type.Object({ enabled: Type.Boolean() }), questions: Type.Object({ timeoutMinutes: Type.Number() }),
   vscode: VscodeSettings, power: Type.Object({ keepAwake: Type.Boolean() }),
+  notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
   models: Type.Object({ primary: Type.String(), fallback: Type.String(), utility: Type.String() }),
   calls: Type.Object({ voice: Type.Union([
     Type.Literal("cove"), Type.Literal("arbor"), Type.Literal("breeze"), Type.Literal("ember"), Type.Literal("juniper"),

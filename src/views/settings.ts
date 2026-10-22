@@ -57,6 +57,7 @@ const SCALE_LABELS: Record<TextScaleStop, string> = {
 
 export const SETTINGS_PAGES = [
   { id: "appearance", label: "Appearance", group: "", icon: "palette" },
+  { id: "notifications", label: "Notifications", group: "", icon: "bell" },
   { id: "connection", label: "Gateway", group: "Connections", icon: "radio" },
   { id: "integrations", label: "Integrations", group: "Connections", icon: "grid" },
   { id: "workers", label: "Workers", group: "Connections", icon: "globe" },
@@ -121,6 +122,7 @@ export type SettingsProps = AutomationProps & {
   /** Resolves once the settings write lands, so the VS Code section can re-read status. */
   onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
   onChangeCodemode: (next: Settings["codemode"]) => void;
+  onChangeNotifications: (next: Settings["notifications"]) => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
   onChangeCalls: (next: Settings["calls"]) => void;
@@ -685,6 +687,11 @@ function renderToolsPage(props: SettingsProps) {
         <div class="settings-row__control">${renderSettingsToggle("Codemode tool", props.settings.codemode.enabled, (enabled) => props.onChangeCodemode({ enabled }))}</div>
       </div></div>
     </section>
+    ${renderSection("Notifications", "Agents can send you a desktop notification that opens their chat, through the HUI app on macOS.", renderRow(
+      "Notification tool",
+      "Offer notify_user to every session from its next request. A bot's own tool settings can still turn it off. Sessions still on the older PI worker list it but can't use it while this is off.",
+      renderSettingsToggle("Notification tool", props.settings.notifications.tool, (tool) => props.onChangeNotifications({ ...props.settings.notifications, tool })),
+    ))}
     ${renderSection("Questions", "When an agent asks you questions in a card and you are away, it can go on without your answer.", renderRow(
       "Question timeout",
       "How long a question card waits for you. Then the agent continues without your answer, told to take its recommended option and list the decisions still open for you in its final reply. Applies to questions asked from now on.",
@@ -936,6 +943,19 @@ function renderMemoryPage(props: SettingsProps) {
   `;
 }
 
+function renderNotificationsPage(props: SettingsProps) {
+  const notifications = props.settings.notifications;
+  const toggle = (label: string, key: "runFinished" | "runFailed" | "needsInput") =>
+    renderSettingsToggle(label, notifications[key], (on) => props.onChangeNotifications({ ...notifications, [key]: on }));
+  return html`
+    <p class="settings-page__intro">The HUI app on macOS shows these notifications. Clicking one opens its chat, and HUI shows none for the chat that is already in front.</p>
+    ${renderSection("Notify me when", "", html`
+      ${renderRow("A run finishes", "A run you started has ended and its chat is waiting for you. Subagents, bot routines and triggers don't count. Silent.", toggle("Run finished", "runFinished"))}
+      ${renderRow("A run fails", "A run you started has stopped with an error. Silent.", toggle("Run failed", "runFailed"))}
+      ${renderRow("A chat needs your input", "Any chat is waiting for you to answer a question, give a secret, allow access or confirm something. Plays a sound.", toggle("Needs your input", "needsInput"))}
+    `)}`;
+}
+
 function renderAppearancePage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">
@@ -1001,7 +1021,7 @@ function renderSecurityPage(props: SettingsProps) {
     ${props.piError || props.healthError ? html`<div class="settings-page__note settings-page__intro" role="alert">${[props.piError, props.healthError].filter(Boolean).join(" ")}<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button></div>` : nothing}`;
 }
 
-const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers">, string> = {
+const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "notifications" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
   integrations: "Connections to external services such as Jira and GitHub.",
   plugins: "Packages, extensions, permissions and provider adapters.",
@@ -1131,6 +1151,8 @@ export function renderSettingsPage(props: SettingsProps) {
         <div class="settings-page ${["plugins", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
+            : props.page === "notifications"
+            ? renderNotificationsPage(props)
             : props.page === "skills"
               ? renderSkillsPage(props)
               : props.page === "tools"

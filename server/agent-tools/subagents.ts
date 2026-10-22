@@ -149,6 +149,9 @@ function boundedHistory(entries: readonly TranscriptEntry[], limit: number): Tra
   return selected.reverse();
 }
 
+/** How a sessions_send message starts in the conversation it reaches. */
+export const INTER_SESSION_TAG = "[Inter-session message from ";
+
 export class SubagentService {
   #tasks = new Map<string, SubagentTaskView[]>();
   #controls = new Map<string, RunControl>();
@@ -698,7 +701,7 @@ export class SubagentService {
     ]);
     if (!this.sessions.ensure(target)) throw new AgentToolInputError(`Unknown session: ${sessionKey}`);
     if (this.sessions.status(target.id) === "starting") await this.#waitUntilReady(target.id);
-    const delivered = `[Inter-session message from ${caller.title} (${caller.id})]\n${message}`;
+    const delivered = `${INTER_SESSION_TAG}${caller.title} (${caller.id})]\n${message}`;
     const baseline = this.sessions.transcript(target.id).length;
     const reply = timeoutSeconds > 0
       ? this.#waitForReply(target.id, delivered, baseline, timeoutSeconds * 1_000)

@@ -32,7 +32,7 @@ test('macOS install creates a discoverable bundle and updates only owned apps', 
   assert.match(plist, /<key>CFBundleIdentifier<\/key><string>org.harnessui.desktop<\/string>/);
   assert.match(plist, /<key>CFBundleExecutable<\/key><string>Electron<\/string>/);
   assert.deepEqual(JSON.parse(await readFile(join(installed, 'Contents/Resources/app/launch.json'), 'utf8')), options.config);
-  assert.equal(await readFile(join(installed, 'Contents/Resources/hui-notifications'), 'utf8'), '2');
+  assert.equal(await readFile(join(installed, 'Contents/Resources/hui-notifications'), 'utf8'), '3');
   const main = await readFile(join(installed, 'Contents/Resources/app/main.cjs'), 'utf8');
   assert.equal(main, await readFile(new URL('./main.cjs', import.meta.url), 'utf8'));
   assert.equal(await readFile(join(installed, 'Contents/Resources/app/policy.cjs'), 'utf8'), await readFile(new URL('./policy.cjs', import.meta.url), 'utf8'));

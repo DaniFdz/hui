@@ -32,6 +32,7 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   let loadFailure;
   let refusal;
   const startup = [];
+  const bounces = [];
   const nativeTheme = { shouldUseDarkColors: false, themeSource: 'dark' };
   const settingsRequests = [];
   let onSettingsCompleted;
@@ -43,6 +44,7 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
   app.whenReady = () => new Promise((resolve) => setImmediate(() => { ready = true; resolve(); }));
   app.isReady = () => ready;
   app.quit = () => { quits++; };
+  app.dock = { bounce: (type) => { bounces.push(type); } };
   class Window extends EventEmitter {
     constructor(options) {
       super(); this.options = options; this.webContents = new EventEmitter();
@@ -52,13 +54,15 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
         setPermissionRequestHandler(handler) { this.permission = handler; },
         webRequest: { onCompleted(filter, handler) { onSettingsCompleted = { filter, handler }; } },
       };
-      this.webContents.getURL = () => 'http://127.0.0.1:5174/';
+      this.webContents.getURL = () => this.url ?? '';
       windows.push(this);
     }
     isDestroyed() { return false; }
     isMinimized() { return false; }
     show() { this.visible = true; }
     focus() { this.focused = true; }
+    isFocused() { return this.focused === true; }
+    blur() { this.focused = false; }
     async loadURL(url) {
       this.url = url;
       if (loadFailure) { const error = loadFailure; loadFailure = undefined; throw error; }
@@ -91,6 +95,7 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], del
     setSettings: (next) => { settings = next; },
     failNextLoad: (error) => { loadFailure = error; },
     refuseNotifications: (message) => { refusal = message; },
+    bounces,
     openUrl: (link) => app.emit('open-url', { preventDefault() {} }, link),
     startup,
     completeSettings: (method) => onSettingsCompleted.handler({ method }),
@@ -236,6 +241,9 @@ test('notification URLs cannot open another origin, a non-chat path or executabl
   for (const replyTo of ['https://example.com/receipt', 'http://localhost:12345/token/', 'file:///tmp/receipt']) {
     state.openUrl(notificationUrl({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo }));
   }
+  for (const field of [{ priority: 'urgent' }, { subtitle: 'x'.repeat(121) }, { message: 'x'.repeat(1_001) }, { message: 42 }]) {
+    state.openUrl(notificationUrl({ title: 'Ready', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt, ...field }));
+  }
   state.openUrl(notificationUrl('not JSON'));
   state.openUrl(`https://example.com/${encodeURIComponent(JSON.stringify({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }))}`);
   assert.equal(state.notificationReceipts.length, receiptsBefore);
@@ -256,6 +264,33 @@ test('cancelled chat navigation neither quits HUI nor shows an error when anothe
   await state.settle();
   assert.equal(state.quits(), 0);
   assert.deepEqual(state.errors, []);
+});
+
+test('the chat in front gets no banner; another chat, or the same one behind another app, gets one', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const alert = (url) => state.openUrl(notificationUrl({ title: 'Ready', url, replyTo: receipt }));
+  await state.windows[0].loadURL('http://127.0.0.1:5174/sessions/a?pane=files');
+  state.windows[0].focus();
+  alert('http://127.0.0.1:5174/sessions/a');
+  alert('http://127.0.0.1:5174/sessions/b');
+  state.windows[0].blur();
+  alert('http://127.0.0.1:5174/sessions/a');
+  assert.deepEqual(state.notificationReceipts, [`${receipt}in-view`, `${receipt}queued`, `${receipt}queued`]);
+  assert.equal(state.notifications.length, 2);
+});
+
+test('priority picks the sound and the Dock bounce, and the subtitle and message show as written', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  for (const priority of ['low', 'normal', 'high', undefined]) {
+    state.openUrl(notificationUrl({ title: 'Ready', subtitle: ' Finished ', message: 'Body.', ...(priority ? { priority } : {}), url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }));
+  }
+  assert.deepEqual(state.notifications.map(({ options }) => options.silent), [true, false, false, false]);
+  assert.deepEqual(state.bounces, ['critical']);
+  assert.deepEqual(state.notifications.map(({ options }) => [options.subtitle, options.body]), Array(4).fill(['Finished', 'Body.']));
 });
 
 test('a notification macOS refuses is reported as failed without a dialog or a window', async (t) => {

@@ -102,6 +102,10 @@ function bannerChat(id) {
   return target && isInternal(target, new URL(url).origin) ? target : undefined;
 }
 
+function inFront(chat) {
+  return Boolean(window && !window.isDestroyed() && window.isFocused() && window.webContents.getURL().split(/[?#]/)[0] === chat);
+}
+
 function track(banner, target) {
   notifications.add(banner);
   banner.on('click', () => showWindow(target));
@@ -114,13 +118,20 @@ function flushNotifications() {
     const acknowledge = (status) => fetch(new URL(status, request.replyTo), { method: 'POST', signal: AbortSignal.timeout(5_000) }).catch(() => {});
     if (!isInternal(request.url, new URL(url).origin)) { void acknowledge('wrong-gateway'); continue; }
     if (!Notification.isSupported()) { void acknowledge('unsupported'); continue; }
-    const notification = new Notification({ id: `${request.url}#${randomUUID()}`, title: request.title, body: request.message });
+    if (inFront(request.url)) { void acknowledge('in-view'); continue; }
+    const notification = new Notification({
+      id: `${request.url}#${randomUUID()}`, title: request.title, subtitle: request.subtitle, body: request.message,
+      silent: request.priority === 'low',
+    });
     track(notification, request.url);
     notification.once('failed', () => {
       notifications.delete(notification);
       void acknowledge('failed');
     });
-    notification.once('show', () => { void acknowledge('queued'); });
+    notification.once('show', () => {
+      if (request.priority === 'high') app.dock?.bounce('critical');
+      void acknowledge('queued');
+    });
     notification.show();
   }
 }

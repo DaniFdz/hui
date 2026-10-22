@@ -152,6 +152,32 @@ also available on ordinary Linux and Windows, but native execution is not proved
 on this NixOS host. **macOS signature, Spotlight, Dock and native-window behavior
 still need on-device verification**; see [desktop proof](../e2e/desktop-package.browser.md).
 
+## Desktop notifications (macOS)
+
+The HUI app can show macOS notifications that open their chat when you click
+them. **Settings → Notifications** chooses HUI's own:
+
+- **A run finishes**, off by default: a run you started has ended, and its chat
+  is waiting for you.
+- **A run fails**, on by default: a run you started has stopped with an error.
+- **A chat needs your input**, on by default: a chat is waiting for you to answer
+  a question, give a secret, allow access or confirm something. Only this one
+  plays a sound.
+
+Subagents, bot routines and triggers never send a finished notification. The
+chat that is in front in the HUI window gets no banner.
+
+Agents can send their own with the `notify_user` tool once **Settings → Tools →
+Notifications → Notification tool** is on; it is off by default and applies from
+each session's next request (a session on a remote worker once it reopens). An agent picks
+a title, an optional subtitle and message, and a priority: low is silent, normal
+plays a sound, and high also bounces HUI's Dock icon until you open HUI.
+
+The first time the app opens, macOS asks whether HUI may send notifications. If
+you said no, allow them in **System Settings → Notifications → HUI**. They need
+the managed gateway and the current app, so run `hui install-app` after an
+update. Quitting HUI clears its notifications from Notification Center.
+
 ## Remote access through a reverse proxy
 
 [Security and data](../README.md#security-and-data) covers binding the gateway

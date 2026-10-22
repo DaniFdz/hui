@@ -50,25 +50,41 @@ or alternate persisted gateway state are introduced.
 
 ### Desktop notifications
 
-The agent-only `notify_user` tool takes `title` (1–120 characters) and `message`
-(1–1000 characters), with no destination parameter. The gateway binds it to the
-authenticated caller, using a stable bot URL when that caller is a bot's chat.
-The initial implementation requires the managed macOS gateway and a current
-HUI-owned desktop bundle. Unsupported or outdated installations fail instead
-of falling back to Script Editor. No public browser API is added.
+The agent-only `notify_user` tool takes `title` (1–120 characters) and the
+optional `subtitle` (up to 120), `message` (up to 1000) and `priority` (`low`,
+`normal` or `high`, default `normal`), with no destination parameter. Low has no
+sound, normal plays the default sound, and high also bounces HUI's Dock icon
+until the operator opens HUI. It is offered only while
+`Settings.notifications.tool` is `true` (default `false`); a call reaching the
+gateway while it is off fails. The gateway binds it to the authenticated caller,
+using a stable bot URL when that caller is a bot's chat. The initial
+implementation requires the managed macOS gateway and a current HUI-owned
+desktop bundle. Unsupported or outdated installations fail instead of falling
+back to Script Editor. No public browser API is added.
 
 The native app receives a validated same-gateway chat URL and a one-use
 loopback acknowledgement address in a `hui-notification:` URL, which the
 gateway opens with `open -g -a` on the app. A running app receives it as an
 Apple Event, so no second instance starts; no app claims the scheme, so links
 in other apps cannot open it.
-The tool returns `status: "queued"` only after the native app acknowledges;
-launch errors, cancellation, no acknowledgement or a notification macOS
-refuses fail the call. Callback tokens never enter tool output.
+The tool returns `status: "queued"` only after the native app acknowledges, and
+`status: "in-view"` when the app showed nothing because the HUI window is in
+front showing that chat; launch errors, cancellation, no acknowledgement or a
+notification macOS refuses fail the call. Callback tokens never enter tool
+output.
 Clicking the banner opens its originating conversation, creating a window if
 needed. Delivery alone does not change focus. macOS settings may suppress the
 banner, and queued is not proof the operator read it. Notification calls are
 not replayed after a crash. Browser and iPhone push are outside this version.
+
+`Settings.notifications` also chooses HUI's own notifications, sent through the
+same app on a macOS gateway: `runFinished` (default `false`) and `runFailed`
+(default `true`) for a run the operator started, and `needsInput` (default
+`true`) when any conversation starts waiting for the operator. Their title is
+the chat's name, their subtitle `Finished`, `Run failed` or `Needs your input`,
+and a waiting chat's body is its first question's title. Needs-your-input
+banners are `normal` priority and the others `low`. A notification the app
+can't show is skipped and recorded as a `notification_skipped` diagnostic.
 
 ## Gateway lifecycle boundary
 

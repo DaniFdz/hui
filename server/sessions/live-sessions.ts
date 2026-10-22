@@ -13,7 +13,7 @@
  * by itself) or `disconnected` (it waits for a reconnect); its streams stay open.
  */
 import { remoteRuntime } from "../runtimes/remote.ts";
-import { CONTINUE_PROMPT } from "../agent-tools/subagent-completion.ts";
+import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../api/task-suggestions.ts";
@@ -128,6 +128,8 @@ export type RuntimeTelemetry = {
   bootDurationMs?: number;
 };
 
+export type RunEnd = { id: string; failed: boolean; prompt?: string };
+
 type Subscriber = (message: SessionStreamMessage) => void;
 type StatusSubscriber = (update: SessionStatusUpdate) => void;
 
@@ -184,6 +186,9 @@ type Live = {
   questions: Map<string, RuntimeQuestion>;
   compaction?: RuntimeCompaction;
   lastPrompt?: { text: string; attachments?: readonly PromptAttachment[] };
+  runOrigin?: string;
+  runFailed?: boolean;
+  stopped?: boolean;
   turnProducedOutput: boolean;
   fallbackAttempted: boolean;
   /** The session's own model while one turn is retried on the fallback. */
@@ -269,6 +274,7 @@ export class LiveSessions {
   // Clock-seeded so revisions keep rising across gateway restarts.
   #revisions = Date.now() * 1000;
   #statusSubscribers = new Set<StatusSubscriber>();
+  #runEnds = new Set<(end: RunEnd) => void>();
   /** Deleted ids stay tombstoned for this gateway lifetime so a request that
    * read the old row before DELETE committed cannot start it afterwards. */
   #deletions = new Map<string, DeletionState>();
@@ -355,6 +361,7 @@ export class LiveSessions {
       queue: { steering: [], followUp: [] },
       followUps: [],
       questions: new Map(),
+      ...(record.runPrompt ? { runOrigin: record.runPrompt } : {}),
       turnProducedOutput: false,
       fallbackAttempted: false,
       ...(record.subagent && record.subagent.status !== "starting" && record.subagent.status !== "running"
@@ -375,6 +382,14 @@ export class LiveSessions {
   status(id: string): SessionStatus {
     const live = this.#live.get(id);
     return live ? this.#reported(live) : "idle";
+  }
+
+  questions(id: string): readonly (RuntimeQuestion | HuiQuestion)[] {
+    return [...(this.#live.get(id)?.questions.values() ?? []), ...this.#huiQuestions(id)];
+  }
+
+  subagents(parentId: string): readonly SubagentTaskView[] {
+    return this.#subagentSnapshot(parentId);
   }
 
   setSubagentSnapshotProvider(
@@ -570,6 +585,10 @@ export class LiveSessions {
     };
   }
 
+  watchRunEnds(listener: (end: RunEnd) => void): void {
+    this.#runEnds.add(listener);
+  }
+
   /** Listeners are held even before the runtime exists, so a stream opened
    * during boot misses nothing. */
   subscribe(id: string, subscriber: Subscriber): () => void {
@@ -612,6 +631,8 @@ export class LiveSessions {
     live.promptAdmission = admission;
     live.promptPending = true;
     live.lastPrompt = { text, ...(attachments?.length ? { attachments } : {}) };
+    if (!text.startsWith(SUBAGENT_COMPLETION_MARKER)) live.runOrigin = recoveryPrompt;
+    live.stopped = undefined;
     live.turnProducedOutput = false;
     live.fallbackAttempted = false;
     // Every screen on this session gets the prompt before the run is announced: a chat
@@ -790,6 +811,7 @@ export class LiveSessions {
       runPrompt: undefined,
       runRecoveryAttempts: undefined,
     });
+    live.stopped = true;
     await live.runtime.abort();
     this.#aborted(id);
     live.promptPending = false;
@@ -1485,6 +1507,7 @@ export class LiveSessions {
         live.transcript = [...runtime.transcript()];
         if (live.turnStarted) this.#logRunFailure(live);
       }
+      live.runFailed = live.loggedRunError !== undefined || live.transcript.at(-1)?.kind === "error";
       live.turnStarted = undefined;
       live.loggedRunError = undefined;
       this.#clearRunMarker(live);
@@ -1582,7 +1605,8 @@ export class LiveSessions {
     const retried = await this.#retryWithFallback(live, runtime).catch(() => false);
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
-      await this.#drainFollowUp(live);
+      const continued = await this.#drainFollowUp(live);
+      if (!continued && this.#reported(live) === "idle" && live.followUps.length === 0) this.#endRun(live, live.runFailed === true);
       this.#closeIfReleased(live);
     }
   }
@@ -1667,6 +1691,7 @@ export class LiveSessions {
     live.unsubscribeExit?.();
     live.unsubscribeExit = undefined;
     live.runtime = undefined;
+    const midTurn = live.promptPending || live.turnStarted === true;
     live.promptPending = false;
     live.compaction = undefined;
     if (unreachable) {
@@ -1678,9 +1703,16 @@ export class LiveSessions {
     }
     recordDiagnosticEvent({ area: "runtime", level: "error", action: "exit", summary: "Runtime process exited", sessionId: live.record.id });
     this.#setStatus(live, "error");
+    if (midTurn) this.#endRun(live, true);
     this.#broadcast(live, { kind: "closed" });
     // Kept, not deleted: the session list still has to show that it failed, and
     // a later open replaces it with a fresh runtime.
+  }
+
+  #endRun(live: Live, failed: boolean): void {
+    if (live.stopped) return;
+    const end: RunEnd = { id: live.record.id, failed, ...(live.runOrigin !== undefined ? { prompt: live.runOrigin } : {}) };
+    for (const listener of this.#runEnds) listener(end);
   }
 
   #setStatus(live: Live, status: SessionStatus, session = true): void {
@@ -1827,12 +1859,13 @@ export class LiveSessions {
     });
   }
 
-  async #drainFollowUp(live: Live): Promise<void> {
-    if (!live.followUps.length || this.#reported(live) !== "idle") return;
+  async #drainFollowUp(live: Live): Promise<boolean> {
+    if (!live.followUps.length || this.#reported(live) !== "idle") return false;
     const item = live.followUps.shift()!;
     this.#broadcastQueue(live);
     try {
       await this.prompt(live.record.id, item.text, item.attachments);
+      return true;
     } catch (error) {
       live.followUps.unshift(item);
       this.#broadcastQueue(live);
@@ -1844,6 +1877,7 @@ export class LiveSessions {
           message: error instanceof Error ? error.message : "Could not send the queued message.",
         },
       });
+      return false;
     }
   }
 
