@@ -55,6 +55,7 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
       "messages:u", ["activity:t", "Ran 1 command", [["tool:t", "a.txt", ""]]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call"]]],
     ]),
     workingLabel: () => assert.equal(core.workingLabel([{ kind: "tool", id: "t", name: "read", status: "running" }]), "Reading files…"),
+    queueRows: () => assert.deepEqual(json(core.queueRows({ steering: ["Now"], followUp: [] })), [{ id: "", text: "Now", label: "Steer", editable: false }]),
     SendRequests: () => {
       const requests = new core.SendRequests(() => "r1");
       requests.failed("a", requests.take("a", "Hi", []).requestId, "Hi", []);

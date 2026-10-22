@@ -1,7 +1,7 @@
 // One session's conversation against a stubbed gateway (its open, connect and prompt routes) and scripted sockets:
 // tickets per connect, the Origin header, the snapshot replacing the transcript, streamed events, reconnects, 429,
-// close code 4404, a stopped model closing its socket without touching the core again, and a failed send and its
-// resend.
+// close code 4404, a stopped model closing its socket without touching the core again, a failed send and its
+// resend, and the queue: its rows from the core, a steer that adds no transcript row, and a refused queue change.
 import Foundation
 import Synchronization
 import Testing
@@ -104,6 +104,29 @@ struct ConversationModelTests {
         #expect(messages(model) == [Shown(text: "Hi")])
     }
 
+    @Test func aQueueUpdateShowsTheCoresRowsAndASteerAddsNoTranscriptRow() async throws {
+        let queue = #"{"type":"queue_update","queue":{"steering":["Now"],"followUp":["Later"],"items":[{"id":"q1","text":"Later","mode":"followUp"}]}}"#
+        let (model, host) = try start(Sockets([[snapshot([user("u1", "Hi")], status: "running"), event(queue)]], hold: true), routes: [
+            "/__hui/sessions/a/steer": [(200, Data(#"{"ok":true}"#.utf8))],
+        ])
+        defer { model.stop() }
+        try await until { model.queue.count == 2 }
+        #expect(model.queue == [QueueRow(id: "", text: "Now", label: "Steer", editable: false), QueueRow(id: "q1", text: "Later", label: "Follow up", editable: true)])
+        #expect(await model.send("Use tabs", mode: .steer))
+        #expect(GatewayStub.paths(host).last == "/__hui/sessions/a/steer")
+        #expect(messages(model) == [Shown(text: "Hi")])
+    }
+
+    @Test func aRefusedQueueChangeSaysWhy() async throws {
+        let (model, _) = try start(Sockets([[snapshot([])]], hold: true), routes: [
+            "/__hui/sessions/a/queue": [(409, Data(#"{"error":"That queued message is no longer available."}"#.utf8))],
+        ])
+        defer { model.stop() }
+        try await until { model.phase == .open }
+        #expect(await model.changeQueue(.remove(.init(itemId: "q1"))) == false)
+        #expect(model.sendError == "That queued message is no longer available.")
+    }
+
     private struct Shown: Equatable {
         var text: String
         var failed = false
@@ -130,7 +153,7 @@ struct ConversationModelTests {
 
     private var ticket: (status: Int, body: Data) { (200, Data(#"{"url":"/__hui/sessions/a/stream?ticket=t"}"#.utf8)) }
 
-    private func start(_ sockets: Sockets, core: HUICore? = nil, open: [(status: Int, body: Data)]? = nil, connect: [(status: Int, body: Data)]? = nil, prompt: [(status: Int, body: Data)] = []) throws -> (ConversationModel, String) {
+    private func start(_ sockets: Sockets, core: HUICore? = nil, open: [(status: Int, body: Data)]? = nil, connect: [(status: Int, body: Data)]? = nil, prompt: [(status: Int, body: Data)] = [], routes: [String: [(status: Int, body: Data)]] = [:]) throws -> (ConversationModel, String) {
         let host = "\(UUID().uuidString.lowercased()).stub.test"
         let session = try JSONDecoder().decode(API.SessionList.self, from: fixture("sessions.json")).groups[0].sessions[0]
         let opened = #"{"session":\#(String(decoding: try JSONEncoder().encode(session), as: UTF8.self)),"transcript":[],"snapshot":\#(snapshotData([]))}"#
@@ -138,7 +161,7 @@ struct ConversationModelTests {
             "/__hui/sessions/a/open": open ?? [(200, Data(opened.utf8))],
             "/__hui/sessions/a/connect": connect ?? [ticket],
             "/__hui/sessions/a/prompt": prompt,
-        ])
+        ].merging(routes) { $1 })
         let model = ConversationModel(id: "a", client: GatewayClient(baseURL: URL(string: "http://\(host):4100")!), core: try core ?? HUICore.bundled(), connector: sockets.connect)
         model.start()
         return (model, host)

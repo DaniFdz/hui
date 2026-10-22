@@ -28,14 +28,14 @@ async function enqueue(screen: Screen, hui: Hui, text: string) {
   await expect(queue.getByText(text)).toBeVisible();
 }
 
-test("Send steers a busy run, and PI takes the steer before a follow-up queued ahead of it", { tags: ["CHAT-005"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Send steers a busy run, and PI takes the steer before a follow-up queued ahead of it", { tags: ["CHAT-005"] }, async ({ screen, hui }) => {
   const { message, steer, queue, transcript, idle } = chat(screen);
 
   await startHeldRun(screen, hui, "Steer a run");
   await enqueue(screen, hui, "Queued before the steer");
   await message.fill("Use tabs, not spaces");
   await steer.tap();
-  await expect(queue).toHaveText(/^\s*Use tabs, not spaces\s*Steer\s*Queued before the steer\s*Follow up/u);
+  await expect.poll(() => hui.textOf(queue)).toMatch(/^\s*Use tabs, not spaces\s*Steer\s*Queued before the steer\s*Follow up/u);
   await expect(queue.getByRole("button", "Edit queued message")).toHaveCount(1);
   await expect(message).toHaveValue("");
   await message.fill("The next draft");
@@ -44,30 +44,30 @@ test("Send steers a busy run, and PI takes the steer before a follow-up queued a
 
   await hui.provider.release();
   await expect(transcript.getByText("Fixture response.")).toHaveCount(2);
-  await expect(transcript).toHaveText(/Replay prefix — replay suffix.*Use tabs, not spaces.*Fixture response\..*Queued before the steer.*Fixture response\./su);
+  await expect.poll(() => hui.textOf(transcript)).toMatch(/Replay prefix — replay suffix.*Use tabs, not spaces.*Fixture response\..*Queued before the steer.*Fixture response\./su);
   await expect(idle).toBeVisible();
   await expect(queue).toBeHidden();
   await expect(message).toHaveValue("The next draft");
 });
 
-test("Holding Send enqueues follow-ups, which PI takes in order once the run settles", { tags: ["CHAT-006"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Holding Send enqueues follow-ups, which PI takes in order once the run settles", { tags: ["CHAT-006"] }, async ({ screen, hui }) => {
   const { queue, transcript, idle } = chat(screen);
 
   await startHeldRun(screen, hui, "Queue follow-ups");
   await enqueue(screen, hui, "E2E_REPLAY first follow-up");
   await enqueue(screen, hui, "Second follow-up");
-  await expect(queue).toHaveText(/E2E_REPLAY first follow-up\s*Follow up.*Second follow-up\s*Follow up/su);
+  await expect.poll(() => hui.textOf(queue)).toMatch(/E2E_REPLAY first follow-up\s*Follow up.*Second follow-up\s*Follow up/su);
   await expect(transcript.getByText("E2E_REPLAY first follow-up")).toBeHidden();
 
   await hui.provider.release();
   await hui.provider.held();
   await expect(transcript.getByText("E2E_REPLAY first follow-up")).toBeVisible();
-  await expect(queue).toHaveText(/^\s*Second follow-up\s*Follow up/u);
+  await expect.poll(() => hui.textOf(queue)).toMatch(/^\s*Second follow-up\s*Follow up/u);
   await expect(transcript.getByText("Second follow-up")).toBeHidden();
 
   await hui.provider.release();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
-  await expect(transcript).toHaveText(/E2E_REPLAY first follow-up.*Replay prefix — replay suffix.*Second follow-up.*Fixture response\./su);
+  await expect.poll(() => hui.textOf(transcript)).toMatch(/E2E_REPLAY first follow-up.*Replay prefix — replay suffix.*Second follow-up.*Fixture response\./su);
   await expect(transcript.getByText("Replay prefix — replay suffix")).toHaveCount(2);
   await expect(idle).toBeVisible();
   await expect(queue).toBeHidden();
@@ -122,34 +122,34 @@ test("A follow-up opens in an editor from Edit or a double click, saves or cance
   await expect(transcript.getByText("Doomed follow-up")).toBeHidden();
 });
 
-test("Dragging a follow-up by its handle onto another row reorders the queue and the order PI takes them in", { tags: ["CHAT-008"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Dragging a follow-up by its handle onto another row reorders the queue and the order PI takes them in", { tags: ["CHAT-008"] }, async ({ screen, hui }) => {
   const { queue, transcript, idle } = chat(screen);
 
   await startHeldRun(screen, hui, "Reorder the queue");
   await enqueue(screen, hui, "First follow-up");
   await enqueue(screen, hui, "Second follow-up");
   await queue.getByRole("button", "Reorder queued message").nth(1).dragTo(queue.getByText("First follow-up"));
-  await expect(queue).toHaveText(/Second follow-up.*First follow-up/su);
+  await expect.poll(() => hui.textOf(queue)).toMatch(/Second follow-up.*First follow-up/su);
 
   await hui.provider.release();
   await expect(transcript.getByText("Fixture response.")).toHaveCount(2);
-  await expect(transcript).toHaveText(/Replay prefix — replay suffix.*Second follow-up.*Fixture response\..*First follow-up.*Fixture response\./su);
+  await expect.poll(() => hui.textOf(transcript)).toMatch(/Replay prefix — replay suffix.*Second follow-up.*Fixture response\..*First follow-up.*Fixture response\./su);
   await expect(idle).toBeVisible();
   await expect(queue).toBeHidden();
 });
 
-test("Steer queued message sends a follow-up into the running turn, ahead of the follow-ups that wait for the run to end", { tags: ["CHAT-010"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Steer queued message sends a follow-up into the running turn, ahead of the follow-ups that wait for the run to end", { tags: ["CHAT-010"] }, async ({ screen, hui }) => {
   const { queue, transcript, idle } = chat(screen);
 
   await startHeldRun(screen, hui, "Send a follow-up now");
   await enqueue(screen, hui, "First follow-up");
   await enqueue(screen, hui, "Urgent follow-up");
   await queue.getByRole("button", "Steer queued message").nth(1).tap();
-  await expect(queue).toHaveText(/^\s*Urgent follow-up\s*Steer\s*First follow-up\s*Follow up/u);
+  await expect.poll(() => hui.textOf(queue)).toMatch(/^\s*Urgent follow-up\s*Steer\s*First follow-up\s*Follow up/u);
 
   await hui.provider.release();
   await expect(transcript.getByText("Fixture response.")).toHaveCount(2);
-  await expect(transcript).toHaveText(/Replay prefix — replay suffix.*Urgent follow-up.*Fixture response\..*First follow-up.*Fixture response\./su);
+  await expect.poll(() => hui.textOf(transcript)).toMatch(/Replay prefix — replay suffix.*Urgent follow-up.*Fixture response\..*First follow-up.*Fixture response\./su);
   await expect(idle).toBeVisible();
   await expect(queue).toBeHidden();
 });

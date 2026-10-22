@@ -49,8 +49,10 @@ locally, create and boot the simulator once (the commands are in `../ios/AGENTS.
 `dev.hui.ios` with `-HUIGatewayURL <gateway>` and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
 `hui.reload`, deletes the app's preferences through `defaults` before the engine empties its data container for
 `hui.clearState` (a test never calls `app.clearState()`, whose deleted preferences `cfprefsd` can still hand the
-relaunched app), and throws "not on iOS yet" from the steps only the web engine has (hover, request interception, the
-clipboard, glyphs, looks and the rest), so a test that needs one keeps `platforms: ['web']`.
+relaunched app), long-presses for `hui.hold`, and throws "not on iOS yet" from the steps only the web engine has (hover,
+request interception, the clipboard, glyphs, looks and the rest), so a test that needs one keeps `platforms: ['web']`.
+A device reports no text for a container, only its label, so a test reads a container's text in order with
+`hui.textOf(container)` (on iOS its texts and control labels joined) rather than `toHaveText` on the container.
 
 - Import `test` from `fixtures/hui.ts` and `expect` from `e2e`. The fixture owns the gateway's API setup and cleanup,
   the fixture provider's barriers and the steps that differ per platform; a test never reads `platform`, `device` or

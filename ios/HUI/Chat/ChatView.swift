@@ -1,8 +1,9 @@
 // The chat screen for one session, named as the web's chat names its controls: the header (the title as a heading,
 // "Session status: …" from the core's label), the transcript of the core's rows anchored at the bottom, activity rows
-// that open to their thinking and tool cards, the working indicator ("Agent activity: …") and the composer (Message,
-// Send message, and Stop while a run streams). While the conversation loads it says so, and a failed load offers Try
-// again. A send that fails stays marked "Not sent — draft recovered." with its text back in the draft, as on the web.
+// that open to their thinking and tool cards, the working indicator ("Agent activity: …"), the message queue and the
+// composer (Message and Send message; while a run streams, Stop with an empty draft, otherwise "Steer message; touch and
+// hold to enqueue", whose hold menu offers Enqueue). While the conversation loads it says so, and a failed load offers
+// Try again. A send that fails stays marked "Not sent — draft recovered." with its text back in the draft, as on the web.
 import SwiftUI
 
 struct ChatView: View {
@@ -185,6 +186,9 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if !model.queue.isEmpty {
+                QueueView(model: model)
+            }
             if let error = model.sendError {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
@@ -195,29 +199,45 @@ struct ChatView: View {
 
     private var composerControls: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField("Message", text: $draft, axis: .vertical)
+            TextField("", text: $draft, axis: .vertical)
                 .lineLimit(1...6)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("Message")
-            if model.streaming {
+                .overlay(alignment: .leading) {
+                    if draft.isEmpty {
+                        Text(model.streaming ? "Add to this run…" : "Send a message…")
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 7)
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+            if model.streaming, draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button("Stop", systemImage: "stop.fill") { Task { await model.abort() } }
                     .labelStyle(.iconOnly)
                     .accessibilityLabel("Stop")
             } else {
-                Button("Send message", systemImage: "arrow.up.circle.fill") {
-                    let text = draft
-                    draft = ""
-                    following = true
-                    Task {
-                        guard await !model.send(text) else { return }
-                        draft = draft.isEmpty ? text : "\(text)\n\n\(draft)"
+                Button("Send message", systemImage: "arrow.up.circle.fill") { submit(model.streaming ? .steer : .prompt) }
+                    .labelStyle(.iconOnly)
+                    .font(.title2)
+                    .accessibilityLabel(model.streaming ? "Steer message; touch and hold to enqueue" : "Send message")
+                    .contextMenu {
+                        if model.streaming {
+                            Button("Enqueue") { submit(.followUp) }
+                        }
                     }
-                }
-                .labelStyle(.iconOnly)
-                .font(.title2)
-                .accessibilityLabel("Send message")
-                .disabled(model.phase != .open)
+                    .disabled(model.phase != .open)
             }
+        }
+    }
+
+    private func submit(_ mode: ConversationModel.SendMode) {
+        let text = draft
+        draft = ""
+        following = true
+        Task {
+            guard await !model.send(text, mode: mode) else { return }
+            draft = draft.isEmpty ? text : "\(text)\n\n\(draft)"
         }
     }
 }

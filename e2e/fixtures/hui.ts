@@ -15,8 +15,10 @@
  * Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway does.
  * On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of loading a page, and
  * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
- * would otherwise hand the relaunched app the deleted values; the web-only steps throw. Test files import `test` from
- * here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * would otherwise hand the relaunched app the deleted values, holds a control with a long press and reads a
+ * container's text as its texts and labels in order, since a device reports no text for a container; the web-only
+ * steps throw. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
+ * themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -69,6 +71,7 @@ export type Hui = {
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
+  textOf(target: Locator): Promise<string>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
@@ -279,6 +282,7 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      textOf: async (target) => (await target.textContent()) ?? "",
       stored: async (text) => {
         const root = dirname(receipt.workspace);
         const files = (await readdir(root, { recursive: true, withFileTypes: true }))
@@ -336,7 +340,14 @@ export const test = base.extend<{ hui: Hui }>({
 
     await use({
       ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
-      ...(web ? {} : { keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") } }),
+      ...(web ? {} : {
+        keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
+        hold: async (target: Locator, until: Locator) => {
+          await target.longPress();
+          await expect(until).toBeVisible();
+        },
+        textOf: async (target: Locator) => (await target.getByText(/\S/u).allTextContents()).join(" "),
+      }),
       workspace: receipt.workspace,
       gateway: receipt.url,
       api,
