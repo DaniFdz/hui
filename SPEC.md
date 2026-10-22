@@ -3325,7 +3325,17 @@ the desktop app accepts only chat URLs on its managed gateway's origin.
 
 The tool waits for the desktop app's acknowledgement over a one-use private
 loopback callback. Missing or outdated apps, unsupported platforms, cancellation,
-launch failures and missing acknowledgements fail explicitly. A queued result
-is not a read receipt and macOS settings can suppress banners. Notifications
-are requested alerts, not automatic messages for every response, and must not
-contain secrets. They are unsafe to replay after a runtime crash.
+launch failures and missing acknowledgements fail explicitly. When macOS refuses
+the notification, for example because HUI may not send notifications, the call
+fails and says to allow them in System Settings; the app shows no dialog of its
+own. A queued result is not a read receipt and macOS settings can suppress
+banners. Notifications are requested alerts, not automatic messages for every
+response, and must not contain secrets. They are unsafe to replay after a
+runtime crash.
+
+The desktop app asks macOS for notification permission when it launches,
+because an alert sent while that prompt is open is never shown. An alert that
+itself launches HUI before notifications were ever allowed is still lost, and
+the call reports it queued. Quitting the app removes its banners from
+Notification Center; a banner left behind by a crash or Force Quit opens HUI
+without switching chats.

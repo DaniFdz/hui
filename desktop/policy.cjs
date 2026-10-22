@@ -27,11 +27,15 @@ function themeSource(mode) {
   return mode === 'light' || mode === 'dark' ? mode : 'system';
 }
 
+// Electron hands a running app the second instance's argv with switches first and its own switches added, so the
+// payload travels inside the switch: https://www.electronjs.org/docs/latest/api/app#event-second-instance
+const NOTIFICATION_SWITCH = '--hui-notification=';
+
 function notificationFromArgs(args = []) {
-  const index = args.indexOf('--hui-notification');
-  if (index < 0 || typeof args[index + 1] !== 'string' || args[index + 1].length > 8_000) return;
+  const payload = args.find((arg) => arg.startsWith(NOTIFICATION_SWITCH))?.slice(NOTIFICATION_SWITCH.length);
+  if (!payload || payload.length > 8_000) return;
   try {
-    const value = JSON.parse(args[index + 1]);
+    const value = JSON.parse(payload);
     if (!value || typeof value !== 'object' || Array.isArray(value)
       || typeof value.title !== 'string' || !value.title.trim() || value.title.length > 120
       || typeof value.message !== 'string' || !value.message.trim() || value.message.length > 1_000

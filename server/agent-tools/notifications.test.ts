@@ -26,7 +26,7 @@ vi.mock("node:child_process", () => ({
     host.launches.push({ command, args });
     callback(host.failure, "", "");
     if (!host.failure && host.reply !== "none") {
-      const { replyTo } = JSON.parse(args.at(-1) ?? "");
+      const { replyTo } = JSON.parse(args.at(-1)?.slice("--hui-notification=".length) ?? "");
       void fetch(new URL(host.reply, replyTo), { method: "POST" });
     }
   },
@@ -58,10 +58,9 @@ test("notifications carry the caller's regular or stable bot chat, not a model-s
     const launch = host.launches.at(-1);
     assert.ok(launch);
     assert.equal(launch.command, "/usr/bin/open");
-    assert.deepEqual(launch.args.slice(0, -1), [
-      "-g", "-n", join(host.home, "Applications/HUI.app"), "--args", "--hui-notification",
-    ]);
-    const { replyTo, ...payload } = JSON.parse(launch.args.at(-1) ?? "");
+    assert.deepEqual(launch.args.slice(0, -1), ["-g", "-n", join(host.home, "Applications/HUI.app"), "--args"]);
+    const [, notification] = /^--hui-notification=(.+)$/u.exec(launch.args.at(-1) ?? "") ?? [];
+    const { replyTo, ...payload } = JSON.parse(notification ?? "");
     assert.deepEqual(payload, { title: "Ready", message: "Open this chat.", url: expected });
     assert.match(replyTo, /^http:\/\/127\.0\.0\.1:\d+\/[a-f0-9]{64}\/$/);
   }
@@ -98,7 +97,9 @@ test("unsupported, stale and failed delivery never falls back to Script Editor o
   await assert.rejects(notifyUser({ id: "caller" }, params), /app launch failed/);
   assert.equal(host.launches.length, 1);
   host.failure = null;
-  for (const status of ["failed", "unsupported", "wrong-gateway"]) {
+  host.reply = "failed";
+  await assert.rejects(notifyUser({ id: "caller" }, params), /Allow notifications for HUI in System Settings/);
+  for (const status of ["unsupported", "wrong-gateway"]) {
     host.reply = status;
     await assert.rejects(notifyUser({ id: "caller" }, params), { message: `HUI desktop notification was refused (${status}).` });
   }

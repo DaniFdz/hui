@@ -105,10 +105,9 @@ function flushNotifications() {
     notifications.add(notification);
     notification.on('click', () => showWindow(request.url));
     notification.once('close', () => notifications.delete(notification));
-    notification.once('failed', (_event, error) => {
+    notification.once('failed', () => {
       notifications.delete(notification);
       void acknowledge('failed');
-      dialog.showErrorBox('HUI notification could not be shown', String(error));
     });
     notification.once('show', () => { void acknowledge('queued'); });
     notification.show();
@@ -126,6 +125,10 @@ async function start() {
   // Closing a window must not interrupt agent runs. Quit is explicit.
   app.on('window-all-closed', () => {});
   await app.whenReady();
+  // Electron asks macOS for notification permission when its first notification call creates the presenter, and an
+  // alert sent while that prompt is open is never shown, so ask at launch:
+  // https://github.com/electron/electron/blob/v44.4.5/shell/browser/notifications/mac/notification_presenter_mac.mm
+  Notification.isSupported();
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'HUI', submenu: [{ label: 'Show HUI', click: showWindow }, { type: 'separator' }, { role: 'quit' }] },
     { role: 'editMenu' }, viewMenu, { role: 'windowMenu' },

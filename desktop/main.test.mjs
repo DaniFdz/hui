@@ -6,6 +6,10 @@ import vm from 'node:vm';
 import { test } from "vitest";
 import policy from './policy.cjs';
 
+const receipt = `http://127.0.0.1:12345/${'a'.repeat(64)}/`;
+const notificationSwitch = (payload) => `--hui-notification=${typeof payload === 'string' ? payload : JSON.stringify(payload)}`;
+const forwardedArgs = (payload) => ['/Applications/HUI.app/Contents/MacOS/Electron', notificationSwitch(payload), '--allow-file-access-from-files', '--enable-avfoundation'];
+
 async function shell(t, settings = { themeMode: 'system' }, argv = []) {
   const app = new EventEmitter();
   const windows = [];
@@ -17,6 +21,8 @@ async function shell(t, settings = { themeMode: 'system' }, argv = []) {
   let complete;
   let quits = 0;
   let loadFailure;
+  let refusal;
+  const startup = [];
   const nativeTheme = { shouldUseDarkColors: false, themeSource: 'dark' };
   const settingsRequests = [];
   let onSettingsCompleted;
@@ -48,12 +54,12 @@ async function shell(t, settings = { themeMode: 'system' }, argv = []) {
     }
   }
   class NativeNotification extends EventEmitter {
-    static isSupported() { return true; }
+    static isSupported() { startup.push('notification permission'); return true; }
     constructor(options) { super(); this.options = options; notifications.push(this); }
-    show() { this.shown = true; this.emit('show'); }
+    show() { this.shown = true; if (refusal) this.emit('failed', {}, refusal); else this.emit('show'); }
   }
   const electron = { app, BrowserWindow: Window, Notification: NativeNotification, dialog: { showErrorBox: (...args) => errors.push(args) }, Menu: { buildFromTemplate: (menu) => menu, setApplicationMenu(menu) { applicationMenu = menu; } }, nativeTheme, shell: { openExternal: async () => {} } };
-  const modules = { electron, 'node:child_process': { execFile: (...args) => { launchArgs = args; complete = args[3]; } }, 'node:fs': {}, 'node:path': path, './policy.cjs': policy };
+  const modules = { electron, 'node:child_process': { execFile: (...args) => { startup.push('gateway'); launchArgs = args; complete = args[3]; } }, 'node:fs': {}, 'node:path': path, './policy.cjs': policy };
   t.onTestFinished(() => {});
   vm.runInNewContext(await readFile(new URL('./main.cjs', import.meta.url), 'utf8'), {
     require: (name) => modules[name], URL, AbortSignal,
@@ -71,6 +77,8 @@ async function shell(t, settings = { themeMode: 'system' }, argv = []) {
     app, windows, errors, notifications, notificationReceipts, launchArgs, nativeTheme, settingsRequests, settle,
     setSettings: (next) => { settings = next; },
     failNextLoad: (error) => { loadFailure = error; },
+    refuseNotifications: (message) => { refusal = message; },
+    startup,
     completeSettings: (method) => onSettingsCompleted.handler({ method }),
     settingsFilter: () => onSettingsCompleted.filter,
     complete: (...args) => complete(...args), quits: () => quits,
@@ -102,16 +110,21 @@ test('desktop starts or reuses the managed gateway and keeps window lifecycle in
   assert.deepEqual(state.errors, []);
 });
 
+test('HUI asks macOS for notification permission at launch, not with the first alert', async (t) => {
+  const state = await shell(t);
+  assert.deepEqual(state.startup, ['notification permission', 'gateway']);
+});
+
 test('each notification opens its own chat on click without changing the active chat on delivery', async (t) => {
   const state = await shell(t);
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
-  const args = (url) => ['--hui-notification', JSON.stringify({ title: 'Ready', message: 'Open this chat.', url, replyTo: `http://127.0.0.1:12345/${'a'.repeat(64)}/` })];
+  const args = (url) => forwardedArgs({ title: 'Ready', message: 'Open this chat.', url, replyTo: receipt });
   state.app.emit('second-instance', {}, args('http://127.0.0.1:5174/bots/stable-bot'));
   state.app.emit('second-instance', {}, args('http://127.0.0.1:5174/sessions/session-a'));
   assert.equal(state.notifications.length, 2);
   assert.equal(state.notifications.every((notification) => notification.shown), true);
-  assert.deepEqual(state.notificationReceipts, Array(2).fill(`http://127.0.0.1:12345/${'a'.repeat(64)}/queued`));
+  assert.deepEqual(state.notificationReceipts, Array(2).fill(`${receipt}queued`));
   assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/');
   assert.equal(state.windows[0].focused, undefined);
   assert.deepEqual({ ...state.notifications[0].options }, { title: 'Ready', body: 'Open this chat.' });
@@ -128,9 +141,9 @@ test('each notification opens its own chat on click without changing the active 
 });
 
 test('notification-only startup stays windowless and accepts another notification while the gateway starts', async (t) => {
-  const args = (id) => ['--hui-notification', JSON.stringify({ title: 'Ready', message: 'Open this chat.', url: `http://127.0.0.1:5174/sessions/${id}`, replyTo: `http://127.0.0.1:12345/${'a'.repeat(64)}/` })];
-  const state = await shell(t, { themeMode: 'system' }, args('first'));
-  state.app.emit('second-instance', {}, args('second'));
+  const payload = (id) => ({ title: 'Ready', message: 'Open this chat.', url: `http://127.0.0.1:5174/sessions/${id}`, replyTo: receipt });
+  const state = await shell(t, { themeMode: 'system' }, ['/Applications/HUI.app/Contents/MacOS/Electron', notificationSwitch(payload('first'))]);
+  state.app.emit('second-instance', {}, forwardedArgs(payload('second')));
   assert.equal(state.notifications.length, 0);
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
@@ -153,13 +166,13 @@ test('notification arguments cannot open another origin, a non-chat path or exec
     'http://127.0.0.1:5174/sessions/a#other', 'http://user:password@127.0.0.1:5174/sessions/a',
     'http://127.0.0.1:5174/sessions/%E0%A4%A', 'javascript:alert(1)', 'file:///tmp/a',
   ]) {
-    state.app.emit('second-instance', {}, ['--hui-notification', JSON.stringify({ title: 'Ready', message: 'Open.', url, replyTo: `http://127.0.0.1:12345/${'a'.repeat(64)}/` })]);
+    state.app.emit('second-instance', {}, forwardedArgs({ title: 'Ready', message: 'Open.', url, replyTo: receipt }));
   }
   const receiptsBefore = state.notificationReceipts.length;
   for (const replyTo of ['https://example.com/receipt', 'http://localhost:12345/token/', 'file:///tmp/receipt']) {
-    state.app.emit('second-instance', {}, ['--hui-notification', JSON.stringify({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo })]);
+    state.app.emit('second-instance', {}, forwardedArgs({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo }));
   }
-  state.app.emit('second-instance', {}, ['--hui-notification', 'not JSON']);
+  state.app.emit('second-instance', {}, forwardedArgs('not JSON'));
   assert.equal(state.notificationReceipts.length, receiptsBefore);
   assert.equal(state.notifications.length, 0);
   assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/');
@@ -172,15 +185,24 @@ test('cancelled chat navigation neither quits HUI nor shows an error when anothe
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
   assert.equal(state.quits(), 0);
-  state.app.emit('second-instance', {}, ['--hui-notification', JSON.stringify({
-    title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a',
-    replyTo: `http://127.0.0.1:12345/${'a'.repeat(64)}/`,
-  })]);
+  state.app.emit('second-instance', {}, forwardedArgs({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }));
   state.failNextLoad(aborted());
   state.notifications[0].emit('click');
   await state.settle();
   assert.equal(state.quits(), 0);
   assert.deepEqual(state.errors, []);
+});
+
+test('a notification macOS refuses is reported as failed without a dialog or a window', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.windows[0].emit('closed');
+  state.refuseNotifications('Notifications are not allowed for this application');
+  state.app.emit('second-instance', {}, forwardedArgs({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }));
+  assert.deepEqual(state.notificationReceipts, [`${receipt}failed`]);
+  assert.deepEqual(state.errors, []);
+  assert.equal(state.windows.length, 1);
 });
 
 test('gateway startup failure is visible rather than loading an unrelated page', async (t) => {

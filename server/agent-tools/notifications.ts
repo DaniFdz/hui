@@ -51,6 +51,7 @@ export async function notifyUser(
     }
     response.writeHead(204).end();
     if (status === "queued") resolveReceipt();
+    else if (status === "failed") rejectReceipt(new Error("macOS did not accept the HUI notification. Allow notifications for HUI in System Settings → Notifications, then retry."));
     else rejectReceipt(new Error(`HUI desktop notification was refused (${status}).`));
   });
   const onAbort = () => rejectReceipt(new Error("HUI did not acknowledge the notification. Restart the HUI desktop app and retry."));
@@ -65,8 +66,8 @@ export async function notifyUser(
     await Promise.all([
       receipt,
       promisify(execFile)("/usr/bin/open", [
-        "-g", "-n", bundle, "--args", "--hui-notification",
-        JSON.stringify({ title: params.title.trim(), message: params.message.trim(), url, replyTo: `http://127.0.0.1:${address.port}/${token}/` }),
+        "-g", "-n", bundle, "--args",
+        `--hui-notification=${JSON.stringify({ title: params.title.trim(), message: params.message.trim(), url, replyTo: `http://127.0.0.1:${address.port}/${token}/` })}`,
       ], { timeout: 10_000, signal: deadline }),
     ]);
   } finally {

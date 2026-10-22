@@ -1276,7 +1276,8 @@ Verified desktop/mobile behavior and checks are recorded in
 - `notify_user` queues a caller-bound native macOS notification; clicking it
   opens that session or bot chat without switching focus on delivery. The
   tool requires acknowledgement from a current HUI app and never falls back
-  to Script Editor. Native banner/click verification remains pending.
+  to Script Editor. Native delivery and clicks are verified on macOS:
+  [desktop package proof](../e2e/desktop-package.browser.md#native-notification-proof).
 - The existing installed-package lifecycle suite includes the desktop assets
   in release/update fixtures. Browser proof and native-platform limitations:
   [desktop package proof](../e2e/desktop-package.browser.md).
