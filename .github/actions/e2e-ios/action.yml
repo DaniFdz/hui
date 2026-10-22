@@ -11,9 +11,10 @@ runs:
   steps:
     - shell: bash
       run: sudo xcode-select -s /Applications/Xcode_27.1.app
-    - name: Show the runner's CPUs and memory
+    # Spotlight indexing the builds and the simulator took 70% of a CPU on a 3-CPU runner whose load stood above 300.
+    - name: Show the runner's CPUs and memory and stop Spotlight indexing
       shell: bash
-      run: sysctl hw.ncpu hw.memsize && memory_pressure -Q
+      run: sysctl hw.ncpu hw.memsize && memory_pressure -Q && sudo mdutil -a -i off
     # agent-device's XCTest runner, which it builds on first use.
     - id: agent-device-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
