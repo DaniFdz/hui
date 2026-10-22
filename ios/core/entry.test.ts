@@ -12,6 +12,7 @@ const session = {
   id: "a", title: "Build", group: "ungrouped", cwd: "/w", displayCwd: "/w", tool: "pi", status: "idle", stage: "testing",
   stageOrigin: "agent", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
 } as const;
+const codemode = { kind: "tool", id: "c", name: "codemode", args: { code: "x" }, details: { calls: [{ name: "read", args: "{}", status: "ok" }] }, status: "succeeded" } as const;
 
 test("the core bundle runs with no DOM, network or timers, and every export answers there", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "hui-ios-core-"));
@@ -50,6 +51,11 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
       requests.failed("a", requests.take("a", "Hi", []).requestId, "Hi", []);
       assert.equal(requests.take("a", "Hi", []).requestId, "r1");
     },
+    readToolPresentation: () => assert.equal(core.readToolPresentation({ kind: "tool", id: "t", name: "read", args: { path: "/w/a.txt" } })?.target, "a.txt"),
+    commandToolPresentation: () => assert.equal(core.commandToolPresentation({ kind: "tool", id: "t", name: "bash", args: { command: "bash -lc 'npm test'" } })?.preview, "npm test"),
+    codemodeToolPresentation: () => assert.equal(core.codemodeToolPresentation(codemode)?.tools, "read"),
+    codemodeSummary: () => assert.equal(core.codemodeSummary(core.codemodeToolPresentation(codemode)!), "read"),
+    codemodeOutcome: () => assert.equal(core.codemodeOutcome(core.codemodeToolPresentation(codemode)!), "Completed · 1 call"),
     markdownTokens: () => assert.deepEqual(
       json(core.markdownTokens("**Hi** `src/a.ts`", true)[1]?.children?.map((token) => token.type)),
       ["text", "strong_open", "text", "strong_close", "text", "html_inline", "code_inline", "html_inline"]),

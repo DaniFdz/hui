@@ -12,3 +12,4 @@ export { appendPendingUser, normalizeTranscript, reduceTranscript, settlePending
 export { activityLabel, projectChatTranscript, workingLabel } from "../../src/lib/chat-projection.ts";
 export { SendRequests } from "../../src/lib/composer/send-requests.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";
+export { codemodeOutcome, codemodeSummary, codemodeToolPresentation, commandToolPresentation, readToolPresentation } from "../../src/lib/tool-cards.ts";
