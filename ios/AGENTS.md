@@ -61,8 +61,8 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
 - `npm run ios:build` builds the core, then runs
   `xcodebuild -project ios/HUI.xcodeproj -scheme HUI -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build`
   and `xcrun simctl install "HUI iPhone" ios/build/Build/Products/Release-iphonesimulator/HUI.app`. Boot the
-  simulator first; create it once with
-  `xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0`.
+  simulator first; create it once with the commands in `CONTRIBUTING.md`, which approve `hui://` links before its
+  first boot.
 - `npm run ios:core` builds only the core.
 - `npm run e2e:ios` runs the shared e2e tests that run on iOS against the installed Release build, on the booted
   "HUI iPhone" simulator; `e2e/AGENTS.md` says how the target and fixture work. Run `npm run ios:build` first, so the

@@ -81,10 +81,14 @@ writing a test.
 
 `npm run e2e:ios` runs the same tests on the iOS app, on a simulator named "HUI
 iPhone". It needs Xcode 27.1 with the iOS 27.0 simulator runtime. Create and boot
-the simulator once:
+the simulator once. The `printf` approves `hui://` links before the first boot, so
+the simulator never asks "Open in “HUI”?" when a test opens one:
 
 ```sh
-xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0
+udid=$(xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0)
+prefs=~/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences
+mkdir -p "$prefs"
+printf '%s' '<plist version="1.0"><dict><key>com.apple.CoreSimulator.CoreSimulatorBridge--&gt;hui</key><string>dev.hui.ios</string></dict></plist>' > "$prefs/com.apple.launchservices.schemeapproval.plist"
 xcrun simctl bootstatus "HUI iPhone" -b
 npx agent-device doctor
 ```
