@@ -63,7 +63,9 @@ per file, size and mtime. Content-hashed `/assets/*` files are
 `If-None-Match` with 304; the app page (`index.html` for every route fallback)
 stays `no-store` without an ETag. `/__hui/` JSON bodies of at least 1 KiB are
 compressed the same way (Brotli quality 5 or gzip level 6, off the event loop);
-smaller bodies, and clients that accept neither encoding, get the identity body. Requests must use an allowed Host (loopback, the selected IP,
+smaller bodies, and clients that accept neither encoding, get the identity body. An idle keep-alive connection stays
+open for 120 s, longer than a reverse proxy such as `tailscale serve` keeps one (90 s), so the proxy closes it first
+and never sends a request on a connection the gateway is closing. Requests must use an allowed Host (loopback, the selected IP,
 its explicitly resolved Tailscale DNS name, or a name granted with `--allow-host`
 or `HUI_GATEWAY_ALLOWED_HOSTS`, or listed in `allowHosts` of `gateway/config.json`). A proxy that connects over loopback but answers
 on a name of its own, such as `tailscale serve`, is the case that needs one;
