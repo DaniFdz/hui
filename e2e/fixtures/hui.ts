@@ -8,8 +8,9 @@
  * clipboard, status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how a piece of the
  * screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
- * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at the gateway and
- * follows `hui://open` links; each test starts by deleting only the app's preferences through `defaults`, and
+ * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
+ * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
+ * included, with the app's own `Origin` and `Host`; it follows `hui://open` links; each test starts by deleting only the app's preferences through `defaults`, and
  * `clearState` deletes them too before the engine empties the data container, because `cfprefsd` would otherwise hand
  * the relaunched app the deleted values; it reads a container's text as its texts and labels in order, since a device
  * reports no text for a container, and what the app copied from the simulator's pasteboard; steps only the web has
@@ -18,6 +19,9 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { createServer, request, type IncomingMessage, type ServerResponse } from "node:http";
+import { connect, type Socket } from "node:net";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +34,7 @@ type Receipt = { url: string; providerUrl: string; workspace: string; serverPid:
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
+type GatewayRequest = { incoming: IncomingMessage; body: Buffer; response: ServerResponse };
 type Intercepted = {
   arrived(): Promise<void>;
   deliver(): Promise<void>;
@@ -85,6 +90,102 @@ export type Hui = {
   repository(): Promise<{ path: string; git(...args: string[]): string }>;
   stored(text: string): Promise<string[]>;
   secretDirectories(): Promise<string[]>;
+};
+
+const holding = <R>() => {
+  let arrive: () => void = () => undefined;
+  let decide: (handle: (route: R) => Promise<void>) => void = () => undefined;
+  let done: () => void = () => undefined;
+  const arrival = new Promise<void>((resolve) => { arrive = resolve; });
+  const decision = new Promise<(route: R) => Promise<void>>((resolve) => { decide = resolve; });
+  const handled = new Promise<void>((resolve) => { done = resolve; });
+  return {
+    arrival,
+    hold: async (route: R) => {
+      arrive();
+      try {
+        await (await decision)(route);
+      } finally {
+        done();
+      }
+    },
+    settle: async (handle: (route: R) => Promise<void>) => {
+      await arrival;
+      decide(handle);
+      await handled;
+    },
+  };
+};
+
+const deliverBehind = async (method: string, url: string, body: string | undefined) => {
+  const response = await fetch(url, { method, headers: { "x-hui": "1", "content-type": "application/json" }, body });
+  if (!response.ok) throw new Error(`${method} ${url} answered ${response.status}: ${await response.text()}`);
+};
+
+const gatewayProxy = async (gateway: string) => {
+  const upstream = new URL(gateway);
+  const holds = new Set<{ method: string; path: RegExp; hold(route: GatewayRequest): Promise<void> }>();
+  const sockets = new Set<Socket>();
+  const forward = ({ incoming, body, response }: GatewayRequest) => new Promise<void>((resolve, reject) => {
+    const outgoing = request({ host: upstream.hostname, port: upstream.port, method: incoming.method, path: incoming.url, headers: incoming.headers }, (answer) => {
+      response.writeHead(answer.statusCode ?? 502, answer.headers);
+      answer.on("error", () => response.destroy()).pipe(response);
+      resolve();
+    });
+    outgoing.on("error", reject);
+    response.on("close", () => outgoing.destroy());
+    outgoing.end(body);
+  });
+  const server = createServer(async (incoming, response) => {
+    const route = { incoming, body: Buffer.concat(await incoming.toArray()), response };
+    const href = new URL(incoming.url ?? "/", gateway).href;
+    const held = [...holds].find((hold) => hold.method === incoming.method && hold.path.test(href));
+    await (held ? held.hold(route) : forward(route)).catch(() => response.destroy());
+  });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
+  server.on("upgrade", (incoming: IncomingMessage, socket: Socket, head: Buffer) => {
+    const target = connect(Number(upstream.port), upstream.hostname, () => {
+      const headers = incoming.rawHeaders.flatMap((value, index) => (index % 2 ? [] : [`${value}: ${incoming.rawHeaders[index + 1]}`]));
+      target.write([`${incoming.method} ${incoming.url} HTTP/1.1`, ...headers, "", ""].join("\r\n"));
+      target.write(head);
+      socket.pipe(target).pipe(socket);
+    });
+    sockets.add(target);
+    const close = () => {
+      socket.destroy();
+      target.destroy();
+    };
+    for (const end of [socket, target]) end.on("error", close).on("close", close);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    intercept: (method: string, path: RegExp): Intercepted => {
+      const { arrival, hold, settle } = holding<GatewayRequest>();
+      const held = { method, path, hold };
+      holds.add(held);
+      const answer = (status: number, json: string) => settle(async ({ response }) => {
+        response.writeHead(status, { "content-type": "application/json" }).end(json);
+      }).finally(() => holds.delete(held));
+      return {
+        arrived: () => arrival,
+        deliver: () => settle(forward).finally(() => holds.delete(held)),
+        reject: (status, error) => answer(status, JSON.stringify({ error })),
+        answer: (json) => answer(200, json),
+        deliverAndDrop: () => settle(async ({ incoming, body, response }) => {
+          await deliverBehind(method, new URL(incoming.url ?? "/", gateway).href, body.toString() || undefined);
+          response.destroy();
+        }).finally(() => holds.delete(held)),
+      };
+    },
+    close: async () => {
+      for (const socket of sockets) socket.destroy();
+      await new Promise((resolve) => server.close(resolve));
+    },
+  };
 };
 
 const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "pointerup" }) => {
@@ -143,7 +244,8 @@ export const test = base.extend<{ hui: Hui }>({
     };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
     const device = () => (fixtures as unknown as { device: Device }).device;
-    const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", receipt.url] });
+    const proxy = web ? undefined : await gatewayProxy(receipt.url);
+    const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", proxy!.url] });
     const forgetPreferences = async () => {
       await device().closeApp();
       const container = execFileSync("xcrun", ["simctl", "get_app_container", IOS_DEVICE, "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
@@ -383,39 +485,16 @@ export const test = base.extend<{ hui: Hui }>({
         await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
       },
       intercept: async (method, path) => {
-        let arrive: () => void = () => undefined;
-        let decide: (handle: (route: WebRoute) => Promise<void>) => void = () => undefined;
-        let done: () => void = () => undefined;
-        const arrival = new Promise<void>((resolve) => { arrive = resolve; });
-        const decision = new Promise<(route: WebRoute) => Promise<void>>((resolve) => { decide = resolve; });
-        const handled = new Promise<void>((resolve) => { done = resolve; });
-        await browser().route(path, async (route) => {
-          if (route.request.method !== method) return route.fallback();
-          arrive();
-          try {
-            await (await decision)(route);
-          } finally {
-            done();
-          }
-        });
-        const settle = async (handle: (route: WebRoute) => Promise<void>) => {
-          await arrival;
-          decide(handle);
-          await handled;
-          await browser().unroute(path);
-        };
+        const { arrival, hold, settle } = holding<WebRoute>();
+        await browser().route(path, (route) => (route.request.method === method ? hold(route) : route.fallback()));
+        const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
         return {
           arrived: () => arrival,
-          deliver: () => settle((route) => route.continue()),
-          reject: (status, error) => settle((route) => route.fulfill({ status, json: { error } })),
-          answer: (json) => settle((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
-          deliverAndDrop: () => settle(async (route) => {
-            const response = await fetch(route.request.url, {
-              method,
-              headers: { "x-hui": "1", "content-type": "application/json" },
-              body: route.request.postData,
-            });
-            if (!response.ok) throw new Error(`${method} ${route.request.url} answered ${response.status}: ${await response.text()}`);
+          deliver: () => decide((route) => route.continue()),
+          reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
+          answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
+          deliverAndDrop: () => decide(async (route) => {
+            await deliverBehind(method, route.request.url, route.request.postData);
             await route.abort();
           }),
         };
@@ -447,6 +526,7 @@ export const test = base.extend<{ hui: Hui }>({
           execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
         },
         copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
+        intercept: async (method: string, path: RegExp) => proxy!.intercept(method, path),
         ...iosSteps,
       }),
       workspace: receipt.workspace,
@@ -504,6 +584,7 @@ export const test = base.extend<{ hui: Hui }>({
       },
     });
 
+    await proxy?.close();
     await control("POST", "/control/release-replay");
     for (const id of await taskIds()) {
       if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
