@@ -50,6 +50,7 @@ test("Search sessions filters by title, directory and group, opens collapsed gro
   await search.fill("");
   await hui.phoneScreen();
   await screen.getByRole("button", "Search sessions").tap();
+  await expect(search).toBeVisible();
   await expect(search).toBeFocused();
 });
 
@@ -60,29 +61,28 @@ test("Sort by orders rows by Created, Last updated, Name or Stage with pinned fi
   const bravo = await hui.createSession({ title: "Bravo sort" });
   await hui.api("PATCH", `/__hui/sessions/${bravo.id}`, { stage: "testing" });
   const charlie = await hui.createSession({ title: "Charlie sort" });
-  await hui.api("PATCH", `/__hui/sessions/${charlie.id}`, { stage: "done" });
+  await hui.api("PATCH", `/__hui/sessions/${charlie.id}`, { stage: "done", pinned: true });
   await hui.createSession({ title: "Alpha sort" });
   await hui.createSession({ title: "Delta sort" });
-  const echo = await hui.createSession({ title: "Echo sort" });
-  await hui.api("PATCH", `/__hui/sessions/${echo.id}`, { pinned: true });
+  await hui.createSession({ title: "Echo sort" });
   await hui.prompt(bravo, "Bump Bravo");
 
   await hui.open("/");
   await expect(screen.getByLabel(/^Bravo sort, status idle, tool durable, stage testing/u)).toBeVisible();
   const before = await registry();
-  await expect.poll(order).toEqual(["Echo sort", "Bravo sort", "Delta sort", "Alpha sort", "Charlie sort"]);
+  await expect.poll(order).toEqual(["Charlie sort", "Bravo sort", "Echo sort", "Delta sort", "Alpha sort"]);
   await choose(screen, "Created");
-  await expect.poll(order).toEqual(["Echo sort", "Delta sort", "Alpha sort", "Charlie sort", "Bravo sort"]);
+  await expect.poll(order).toEqual(["Charlie sort", "Echo sort", "Delta sort", "Alpha sort", "Bravo sort"]);
   await choose(screen, "Stage");
-  await expect.poll(order).toEqual(["Echo sort", "Delta sort", "Alpha sort", "Bravo sort", "Charlie sort"]);
+  await expect.poll(order).toEqual(["Charlie sort", "Echo sort", "Delta sort", "Alpha sort", "Bravo sort"]);
   await choose(screen, "Last updated");
-  await expect.poll(order).toEqual(["Echo sort", "Bravo sort", "Delta sort", "Alpha sort", "Charlie sort"]);
+  await expect.poll(order).toEqual(["Charlie sort", "Bravo sort", "Echo sort", "Delta sort", "Alpha sort"]);
   await choose(screen, "Name");
-  await expect.poll(order).toEqual(["Echo sort", "Alpha sort", "Bravo sort", "Charlie sort", "Delta sort"]);
+  await expect.poll(order).toEqual(["Charlie sort", "Alpha sort", "Bravo sort", "Delta sort", "Echo sort"]);
 
   await hui.reload();
   await expect(screen.getByLabel(/^Bravo sort, status idle, tool durable, stage testing/u)).toBeVisible();
-  await expect.poll(order).toEqual(["Echo sort", "Alpha sort", "Bravo sort", "Charlie sort", "Delta sort"]);
+  await expect.poll(order).toEqual(["Charlie sort", "Alpha sort", "Bravo sort", "Delta sort", "Echo sort"]);
   expect(await registry()).toEqual(before);
 });
 
@@ -108,16 +108,13 @@ test("Group by Project splits rows by directory with only New session, None list
   await expect(screen.getByRole("button", "Group options for Atlas")).toHaveCount(0);
   await expect.poll(order).toEqual(["Second row", "Third row", "First row"]);
   await screen.getByTestId("session-row").filter({ hasText: "First row" }).dragTo(heading(there));
-  await hui.reload();
-  await expect(heading(there)).toBeVisible();
-  await expect.poll(order).toEqual(["Second row", "Third row", "First row"]);
-  await expect.poll(async () => (await hui.api<{ groups: { label: string; sessions: { id: string }[] }[] }>("GET", "/__hui/sessions"))
-    .groups.find(({ sessions }) => sessions.some(({ id }) => id === first.id))?.label).toBe("Atlas");
-
   await hui.peek(heading(there));
   await screen.getByRole("button", `New session in ${there}`).tap();
   await expect(screen.getByLabel("Project directory")).toHaveValue(parent);
   await expect(screen.getByLabel("Choose session group")).toContainText("OTHER");
+  await hui.reload();
+  await expect(heading(there)).toBeVisible();
+  await expect.poll(order).toEqual(["Second row", "Third row", "First row"]);
 
   await choose(screen, "None");
   await expect.poll(order).toEqual(["Third row", "Second row", "First row"]);
@@ -127,6 +124,8 @@ test("Group by Project splits rows by directory with only New session, None list
   await choose(screen, "Custom groups");
   await expect(heading("ATLAS")).toBeVisible();
   await expect.poll(order).toEqual(["Third row", "First row", "Second row"]);
+  const listed = await hui.api<{ groups: { label: string; sessions: { id: string }[] }[] }>("GET", "/__hui/sessions");
+  expect(listed.groups.find(({ sessions }) => sessions.some(({ id }) => id === first.id))?.label).toBe("Atlas");
 });
 
 test("Status shows only sessions in that live status, announces when none match with New group still there, and Hide empty groups follows its choice", { tags: ["SESS-022"], platforms: ["web"] }, async ({ screen, hui }) => {

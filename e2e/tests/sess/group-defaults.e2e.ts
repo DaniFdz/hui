@@ -24,6 +24,10 @@ test("New session in a group selects it and its directory, and the Group picker 
 
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
   await expect(screen.getByText("durable · BETA · Idle", { visible: true })).toBeVisible();
+  const rows = () => screen.getByLabel(/^.+, status \w+, tool durable, stage \w+/u).allTextContents();
+  await expect.poll(async () => (await rows()).length).toBe(3);
+  await screen.getByRole("button", "BETA").tap();
+  await expect.poll(rows).toEqual(["Alpha anchor"]);
   await expect.poll(() => groupSize("Beta")).toBe(2);
   expect(await groupSize("Alpha")).toBe(1);
 });

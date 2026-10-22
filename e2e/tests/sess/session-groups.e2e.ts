@@ -8,7 +8,7 @@ const groupMenu = async (screen: Screen, hui: Hui, label: string, item: string) 
   await screen.getByText(item, { visible: true }).tap();
 };
 
-test("New group creates a group above OTHER even when filters hid every row, resets search and status but keeps the sort, and shows a rejected name", { tags: ["SESS-023"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("New group in the toolbar or a group's menu creates a group above OTHER even when filters hid every row, resets search and status but keeps the sort, and shows a rejected name", { tags: ["SESS-023"], platforms: ["web"] }, async ({ screen, hui }) => {
   const newGroup = screen.getByRole("button", "New group");
   const name = screen.getByLabel("Group name");
   const search = screen.getByPlaceholder("Search sessions");
@@ -38,6 +38,12 @@ test("New group creates a group above OTHER even when filters hid every row, res
   await expect(newGroup).toBeFocused();
   await expect(search).toHaveValue("");
   await expect.poll(rows).toEqual(["Alpha older", "Zulu newer"]);
+
+  await groupMenu(screen, hui, "Research Lab", "New group");
+  await expect(name).toBeFocused();
+  await name.fill("Field Notes");
+  await screen.getByRole("button", "Create group").tap();
+  await expect(screen.getByRole("button", "FIELD NOTES")).toBeVisible();
 
   await newGroup.tap();
   await name.fill("Research Lab");
@@ -133,11 +139,11 @@ test("dragging headers or Move group up and down reorders custom groups across a
   await expect.poll(order).toEqual(["THIRD LANE", "FIRST LANE", "SECOND LANE", "OTHER"]);
 
   await groupMenu(screen, hui, "Third lane", "Move group down");
-  await expect(screen.getByText("Moved THIRD LANE.")).toBeVisible();
   await expect.poll(order).toEqual(["FIRST LANE", "THIRD LANE", "SECOND LANE", "OTHER"]);
-  await groupMenu(screen, hui, "Third lane", "Move group up");
   await expect(screen.getByText("Moved THIRD LANE.")).toBeVisible();
+  await groupMenu(screen, hui, "Third lane", "Move group up");
   await expect.poll(order).toEqual(["THIRD LANE", "FIRST LANE", "SECOND LANE", "OTHER"]);
+  await expect(screen.getByText("Moved THIRD LANE.")).toBeVisible();
 
   const reorder = await hui.intercept("PUT", /\/__hui\/session-groups$/u);
   await groupMenu(screen, hui, "First lane", "Move group down");

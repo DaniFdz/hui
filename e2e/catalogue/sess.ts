@@ -215,7 +215,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-023",
     title: "Create a session group",
-    behaviour: "The Sessions toolbar always offers New group, which opens a dialog with Group name and Create group. The group appears at once in uppercase, above OTHER, even when filters hid everything (search and status reset, sort kept), and focus returns to New group. A rejected name is shown in the dialog. On a phone the drawer closes before the dialog opens and focus returns to Open navigation.",
+    behaviour: "The Sessions toolbar always offers New group, and so does each custom group's Group options menu; it opens a dialog with Group name and Create group. The group appears at once in uppercase, above OTHER, even when filters hid everything (search and status reset, sort kept), and focus returns to New group. A rejected name is shown in the dialog. On a phone the drawer closes before the dialog opens and focus returns to Open navigation.",
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisession-groups"],
     surfaces: ["route:POST /__hui/session-groups"],
     journeys: ["session-groups", "session-registry"],
