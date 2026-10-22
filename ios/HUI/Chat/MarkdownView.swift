@@ -1,6 +1,6 @@
 // A basic Markdown renderer for chat messages, drawn from the tokens the core's markdown-it parser returns
-// (src/lib/markdown/parser.ts), so both clients read Markdown alike: paragraphs, headings, list items, quotes, code
-// blocks and rules as views, inline text as one AttributedString (bold, italic, strikethrough, code, links). Raw HTML
+// (src/lib/markdown/parser.ts), so both clients read Markdown alike: paragraphs, headings, list items (a task list's
+// checkboxes as ☐ and ☑), quotes, code blocks and rules as views, inline text as one AttributedString (bold, italic, strikethrough, code, links). Raw HTML
 // shows as text, as the web escapes it, and a link the parser hides (an unsafe scheme) stays plain text. Until the core
 // answers for the current source, it shows as plain text.
 import SwiftUI
@@ -76,7 +76,9 @@ struct MarkdownView: View {
             case "bullet_list_close", "ordered_list_close": lists.removeLast()
             case "list_item_open":
                 let indent = String(repeating: "  ", count: max(0, lists.count - 1))
-                if let count = lists.last ?? nil {
+                if token.attribute("class") == "task-list-item" {
+                    prefix = indent
+                } else if let count = lists.last ?? nil {
                     lists[lists.count - 1] = count + 1
                     prefix = "\(indent)\(count + 1)."
                 } else {
@@ -121,7 +123,11 @@ struct MarkdownView: View {
             case "link_close": link = nil
             case "image": piece = AttributedString(token.content)
             case "html_inline":
-                if !token.content.hasPrefix("<hui-file-ref"), token.content != "</hui-file-ref>" { piece = AttributedString(token.content) }
+                if token.content.hasPrefix("<input class=\"task-list-item-checkbox\"") {
+                    piece = AttributedString(token.content.contains("checked") ? "☑" : "☐")
+                } else if !token.content.hasPrefix("<hui-file-ref"), token.content != "</hui-file-ref>" {
+                    piece = AttributedString(token.content)
+                }
             default: continue
             }
             guard var piece else { continue }
