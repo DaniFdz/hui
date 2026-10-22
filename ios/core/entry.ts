@@ -12,5 +12,5 @@ export { appendPendingUser, dropDuplicateSend, failPendingUser, normalizeTranscr
 export { workingLabel } from "../../src/lib/chat-projection.ts";
 export { chatRows } from "../../src/lib/chat-rows.ts";
 export { SendRequests } from "../../src/lib/composer/send-requests.ts";
-export { queueRows } from "../../src/lib/composer/state.ts";
+export { composerPlaceholder, queueRows } from "../../src/lib/composer/state.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";

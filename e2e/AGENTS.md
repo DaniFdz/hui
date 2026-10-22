@@ -50,7 +50,7 @@ time on a second simulator: set `E2E_IOS_DEVICE` to its name and `E2E_IOS_PORT` 
 `e2e:ios` alike; that run keeps agent-device's state in `~/.agent-device-<port>` unless `AGENT_DEVICE_STATE_DIR` names
 another folder, because two runs sharing one fail with "already bound". On iOS the fixture relaunches
 `dev.hui.ios` with `-HUIGatewayURL` pointing at a proxy in front of the gateway, which holds the requests a test
-intercepts with `hui.intercept` and passes everything else through, WebSocket upgrades included, and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
+intercepts with `hui.intercept` and passes everything else through, WebSocket upgrades included (`hui.dropStreams` cuts those), and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
 `hui.reload`, goes back to the session list with its Sessions button for `hui.sessionList` (the web's sidebar is
 already on screen), deletes the app's preferences through `defaults` before each test (the app keeps nothing else) and also
 empties its data container through the engine for `hui.clearState` (a test never calls `app.clearState()`, whose

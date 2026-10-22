@@ -123,6 +123,18 @@ actor HUICore {
         try call("markdownTokens", source, agent)
     }
 
+    func composerPlaceholder(status: API.SessionStatus?, reconnecting: Bool, streaming: Bool) throws -> String {
+        try call("composerPlaceholder", ComposerPlaceholderInput(status: status, reconnecting: reconnecting, streaming: streaming))
+    }
+
+    private struct ComposerPlaceholderInput: Encodable {
+        var status: API.SessionStatus?
+        var reconnecting: Bool
+        var streaming: Bool
+        var coarsePointer = true
+        var applePlatform = true
+    }
+
     func queueRows(_ queue: API.RuntimeQueue) throws -> [QueueRow] {
         try call("queueRows", queue)
     }

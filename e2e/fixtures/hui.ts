@@ -198,6 +198,9 @@ const gatewayProxy = async (gateway: string) => {
         }),
       };
     },
+    dropStreams: () => {
+      for (const socket of upgraded) socket.destroy();
+    },
     close: async () => {
       const closed = new Promise((resolve) => server.close(resolve));
       server.closeAllConnections();
@@ -547,6 +550,7 @@ export const test = base.extend<{ hui: Hui }>({
         },
         copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
         intercept: async (method, path) => proxy!.intercept(method, path),
+        dropStreams: async () => proxy!.dropStreams(),
         url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         scrollTo: async (within, target) => {
           const bar = within.getByLabel(/^Vertical scroll bar/u).first();

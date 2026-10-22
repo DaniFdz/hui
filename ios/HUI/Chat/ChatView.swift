@@ -18,6 +18,7 @@ struct ChatView: View {
     @State private var position = ScrollPosition(idType: String.self, edge: .bottom)
     @State private var following = true
     @State private var nearBottom = true
+    @State private var placeholder = "Send a message…"
     @FocusState private var composing: Bool
 
     init(id: String, client: GatewayClient, core: HUICore, title: String?) {
@@ -203,6 +204,11 @@ struct ChatView: View {
             if !model.queue.isEmpty {
                 QueueView(model: model)
             }
+            if model.reconnecting || model.stopped {
+                Text(model.reconnecting ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             if let error = model.sendError {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
@@ -214,18 +220,14 @@ struct ChatView: View {
 
     private var composerControls: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField("", text: $draft, axis: .vertical)
+            TextField("", text: $draft, prompt: Text(placeholder), axis: .vertical)
                 .lineLimit(1...6)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("Message")
                 .focused($composing)
-                .overlay(alignment: .leading) {
-                    if draft.isEmpty {
-                        Text(model.streaming ? "Add to this run…" : "Send a message…")
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 7)
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
+                .task(id: "\(model.session?.status.rawValue ?? "") \(model.reconnecting) \(model.streaming)") {
+                    if let text = try? await core.composerPlaceholder(status: model.session?.status, reconnecting: model.reconnecting, streaming: model.streaming) {
+                        placeholder = text
                     }
                 }
             if model.streaming, draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -242,7 +244,7 @@ struct ChatView: View {
                             Button("Enqueue") { submit(.followUp) }
                         }
                     }
-                    .disabled(model.phase != .open)
+                    .disabled(model.phase != .open || model.reconnecting || model.stopped)
             }
         }
     }

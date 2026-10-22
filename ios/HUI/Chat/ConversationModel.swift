@@ -38,6 +38,8 @@ final class ConversationModel {
     private(set) var streaming = false
     private(set) var stopping = false
     private(set) var connectionNote = ""
+    private(set) var reconnecting = false
+    private(set) var stopped = false
     private(set) var sendError: String?
     private(set) var origin = ""
     private(set) var currentModel: API.RuntimeModel?
@@ -63,6 +65,9 @@ final class ConversationModel {
         generation += 1
         let current = generation
         phase = .loading
+        reconnecting = false
+        stopped = false
+        connectionNote = ""
         task = Task { await run(current) }
     }
 
@@ -174,10 +179,12 @@ final class ConversationModel {
             case .ended(let note):
                 connectionNote = note
                 streaming = false
+                reconnecting = false
+                stopped = true
                 return
             case .dropped:
                 attempt += 1
-                connectionNote = "Reconnecting…"
+                reconnecting = true
                 guard let delay = try? await core.reconnectDelay(attempt: attempt) else { return }
                 try? await Task.sleep(for: delay)
             }
@@ -213,7 +220,7 @@ final class ConversationModel {
             if !live {
                 live = true
                 onLive()
-                connectionNote = ""
+                reconnecting = false
             }
             guard current == generation, !Task.isCancelled else { return .dropped }
             do {
