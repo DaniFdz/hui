@@ -960,6 +960,9 @@ export class HuiApp extends HuiElement {
       case "settings":
         this.openSurfaceSettings(action.page);
         break;
+      case "bot":
+        this.navigate({ kind: "bot", id: action.bot.id });
+        break;
       case "session":
         this.selectSession(action.session);
         break;
@@ -973,6 +976,7 @@ export class HuiApp extends HuiElement {
       activeIndex: this.commandPaletteActiveIndex,
       pages: HUI_PAGES,
       groups: this.listedGroups,
+      bots: this.bots.list,
       onQuery: (query) => {
         this.commandPaletteQuery = query;
         this.commandPaletteActiveIndex = 0;
