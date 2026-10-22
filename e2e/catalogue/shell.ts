@@ -136,7 +136,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: [],
     journeys: ["visual-parity-2026-09-24", "shell-navigation"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "A keyboard chord, which an iPhone cannot press.", decision: KEYBOARD },
   },
   {
@@ -146,7 +146,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: ["nav:page", "nav:settings", "nav:session"],
     journeys: ["visual-parity-2026-09-24", "webawesome-controls"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

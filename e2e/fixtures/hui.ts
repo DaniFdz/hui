@@ -16,10 +16,11 @@
  * On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of loading a page, and
  * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
  * would otherwise hand the relaunched app the deleted values; the web-only steps throw. On the web it also goes Back and
- * Forward through the browser's history, sizes the window as a phone held upright or sideways or as the desktop, and tells whether the
- * page, its main area or the sidebar overflows sideways and whether a tap at a control's centre reaches it (nothing
- * covers it and it is not inert). Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or
- * `browser` themselves.
+ * Forward through the browser's history, sizes the window as a phone held upright or sideways or as the desktop, tells
+ * whether the page, its main area or the sidebar overflows sideways and whether a tap at a control's centre reaches it
+ * (nothing covers it and it is not inert), and presses the command palette's chord: ⌘K where the page runs on an Apple
+ * platform, Ctrl+K elsewhere. Test files import `test` from here, never from `e2e`, and never read `platform`, `device`
+ * or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -60,6 +61,7 @@ export type Hui = {
   url(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
   wideScreen(): Promise<void>;
+  paletteChord(): Promise<void>;
   back(): Promise<void>;
   forward(): Promise<void>;
   overflowsSideways(): Promise<boolean>;
@@ -200,6 +202,10 @@ export const test = base.extend<{ hui: Hui }>({
         }, box);
       },
       wideScreen: () => browser().setViewport({ width: 1440, height: 900 }),
+      paletteChord: async () => {
+        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+        await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
+      },
       back: () => browser().back(),
       forward: () => browser().forward(),
       peek: (target) => target.hover(),
