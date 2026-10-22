@@ -1,4 +1,4 @@
-/** On a narrow screen the sidebar and Settings' page list are drawers that hide what is behind them and close on a choice, a tap outside or a wider window, and on a wide screen the sidebar collapses and expands (SHELL-011, SHELL-012, SHELL-014, SHELL-015). */
+/** On a narrow screen the sidebar and Settings' page list are drawers that hide what is behind them and close on a choice, a tap outside, Escape or a wider window, and on a wide screen the sidebar collapses and expands (SHELL-011 to SHELL-015). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -77,6 +77,52 @@ test("on a phone Open settings navigation names the page, hides it behind the dr
   await expect.poll(() => hui.reachable(width)).toBe(true);
   await expect(title).toHaveText("Appearance");
   expect(await hui.url()).toMatch(/\/settings\/appearance$/u);
+});
+
+test("on a phone held either way Escape closes a menu in the navigation drawer back to its button, then the drawer back to Open navigation, and closes the Settings drawer without leaving Settings", { tags: ["SHELL-013"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const open = screen.getByRole("button", "Open navigation");
+  const close = screen.getByRole("button", { name: "Close navigation", expanded: true });
+  const start = screen.getByRole("button", "Start session");
+  const groupMenu = screen.getByRole("button", "Group options for Team");
+  const menus = [
+    { trigger: groupMenu, item: screen.getByRole("menuitem", "Rename group"), show: () => groupMenu.tap() },
+    { trigger: screen.getByRole("button", "Actions for Grouped"), item: screen.getByRole("menuitem", "Rename…"), show: () => hui.sessionMenu("Grouped") },
+  ];
+  const openSettings = screen.getByRole("button", "Open settings navigation");
+  const width = screen.getByRole("button", "Message width: Comfortable");
+  await hui.createSession({ title: "Grouped", group: "Team" });
+
+  for (const orientation of ["portrait", "landscape"] as const) {
+    await hui.phoneScreen(orientation);
+    await hui.open("/");
+    for (const { trigger, item, show } of menus) {
+      await open.tap();
+      await expect(close).toBeVisible();
+      await show();
+      await expect(item).toBeVisible();
+      await item.press("Escape");
+      await expect(item).toBeHidden();
+      await expect(trigger).toBeFocused();
+      await expect(close).toBeVisible();
+      await hui.keyboard.down("Escape");
+      await hui.keyboard.up("Escape");
+      await expect(open).toBeFocused();
+      await expect(trigger).toBeHidden();
+      await expect.poll(() => hui.reachable(start)).toBe(true);
+      expect(new URL(await hui.url()).pathname).toBe("/");
+    }
+
+    await hui.open("/settings/appearance");
+    await openSettings.tap();
+    await expect(screen.getByRole("button", { name: "Close settings navigation", expanded: true })).toBeVisible();
+    await expect.poll(() => hui.reachable(width)).toBe(false);
+    await screen.getByTestId("settings-page-link").filter({ hasText: "Diagnostics" }).press("Escape");
+    await expect(openSettings).toBeFocused();
+    await expect(openSettings).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(() => hui.reachable(width)).toBe(true);
+    await expect(screen.getByTestId("settings-page-title")).toHaveText("Appearance");
+    expect(await hui.url()).toMatch(/\/settings\/appearance$/u);
+  }
 });
 
 test("widening the window with either drawer open closes it and leaves the desktop layout usable", { tags: ["SHELL-014"], platforms: ["web"] }, async ({ screen, hui }) => {

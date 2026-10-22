@@ -106,7 +106,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, KEYBOARD],
     surfaces: [],
     journeys: ["shell-navigation", "webawesome-controls", "update-notice", "sidebar-toolbar", "openclaw-primary-ui-parity"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: ESCAPE_ONLY, decision: KEYBOARD },
   },
   {
