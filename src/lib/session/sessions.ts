@@ -1,9 +1,10 @@
 /**
  * The browser's pure session logic over the session API's types (src/api/sessions.ts): group labels as the sidebar
- * shows and the API stores them, the transcript as Markdown and how an unreachable host reads.
+ * shows and the API stores them, the session menu's Move to group choices, icon presets and Copy notices, the
+ * transcript as Markdown and how an unreachable host reads.
  */
 import { callMinutes, callTranscriptText } from "../voice/calls.ts";
-import type { SessionView, TranscriptItem } from "../../api/sessions.ts";
+import type { SessionGroup, SessionView, TranscriptItem } from "../../api/sessions.ts";
 
 /** Labels are presentation, not registry identifiers. Preserve stored spelling. */
 export function sessionGroupLabel(label: string): string {
@@ -14,6 +15,22 @@ export function sessionGroupLabel(label: string): string {
  * expose the stable `ungrouped` key used by the sidebar. */
 export function storedSessionGroup(label: string): string {
   return !label || label === "ungrouped" ? "" : label;
+}
+
+export function sessionMoveGroupOptions(groups: readonly SessionGroup[]): Array<{ label: string; value: string }> {
+  const labels = ["ungrouped", ...groups.map((group) => group.label)];
+  return [...new Set(labels.map((label) => label || "ungrouped"))]
+    .map((label) => ({ label: sessionGroupLabel(label), value: storedSessionGroup(label) }));
+}
+
+export const SESSION_ICONS = ["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯"] as const;
+export function normalizeCustomSessionIcon(value: string): string | undefined {
+  const icon = value.trim();
+  return icon && icon.length <= 32 ? icon : undefined;
+}
+
+export function sessionCopiedNotice(action: "link" | "markdown" | "id" | "jira"): string {
+  return action === "id" ? "Session ID copied." : action === "jira" ? "Jira link copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.";
 }
 
 /** OpenClaw's Copy → Conversation as Markdown action, adapted to HUI's

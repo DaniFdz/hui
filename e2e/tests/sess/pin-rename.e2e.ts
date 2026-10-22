@@ -1,4 +1,4 @@
-/** Pinning keeps a session first in every sidebar sort and on the Sessions page until it is unpinned, and Rename… saves a new title from the session header (SESS-031, SESS-032). */
+/** Pinning, from the row's button or the session menu, keeps a session first in every sidebar sort and on the Sessions page until it is unpinned, and Rename… saves a new title from the session header (SESS-031, SESS-032). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -41,6 +41,43 @@ test("a pinned session stays first in every sort, keeps its Pinned chip across a
   await hui.sessionMenu("Zulu pin");
   await screen.getByText("Pin session", { visible: true }).tap();
   await expect(screen.getByLabel("Zulu pin, status idle, tool durable, stage investigation, pinned")).toBeVisible();
+});
+
+test("the session menu's Pin session keeps a row first in every sort with a Pinned chip on the Sessions page across a reload, and Unpin session puts it back", { tags: ["SESS-031"] }, async ({ screen, hui }) => {
+  const title = /^(Zulu|Alpha|Mike) menu/u;
+  const order = async () => (await screen.getByLabel(new RegExp(`${title.source}, status`, "u")).allTextContents()).map((text) => title.exec(text)?.[0]);
+  const sortBy = async (choice: string) => {
+    await screen.getByRole("button", "Filter & sort").tap();
+    await screen.getByText(choice, { exact: true, visible: true }).tap();
+  };
+  await hui.createSession({ title: "Zulu menu" });
+  await hui.createSession({ title: "Alpha menu" });
+  await hui.createSession({ title: "Mike menu" });
+
+  await hui.open("/");
+  await sortBy("Name");
+  await expect.poll(order).toEqual(["Alpha menu", "Mike menu", "Zulu menu"]);
+  await hui.sessionMenu("Zulu menu");
+  await screen.getByText("Pin session", { visible: true }).tap();
+  await expect(screen.getByLabel("Zulu menu, status idle, tool durable, stage investigation, pinned")).toBeVisible();
+  await expect.poll(order).toEqual(["Zulu menu", "Alpha menu", "Mike menu"]);
+  await sortBy("Created");
+  await expect.poll(order).toEqual(["Zulu menu", "Mike menu", "Alpha menu"]);
+  for (const choice of ["Stage", "Last updated"]) {
+    await sortBy(choice);
+    await expect.poll(async () => (await order())[0]).toBe("Zulu menu");
+  }
+  await hui.open("/sessions");
+  await expect(screen.getByText("Pinned", { exact: true, visible: true })).toBeVisible();
+  await hui.reload();
+  await expect(screen.getByText("Pinned", { exact: true, visible: true })).toBeVisible();
+  await hui.open("/");
+  await expect(screen.getByLabel("Zulu menu, status idle, tool durable, stage investigation, pinned")).toBeVisible();
+  await sortBy("Created");
+  await hui.sessionMenu("Zulu menu");
+  await screen.getByText("Unpin session", { visible: true }).tap();
+  await expect(screen.getByLabel("Zulu menu, status idle, tool durable, stage investigation")).toBeVisible();
+  await expect.poll(order).toEqual(["Mike menu", "Alpha menu", "Zulu menu"]);
 });
 
 test("Rename… opens the session's title as a Session name field that saves on Enter or leaving it and cancels on Escape or an empty name", { tags: ["SESS-032"], platforms: ["web"] }, async ({ screen, hui }) => {

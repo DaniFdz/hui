@@ -6,13 +6,12 @@ import {
   APP_SHELL_DRAWER_MEDIA,
   filterSessionGroups,
   isSessionGroupCollapsed,
-  normalizeCustomSessionIcon,
   PRIMARY_NAV,
-  sessionMoveGroupOptions,
   setNavigationDrawer,
   SHELL_DRAWER_DEFAULT_OPEN,
   SHELL_NARROW_MEDIA,
 } from "./shell.ts";
+import { normalizeCustomSessionIcon, sessionMoveGroupOptions } from "../lib/session/sessions.ts";
 import { sessionAccessibleName } from "../lib/session/labels.ts";
 import {
   adaptedSettingsCopy,

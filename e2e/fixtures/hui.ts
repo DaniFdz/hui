@@ -5,7 +5,8 @@
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
- * clipboard, status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how a piece of the
+ * clipboard, the session menu (on iOS a long press on the row), status glyphs (on iOS the row's session-glyph label
+ * and whether it is a spinner), how a piece of the
  * screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at the gateway and
@@ -423,6 +424,7 @@ export const test = base.extend<{ hui: Hui }>({
     };
 
     const iosSteps: Partial<typeof webSteps> = {
+      sessionMenu: (title) => fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress(),
       glyph: async (title) => {
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
         await expect(row).toHaveCount(1);

@@ -7,7 +7,7 @@ import { sessionMenuShortcuts } from "../lib/session/menu-shortcuts.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
 import { type SessionGroup, type SessionView } from "../api/sessions.ts";
-import { sessionGroupLabel, storedSessionGroup } from "../lib/session/sessions.ts";
+import { normalizeCustomSessionIcon, SESSION_ICONS, sessionGroupLabel, sessionMoveGroupOptions, storedSessionGroup } from "../lib/session/sessions.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/session/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
@@ -204,18 +204,6 @@ export type ShellProps = {
   onDeleteSession: (session: SessionView) => void;
   bots: ShellBotsProps;
 };
-
-export function sessionMoveGroupOptions(groups: readonly SessionGroup[]): Array<{ label: string; value: string }> {
-  const labels = ["ungrouped", ...groups.map((group) => group.label)];
-  return [...new Set(labels.map((label) => label || "ungrouped"))]
-    .map((label) => ({ label: sessionGroupLabel(label), value: storedSessionGroup(label) }));
-}
-
-const SESSION_ICONS = ["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯"] as const;
-export function normalizeCustomSessionIcon(value: string): string | undefined {
-  const icon = value.trim();
-  return icon && icon.length <= 32 ? icon : undefined;
-}
 
 function shortcut(key: string) {
   return html`<kbd slot="details" class="session-menu__shortcut" aria-hidden="true">${key}</kbd>`;
