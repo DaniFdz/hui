@@ -47,7 +47,8 @@ The `ios` target runs the same tests on the "HUI iPhone" simulator (iOS 27.0) ag
 locally, create and boot the simulator once (the commands are in `../ios/AGENTS.md`), check the toolchain with
 `npx agent-device doctor`, then run `npm run ios:build` and `npm run e2e:ios`. Another checkout can run at the same
 time on a second simulator: set `E2E_IOS_DEVICE` to its name and `E2E_IOS_PORT` to another port for `ios:build` and
-`e2e:ios` alike. On iOS the fixture relaunches
+`e2e:ios` alike; that run keeps agent-device's state in `~/.agent-device-<port>` unless `AGENT_DEVICE_STATE_DIR` names
+another folder, because two runs sharing one fail with "already bound". On iOS the fixture relaunches
 `dev.hui.ios` with `-HUIGatewayURL <gateway>` and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
 `hui.reload`, deletes the app's preferences through `defaults` before each test (the app keeps nothing else) and also
 empties its data container through the engine for `hui.clearState` (a test never calls `app.clearState()`, whose
