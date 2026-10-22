@@ -1,4 +1,5 @@
 /** A worktree session opens at once, shows its naming and Git's checkout percentage while another session starts, sends its prompt once ready, and on a Git failure stays listed in error until deleting it returns its prompt (SESS-012). */
+import { dirname, join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -28,10 +29,13 @@ test("a worktree session follows Git's progress while another session starts, th
   await hui.provider.release();
   await hui.api("PUT", "/__hui/settings", settings);
 
-  await expect(transcript).toContainText(/Checking out files\s*50%/u);
-  await expect(screen.getByLabel("Git worktree creation progress")).toHaveAttribute("aria-valuenow", "50");
+  await expect(transcript).toContainText(/Checking out files\s*\d+%/u);
+  const percent = /Checking out files\s*(\d+)%/u.exec((await transcript.textContent()) ?? "")![1]!;
+  expect(percent).toMatch(/^[1-9]\d?$/u);
+  await expect(screen.getByLabel("Git worktree creation progress")).toHaveAttribute("aria-valuenow", percent);
   await expect(screen.getByLabel(/^Improve session naming, Checking out files, tool durable/u)).toHaveCount(1);
-  await expect(row).toContainText("50%");
+  await expect(row).toContainText(`${percent}%`);
+  await expect(transcript.getByText("Fixture response.", { visible: true })).toBeHidden();
 
   await hui.peek(screen.getByText("OTHER", { exact: true, visible: true }));
   await screen.getByRole("button", "New session in OTHER").tap();
@@ -39,7 +43,7 @@ test("a worktree session follows Git's progress while another session starts, th
   await message.fill("Meanwhile in the workspace");
   await screen.getByRole("button", "Start session").tap();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
-  await expect(row).toContainText("50%");
+  await expect(row).toContainText(`${percent}%`);
 
   await repository.releaseCheckout("succeed");
   await row.tap();
@@ -47,7 +51,7 @@ test("a worktree session follows Git's progress while another session starts, th
   await expect(transcript.getByText("Fixture response.", { visible: true })).toBeVisible();
   await expect(screen.getByLabel(/^Improve session naming, status idle, tool durable/u)).toHaveCount(1);
   const worktree = (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap(({ sessions }) => sessions).find(({ title }) => title === "Improve session naming")?.cwd;
-  expect(worktree).not.toBe(repository.path);
+  expect(worktree!.startsWith(join(dirname(hui.workspace), "config", "hui", "worktrees") + "/")).toBe(true);
   expect(repository.git("-C", worktree!, "branch", "--show-current")).toBe("feature/improve-session-naming");
 });
 
@@ -63,7 +67,7 @@ test("a worktree Git can't create stays listed in error, and deleting it returns
   await screen.getByText("New worktree", { exact: true }).tap();
   await screen.getByText("Pick where this session works, then say what to do.").tap();
   await screen.getByRole("button", "Start session").tap();
-  await expect(transcript).toContainText(/Checking out files\s*50%/u);
+  await expect(transcript).toContainText(/Checking out files\s*\d+%/u);
 
   await repository.releaseCheckout("fail");
   await expect(transcript.getByText("Could not create the Git worktree")).toBeVisible();

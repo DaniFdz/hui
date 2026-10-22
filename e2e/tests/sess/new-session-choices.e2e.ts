@@ -27,14 +27,19 @@ test("the model, effort and speed chosen on New Session are what the session sta
   await hui.open("/");
   await screen.getByPlaceholder("~/").fill(hui.workspace);
   await screen.getByPlaceholder("What should this session work on?").fill("Run on Opus");
+  const effort = screen.getByLabel(/^Thinking: /u);
+  await effort.tap();
+  await expect(screen.getByLabel("Thinking effort")).toBeVisible();
   await expect(screen.getByLabel("Speed")).toBeHidden();
+  await effort.tap();
+  await expect(screen.getByLabel("Thinking effort")).toBeHidden();
   await screen.getByLabel("Model: HUI SDK Fixture").tap();
   await screen.getByLabel("Search models").fill("opus");
   await expect(options.getByText("HUI SDK Fixture")).toBeHidden();
   await options.getByText("Opus fixture").tap();
   await expect(screen.getByLabel("Model: Opus fixture")).toBeVisible();
 
-  await screen.getByLabel(/^Thinking: /u).tap();
+  await effort.tap();
   await screen.getByLabel("Thinking effort").fill("0");
   await screen.getByLabel("Speed").getByText("Fast").tap();
   await expect(screen.getByLabel("Thinking: low, fast")).toBeVisible();
@@ -54,11 +59,12 @@ test("Recent chats lists the five most recently updated top-level sessions that 
   await hui.createSubagent(parent);
   const archived = await hui.createSession({ title: "Recent archived" });
   await hui.api("PATCH", `/__hui/sessions/${archived.id}`, { archived: true });
+  await hui.prompt({ id: ids[0]! }, "Bring Recent 0 back up");
   const recent = screen.getByLabel("Recent chats");
 
   await hui.open("/");
   await expect.poll(() => recent.getByRole("button").allTextContents())
-    .toEqual(["Recent parent", "Recent 4", "Recent 3", "Recent 2", "Recent 1"].map((title) => `${title} this hour`));
+    .toEqual(["Recent 0", "Recent parent", "Recent 4", "Recent 3", "Recent 2"].map((title) => `${title} this hour`));
   await recent.getByRole("button", "Open Recent 3").tap();
   await expect(screen.getByTestId("session-title")).toHaveText("Recent 3");
   expect(await hui.url()).toMatch(new RegExp(`/sessions/${ids[3]}$`, "u"));

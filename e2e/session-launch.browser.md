@@ -21,7 +21,7 @@ Use a fresh disposable directory as `$HUI_LAUNCH_RUN`, with `workspace`,
 
 Seed `xdg/hui/settings.json` with Catppuccin, dark mode, and text scale 100.
 Seed `pi-agent/settings.json` with `defaultProvider: "hui-e2e"`,
-`defaultModel: "anthropic/claude-opus-fixture"`,
+`defaultModel: "fixture"`,
 `defaultThinkingLevel: "low"`, and empty packages/extensions/skills arrays.
 Seed `pi-agent/models.json` with:
 
@@ -33,8 +33,8 @@ Seed `pi-agent/models.json` with:
       "api": "anthropic-messages",
       "apiKey": "e2e-not-a-secret",
       "models": [{
-        "id": "anthropic/claude-opus-fixture",
-        "name": "Claude Opus · namespaced fixture",
+        "id": "fixture",
+        "name": "Local fixture",
         "reasoning": true,
         "input": ["text", "image"],
         "contextWindow": 32000,

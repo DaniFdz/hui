@@ -30,6 +30,8 @@ test("ArrowDown, Enter and Tab complete local paths in the New Session message w
   await message.press("Tab");
   await expect(message).toHaveValue("Review @sub/notes.md and @sub/keep.txt");
   await expect(message).toBeFocused();
+  await message.pressSequentially(" now");
+  await expect(message).toHaveValue("Review @sub/notes.md and @sub/keep.txt now");
   await expect(screen.getByRole("button", "Start session")).toBeEnabled();
   expect(await count()).toBe(before);
 });

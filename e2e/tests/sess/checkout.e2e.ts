@@ -23,11 +23,13 @@ test("Current checkout suggests branches, switches to the chosen one before the 
   const from = screen.getByLabel("From");
   const suggestions = screen.getByLabel("Branch suggestions");
   const start = screen.getByRole("button", "Start session");
+  const before = await sessions(hui);
 
   await hui.open("/");
   await chooseDirectory(screen, repository.path);
   await screen.getByLabel("Checkout: main").tap();
   await expect(screen.getByText("Current checkout")).toBeVisible();
+  await expect(suggestions).toBeHidden();
   await expect(screen.getByText("feature/current", { exact: true })).toBeVisible();
   await expect(from).toHaveValue("main");
   await from.fill("");
@@ -48,15 +50,15 @@ test("Current checkout suggests branches, switches to the chosen one before the 
   await start.tap();
   await expect(screen.getByText("Could not start session")).toBeVisible();
   await expect(screen.getByText(/^Could not change Git checkout: error: Your local changes to the following files would be overwritten by checkout:/u)).toBeVisible();
-  expect(await sessions(hui)).toEqual([]);
+  expect(await sessions(hui)).toEqual(before);
   expect(head()).toBe("feature/current");
   expect(repository.git("status", "--porcelain")).toBe("M sub/keep.txt");
 
   repository.git("checkout", "--", "sub/keep.txt");
   await start.tap();
-  await expect.poll(async () => (await sessions(hui)).length).toBe(1);
+  await expect.poll(async () => (await sessions(hui)).length).toBe(before.length + 1);
   expect(head()).toBe("release/1.0");
-  expect((await sessions(hui))[0]!.cwd).toBe(repository.path);
+  expect((await sessions(hui)).find(({ title }) => title === "Work on the release")?.cwd).toBe(repository.path);
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
 });
 
@@ -84,8 +86,8 @@ test("New worktree starts the session in a new checkout on a utility-named branc
   await screen.getByPlaceholder("What should this session work on?").fill("Tidy the launch form");
   await screen.getByRole("button", "Start session").tap();
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
-  await expect.poll(async () => (await sessions(hui)).map(({ title }) => title)).toEqual(["Improve session naming"]);
-  const { cwd } = (await sessions(hui))[0]!;
+  await expect.poll(async () => (await sessions(hui)).some(({ title }) => title === "Improve session naming")).toBe(true);
+  const { cwd } = (await sessions(hui)).find(({ title }) => title === "Improve session naming")!;
   expect(cwd.startsWith(join(dirname(hui.workspace), "config", "hui", "worktrees") + "/")).toBe(true);
   expect(repository.git("-C", cwd, "branch", "--show-current")).toBe("e2e/improve-session-naming");
   expect(repository.git("-C", cwd, "rev-parse", "HEAD")).toBe(repository.git("rev-parse", "release/1.0^{commit}"));

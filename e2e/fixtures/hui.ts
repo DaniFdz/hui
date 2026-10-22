@@ -123,6 +123,12 @@ export const test = base.extend<{ hui: Hui }>({
     const notOnIos = (step: string) => () => {
       throw new Error(`hui.${step} is not on iOS yet; keep the test on platforms: ['web']`);
     };
+    const writeGate = async (gate: string, outcome: string) => {
+      const held = await open(gate, constants.O_WRONLY | constants.O_NONBLOCK).catch((error: NodeJS.ErrnoException) => error.code === "ENXIO" ? undefined : Promise.reject(error));
+      await held?.writeFile(`${outcome}\n`);
+      await held?.close();
+      return held !== undefined;
+    };
 
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
@@ -351,17 +357,13 @@ export const test = base.extend<{ hui: Hui }>({
         git("commit", "--quiet", "--allow-empty", "-m", "release");
         git("switch", "--quiet", "-c", "feature/current", "main");
         git("commit", "--quiet", "--allow-empty", "-m", "feature");
-        return { path, git, releaseCheckout: (outcome) => writeFile(gate, `${outcome}\n`) };
+        return { path, git, releaseCheckout: (outcome) => expect.poll(() => writeGate(gate, outcome), { timeout: 30_000 }).toBe(true) };
       },
     });
 
     await control("POST", "/control/release-replay");
     const failHeldCheckouts = async () => {
-      for (const gate of gates) {
-        const held = await open(gate, constants.O_WRONLY | constants.O_NONBLOCK).catch((error: NodeJS.ErrnoException) => error.code === "ENXIO" ? undefined : Promise.reject(error));
-        await held?.writeFile("fail\n");
-        await held?.close();
-      }
+      for (const gate of gates) await writeGate(gate, "fail");
       return (await sessions()).some(({ id, status }) => !existing.has(id) && status === "starting");
     };
     if (gates.length > 0) await expect.poll(failHeldCheckouts, { timeout: 30_000 }).toBe(false);
