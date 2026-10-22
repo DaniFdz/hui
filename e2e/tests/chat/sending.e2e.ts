@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a sent message reads Sending… until the gateway takes the prompt, then settles", { tags: ["CHAT-066"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a sent message reads Sending… until the gateway takes the prompt, then settles", { tags: ["CHAT-066"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const sending = transcript.getByText("Sending…");
 

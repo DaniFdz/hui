@@ -232,7 +232,7 @@ const cases: UseCase[] = [
     surfaces: ["row:activity", "tool:edit", "tool:write", "item:thinking", "item:tool"],
     journeys: ["chat-composer", "message-metadata"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-024",
@@ -241,7 +241,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#every-assistant-message-stays-in-sight-2026-10-19"],
     surfaces: ["row:messages", "row:activity"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-025",
@@ -644,7 +644,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-067",

@@ -3,8 +3,9 @@
 // that open to their thinking and tool cards (`ToolCardView`), the working indicator ("Agent activity: …"), the message
 // queue and the composer (Message and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
 // message; touch and hold to enqueue", whose hold menu offers Enqueue). A tap in the transcript puts the keyboard away.
-// While the conversation loads it says so, and a failed load offers Try again. A send that fails stays marked "Not sent
-// — draft recovered." with its text back in the draft, as on the web.
+// While the conversation loads it says so, and a failed load offers Try again. A send reads "Sending…" until the
+// gateway takes it, and one that fails stays marked "Not sent — draft recovered." with its text back in the draft, as
+// on the web.
 import SwiftUI
 
 struct ChatView: View {
@@ -125,6 +126,9 @@ struct ChatView: View {
                         .padding(user ? 10 : 0)
                         .background(user ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
                         .opacity(message.pending == true ? 0.6 : 1)
+                    if message.pending == true {
+                        Text("Sending…").font(.caption).foregroundStyle(.secondary)
+                    }
                     if message.failed == true {
                         Text("Not sent — draft recovered.").font(.caption).foregroundStyle(.red)
                     }
