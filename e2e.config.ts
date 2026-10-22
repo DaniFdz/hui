@@ -30,7 +30,6 @@ export default {
       engine: mobile({ platform: "ios", device: "HUI iPhone" }),
       app: {
         bundleId: "dev.hui.ios",
-        appPath: "ios/build/Build/Products/Release-iphonesimulator/HUI.app",
         readyUrl: "http://127.0.0.1:47400/",
         command: launcher("ios", "47400"),
       },

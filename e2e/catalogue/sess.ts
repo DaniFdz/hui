@@ -155,7 +155,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-017",
     title: "Follow every session's status in the sidebar",
-    behaviour: "Rows update live without being opened: a running session's row reads running, a waiting one's waiting and a failed one's error, a parent whose watcher or subagent still works reads \"watcher or subagent running\", and each reads idle again once it settles.",
+    behaviour: "Rows update live without being opened: a running session's row reads running, a waiting one's waiting and a failed one's error, a parent whose watcher or subagent still works reads \"watcher or subagent running\", and a session whose turn ends or whose subagent finishes reads idle again.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessionsevents", "docs/api.md#get-__huisessions"],
     surfaces: ["route:GET /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-lifecycle", "session-registry"],

@@ -70,7 +70,6 @@ for (const platform of ["web", "ios"] as const) {
     if (previous && previous[platform] === "required") problems.push(`${id} went back to ${platform} backlog after it was required.`);
     else if (previous) unexcluded.push(`${id} (${platform})`);
     else if (!previous && documentedOnBase(entry)) foundLater.push(`${id} (${platform})`);
-    else if (!previous && platform === "ios" && !pairs.some((pair) => pair.target === "ios")) continue;
     else if (!previous) problems.push(`${id} is new, so it can't be ${platform} backlog: the base has no surfaces, journeys or SPEC text for it. Make it required with a shared test.`);
   }
 }
