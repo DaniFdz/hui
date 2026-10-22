@@ -37,7 +37,8 @@ struct MarkdownView: View {
             }
         }
         .task(id: source) {
-            parsed = (try? await core.markdownTokens(source, agent: agent)).map { (source, $0) }
+            guard let tokens = try? await core.markdownTokens(source, agent: agent), !Task.isCancelled else { return }
+            parsed = (source, tokens)
         }
     }
 
