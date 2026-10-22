@@ -62,6 +62,7 @@ export function fixtureEnvironment(dir, inherited = process.env) {
   }
   return {
     ...env,
+    TMPDIR: "/tmp",
     XDG_CONFIG_HOME: join(dir, "config"),
     XDG_CACHE_HOME: join(dir, "cache"),
     XDG_DATA_HOME: join(dir, "data"),

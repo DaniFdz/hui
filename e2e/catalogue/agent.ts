@@ -16,7 +16,7 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -26,7 +26,7 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -36,7 +36,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -46,7 +46,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -56,7 +56,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Number keys, arrows, Enter chords and Escape are keyboard-only; the visible rows, Next, Back, Submit and Cancel cover them.", decision: KEYBOARD },
   },
   {
@@ -66,17 +66,17 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
     id: "AGENT-007",
     title: "Stop a run that waits for an answer",
-    behaviour: "Stop while a question or secret card is open closes the card and leaves the session idle. The question counts as declined and the secret request as cancelled; no secret file is written.",
+    behaviour: "Stop while a question or secret card is open closes the card and leaves the session idle; the call's row reads that it was aborted, and no secret file is written.",
     spec: [...QUESTIONS, ...SECRETS],
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["ask-user-question", "secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -86,7 +86,7 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, ...SECRETS],
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -96,7 +96,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -106,7 +106,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -116,7 +116,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -146,7 +146,7 @@ const cases: UseCase[] = [
     spec: [...SECRETS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -156,7 +156,7 @@ const cases: UseCase[] = [
     spec: SECRETS,
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -166,7 +166,7 @@ const cases: UseCase[] = [
     spec: [...SECRETS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -176,7 +176,7 @@ const cases: UseCase[] = [
     spec: SECRETS,
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard-only affordance; on iOS the card is closed only with Cancel, which AGENT-017 covers.", decision: KEYBOARD },
   },
   {
