@@ -63,7 +63,6 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "resource-reader": { kind: "automate" },
   "rewind-continue": { kind: "automate" },
   "rich-embeds": { kind: "automate" },
-  "run-error-notice": { kind: "automate" },
   "sdk-backend": { kind: "world:pi-sessions" },
   "secret-requests": { kind: "automate" },
   "session-calendar": { kind: "world:activity" },
