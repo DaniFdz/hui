@@ -134,13 +134,14 @@ export const test = base.extend<{ hui: Hui }>({
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
     const device = () => (fixtures as unknown as { device: Device }).device;
     const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", receipt.url] });
+    const forgetPreferences = async () => {
+      await device().closeApp();
+      const container = execFileSync("xcrun", ["simctl", "get_app_container", "HUI iPhone", "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
+      const forget = spawnSync("xcrun", ["simctl", "spawn", "HUI iPhone", "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
+      if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
+    };
     const clearState = async () => {
-      if (!web) {
-        await device().closeApp();
-        const container = execFileSync("xcrun", ["simctl", "get_app_container", "HUI iPhone", "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
-        const forget = spawnSync("xcrun", ["simctl", "spawn", "HUI iPhone", "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
-        if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
-      }
+      if (!web) await forgetPreferences();
       await fixtures.app.clearState();
     };
     const notOnIos = (step: string) => () => {
@@ -153,8 +154,11 @@ export const test = base.extend<{ hui: Hui }>({
     const existingBots = new Set(await botIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     if (web) await browser().addInitScript(trackSockets);
-    await clearState();
-    if (!web) await launch();
+    if (web) await clearState();
+    else {
+      await forgetPreferences();
+      await launch();
+    }
     const directories: string[] = [];
 
     const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {

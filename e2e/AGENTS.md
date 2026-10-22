@@ -47,8 +47,8 @@ The `ios` target runs the same tests on the "HUI iPhone" simulator (iOS 27.0) ag
 locally, create and boot the simulator once (the commands are in `../ios/AGENTS.md`), check the toolchain with
 `npx agent-device doctor`, then run `npm run ios:build` and `npm run e2e:ios`. On iOS the fixture relaunches
 `dev.hui.ios` with `-HUIGatewayURL <gateway>` and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
-`hui.reload`, deletes the app's preferences through `defaults` before the engine empties its data container for
-`hui.clearState` (a test never calls `app.clearState()`, whose deleted preferences `cfprefsd` can still hand the
+`hui.reload`, deletes the app's preferences through `defaults` before each test (the app keeps nothing else) and also empties its data
+container through the engine for `hui.clearState` (a test never calls `app.clearState()`, whose deleted preferences `cfprefsd` can still hand the
 relaunched app), and throws "not on iOS yet" from the steps only the web engine has (hover, request interception, the
 clipboard, glyphs, looks and the rest), so a test that needs one keeps `platforms: ['web']`.
 
