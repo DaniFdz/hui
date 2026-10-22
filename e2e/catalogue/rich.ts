@@ -100,7 +100,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -110,7 +110,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
