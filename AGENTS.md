@@ -67,6 +67,11 @@ details in the owning directory guide.
 ## Change Discipline
 
 - Keep behavior changes, tests, and contract documentation aligned in one task.
+- The web UI and the iOS app in `ios/` move in lockstep. A user-visible change adds or updates its use case in
+  `e2e/catalogue/` and ships with a shared test in `e2e/tests/` that passes on the web (`npm run e2e`) and on iOS
+  (`npm run e2e:ios`) in the same PR, unless the use case is excluded there; catching up baseline use cases follows
+  `e2e/AGENTS.md`, which has the catalogue and test rules. `ios/AGENTS.md` says how to build the app and run it on
+  the simulator.
 - Do not add dependencies, alter persisted formats, or delete PI/HUI user data
   without explicit approval. Tests use temporary directories and isolated processes.
 - A change that leaves existing persisted state behind (a format, location or

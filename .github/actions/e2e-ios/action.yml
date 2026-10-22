@@ -1,0 +1,50 @@
+name: iOS e2e
+description: >-
+  Builds the iOS app with the pinned Xcode, runs its unit tests, then runs the shared e2e tests on a new "HUI iPhone"
+  simulator and uploads what they leave. Runs after checkout and npm ci on the xcode-27 image.
+inputs:
+  e2e-args:
+    description: Extra arguments for npm run e2e:ios.
+    default: ""
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: sudo xcode-select -s /Applications/Xcode_27.1.app
+    # A fresh simulator asks "Open in “HUI”?" the first time a hui:// link opens the app, unless the approval it
+    # records is there when it boots.
+    - name: Create and boot the HUI iPhone simulator
+      shell: bash
+      run: |
+        udid=$(xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0)
+        prefs=~/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences
+        mkdir -p "$prefs"
+        printf '%s' '<plist version="1.0"><dict><key>com.apple.CoreSimulator.CoreSimulatorBridge--&gt;hui</key><string>dev.hui.ios</string></dict></plist>' > "$prefs/com.apple.launchservices.schemeapproval.plist"
+        xcrun simctl bootstatus "$udid" -b
+    # agent-device's XCTest runner, which it builds on first use.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.agent-device
+        key: agent-device-${{ runner.os }}-${{ hashFiles('package-lock.json', '.github/actions/e2e-ios/action.yml') }}
+    # The unit tests install a Debug build, so they run before the Release build the suite uses.
+    - shell: bash
+      run: npm run ios:core
+    - shell: bash
+      run: xcodebuild test -project ios/HUI.xcodeproj -scheme HUI -destination 'platform=iOS Simulator,name=HUI iPhone'
+    - shell: bash
+      run: npm run ios:build
+    - shell: bash
+      run: npm run e2e:ios -- ${{ inputs.e2e-args }}
+    - if: ${{ failure() }}
+      shell: bash
+      run: mkdir -p .e2e/logs && xcrun simctl spawn "HUI iPhone" log show --last 1h --predicate 'process == "HUI"' > .e2e/logs/ios-app.log
+    # The suite's traces, screenshots and the app's log, and the launcher's gateway and provider logs.
+    - if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      with:
+        name: e2e-ios
+        path: |
+          .e2e/
+          /tmp/hui-visual-*/artifacts/
+        include-hidden-files: true
+        if-no-files-found: warn

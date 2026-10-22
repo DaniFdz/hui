@@ -1,4 +1,4 @@
-/** A sidebar row opens its session at /sessions/:id, every row follows its session's live status without being opened, and the list shows its loading, empty and failed states (SESS-016, SESS-017). */
+/** A sidebar row opens its session at /sessions/:id, every row shows its session's live status as a glyph without being opened, and the list shows its loading, empty and failed states (SESS-016, SESS-072, SESS-073). */
 import { rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
@@ -40,7 +40,7 @@ test("selecting a row loads its conversation with its header and models, a faile
   await expect(screen.getByText("durable · INBOX · Idle", { visible: true })).toBeVisible();
 });
 
-test("rows show running, waiting and failed sessions and a parent's watcher or subagent live without being opened, and idle rows have no decoration", { tags: ["SESS-017"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("rows show running, waiting and failed sessions and a parent's watcher or subagent live without being opened, and idle rows have no decoration", { tags: ["SESS-072"], platforms: ["web"] }, async ({ screen, hui }) => {
   const row = (title: string, status: string) => screen.getByLabel(new RegExp(`^${title}, status ${status}, tool durable, stage investigation(, unread)?$`, "u"));
   const runs = await hui.createSession({ title: "Runs a turn" });
   const asks = await hui.createSession({ title: "Asks a question" });
@@ -85,7 +85,7 @@ test("rows show running, waiting and failed sessions and a parent's watcher or s
   }
 });
 
-test("the list shows Loading sessions… and a failed first load, retries once the gateway is back, and keeps its rows when a later refresh fails", { tags: ["SESS-017"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the list shows Loading sessions… and a failed first load, retries once the gateway is back, and keeps its rows when a later refresh fails", { tags: ["SESS-073"], platforms: ["web"] }, async ({ screen, hui }) => {
   const list = await hui.intercept("GET", /\/__hui\/sessions$/u);
   const stream = await hui.intercept("GET", /\/__hui\/sessions\/events$/u);
   await hui.open("/");

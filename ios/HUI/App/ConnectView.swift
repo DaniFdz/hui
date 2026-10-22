@@ -9,6 +9,7 @@ struct ConnectView: View {
             Form {
                 Section {
                     TextField("Gateway URL", text: $gateway.url, prompt: Text("http://127.0.0.1:4000"))
+                        .accessibilityLabel("Gateway URL")
                         .keyboardType(.URL)
                         .textContentType(.URL)
                         .textInputAutocapitalization(.never)

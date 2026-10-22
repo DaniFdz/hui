@@ -2063,6 +2063,21 @@ popover, and if they click on the popover they navigate to the link".
   web and tapping the preview on iOS, so these use cases stay ordinary, not
   excluded.
 
+### The iOS app connects to one gateway (2026-10-21)
+
+The iPhone app is a client of one HUI gateway at a time. Its address comes from
+the Connect screen or the `-HUIGatewayURL` launch argument, and the app
+remembers the last one that answered. Before it shows the session list, it asks
+the gateway for its version: a gateway older or newer than the app gets a notice
+naming both versions, and a development gateway, which has no version, gets
+"Development gateway: its version is unverified." An address that answers with
+something else is refused with "This address doesn't answer as a HUI gateway."
+Versions compare as `hui update` compares them, so a prerelease is older than
+its release. A development gateway can't produce the older and newer notices, so
+the app's unit tests cover them. The web UI needs none of this, because the
+gateway that serves the page is the one it talks to, so these are iOS-only use
+cases.
+
 ### Bots are always on (2026-10-20)
 
 The owner: "in this version, bots should be available by default as well,

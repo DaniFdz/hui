@@ -126,7 +126,8 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 
 `ios/` holds the native iPhone app's code, with its rules in `ios/AGENTS.md`. `ios/HUI.xcodeproj` builds the
 `HUI` app and its `HUITests` unit tests from the `ios/HUI/` and `ios/HUITests/` folders, so adding a file never
-edits the project; `npm run ios:build` builds the core, then the app, and installs it on the simulator.
+edits the project; `npm run ios:build` builds the core, then the app, and installs it on the simulator, and
+`npm run e2e:ios` runs the shared e2e tests (`e2e/tests/`) on that simulator.
 
 | Path | Owns |
 |---|---|

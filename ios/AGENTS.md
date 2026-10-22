@@ -58,12 +58,26 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
 
 ## Commands
 
+- Create and boot the "HUI iPhone" simulator once. The `printf` approves `hui://` links before its first boot, so it
+  never asks "Open in “HUI”?" when a test opens one:
+
+  ```sh
+  udid=$(xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0)
+  prefs=~/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences
+  mkdir -p "$prefs"
+  printf '%s' '<plist version="1.0"><dict><key>com.apple.CoreSimulator.CoreSimulatorBridge--&gt;hui</key><string>dev.hui.ios</string></dict></plist>' > "$prefs/com.apple.launchservices.schemeapproval.plist"
+  xcrun simctl bootstatus "$udid" -b
+  npx agent-device doctor
+  ```
+
 - `npm run ios:build` builds the core, then runs
   `xcodebuild -project ios/HUI.xcodeproj -scheme HUI -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build`
   and `xcrun simctl install "HUI iPhone" ios/build/Build/Products/Release-iphonesimulator/HUI.app`. Boot the
-  simulator first; create it once with
-  `xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0`.
+  simulator first.
 - `npm run ios:core` builds only the core.
+- `npm run e2e:ios` runs the shared e2e tests that run on iOS against the installed Release build, on the booted
+  "HUI iPhone" simulator; `e2e/AGENTS.md` says how the target and fixture work. Run `npm run ios:build` first, so the
+  tests see the app as it is now.
 - Unit tests: `xcodebuild test -project ios/HUI.xcodeproj -scheme HUI -destination 'platform=iOS Simulator,name=HUI iPhone'`
   (run `npm run ios:core` first).
 
@@ -90,7 +104,8 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   version to `package.json`'s; `GatewayModel.versionNotice` compares it with `GET /__hui/update`'s
   `currentVersion` (older and newer gateways get a notice naming both, `null` reads as an unverified development
   gateway).
-- Labels a shared test reads come from the core, not Swift copies: rows use `sessionAccessibleName` (with its Jira
+- A control a shared test finds needs a name: a `TextField`'s prompt is not one, so the Connect screen's field has
+  `.accessibilityLabel("Gateway URL")`. Labels a shared test reads come from the core, not Swift copies: rows use `sessionAccessibleName` (with its Jira
   part), `sidebarSessionGroups` with the web sidebar's default options and `sessionTreeRows` with every subagent tree
   folded, and statuses use `sessionStatusLabel`, the chat header's label (a worker session reads "Reconnecting to
   devbox…"), read as `Session status: <text>`.

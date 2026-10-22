@@ -20,15 +20,20 @@ in the order of `AREAS` in `catalogue/types.ts`). It is the checklist the shared
   define it, the code surfaces it owns, the journeys it came from, and a status on the web and on iOS.
 - `backlog` means the feature exists but has no passing shared test there yet. Only IDs listed in
   `catalogue/baseline.json` may be backlog. The list shrinks as shared tests land and grows only for an existing
-  feature found later, and, until the suite has an iOS target, for a new use case's iOS entry. A new use case is
-  required on the web, with its shared test. An exclusion needs a reason and the `SPEC.md` anchor of the decision
+  feature found later. A new use case is required on the web and on iOS, unless it is excluded on one of them, with
+  its shared test. An exclusion needs a reason and the `SPEC.md` anchor of the decision
   behind it.
 - `scripts/use-cases.test.ts` collects the code's surfaces (`catalogue/surfaces-src.ts`,
   `catalogue/surfaces-server.ts`) and fails when no use case claims one. A surface no screen uses goes into
   `catalogue/not-ui.ts` with its reason. Every journey has a class in `catalogue/journeys.ts`.
 - A change that adds or changes a user outcome adds or updates its entry in the same PR, and a use case it changes
-  leaves the web backlog with its shared test. `scripts/e2e-baseline-check.ts` (the E2E catalogue workflow) checks
-  both against the pull request's base.
+  leaves the web and iOS backlogs with its shared test. An accessible name new in `src/` appears in a shared test that
+  runs on both targets. A use case changes when its entry's behaviour, surfaces or spec change, or when the body of a
+  test tagged with it, or the file code it shares other than the header comment, does; the PR that adds a backlog use
+  case's first test and takes it off one platform's backlog doesn't count. A test fix that leaves the behaviour alone,
+  or a new name for a control that already existed, goes on the PR description's `Unchanged behaviour:` line instead
+  (IDs, and names in quotes, separated by commas). `scripts/e2e-baseline-check.ts` (the E2E catalogue workflow) checks
+  all of this against the pull request's base.
 
 ## The shared e2e suite
 
@@ -37,13 +42,25 @@ run by `../e2e.config.ts` against a disposable gateway that the visual-verificat
 `npm run e2e` after `npx e2e-web install chromium`; a failure leaves `trace.md`, a screenshot and the screen dump in
 `.e2e/results/`.
 
+The `ios` target runs the same tests on the "HUI iPhone" simulator (iOS 27.0) against a gateway on the fixed port
+47400, which the simulator reaches as `http://127.0.0.1:47400` because it shares the Mac's network. To run it
+locally, create and boot the simulator once (the commands are in `../ios/AGENTS.md`), check the toolchain with
+`npx agent-device doctor`, then run `npm run ios:build` and `npm run e2e:ios`. On iOS the fixture relaunches
+`dev.hui.ios` with `-HUIGatewayURL <gateway>` and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
+`hui.reload`, deletes the app's preferences through `defaults` before the engine empties its data container for
+`hui.clearState` (a test never calls `app.clearState()`, whose deleted preferences `cfprefsd` can still hand the
+relaunched app), and throws "not on iOS yet" from the steps only the web engine has (hover, request interception, the
+clipboard, glyphs, looks and the rest), so a test that needs one keeps `platforms: ['web']`.
+
 - Import `test` from `fixtures/hui.ts` and `expect` from `e2e`. The fixture owns the gateway's API setup and cleanup,
   the fixture provider's barriers and the steps that differ per platform; a test never reads `platform`, `device` or
   `browser`.
-- Tag each test with the IDs of the use cases it proves, and make those `required` on the web. While a use case is
-  iOS backlog, its test carries `platforms: ['web']`.
+- Tag each test with the IDs of the use cases it proves, and make those `required` where it runs. While a use case
+  is iOS backlog, its test carries `platforms: ['web']`; a use case excluded on the web carries `platforms: ['ios']`.
 - Find controls by label, text, placeholder or test id, or by the roles iOS also has: `button`, `textbox`, `switch`,
-  `tab` and `listitem`. A test id must exist as a `data-testid` in `src/`.
+  `tab` and `listitem`. A test id must exist as a `data-testid` in `src/`, and in a test that runs on iOS (or in code
+  its file shares with one), as an `.accessibilityIdentifier("…")` under `ios/HUI/` too. Every test starts a line with
+  `test(`, which is how the check tells a file's tests apart.
 - No agent steps, `retries`, `test.skip(` or sleeps, in the tests or the fixture. Wait on state: `expect`,
   `expect.poll` and the provider's barriers. Check `toBeHidden()` only after a positive check has synchronized, and
   prefer it to `.not.toBeVisible()`.

@@ -82,6 +82,19 @@ viewport, scenario, commit, fixture type and limitations alongside the images.
 Screenshots prove appearance, not streaming, persistence or backend correctness;
 retain the assertions that demonstrate those behaviors.
 
+For a change the iOS app shows, also:
+
+1. Run the shared tests of the use cases the change touches on both platforms:
+   `npm run e2e -- --tag <ID>`, then `npm run ios:build` and
+   `npm run e2e:ios -- --tag <ID>` on the booted "HUI iPhone" simulator
+   (`ios/AGENTS.md` says how to create it).
+2. Take the screenshots the tests wrote under `.e2e/results/` and copy them
+   outside the checkout for upload. The library writes there because `.e2e/` is
+   ignored; keep everything else outside the tree.
+3. Look at new or changed iOS screens yourself, with
+   `xcrun simctl io booted screenshot <path outside the checkout>`, and record
+   any gap.
+
 **Done:** fresh, visually inspected images and behavior assertions agree.
 
 ## 5. Deliver the PR evidence

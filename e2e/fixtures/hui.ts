@@ -1,24 +1,29 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
- * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
- * turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
+ * its API, the deterministic provider's address and barriers, a gateway request a test holds, rejects or delivers while
+ * dropping its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context
+ * menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
  * input), attaching files from `files/`, reading what a download saved or what the page copied, opening a session's
  * menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a piece of the screen
  * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
  * keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and the
- * secret directories the gateway wrote. Test files import `test` from here, never from `e2e`, and never read `platform`,
- * `device` or `browser` themselves.
+ * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and
+ * the secret directories the gateway wrote. On iOS it relaunches the app pointed at the gateway, follows a `hui://open`
+ * link instead of loading a page, and clears the app's preferences through `defaults` before the engine empties its
+ * data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps
+ * throw. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
+ * themselves.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
+import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
+import { IOS_PORT } from "../../e2e.config.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number };
 type Rgb = [number, number, number];
@@ -32,13 +37,15 @@ type Intercepted = {
 
 export type Hui = {
   workspace: string;
+  gateway: string;
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
-  provider: { held(): Promise<void>; release(): Promise<void> };
+  provider: { url: string; held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
   reload(): Promise<void>;
+  clearState(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(): Promise<{ width: number; height: number }>;
   clipboard(options?: { refuse?: boolean }): Promise<void>;
@@ -72,7 +79,8 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
 
 export const test = base.extend<{ hui: Hui }>({
   hui: async (fixtures, use) => {
-    const port = new URL(fixtures.app.baseUrl!).port;
+    const web = fixtures.platform === "web";
+    const port = web ? new URL(fixtures.app.baseUrl!).port : IOS_PORT;
     const file = new URL(`../../.e2e/hui/receipt-${port}.json`, import.meta.url);
     await expect.poll(() => readFile(file).then(() => true, () => false), { timeout: 60_000 }).toBe(true);
     const receipt = JSON.parse(await readFile(file, "utf8")) as Receipt;
@@ -99,37 +107,30 @@ export const test = base.extend<{ hui: Hui }>({
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
     };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
+    const device = () => (fixtures as unknown as { device: Device }).device;
+    const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", receipt.url] });
+    const clearState = async () => {
+      if (!web) {
+        await device().closeApp();
+        const container = execFileSync("xcrun", ["simctl", "get_app_container", "HUI iPhone", "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
+        const forget = spawnSync("xcrun", ["simctl", "spawn", "HUI iPhone", "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
+        if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
+      }
+      await fixtures.app.clearState();
+    };
+    const notOnIos = (step: string) => () => {
+      throw new Error(`hui.${step} is not on iOS yet; keep the test on platforms: ['web']`);
+    };
 
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
-    await fixtures.app.clearState();
+    await clearState();
+    if (!web) await launch();
     const repositories: string[] = [];
 
-    await use({
-      workspace: receipt.workspace,
-      api,
-      createSession: async (input) =>
-        (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
-      prompt,
-      createSubagent: async (parent) => {
-        await prompt(parent, "E2E_SUBAGENTS_START");
-        let child: ListedSession | undefined;
-        await expect.poll(async () => {
-          const all = await sessions();
-          child = all.find((session) => session.parentId === parent.id);
-          return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
-            && all.find((session) => session.id === parent.id)?.status === "idle";
-        }, { timeout: 30_000 }).toBe(true);
-        return { id: child!.id, title: child!.title };
-      },
-      provider: {
-        held: () => control("GET", "/control/wait-replay-ready"),
-        release: () => control("POST", "/control/release-replay"),
-      },
-      open: (path) => fixtures.app.open(path),
-      reload: () => browser().reload(),
+    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "clearState" | "repository"> = {
       url: () => browser().url(),
       clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
         const page = window as unknown as { huiCopied: string };
@@ -283,6 +284,40 @@ export const test = base.extend<{ hui: Hui }>({
           }),
         };
       },
+    };
+
+    await use({
+      ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
+      ...(web ? {} : { keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") } }),
+      workspace: receipt.workspace,
+      gateway: receipt.url,
+      api,
+      createSession: async (input) =>
+        (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+      prompt,
+      createSubagent: async (parent) => {
+        await prompt(parent, "E2E_SUBAGENTS_START");
+        let child: ListedSession | undefined;
+        await expect.poll(async () => {
+          const all = await sessions();
+          child = all.find((session) => session.parentId === parent.id);
+          return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
+            && all.find((session) => session.id === parent.id)?.status === "idle";
+        }, { timeout: 30_000 }).toBe(true);
+        return { id: child!.id, title: child!.title };
+      },
+      provider: {
+        url: receipt.providerUrl,
+        held: () => control("GET", "/control/wait-replay-ready"),
+        release: () => control("POST", "/control/release-replay"),
+      },
+      open: async (path) => {
+        if (web) return fixtures.app.open(path);
+        await launch();
+        await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
+      },
+      reload: () => (web ? browser().reload() : fixtures.app.restart()),
+      clearState,
       repository: async () => {
         const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
         repositories.push(path);
