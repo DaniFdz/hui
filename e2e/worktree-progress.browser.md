@@ -2,6 +2,11 @@
 
 Date: 2026-09-24
 
+The shared test `e2e/tests/sess/worktree-progress.e2e.ts` now proves naming, Git's checkout percentage in the progress
+bar and on the sidebar row, a second session started meanwhile, the first prompt sent once the checkout is ready and a
+failed Git (SESS-012). What is left here is the content-filter percentage (SESS-076), the indeterminate setup and
+finalizing stages (SESS-077) and the layout at desktop and mobile widths.
+
 ## Journey
 
 1. Started HUI with `npm run dev -- --host 127.0.0.1` and opened New Session
