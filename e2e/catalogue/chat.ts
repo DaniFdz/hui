@@ -415,7 +415,7 @@ const cases: UseCase[] = [
     behaviour: "/reload while idle says \"Reloaded extensions, skills, prompts and context files.\" and the command menu then lists newly added skills and commands, with the transcript, model and thinking level unchanged. Arguments, attachments or active work are refused with a message, as for /clear.",
     spec: ["SPEC.md#new-sessions-run-on-pi-durable", "docs/api.md#post-__huisessionsidreload"],
     surfaces: ["command:reload", "route:POST /__hui/sessions/:id/reload"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
