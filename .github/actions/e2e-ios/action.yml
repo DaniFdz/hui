@@ -19,7 +19,7 @@ runs:
     - id: agent-device-cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.agent-device
+        path: ~/.agent-device/apple-runner/derived
         key: agent-device-${{ runner.os }}-${{ hashFiles('package-lock.json', '.github/actions/e2e-ios/action.yml') }}
     # Everything compiles before the simulator boots: a new simulator's first minutes stall the whole runner, and a
     # build beside them slows both.
@@ -54,7 +54,7 @@ runs:
     - if: ${{ steps.agent-device-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.agent-device
+        path: ~/.agent-device/apple-runner/derived
         key: ${{ steps.agent-device-cache.outputs.cache-primary-key }}
     - shell: bash
       run: npm run e2e:ios -- ${{ inputs.e2e-args }}
@@ -64,7 +64,7 @@ runs:
         mkdir -p .e2e/logs
         xcrun simctl spawn "$HUI_SIMULATOR" log show --last 1h --predicate 'process == "HUI"' > .e2e/logs/ios-app.log || true
         { memory_pressure -Q; top -l 2 -n 25 -o cpu -stats pid,command,cpu,mem; } > .e2e/logs/runner-load.txt
-        rsync -a --include '*/' --include '*.log' --include '*.ndjson' --include '*.json' --exclude '*' --prune-empty-dirs ~/.agent-device/ .e2e/logs/agent-device/
+        if [ -d ~/.agent-device ]; then rsync -a --exclude daemon.json --include '*/' --include '*.log' --include '*.ndjson' --include '*.json' --exclude '*' --prune-empty-dirs ~/.agent-device/ .e2e/logs/agent-device/; fi
         cp -R "$(node -p 'require("./.e2e/hui/receipt-47400.json").artifacts')" .e2e/logs/hui-artifacts || true
     # The suite's traces, screenshots, the app's log, agent-device's daemon, runner and request logs, the runner's load,
     # and the launcher's gateway and provider logs, copied from where its receipt says, since macOS keeps them under
