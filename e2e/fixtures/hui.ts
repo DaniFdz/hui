@@ -4,11 +4,13 @@
  * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
  * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
  * point instead of the input), tapping a control with a finger, which unlike a mouse doesn't hover it first, attaching
- * files from `files/` or made up of a name and a size, reading what a download saved or what the page copied, opening a
+ * files from `files/` or made up of a name and a size, scrolling a piece of the screen sideways (a horizontal wheel on the
+ * web, where a swipe drags instead), reading what a download saved or what the page copied, opening a
  * session's menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and whether its unread dot
- * has the accent colour, and reading how a piece of the screen looks (its text colour and the colour behind it as RGB,
- * its opacity, its font families, those of HUI's bundled faces that have loaded to draw its text, its text size in
- * pixels and the colour of the focus ring it shows when reached from the keyboard), a disposable Git repository (on
+ * has the accent colour, how far the page scrolls sideways, and reading how a piece of the screen looks (its text colour
+ * and the colour behind it as RGB, its opacity, its font families, those of HUI's bundled faces that have loaded to draw
+ * its text, its text size in pixels, weight and alignment, and the colour of the focus ring it shows when reached from
+ * the keyboard), a disposable Git repository (on
  * `feature/current`, with `main`, a `release/1.0` at its own commit and a `sub` directory) that it removes at teardown,
  * the files of the gateway's state and workspace that hold a text, the secret directories the gateway wrote, a restart
  * of the gateway against the same state and port, the end of its PI worker processes, and, on the web, closing the
@@ -64,13 +66,15 @@ export type Hui = {
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
-  look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
+  look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
+  overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
   touchTap(target: Locator): Promise<void>;
+  scrollSideways(target: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
@@ -204,6 +208,7 @@ export const test = base.extend<{ hui: Hui }>({
         accent.remove();
         return shown;
       }, title),
+      overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
       look: async (target) => {
@@ -240,6 +245,8 @@ export const test = base.extend<{ hui: Hui }>({
             loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
               && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
             size: Number.parseFloat(style.fontSize),
+            weight: Number(style.fontWeight),
+            align: style.textAlign,
             ring: !element.matches(":focus-visible") ? null
               : style.outlineStyle !== "none" ? rgb(style.outlineColor)
               : outerShadow === "none" ? null : rgb(outerShadow),
@@ -295,6 +302,12 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      scrollSideways: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("scrollSideways: the target is not on screen");
+        await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
+        await browser().mouse.wheel(240, 0);
+      },
       stored: async (text) => {
         const root = dirname(receipt.workspace);
         const files = (await readdir(root, { recursive: true, withFileTypes: true }))

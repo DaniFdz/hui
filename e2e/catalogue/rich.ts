@@ -32,7 +32,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-formatting"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -71,7 +71,7 @@ const cases: UseCase[] = [
     behaviour: "A fenced code block shows its language and a **Copy code** button; pressing it copies the code without a trailing newline and the button reads **Copied** for a moment (**Copy failed** when the clipboard refuses), then returns to **Copy code**.",
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -80,7 +80,7 @@ const cases: UseCase[] = [
     behaviour: "**Enable word wrap** wraps the block's long lines and becomes **Disable word wrap**, which restores horizontal scrolling. A block taller than its limit shows **Show N hidden lines**, which reveals the rest.",
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -130,7 +130,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["rich-embeds"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
