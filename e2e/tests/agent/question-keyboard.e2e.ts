@@ -51,6 +51,10 @@ test("number keys, arrows, Space and Enter answer the card, and Escape declines 
   await expect(row("checkbox", "Lint")).toBeFocused();
   await card.getByRole("button", "Back").press("ControlOrMeta+Enter");
   await expect(card.getByText("3/3")).toBeVisible();
+  await row("radio", "Staging").press("ArrowLeft");
+  await expect(card.getByText("2/3")).toBeVisible();
+  await row("checkbox", "Lint").press("Enter");
+  await expect(card.getByText("3/3")).toBeVisible();
   await expect(row("radio", "Staging")).toBeFocused();
   await row("radio", "Staging").press("ArrowDown");
   await expect(row("radio", "Production")).toBeFocused();
