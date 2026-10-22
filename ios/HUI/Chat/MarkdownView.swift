@@ -3,7 +3,7 @@
 // checkboxes as ☐ and ☑), quotes, code blocks and rules as views, inline text as one AttributedString (bold, italic, strikethrough, code, links). Raw HTML
 // shows as text, as the web escapes it, and a link the parser hides (an unsafe scheme) stays plain text. While a streamed
 // reply only grows, the last answer's tokens stay drawn until the core answers for the new text; a source replaced by a
-// different one shows as plain text until then.
+// different one shows as plain text until then, and so does a source the core fails to parse.
 import SwiftUI
 
 struct MarkdownToken: Decodable, Equatable, Sendable {
@@ -37,8 +37,9 @@ struct MarkdownView: View {
             }
         }
         .task(id: source) {
-            guard let tokens = try? await core.markdownTokens(source, agent: agent), !Task.isCancelled else { return }
-            parsed = (source, tokens)
+            let tokens = try? await core.markdownTokens(source, agent: agent)
+            guard !Task.isCancelled else { return }
+            parsed = tokens.map { (source, $0) }
         }
     }
 
