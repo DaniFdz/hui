@@ -16,6 +16,9 @@ test("a failed run's error card copies the error, comes back after a dismiss and
   await screen.getByRole("button", "Send message").tap();
   await expect(summary).toBeVisible();
   await expect(idle).toBeVisible();
+  const card = await summary.boundingBox();
+  const composer = await screen.getByLabel("Message").boundingBox();
+  expect(card && composer && card.y + card.height <= composer.y).toBe(true);
   await expect(screen.getByRole("button", "Copy error")).toBeVisible();
   await expect(continueRun).toBeVisible();
   await expect(transcript.getByText("see the fixture for why", { exact: false })).toBeHidden();

@@ -31,6 +31,7 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "command-references": { kind: "automate" },
   "compaction-rewind": { kind: "automate" },
   "configured-models": { kind: "automate" },
+  "continue-error-toast": { kind: "automate" },
   "contributions": { kind: "world:github" },
   "datadog-embeds": { kind: "world:datadog" },
   "desktop-package": { kind: "packaging", reason: "Covered by npm run test:package; native macOS checks stay manual." },

@@ -182,10 +182,12 @@ export const test = base.extend<{ hui: Hui }>({
         if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
         return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
       }, title),
-      dropStreams: () => browser().evaluate(() => {
-        for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
-        return null;
-      }),
+      dropStreams: async () => {
+        await browser().evaluate(() => {
+          for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
+          return null;
+        });
+      },
       accentDot: (title) => browser().evaluate((name) => {
         const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
         const dot = row?.querySelector(".sidebar-session-unread-dot");
