@@ -1,4 +1,4 @@
-/** Settings → Models routes new sessions, quick work and failed turns to the chosen models, offers only the configured ones and shows PI's own configuration while loading, failed and read (SET-045, SET-046, SET-047, SET-048, SET-050). */
+/** Settings → Models chooses the primary, fallback and utility models, the utility model names sessions and answers /btw, and Models shows PI's own configuration while loading, failed and read (SET-045, SET-047, SET-050). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
