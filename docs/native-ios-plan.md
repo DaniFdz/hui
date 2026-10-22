@@ -150,7 +150,7 @@ ls src/views/work/*.ts | grep -vc test                                          
 grep -ho 'name: "[a-z_]*"' server/runtimes/*-extension.mjs | sort -u | wc -l          # 17 HUI tools
 grep -o 'name: "[a-z]*"' src/lib/composer/slash-commands.ts | sort -u | wc -l         # 6 HUI slash commands
 sed -n '/WORK_SHORTCUTS = {/,/} as const/p' src/lib/work-shortcuts.ts | grep -c '"Mod' # 7 Work pane shortcuts
-sed -n '/export type ChatProjectionRow/,/;$/p' src/views/chat/projection.ts | grep -o 'kind: "[a-zA-Z]*"' | wc -l  # 6 row kinds
+sed -n '/export type ChatProjectionRow/,/;$/p' src/lib/chat-projection.ts | grep -o 'kind: "[a-zA-Z]*"' | wc -l  # 6 row kinds
 node --input-type=module -e 'const {DEFAULT_SETTINGS:s}=await import("./src/lib/settings/settings.ts");const l=[];const w=(v,p)=>v&&typeof v==="object"&&!Array.isArray(v)?Object.entries(v).forEach(([k,x])=>w(x,p?p+"."+k:k)):l.push(p);w(s,"");console.log(l.length)'  # 33 settings keys
 node -e 'console.log(require("./docs/api.schema.json")["x-hui-routes"].length)'      # 181 routes in the published schema
 grep -oE '(GET|POST|PUT|PATCH|DELETE|HEAD)(\|[A-Z]+)* /__hui/[^` ?),]*' docs/api.md | sort -u | wc -l   # 189 method and path strings in docs/api.md
@@ -554,7 +554,7 @@ test('a reply streams, its tool card opens, and Stop ends the next run', { tags:
   can't be on screen yet. Once released, the whole reply shows exactly once: a positive matcher requires exactly
   one match and fails with `LOCATOR_AMBIGUOUS` on a duplicate (the library's
   [expect reference](https://e2e.tester.army/docs/reference/expect), "Strictness").
-- CHAT-002 is the second block. `Ran 1 command` comes from `activityLabel()` in `src/views/chat/projection.ts`,
+- CHAT-002 is the second block. `Ran 1 command` comes from `activityLabel()` in `src/lib/chat-projection.ts`,
   `Read fixture.txt` is the toggle's label in `src/views/chat/read-tool-card.ts`, and `Completed` is its outcome.
 - CHAT-003 is the last block. The next prompt's answer proves the session stays usable after Stop.
 - `app.screenshot` leaves one picture per platform in `.e2e/results/`, which the PR description uses as evidence
@@ -868,7 +868,7 @@ that owns the surface, and imports it where the module loads in Node without a D
 | `tool:` | `shippedTools()` in `server/runtimes/tool-catalog.ts`, plus the bot tools | import (8 PI and 17 HUI tools, plus the bot tools) |
 | `command:` | `HUI_COMMANDS` and `HUI_SESSION_COMMANDS` in `src/lib/composer/slash-commands.ts` | import (6) |
 | `shortcut:` | `WORK_SHORTCUTS` in `src/lib/work-shortcuts.ts`, and the palette's chord | import (7 and 1) |
-| `row:` | `ChatProjectionRow` in `src/views/chat/projection.ts` | literal scan (6) |
+| `row:` | `ChatProjectionRow` in `src/lib/chat-projection.ts` | literal scan (6) |
 | `setting:` | the leaves of `DEFAULT_SETTINGS` in `src/lib/settings/settings.ts` | import and walk (33) |
 | `route:` | `x-hui-routes` in `docs/api.schema.json`, plus the `METHOD /__hui/…` strings of `docs/api.md` the schema doesn't list | JSON (181), and a one-line regex whose path must end in a letter, digit, `_` or `>` so trailing punctuation never becomes a route (8 paths) |
 | labels | `aria-label="…"` literals in `src/**/*.ts` | regex (198); must appear in a shared test, not in the catalogue |
@@ -1028,7 +1028,7 @@ The core starts small and grows only when a screen needs a function:
 
 - the transcript reducer (`reduceTranscript`, `normalizeTranscript`, `appendPendingUser`, `settlePendingUser` in
   `src/lib/transcript-state.ts`) and the projection (`projectChatTranscript`, `activityLabel`, `workingLabel` in
-  `src/views/chat/projection.ts`), which carry the subtle rules: `historyRefreshed: false` keeps the live
+  `src/lib/chat-projection.ts`), which carry the subtle rules: `historyRefreshed: false` keeps the live
   projection, a tool update applies to the latest matching id, and `turn_end` alone doesn't unlock the composer;
 - `SendRequests` (`src/lib/composer/send-requests.ts`), and `reconnectDelay` and `decodeSseFrame`, after moving
   those two out of `src/api/sessions.ts` into `src/lib/`, so the bundle doesn't pull in the fetch client (the

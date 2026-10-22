@@ -57,7 +57,8 @@ Pi Durable owns conversations, runs, queues and crash recovery.
   files before switching to a new release.
 - R18. Everything `ios/core/` loads, directly or through other modules, is in
   `ios/core/` or `src/lib/`, and none of it is a `*-store.ts`, an npm package or
-  a Node module. The core runs in JavaScriptCore, which has no DOM, network or
+  a Node module, except markdown-it and the two plugins the Markdown parser
+  uses. The core runs in JavaScriptCore, which has no DOM, network or
   timers, and `ios/core/entry.test.ts` runs its bundle without them.
 
 ## A message, start to finish
@@ -80,8 +81,8 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 6. **Events** flow back over a WebSocket per open session view
    (`server/sessions/transport.ts`, opened with a single-use ticket) to the
    client store.
-7. **Rendering**: `src/views/chat/projection.ts` turns transcript state into
-   what the chat shows; tool cards live beside it in `src/views/chat/`.
+7. **Rendering**: `src/lib/chat-projection.ts` turns transcript state into
+   what the chat shows, for the web and the iOS core; tool cards live in `src/views/chat/`.
 
 ## server/ — the gateway
 
@@ -113,7 +114,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Generated API types | `src/api/schema/`, generated only from `docs/api.schema.json` by `npm run api:schema` |
 | Controllers | `src/controllers/` (Lit controllers holding a feature's state and calling `src/api/`): `conversation-controller.ts` (the open session's transcript, stream, models and question), `composer-controller.ts` (drafts, completion, the queue and sending), `sessions-controller.ts` (the session registry, the sidebar and the shell toasts), `launch-controller.ts` (New Session), `work-layout-controller.ts` (split panes and the Work pane), `backlog-controller.ts` (the Kanban board, its Jira dialogs and task suggestions), `settings-controller.ts` (HUI settings, theme, PI and the control surfaces), `automation-controller.ts`, `update-controller.ts`, `bots-controller.ts` and the bot `import`, `tools`, `triggers` and `facts` controllers, `voice-controller.ts` (calls), `browser-view-controller.ts` (the browser live view) |
 | Pure logic | `lib/` (normalizers, parsers, layout and menu rules; tested beside each file), `lib/markdown/github-links.ts` and `lib/markdown/datadog-links.ts` (browser-local Markdown link detection; portable JSON fixtures match the gateway copies), `lib/jira.ts` and `lib/pull-requests.ts` (work-item and pull-request labels), `lib/widgets.ts` (widget documents, theme bridge and frame messages; CSP fixtures match the gateway copy), `lib/event-stream.ts` (server-sent event frames and reconnect backoff, shared with the iOS core) |
-| Chat | `views/chat/` (projection, tool cards, position rail), `src/lib/markdown/`, `src/lib/composer/` (drafts, state, textarea, send requests); file references that open in the Files view: `lib/files/references.ts` (which text is a path), `lib/files/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
+| Chat | `views/chat/` (tool cards, position rail), `lib/chat-projection.ts`, `src/lib/markdown/`, `src/lib/composer/` (drafts, state, textarea, send requests); file references that open in the Files view: `lib/files/references.ts` (which text is a path), `lib/files/file-link-store.ts` (batched, cached existence checks), `components/file-link.ts` (`<hui-file-ref>`) |
 | Sidebar and sessions | `src/lib/session/sidebar-sessions.ts`, `lib/session/sessions.ts` (group labels, transcript Markdown, unreachable hosts), `lib/session/labels.ts` (status text, a row's accessible name), `lib/session/tree.ts`, `views/sessions.ts`, `views/sidebar-session-options.ts` |
 | Pages | `views/*.ts` (settings, automation, kanban, bots, worktrees); self-loading settings sections in `src/components/settings/`, `components/contributions.ts`, `components/session-calendar.ts`; the bots pages' parsers and state in `src/lib/bots/`, voice and live calls in `src/lib/voice/` |
 | Reusable components | `components/` (panes, hovercards, dialogs); `components/openclaw/` is a hash-pinned OpenClaw port, do not edit it by hand |
@@ -131,9 +132,10 @@ edits the project; `npm run ios:build` builds the core, then the app, and instal
 
 | Path | Owns |
 |---|---|
-| `ios/core/` | The JavaScriptCore core: `entry.ts` re-exports pure `src/lib/` functions (navigation, server-sent event frames, reconnect backoff, the sidebar's groups and session labels). `npm run ios:core` (`scripts/ios-build.ts`) bundles it into `ios/HUI/Resources/Generated/hui-core.js`, with `hui-core.sha256` beside it listing the bundle and its inputs for the Xcode build to check; git ignores both |
+| `ios/core/` | The JavaScriptCore core: `entry.ts` re-exports pure `src/lib/` functions (navigation, server-sent event frames, reconnect backoff, the sidebar's groups and session labels, the transcript reducer, the chat projection, send request ids and Markdown tokens). `npm run ios:core` (`scripts/ios-build.ts`) bundles it into `ios/HUI/Resources/Generated/hui-core.js`, with `hui-core.sha256` beside it listing the bundle and its inputs for the Xcode build to check; git ignores both |
 | `ios/HUI/App/` | `HUIApp.swift` (entry point, loads the core), `RootView.swift` (Connect, then the session list; `hui://open?path=` links through the core's `resolveNavigation`), `GatewayModel.swift` (gateway URL and version check), `ConnectView.swift` |
 | `ios/HUI/Sessions/` | `SessionsModel.swift` (the live list: `GET /__hui/sessions`, the events stream, reconnects), `SessionListView.swift` (rows grouped and named as the web sidebar's), `SessionPlaceholderView.swift` (title and status until the chat screen lands) |
+| `ios/HUI/Chat/` | `ChatRows.swift`: the transcript items and chat rows the core returns, mirrored by hand and checked by `scripts/ios-contract.test.mjs` |
 | `ios/HUI/Core/` | `HUICore.swift`: the JavaScriptCore host that runs `hui-core.js` on its own serial queue, and the types its answers decode into |
 | `ios/HUI/Gateway/` | `API.swift`: the `API` namespace of the payload types, and the `JSONValue` they use for open values; `GatewayClient.swift` (`x-hui`, deadlines, error bodies); `EventStream.swift` (server-sent event framing) |
 | `ios/HUI/Gateway/Schema/` | The payload types, one Swift file per API area, generated from `docs/api.schema.json` by `npm run api:schema` |
