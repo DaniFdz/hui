@@ -102,7 +102,7 @@ test("an overflow on PI's worker compacts as Context is full, then retries the t
 });
 
 test("on PI's worker a rewind into the kept turns keeps the summary, and one into the summarized turns restores them", { tags: ["CHAT-040"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const { transcript, marker } = chat(screen);
+  const { transcript, marker, idle } = chat(screen);
   const ask = "E2E_CONTEXT_HOLDS FIXTURE_SUMMARY COMPACT_ONE";
 
   await open(screen, hui, "Worker rewind", "pi");
@@ -119,7 +119,7 @@ test("on PI's worker a rewind into the kept turns keeps the summary, and one int
   await expect(transcript.getByText("COMPACT_TWO second turn")).toBeVisible();
   await submit(screen, ask);
   await expect(transcript.getByText("Earlier context: FIXTURE_SUMMARY yes, COMPACT_ONE no")).toBeVisible();
-  await expect(chat(screen).idle).toBeVisible();
+  await expect(idle).toBeVisible();
 
   await rewindTo(screen, hui, 1, "COMPACT_TWO second turn");
   await expect(marker).toBeHidden();

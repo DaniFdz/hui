@@ -81,9 +81,10 @@ export type Hui = {
 
 const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "pointerup" }) => {
   const target = document.elementFromPoint(x, y);
+  if (!target) throw new Error(`touch: nothing is at ${x}, ${y}`);
   const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y };
-  target?.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "touch", isPrimary: true }));
-  if (type === "pointerup") target?.dispatchEvent(new MouseEvent("click", init));
+  target.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "touch", isPrimary: true }));
+  if (type === "pointerup") target.dispatchEvent(new MouseEvent("click", init));
   return null;
 };
 
@@ -286,6 +287,7 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       touchTap: async (target) => {
+        await target.scrollIntoView();
         const box = await target.boundingBox();
         if (!box) throw new Error("touchTap: the target is not on screen");
         const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
