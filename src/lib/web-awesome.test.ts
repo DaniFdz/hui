@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { closeDropdownOnEscape, hasOpenWebAwesomePopup } from "./web-awesome.ts";
+import { closeDropdownOnEscape, hasOpenWebAwesomePopup, returnFocusFromClosedMenu } from "./web-awesome.ts";
 
 test("an open shadow popup owns dismissal before the enclosing view", () => {
   for (const localName of ["wa-select", "wa-dropdown"]) {
@@ -40,6 +40,15 @@ test("Escape from an already-closed popup can reach the enclosing surface", () =
   closeDropdownOnEscape(event);
   assert.equal(popup.open, false);
   assert.deepEqual(calls, []);
+});
+
+test("a dropdown that finishes opening after it closed hands focus back to its trigger, and open menus and other popups are left alone", () => {
+  for (const [localName, open, expected] of [["wa-dropdown", false, ["focus trigger"]], ["wa-dropdown", true, []], ["wa-select", false, []]] as const) {
+    const calls: string[] = [];
+    const shown = { localName, open, querySelector: () => ({ focus: () => calls.push("focus trigger") }) };
+    returnFocusFromClosedMenu({ composedPath: () => [shown, {}] } as unknown as Event);
+    assert.deepEqual(calls, expected, `${localName}, open: ${open}`);
+  }
 });
 
 test("Tab and arrow keys stay owned by Web Awesome", () => {
