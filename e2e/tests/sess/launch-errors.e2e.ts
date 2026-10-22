@@ -14,15 +14,15 @@ const placement = async (screen: Screen, detail: string) => {
     directlyBelow: gap >= 0 && gap <= 16,
     sameEdges: Math.abs(alert.x - composer.x) < 1 && Math.abs(alert.x + alert.width - composer.x - composer.width) < 1,
     detailInside: text.x >= alert.x && text.x + text.width <= alert.x + alert.width,
-    detailWraps: text.height > heading.height * 1.5,
+    pathWraps: text.height >= heading.height * 2.5,
   };
 };
-const placed = { directlyBelow: true, sameEdges: true, detailInside: true, detailWraps: true };
+const placed = { directlyBelow: true, sameEdges: true, detailInside: true, pathWraps: true };
 
 test("starting in a missing directory explains why, keeps the draft and starts once corrected", { tags: ["SESS-002"], platforms: ["web"] }, async ({ screen, hui }) => {
   const titles = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap(({ sessions }) => sessions.map(({ title }) => title));
   const before = await titles();
-  const missing = `${hui.workspace}/${"missing_project_folder_".repeat(5)}`;
+  const missing = `${hui.workspace}/${"missing_project_folder_".repeat(9)}`;
   const detail = `No such directory: ${missing}`;
   const directory = screen.getByLabel("Project directory");
   const message = screen.getByPlaceholder("What should this session work on?");

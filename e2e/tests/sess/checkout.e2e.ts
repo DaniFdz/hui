@@ -117,9 +117,11 @@ test("Configure default prefix opens the worktree settings scrolled to the branc
   expect(new URL(await hui.url()).pathname).toBe("/settings/worktrees");
   const title = screen.getByTestId("settings-page-title");
   await expect(title).toHaveText("Worktrees");
+  const header = screen.getByRole("button", "Open settings navigation");
   await expect.poll(async () => {
     const field = (await prefix.boundingBox())!;
     const top = (await title.boundingBox())!;
-    return { fieldInView: field.y >= 0 && field.y + field.height <= phone.height, titleScrolledAway: top.y + top.height <= 0 };
+    const bar = (await header.boundingBox())!;
+    return { fieldInView: field.y >= bar.y + bar.height && field.y + field.height <= phone.height, titleScrolledAway: top.y + top.height <= 0 };
   }).toEqual({ fieldInView: true, titleScrolledAway: true });
 });
