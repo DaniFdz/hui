@@ -5,10 +5,10 @@
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
- * clipboard, the session list (the phone drawer on the web, Back on iOS), the session menu (on iOS the open chat's
- * toolbar menu, else a long press on the row), status glyphs (on iOS the row's session-glyph label
- * and whether it is a spinner), how a piece of the
- * screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
+ * clipboard, the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
+ * shell's drawer media, the navigation drawer; on iOS, Back), the session menu (on iOS the open chat's toolbar menu,
+ * else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
+ * a piece of the screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
  * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
@@ -347,8 +347,8 @@ export const test = base.extend<{ hui: Hui }>({
         forward: () => browser().forward(),
         peek: (target) => target.hover(),
         sessionList: async () => {
-          const drawer = fixtures.screen.getByRole("button", "Open navigation", { visible: true });
-          if (await drawer.count() > 0) await drawer.tap();
+          const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
+          if (phone) await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
         },
         sessionMenu: async (title) => {
           const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
@@ -530,6 +530,12 @@ export const test = base.extend<{ hui: Hui }>({
       };
 
       const iosSteps: Partial<typeof webSteps> = {
+        phoneScreen: async (orientation = "portrait") => {
+          if (orientation !== "portrait") throw new Error("phoneScreen: the iPhone app runs in portrait");
+          const box = await fixtures.screen.getByTestId("app-route").boundingBox();
+          if (!box) throw new Error("phoneScreen: the app shows no screen");
+          return { width: box.x + box.width, height: box.y + box.height };
+        },
         sessionList: async () => {
           for (let address = await iosSteps.url!(); new URL(address).pathname !== "/";) {
             const shown = address;

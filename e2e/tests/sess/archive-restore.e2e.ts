@@ -57,7 +57,7 @@ test("archiving a session closes its split pane and leaves the open conversation
   await expect(screen.getByLabel(row("Split parent"))).toBeHidden();
 });
 
-test("the archive toast expires untouched, and a failed restore keeps its error and an enabled Restore", { tags: ["SESS-035"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the archive toast expires untouched, and a failed restore keeps its error and an enabled Restore", { tags: ["SESS-035"] }, async ({ screen, hui }) => {
   const restore = screen.getByRole("button", "Restore");
   const session = await hui.createSession({ title: "Fragile restore" });
   await hui.open("/");
@@ -81,7 +81,7 @@ test("the archive toast expires untouched, and a failed restore keeps its error 
   await expect(screen.getByLabel(row("Fragile restore"))).toBeHidden();
 });
 
-test("on a phone screen the archive toast keeps Restore and its dismiss button inside the screen, and both work", { tags: ["SESS-035"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("on a phone screen the archive toast keeps Restore and its dismiss button inside the screen, and both work", { tags: ["SESS-035"] }, async ({ screen, hui }) => {
   const toast = screen.getByText("Archived “Pocket session”.");
   const restore = screen.getByRole("button", "Restore");
   const dismiss = screen.getByRole("button", "Dismiss archive notification");
@@ -93,7 +93,7 @@ test("on a phone screen the archive toast keeps Restore and its dismiss button i
   await hui.createSession({ title: "Pocket session" });
   const phone = await hui.phoneScreen();
   await hui.open("/");
-  await screen.getByRole("button", "Open navigation").tap();
+  await hui.sessionList();
   await archive();
   for (const control of [restore, dismiss]) {
     await expect(control).toBeVisible();
