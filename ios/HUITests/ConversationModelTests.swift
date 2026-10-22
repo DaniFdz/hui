@@ -18,7 +18,8 @@ struct ConversationModelTests {
         #expect(model.statusLabel == "Running")
         #expect(model.working == "Writing response…")
         #expect(sockets.connected.first == Connected(url: "ws://\(host):4100/__hui/sessions/a/stream?ticket=t", origin: "http://\(host):4100"))
-        #expect(GatewayStub.paths(host).prefix(2) == ["/__hui/sessions/a/open", "/__hui/sessions/a/connect"])
+        #expect(GatewayStub.paths(host).filter { !$0.hasSuffix("/models") }.prefix(2) == ["/__hui/sessions/a/open", "/__hui/sessions/a/connect"])
+        try await until { GatewayStub.paths(host).contains("/__hui/sessions/a/models") }
     }
 
     @Test func aDropReconnectsWithANewTicketAndTheSnapshotReplacesTheTranscript() async throws {

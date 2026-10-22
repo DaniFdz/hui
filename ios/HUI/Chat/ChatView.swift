@@ -225,8 +225,8 @@ struct ChatView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("Message")
                 .focused($composing)
-                .task(id: "\(model.session?.status.rawValue ?? "") \(model.reconnecting) \(model.streaming)") {
-                    if let text = try? await core.composerPlaceholder(status: model.session?.status, reconnecting: model.reconnecting, streaming: model.streaming) {
+                .task(id: "\(model.session?.status.rawValue ?? "") \(model.reconnecting || model.stopped) \(model.streaming)") {
+                    if let text = try? await core.composerPlaceholder(status: model.session?.status, reconnecting: model.reconnecting || model.stopped, streaming: model.streaming) {
                         placeholder = text
                     }
                 }
@@ -273,6 +273,7 @@ struct ChatView: View {
                 Label(name ?? "Select model", systemImage: "chevron.down").font(.caption)
             }
             .accessibilityLabel("Model: \(name ?? "Select model")")
+            .disabled(model.streaming)
         }
     }
 

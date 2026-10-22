@@ -112,11 +112,11 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
 - `SessionsModel` opens the events stream before it loads the list, then reads the stream, as the web does. Once the
   stream's snapshot arrived its statuses win over every list and upsert, and a session the snapshot leaves out is idle.
   Every listed session has a status label, so a deep link to one the sidebar hides (archived, a Swarm helper) opens.
-- The chat screen (`Chat/ChatView.swift`) names its controls as the web's chat does (`Message`, `Send message`, `Stop`,
+- The chat screen (`Chat/ChatView.swift`) names its controls as the web's chat does (`Message`, `Send message`, `Stop`, `Model: <name>`, `Continue without a prompt`,
   `Steer message; touch and hold to enqueue` with its `Enqueue` hold menu, `Queued messages` and its row controls,
   `Read <file>`, `Agent activity: <step>`) and takes every label from the core: the core's `chatRows` returns the rows with
   their activity labels and tool cards (`src/lib/chat-rows.ts`), and a `key` per row and item that the screen uses for
-  identity, opening and scrolling (tool call ids repeat across turns); the working indicator comes from `workingLabel` and the composer's placeholder from `composerPlaceholder`. A dropped stream reads "Reconnecting — draft preserved." and a stopped one "Stream stopped — draft preserved." above the composer, and Send waits for the stream. The transcript follows the bottom
+  identity, opening and scrolling (tool call ids repeat across turns); the working indicator comes from `workingLabel` and the composer's placeholder from `composerPlaceholder`. A dropped stream reads "Reconnecting — draft preserved." and a stopped one "Stream stopped — draft preserved." above the composer, and Send waits for the stream; the web writes these two inline too, and its unreachable-worker variant isn't on iOS yet. The transcript follows the bottom
   as the web's does, decided where the reader's scroll stops: a scroll that stops more than 48 points up from the bottom
   stops following, and one that stops nearer follows again and settles on the bottom. The scroll view keeps the bottom
   itself: `.defaultScrollAnchor(.bottom)` for the initial offset and for short content, and for size changes while

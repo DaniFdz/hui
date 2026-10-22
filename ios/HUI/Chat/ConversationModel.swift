@@ -150,7 +150,7 @@ final class ConversationModel {
     }
 
     func resume() async {
-        guard !continuing, !streaming else { return }
+        guard phase == .open, !continuing, !streaming else { return }
         continuing = true
         sendError = nil
         do {
@@ -293,18 +293,18 @@ final class ConversationModel {
         origin = "\(session.parentId == nil ? session.tool : "Subagent")\(session.worker.map { " on \($0.name)" } ?? "") · \(group)"
         if [.idle, .running, .waiting].contains(status), !modelsRequested {
             modelsRequested = true
-            Task { await loadModels(current) }
+            Task { await loadModels() }
         }
         streaming = Self.streaming(status)
         if !streaming { stopping = false }
     }
 
-    private func loadModels(_ current: Int) async {
+    private func loadModels() async {
         guard let answer: API.SessionModelsResponse = try? await client.get(path("models")) else {
             modelsRequested = false
             return
         }
-        if current == generation { models = answer.models }
+        models = answer.models
     }
 
     private func show(_ projection: ChatProjection) {
