@@ -680,7 +680,7 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .hui-orbit i:nth-child(3) { transform: translate(-4.3px, 2.5px); opacity: .35; }
 @keyframes huiOrbit { to { transform: rotate(360deg); } }
 
-/* Subagent activity: liquid-glass card, distinct from the transcript. */
+/* Subagent activity: a translucent card, distinct from the transcript. */
 .chat-subagents {
   position: relative; margin: 10px 0 4px; padding: 4px; border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
@@ -688,7 +688,6 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 55%),
     color-mix(in srgb, var(--panel-strong, var(--bg)) 55%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent), 0 6px 20px -12px rgb(0 0 0 / .5);
-  -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%);
   font: var(--control-ui-text-sm, 13px)/1.4 var(--font-body);
 }
 .chat-subagents__row, .chat-subagents__summary {

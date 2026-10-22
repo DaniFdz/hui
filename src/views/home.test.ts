@@ -709,3 +709,10 @@ test("a long conversation renders its latest rows and offers the earlier ones; a
   const open = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set([`s:t${TRANSCRIPT_WINDOW_ROWS + 9}`]) });
   assert.match(open, /echo step-59/u);
 });
+
+test("subagent and watcher cards blur nothing behind them, so a long chat keeps painting as it scrolls", () => {
+  const styles = readStyles("../styles/openclaw-chat.css").replace(/\/\*[\s\S]*?\*\//gu, "");
+  const cardRules = styles.match(/(?<=^|[{}])[^{}]*\.chat-subagents[^{}]*\{[^}]*\}/gu) ?? [];
+  assert.ok(cardRules.length > 0);
+  for (const rule of cardRules) assert.doesNotMatch(rule, /backdrop-filter/u, rule.trim());
+});
