@@ -7,23 +7,23 @@
  * menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a piece of the screen
  * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
- * keyboard), and a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory) that it removes at teardown. On iOS it relaunches the app pointed at the gateway, follows a
- * `hui://open` link instead of loading a page, and clears the app's preferences through `defaults` before the engine
- * empties its data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the
- * web-only steps throw. Test files import `test` from here, never
- * from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
+ * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and the
+ * secret directories the gateway wrote. On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link
+ * instead of loading a page, and clears the app's preferences through `defaults` before the engine empties its data
+ * container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps throw.
+ * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
 import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 
-type Receipt = { url: string; providerUrl: string; workspace: string };
+type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
@@ -63,6 +63,8 @@ export type Hui = {
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
   repository(): Promise<{ path: string; git(...args: string[]): string }>;
+  stored(text: string): Promise<string[]>;
+  secretDirectories(): Promise<string[]>;
 };
 
 const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "pointerup" }) => {
@@ -228,6 +230,17 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      stored: async (text) => {
+        const root = dirname(receipt.workspace);
+        const files = (await readdir(root, { recursive: true, withFileTypes: true }))
+          .filter((entry) => entry.isFile())
+          .map((entry) => relative(root, join(entry.parentPath, entry.name)))
+          .filter((file) => !file.startsWith("vite-cache/"));
+        const read = (file: string) => readFile(join(root, file), "latin1").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error));
+        const holding = await Promise.all(files.map(async (file) => ((await read(file)).includes(text) ? [file] : [])));
+        return holding.flat();
+      },
+      secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
       flip: async (target) => {
         const box = await target.boundingBox();
         if (!box) throw new Error("flip: the switch is not on screen");

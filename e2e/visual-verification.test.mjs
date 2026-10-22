@@ -27,6 +27,7 @@ test("fixture environment isolates config and drops credential/startup injection
   assert.equal(env.XDG_CONFIG_HOME, "/tmp/fixture/config");
   assert.equal(env.GH_CONFIG_DIR, "/tmp/fixture/github");
   assert.equal(env.HUI_PI_BACKEND, "sdk");
+  assert.equal(env.TMPDIR, "/tmp", "where the shared e2e fixture lists secret folders");
   for (const key of ["OPENAI_API_KEY", "GH_TOKEN", "NODE_OPTIONS", "HTTPS_PROXY", "BASH_ENV"]) assert.equal(env[key], undefined);
 });
 
