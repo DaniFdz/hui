@@ -116,6 +116,18 @@ test("the newest power read wins, and a lid turned off brings its notice back", 
   assert.equal(host.updates, updates, "a poll that changes nothing redraws nothing");
 });
 
+test("the power poll asks again only once the gateway answered its last read", async () => {
+  const { controller } = setup();
+  controller.pollPower();
+  controller.pollPower();
+  assert.equal(fake.power.length, 1, "a slow gateway is not asked twice");
+  fake.power[0]!(power(true));
+  await settle();
+  assert.equal(controller.power?.lidOn, true);
+  controller.pollPower();
+  assert.equal(fake.power.length, 2);
+});
+
 test("the resource reader's Copied mark clears after 1.5 s, and closing returns the focus", async () => {
   vi.stubGlobal("window", globalThis);
   const Element = class {};

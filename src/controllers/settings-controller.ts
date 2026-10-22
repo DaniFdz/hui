@@ -75,6 +75,7 @@ export class SettingsController implements ReactiveController {
   #saveRevision = 0;
   #healthPending = false;
   #powerRequest = 0;
+  #powerPoll: Promise<void> | undefined;
   #piRequest: Promise<void> | undefined;
   #readerReturnFocus: HTMLElement | undefined;
   #readerRequest = 0;
@@ -193,6 +194,10 @@ export class SettingsController implements ReactiveController {
     this.power = power;
     this.powerNoticeDismissed = dismissed;
     this.#changed();
+  }
+
+  pollPower(): void {
+    this.#powerPoll ??= this.refreshPower().finally(() => { this.#powerPoll = undefined; });
   }
 
   setLidAwake = (on: boolean) => void this.refreshPower(setLidAwake(on));
