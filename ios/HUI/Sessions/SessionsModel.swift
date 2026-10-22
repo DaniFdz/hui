@@ -76,7 +76,10 @@ final class SessionsModel {
     }
 
     private func run(_ client: GatewayClient) async {
-        if options == nil { options = try? await core.sidebarOptions(stored: UserDefaults.standard.string(forKey: Self.optionsKey)) }
+        if options == nil {
+            options = try? await core.sidebarOptions(stored: UserDefaults.standard.string(forKey: Self.optionsKey))
+            if options == nil { options = try? await core.sidebarOptions(stored: nil) }
+        }
         var attempt = 0
         while !Task.isCancelled {
             do {

@@ -106,7 +106,7 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   gateway).
 - A control a shared test finds needs a name: a `TextField`'s prompt is not one, so the Connect screen's field has
   `.accessibilityLabel("Gateway URL")`. Labels a shared test reads come from the core, not Swift copies: rows use `sessionAccessibleName` (with its Jira
-  part), `sidebarSessionGroups` with the web sidebar's default options and `sessionTreeRows` with every subagent tree
+  part), `sidebarSessionGroups` with the Filter & sort options the app keeps under `hui.sidebar-session-options`, as the web keeps them in the browser, `sessionGlyph` for each row's status glyph (its `session-glyph` label and spinner), and `sessionTreeRows` with every subagent tree
   folded, and statuses use `sessionStatusLabel`, the chat header's label (a worker session reads "Reconnecting to
   devbox…"), read as `Session status: <text>`.
 - `SessionsModel` opens the events stream before it loads the list, then reads the stream, as the web does. Once the

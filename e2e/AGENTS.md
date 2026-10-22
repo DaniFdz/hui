@@ -52,7 +52,7 @@ time on a second simulator: set `E2E_IOS_DEVICE` to its name and `E2E_IOS_PORT` 
 `hui.reload`, deletes the app's preferences through `defaults` before each test (the app keeps nothing else) and also
 empties its data container through the engine for `hui.clearState` (a test never calls `app.clearState()`, whose
 deleted preferences `cfprefsd` can still hand the relaunched app), and throws "not on iOS yet" from the steps only the
-web engine has (hover, request interception, the clipboard, glyphs, looks and the rest), so a test that needs one keeps
+web engine has (hover, request interception, the clipboard, looks and the rest), so a test that needs one keeps
 `platforms: ['web']`.
 
 - Import `test` from `fixtures/hui.ts` and `expect` from `e2e`. The fixture owns the gateway's API setup and cleanup,
