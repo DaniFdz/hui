@@ -20,8 +20,8 @@ in the order of `AREAS` in `catalogue/types.ts`). It is the checklist the shared
   define it, the code surfaces it owns, the journeys it came from, and a status on the web and on iOS.
 - `backlog` means the feature exists but has no passing shared test there yet. Only IDs listed in
   `catalogue/baseline.json` may be backlog. The list shrinks as shared tests land and grows only for an existing
-  feature found later, and, until the suite has an iOS target, for a new use case's iOS entry. A new use case is
-  required on the web, with its shared test. An exclusion needs a reason and the `SPEC.md` anchor of the decision
+  feature found later. A new use case is required on the web and on iOS, unless it is excluded on one of them, with
+  its shared test. An exclusion needs a reason and the `SPEC.md` anchor of the decision
   behind it.
 - `scripts/use-cases.test.ts` collects the code's surfaces (`catalogue/surfaces-src.ts`,
   `catalogue/surfaces-server.ts`) and fails when no use case claims one. A surface no screen uses goes into
@@ -37,13 +37,22 @@ run by `../e2e.config.ts` against a disposable gateway that the visual-verificat
 `npm run e2e` after `npx e2e-web install chromium`; a failure leaves `trace.md`, a screenshot and the screen dump in
 `.e2e/results/`.
 
+The `ios` target runs the same tests on the "HUI iPhone" simulator (iOS 27.0) against a gateway on the fixed port
+47400, which the simulator reaches as `http://127.0.0.1:47400` because it shares the Mac's network. To run it
+locally, create and boot the simulator once (the command is in `../ios/AGENTS.md`), check the toolchain with
+`npx agent-device doctor`, then run `npm run ios:build` and `npm run e2e:ios`. On iOS the fixture relaunches
+`dev.hui.ios` with `-HUIGatewayURL <gateway>` and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
+`hui.reload`, and throws "not on iOS yet" from the steps only the web engine has (hover, request interception, the
+clipboard, glyphs, looks and the rest), so a test that needs one keeps `platforms: ['web']`.
+
 - Import `test` from `fixtures/hui.ts` and `expect` from `e2e`. The fixture owns the gateway's API setup and cleanup,
   the fixture provider's barriers and the steps that differ per platform; a test never reads `platform`, `device` or
   `browser`.
-- Tag each test with the IDs of the use cases it proves, and make those `required` on the web. While a use case is
-  iOS backlog, its test carries `platforms: ['web']`.
+- Tag each test with the IDs of the use cases it proves, and make those `required` where it runs. While a use case
+  is iOS backlog, its test carries `platforms: ['web']`; a use case excluded on the web carries `platforms: ['ios']`.
 - Find controls by label, text, placeholder or test id, or by the roles iOS also has: `button`, `textbox`, `switch`,
-  `tab` and `listitem`. A test id must exist as a `data-testid` in `src/`.
+  `tab` and `listitem`. A test id must exist as a `data-testid` in `src/`, and in a file with a test that runs on iOS,
+  as an `.accessibilityIdentifier("…")` under `ios/HUI/` too.
 - No agent steps, `retries`, `test.skip(` or sleeps, in the tests or the fixture. Wait on state: `expect`,
   `expect.poll` and the provider's barriers. Check `toBeHidden()` only after a positive check has synchronized, and
   prefer it to `.not.toBeVisible()`.

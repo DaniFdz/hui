@@ -64,6 +64,9 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   simulator first; create it once with
   `xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0`.
 - `npm run ios:core` builds only the core.
+- `npm run e2e:ios` runs the shared e2e tests that run on iOS against the installed Release build, on the booted
+  "HUI iPhone" simulator; `e2e/AGENTS.md` says how the target and fixture work. Run `npm run ios:build` first, so the
+  tests see the app as it is now.
 - Unit tests: `xcodebuild test -project ios/HUI.xcodeproj -scheme HUI -destination 'platform=iOS Simulator,name=HUI iPhone'`
   (run `npm run ios:core` first).
 
@@ -90,7 +93,8 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   version to `package.json`'s; `GatewayModel.versionNotice` compares it with `GET /__hui/update`'s
   `currentVersion` (older and newer gateways get a notice naming both, `null` reads as an unverified development
   gateway).
-- Labels a shared test reads come from the core, not Swift copies: rows use `sessionAccessibleName` (with its Jira
+- A control a shared test finds needs a name: a `TextField`'s prompt is not one, so the Connect screen's field has
+  `.accessibilityLabel("Gateway URL")`. Labels a shared test reads come from the core, not Swift copies: rows use `sessionAccessibleName` (with its Jira
   part), `sidebarSessionGroups` with the web sidebar's default options and `sessionTreeRows` with every subagent tree
   folded, and statuses use `sessionStatusLabel`, the chat header's label (a worker session reads "Reconnecting to
   devbox…"), read as `Session status: <text>`.
