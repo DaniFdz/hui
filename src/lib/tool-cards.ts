@@ -38,6 +38,11 @@ export function readToolPresentation(item: Tool) {
   return { target, path, shortPath, detail: `from ${shortPath}`, extras };
 }
 
+/** What a read card's body shows: the tool's output, or a note when a failed read returned none. */
+export function readToolOutput(item: Tool): string {
+  return item.output?.trim() ? item.output : item.failed || item.status === "failed" ? "No output — tool failed." : "";
+}
+
 export function displayToolValue(value: unknown): string {
   const text = typeof value === "string" ? value : value === null || value === undefined ? String(value)
     : typeof value === "object" ? JSON.stringify(value) : String(value);

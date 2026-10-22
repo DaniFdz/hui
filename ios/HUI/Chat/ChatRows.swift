@@ -44,6 +44,7 @@ struct TranscriptItem: Decodable, Equatable, Sendable {
 struct ReadCard: Decodable, Equatable, Sendable {
     var target: String
     var detail: String
+    var output: String
 }
 
 struct CommandCard: Decodable, Equatable, Sendable {

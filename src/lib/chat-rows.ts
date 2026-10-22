@@ -5,13 +5,14 @@
  */
 import type { TranscriptItem } from "../api/sessions.ts";
 import { activityLabel, projectChatTranscript, type ChatActivity } from "./chat-projection.ts";
-import { codemodeOutcome, codemodeSummary, codemodeToolPresentation, commandToolPresentation, readToolPresentation } from "./tool-cards.ts";
+import { codemodeOutcome, codemodeSummary, codemodeToolPresentation, commandToolPresentation, readToolOutput, readToolPresentation } from "./tool-cards.ts";
 
 function toolCards(item: ChatActivity) {
   if (item.kind !== "tool") return {};
   const codemode = codemodeToolPresentation(item);
+  const read = readToolPresentation(item);
   return {
-    read: readToolPresentation(item),
+    read: read && { ...read, output: readToolOutput(item) },
     command: commandToolPresentation(item),
     codemode: codemode && { ...codemode, summary: codemodeSummary(codemode), outcome: codemodeOutcome(codemode) },
   };

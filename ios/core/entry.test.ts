@@ -46,8 +46,8 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
       { kind: "tool", id: "t", name: "read", args: { path: "/w/a.txt" }, status: "succeeded" },
       { kind: "message", id: "u2", role: "user", text: "Again" },
       { kind: "tool", id: "t", name: "codemode", args: { code: "x" }, details: { calls: [{ name: "read", args: "{}", status: "ok" }] }, status: "succeeded" },
-    ]).map((row) => row.kind === "activity" ? [row.key, row.label, row.items.map((item) => [item.key, item.read?.target ?? item.codemode?.outcome])] : row.key)), [
-      "messages:u", ["activity:t", "Ran 1 command", [["tool:t", "a.txt"]]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call"]]],
+    ]).map((row) => row.kind === "activity" ? [row.key, row.label, row.items.map((item) => [item.key, item.read?.target ?? item.codemode?.outcome, ...(item.read ? [item.read.output] : [])])] : row.key)), [
+      "messages:u", ["activity:t", "Ran 1 command", [["tool:t", "a.txt", ""]]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call"]]],
     ]),
     workingLabel: () => assert.equal(core.workingLabel([{ kind: "tool", id: "t", name: "read", status: "running" }]), "Reading files…"),
     SendRequests: () => {

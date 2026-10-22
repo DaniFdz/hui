@@ -234,7 +234,7 @@ struct ToolCardView: View {
         if let read = item.read {
             card(label: "Read \(read.target)", title: Text("Read ").bold() + Text(read.target)) {
                 Text(read.detail).font(.caption).foregroundStyle(.secondary)
-                output(item.output ?? (failed ? "No output — tool failed." : ""))
+                output(read.output)
                 Text(outcome).font(.caption)
             }
         } else if let command = item.command {

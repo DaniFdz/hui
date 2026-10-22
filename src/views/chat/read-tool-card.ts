@@ -4,7 +4,7 @@
 import { html, nothing } from "lit";
 import { icons } from "../../lib/icons.ts";
 import { openMessageContextMenu } from "../../lib/message-context-menu.ts";
-import { displayToolValue, readToolPresentation } from "../../lib/tool-cards.ts";
+import { displayToolValue, readToolOutput, readToolPresentation } from "../../lib/tool-cards.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 
 type Tool = Extract<TranscriptItem, { kind: "tool" }>;
@@ -29,7 +29,7 @@ export function renderReadToolCard(item: Tool, options: {
   if (!view) return html``;
   const running = (item.status ?? "running") === "running";
   const failed = item.failed || item.status === "failed";
-  const output = item.output?.trim() ? item.output : failed ? "No output — tool failed." : "";
+  const output = readToolOutput(item);
   const copy = (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, item.output ?? "", options.onCopy);
   return html`<div class="chat-tool-msg-collapse chat-tool-msg-collapse--manual ${options.expanded ? "is-open" : ""}" data-tool-id=${item.id}>
     <div class="chat-inline-disclosure chat-tool-msg-summary chat-tool-row chat-tool-row--file ${running ? "chat-tool-row--running" : ""}"
