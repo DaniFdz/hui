@@ -93,8 +93,10 @@ screenshot and the screen dump taken at the failure. Add
 log is in
 `xcrun simctl spawn "HUI iPhone" log show --last 1h --predicate 'process == "HUI"'`.
 
-The E2E workflow's `ios` job runs the unit tests and the suite on every pull
-request and push to `main`, and Nightly and Release run them before publishing.
+While the iOS app is being built, the E2E workflow's `ios` job runs only when
+started by hand (`gh workflow run e2e.yml --ref <branch>`), so run
+`npm run e2e:ios` locally for an iOS change. Nightly and Release run the iOS
+suite before publishing.
 
 User-visible changes also need a real Browser-tool E2E check. Documentation-only
 changes need at least `git diff --check` and verification that commands and links

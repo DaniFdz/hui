@@ -38,6 +38,9 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
   ios:
+    # Runs only when started by hand while the iOS app is being built: on GitHub's small macOS runner, agent-device's
+    # fixed start and launch limits time out on unrelated pull requests. The suite runs locally with `npm run e2e:ios`.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     # The preview image is the one with the toolchain ios/AGENTS.md builds and tests with; macos-26 stops at Xcode 26.6.
     runs-on: xcode-27
     timeout-minutes: 45
