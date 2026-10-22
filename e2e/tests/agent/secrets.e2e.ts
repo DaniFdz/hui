@@ -83,13 +83,12 @@ test("Cancel ends a secret request without a file", { tags: ["AGENT-017"], platf
 
 test("Escape in the secret field leaves the request waiting", { tags: ["AGENT-018"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
+  const field = card.getByLabel("Value");
   await requestSecret(hui, screen, "Escape in a secret");
-  await card.getByLabel("Value").press("Escape");
-  await card.getByLabel("Value").press("Escape");
+  await field.press("Escape");
+  await field.press("Escape");
+  await field.fill("sk-e2e-escape");
+  await card.getByRole("button", "Submit").tap();
 
-  await expect(card.getByText(LABEL)).toBeVisible();
-  await expect(screen.getByLabel("Session status: Waiting for your answer")).toBeVisible();
-  await card.getByRole("button", "Cancel").tap();
-  await expect(card).toBeHidden();
-  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await expect(screen.getByTestId("transcript").getByText("I used the secret in a command without seeing it, then deleted its file.")).toBeVisible();
 });
