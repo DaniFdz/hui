@@ -1,11 +1,12 @@
 /**
  * The chat's rows as the iOS core hands them to the app, in one call per change: `projectChatTranscript`'s rows with
- * each activity row's labels and each tool's card presentation and printed input attached, and a `key` on every row and item that stays
- * unique when tool call ids repeat across turns (the id, plus how many earlier rows or items shared it).
+ * each activity row's labels and each tool's card presentation and printed input attached, and a `key` on every row
+ * and item that stays unique when tool call ids repeat across turns (the id, plus how many earlier rows or items
+ * shared it).
  */
 import type { TranscriptItem } from "../api/sessions.ts";
 import { activityLabel, projectChatTranscript, type ChatActivity, type ChatMessage, type ChatProjectionRow } from "./chat-projection.ts";
-import { codemodeOutcome, codemodeSummary, codemodeToolPresentation, commandToolPresentation, formatCallDuration, readToolOutput, readToolPresentation } from "./tool-cards.ts";
+import { codemodeOutcome, codemodeSummary, codemodeToolPresentation, commandToolPresentation, formatCallDuration, printable, readToolOutput, readToolPresentation } from "./tool-cards.ts";
 
 function toolCards(item: ChatActivity) {
   if (item.kind !== "tool") return { read: null, command: null, codemode: null, input: null };
@@ -20,7 +21,7 @@ function toolCards(item: ChatActivity) {
       summary: codemodeSummary(codemode),
       outcome: codemodeOutcome(codemode),
     },
-    input: item.args === undefined ? null : typeof item.args === "string" ? item.args : JSON.stringify(item.args, null, 2),
+    input: item.args === undefined ? null : printable(item.args),
   };
 }
 

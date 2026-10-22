@@ -1,7 +1,8 @@
 // The root screen: Connect until a gateway answers, then the session list with a stack of destinations. A
 // hui://open?path=<path> link is resolved by the core's resolveNavigation, as the web resolves its address bar, and
 // replaces that stack; a link that arrives before the gateway connects opens once it does. The open session is kept in
-// the preferences, so the app opens it again when it restarts, as a reload keeps the web's address.
+// the preferences with its gateway's address, so the app opens it again when it restarts against the same gateway, as
+// a reload keeps the web's address.
 import SwiftUI
 
 struct RootView: View {
@@ -9,7 +10,7 @@ struct RootView: View {
     @State private var gateway = GatewayModel()
     @State private var sessions: SessionsModel
     @State private var path: [String] = []
-    @AppStorage("openSession") private var openSession = ""
+    @AppStorage("HUIOpenSession") private var openSession = ""
 
     init(core: HUICore) {
         self.core = core
@@ -37,9 +38,9 @@ struct RootView: View {
         .onChange(of: gateway.state) {
             guard gateway.state == .connected, let client = gateway.client else { return }
             sessions.start(client)
-            if path.isEmpty, !openSession.isEmpty { path = [openSession] }
+            if path.isEmpty, let id = openSession.split(separator: " ").last, openSession == "\(gateway.url) \(id)" { path = [String(id)] }
         }
-        .onChange(of: path) { openSession = path.last ?? "" }
+        .onChange(of: path) { openSession = path.last.map { "\(gateway.url) \($0)" } ?? "" }
         .onOpenURL { url in
             Task { await open(url) }
         }

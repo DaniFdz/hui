@@ -414,9 +414,9 @@ export const test = base.extend<{ hui: Hui }>({
         contextMenu: (target: Locator) => target.longPress(),
         clipboard: async ({ refuse = false } = {}) => {
           if (refuse) notOnIos("clipboard({ refuse: true })")();
-          execFileSync("xcrun", ["simctl", "pbcopy", "HUI iPhone"], { input: "" });
+          execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
         },
-        copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", "HUI iPhone"], { encoding: "utf8" }),
+        copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
       }),
       workspace: receipt.workspace,
       gateway: receipt.url,

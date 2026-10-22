@@ -38,7 +38,6 @@ struct TranscriptItem: Decodable, Equatable, Sendable {
     var role: String?
     var text: String?
     var name: String?
-    var args: API.JSONValue?
     var output: String?
     var status: String?
     var failed: Bool?

@@ -43,6 +43,11 @@ export function readToolOutput(item: Tool): string {
   return item.output?.trim() ? item.output : item.failed || item.status === "failed" ? "No output — tool failed." : "";
 }
 
+export function printable(value: unknown): string {
+  if (typeof value === "string") return value;
+  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
+}
+
 export function displayToolValue(value: unknown): string {
   const text = typeof value === "string" ? value : value === null || value === undefined ? String(value)
     : typeof value === "object" ? JSON.stringify(value) : String(value);

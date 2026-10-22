@@ -98,11 +98,11 @@ struct ToolCardView: View {
 
     private var otherCard: some View {
         let name = item.name ?? "tool"
-        let status = failed ? "Failed" : running ? "Running" : "Completed"
+        let status = item.status == "failed" ? "Failed" : running ? "Running" : "Completed"
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(name).bold()
-                Button(status) { expanded.toggle() }.buttonStyle(.plain).foregroundStyle(failed ? .red : .secondary)
+                Button(status) { expanded.toggle() }.buttonStyle(.plain).foregroundStyle(item.status == "failed" ? .red : .secondary)
                 Spacer()
                 Image(systemName: expanded ? "chevron.up" : "chevron.down").accessibilityHidden(true)
             }
@@ -154,7 +154,7 @@ struct ToolCardView: View {
 
     private func section(_ name: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(name).font(.caption.bold()).accessibilityHidden(true)
+            Text(name).font(.caption.bold()).accessibilityLabel("").accessibilityHidden(true)
             content()
         }
         .accessibilityElement(children: .contain)
