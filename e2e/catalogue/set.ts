@@ -733,7 +733,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Diagnostics shows the gateway's platform and Node version, how many activity events it holds out of its limit and the total tokens used. While loading it says “Reading diagnostics…”, and a failed read shows the error with Retry.",
     spec: ["docs/api.md#get-__huiobservability"],
     surfaces: ["settings-page:diagnostics", "route:GET /__hui/observability"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -742,7 +742,7 @@ const cases: UseCase[] = [
     behaviour: "“Export JSON” in Settings → Diagnostics, or “Export diagnostics” on Logs or Debug, downloads the redacted hui-diagnostics-<date>.json snapshot with the activity, logs, vitals and usage, without prompts, tool payloads, credentials or secret values; a failed export shows its error on the page.",
     spec: ["docs/api.md#get-__huidiagnosticsexport", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/diagnostics/export", "page:logs", "page:debug"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
 ];
