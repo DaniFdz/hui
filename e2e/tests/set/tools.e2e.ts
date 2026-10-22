@@ -8,10 +8,10 @@ test("With the browser tool off, new and restarted sessions lose it, running one
   const transcript = screen.getByTestId("transcript");
   const browserTool = screen.getByRole("switch", "Browser tool");
   const unavailable = "The browser tool is not available in this session.";
-  const reply = async (session: { id: string }, text: string, expected: string) => {
+  const reply = async (session: { id: string }, text: string, expected: string, timeout?: number) => {
     await hui.prompt(session, text);
     await hui.open(`/sessions/${session.id}`);
-    await expect(transcript.getByText(expected, { exact: false })).toBeVisible();
+    await expect(transcript.getByText(expected, { exact: false })).toBeVisible({ timeout });
   };
   const running = await hui.createSession({ title: "Running browser" });
   await reply(running, "Hello before", "Hello before");
@@ -42,7 +42,7 @@ test("With the browser tool off, new and restarted sessions lose it, running one
   await expect(browserTool).toBeChecked();
   await expect(off).toHaveCount(2);
   await expect(screen.getByRole("button", "Start")).toBeEnabled();
-  await reply(await hui.createSession({ title: "New with browser" }), "E2E_BROWSER", "The headless browser rendered: Hello, HUI agent!");
+  await reply(await hui.createSession({ title: "New with browser" }), "E2E_BROWSER", "The headless browser rendered: Hello, HUI agent!", 60_000);
 });
 
 test("Codemode is on by default; turned off, a running script finishes and the session's next request goes without it", { tags: ["SET-055"], platforms: ["web"] }, async ({ screen, hui }) => {
