@@ -10,7 +10,8 @@
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
  * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
- * included, with the app's own `Origin` and `Host`; it follows `hui://open` links; each test starts by deleting only the app's preferences through `defaults`, and
+ * included, with the app's own `Origin` and `Host`; it follows `hui://open` links and reads the address the app shows
+ * from its app-route marker; each test starts by deleting only the app's preferences through `defaults`, and
  * `clearState` deletes them too before the engine empties the data container, because `cfprefsd` would otherwise hand
  * the relaunched app the deleted values; it reads a container's text as its texts and labels in order, since a device
  * reports no text for a container, and what the app copied from the simulator's pasteboard; steps only the web has
@@ -527,6 +528,7 @@ export const test = base.extend<{ hui: Hui }>({
         },
         copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
         intercept: async (method: string, path: RegExp) => proxy!.intercept(method, path),
+        url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         ...iosSteps,
       }),
       workspace: receipt.workspace,

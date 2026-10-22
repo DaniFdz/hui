@@ -2,7 +2,8 @@
 // hui://open?path=<path> link is resolved by the core's resolveNavigation, as the web resolves its address bar, and
 // replaces that stack; a link that arrives before the gateway connects opens once it does. The open session is kept in
 // the preferences with its gateway's address, so the app opens it again when it restarts against the same gateway, as
-// a reload keeps the web's address.
+// a reload keeps the web's address. The screen's container carries the address it shows as its accessibility value,
+// under the identifier app-route, for tests; VoiceOver doesn't speak a container's value.
 import SwiftUI
 
 struct RootView: View {
@@ -32,6 +33,9 @@ struct RootView: View {
                 ConnectView(gateway: gateway)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("app-route")
+        .accessibilityValue(path.last.map { "/sessions/\($0)" } ?? "/")
         .task {
             if !gateway.url.isEmpty { await gateway.connect() }
         }
