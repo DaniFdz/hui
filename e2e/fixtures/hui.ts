@@ -1,23 +1,16 @@
 /**
- * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
- * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
- * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
- * point instead of the input), tapping a control with a finger, which unlike a mouse doesn't hover it first, attaching
- * files from `files/` or made up of a name and a size, reading what a download saved or what the page copied, opening a
- * session's menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and whether its unread dot
- * has the accent colour, and reading how a piece of the screen looks (its text colour and the colour behind it as RGB,
- * its opacity, its font families, those of HUI's bundled faces that have loaded to draw its text, its text size in
- * pixels and the colour of the focus ring it shows when reached from the keyboard), a disposable Git repository (on
- * `feature/current`, with `main`, a `release/1.0` at its own commit and a `sub` directory) that it removes at teardown,
- * the files of the gateway's state and workspace that hold a text, the secret directories the gateway wrote, a restart
- * of the gateway against the same state and port, the end of its PI worker processes, and, on the web, closing the
- * page's WebSockets as a dropped connection would. The web page never opens Vite's development socket, whose client
- * reloads the page when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at
- * the gateway, follows a `hui://open` link instead of loading a page, and clears the app's preferences through
- * `defaults` before the engine empties its data container, because `cfprefsd` would otherwise hand the relaunched app
- * the deleted values; the web-only steps throw. Test files import `test` from here, never from `e2e`, and never read
- * `platform`, `device` or `browser` themselves.
+ * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
+ * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
+ * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, searches
+ * of the gateway's state and secret directories, and every step whose gesture or reading differs per platform: taps,
+ * holds, context menus, switches (a Web Awesome switch draws its track over its input, so the web taps the point),
+ * attachments, sideways scrolling, downloads, the clipboard, status glyphs, how a piece of the screen looks, and on the
+ * web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control and the command palette's
+ * chord. The web page never opens Vite's development socket, whose client reloads the page when the gateway restarts,
+ * which no installed gateway does. On iOS it relaunches the app pointed at the gateway, follows `hui://open` links, and
+ * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
+ * would otherwise hand the relaunched app the deleted values; steps only the web has throw there. Test files import
+ * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -37,6 +30,7 @@ type Intercepted = {
   arrived(): Promise<void>;
   deliver(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
+  answer(json: string): Promise<void>;
   deliverAndDrop(): Promise<void>;
 };
 
@@ -55,7 +49,13 @@ export type Hui = {
   reload(): Promise<void>;
   clearState(): Promise<void>;
   url(): Promise<string>;
-  phoneScreen(): Promise<{ width: number; height: number }>;
+  phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
+  wideScreen(): Promise<void>;
+  paletteChord(): Promise<void>;
+  back(): Promise<void>;
+  forward(): Promise<void>;
+  overflowsSideways(): Promise<boolean>;
+  reachable(target: Locator): Promise<boolean>;
   clipboard(options?: { refuse?: boolean }): Promise<void>;
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
@@ -64,13 +64,15 @@ export type Hui = {
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
-  look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
+  look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
+  overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
   touchTap(target: Locator): Promise<void>;
+  scrollSideways(target: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
@@ -170,15 +172,47 @@ export const test = base.extend<{ hui: Hui }>({
           if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
           page.huiCopied = text;
         };
+        navigator.clipboard.write = async (items) => {
+          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+          const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
+          page.huiCopied = blobs.map((blob) => blob.type).join(",");
+        };
         if (refused) document.execCommand = () => false;
       }, refuse),
       copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
-      phoneScreen: async () => {
-        const phone = { width: 390, height: 844 };
+      phoneScreen: async (orientation = "portrait") => {
+        const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
         await browser().setViewport(phone);
         return phone;
       },
+      overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
+        .some((element) => element.scrollWidth > element.clientWidth)),
+      reachable: async (target) => {
+        await target.scrollIntoView();
+        const box = await target.boundingBox();
+        if (!box) throw new Error("reachable: the target lays out no box");
+        return browser().evaluate(({ x, y, width, height }) => {
+          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+          const [cx, cy] = [x + width / 2, y + height / 2];
+          let hit = document.elementFromPoint(cx, cy);
+          for (let inner = hit?.shadowRoot?.elementFromPoint(cx, cy); inner && inner !== hit; inner = hit.shadowRoot?.elementFromPoint(cx, cy)) hit = inner;
+          let matched = false;
+          for (let element = hit; element; element = element.parentElement ?? (element.getRootNode() as ShadowRoot).host ?? null) {
+            if (element.hasAttribute("inert")) return false;
+            const rect = element.getBoundingClientRect();
+            matched ||= same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
+          }
+          return matched;
+        }, box);
+      },
+      wideScreen: () => browser().setViewport({ width: 1440, height: 900 }),
+      paletteChord: async () => {
+        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+        await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
+      },
+      back: () => browser().back(),
+      forward: () => browser().forward(),
       peek: (target) => target.hover(),
       sessionMenu: async (title) => {
         const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
@@ -208,6 +242,7 @@ export const test = base.extend<{ hui: Hui }>({
         accent.remove();
         return shown;
       }, title),
+      overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
       look: async (target) => {
@@ -244,6 +279,8 @@ export const test = base.extend<{ hui: Hui }>({
             loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
               && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
             size: Number.parseFloat(style.fontSize),
+            weight: Number(style.fontWeight),
+            align: style.textAlign,
             ring: !element.matches(":focus-visible") ? null
               : style.outlineStyle !== "none" ? rgb(style.outlineColor)
               : outerShadow === "none" ? null : rgb(outerShadow),
@@ -299,6 +336,12 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      scrollSideways: async (target) => {
+        const box = await target.boundingBox();
+        if (!box) throw new Error("scrollSideways: the target is not on screen");
+        await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
+        await browser().mouse.wheel(240, 0);
+      },
       stored: async (text) => {
         const root = dirname(receipt.workspace);
         const files = (await readdir(root, { recursive: true, withFileTypes: true }))
@@ -341,6 +384,7 @@ export const test = base.extend<{ hui: Hui }>({
           arrived: () => arrival,
           deliver: () => settle((route) => route.continue()),
           reject: (status, error) => settle((route) => route.fulfill({ status, json: { error } })),
+          answer: (json) => settle((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
           deliverAndDrop: () => settle(async (route) => {
             const response = await fetch(route.request.url, {
               method,

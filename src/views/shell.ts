@@ -737,6 +737,7 @@ function kanbanNavItem(props: ShellProps) {
   return html`<a
     href=${navigationPath({ kind: "kanban" })}
     class="nav-item sidebar-nav__item ${active ? "nav-item--active" : ""}"
+    data-testid="nav-item"
     aria-current=${active ? "page" : "false"}
     @click=${(event: MouseEvent) => {
       if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -838,7 +839,7 @@ export function renderSidebar(props: ShellProps) {
       }}
     >
         <div class="sidebar-shell sidebar-drawer__body">
-          <div class="sidebar-brand">
+          <div class="sidebar-brand" data-testid="sidebar-header">
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
             <div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>
           </div>
@@ -863,6 +864,7 @@ export function renderSidebar(props: ShellProps) {
                 <a
                   href=${navigationPath({ kind: "page", page })}
                   class="nav-item sidebar-nav__item ${props.view === "surface" && props.activePage?.id === page.id ? "nav-item--active" : ""}"
+                  data-testid="nav-item"
                   aria-current=${props.view === "surface" && props.activePage?.id === page.id ? "page" : "false"}
                   @click=${(event: MouseEvent) => {
                     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -878,6 +880,7 @@ export function renderSidebar(props: ShellProps) {
             <a
               href="/settings/appearance"
               class="nav-item sidebar-nav__item sidebar-nav__settings"
+              data-testid="nav-item"
               aria-current="false"
               @click=${(event: MouseEvent) => {
                 if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;

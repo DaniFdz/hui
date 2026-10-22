@@ -462,7 +462,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#put-__huisettings"],
     surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "route:PUT /__hui/settings"],
     journeys: ["model-routing"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -482,7 +482,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#pi-package-and-skill-mutations", "docs/api.md#post-__huisessionsidbtw"],
     surfaces: ["setting:models.utility", "command:btw", "route:POST /__hui/sessions/:id/btw"],
     journeys: ["model-routing"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -522,7 +522,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["settings-page:tools", "setting:browser.enabled"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -551,7 +551,7 @@ const cases: UseCase[] = [
     behaviour: "With “Codemode tool” off, sessions stop being offered codemode from their next request while a running script finishes; it is on by default.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["setting:codemode.enabled"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -706,7 +706,7 @@ const cases: UseCase[] = [
     behaviour: "Delete in a task's actions menu removes it from Tasks while its past runs stay in Run history; with none left the list reads “Nothing scheduled”. Deleting a task whose run is in flight, or any other refused action, shows its reason above the list and keeps the task.",
     spec: ["docs/api.md#delete-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:DELETE /__hui/automation/tasks/:id", "page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -733,7 +733,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Diagnostics shows the gateway's platform and Node version, how many activity events it holds out of its limit and the total tokens used. While loading it says “Reading diagnostics…”, and a failed read shows the error with Retry.",
     spec: ["docs/api.md#get-__huiobservability"],
     surfaces: ["settings-page:diagnostics", "route:GET /__hui/observability"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -742,7 +742,7 @@ const cases: UseCase[] = [
     behaviour: "“Export JSON” in Settings → Diagnostics, or “Export diagnostics” on Logs or Debug, downloads the redacted hui-diagnostics-<date>.json snapshot with the activity, logs, vitals and usage, without prompts, tool payloads, credentials or secret values; a failed export shows its error on the page.",
     spec: ["docs/api.md#get-__huidiagnosticsexport", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/diagnostics/export", "page:logs", "page:debug"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
 ];

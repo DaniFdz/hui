@@ -410,8 +410,8 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   // The header's only control is the collapse toggle, first in the top row: New session
   // and search left it on 2026-10-06 (owner). New sessions start from a group's + or
   // the Ctrl+K palette, which also finds sessions; the mobile top bar keeps its search.
-  const header = source.slice(source.indexOf('<div class="sidebar-brand">'), source.indexOf('<label class="sidebar-search'));
-  assert.match(header, /^<div class="sidebar-brand">\s*<button type="button" class="[^"]*sidebar-brand__collapse"/u);
+  const header = source.slice(source.indexOf('<div class="sidebar-brand"'), source.indexOf('<label class="sidebar-search'));
+  assert.match(header, /^<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"/u);
   assert.deepEqual([...header.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["Collapse sidebar"]);
   assert.doesNotMatch(source, /sidebar-brand__(new-thread|search|utilities|actions)/u);
   assert.match(source, /aria-label=\$\{`New session in \$\{sessionGroupLabel\(group\.label\)\}`\}/u);
@@ -438,7 +438,7 @@ test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only 
   // The top row: the collapse toggle, then the switch. Nothing sits above them, and each
   // tab has a sidebar of its own below.
   const top = sidebar.slice(at('<div class="sidebar-shell sidebar-drawer__body">'), at('<label class="sidebar-search'));
-  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<\/div>\s*$/u);
+  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<\/div>\s*$/u);
   assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
   assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
   // Bots: no primary navigation, and the toolbar names the roster.

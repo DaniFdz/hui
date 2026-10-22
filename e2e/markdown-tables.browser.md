@@ -19,12 +19,10 @@ Verified 2026-09-24 using the real HUI gateway and PI 0.73.1.
 
 ## Observed
 
-- At 1440×1000, both tables render semantic headers/cells, inline code and bold.
-  The six-row usage table retains all numbers; its numeric column aligns right.
-  The wide table demonstrates left, center and right alignment.
-- At 390×844, the usage table fits the 374px content area. The wide table has
-  a 374px viewport and 640px scrollable content. Document overflow is 0px.
-- Clicking the wide table focuses its viewport. ArrowRight scrolls it to 40px;
+The shared e2e suite covers both tables' cells, alignment and phone layout
+(`e2e/tests/rich/tables.e2e.ts`, RICH-004, RICH-005); this journey keeps the keyboard.
+
+- At 390×844, clicking the wide table focuses its viewport. ArrowRight scrolls it to 40px;
   the document remains within the viewport. Native scrolling is asynchronous.
 - Browser page errors and console error entries are empty.
 
