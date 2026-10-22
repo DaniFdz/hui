@@ -16,7 +16,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -26,7 +26,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page", "nav:kanban", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -36,7 +36,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT, "docs/api.md#gateway-lifecycle-boundary"],
     surfaces: ["nav:page", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24", "webawesome-controls"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -46,7 +46,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -56,7 +56,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, "docs/api.md#gateway-lifecycle-boundary"],
     surfaces: ["nav:session", "nav:bot", "route:POST /__hui/sessions/:id/open"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -66,7 +66,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: ["nav:home", "nav:page", "nav:settings", "nav:session"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -76,7 +76,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "sidebar-toolbar", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

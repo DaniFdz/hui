@@ -25,7 +25,7 @@ const IDS = new Set(["activity", "logs", "debug", "usage"]);
 export function isObservabilitySurface(page: HuiPage): boolean { return IDS.has(page.id); }
 
 function header(props: ObservabilityProps, title: string, subtitle: string, exportable = false) {
-  return html`<header class="content-header content-header--settings"><div><div class="page-title">${title}</div><div class="page-subtitle">${subtitle}</div></div><div class="page-header-actions">${exportable ? html`<button class="btn" type="button" @click=${props.onExport}>Export diagnostics</button>` : nothing}<button class="btn" type="button" ?disabled=${props.loading} @click=${props.onRefresh}>${icons.refresh}<span>${props.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>`;
+  return html`<header class="content-header content-header--settings"><div><div class="page-title" data-testid="page-title">${title}</div><div class="page-subtitle">${subtitle}</div></div><div class="page-header-actions">${exportable ? html`<button class="btn" type="button" @click=${props.onExport}>Export diagnostics</button>` : nothing}<button class="btn" type="button" ?disabled=${props.loading} @click=${props.onRefresh}>${icons.refresh}<span>${props.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>`;
 }
 
 function time(value: string) {

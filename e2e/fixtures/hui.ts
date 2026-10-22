@@ -15,7 +15,9 @@
  * Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway does.
  * On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of loading a page, and
  * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
- * would otherwise hand the relaunched app the deleted values; the web-only steps throw. Test files import `test` from
+ * would otherwise hand the relaunched app the deleted values; the web-only steps throw. On the web it also goes Back and
+ * Forward through the browser's history, sizes the window as a phone held upright or sideways or as the desktop, and
+ * presses the command palette's chord (⌘K where the page runs on an Apple platform, Ctrl+K elsewhere). Test files import `test` from
  * here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -54,7 +56,11 @@ export type Hui = {
   reload(): Promise<void>;
   clearState(): Promise<void>;
   url(): Promise<string>;
-  phoneScreen(): Promise<{ width: number; height: number }>;
+  phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
+  wideScreen(): Promise<void>;
+  back(): Promise<void>;
+  forward(): Promise<void>;
+  paletteChord(): Promise<void>;
   clipboard(options?: { refuse?: boolean }): Promise<void>;
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
@@ -165,10 +171,17 @@ export const test = base.extend<{ hui: Hui }>({
       }, refuse),
       copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
       keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
-      phoneScreen: async () => {
-        const phone = { width: 390, height: 844 };
+      phoneScreen: async (orientation = "portrait") => {
+        const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
         await browser().setViewport(phone);
         return phone;
+      },
+      wideScreen: () => browser().setViewport({ width: 1440, height: 900 }),
+      back: () => browser().back(),
+      forward: () => browser().forward(),
+      paletteChord: async () => {
+        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+        await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
       },
       peek: (target) => target.hover(),
       sessionMenu: async (title) => {
