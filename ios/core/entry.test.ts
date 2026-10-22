@@ -28,13 +28,16 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     reconnectDelay: () => assert.equal(core.reconnectDelay(1, () => 0), 250),
     sessionAccessibleName: () => assert.equal(core.sessionAccessibleName(session), "Build, status idle, tool pi, stage testing"),
     sessionStatusLabel: () => assert.equal(core.sessionStatusLabel({ status: "reconnecting", worker: { id: "w", name: "devbox" } }), "Reconnecting to devbox…"),
+    sessionGlyph: () => assert.deepEqual(json(core.sessionGlyph({ ...session, status: "idle", background: true })),
+      { background: true, busy: true, unread: false, label: "Watcher or subagent running" }),
     sessionStatusText: () => assert.equal(core.sessionStatusText("waiting"), "Waiting for your answer"),
     sessionGroupLabel: () => assert.equal(core.sessionGroupLabel("ungrouped"), "OTHER"),
-    DEFAULT_SIDEBAR_SESSION_OPTIONS: () => assert.equal(core.DEFAULT_SIDEBAR_SESSION_OPTIONS.groupBy, "custom"),
+    normalizeSidebarSessionOptions: () => assert.deepEqual(json(core.normalizeSidebarSessionOptions({ sortBy: "title", status: "nope" })),
+      { groupBy: "custom", sortBy: "title", status: "all", hideEmpty: "filtering" }),
     sessionTreeRows: () => assert.deepEqual(
       json(core.sessionTreeRows([session, { ...session, id: "b", parentId: "a" }], { selectedId: "", toggled: new Set() }).map((row) => [row.session.id, row.collapsed])), [["a", true]]),
     sidebarSessionGroups: () => assert.deepEqual(
-      core.sidebarSessionGroups([{ label: "ungrouped", sessions: [session] }], "", core.DEFAULT_SIDEBAR_SESSION_OPTIONS).map((group) => group.key), ["ungrouped"]),
+      core.sidebarSessionGroups([{ label: "ungrouped", sessions: [session] }], "", core.normalizeSidebarSessionOptions({})).map((group) => group.key), ["ungrouped"]),
     normalizeTranscript: () => assert.deepEqual(json(core.normalizeTranscript([{ id: "u", role: "user", text: "Hi" }]).map((item) => item.kind)), ["message"]),
     reduceTranscript: () => assert.deepEqual(
       json(core.reduceTranscript([], { type: "tool_start", id: "t", name: "read" }).map((item) => [item.kind, item.id])), [["tool", "t"]]),

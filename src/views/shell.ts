@@ -7,7 +7,7 @@ import { sessionMenuShortcuts } from "../lib/session/menu-shortcuts.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
 import { type SessionGroup, type SessionView } from "../api/sessions.ts";
-import { sessionGroupLabel, storedSessionGroup, unreachableHost } from "../lib/session/sessions.ts";
+import { sessionGroupLabel, storedSessionGroup } from "../lib/session/sessions.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/session/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
@@ -21,8 +21,7 @@ import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
 import { primaryJiraIssue } from "../lib/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
-import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
-import { sessionAccessibleName } from "../lib/session/labels.ts";
+import { sessionAccessibleName, sessionGlyph } from "../lib/session/labels.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bots/roster.ts";
@@ -379,17 +378,10 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   const linkedJira = session.jiraIssues?.at(-1);
   const canDrag = props.sessionMovePendingId !== session.id;
   const dragging = props.draggingSessionId === session.id;
-  const away = unreachableHost(session);
-  const attention = session.status === "waiting"
-    ? { label: "Waiting for your answer", icon: icons.hand, tone: "question" }
-    : session.status === "error"
-      ? { label: "Session failed", icon: icons.alertTriangle, tone: "error" }
-      // Calm, not a failure: the session goes on on its machine.
-      : away ? { label: away.status, icon: icons.plug, tone: "away" } : undefined;
-  // Also shown as running while a watcher or a subagent below it still works.
-  const background = session.status !== "running" && session.background === true && !attention;
-  const busy = session.status === "running" || background;
-  const unread = session.unread === true && !attention && !session.icon && !busy;
+  const glyph = sessionGlyph(session);
+  const icon = { question: icons.hand, error: icons.alertTriangle, away: icons.plug };
+  const attention = glyph.attention && { ...glyph.attention, icon: icon[glyph.attention.tone] };
+  const { busy, unread } = glyph;
   // The Jira mark sits in the leading status column, aligned with child
   // status glyphs. Live status (attention, running, child result) takes the
   // column while it applies; the Jira mark outranks a custom icon.
@@ -433,7 +425,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           props.onSelectSession(session);
         }}
       >
-        <span class="sidebar-session-indicator" title=${attention?.label ?? (background ? "Watcher or subagent running" : session.creating ? worktreeProgressLabel(session.creating) : unread ? "Unread activity" : nothing)} aria-hidden="true">
+        <span class="sidebar-session-indicator" title=${glyph.label || nothing} aria-hidden="true">
           ${attention ? html`<span class="session-glyph"><span class="session-glyph__content"><span class="sidebar-session-attention__icon sidebar-session-attention__icon--${attention.tone}">${attention.icon}</span></span></span>` : nothing}
           ${!attention && !busy && depth > 0 && session.subagent ? renderChildStatus(session.subagent.status) : nothing}
           ${busy || session.creating ? html`<span class="session-glyph session-glyph--running session-glyph--bare"><span class="session-glyph__content"></span><span class="session-glyph__ring"></span></span>` : nothing}

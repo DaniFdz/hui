@@ -5,15 +5,16 @@
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
- * clipboard, status glyphs, how a piece of the screen looks, and on the web the window's size, Back and Forward,
- * sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never opens Vite's
- * development socket, whose client reloads the page when the gateway restarts, which no installed gateway does. On iOS
- * it relaunches the app pointed at the gateway and follows `hui://open` links; each test starts by deleting only the
- * app's preferences through `defaults`, and `clearState` deletes them too before the engine empties the data container,
- * because `cfprefsd` would otherwise hand the relaunched app the deleted values; it reads a container's text as its
- * texts and labels in order, since a device reports no text for a container, and what the app copied from the
- * simulator's pasteboard; steps only the web has throw there. Test files import `test` from here, never from `e2e`, and
- * never read `platform`, `device` or `browser` themselves.
+ * clipboard, status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how a piece of the
+ * screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
+ * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
+ * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at the gateway and
+ * follows `hui://open` links; each test starts by deleting only the app's preferences through `defaults`, and
+ * `clearState` deletes them too before the engine empties the data container, because `cfprefsd` would otherwise hand
+ * the relaunched app the deleted values; it reads a container's text as its texts and labels in order, since a device
+ * reports no text for a container, and what the app copied from the simulator's pasteboard; steps only the web has
+ * throw there. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
+ * themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -421,6 +422,16 @@ export const test = base.extend<{ hui: Hui }>({
       },
     };
 
+    const iosSteps: Partial<typeof webSteps> = {
+      glyph: async (title) => {
+        const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
+        await expect(row).toHaveCount(1);
+        const glyph = row.getByTestId("session-glyph");
+        if (await glyph.count() === 0) return { label: "", animated: false };
+        return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
+      },
+    };
+
     await use({
       ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
       ...(web ? {} : {
@@ -436,6 +447,7 @@ export const test = base.extend<{ hui: Hui }>({
           execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
         },
         copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
+        ...iosSteps,
       }),
       workspace: receipt.workspace,
       gateway: receipt.url,

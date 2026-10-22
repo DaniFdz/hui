@@ -54,9 +54,10 @@ empties its data container through the engine for `hui.clearState` (a test never
 deleted preferences `cfprefsd` can still hand the relaunched app), long-presses for `hui.hold` and `hui.contextMenu`,
 empties and reads the simulator's pasteboard (`simctl pbcopy`, `pbpaste`) for `hui.clipboard` and `hui.copied`, and
 throws "not on iOS yet" from the steps only the web engine has (hover, request interception, a refused clipboard,
-glyphs, looks and the rest), so a test that needs one keeps `platforms: ['web']`. A device reports no text for a container, only its label, so a
-test reads a container's text in order with `hui.textOf(container)` (on iOS its texts and control labels joined)
-rather than `toHaveText` on the container.
+looks and the rest), so a test that needs one keeps `platforms: ['web']`. A device reports no text for a container,
+only its label, so a test reads a container's text in order with `hui.textOf(container)` (on iOS its texts and control
+labels joined) rather than `toHaveText` on the container. On iOS `hui.glyph` reads the row's session-glyph label and
+whether it is a spinner.
 
 - Import `test` from `fixtures/hui.ts` and `expect` from `e2e`. The fixture owns the gateway's API setup and cleanup,
   the fixture provider's barriers and the steps that differ per platform; a test never reads `platform`, `device` or

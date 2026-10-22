@@ -14,7 +14,7 @@ private let listRevision = 1792610058661
 struct SessionsModelTests {
     @Test func opensTheStreamBeforeLoadingTheList() async throws {
         let (model, host) = try start([snapshot([notes: "idle", login: "idle"])])
-        try await until { model.loaded && model.statusLabels[notes] == "Idle" }
+        try await until { model.loaded && model.session(notes)?.status == .idle }
         #expect(GatewayStub.paths(host) == ["/__hui/sessions/events", "/__hui/sessions"])
     }
 
@@ -24,13 +24,14 @@ struct SessionsModelTests {
             try upsert(revision: listRevision + 1, notes, title: "Renamed", status: .idle),
         ])
         try await until { row(model, notes)?.title == "Renamed" }
-        #expect(row(model, notes)?.statusText == "Running")
+        #expect(model.session(notes)?.status == .running)
+        #expect(row(model, notes)?.glyph.busy == true)
     }
 
     @Test func aSessionMissingFromTheSnapshotIsIdle() async throws {
         let (model, _) = try start([snapshot([notes: "running"])])
-        try await until { row(model, notes)?.statusText == "Running" }
-        #expect(row(model, login)?.statusText == "Idle")
+        try await until { model.session(notes)?.status == .running }
+        #expect(model.session(login)?.status == .idle)
     }
 
     @Test func aGroupsFrameRemovesSessions() async throws {
@@ -40,7 +41,6 @@ struct SessionsModelTests {
         ])
         try await until { model.groups.flatMap(\.rows).map(\.id) == [notes] }
         #expect(model.session(login) == nil)
-        #expect(model.statusLabels[login] == nil)
     }
 
     @Test func anOlderRevisionIsIgnored() async throws {
@@ -49,7 +49,7 @@ struct SessionsModelTests {
             try upsert(revision: listRevision - 1, notes, title: "Stale", status: .idle),
             #"event: status\#ndata: {"id":"\#(login)","status":"running"}"#,
         ])
-        try await until { row(model, login)?.statusText == "Running" }
+        try await until { model.session(login)?.status == .running }
         #expect(row(model, notes)?.title == "Write release notes")
     }
 

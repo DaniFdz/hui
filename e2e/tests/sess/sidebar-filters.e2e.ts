@@ -54,8 +54,9 @@ test("Search sessions filters by title, directory and group, opens collapsed gro
   await expect(search).toBeFocused();
 });
 
-test("Sort by orders rows by Created, Last updated, Name or Stage with pinned first, survives a reload and leaves the registry alone", { tags: ["SESS-020"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const order = () => screen.getByLabel(/^(Alpha|Bravo|Charlie|Delta|Echo) sort, status/u).allTextContents();
+test("Sort by orders rows by Created, Last updated, Name or Stage with pinned first, survives a reload and leaves the registry alone", { tags: ["SESS-020"] }, async ({ screen, hui }) => {
+  const title = /^(Alpha|Bravo|Charlie|Delta|Echo) sort/u;
+  const order = async () => (await screen.getByLabel(new RegExp(`${title.source}, status`, "u")).allTextContents()).map((text) => title.exec(text)?.[0]);
   const registry = async () => (await hui.api<{ groups: { label: string; sessions: { id: string }[] }[] }>("GET", "/__hui/sessions"))
     .groups.map(({ label, sessions }) => [label, sessions.map(({ id }) => id)]);
   const bravo = await hui.createSession({ title: "Bravo sort" });
@@ -128,7 +129,7 @@ test("Group by Project splits rows by directory with only New session, None list
   expect(listed.groups.find(({ sessions }) => sessions.some(({ id }) => id === first.id))?.label).toBe("Atlas");
 });
 
-test("Status shows only sessions in that live status, announces when none match with New group still there, and Hide empty groups follows its choice", { tags: ["SESS-022"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Status shows only sessions in that live status, announces when none match with New group still there, and Hide empty groups follows its choice", { tags: ["SESS-022"] }, async ({ screen, hui }) => {
   const row = (title: string) => screen.getByTestId("session-row").filter({ hasText: title });
   const empty = screen.getByText("EMPTY SHELF", { exact: true, visible: true });
   const busy = await hui.createSession({ title: "Busy one" });

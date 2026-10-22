@@ -1,7 +1,8 @@
 // The live session list, as the web's sessions controller owns it: opens GET /__hui/sessions/events, loads
 // GET /__hui/sessions, then reads the stream for statuses and list changes, reconnecting with the core's backoff. The
 // stream's statuses win over every list and upsert once its snapshot arrived. Rows are projected by the core with the
-// web sidebar's grouping, subagent folding, labels and accessible names.
+// web sidebar's Filter & sort options (kept on the device as the web keeps them in the browser), grouping,
+// subagent folding, labels and accessible names.
 import Foundation
 import Observation
 
@@ -12,7 +13,7 @@ final class SessionsModel {
         var id: String
         var title: String
         var accessibleName: String
-        var statusText: String
+        var glyph: SessionGlyph
     }
 
     struct Group: Identifiable, Equatable {
@@ -22,9 +23,15 @@ final class SessionsModel {
     }
 
     private(set) var groups: [Group] = []
-    private(set) var statusLabels: [String: String] = [:]
     private(set) var loaded = false
     private(set) var error: String?
+    private(set) var options: SidebarOptions?
+
+    var filtering: Bool {
+        options.map { $0.status != "all" } ?? false
+    }
+
+    private static let optionsKey = "hui.sidebar-session-options"
 
     private let core: HUICore
     private var revision = -Double.infinity
@@ -42,6 +49,25 @@ final class SessionsModel {
         sessions[id]
     }
 
+    func setOptions(_ options: SidebarOptions) {
+        self.options = options
+        UserDefaults.standard.set(String(decoding: (try? JSONEncoder().encode(options)) ?? Data(), as: UTF8.self), forKey: Self.optionsKey)
+        reproject()
+    }
+
+    func createGroup(_ name: String, client: GatewayClient) async {
+        do {
+            let _: API.JSONValue = try await client.post("/__hui/session-groups", body: ["name": name])
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func reproject() {
+        guard loaded else { return }
+        Task { await project() }
+    }
+
     func start(_ client: GatewayClient) {
         stream?.cancel()
         revision = -.infinity
@@ -50,6 +76,10 @@ final class SessionsModel {
     }
 
     private func run(_ client: GatewayClient) async {
+        if options == nil {
+            options = try? await core.sidebarOptions(stored: UserDefaults.standard.string(forKey: Self.optionsKey))
+            if options == nil { options = try? await core.sidebarOptions(stored: nil) }
+        }
         var attempt = 0
         while !Task.isCancelled {
             do {
@@ -137,18 +167,15 @@ final class SessionsModel {
             API.SessionGroup(label: group.label, cwd: group.cwd, workspaceMode: group.workspaceMode.map { .init(rawValue: $0.rawValue) }, baseRef: group.baseRef, sessions: group.ids.compactMap { sessions[$0] })
         }
         do {
-            var labels: [String: String] = [:]
-            for session in sessions.values { labels[session.id] = try await core.sessionStatusLabel(session) }
             var projected: [Group] = []
-            for group in try await core.sidebarSessionGroups(input) {
+            for group in try await core.sidebarSessionGroups(input, options: options) {
                 var rows: [Row] = []
                 for session in try await core.foldedSessionTree(group.sessions) {
-                    rows.append(Row(id: session.id, title: session.title, accessibleName: try await core.sessionAccessibleName(session), statusText: labels[session.id] ?? ""))
+                    rows.append(Row(id: session.id, title: session.title, accessibleName: try await core.sessionAccessibleName(session), glyph: try await core.sessionGlyph(session)))
                 }
                 projected.append(Group(id: group.key, label: try await core.sessionGroupLabel(group.label), rows: rows))
             }
             guard current == projection else { return }
-            statusLabels = labels
             groups = projected
             loaded = true
         } catch {
