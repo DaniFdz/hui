@@ -549,7 +549,8 @@ export const test = base.extend<{ hui: Hui }>({
         intercept: async (method, path) => proxy!.intercept(method, path),
         url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         scrollTo: async (within, target) => {
-          const shown = async () => (await within.getByText(/\S/u).allTextContents()).join("\n");
+          const bar = within.getByLabel(/^Vertical scroll bar/u).first();
+          const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
           for (const direction of ["down", "up"] as const) {
             for (let swipes = 0, before = "", now = await shown(); now !== before && swipes < MAX_SCROLL_SWIPES; swipes++, before = now, now = await shown()) {
               if (await target.count() > 0) return;

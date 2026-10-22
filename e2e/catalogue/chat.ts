@@ -222,7 +222,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/resume"],
     journeys: ["rewind-continue", "continue-error-toast"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-023",
