@@ -67,6 +67,7 @@ export type Hui = {
   wideScreen(): Promise<void>;
   paletteChord(): Promise<void>;
   back(): Promise<void>;
+  sessionList(): Promise<void>;
   forward(): Promise<void>;
   overflowsSideways(): Promise<boolean>;
   reachable(target: Locator): Promise<boolean>;
@@ -342,6 +343,7 @@ export const test = base.extend<{ hui: Hui }>({
           await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
         },
         back: () => browser().back(),
+        sessionList: async () => {},
         forward: () => browser().forward(),
         peek: (target) => target.hover(),
         sessionMenu: async (title) => {
@@ -532,6 +534,7 @@ export const test = base.extend<{ hui: Hui }>({
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
         },
         keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
+        sessionList: () => fixtures.screen.getByRole("button", "Sessions").tap(),
         hold: async (target, until) => {
           await target.longPress();
           await expect(until).toBeVisible();

@@ -1,7 +1,8 @@
 // The chat screen for one session, named as the web's chat names its controls: the header (the title as a heading,
-// "Session status: …" from the core's label), the transcript of the core's rows anchored at the bottom, activity rows
+// "<runtime> · <GROUP> · <status>" with the status read as "Session status: …" from the core's label, and Continue
+// without a prompt for an SDK-worker session), the transcript of the core's rows anchored at the bottom, activity rows
 // that open to their thinking and tool cards (`ToolCardView`), the working indicator ("Agent activity: …"), the message
-// queue and the composer (Message and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
+// queue and the composer (Message, the "Model: …" menu and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
 // message; touch and hold to enqueue", whose hold menu offers Enqueue). A tap in the transcript puts the keyboard away.
 // While the conversation loads it says so, and a failed load offers Try again. A send reads "Sending…" until the
 // gateway takes it, and one that fails stays marked "Not sent — draft recovered." with its text back in the draft, as
@@ -55,22 +56,35 @@ struct ChatView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(model.session?.title ?? title ?? "")
-                .font(.headline)
-                .accessibilityIdentifier("session-title")
-                .accessibilityAddTraits(.isHeader)
-            if !model.statusLabel.isEmpty {
-                Text(model.statusLabel)
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.session?.title ?? title ?? "")
+                    .font(.headline)
+                    .accessibilityIdentifier("session-title")
+                    .accessibilityAddTraits(.isHeader)
+                if !model.statusLabel.isEmpty {
+                    HStack(spacing: 0) {
+                        Text("\(model.origin) · ")
+                        Text(model.statusLabel).accessibilityLabel("Session status: \(model.statusLabel)")
+                    }
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel("Session status: \(model.statusLabel)")
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("\(model.origin) · \(model.statusLabel)")
+                }
+                if !model.connectionNote.isEmpty {
+                    Text(model.connectionNote).font(.caption).foregroundStyle(.orange)
+                }
             }
-            if !model.connectionNote.isEmpty {
-                Text(model.connectionNote).font(.caption).foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if model.session?.tool == "pi" {
+                Button(model.continuing ? "Continuing…" : "Continue", systemImage: "forward.end") { Task { await model.resume() } }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Continue without a prompt")
+                    .disabled(model.phase != .open || model.streaming || model.continuing || model.rows.isEmpty)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal)
         .padding(.vertical, 8)
     }
@@ -193,6 +207,7 @@ struct ChatView: View {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
             composerControls
+            modelPicker
         }
         .padding()
     }
@@ -229,6 +244,33 @@ struct ChatView: View {
                     }
                     .disabled(model.phase != .open)
             }
+        }
+    }
+
+    @ViewBuilder private var modelPicker: some View {
+        let name = model.currentModel?.name
+        if model.models.isEmpty {
+            Text(name ?? "PI default")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Model: \(name ?? "PI default"). No model catalog available")
+        } else {
+            Menu {
+                ForEach(model.models, id: \.self) { choice in
+                    Button {
+                        Task { await model.selectModel(choice) }
+                    } label: {
+                        if choice.provider == model.currentModel?.provider, choice.id == model.currentModel?.id {
+                            Label("\(choice.name) · \(choice.provider)", systemImage: "checkmark")
+                        } else {
+                            Text("\(choice.name) · \(choice.provider)")
+                        }
+                    }
+                }
+            } label: {
+                Label(name ?? "Select model", systemImage: "chevron.down").font(.caption)
+            }
+            .accessibilityLabel("Model: \(name ?? "Select model")")
         }
     }
 

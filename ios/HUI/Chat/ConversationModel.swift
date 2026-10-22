@@ -8,6 +8,9 @@
 // text back for the draft; a resend the gateway answers as a duplicate drops both local copies, as the web's composer
 // does. While a run streams a send can steer it or queue a follow-up instead, which adds no transcript row; the queue
 // comes from the snapshot and `queue_update` events as the core's rows, and its changes go to `POST …/queue`.
+// The header's origin reads "<runtime> · <GROUP>" as the web's does. The snapshot names the running model, and once the
+// runtime is ready the model list loads, once per model, as the web's conversation controller loads it; choosing one
+// goes to `POST …/model`. An SDK-worker session can continue without a prompt (`POST …/resume`).
 import Foundation
 import Observation
 
@@ -36,6 +39,11 @@ final class ConversationModel {
     private(set) var stopping = false
     private(set) var connectionNote = ""
     private(set) var sendError: String?
+    private(set) var origin = ""
+    private(set) var currentModel: API.RuntimeModel?
+    private(set) var models: [API.RuntimeModel] = []
+    private(set) var continuing = false
+    private var modelsRequested = false
 
     private let client: GatewayClient
     private let core: HUICore
@@ -125,6 +133,27 @@ final class ConversationModel {
             stopping = false
             sendError = error.localizedDescription
         }
+    }
+
+    func selectModel(_ choice: API.RuntimeModel) async {
+        do {
+            let answer: API.SessionModelResponse = try await client.post(path("model"), body: API.SessionModelRequest(provider: choice.provider, modelId: choice.id))
+            if let model = answer.model { currentModel = model }
+        } catch {
+            sendError = error.localizedDescription
+        }
+    }
+
+    func resume() async {
+        guard !continuing, !streaming else { return }
+        continuing = true
+        sendError = nil
+        do {
+            let _: API.JSONValue = try await client.post(path("resume"))
+        } catch {
+            sendError = error.localizedDescription
+        }
+        continuing = false
     }
 
     private func run(_ current: Int) async {
@@ -237,6 +266,7 @@ final class ConversationModel {
         let projection = try await core.transcript(handle, snapshot: snapshot.transcript, streaming: Self.streaming(snapshot.status))
         guard current == generation else { return }
         show(projection)
+        if let model = snapshot.model { currentModel = model }
         try await setQueue(snapshot.queue, current)
         await setStatus(snapshot.status, current)
     }
@@ -249,11 +279,25 @@ final class ConversationModel {
     private func setStatus(_ status: API.SessionStatus, _ current: Int) async {
         guard var session else { return }
         session.status = status
-        guard let label = try? await core.sessionStatusLabel(session), current == generation else { return }
+        guard let label = try? await core.sessionStatusLabel(session), let group = try? await core.sessionGroupLabel(session.group),
+              current == generation else { return }
         self.session = session
         statusLabel = label
+        origin = "\(session.parentId == nil ? session.tool : "Subagent")\(session.worker.map { " on \($0.name)" } ?? "") · \(group)"
+        if [.idle, .running, .waiting].contains(status), !modelsRequested {
+            modelsRequested = true
+            Task { await loadModels(current) }
+        }
         streaming = Self.streaming(status)
         if !streaming { stopping = false }
+    }
+
+    private func loadModels(_ current: Int) async {
+        guard let answer: API.SessionModelsResponse = try? await client.get(path("models")) else {
+            modelsRequested = false
+            return
+        }
+        if current == generation { models = answer.models }
     }
 
     private func show(_ projection: ChatProjection) {

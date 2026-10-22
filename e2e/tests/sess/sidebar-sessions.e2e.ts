@@ -7,7 +7,7 @@ import { test } from "../../fixtures/hui.ts";
 const heldHelper = `E2E_CALL:${Buffer.from(JSON.stringify({ name: "sessions_spawn", input: { task: "E2E_REPLAY", label: "Held helper" } })).toString("base64url")}`;
 const question = { questions: [{ header: "Pick", question: "Which colour?", options: [{ label: "Red", description: "Warm." }, { label: "Blue", description: "Cool." }] }] };
 
-test("selecting a row loads its conversation with its header and models, a failed load offers Try again, and the URL opens the same session", { tags: ["SESS-016"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("selecting a row loads its conversation with its header and models, a failed load offers Try again, and the URL opens the same session", { tags: ["SESS-016"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const heading = screen.getByTestId("session-title", { visible: true });
   const target = await hui.createSession({ title: "Open from the sidebar", group: "Inbox" });
@@ -16,6 +16,7 @@ test("selecting a row loads its conversation with its header and models, a faile
 
   await hui.open(`/sessions/${other.id}`);
   await expect(heading).toHaveText("Start elsewhere");
+  await hui.sessionList();
   const row = screen.getByLabel(/^Open from the sidebar, status idle, tool durable, stage investigation/u);
   await expect(row).toBeVisible();
   const load = await hui.intercept("POST", new RegExp(`/__hui/sessions/${target.id}/open$`, "u"));
