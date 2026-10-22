@@ -25,6 +25,7 @@ test("/reload lists skills and commands added since the session started and keep
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await expect(screen.getByLabel("Model: HUI SDK Fixture", { visible: true })).toBeVisible();
   await expect(screen.getByLabel("Thinking: low", { visible: true })).toBeVisible();
 
   await message.fill("/");
