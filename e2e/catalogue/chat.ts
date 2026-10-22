@@ -210,8 +210,7 @@ const cases: UseCase[] = [
     behaviour: "A failed chat action (a rejected Continue, model switch, queue change, rewind or copy) shows its error in a toast in the top trailing corner, below the header and inside the viewport on a phone, instead of a note in the page. Dismiss notification closes it, and repeating the action shows it again.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    journeys: ["continue-error-toast"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -220,7 +219,7 @@ const cases: UseCase[] = [
     behaviour: "A session on PI's SDK worker shows Continue (\"Continue without a prompt\") in the header, disabled while the transcript is empty or a run is busy. When the branch already ends with a finished reply, it sends one explicit continuation prompt (\"Continue from where you left off. …\") and the agent answers it. A Pi Durable session cannot continue without a prompt, so its header has no Continue.",
     spec: ["SPEC.md#behaviour", "SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: ["route:POST /__hui/sessions/:id/resume"],
-    journeys: ["rewind-continue", "continue-error-toast"],
+    journeys: ["rewind-continue"],
     web: "required",
     ios: "backlog",
   },
