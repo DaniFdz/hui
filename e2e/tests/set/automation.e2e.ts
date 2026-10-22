@@ -26,12 +26,16 @@ test("run now shows the run settle in Run history, refuses a second run and a de
   await expect(manual.first()).not.toContainText("finished");
   await expect(screen.getByRole("button", "Cancel")).toBeVisible();
 
+  const aboveTheList = async (reason: string) => {
+    await expect(screen.getByText(reason)).toBeVisible();
+    await expect(screen.getByRole("button", "Edit Held")).toBeVisible();
+    expect((await screen.getByText(reason).boundingBox())!.y).toBeLessThan((await screen.getByRole("button", "Edit Held").boundingBox())!.y);
+  };
   await runNow.tap();
-  await expect(screen.getByText("This task is already running.")).toBeVisible();
+  await aboveTheList("This task is already running.");
   await screen.getByRole("button", "Actions for Held").tap();
   await screen.getByText("Delete", { exact: true }).tap();
-  await expect(screen.getByText("Stop the active run before deleting this task.")).toBeVisible();
-  await expect(screen.getByRole("button", "Edit Held")).toBeVisible();
+  await aboveTheList("Stop the active run before deleting this task.");
 
   await hui.provider.release();
   await expect(completed).toHaveCount(completedBefore + 2);

@@ -36,7 +36,7 @@ test("Export JSON and Logs' and Debug's Export diagnostics download the snapshot
     const snapshot = JSON.parse(file.text) as Record<string, unknown>;
     expect(Object.keys(snapshot)).toEqual(expect.arrayContaining(["activity", "logs", "debug", "usage"]));
     expect(snapshot["debug"]).toEqual(expect.objectContaining({ memory: expect.any(Object), uptimeSeconds: expect.any(Number) }));
-    for (const kept of [secret, "hunter2", payload, "e2e-not-a-secret"]) expect(file.text).not.toContain(kept);
+    for (const kept of [secret, "hunter2", "out of exports", payload, "e2e-not-a-secret"]) expect(file.text).not.toContain(kept);
   };
 
   const refused = async (button: string, error: string) => {
