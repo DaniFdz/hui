@@ -1,8 +1,9 @@
 # Browser journey: PI session lifecycle
 
-This is the first repeatable Browser-tool journey for HUI. It proves that a
-session waits for PI to become ready before model discovery, reports the known
-authentication failure honestly, and leaves Home clean after deletion.
+This is the first repeatable Browser-tool journey for HUI. The shared tests in
+`e2e/tests/sess/` now prove starting, opening and removing a session. What is
+left here is how a new session reports PI's authentication failure (SESS-062)
+and how another tab sees a removed session end (SESS-066).
 
 ## Isolated setup
 
@@ -46,28 +47,16 @@ openclaw browser errors --target-id "$TARGET" --clear --json
 ## Visible-control journey
 
 1. Snapshot the page with `openclaw browser snapshot --target-id "$TARGET"
-   --format ai`. Assert that Home shows **Project directory**, **Title
-   optional**, **Runtime**, and **Start session**.
-2. Fill **Project directory** with the exact isolated path
-   `$HUI_E2E_ROOT/workspace`. Fill **Title optional** with
-   `Browser E2E disposable session`. Leave **Runtime** set to `pi`.
-3. Click **Start session**. Do not call a session API directly.
-4. Synchronize by taking fresh snapshots until the session metadata reads
-   `pi · ungrouped · Idle`. Assert that the sidebar count is `1 sessions`, the
-   title is visible, and the message composer is enabled.
-5. Inspect requests filtered by `/models`. Assert exactly one request exists,
-   it occurs after the session opens, and its status is `200`. Take another
-   snapshot, inspect requests again, and assert there is still exactly one
-   model request. An empty model list is allowed with the isolated PI config.
-6. Type `Reply with exactly: HUI_BROWSER_E2E_OK` into **Message** and click
+   --format ai`. Fill **Project directory** with the exact isolated path
+   `$HUI_E2E_ROOT/workspace`, click **Start session** and take fresh snapshots
+   until the session reads `Idle`. Do not call a session API directly. Inspect
+   requests filtered by `/models`: exactly one exists, it occurs after the
+   session opens, and its status is `200`, never a `409` loop.
+2. Type `Reply with exactly: HUI_BROWSER_E2E_OK` into **Message** and click
    **Send**. With the intentionally empty PI agent directory, assert that HUI shows
    PI's missing-provider-credential message and returns the session to
    **Idle**. The expected request is `POST .../prompt` with status `400`; this
    is the environmental authentication blocker, not a product success.
-7. Click **Delete**, assert the dialog says the PI transcript remains, then
-   click **Remove from HUI**. Assert that Home returns to
-   the new-session form, the sidebar reports `0 sessions`, and neither the
-   credential error nor the sent prompt remains visible.
 
 Always take a fresh snapshot after navigation or rerender before reusing an
 element reference. If a reference is stale, recover with a new snapshot; do

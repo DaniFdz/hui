@@ -48,11 +48,11 @@ const cases: UseCase[] = [
   {
     id: "SESS-005",
     title: "Start a session in a group",
-    behaviour: "A group's \"New session in <GROUP>\" opens New Session with that group selected in \"Choose session group\" and the group's directory filled in; the Group picker can change it. The new session appears under that group and the group's count goes up.",
+    behaviour: "A group's \"New session in <GROUP>\" opens New Session with that group selected in \"Choose session group\" and the group's directory filled in; the Group picker can change it. The new session appears under that group.",
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessions"],
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-groups", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -90,7 +90,7 @@ const cases: UseCase[] = [
     behaviour: "Choosing New worktree changes the trigger to \"New worktree from <ref>\" and adds an optional Name (\"Generated from the prompt\") with a note naming the branch it creates under the branch prefix. The session works in a new checkout under HUI's worktrees folder on that branch, started from the chosen ref, and the original checkout is unchanged. Without a name, the utility model writes a short one from the prompt.",
     spec: ["SPEC.md#git-workspace-sessions"],
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "setting:branchPrefix"],
-    journeys: ["checkout-selector", "worktree-progress", "session-groups"],
+    journeys: ["checkout-selector", "worktree-progress"],
     web: "backlog",
     ios: "backlog",
   },
@@ -149,7 +149,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidopen"],
     surfaces: ["nav:session", "route:POST /__hui/sessions/:id/open", "route:GET /__hui/sessions/:id/models"],
     journeys: ["session-lifecycle", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -159,7 +159,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessionsevents", "docs/api.md#get-__huisessions"],
     surfaces: ["route:GET /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-lifecycle", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -175,11 +175,11 @@ const cases: UseCase[] = [
   {
     id: "SESS-019",
     title: "Search the session list",
-    behaviour: "The Search sessions field below the sidebar header filters rows by title, directory, group, pull request and Jira key (\"miami\" leaves Miami appearance); a group whose name matches keeps all its rows, and collapsed groups open while filtering and are collapsed again once the search is cleared. No match shows \"No matching sessions.\" The mobile top bar's Search opens the drawer with the field focused.",
+    behaviour: "The Search sessions field below the sidebar header filters rows by title, directory and group (\"miami\" leaves Miami appearance); a group whose name matches keeps all its rows, and collapsed groups open while filtering and are collapsed again once the search is cleared. No match shows \"No matching sessions.\" The mobile top bar's Search opens the drawer with the field focused.",
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-groups", "session-registry", "sidebar-toolbar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -189,7 +189,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -199,7 +199,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:new-session"],
     journeys: ["session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -209,17 +209,17 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
     id: "SESS-023",
     title: "Create a session group",
-    behaviour: "The Sessions toolbar always offers New group, which opens a dialog with Group name and Create group. The group appears at once in uppercase, above OTHER, even when filters hid everything (search and status reset, sort kept), and focus returns to New group. A rejected name is shown in the dialog. On a phone the drawer closes before the dialog opens and focus returns to Open navigation.",
+    behaviour: "The Sessions toolbar always offers New group, and so does each custom group's Group options menu; it opens a dialog with Group name and Create group. The group appears at once in uppercase, above OTHER, even when filters hid everything (search and status reset, sort kept), and focus returns to New group. A rejected name is shown in the dialog. On a phone the drawer closes before the dialog opens and focus returns to Open navigation.",
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisession-groups"],
     surfaces: ["route:POST /__hui/session-groups"],
     journeys: ["session-groups", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -229,7 +229,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#patch-__huisession-groupsname"],
     surfaces: ["route:PATCH /__hui/session-groups/:name"],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -239,7 +239,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#delete-__huisession-groupsname"],
     surfaces: ["route:DELETE /__hui/session-groups/:name"],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -248,7 +248,7 @@ const cases: UseCase[] = [
     behaviour: "Dragging a group header above or below another, or Move group up and Move group down in its menu, reorders custom groups and reports \"Moved <GROUP>.\"; the order survives a reload. OTHER always stays last and cannot be dragged. A failed reorder shows an error and the previous order.",
     spec: ["SPEC.md#behaviour", "docs/api.md#put-__huisession-groups"],
     surfaces: ["route:PUT /__hui/session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -258,7 +258,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -268,7 +268,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisession-groupsname"],
     surfaces: ["route:PATCH /__hui/session-groups/:name", "route:GET /__hui/git-checkout", "route:GET /__hui/directories"],
     journeys: ["session-groups", "session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -278,7 +278,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#git-workspace-sessions"],
     surfaces: ["page:new-session", "route:POST /__hui/sessions", "route:GET /__hui/git-checkout"],
     journeys: ["session-groups"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -683,6 +683,15 @@ const cases: UseCase[] = [
     behaviour: "With Group by Project, dropping a session row on a project group changes nothing: project groups follow the session's directory, so only custom groups accept a drop.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
+    id: "SESS-071",
+    title: "Search sessions by pull request or Jira key",
+    behaviour: "The Search sessions field also matches a session's linked pull requests (repository#number and title) and Jira work items (key and summary).",
+    spec: ["SPEC.md#behaviour"],
+    surfaces: [],
     web: "backlog",
     ios: "backlog",
   },

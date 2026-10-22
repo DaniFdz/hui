@@ -4,7 +4,9 @@
 > Search sessions buttons. The header now holds only **Collapse sidebar**, at its
 > top-left, where **Expand sidebar** appears while the sidebar is collapsed. The
 > search field below the header remains; the mobile top bar's Search opens it.
-> See the latest section of e2e/bots.browser.md for that check.
+> See the latest section of e2e/bots.browser.md for that check. Searching the
+> session list, on desktop and from the mobile top bar, is now proven by
+> `e2e/tests/sess/sidebar-filters.e2e.ts` (SESS-019).
 
 Verified on 2026-09-24 in the running HUI app through the Browser tool.
 
@@ -32,16 +34,11 @@ Verified on 2026-09-24 in the running HUI app through the Browser tool.
   **New session**. Search and Settings form the left cluster, with existing
   actions on the right. The Sessions toolbar retains Filter & sort and New
   group. There is no duplicate search button there and no bottom Settings bar.
-- Clicking Search focuses the expanded input directly below the fixed header,
-  above Home. Typing `miami` leaves only **Miami appearance** in the session
-  list; clearing the field restores all three rows.
 - Keyboard Shift+Tab from the search input reaches New session, Collapse
   sidebar, then Settings. Settings has a visible focus ring; Enter opens the
   real Appearance page. **Exit Settings** returns to Home.
 - Collapse and Expand sidebar still work and restore both new header controls.
-- On mobile, the existing topbar Search control opens the navigation drawer
-  and focuses the relocated input. `gateway` filters to **Gateway reconnect**.
-  Search, Settings and New session have **44×44 px** touch targets; desktop-only
+- On mobile, Search, Settings and New session have **44×44 px** touch targets; desktop-only
   Collapse remains hidden. The main area is inert only while the drawer is open.
 - Mobile Settings closes the app drawer and opens Appearance without stale
   inert state. Opening Settings navigation and using Exit Settings returns to
