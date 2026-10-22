@@ -406,8 +406,7 @@ const cases: UseCase[] = [
     behaviour: "/clear, listed as \"Clear this session's context and start a fresh PI transcript\", keeps the same sidebar row and title, empties the transcript to Start a conversation and says \"Session context cleared.\"; the old transcript is kept on disk. With arguments or attachments it says \"Use /clear without arguments or attachments.\", while work is active \"Finish or stop active work before clearing the session.\", and a bot's chat neither lists nor runs it.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidclear"],
     surfaces: ["command:clear", "route:POST /__hui/sessions/:id/clear"],
-    journeys: ["clear-command"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

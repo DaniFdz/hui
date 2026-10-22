@@ -26,7 +26,6 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "chat-notifications": { kind: "automate" },
   "chat-senders": { kind: "automate" },
   "checkout-selector": { kind: "automate" },
-  "clear-command": { kind: "automate" },
   "clipboard-fallback": { kind: "automate" },
   "command-references": { kind: "automate" },
   "compaction-rewind": { kind: "automate" },
