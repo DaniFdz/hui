@@ -83,10 +83,9 @@ test("on a phone held either way Escape closes a menu in the navigation drawer b
   const open = screen.getByRole("button", "Open navigation");
   const close = screen.getByRole("button", { name: "Close navigation", expanded: true });
   const start = screen.getByRole("button", "Start session");
-  const groupMenu = screen.getByRole("button", "Group options for Team");
   const menus = [
-    { trigger: groupMenu, item: screen.getByRole("menuitem", "Rename group"), show: () => groupMenu.tap() },
-    { trigger: screen.getByRole("button", "Actions for Grouped"), item: screen.getByRole("menuitem", "Rename…"), show: () => hui.sessionMenu("Grouped") },
+    { trigger: screen.getByRole("button", "Group options for Team"), item: screen.getByRole("menuitem", "Rename group") },
+    { trigger: screen.getByRole("button", "Actions for Grouped"), item: screen.getByRole("menuitem", "Rename…") },
   ];
   const openSettings = screen.getByRole("button", "Open settings navigation");
   const width = screen.getByRole("button", "Message width: Comfortable");
@@ -95,10 +94,10 @@ test("on a phone held either way Escape closes a menu in the navigation drawer b
   for (const orientation of ["portrait", "landscape"] as const) {
     await hui.phoneScreen(orientation);
     await hui.open("/");
-    for (const { trigger, item, show } of menus) {
+    for (const { trigger, item } of menus) {
       await open.tap();
       await expect(close).toBeVisible();
-      await show();
+      await trigger.press("Enter");
       await expect(item).toBeVisible();
       await item.press("Escape");
       await expect(item).toBeHidden();
