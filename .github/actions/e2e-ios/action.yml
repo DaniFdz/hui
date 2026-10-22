@@ -11,34 +11,61 @@ runs:
   steps:
     - shell: bash
       run: sudo xcode-select -s /Applications/Xcode_27.1.app
+    - name: Show the runner's CPUs and memory
+      shell: bash
+      run: sysctl hw.ncpu hw.memsize && memory_pressure -Q
+    # agent-device's XCTest runner, which it builds on first use.
+    - id: agent-device-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.agent-device
+        key: agent-device-${{ runner.os }}-${{ hashFiles('package-lock.json', '.github/actions/e2e-ios/action.yml') }}
+    # Everything compiles before the simulator boots: a new simulator's first minutes stall the whole runner, and a
+    # build beside them slows both.
+    - shell: bash
+      run: node scripts/ios-build.ts --app --no-install
+    - shell: bash
+      run: xcodebuild build-for-testing -project ios/HUI.xcodeproj -scheme HUI -destination 'generic/platform=iOS Simulator'
     # A fresh simulator asks "Open in “HUI”?" the first time a hui:// link opens the app, unless the approval it
     # records is there when it boots.
     - name: Create and boot the HUI iPhone simulator
       shell: bash
       run: |
         udid=$(xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0)
+        echo "HUI_SIMULATOR=$udid" >> "$GITHUB_ENV"
         prefs=~/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences
         mkdir -p "$prefs"
         printf '%s' '<plist version="1.0"><dict><key>com.apple.CoreSimulator.CoreSimulatorBridge--&gt;hui</key><string>dev.hui.ios</string></dict></plist>' > "$prefs/com.apple.launchservices.schemeapproval.plist"
         xcrun simctl bootstatus "$udid" -b
-    # agent-device's XCTest runner, which it builds on first use.
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    # The unit tests install a Debug build, so they run before the Release build the suite uses is installed.
+    - shell: bash
+      run: xcodebuild test-without-building -project ios/HUI.xcodeproj -scheme HUI -destination "id=$HUI_SIMULATOR"
+    # The app's first launch on a new simulator, and agent-device's runner build and start, take longer here than the
+    # suite's 15 s launch and 90 s first-command limits allow, so they happen once before it under no such limit. The
+    # runner starts under the session the suite's worker resumes.
+    - name: Install the app and start it and agent-device's runner once
+      shell: bash
+      run: |
+        xcrun simctl install "$HUI_SIMULATOR" ios/build/Build/Products/Release-iphonesimulator/HUI.app
+        xcrun simctl launch "$HUI_SIMULATOR" dev.hui.ios
+        xcrun simctl terminate "$HUI_SIMULATOR" dev.hui.ios
+        npx agent-device prepare ios-runner --platform ios --udid "$HUI_SIMULATOR" --session e2e-ios-0 --timeout 600000
+    - if: ${{ steps.agent-device-cache.outputs.cache-hit != 'true' }}
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.agent-device
-        key: agent-device-${{ runner.os }}-${{ hashFiles('package-lock.json', '.github/actions/e2e-ios/action.yml') }}
-    # The unit tests install a Debug build, so they run before the Release build the suite uses.
-    - shell: bash
-      run: npm run ios:core
-    - shell: bash
-      run: xcodebuild test -project ios/HUI.xcodeproj -scheme HUI -destination 'platform=iOS Simulator,name=HUI iPhone'
-    - shell: bash
-      run: npm run ios:build
+        key: ${{ steps.agent-device-cache.outputs.cache-primary-key }}
     - shell: bash
       run: npm run e2e:ios -- ${{ inputs.e2e-args }}
     - if: ${{ failure() }}
       shell: bash
-      run: mkdir -p .e2e/logs && xcrun simctl spawn "HUI iPhone" log show --last 1h --predicate 'process == "HUI"' > .e2e/logs/ios-app.log
-    # The suite's traces, screenshots and the app's log, and the launcher's gateway and provider logs.
+      run: |
+        mkdir -p .e2e/logs
+        xcrun simctl spawn "$HUI_SIMULATOR" log show --last 1h --predicate 'process == "HUI"' > .e2e/logs/ios-app.log || true
+        { memory_pressure -Q; top -l 2 -n 25 -o cpu -stats pid,command,cpu,mem; } > .e2e/logs/runner-load.txt
+        rsync -a --include '*/' --include '*.log' --include '*.ndjson' --include '*.json' --exclude '*' --prune-empty-dirs ~/.agent-device/ .e2e/logs/agent-device/
+    # The suite's traces, screenshots, the app's log, agent-device's daemon, runner and request logs, the runner's load,
+    # and the launcher's gateway and provider logs.
     - if: ${{ !cancelled() }}
       uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
       with:

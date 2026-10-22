@@ -5,11 +5,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  # A newer push to the same branch or pull request supersedes a run in progress.
-  group: e2e-${{ github.ref }}
+  # A newer push to the same branch or pull request supersedes a run in progress; a manual run supersedes nothing.
+  group: e2e-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || '' }}
   cancel-in-progress: true
 jobs:
   web:
