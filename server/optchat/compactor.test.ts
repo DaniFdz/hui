@@ -86,11 +86,14 @@ test("up to JOBS messages are compressed at once, in order, and no context ever 
   await gate.call(4);
   assert.deepEqual(gate.calls.map(({ request }) => [message(request), blocks(request)[0]]),
     ["M0", "M1", "M2", "M3"].map((name) => [name, "<chat>\n\n</chat>"]), "four start at once, before any line is built");
-  answer(0);
+  // M1 finishes first: M0 still waits, and fewer than JOBS lines before M4 do, so M4 starts with a context that
+  // stops at M0.
+  answer(1);
   await gate.call(5);
-  assert.deepEqual([message(gate.calls[4]!.request), blocks(gate.calls[4]!.request)[0]], ["M4", `<chat>\n${"S-M0".padEnd(40, "-")}\n</chat>`],
+  assert.deepEqual([message(gate.calls[4]!.request), blocks(gate.calls[4]!.request)[0]], ["M4", "<chat>\n\n</chat>"],
     "a freed job goes to the next message, whose context stops at the first line not built");
-  for (let k = 1; k < 9; k++) {
+  answer(0);
+  for (let k = 2; k < 9; k++) {
     await gate.call(k + 1);
     answer(k);
   }

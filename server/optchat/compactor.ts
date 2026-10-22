@@ -5,8 +5,8 @@
  * before its end is a built summary (rule 3), except that a message starts while
  * fewer than `jobs` earlier ones still wait for theirs (revision 3c190e0), so the
  * next turn does not wait for a burst of messages summarized one by one. Messages
- * start in order, merges of finished parts run alongside, and a call's context
- * stops at the first line not built: the compactor never sees one.
+ * start in order and first, merges of finished parts take the jobs left, and a
+ * call's context stops at the first line not built: the compactor never sees one.
  * A source that already fits is its own node, with no model call. A failed node
  * is retried every `retryMs` forever (the next turn waits on it, so no backoff),
  * and only its first failure is reported. A call's context is the compaction
@@ -71,7 +71,8 @@ export type CompactorHost = {
   readonly length: number;
   message(i: number): MessageLine;
   readonly tree: Tree;
-  /** The chat view: a node starts once every line of it before the node's end is built. */
+  /** The chat view: a merge starts once every line of it before the merge's end is built, a message once fewer than
+   * `jobs` lines before it are not. */
   readonly view: View;
   /** The compaction view's bare lines before message `end`, up to the first one not built. */
   context(end: number): readonly string[];
