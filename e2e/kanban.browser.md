@@ -14,25 +14,18 @@ unstaged (Backlog); one unread; one archived Done session.
 
 ## Journeys and observed results
 
-1. Sidebar shows **Kanban** directly below Contributions; clicking it opens
-   `/kanban` with five columns and per-column counts, lanes API, DOCS, WEB with
-   their paths. The archived session is absent. The unread session shows
-   status **Done**.
-2. Card stage menu → **Testing**: status note "Moved … to Testing.", the card
-   renders in Testing and keeps focus. **Let the agent decide** is disabled for
-   an agent-placed card.
-3. Shift+ArrowRight on the focused title moves it to Done.
-4. Dragging "Write release notes" from DOCS/Backlog onto DOCS/Investigation
-   moves it; `sessions.json` records `stage: "investigation"`,
-   `stageSource: "operator"` for the three moved cards.
-5. **View** menu lists Group by, Sort by, Status, Columns, subagents, Hide empty
-   lanes and Reset view. **Custom groups** replaces project lanes with OTHER and
-   survives a reload; **Reset view** restores project lanes.
-6. No page errors or console errors. Narrow (mobile) viewport: header and View
-   controls wrap, the board scrolls horizontally.
+Opening the board, moving a card through its Options menu, by dragging or with
+Shift and the arrow keys, `set_stage`, the View menu's Status, Columns,
+subagent and Hide empty lanes choices and the narrow layout are proven by the
+shared tests in `e2e/tests/board/`. What remains here:
 
-Proof gap: `set_stage` from a live agent turn and pull-request inference are
-covered by server/unit tests only, not by this Browser journey.
+1. The unread session shows status **Done**.
+2. **Let the agent decide** is disabled for an agent-placed card.
+3. **View** → **Custom groups** replaces project lanes with OTHER and
+   survives a reload; **Reset view** restores project lanes.
+
+Proof gap: pull-request inference is covered by server/unit tests only, not by
+this Browser journey.
 
 ## Backlog start dialog (2026-09-26)
 
