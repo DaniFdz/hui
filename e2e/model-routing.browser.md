@@ -6,15 +6,11 @@ no paid account or operator configuration was used.
 
 ## Scope and results
 
-- Settings persisted separate primary, fallback and utility routes. Their copy
-  explains when each route runs and includes OpenAI/Anthropic examples.
-- Creating a session sent the first prompt to the utility route for naming. Its
-  `Fixture response.` became the normalized short title `Fixture response`.
+Settings → Models' primary, fallback and utility pickers (SET-045) and the utility model's session titles and
+`/btw` side rail (SET-047) are proven by `e2e/tests/set/models.e2e.ts`. What this journey still covers:
+
 - The normal session turn stayed on `anthropic/primary-fixture`.
-- `/btw which model named this session?` opened the side rail, answered through
-  `anthropic/utility-fixture`, and did not add either side-chat message to the
-  main transcript.
-- The side rail was inspected at 1440x900 and 390x844. The mobile layout had
+- The `/btw` side rail was inspected at 1440x900 and 390x844. The mobile layout had
   zero horizontal document/body overflow. No browser runtime errors were found.
 
 Primary failure before useful output, a single cross-provider retry from OpenAI
@@ -34,13 +30,10 @@ Start the fixture provider and Vite with `XDG_CONFIG_HOME`,
 inside that root. Start an owned headless browser with its profile under the
 same root. In HUI:
 
-1. Open Settings -> Models and verify all three selections and descriptions.
-2. Start a session from the disposable workspace with
-   `Implement model routing E2E`.
-3. Wait for `Fixture response.` and verify the title is `Fixture response`.
-4. Send `/btw which model named this session?` and verify the ephemeral side
-   rail names `anthropic/utility-fixture` while the main transcript is unchanged.
-5. Inspect at desktop and mobile widths and query browser errors/overflow.
+1. Start a session from the disposable workspace with
+   `Implement model routing E2E` and verify its turn runs on `anthropic/primary-fixture`.
+2. Send `/btw which model named this session?` and inspect the side rail at desktop
+   and mobile widths, querying browser errors and overflow.
 
 ## Checks
 
