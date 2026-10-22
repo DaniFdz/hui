@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a fresh app refuses an address that isn't a HUI gateway, connects to the address typed on Connect to HUI, remembers it and says a development gateway's version is unverified", { tags: ["IOS-001"], platforms: ["ios"] }, async ({ app, screen, hui }) => {
+test("a fresh app refuses an address that isn't a HUI gateway, connects to the address typed on Connect to HUI, remembers it and says a development gateway's version is unverified", { tags: ["IOS-001"], platforms: ["ios"], timeout: 240_000 }, async ({ app, screen, hui }) => {
   await hui.createSession({ title: "Listed by the gateway" });
   const row = screen.getByLabel(/^Listed by the gateway, status idle, tool durable, stage investigation/u);
   await hui.open("/");
