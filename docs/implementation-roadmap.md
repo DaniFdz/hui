@@ -278,8 +278,9 @@ startup now resumes those records automatically with a three-admission budget;
 the recovery prompt verifies transcript and workspace state before repeating an
 unknown effect, while **Continue run** remains the exhausted-budget fallback.
 Settled background sessions persist OpenClaw's accent unread marker until opened.
-A real gateway restart, PI continuation and responsive proof are recorded in
-[`e2e/interrupted-recovery.browser.md`](../e2e/interrupted-recovery.browser.md).
+A real gateway restart and PI continuation are proved by
+[`e2e/tests/chat/gateway-restart.e2e.ts`](../e2e/tests/chat/gateway-restart.e2e.ts), and the phone layout
+by [`e2e/interrupted-recovery.browser.md`](../e2e/interrupted-recovery.browser.md).
 
 The PI-backed behavior above remains authoritative. Chat, tool rows, thinking,
 queue and composer now use the OpenClaw 2026.9.5 hierarchy and measured desktop

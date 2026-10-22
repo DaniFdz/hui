@@ -141,7 +141,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["chat-composer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -151,7 +151,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidconnect"],
     surfaces: ["route:POST /__hui/sessions/:id/open", "route:POST /__hui/sessions/:id/connect"],
     journeys: ["chat-composer", "position-rail"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -161,7 +161,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidconnect"],
     surfaces: ["route:POST /__hui/sessions/:id/connect"],
     journeys: ["interrupted-recovery", "message-metadata"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -171,7 +171,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#get-__huisessionsevents"],
     surfaces: ["route:GET /__hui/sessions/events"],
     journeys: ["interrupted-recovery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -181,7 +181,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: [],
     journeys: ["interrupted-recovery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -200,8 +200,8 @@ const cases: UseCase[] = [
     behaviour: "A run that ends on a provider or runtime error keeps the error inside its folded activity and shows an alert card above the composer with the message (Details for a long one), Copy error, Continue and Dismiss error. Continue sends \"Continue from where you left off.\" as a normal turn and the card goes; Dismiss error hides it for this page load only, so a reload shows it again until a new turn starts.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt", "item:error"],
-    journeys: ["run-error-notice", "chat-composer"],
-    web: "backlog",
+    journeys: ["chat-composer"],
+    web: "required",
     ios: "backlog",
   },
   {
@@ -644,7 +644,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidprompt"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
