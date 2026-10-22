@@ -238,6 +238,10 @@ const server = createServer(async (request, response) => {
     text(response, compress ? `${input.slice(0, input.indexOf(":"))}: FIXTURE_MEMORY ${marker}` : `FIXTURE_MEMORY merged ${marker}`);
     return finish(response);
   }
+  // PI retries 5xx answers and messages that look transient, so E2E_ERROR_LONG fails at once with a 400, and its
+  // message is longer than the run error card's summary, so the card offers Details.
+  if (source.includes("E2E_ERROR_LONG")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
+    message: `fixture provider error: ${"the fixture refuses this request on purpose; ".repeat(4)}see the fixture for why` } });
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
 
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });

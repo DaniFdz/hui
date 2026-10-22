@@ -29,7 +29,9 @@ edit or commit, cleanup and relaunch: a stale checkout fails doctor.
 For an intentionally detached CI checkout, pass --branch HEAD; the receipt still
 records the exact commit and detached=true. Never switch branches to make it pass.
 Cleanup stops only this authenticated runner's children and retains all artifacts.
-Ctrl+C also cleans up. This is an isolated fixture, not a production sandbox.
+Ctrl+C also cleans up. SIGUSR2 restarts the gateway against the same state and
+port, rewriting both receipts once it is ready again (a shared e2e test's gateway
+restart). This is an isolated fixture, not a production sandbox.
 `;
 
 function git(root, ...args) {
@@ -268,7 +270,7 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     child.stderr.pipe(log, { end: false });
     child.once("close", () => log.end());
     child.once("exit", (code, signal) => {
-      if (!stopping) {
+      if (!stopping && children.includes(child)) {
         process.stderr.write(`Fixture child ${script} exited (${code ?? signal}).\n`);
         process.exitCode = code || 1;
         void stop();
@@ -297,7 +299,7 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
         { id: "fixture", name: demo ? "Demo model" : "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
         // --fast-fixture: a Claude Opus 5.5 id, so the composer offers Maximum effort and Speed (fast mode).
         ...process.argv.includes("--fast-fixture") ? [{
-          id: "claude-opus-5-5", name: "Opus fixture", reasoning: true, input: ["text"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          id: "anthropic/claude-opus-5-5", name: "Opus fixture", reasoning: true, input: ["text"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           thinkingLevelMap: { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" },
         }] : [],
       ],
@@ -392,32 +394,59 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
       // Two weeks of synthetic Durable sessions for Contributions → Calendar.
       execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "activity-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
     }
-    const server = start("visual-verification-server.mjs", {
-      ...serverEnv,
-      HUI_VERIFICATION_IDENTITY: JSON.stringify({ runId: receipt.runId, runnerPid: process.pid, checkout }),
-      HUI_VERIFICATION_TOKEN: receipt.token,
-      HUI_VERIFICATION_CACHE: join(dir, "vite-cache"),
-      HUI_VERIFICATION_PORT: String(port ?? 0),
-    }, true);
-    receipt.serverPid = server.pid;
-    server.on("message", (message) => { if (message.type === "shutdown") void stop(); });
-    receipt.url = await ready(server, (done) => {
-      const onMessage = (message) => { if (message.type === "ready") done(message.url); };
-      server.on("message", onMessage);
-      return () => server.off("message", onMessage);
-    });
+    const serve = async () => {
+      const server = start("visual-verification-server.mjs", {
+        ...serverEnv,
+        HUI_VERIFICATION_IDENTITY: JSON.stringify({ runId: receipt.runId, runnerPid: process.pid, checkout }),
+        HUI_VERIFICATION_TOKEN: receipt.token,
+        HUI_VERIFICATION_CACHE: join(dir, "vite-cache"),
+        HUI_VERIFICATION_PORT: String(port ?? 0),
+      }, true);
+      receipt.serverPid = server.pid;
+      server.on("message", (message) => { if (message.type === "shutdown") void stop(); });
+      receipt.url = await ready(server, (done) => {
+        const onMessage = (message) => { if (message.type === "ready") done(message.url); };
+        server.on("message", onMessage);
+        return () => server.off("message", onMessage);
+      });
+      port ??= Number(new URL(receipt.url).port);
+      return server;
+    };
+    let server = await serve();
     receipt.browserUrl = receipt.url.replace("127.0.0.1", "localhost");
     receipt.state = "ready";
     await save();
     await doctor(receiptPath);
     // The private receipt has the control token; stdout is safe to share.
-    const { token: _token, ...publicReceipt } = receipt;
-    if (sharedReceipt) {
-      await mkdir(dirname(sharedReceipt), { recursive: true });
-      const temporary = `${sharedReceipt}.${randomUUID()}.tmp`;
-      await writeFile(temporary, `${JSON.stringify(publicReceipt, null, 2)}\n`);
-      await rename(temporary, sharedReceipt);
-    }
+    const publish = async () => {
+      const { token: _token, ...publicReceipt } = receipt;
+      if (sharedReceipt) {
+        await mkdir(dirname(sharedReceipt), { recursive: true });
+        const temporary = `${sharedReceipt}.${randomUUID()}.tmp`;
+        await writeFile(temporary, `${JSON.stringify(publicReceipt, null, 2)}\n`);
+        await rename(temporary, sharedReceipt);
+      }
+      return publicReceipt;
+    };
+    const publicReceipt = await publish();
+    let restarting = Promise.resolve();
+    process.on("SIGUSR2", () => {
+      restarting = restarting.then(async () => {
+        if (stopping) return;
+        children.splice(children.indexOf(server), 1);
+        const exited = once(server, "exit");
+        server.kill("SIGTERM");
+        await exited;
+        server = await serve();
+        await save();
+        await publish();
+      }).catch((error) => {
+        if (stopping) return;
+        process.stderr.write(`Gateway restart failed: ${error.message}\n`);
+        process.exitCode = 1;
+        void stop();
+      });
+    });
     process.stdout.write(`${JSON.stringify(publicReceipt)}\n`);
   } catch (error) {
     await stop();

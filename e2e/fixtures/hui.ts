@@ -1,19 +1,22 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's address and barriers, a gateway request a test holds, rejects or delivers while
- * dropping its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context
- * menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
- * input), attaching files from `files/`, reading what a download saved or what the page copied, opening a session's
- * menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a piece of the screen
- * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
- * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
- * keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and
- * the secret directories the gateway wrote. On iOS it relaunches the app pointed at the gateway, follows a `hui://open`
- * link instead of loading a page, and clears the app's preferences through `defaults` before the engine empties its
- * data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps
- * throw. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
- * themselves.
+ * its API, the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
+ * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
+ * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
+ * point instead of the input), attaching files from `files/` or made up of a name and a size, reading what a download
+ * saved or what the page copied, opening a session's menu, reading a sidebar row's status glyph (its tooltip and
+ * whether it spins) and whether its unread dot has the accent colour, and reading how a piece of the screen looks (its
+ * text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have loaded to draw
+ * its text, its text size in pixels and the colour of the focus ring it shows when reached from the keyboard), a
+ * disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a `sub`
+ * directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, the secret
+ * directories the gateway wrote, a restart of the gateway against the same state and port, the end of its PI worker
+ * processes, and, on the web, closing the page's WebSockets as a dropped connection would. The web page never opens
+ * Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway does.
+ * On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of loading a page, and
+ * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
+ * would otherwise hand the relaunched app the deleted values; the web-only steps throw. Test files import `test` from
+ * here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -25,12 +28,13 @@ import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { IOS_PORT } from "../../e2e.config.ts";
 
-type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number };
+type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
 type Intercepted = {
   arrived(): Promise<void>;
+  deliver(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
   deliverAndDrop(): Promise<void>;
 };
@@ -43,6 +47,9 @@ export type Hui = {
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
   provider: { url: string; held(): Promise<void>; release(): Promise<void> };
+  restartGateway(): Promise<void>;
+  exitRuntimes(): Promise<void>;
+  dropStreams(): Promise<void>;
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   clearState(): Promise<void>;
@@ -54,11 +61,12 @@ export type Hui = {
   peek(target: Locator): Promise<void>;
   sessionMenu(title: string): Promise<void>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
+  accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
-  attach(target: Locator, files: string[]): Promise<void>;
+  attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
@@ -77,13 +85,26 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
   return null;
 };
 
+const trackSockets = () => {
+  const sockets = new Set<WebSocket>();
+  (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets = sockets;
+  window.WebSocket = class extends WebSocket {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(protocols === "vite-hmr" ? "ws://127.0.0.1:1/" : url, protocols);
+      sockets.add(this);
+      this.addEventListener("close", () => sockets.delete(this));
+    }
+  };
+};
+
 export const test = base.extend<{ hui: Hui }>({
   hui: async (fixtures, use) => {
     const web = fixtures.platform === "web";
     const port = web ? new URL(fixtures.app.baseUrl!).port : IOS_PORT;
     const file = new URL(`../../.e2e/hui/receipt-${port}.json`, import.meta.url);
     await expect.poll(() => readFile(file).then(() => true, () => false), { timeout: 60_000 }).toBe(true);
-    const receipt = JSON.parse(await readFile(file, "utf8")) as Receipt;
+    const readReceipt = async () => JSON.parse(await readFile(file, "utf8")) as Receipt;
+    const receipt = await readReceipt();
 
     const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
       const response = await fetch(receipt.url + path, {
@@ -126,11 +147,12 @@ export const test = base.extend<{ hui: Hui }>({
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
+    if (web) await browser().addInitScript(trackSockets);
     await clearState();
     if (!web) await launch();
-    const repositories: string[] = [];
+    const directories: string[] = [];
 
-    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "clearState" | "repository"> = {
+    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
       url: () => browser().url(),
       clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
         const page = window as unknown as { huiCopied: string };
@@ -159,6 +181,23 @@ export const test = base.extend<{ hui: Hui }>({
         const indicator = row?.querySelector(".sidebar-session-indicator");
         if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
         return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
+      }, title),
+      dropStreams: async () => {
+        await browser().evaluate(() => {
+          for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
+          return null;
+        });
+      },
+      accentDot: (title) => browser().evaluate((name) => {
+        const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+        const dot = row?.querySelector(".sidebar-session-unread-dot");
+        if (!dot) return false;
+        const accent = document.createElement("span");
+        accent.style.color = "var(--accent)";
+        dot.append(accent);
+        const shown = getComputedStyle(dot).backgroundColor === getComputedStyle(accent).color;
+        accent.remove();
+        return shown;
       }, title),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
       deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
@@ -199,7 +238,15 @@ export const test = base.extend<{ hui: Hui }>({
           };
         }, box);
       },
-      attach: (target, files) => target.setInputFiles(files.map((name) => fileURLToPath(new URL(`files/${name}`, import.meta.url)))),
+      attach: async (target, files) => {
+        const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
+        if (made) directories.push(made);
+        await target.setInputFiles(await Promise.all(files.map(async (file) => {
+          if (typeof file === "string") return fileURLToPath(new URL(`files/${file}`, import.meta.url));
+          await writeFile(join(made, file.name), Buffer.alloc(file.bytes, "x"));
+          return join(made, file.name);
+        })));
+      },
       download: async (target) => {
         const file = await browser().waitForDownload(() => target.tap());
         return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
@@ -272,6 +319,7 @@ export const test = base.extend<{ hui: Hui }>({
         };
         return {
           arrived: () => arrival,
+          deliver: () => settle((route) => route.continue()),
           reject: (status, error) => settle((route) => route.fulfill({ status, json: { error } })),
           deliverAndDrop: () => settle(async (route) => {
             const response = await fetch(route.request.url, {
@@ -311,6 +359,14 @@ export const test = base.extend<{ hui: Hui }>({
         held: () => control("GET", "/control/wait-replay-ready"),
         release: () => control("POST", "/control/release-replay"),
       },
+      restartGateway: async () => {
+        const stopped = receipt.serverPid;
+        process.kill(receipt.runnerPid, "SIGUSR2");
+        await expect.poll(async () => (receipt.serverPid = (await readReceipt()).serverPid) !== stopped, { timeout: 60_000 }).toBe(true);
+      },
+      exitRuntimes: async () => {
+        execFileSync("pkill", ["-P", String(receipt.serverPid), "-f", "pi-sdk-worker"]);
+      },
       open: async (path) => {
         if (web) return fixtures.app.open(path);
         await launch();
@@ -320,7 +376,7 @@ export const test = base.extend<{ hui: Hui }>({
       clearState,
       repository: async () => {
         const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
-        repositories.push(path);
+        directories.push(path);
         const git = (...args: string[]) => execFileSync("git", ["-C", path, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com",
           "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
         git("init", "--quiet", "--initial-branch=main");
@@ -349,6 +405,6 @@ export const test = base.extend<{ hui: Hui }>({
       if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
     }
     await api("PUT", "/__hui/settings", settings);
-    for (const path of repositories) await rm(path, { recursive: true, force: true });
+    for (const path of directories) await rm(path, { recursive: true, force: true });
   },
 });
