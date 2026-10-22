@@ -1,4 +1,4 @@
-// Accessibility adapters from OpenClaw v2026.9.5 (MIT).
+// Accessibility adapters from OpenClaw v2026.9.5 (MIT), and a focus fix for a dropdown closed while it opens.
 // Component registration is browser-only in main.ts; view tests stay DOM-free.
 type UpdatedElement = HTMLElement & { updateComplete: Promise<unknown> };
 
@@ -29,6 +29,15 @@ export function hasOpenWebAwesomePopup(event: Event): boolean {
     return (element.localName === "wa-select" || element.localName === "wa-dropdown")
       && element.open === true;
   });
+}
+
+/** A `wa-after-show` listener: Web Awesome 3.14 still finishes opening a dropdown that closed meanwhile, focusing the
+ * closed menu's first item, which then hides and drops focus to the page
+ * (https://github.com/shoelace-style/webawesome/issues/2882). */
+export function returnFocusFromClosedMenu(event: Event) {
+  const dropdown = event.composedPath()[0] as HTMLElement & { open?: boolean };
+  if (dropdown.localName !== "wa-dropdown" || dropdown.open) return;
+  dropdown.querySelector<HTMLElement>('[slot="trigger"]')?.focus();
 }
 
 /** Dismiss the inner popup without also dismissing its modal sidebar. */

@@ -27,11 +27,12 @@ gateway replacement are real. There is no production endpoint override.
    and keyboard focus returns to **Review update**. Dismiss the banner: it
    disappears without blocking the composer. Reload: the banner returns.
    These actions produced zero model requests before starting the fixture chat.
-3. Collapse/expand the desktop sidebar: its floating control sits below the
-   banner, without overlap. At 390×844, open the navigation drawer: both the
-   main content and notification become inert. Escape restores both and
-   returns focus to the navigation control. The banner uses 44 px mobile
-   button targets and does not overflow horizontally.
+3. At 390×844, open the navigation drawer and press Escape: the main content
+   and notification are no longer inert and focus returns to the navigation
+   control. The banner uses 44 px mobile button targets and does not overflow
+   horizontally. (The expand control sitting below the banner and the drawer
+   hiding the banner are proven by `e2e/tests/shell/drawers.e2e.ts`, SHELL-011
+   and SHELL-015.)
 4. In an isolated fixture, switch release mode to `denied` and review again.
    The dialog explains the access failure, removes the install action and
    removes the stale banner; it does not claim HUI is current.

@@ -25,7 +25,7 @@ const IDS = new Set(["activity", "logs", "debug", "usage"]);
 export function isObservabilitySurface(page: HuiPage): boolean { return IDS.has(page.id); }
 
 function header(props: ObservabilityProps, title: string, subtitle: string, exportable = false) {
-  return html`<header class="content-header content-header--settings"><div><div class="page-title">${title}</div><div class="page-subtitle">${subtitle}</div></div><div class="page-header-actions">${exportable ? html`<button class="btn" type="button" @click=${props.onExport}>Export diagnostics</button>` : nothing}<button class="btn" type="button" ?disabled=${props.loading} @click=${props.onRefresh}>${icons.refresh}<span>${props.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>`;
+  return html`<header class="content-header content-header--settings"><div><div class="page-title" data-testid="page-title">${title}</div><div class="page-subtitle">${subtitle}</div></div><div class="page-header-actions">${exportable ? html`<button class="btn" type="button" @click=${props.onExport}>Export diagnostics</button>` : nothing}<button class="btn" type="button" ?disabled=${props.loading} @click=${props.onRefresh}>${icons.refresh}<span>${props.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>`;
 }
 
 function time(value: string) {
@@ -36,6 +36,10 @@ function time(value: string) {
 function feedback(props: ObservabilityProps) {
   if (props.error) return html`<div class="observability-feedback callout danger" role="alert">${props.error}<button class="btn btn--sm" @click=${props.onRefresh}>Retry</button></div>`;
   return html`<div class="observability-feedback" role="status">Reading HUI diagnostics…</div>`;
+}
+
+function exportFailure(props: ObservabilityProps) {
+  return props.snapshot && props.error ? html`<div class="observability-feedback callout danger" role="alert">${props.error}</div>` : nothing;
 }
 
 function events(props: ObservabilityProps, source: "activity" | "logs") {
@@ -54,7 +58,7 @@ function renderActivity(props: ObservabilityProps) {
 }
 
 function renderLogs(props: ObservabilityProps) {
-  return html`${header(props, "Logs", "Structured HUI diagnostics with secret-shaped values redacted.", true)}<main class="settings-page settings-page--wide logs-page">${events(props, "logs")}</main>`;
+  return html`${header(props, "Logs", "Structured HUI diagnostics with secret-shaped values redacted.", true)}<main class="settings-page settings-page--wide logs-page">${exportFailure(props)}${events(props, "logs")}</main>`;
 }
 
 function bytes(value: number) { return `${(value / 1024 / 1024).toFixed(1)} MB`; }
@@ -62,7 +66,7 @@ function number(value: number) { return new Intl.NumberFormat().format(value); }
 
 function renderDebug(props: ObservabilityProps) {
   const value = props.snapshot;
-  return html`${header(props, "Debug", "Gateway vitals and bounded diagnostic export.", true)}<main class="settings-page debug-page">${!value ? feedback(props) : html`
+  return html`${header(props, "Debug", "Gateway vitals and bounded diagnostic export.", true)}<main class="settings-page debug-page">${exportFailure(props)}${!value ? feedback(props) : html`
     <section class="settings-section"><header class="settings-section__header"><h2 class="settings-section__heading">Snapshots</h2></header><div class="settings-group">
       ${[
         ["Gateway", props.health?.status ?? "Unknown", props.health?.transport ?? "No health snapshot"],
