@@ -10,8 +10,8 @@ ones many per line) followed by the new message. The agent opens a line with
 
 HUI was built from the recipe's first revision (`f51fe5c`, 2026-10-04), whose
 section numbers the "spec section" references here and in the code use. How the
-view merges and batches, how it is kept across restarts, the compaction view and
-the cache marks follow the corrected revision
+view merges and batches, how it is kept across restarts, the compaction view, the
+cache marks and the order messages are summarized in follow the corrected revision
 [`3c190e0`](https://gist.github.com/VictorTaelin/91837951a5ce5b38f341ec1ba1df6449/3c190e06f34aba0c69f49042c526093269604935)
 (2026-10-08), whose author reported that the first one's merge rule kept the
 prompt cache from holding; see [The view](#the-view) and
@@ -304,8 +304,13 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
   nothing.
 - **Calls don't wait for each other's cache writes.** In the revision, when two
   calls would write the same marked prefix, the second holds off until the first
-  one's response begins, so the write is paid once. It is Anthropic-specific: a
-  follow-up.
+  one's response begins, so the write is paid once. Messages summarized side by
+  side share their context, so on Anthropic each of them may pay it. It is
+  Anthropic-specific: a follow-up.
+- **Merges wait for every line before their end.** The revision starts a merge
+  once both its halves are built; HUI waits until every line before the merge's
+  end is, so a merge reads its whole context. A turn never waits on a merge, so
+  this costs it no time.
 - **The revision's new prompt is not used.** The gist has no license, so this
   change takes the revision's ideas in HUI's own code and words and copies none of
   its text.

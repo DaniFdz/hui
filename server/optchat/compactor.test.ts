@@ -110,6 +110,34 @@ test("up to JOBS messages are compressed at once, in order, and no context ever 
   assert(gate.peak() <= 4, String(gate.peak()));
 });
 
+test("a merge waits until every line before its end is summarized, so its context is whole", { timeout: 10_000 }, async (t) => {
+  const model = gated();
+  const memory = await open(t, { summarize: model.summarize, node: 64, jobs: 4 });
+  // 40-byte lines: two of them (81 bytes with the newline) need a model call to merge.
+  const summary = (k: number) => `S-M${k}`.padEnd(40, "-");
+  const step = (k: number) => blocks(model.calls[k]!.request)[1]!;
+  for (let i = 0; i < 4; i++) await memory.append("user", `M${i} ${"y".repeat(97)}`);
+  await model.call(4);
+  model.calls[2]!.reply(summary(2));
+  model.calls[3]!.reply(summary(3));
+  await until(memory, () => memory.tree.has(0, 2) && memory.tree.has(0, 3));
+  await memory.append("user", `M4 ${"y".repeat(97)}`);
+  await model.call(5);
+  assert.deepEqual([model.calls.length, /\nuser: (M\d+)/u.exec(step(4))?.[1]], [5, "M4"], "M2 and M3 are built, but not M0 before them: no merge yet");
+  model.calls[0]!.reply(summary(0));
+  model.calls[1]!.reply(summary(1));
+  await model.call(7);
+  assert(step(5).includes("Merge these two lines") && step(6).includes("Merge these two lines"), step(6));
+  assert.deepEqual([5, 6].map((k) => blocks(model.calls[k]!.request)[0]), [
+    `<chat>\n${[0, 1].map(summary).join("\n")}\n</chat>`,
+    `<chat>\n${[0, 1, 2, 3].map(summary).join("\n")}\n</chat>`,
+  ], "each merge reads every line before its end");
+  for (const k of [5, 6]) model.calls[k]!.reply("MERGED");
+  model.calls[4]!.reply(summary(4));
+  await allBuilt(memory);
+  assert.equal(memory.tree.text(2, 0), "MERGED\nMERGED");
+});
+
 test("over the limit, the same conversation shows the cut, and after TRIES replies the shortest wins", { timeout: 10_000 }, async (t) => {
   const replies = [`${"a".repeat(511)}é${"b".repeat(100)}`, "c".repeat(530), "d".repeat(520), "e".repeat(540), "f".repeat(525)];
   const requests: SummaryRequest[] = [];
