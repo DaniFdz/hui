@@ -38,6 +38,7 @@ const sourcesIn = async (directory: string, keep: (name: string) => boolean) => 
 const testSources = await sourcesIn("e2e/tests", (name) => name.endsWith(".ts"));
 const fixtureSource = await read("e2e/fixtures/hui.ts");
 const appSources = [...(await sourcesIn("src", (name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))).values()].join("\n");
+const iosSources = [...(await sourcesIn("ios/HUI", (name) => name.endsWith(".swift"))).values()].join("\n");
 const withoutCommentsAndStrings = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|(["'`])(?:\\.|(?!\1)[^\\])*\1|\/(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n[])+\/[dgimsuyv]*/gu, (match) => (match.startsWith("/") ? "" : '""'));
 
@@ -136,7 +137,7 @@ test("shared tests use no agent steps, retries, skips, platform reads or sleeps,
   assert.deepEqual(problems, []);
 });
 
-test("shared tests find controls by roles iOS has too, and by test ids the web app sets", () => {
+test("shared tests find controls by roles iOS has too, and by test ids the web app sets and, when they run on iOS, the app too", () => {
   const portable = new Set(["button", "textbox", "switch", "tab", "listitem"]);
   const webOnly = (file: string) => pairs.filter((pair) => pair.file === file).flatMap((pair) => pair.tags.filter((tag) => ID_TAG.test(tag)))
     .every((id) => typeof byId.get(id)?.ios === "object");
@@ -145,6 +146,9 @@ test("shared tests find controls by roles iOS has too, and by test ids the web a
       .filter((role) => !portable.has(role) && !webOnly(file)).map((role) => `${file} finds a ${role}, which iOS doesn't expose`),
     ...[...source.matchAll(/getByTestId\(\s*["'`]([^"'`]+)["'`]/gu)].map(([, id]) => id!)
       .filter((id) => !appSources.includes(`data-testid="${id}"`)).map((id) => `${file} finds test id ${id}, which no data-testid in src/ sets`),
+    ...[...source.matchAll(/getByTestId\(\s*["'`]([^"'`]+)["'`]/gu)].map(([, id]) => id!)
+      .filter((id) => pairs.some((pair) => pair.file === file && pair.target === "ios" && pair.disposition === "run") && !iosSources.includes(`.accessibilityIdentifier("${id}")`))
+      .map((id) => `${file} runs on iOS and finds test id ${id}, which no .accessibilityIdentifier under ios/HUI sets`),
   ]);
   assert.deepEqual(problems, []);
 });

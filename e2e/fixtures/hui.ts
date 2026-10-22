@@ -8,8 +8,9 @@
  * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
  * keyboard), and a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory) that it removes at teardown. Test files import `test` from here, never from `e2e`, and never read
- * `platform`, `device` or `browser` themselves.
+ * `sub` directory) that it removes at teardown. On iOS it relaunches the app pointed at the gateway and follows a
+ * `hui://open` link instead of loading a page, and the web-only steps throw. Test files import `test` from here, never
+ * from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -17,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
+import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
@@ -69,7 +71,8 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
 
 export const test = base.extend<{ hui: Hui }>({
   hui: async (fixtures, use) => {
-    const port = new URL(fixtures.app.baseUrl!).port;
+    const web = fixtures.platform === "web";
+    const port = web ? new URL(fixtures.app.baseUrl!).port : "47400";
     const file = new URL(`../../.e2e/hui/receipt-${port}.json`, import.meta.url);
     await expect.poll(() => readFile(file).then(() => true, () => false), { timeout: 60_000 }).toBe(true);
     const receipt = JSON.parse(await readFile(file, "utf8")) as Receipt;
@@ -96,37 +99,21 @@ export const test = base.extend<{ hui: Hui }>({
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
     };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
+    const device = () => (fixtures as unknown as { device: Device }).device;
+    const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", receipt.url] });
+    const notOnIos = (step: string) => () => {
+      throw new Error(`hui.${step} is not on iOS yet; keep the test on platforms: ['web']`);
+    };
 
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
+    if (!web) await launch();
     const repositories: string[] = [];
 
-    await use({
-      workspace: receipt.workspace,
-      api,
-      createSession: async (input) =>
-        (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
-      prompt,
-      createSubagent: async (parent) => {
-        await prompt(parent, "E2E_SUBAGENTS_START");
-        let child: ListedSession | undefined;
-        await expect.poll(async () => {
-          const all = await sessions();
-          child = all.find((session) => session.parentId === parent.id);
-          return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
-            && all.find((session) => session.id === parent.id)?.status === "idle";
-        }, { timeout: 30_000 }).toBe(true);
-        return { id: child!.id, title: child!.title };
-      },
-      provider: {
-        held: () => control("GET", "/control/wait-replay-ready"),
-        release: () => control("POST", "/control/release-replay"),
-      },
-      open: (path) => fixtures.app.open(path),
-      reload: () => browser().reload(),
+    const webSteps: Omit<Hui, "workspace" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "repository"> = {
       url: () => browser().url(),
       clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
         const page = window as unknown as { huiCopied: string };
@@ -269,6 +256,37 @@ export const test = base.extend<{ hui: Hui }>({
           }),
         };
       },
+    };
+
+    await use({
+      ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
+      ...(web ? {} : { keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") } }),
+      workspace: receipt.workspace,
+      api,
+      createSession: async (input) =>
+        (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+      prompt,
+      createSubagent: async (parent) => {
+        await prompt(parent, "E2E_SUBAGENTS_START");
+        let child: ListedSession | undefined;
+        await expect.poll(async () => {
+          const all = await sessions();
+          child = all.find((session) => session.parentId === parent.id);
+          return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
+            && all.find((session) => session.id === parent.id)?.status === "idle";
+        }, { timeout: 30_000 }).toBe(true);
+        return { id: child!.id, title: child!.title };
+      },
+      provider: {
+        held: () => control("GET", "/control/wait-replay-ready"),
+        release: () => control("POST", "/control/release-replay"),
+      },
+      open: async (path) => {
+        if (web) return fixtures.app.open(path);
+        await launch();
+        await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
+      },
+      reload: () => (web ? browser().reload() : fixtures.app.restart()),
       repository: async () => {
         const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
         repositories.push(path);
