@@ -31,10 +31,10 @@ test("Stop closes a waiting question or secret card and leaves the session idle"
     await expect(card).toBeHidden();
     await hui.reload();
     await expect(idle).toBeVisible();
-    await expect(card).toBeHidden();
     await transcript.getByText("Ran 1 command").tap();
     await transcript.getByText("Failed").tap();
     await expect(transcript.getByText(`<harness> [error] Tool ${tool} was aborted </harness>`)).toBeVisible();
+    await expect(card).toBeHidden();
   }
   expect((await hui.secretDirectories()).filter((name) => !before.includes(name))).toEqual([]);
 });
