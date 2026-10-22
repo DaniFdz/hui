@@ -111,6 +111,10 @@ actor HUICore {
         try call("markdownTokens", source, agent)
     }
 
+    func queueRows(_ queue: API.RuntimeQueue) throws -> [QueueRow] {
+        try call("queueRows", queue)
+    }
+
     func closeTranscript(_ handle: String) {
         transcripts[handle] = nil
     }
@@ -119,8 +123,8 @@ actor HUICore {
         try decode(invoke("take", [session, text, json([String]())], on: requests()))
     }
 
-    func sendFailed(_ session: String, requestId: String, text: String, row: String) throws {
-        _ = try invoke("failed", [session, requestId, text, json([String]()), row], on: requests())
+    func sendFailed(_ session: String, requestId: String, text: String, row: String?) throws {
+        _ = try invoke("failed", [session, requestId, text, json([String]()), row ?? JSValue(undefinedIn: context) as Any], on: requests())
     }
 
     private func items(_ handle: String) throws -> JSValue {
@@ -188,6 +192,13 @@ actor HUICore {
 struct ChatProjection: Equatable, Sendable {
     var rows: [ChatRow]
     var working: String
+}
+
+struct QueueRow: Decodable, Hashable, Sendable {
+    var id: String
+    var text: String
+    var label: String
+    var editable: Bool
 }
 
 struct RequestId: Decodable, Sendable {

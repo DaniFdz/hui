@@ -1,7 +1,7 @@
 /**
  * Pure rules for the chat composer: what Enter does, when a draft may be sent, how a prompt locks and
- * unlocks it, and how a rejected submission comes back without overwriting newer text. The view holds the
- * state; these helpers keep its transitions testable.
+ * unlocks it, how a rejected submission comes back without overwriting newer text, and the rows of the message
+ * queue. The view holds the state; these helpers keep its transitions testable.
  */
 import type {
   Attachment,
@@ -12,6 +12,24 @@ import type {
 } from "../../api/sessions.ts";
 
 export const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
+
+export interface QueueRow {
+  id: string;
+  text: string;
+  label: "Steer" | "Follow up";
+  editable: boolean;
+}
+
+/** Steers first, then the runtime's follow-ups HUI can't edit, then HUI's editable ones in their order. */
+export function queueRows(queue: QueueSnapshot): QueueRow[] {
+  const editable = queue.items ?? [];
+  const runtimeFollowUps = queue.followUp.slice(0, Math.max(0, queue.followUp.length - editable.length));
+  return [
+    ...queue.steering.map((text) => ({ id: "", text, label: "Steer" as const, editable: false })),
+    ...runtimeFollowUps.map((text) => ({ id: "", text, label: "Follow up" as const, editable: false })),
+    ...editable.map(({ id, text }) => ({ id, text, label: "Follow up" as const, editable: true })),
+  ];
+}
 
 export function composerEnterMode(input: {
   streaming: boolean;

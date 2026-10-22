@@ -8,21 +8,21 @@ const call = (verb: "CALL" | "HOLD", name: string, input: Record<string, unknown
 const openSession = async (hui: Hui, title: string) => {
   const session = await hui.createSession({ title });
   await hui.open(`/sessions/${session.id}`);
+  return session;
 };
 
-test("a command shows a bounded preview and opens to its output, state and copy", { tags: ["CHAT-026"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a command shows a bounded preview and opens to its output, state and copy", { tags: ["CHAT-026"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
   const idle = screen.getByLabel("Session status: Idle");
   await hui.clipboard();
-  await openSession(hui, "Command cards");
+  const session = await openSession(hui, "Command cards");
   await expect(idle).toBeVisible();
 
   const words = Array.from({ length: 50 }, (_, index) => `word${index}`).join(" ");
   const command = `cd '${hui.workspace}' && echo ${words}`;
-  await message.fill(call("CALL", "bash", { command }));
-  await send.tap();
+  await hui.prompt(session, call("CALL", "bash", { command }));
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
   await transcript.getByText("Ran 1 command").tap();
@@ -34,7 +34,7 @@ test("a command shows a bounded preview and opens to its output, state and copy"
   await expect(output).toBeVisible();
   await expect(transcript.getByText("Completed")).toBeVisible();
   await hui.contextMenu(output);
-  await transcript.getByText("Copy as markdown").tap();
+  await screen.getByText("Copy as markdown").tap();
   await expect.poll(() => hui.copied()).toBe(`${words}\n`);
 
   await message.fill("E2E_COMMAND_RUNNING");
@@ -59,7 +59,7 @@ test("a command shows a bounded preview and opens to its output, state and copy"
   await expect(transcript.getByText("failed")).toBeVisible();
 });
 
-test("a read's output copies from its context menu", { tags: ["CHAT-068"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a read's output copies from its context menu", { tags: ["CHAT-068"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   await hui.clipboard();
   await openSession(hui, "Read copy");
@@ -70,11 +70,11 @@ test("a read's output copies from its context menu", { tags: ["CHAT-068"], platf
   await transcript.getByRole("button", "Read fixture.txt").tap();
   const content = transcript.getByText("Real SDK browser fixture", { exact: false });
   await hui.contextMenu(content);
-  await transcript.getByText("Copy as markdown").tap();
+  await screen.getByText("Copy as markdown").tap();
   await expect.poll(() => hui.copied()).toBe("Real SDK browser fixture\n");
 });
 
-test("another tool shows its state, input and output, with Copy output", { tags: ["CHAT-028"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("another tool shows its state, input and output, with Copy output", { tags: ["CHAT-028"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
@@ -118,7 +118,7 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await expect(transcript.getByText("Fixture echo failed on purpose.")).toBeVisible();
 });
 
-test("a failed tool call keeps its error live and after a reload", { tags: ["CHAT-029"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a failed tool call keeps its error live and after a reload", { tags: ["CHAT-029"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   await openSession(hui, "Failed read");
   await screen.getByLabel("Message").fill("E2E_TOOL_FAILURE");

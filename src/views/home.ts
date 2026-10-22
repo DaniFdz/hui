@@ -33,7 +33,7 @@ import type {
 import { attachmentPreview } from "../lib/attachments.ts";
 import { renderAttachmentFileIcon, resolveAttachmentFileIcon } from "../lib/attachment-file-icon.ts";
 import { latestSubagentBatch, subagentElapsed, subagentVisualState, type SubagentVisualState } from "../lib/subagent-activity.ts";
-import { composerEnterMode, composerPlaceholder } from "../lib/composer/state.ts";
+import { composerEnterMode, composerPlaceholder, queueRows } from "../lib/composer/state.ts";
 import { APPLE_PLATFORM } from "../lib/shortcut-binding.ts";
 import { compactionBlocks, noteAnnouncement, type NoteLevel } from "../lib/session/ui-state.ts";
 import { sessionStatusLabel } from "../lib/session/labels.ts";
@@ -65,7 +65,7 @@ import { positionRail } from "./chat/position-rail.ts";
 import { renderReadToolCard, renderToolFileReference } from "./chat/read-tool-card.ts";
 import { renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
-import { codemodeToolPresentation, commandToolPresentation, readToolPresentation, toolFilePath } from "../lib/tool-cards.ts";
+import { codemodeToolPresentation, commandToolPresentation, printable, readToolPresentation, toolFilePath } from "../lib/tool-cards.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -811,11 +811,6 @@ function renderMessageAttachment(attachment: string | { name: string; kind?: str
     </a>
     <div class="hui-message-attachment-image__fallback">${attachmentCard(attachment)}</div>
   </figure>`;
-}
-
-function printable(value: unknown): string {
-  if (typeof value === "string") return value;
-  try { return JSON.stringify(value, null, 2); } catch { return String(value); }
 }
 
 const codeCopyAttempts = new WeakMap<HTMLElement, symbol>();
@@ -2140,13 +2135,8 @@ function mountQueueEditor(element: Element | undefined, value: string) {
 }
 
 function renderQueue(props: HomeProps) {
-  const editable = [...(props.queue.items ?? [])];
-  const runtimeFollowUps = props.queue.followUp.slice(0, Math.max(0, props.queue.followUp.length - editable.length));
-  const rows = [
-    ...props.queue.steering.map((text) => ({ id: "", text, label: "Steer", editable: false })),
-    ...runtimeFollowUps.map((text) => ({ id: "", text, label: "Follow up", editable: false })),
-    ...editable.map((item) => ({ ...item, label: "Follow up", editable: true })),
-  ];
+  const editable = props.queue.items ?? [];
+  const rows = queueRows(props.queue);
   if (!rows.length) return nothing;
   return html`<section
     class="chat-queue"
