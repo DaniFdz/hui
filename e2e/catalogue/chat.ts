@@ -36,7 +36,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-004",
@@ -56,7 +56,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/steer"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-006",
@@ -66,7 +66,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/follow-up"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-007",
@@ -84,7 +84,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidqueue"],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-009",
@@ -102,7 +102,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidqueue"],
     surfaces: ["route:POST /__hui/sessions/:id/queue"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-011",
@@ -260,7 +260,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:bash", "tool:powershell", "item:tool"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-027",
@@ -279,7 +279,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:grep", "tool:find", "tool:ls", "item:tool"],
     journeys: ["durable-extensions"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-029",
@@ -289,7 +289,7 @@ const cases: UseCase[] = [
     surfaces: ["item:tool"],
     journeys: ["chat-composer"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-030",
@@ -663,7 +663,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["tool:read"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-069",

@@ -6,7 +6,8 @@
 // stopping cancels the socket's receive. Sending reuses a failed send's request id through the core's `SendRequests`.
 // A failed send stays in the transcript marked failed, added again if a snapshot replaced it meanwhile, and hands its
 // text back for the draft; a resend the gateway answers as a duplicate drops both local copies, as the web's composer
-// does.
+// does. While a run streams a send can steer it or queue a follow-up instead, which adds no transcript row; the queue
+// comes from the snapshot and `queue_update` events as the core's rows, and its changes go to `POST …/queue`.
 import Foundation
 import Observation
 
@@ -29,6 +30,7 @@ final class ConversationModel {
     private(set) var session: API.SessionView?
     private(set) var statusLabel = ""
     private(set) var rows: [ChatRow] = []
+    private(set) var queue: [QueueRow] = []
     private(set) var working = ""
     private(set) var streaming = false
     private(set) var stopping = false
@@ -63,31 +65,51 @@ final class ConversationModel {
         Task { [core] in await core.closeTranscript(handle) }
     }
 
-    /// Sends `text` as a prompt; false when it wasn't sent, so the composer gets the text back.
-    func send(_ text: String) async -> Bool {
+    enum SendMode: String {
+        case prompt
+        case steer
+        case followUp = "follow-up"
+    }
+
+    /// Sends `text` as a prompt, a steer or a follow-up; false when it wasn't sent, so the composer gets the text back.
+    func send(_ text: String, mode: SendMode = .prompt) async -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return true }
         let current = generation
         let pending = "user-\(UUID().uuidString)"
+        let prompt = mode == .prompt
         sendError = nil
         do {
             guard current == generation else { return false }
-            show(try await core.transcript(handle, pending: pending, text: text))
+            if prompt { show(try await core.transcript(handle, pending: pending, text: text)) }
             let request = try await core.takeRequestId(id, text: text)
             do {
-                let answer: API.SessionPromptResponse = try await client.post(path("prompt"), body: PromptRequest(text: text, requestId: request.requestId))
+                let answer: API.SessionPromptResponse = try await client.post(path(mode.rawValue), body: PromptRequest(text: text, requestId: request.requestId))
                 guard current == generation else { return true }
-                show(try await answer.duplicate == true
-                    ? core.transcript(handle, duplicate: pending, earlierRow: request.earlierRow)
-                    : core.transcript(handle, accepted: pending))
+                if answer.duplicate == true {
+                    show(try await core.transcript(handle, duplicate: pending, earlierRow: request.earlierRow))
+                } else if prompt {
+                    show(try await core.transcript(handle, accepted: pending))
+                }
                 return true
             } catch {
-                try await core.sendFailed(id, requestId: request.requestId, text: text, row: pending)
+                try await core.sendFailed(id, requestId: request.requestId, text: text, row: prompt ? pending : nil)
                 sendError = error.localizedDescription
-                guard current == generation else { return false }
+                guard current == generation, prompt else { return false }
                 show(try await core.transcript(handle, failed: pending, text: text))
                 return false
             }
+        } catch {
+            sendError = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Edits, removes, moves or steers a queued follow-up; true when the gateway took the change.
+    func changeQueue(_ change: API.SessionQueueRequest) async -> Bool {
+        do {
+            let _: API.JSONValue = try await client.post(path("queue"), body: change)
+            return true
         } catch {
             sendError = error.localizedDescription
             return false
@@ -197,6 +219,10 @@ final class ConversationModel {
                 streaming = true
                 stopping = false
             }
+            if case .queueUpdate(let update) = event.data {
+                try await setQueue(update.queue, current)
+                return
+            }
             let projection = try await core.transcript(handle, event: event.data)
             if current == generation { show(projection) }
         case .status(let status):
@@ -211,7 +237,13 @@ final class ConversationModel {
         let projection = try await core.transcript(handle, snapshot: snapshot.transcript, streaming: Self.streaming(snapshot.status))
         guard current == generation else { return }
         show(projection)
+        try await setQueue(snapshot.queue, current)
         await setStatus(snapshot.status, current)
+    }
+
+    private func setQueue(_ runtime: API.RuntimeQueue, _ current: Int) async throws {
+        let rows = try await core.queueRows(runtime)
+        if current == generation { queue = rows }
     }
 
     private func setStatus(_ status: API.SessionStatus, _ current: Int) async {

@@ -4,7 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 const heldEcho = `E2E_HOLD:${Buffer.from(JSON.stringify({ name: "fixture_echo", input: { text: "held" } })).toString("base64url")}`;
 
-test("the working indicator names each step until the turn settles", { tags: ["CHAT-003"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the working indicator names each step until the turn settles", { tags: ["CHAT-003"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const idle = screen.getByLabel("Session status: Idle");

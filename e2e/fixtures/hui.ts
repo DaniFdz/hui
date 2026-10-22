@@ -10,8 +10,10 @@
  * development socket, whose client reloads the page when the gateway restarts, which no installed gateway does. On iOS
  * it relaunches the app pointed at the gateway and follows `hui://open` links; each test starts by deleting only the
  * app's preferences through `defaults`, and `clearState` deletes them too before the engine empties the data container,
- * because `cfprefsd` would otherwise hand the relaunched app the deleted values; steps only the web has throw there.
- * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * because `cfprefsd` would otherwise hand the relaunched app the deleted values; it reads a container's text as its
+ * texts and labels in order, since a device reports no text for a container, and what the app copied from the
+ * simulator's pasteboard; steps only the web has throw there. Test files import `test` from here, never from `e2e`, and
+ * never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -72,6 +74,7 @@ export type Hui = {
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
+  textOf(target: Locator): Promise<string>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
@@ -355,6 +358,7 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      textOf: async (target) => (await target.textContent()) ?? "",
       scrollSideways: async (target) => {
         const box = await target.boundingBox();
         if (!box) throw new Error("scrollSideways: the target is not on screen");
@@ -419,7 +423,20 @@ export const test = base.extend<{ hui: Hui }>({
 
     await use({
       ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
-      ...(web ? {} : { keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") } }),
+      ...(web ? {} : {
+        keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
+        hold: async (target: Locator, until: Locator) => {
+          await target.longPress();
+          await expect(until).toBeVisible();
+        },
+        textOf: async (target: Locator) => (await target.getByText(/\S/u).allTextContents()).join(" "),
+        contextMenu: (target: Locator) => target.longPress(),
+        clipboard: async ({ refuse = false } = {}) => {
+          if (refuse) notOnIos("clipboard({ refuse: true })")();
+          execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
+        },
+        copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
+      }),
       workspace: receipt.workspace,
       gateway: receipt.url,
       api,

@@ -113,6 +113,7 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   stream's snapshot arrived its statuses win over every list and upsert, and a session the snapshot leaves out is idle.
   Every listed session has a status label, so a deep link to one the sidebar hides (archived, a Swarm helper) opens.
 - The chat screen (`Chat/ChatView.swift`) names its controls as the web's chat does (`Message`, `Send message`, `Stop`,
+  `Steer message; touch and hold to enqueue` with its `Enqueue` hold menu, `Queued messages` and its row controls,
   `Read <file>`, `Agent activity: <step>`) and takes every label from the core: the core's `chatRows` returns the rows with
   their activity labels and tool cards (`src/lib/chat-rows.ts`), and a `key` per row and item that the screen uses for
   identity, opening and scrolling (tool call ids repeat across turns); the working indicator comes from `workingLabel`. The transcript follows the bottom

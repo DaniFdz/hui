@@ -5,6 +5,7 @@ import {
   composerEnterMode,
   composerPlaceholder,
   questionAnswer,
+  queueRows,
   restoreRejectedSubmission,
   streamingAfterSubmission,
 } from "./state.ts";
@@ -75,4 +76,12 @@ test("a rejected deferred send recovers its payload without overwriting newer wo
     draft: "sent draft",
     attachments: sent,
   });
+});
+
+test("the queue lists steers, then follow-ups the runtime holds, then HUI's editable follow-ups", () => {
+  assert.deepEqual(queueRows({ steering: ["Now"], followUp: ["Runtime", "Mine"], items: [{ id: "q1", text: "Mine", mode: "followUp" }] }), [
+    { id: "", text: "Now", label: "Steer", editable: false },
+    { id: "", text: "Runtime", label: "Follow up", editable: false },
+    { id: "q1", text: "Mine", label: "Follow up", editable: true },
+  ]);
 });
