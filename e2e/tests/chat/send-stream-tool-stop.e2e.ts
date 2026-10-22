@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a reply streams, its tool card opens, and Stop ends the next run", { tags: ["CHAT-001", "CHAT-025", "CHAT-004", "smoke"], platforms: ["web"] }, async ({ app, screen, hui }) => {
+test("a reply streams, its tool card opens, and Stop ends the next run", { tags: ["CHAT-001", "CHAT-025", "CHAT-004", "smoke"] }, async ({ app, screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const status = (value: string) => screen.getByLabel(`Session status: ${value}`);

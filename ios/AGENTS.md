@@ -112,6 +112,11 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
 - `SessionsModel` opens the events stream before it loads the list, then reads the stream, as the web does. Once the
   stream's snapshot arrived its statuses win over every list and upsert, and a session the snapshot leaves out is idle.
   Every listed session has a status label, so a deep link to one the sidebar hides (archived, a Swarm helper) opens.
+- The chat screen (`Chat/ChatView.swift`) names its controls as the web's chat does (`Message`, `Send message`, `Stop`,
+  `Read <file>`, `Agent activity: <step>`) and takes every label from the core: activity rows from `activityLabel`, the
+  working indicator from `workingLabel`, tool cards from `src/lib/tool-cards.ts`. The transcript follows the bottom
+  until a card or activity row is opened, which scrolls to it, and follows again after the next send. A plain button
+  whose label has a `Spacer` needs `.contentShape(Rectangle())`, or a tap at its centre misses it.
 - `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
   has a destination, and anything else returns to the list. On the iOS 27.0 simulator `xcrun simctl openurl` opens
   the app directly, whether HUI or another app is in front; if iOS shows its "Open in “HUI”?" confirmation instead,
