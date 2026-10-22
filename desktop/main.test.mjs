@@ -70,7 +70,7 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = []) {
       if (settings instanceof Error) throw settings;
       return { ok: true, json: async () => settings };
     },
-    process: { env: { HUI_DESKTOP_LAUNCH: JSON.stringify(config) }, argv: [] },
+    process: { env: { HUI_DESKTOP_LAUNCH: JSON.stringify(config) } },
   });
   for (const link of launchUrls) app.emit('open-url', { preventDefault() {} }, link);
   await new Promise(setImmediate);
@@ -167,6 +167,14 @@ test('an alert that arrives while the operator is opening HUI still lets the win
   assert.equal(state.notifications.length, 1);
   assert.equal(state.windows.length, 1);
   assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/');
+});
+
+test('a link that is not an alert does not keep HUI windowless when it launches HUI', async (t) => {
+  const state = await shell(t, { themeMode: 'system' }, ['https://example.com/', notificationUrl('not JSON')]);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  assert.equal(state.windows.length, 1);
+  assert.equal(state.notifications.length, 0);
 });
 
 test('notification URLs cannot open another origin, a non-chat path or executable URLs', async (t) => {

@@ -119,9 +119,11 @@ async function start() {
   app.on('second-instance', showWindow);
   app.on('open-url', (event, link) => {
     event.preventDefault();
-    if (!app.isReady()) launchedForNotification = true;
     const request = notificationFromUrl(link);
-    if (request) { pendingNotifications.push(request); flushNotifications(); }
+    if (!request) return;
+    if (!app.isReady()) launchedForNotification = true;
+    pendingNotifications.push(request);
+    flushNotifications();
   });
   app.on('activate', showWindow);
   // Closing a window must not interrupt agent runs. Quit is explicit.
