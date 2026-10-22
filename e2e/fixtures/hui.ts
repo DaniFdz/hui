@@ -1,17 +1,17 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
- * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, searches
- * of the gateway's state and secret directories, and every step whose gesture or reading differs per platform: taps,
- * holds, context menus, switches (a Web Awesome switch draws its track over its input, so the web taps the point),
- * attachments, sideways scrolling, downloads, the clipboard, status glyphs, how a piece of the screen looks, and on the
- * web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control and the command palette's
- * chord. The web page never opens Vite's development socket, whose client reloads the page when the gateway restarts,
- * which no installed gateway does. On iOS it relaunches the app pointed at the gateway and follows `hui://open` links;
- * each test starts by deleting only the app's preferences through `defaults`, and `clearState` deletes them too before
- * the engine empties the data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values;
- * steps only the web has throw there. Test files import
- * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
+ * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
+ * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
+ * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
+ * clipboard, status glyphs, how a piece of the screen looks, and on the web the window's size, Back and Forward,
+ * sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never opens Vite's
+ * development socket, whose client reloads the page when the gateway restarts, which no installed gateway does. On iOS
+ * it relaunches the app pointed at the gateway and follows `hui://open` links; each test starts by deleting only the
+ * app's preferences through `defaults`, and `clearState` deletes them too before the engine empties the data container,
+ * because `cfprefsd` would otherwise hand the relaunched app the deleted values; steps only the web has throw there.
+ * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -72,6 +72,7 @@ export type Hui = {
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
+  drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
@@ -130,6 +131,8 @@ export const test = base.extend<{ hui: Hui }>({
     const sessionIds = async () => (await sessions()).map((session) => session.id);
     const taskIds = async () => (await api<{ tasks: { id: string }[] }>("GET", "/__hui/automation")).tasks.map((task) => task.id);
     const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
+    const backlogTaskIds = async () => (await api<{ items: { id: string; kind: string }[] }>("GET", "/__hui/backlog")).items
+      .filter((item) => item.kind === "local").map((item) => item.id);
     const prompt = async (session: { id: string }, text: string) => {
       await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
@@ -155,6 +158,7 @@ export const test = base.extend<{ hui: Hui }>({
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
     const existingBots = new Set(await botIds());
+    const existingBacklogTasks = new Set(await backlogTaskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     if (web) await browser().addInitScript(trackSockets);
     if (web) await clearState();
@@ -328,6 +332,20 @@ export const test = base.extend<{ hui: Hui }>({
         await expect(until).toBeVisible();
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
+      drag: async (target, onto, whileOver) => {
+        const centre = async (locator: Locator) => {
+          const box = await locator.boundingBox();
+          if (!box) throw new Error("drag: a target is not on screen");
+          return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        };
+        const from = await centre(target);
+        const to = await centre(onto);
+        await browser().mouse.move(from.x, from.y);
+        await browser().mouse.down();
+        await browser().mouse.move(to.x, to.y);
+        await whileOver();
+        await browser().mouse.up();
+      },
       touchTap: async (target) => {
         await target.scrollIntoView();
         const box = await target.boundingBox();
@@ -463,6 +481,9 @@ export const test = base.extend<{ hui: Hui }>({
     }
     for (const id of await botIds()) {
       if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
+    }
+    for (const id of await backlogTaskIds()) {
+      if (!existingBacklogTasks.has(id)) await api("DELETE", `/__hui/backlog/items/${encodeURIComponent(id)}`);
     }
     for (const id of await sessionIds()) {
       if (existing.has(id)) continue;
