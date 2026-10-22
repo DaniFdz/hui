@@ -134,7 +134,7 @@ const deliverBehind = async (method: string, url: string, body: string | undefin
 const gatewayProxy = async (gateway: string) => {
   const upstream = new URL(gateway);
   const holds = new Set<{ method: string; path: RegExp; hold(route: GatewayRequest): Promise<void> }>();
-  const sockets = new Set<Socket>();
+  const upgraded = new Set<Socket>();
   const forward = ({ incoming, body, response }: GatewayRequest) => new Promise<void>((resolve, reject) => {
     const outgoing = request({ host: upstream.hostname, port: upstream.port, method: incoming.method, path: incoming.url, headers: incoming.headers }, (answer) => {
       response.writeHead(answer.statusCode ?? 502, answer.headers);
@@ -155,10 +155,6 @@ const gatewayProxy = async (gateway: string) => {
       response.destroy();
     }
   });
-  server.on("connection", (socket) => {
-    sockets.add(socket);
-    socket.on("close", () => sockets.delete(socket));
-  });
   server.on("upgrade", (incoming: IncomingMessage, socket: Socket, head: Buffer) => {
     const target = connect(Number(upstream.port), upstream.hostname, () => {
       const headers = incoming.rawHeaders.flatMap((value, index) => (index % 2 ? [] : [`${value}: ${incoming.rawHeaders[index + 1]}`]));
@@ -166,12 +162,17 @@ const gatewayProxy = async (gateway: string) => {
       target.write(head);
       socket.pipe(target).pipe(socket);
     });
-    sockets.add(target);
     const close = () => {
       socket.destroy();
       target.destroy();
     };
-    for (const end of [socket, target]) end.on("error", close).on("close", close);
+    for (const end of [socket, target]) {
+      upgraded.add(end);
+      end.on("error", close).on("close", () => {
+        upgraded.delete(end);
+        close();
+      });
+    }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   return {
@@ -196,8 +197,10 @@ const gatewayProxy = async (gateway: string) => {
       };
     },
     close: async () => {
-      for (const socket of sockets) socket.destroy();
-      await new Promise((resolve) => server.close(resolve));
+      const closed = new Promise((resolve) => server.close(resolve));
+      server.closeAllConnections();
+      for (const socket of upgraded) socket.destroy();
+      await closed;
     },
   };
 };
