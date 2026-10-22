@@ -1,7 +1,8 @@
 // A basic Markdown renderer for chat messages, drawn from the tokens the core's markdown-it parser returns
 // (src/lib/markdown/parser.ts), so both clients read Markdown alike: paragraphs, headings, list items, quotes, code
 // blocks and rules as views, inline text as one AttributedString (bold, italic, strikethrough, code, links). Raw HTML
-// shows as text, as the web escapes it. Until the core answers, the source shows as plain text.
+// shows as text, as the web escapes it, and a link the parser hides (an unsafe scheme) stays plain text. Until the core
+// answers, the source shows as plain text.
 import SwiftUI
 
 struct MarkdownToken: Decodable, Equatable, Sendable {
@@ -11,6 +12,7 @@ struct MarkdownToken: Decodable, Equatable, Sendable {
     var info: String
     var attrs: [[String]]?
     var children: [MarkdownToken]?
+    var hidden: Bool?
 
     func attribute(_ name: String) -> String? {
         attrs?.first { $0.first == name }?.last
@@ -101,7 +103,7 @@ struct MarkdownView: View {
         var result = AttributedString()
         var intents: InlinePresentationIntent = []
         var link: URL?
-        for token in tokens {
+        for token in tokens where token.hidden != true {
             var piece: AttributedString?
             switch token.type {
             case "text", "hui_math_inline": piece = AttributedString(token.content)
