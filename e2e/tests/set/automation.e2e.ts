@@ -139,6 +139,8 @@ test("a task is edited from its name or actions menu, and paused and resumed by 
   await expect(screen.getByText("Stop the active run before changing its target, name or prompt.")).toBeVisible();
   await expect(screen.getByText("Edit task")).toBeVisible();
   await expect(name).toHaveValue("Renamed in flight");
+  await hui.provider.release();
+  await expect(screen.getByText("Idle.")).toBeVisible();
 });
 
 test("run now shows the run settle in Run history, refuses a second run and a delete in flight, cancels, and a delete keeps past runs", { tags: ["SET-071"], platforms: ["web"] }, async ({ screen, hui }) => {
