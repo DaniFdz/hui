@@ -7,9 +7,10 @@
  * attachments, sideways scrolling, downloads, the clipboard, status glyphs, how a piece of the screen looks, and on the
  * web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control and the command palette's
  * chord. The web page never opens Vite's development socket, whose client reloads the page when the gateway restarts,
- * which no installed gateway does. On iOS it relaunches the app pointed at the gateway, follows `hui://open` links, and
- * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
- * would otherwise hand the relaunched app the deleted values; steps only the web has throw there. Test files import
+ * which no installed gateway does. On iOS it relaunches the app pointed at the gateway and follows `hui://open` links;
+ * each test starts by deleting only the app's preferences through `defaults`, and `clearState` deletes them too before
+ * the engine empties the data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values;
+ * steps only the web has throw there. Test files import
  * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";

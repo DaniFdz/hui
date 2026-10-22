@@ -13,8 +13,7 @@ struct ChatView: View {
     @State private var expanded: Set<String> = []
     @State private var position = ScrollPosition(idType: String.self, edge: .bottom)
     @State private var following = true
-    @State private var readerScrolling = false
-    @State private var sends = 0
+    @State private var nearBottom = true
 
     init(id: String, client: GatewayClient, core: HUICore, title: String?) {
         self.core = core
@@ -93,22 +92,20 @@ struct ChatView: View {
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .defaultScrollAnchor(.bottom, for: .alignment)
         .defaultScrollAnchor(following ? .bottom : .top, for: .sizeChanges)
-        .onScrollPhaseChange { _, phase in
-            readerScrolling = [.tracking, .interacting, .decelerating].contains(phase)
-        }
         .onScrollGeometryChange(for: Bool.self) { geometry in
             geometry.contentSize.height + geometry.contentInsets.bottom - geometry.visibleRect.maxY < 48
-        } action: { _, nearBottom in
-            if readerScrolling { following = nearBottom }
+        } action: { _, near in
+            nearBottom = near
+        }
+        .onScrollPhaseChange { old, phase in
+            guard phase == .idle, [.interacting, .decelerating].contains(old) else { return }
+            following = nearBottom
+            if following { withAnimation { position.scrollTo(edge: .bottom) } }
         }
         .onChange(of: expanded) { old, new in
             guard let opened = new.subtracting(old).first else { return }
             following = false
             withAnimation { position.scrollTo(id: opened, anchor: .top) }
-        }
-        .onChange(of: sends) {
-            following = true
-            position.scrollTo(edge: .bottom)
         }
         .scrollDismissesKeyboard(.interactively)
         .accessibilityIdentifier("transcript")
@@ -203,7 +200,8 @@ struct ChatView: View {
                 Button("Send message", systemImage: "arrow.up.circle.fill") {
                     let text = draft
                     draft = ""
-                    sends += 1
+                    following = true
+                    position.scrollTo(edge: .bottom)
                     Task {
                         guard await !model.send(text) else { return }
                         draft = draft.isEmpty ? text : "\(text)\n\n\(draft)"
