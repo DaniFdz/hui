@@ -47,6 +47,8 @@ test("/clear refuses arguments, attachments and active work", { tags: ["CHAT-041
   await screen.getByRole("button", "Send message").tap();
   await expect(screen.getByText("Use /clear without arguments or attachments.")).toBeVisible();
   await expect(message).toHaveValue("/clear everything");
+  await screen.getByRole("button", "Dismiss notification").tap();
+  await expect(screen.getByText("Use /clear without arguments or attachments.")).toBeHidden();
 
   await message.fill("/clear");
   await screen.getByLabel("Add attachment").first().tap();
@@ -54,6 +56,7 @@ test("/clear refuses arguments, attachments and active work", { tags: ["CHAT-041
   await expect(screen.getByLabel("Attached files").getByText("notes.txt")).toBeVisible();
   await screen.getByRole("button", "Send message").tap();
   await expect(screen.getByText("Use /clear without arguments or attachments.")).toBeVisible();
+  await expect(screen.getByLabel("Attached files").getByText("notes.txt")).toBeVisible();
   await expect(transcript.getByText("Replay prefix — replay suffix")).toBeVisible();
 });
 

@@ -71,6 +71,8 @@ test("/reload refuses arguments, attachments and active work", { tags: ["CHAT-04
   await screen.getByRole("button", "Send message").tap();
   await expect(screen.getByText("Use /reload without arguments or attachments.")).toBeVisible();
   await expect(message).toHaveValue("/reload everything");
+  await screen.getByRole("button", "Dismiss notification").tap();
+  await expect(screen.getByText("Use /reload without arguments or attachments.")).toBeHidden();
 
   await message.fill("/reload");
   await screen.getByLabel("Add attachment").first().tap();
@@ -78,4 +80,5 @@ test("/reload refuses arguments, attachments and active work", { tags: ["CHAT-04
   await expect(screen.getByLabel("Attached files").getByText("notes.txt")).toBeVisible();
   await screen.getByRole("button", "Send message").tap();
   await expect(screen.getByText("Use /reload without arguments or attachments.")).toBeVisible();
+  await expect(screen.getByLabel("Attached files").getByText("notes.txt")).toBeVisible();
 });
