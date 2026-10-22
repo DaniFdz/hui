@@ -1,18 +1,19 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's barriers, a gateway request a test holds, rejects or delivers while dropping
- * its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context menu,
- * turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
+ * its API, the deterministic provider's address and barriers, a gateway request a test holds, rejects or delivers while
+ * dropping its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context
+ * menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
  * input), attaching files from `files/`, reading what a download saved or what the page copied, opening a session's
  * menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a piece of the screen
  * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
  * keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and the
- * secret directories the gateway wrote. On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link
- * instead of loading a page, and clears the app's preferences through `defaults` before the engine empties its data
- * container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps throw.
- * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
+ * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and
+ * the secret directories the gateway wrote. On iOS it relaunches the app pointed at the gateway, follows a `hui://open`
+ * link instead of loading a page, and clears the app's preferences through `defaults` before the engine empties its
+ * data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps
+ * throw. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
+ * themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -40,7 +41,7 @@ export type Hui = {
   createSession(input: { title: string; tool?: "pi"; group?: string; cwd?: string; model?: string }): Promise<{ id: string }>;
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
-  provider: { held(): Promise<void>; release(): Promise<void> };
+  provider: { url: string; held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   clearState(): Promise<void>;
@@ -305,6 +306,7 @@ export const test = base.extend<{ hui: Hui }>({
         return { id: child!.id, title: child!.title };
       },
       provider: {
+        url: receipt.providerUrl,
         held: () => control("GET", "/control/wait-replay-ready"),
         release: () => control("POST", "/control/release-replay"),
       },
