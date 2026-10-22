@@ -18,11 +18,11 @@ const cases: UseCase[] = [
   {
     id: "SESS-002",
     title: "See why a session could not start",
-    behaviour: "Starting with a directory that does not exist shows a \"Could not start session\" alert directly below the composer with the gateway's detail, registers no session and keeps the message editable. Correcting the directory and starting again sends the same draft.",
+    behaviour: "Starting with a directory that does not exist shows a \"Could not start session\" alert with the gateway's detail, registers no session and keeps the message editable. Correcting the directory and starting again sends the same draft.",
     spec: ["docs/api.md#post-__huisessions"],
     surfaces: ["route:POST /__hui/sessions"],
     journeys: ["session-launch"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -605,7 +605,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessions", "docs/api.md#post-__huisessionsidprompt"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["session-lifecycle"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -711,6 +711,16 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessions"],
     surfaces: ["route:GET /__hui/sessions"],
     web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "SESS-074",
+    title: "See the start error next to the message it blocks",
+    behaviour: "The \"Could not start session\" alert sits directly below the New Session composer with the same edges, and a long path in it wraps without scrolling sideways, on wide and narrow screens.",
+    spec: ["docs/api.md#post-__huisessions"],
+    surfaces: [],
+    journeys: ["session-launch"],
+    web: "backlog",
     ios: "backlog",
   },
 ];
