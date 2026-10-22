@@ -839,7 +839,7 @@ export function renderSidebar(props: ShellProps) {
       }}
     >
         <div class="sidebar-shell sidebar-drawer__body">
-          <div class="sidebar-brand">
+          <div class="sidebar-brand" data-testid="sidebar-header">
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
             <div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>
           </div>

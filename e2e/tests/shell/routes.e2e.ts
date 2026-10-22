@@ -12,11 +12,11 @@ test("Home shows the new-session form with no session selected, the four destina
   await expect(screen.getByLabel(/^Not selected, status idle/u)).toBeVisible();
   await expect(screen.getByTestId("session-title")).toBeHidden();
   await expect(screen.getByLabel("Primary navigation")).toHaveText("Contributions Kanban Sessions Settings");
-  await expect(screen.getByTestId("nav-item").filter({ hasText: "Home" })).toBeHidden();
-  await expect(screen.getByRole("button", "Collapse sidebar")).toBeVisible();
-  await expect(screen.getByRole("tab", "Agents")).toBeVisible();
-  await expect(screen.getByRole("tab", "Bots")).toBeVisible();
-  for (const removed of ["New session", "Search sessions", "Settings"]) await expect(screen.getByRole("button", removed)).toBeHidden();
+  const header = screen.getByTestId("sidebar-header");
+  await expect(header.getByRole("button")).toHaveAccessibleName("Collapse sidebar");
+  await expect(header.getByRole("tab", "Agents")).toBeVisible();
+  await expect(header.getByRole("tab", "Bots")).toBeVisible();
+  await expect(header).toHaveText("Agents Bots");
   expect(await hui.url()).toMatch(/:\d+\/$/u);
 });
 
@@ -75,6 +75,13 @@ test("pages outside the sidebar open by their address and survive a reload, old 
     await expect.poll(() => hui.url()).toMatch(/:\d+\/$/u);
     await expect(heading).toBeHidden();
   }
+  await hui.open("/kanban");
+  await expect(heading).toHaveText("Kanban");
+  await hui.open("/agents");
+  await expect(screen.getByRole("button", "Start session")).toBeVisible();
+  await hui.back();
+  await expect.poll(() => hui.url()).toMatch(/\/kanban$/u);
+  await expect(heading).toHaveText("Kanban");
 });
 
 test("a session's address opens its conversation, also after a reload, a bot's opens its chat on the Bots tab, and a deleted session's lands on Home", { tags: ["SHELL-005"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -135,6 +142,7 @@ test("Back and Forward return the address and the screen of each page, Settings 
     [new RegExp(`/sessions/${session.id}$`, "u"), async () => {
       await expect(sessionTitle).toHaveText("Visited in history");
       await expect(screen.getByTestId("transcript").getByText("Remember this visit")).toBeVisible();
+      await expect(screen.getByLabel(/^Visited in history, status idle/u)).toHaveAttribute("aria-current", "true");
     }],
     [/\/kanban$/u, async () => {
       await expect(heading).toHaveText("Kanban");
@@ -161,17 +169,25 @@ test("Exit Settings returns to the page or session it was opened from, or Home a
   const settings = screen.getByTestId("nav-item").filter({ hasText: "Settings" });
   const session = await hui.createSession({ title: "Settings opened here" });
 
-  await hui.open(`/sessions/${session.id}`);
+  await hui.open("/kanban");
+  await expect(heading).toHaveText("Kanban");
   await hui.open("/activity");
+  await expect(heading).toHaveText("Activity");
+  await screen.getByLabel(/^Settings opened here, status idle/u).tap();
+  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Settings opened here");
+  await hui.back();
   await expect(heading).toHaveText("Activity");
   await settings.tap();
   await expect(settingsTitle).toHaveText("Appearance");
   await exit.tap();
   await expect(heading).toHaveText("Activity");
-  expect(await hui.url()).toMatch(/\/activity$/u);
+  await expect(screen.getByTestId("session-title", { visible: true })).toBeHidden();
+  await expect.poll(() => hui.url()).toMatch(/\/activity$/u);
   await hui.back();
-  expect(await hui.url()).toMatch(/\/activity$/u);
-  await expect(heading).toHaveText("Activity");
+  await expect.poll(() => hui.url()).toMatch(/\/activity$/u);
+  await hui.back();
+  await expect.poll(() => hui.url()).toMatch(/\/kanban$/u);
+  await expect(heading).toHaveText("Kanban");
   await expect(settingsTitle).toBeHidden();
 
   await hui.open(`/sessions/${session.id}`);
@@ -180,7 +196,7 @@ test("Exit Settings returns to the page or session it was opened from, or Home a
   await expect(settingsTitle).toHaveText("Appearance");
   await exit.tap();
   await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Settings opened here");
-  expect(await hui.url()).toMatch(new RegExp(`/sessions/${session.id}$`, "u"));
+  await expect.poll(() => hui.url()).toMatch(new RegExp(`/sessions/${session.id}$`, "u"));
 
   await hui.open("/settings/models");
   await expect(settingsTitle).toHaveText("Models");
@@ -188,7 +204,7 @@ test("Exit Settings returns to the page or session it was opened from, or Home a
   await expect(screen.getByRole("button", "Start session")).toBeVisible();
   await expect.poll(() => hui.url()).toMatch(/:\d+\/$/u);
   await hui.back();
-  expect(await hui.url()).toMatch(new RegExp(`/sessions/${session.id}$`, "u"));
+  await expect.poll(() => hui.url()).toMatch(new RegExp(`/sessions/${session.id}$`, "u"));
   await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Settings opened here");
   await expect(settingsTitle).toBeHidden();
 });
