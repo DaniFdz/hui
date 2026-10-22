@@ -1,9 +1,10 @@
 # Browser journey: PI session lifecycle
 
 This is the first repeatable Browser-tool journey for HUI. The shared tests in
-`e2e/tests/sess/` now prove starting, opening and removing a session. What is
-left here is how a new session reports PI's authentication failure (SESS-062)
-and how another tab sees a removed session end (SESS-066).
+`e2e/tests/sess/` now prove starting, opening and removing a session, and
+`launch-errors.e2e.ts` how a new session reports PI's rejection of its first
+prompt (SESS-062). What is left here is that a new session asks for its models
+once, and how another tab sees a removed session end (SESS-066).
 
 ## Isolated setup
 
@@ -52,11 +53,6 @@ openclaw browser errors --target-id "$TARGET" --clear --json
    until the session reads `Idle`. Do not call a session API directly. Inspect
    requests filtered by `/models`: exactly one exists, it occurs after the
    session opens, and its status is `200`, never a `409` loop.
-2. Type `Reply with exactly: HUI_BROWSER_E2E_OK` into **Message** and click
-   **Send**. With the intentionally empty PI agent directory, assert that HUI shows
-   PI's missing-provider-credential message and returns the session to
-   **Idle**. The expected request is `POST .../prompt` with status `400`; this
-   is the environmental authentication blocker, not a product success.
 
 Always take a fresh snapshot after navigation or rerender before reusing an
 element reference. If a reference is stale, recover with a new snapshot; do
@@ -78,9 +74,7 @@ Assert:
   successful;
 - model discovery is one `200` request and never a `409` loop;
 - deletion is `200` and the event stream abort caused by deletion is expected;
-- the page-error list is empty;
-- the only journey-specific console failure is the expected prompt `400` from
-  the deliberately unauthenticated PI fixture.
+- the page-error list is empty.
 
 ## Cleanup
 

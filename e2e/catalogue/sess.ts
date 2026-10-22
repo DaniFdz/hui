@@ -22,7 +22,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessions"],
     surfaces: ["route:POST /__hui/sessions"],
     journeys: ["session-launch"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -42,7 +42,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessions", "docs/api.md#model-catalog-selection"],
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-launch"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -61,7 +61,7 @@ const cases: UseCase[] = [
     behaviour: "New Session lists up to five Recent chats, the most recently updated top-level sessions that are not archived, each with its relative time. Activating one opens that session.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:new-session", "nav:session"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -71,7 +71,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huilocal-pathscwddirectoryqpath-prefix"],
     surfaces: ["route:GET /__hui/local-paths"],
     journeys: ["local-path-autocomplete"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Arrow, Enter and Tab completion is a keyboard path; choosing an option is the visible equivalent.", decision: KEYBOARD },
   },
   {
@@ -81,7 +81,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#git-workspace-sessions", "docs/api.md#get-__huigit-checkoutcwddirectory"],
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/sessions"],
     journeys: ["checkout-selector"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -91,7 +91,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#git-workspace-sessions"],
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/git-checkout", "setting:branchPrefix"],
     journeys: ["checkout-selector", "worktree-progress"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -101,7 +101,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#git-workspace-sessions"],
     surfaces: ["settings-page:worktrees", "setting:branchPrefix"],
     journeys: ["checkout-selector"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -605,7 +605,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessions", "docs/api.md#post-__huisessionsidprompt"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["session-lifecycle"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
