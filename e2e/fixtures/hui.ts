@@ -257,382 +257,385 @@ export const test = base.extend<{ hui: Hui }>({
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
     const device = () => (fixtures as unknown as { device: Device }).device;
     const proxy = web ? undefined : await gatewayProxy(receipt.url);
-    const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", proxy!.url] });
-    const forgetPreferences = async () => {
-      await device().closeApp();
-      const container = execFileSync("xcrun", ["simctl", "get_app_container", IOS_DEVICE, "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
-      const forget = spawnSync("xcrun", ["simctl", "spawn", IOS_DEVICE, "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
-      if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
-    };
-    const clearState = async () => {
-      if (!web) await forgetPreferences();
-      await fixtures.app.clearState();
-    };
-    const notOnIos = (step: string) => () => {
-      throw new Error(`hui.${step} is not on iOS yet; keep the test on platforms: ['web']`);
-    };
+    try {
+      const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", proxy!.url] });
+      const forgetPreferences = async () => {
+        await device().closeApp();
+        const container = execFileSync("xcrun", ["simctl", "get_app_container", IOS_DEVICE, "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
+        const forget = spawnSync("xcrun", ["simctl", "spawn", IOS_DEVICE, "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
+        if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
+      };
+      const clearState = async () => {
+        if (!web) await forgetPreferences();
+        await fixtures.app.clearState();
+      };
+      const notOnIos = (step: string) => () => {
+        throw new Error(`hui.${step} is not on iOS yet; keep the test on platforms: ['web']`);
+      };
 
-    const existing = new Set(await sessionIds());
-    const existingGroups = new Set((await groups()).map((group) => group.label));
-    const existingTasks = new Set(await taskIds());
-    const existingBots = new Set(await botIds());
-    const existingBacklogTasks = new Set(await backlogTaskIds());
-    const settings = await api<unknown>("GET", "/__hui/settings");
-    if (web) await browser().addInitScript(trackSockets);
-    if (web) await clearState();
-    else {
-      await forgetPreferences();
-      await launch();
-    }
-    const directories: string[] = [];
-
-    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
-      url: () => browser().url(),
-      clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
-        const page = window as unknown as { huiCopied: string };
-        page.huiCopied = "";
-        navigator.clipboard.writeText = async (text) => {
-          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
-          page.huiCopied = text;
-        };
-        navigator.clipboard.write = async (items) => {
-          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
-          const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
-          page.huiCopied = blobs.map((blob) => blob.type).join(",");
-        };
-        if (refused) document.execCommand = () => false;
-      }, refuse),
-      copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
-      keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
-      phoneScreen: async (orientation = "portrait") => {
-        const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
-        await browser().setViewport(phone);
-        return phone;
-      },
-      overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
-        .some((element) => element.scrollWidth > element.clientWidth)),
-      reachable: async (target) => {
-        await target.scrollIntoView();
-        const box = await target.boundingBox();
-        if (!box) throw new Error("reachable: the target lays out no box");
-        return browser().evaluate(({ x, y, width, height }) => {
-          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
-          const [cx, cy] = [x + width / 2, y + height / 2];
-          let hit = document.elementFromPoint(cx, cy);
-          for (let inner = hit?.shadowRoot?.elementFromPoint(cx, cy); inner && inner !== hit; inner = hit.shadowRoot?.elementFromPoint(cx, cy)) hit = inner;
-          let matched = false;
-          for (let element = hit; element; element = element.parentElement ?? (element.getRootNode() as ShadowRoot).host ?? null) {
-            if (element.hasAttribute("inert")) return false;
-            const rect = element.getBoundingClientRect();
-            matched ||= same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
-          }
-          return matched;
-        }, box);
-      },
-      wideScreen: () => browser().setViewport({ width: 1440, height: 900 }),
-      paletteChord: async () => {
-        const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
-        await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
-      },
-      back: () => browser().back(),
-      forward: () => browser().forward(),
-      peek: (target) => target.hover(),
-      sessionMenu: async (title) => {
-        const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
-        await row.hover();
-        await row.getByRole("button", `Actions for ${title}`).tap();
-      },
-      glyph: (title) => browser().evaluate((name) => {
-        const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
-        const indicator = row?.querySelector(".sidebar-session-indicator");
-        if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
-        return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
-      }, title),
-      dropStreams: async () => {
-        await browser().evaluate(() => {
-          for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
-          return null;
-        });
-      },
-      accentDot: (title) => browser().evaluate((name) => {
-        const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
-        const dot = row?.querySelector(".sidebar-session-unread-dot");
-        if (!dot) return false;
-        const accent = document.createElement("span");
-        accent.style.color = "var(--accent)";
-        dot.append(accent);
-        const shown = getComputedStyle(dot).backgroundColor === getComputedStyle(accent).color;
-        accent.remove();
-        return shown;
-      }, title),
-      overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
-      appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
-      deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
-      look: async (target) => {
-        await target.scrollIntoView();
-        const box = await target.boundingBox();
-        if (!box) throw new Error("look: the target lays out no box");
-        return browser().evaluate(({ x, y, width, height }) => {
-          const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
-          const element = document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
-            const rect = candidate.getBoundingClientRect();
-            return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
-          });
-          if (!element) throw new Error("look: no element has the target's box");
-          const rgb = (color: string) => {
-            const channels = /^(?:rgba?\(|color\(srgb )([\d.e-]+),? ([\d.e-]+),? ([\d.e-]+)/u.exec(color);
-            if (!channels) throw new Error(`look: ${color} is not an sRGB colour`);
-            const scale = color.startsWith("color(") ? 255 : 1;
-            return channels.slice(1).map((value) => Math.round(Number(value) * scale)) as [number, number, number];
-          };
-          let behind: Element | null = element;
-          while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
-          if (!behind) throw new Error("look: nothing opaque is behind the target");
-          const style = getComputedStyle(element);
-          let opacity = 1;
-          for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
-          const fonts = style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1"));
-          const faces = [...document.fonts];
-          const outerShadow = style.boxShadow.split(/,(?![^(]*\))/u).at(-1)!.trim();
-          return {
-            color: rgb(style.color),
-            background: rgb(getComputedStyle(behind).backgroundColor),
-            opacity,
-            fonts,
-            loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
-              && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
-            size: Number.parseFloat(style.fontSize),
-            weight: Number(style.fontWeight),
-            align: style.textAlign,
-            ring: !element.matches(":focus-visible") ? null
-              : style.outlineStyle !== "none" ? rgb(style.outlineColor)
-              : outerShadow === "none" ? null : rgb(outerShadow),
-          };
-        }, box);
-      },
-      attach: async (target, files) => {
-        const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
-        if (made) directories.push(made);
-        await target.setInputFiles(await Promise.all(files.map(async (file) => {
-          if (typeof file === "string") return fileURLToPath(new URL(`files/${file}`, import.meta.url));
-          await writeFile(join(made, file.name), Buffer.alloc(file.bytes, "x"));
-          return join(made, file.name);
-        })));
-      },
-      download: async (target) => {
-        const file = await browser().waitForDownload(() => target.tap());
-        return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
-      },
-      newSessionDraft: () => browser().evaluate(async () => {
-        if (!(await indexedDB.databases()).some(({ name }) => name === "hui-control-ui")) return "";
-        const db = await new Promise<IDBDatabase>((resolve, reject) => {
-          const open = indexedDB.open("hui-control-ui");
-          open.onsuccess = () => resolve(open.result);
-          open.onerror = () => reject(open.error);
-        });
-        try {
-          if (!db.objectStoreNames.contains("composerDrafts")) return "";
-          const record = await new Promise<{ text?: string } | undefined>((resolve, reject) => {
-            const get = db.transaction("composerDrafts").objectStore("composerDrafts").get("new-session");
-            get.onsuccess = () => resolve(get.result);
-            get.onerror = () => reject(get.error);
-          });
-          return record?.text ?? "";
-        } finally {
-          db.close();
-        }
-      }),
-      hold: async (target, until) => {
-        const box = await target.boundingBox();
-        if (!box) throw new Error("hold: the target is not on screen");
-        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-        await browser().evaluate(touch, { ...point, type: "pointerdown" });
-        await expect(until).toBeVisible();
-        await browser().evaluate(touch, { ...point, type: "pointerup" });
-      },
-      drag: async (target, onto, whileOver) => {
-        const centre = async (locator: Locator) => {
-          const box = await locator.boundingBox();
-          if (!box) throw new Error("drag: a target is not on screen");
-          return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-        };
-        const from = await centre(target);
-        const to = await centre(onto);
-        await browser().mouse.move(from.x, from.y);
-        await browser().mouse.down();
-        await browser().mouse.move(to.x, to.y);
-        await whileOver();
-        await browser().mouse.up();
-      },
-      touchTap: async (target) => {
-        await target.scrollIntoView();
-        const box = await target.boundingBox();
-        if (!box) throw new Error("touchTap: the target is not on screen");
-        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-        await browser().evaluate(touch, { ...point, type: "pointerdown" });
-        await browser().evaluate(touch, { ...point, type: "pointerup" });
-      },
-      contextMenu: (target) => target.secondaryTap(),
-      scrollTo: (_within, target) => target.scrollIntoView(),
-      expectLinkTo: (link, href) => expect(link).toHaveAttribute("href", href),
-      textOf: async (target) => (await target.textContent()) ?? "",
-      scrollSideways: async (target) => {
-        const box = await target.boundingBox();
-        if (!box) throw new Error("scrollSideways: the target is not on screen");
-        await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
-        await browser().mouse.wheel(240, 0);
-      },
-      stored: async (text) => {
-        const root = dirname(receipt.workspace);
-        const files = (await readdir(root, { recursive: true, withFileTypes: true }))
-          .filter((entry) => entry.isFile())
-          .map((entry) => relative(root, join(entry.parentPath, entry.name)))
-          .filter((file) => !file.startsWith("vite-cache/"));
-        const read = (file: string) => readFile(join(root, file), "latin1").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error));
-        const holding = await Promise.all(files.map(async (file) => ((await read(file)).includes(text) ? [file] : [])));
-        return holding.flat();
-      },
-      secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
-      flip: async (target) => {
-        const box = await target.boundingBox();
-        if (!box) throw new Error("flip: the switch is not on screen");
-        await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
-      },
-      intercept: async (method, path) => {
-        const { arrival, hold, settle } = holding<WebRoute>();
-        await browser().route(path, (route) => (route.request.method === method ? hold(route) : route.fallback()));
-        const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
-        return {
-          arrived: () => arrival,
-          deliver: () => decide((route) => route.continue()),
-          reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
-          answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
-          deliverAndDrop: () => decide(async (route) => {
-            await deliverBehind(method, route.request.url, route.request.postData);
-            await route.abort();
-          }),
-        };
-      },
-    };
-
-    const iosSteps: Partial<typeof webSteps> = {
-      glyph: async (title) => {
-        const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
-        await expect(row).toHaveCount(1);
-        const glyph = row.getByTestId("session-glyph");
-        if (await glyph.count() === 0) return { label: "", animated: false };
-        return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
-      },
-    };
-
-    await use({
-      ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
-      ...(web ? {} : {
-        keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
-        hold: async (target: Locator, until: Locator) => {
-          await target.longPress();
-          await expect(until).toBeVisible();
-        },
-        textOf: async (target: Locator) => (await target.getByText(/\S/u).allTextContents()).join(" "),
-        contextMenu: (target: Locator) => target.longPress(),
-        clipboard: async ({ refuse = false } = {}) => {
-          if (refuse) notOnIos("clipboard({ refuse: true })")();
-          execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
-        },
-        copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
-        intercept: async (method: string, path: RegExp) => proxy!.intercept(method, path),
-        url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
-        scrollTo: async (within: Locator, target: Locator) => {
-          const shown = async () => (await within.getByText(/\S/u).allTextContents()).join("\n");
-          for (const direction of ["down", "up"] as const) {
-            for (let before = "", now = await shown(); now !== before; before = now, now = await shown()) {
-              if (await target.count() > 0) return;
-              await within.swipe({ direction });
-            }
-          }
-          throw new Error("scrollTo: the target is nowhere in the scroll container");
-        },
-        expectLinkTo: async (link: Locator, href: string) => {
-          await expect(link).toHaveCount(1);
-          await expect(fixtures.screen.getByTestId(href).filter({ hasText: (await link.textContent()) ?? "" })).toHaveCount(1);
-        },
-        ...iosSteps,
-      }),
-      workspace: receipt.workspace,
-      gateway: receipt.url,
-      api,
-      createSession: async (input) =>
-        (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
-      prompt,
-      createSubagent: async (parent) => {
-        await prompt(parent, "E2E_SUBAGENTS_START");
-        let child: ListedSession | undefined;
-        await expect.poll(async () => {
-          const all = await sessions();
-          child = all.find((session) => session.parentId === parent.id);
-          return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
-            && all.find((session) => session.id === parent.id)?.status === "idle";
-        }, { timeout: 30_000 }).toBe(true);
-        return { id: child!.id, title: child!.title };
-      },
-      provider: {
-        url: receipt.providerUrl,
-        held: () => control("GET", "/control/wait-replay-ready"),
-        release: () => control("POST", "/control/release-replay"),
-      },
-      restartGateway: async () => {
-        const stopped = receipt.serverPid;
-        process.kill(receipt.runnerPid, "SIGUSR2");
-        await expect.poll(async () => (receipt.serverPid = (await readReceipt()).serverPid) !== stopped, { timeout: 60_000 }).toBe(true);
-      },
-      exitRuntimes: async () => {
-        execFileSync("pkill", ["-P", String(receipt.serverPid), "-f", "pi-sdk-worker"]);
-      },
-      open: async (path) => {
-        if (web) return fixtures.app.open(path);
+      const existing = new Set(await sessionIds());
+      const existingGroups = new Set((await groups()).map((group) => group.label));
+      const existingTasks = new Set(await taskIds());
+      const existingBots = new Set(await botIds());
+      const existingBacklogTasks = new Set(await backlogTaskIds());
+      const settings = await api<unknown>("GET", "/__hui/settings");
+      if (web) await browser().addInitScript(trackSockets);
+      if (web) await clearState();
+      else {
+        await forgetPreferences();
         await launch();
-        await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
-      },
-      reload: () => (web ? browser().reload() : fixtures.app.restart()),
-      clearState,
-      repository: async () => {
-        const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
-        directories.push(path);
-        const git = (...args: string[]) => execFileSync("git", ["-C", path, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com",
-          "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
-        git("init", "--quiet", "--initial-branch=main");
-        await mkdir(join(path, "sub"));
-        await writeFile(join(path, "sub", "keep.txt"), "sub\n");
-        git("add", ".");
-        git("commit", "--quiet", "-m", "main");
-        git("switch", "--quiet", "-c", "release/1.0");
-        git("commit", "--quiet", "--allow-empty", "-m", "release");
-        git("switch", "--quiet", "-c", "feature/current", "main");
-        git("commit", "--quiet", "--allow-empty", "-m", "feature");
-        return { path, git };
-      },
-    });
+      }
+      const directories: string[] = [];
 
-    await proxy?.close();
-    await control("POST", "/control/release-replay");
-    for (const id of await taskIds()) {
-      if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+      const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
+        url: () => browser().url(),
+        clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
+          const page = window as unknown as { huiCopied: string };
+          page.huiCopied = "";
+          navigator.clipboard.writeText = async (text) => {
+            if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+            page.huiCopied = text;
+          };
+          navigator.clipboard.write = async (items) => {
+            if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+            const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
+            page.huiCopied = blobs.map((blob) => blob.type).join(",");
+          };
+          if (refused) document.execCommand = () => false;
+        }, refuse),
+        copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
+        keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+        phoneScreen: async (orientation = "portrait") => {
+          const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
+          await browser().setViewport(phone);
+          return phone;
+        },
+        overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
+          .some((element) => element.scrollWidth > element.clientWidth)),
+        reachable: async (target) => {
+          await target.scrollIntoView();
+          const box = await target.boundingBox();
+          if (!box) throw new Error("reachable: the target lays out no box");
+          return browser().evaluate(({ x, y, width, height }) => {
+            const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+            const [cx, cy] = [x + width / 2, y + height / 2];
+            let hit = document.elementFromPoint(cx, cy);
+            for (let inner = hit?.shadowRoot?.elementFromPoint(cx, cy); inner && inner !== hit; inner = hit.shadowRoot?.elementFromPoint(cx, cy)) hit = inner;
+            let matched = false;
+            for (let element = hit; element; element = element.parentElement ?? (element.getRootNode() as ShadowRoot).host ?? null) {
+              if (element.hasAttribute("inert")) return false;
+              const rect = element.getBoundingClientRect();
+              matched ||= same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
+            }
+            return matched;
+          }, box);
+        },
+        wideScreen: () => browser().setViewport({ width: 1440, height: 900 }),
+        paletteChord: async () => {
+          const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+          await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
+        },
+        back: () => browser().back(),
+        forward: () => browser().forward(),
+        peek: (target) => target.hover(),
+        sessionMenu: async (title) => {
+          const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
+          await row.hover();
+          await row.getByRole("button", `Actions for ${title}`).tap();
+        },
+        glyph: (title) => browser().evaluate((name) => {
+          const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+          const indicator = row?.querySelector(".sidebar-session-indicator");
+          if (!indicator) throw new Error(`glyph: no sidebar row shows ${name}`);
+          return { label: indicator.getAttribute("title") ?? "", animated: indicator.getAnimations({ subtree: true }).length > 0 };
+        }, title),
+        dropStreams: async () => {
+          await browser().evaluate(() => {
+            for (const socket of (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets) socket.close();
+            return null;
+          });
+        },
+        accentDot: (title) => browser().evaluate((name) => {
+          const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
+          const dot = row?.querySelector(".sidebar-session-unread-dot");
+          if (!dot) return false;
+          const accent = document.createElement("span");
+          accent.style.color = "var(--accent)";
+          dot.append(accent);
+          const shown = getComputedStyle(dot).backgroundColor === getComputedStyle(accent).color;
+          accent.remove();
+          return shown;
+        }, title),
+        overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+        appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
+        deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
+        look: async (target) => {
+          await target.scrollIntoView();
+          const box = await target.boundingBox();
+          if (!box) throw new Error("look: the target lays out no box");
+          return browser().evaluate(({ x, y, width, height }) => {
+            const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+            const element = document.elementsFromPoint(x + width / 2, y + height / 2).find((candidate) => {
+              const rect = candidate.getBoundingClientRect();
+              return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
+            });
+            if (!element) throw new Error("look: no element has the target's box");
+            const rgb = (color: string) => {
+              const channels = /^(?:rgba?\(|color\(srgb )([\d.e-]+),? ([\d.e-]+),? ([\d.e-]+)/u.exec(color);
+              if (!channels) throw new Error(`look: ${color} is not an sRGB colour`);
+              const scale = color.startsWith("color(") ? 255 : 1;
+              return channels.slice(1).map((value) => Math.round(Number(value) * scale)) as [number, number, number];
+            };
+            let behind: Element | null = element;
+            while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
+            if (!behind) throw new Error("look: nothing opaque is behind the target");
+            const style = getComputedStyle(element);
+            let opacity = 1;
+            for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+            const fonts = style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1"));
+            const faces = [...document.fonts];
+            const outerShadow = style.boxShadow.split(/,(?![^(]*\))/u).at(-1)!.trim();
+            return {
+              color: rgb(style.color),
+              background: rgb(getComputedStyle(behind).backgroundColor),
+              opacity,
+              fonts,
+              loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
+                && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
+              size: Number.parseFloat(style.fontSize),
+              weight: Number(style.fontWeight),
+              align: style.textAlign,
+              ring: !element.matches(":focus-visible") ? null
+                : style.outlineStyle !== "none" ? rgb(style.outlineColor)
+                : outerShadow === "none" ? null : rgb(outerShadow),
+            };
+          }, box);
+        },
+        attach: async (target, files) => {
+          const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
+          if (made) directories.push(made);
+          await target.setInputFiles(await Promise.all(files.map(async (file) => {
+            if (typeof file === "string") return fileURLToPath(new URL(`files/${file}`, import.meta.url));
+            await writeFile(join(made, file.name), Buffer.alloc(file.bytes, "x"));
+            return join(made, file.name);
+          })));
+        },
+        download: async (target) => {
+          const file = await browser().waitForDownload(() => target.tap());
+          return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
+        },
+        newSessionDraft: () => browser().evaluate(async () => {
+          if (!(await indexedDB.databases()).some(({ name }) => name === "hui-control-ui")) return "";
+          const db = await new Promise<IDBDatabase>((resolve, reject) => {
+            const open = indexedDB.open("hui-control-ui");
+            open.onsuccess = () => resolve(open.result);
+            open.onerror = () => reject(open.error);
+          });
+          try {
+            if (!db.objectStoreNames.contains("composerDrafts")) return "";
+            const record = await new Promise<{ text?: string } | undefined>((resolve, reject) => {
+              const get = db.transaction("composerDrafts").objectStore("composerDrafts").get("new-session");
+              get.onsuccess = () => resolve(get.result);
+              get.onerror = () => reject(get.error);
+            });
+            return record?.text ?? "";
+          } finally {
+            db.close();
+          }
+        }),
+        hold: async (target, until) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("hold: the target is not on screen");
+          const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          await browser().evaluate(touch, { ...point, type: "pointerdown" });
+          await expect(until).toBeVisible();
+          await browser().evaluate(touch, { ...point, type: "pointerup" });
+        },
+        drag: async (target, onto, whileOver) => {
+          const centre = async (locator: Locator) => {
+            const box = await locator.boundingBox();
+            if (!box) throw new Error("drag: a target is not on screen");
+            return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          };
+          const from = await centre(target);
+          const to = await centre(onto);
+          await browser().mouse.move(from.x, from.y);
+          await browser().mouse.down();
+          await browser().mouse.move(to.x, to.y);
+          await whileOver();
+          await browser().mouse.up();
+        },
+        touchTap: async (target) => {
+          await target.scrollIntoView();
+          const box = await target.boundingBox();
+          if (!box) throw new Error("touchTap: the target is not on screen");
+          const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          await browser().evaluate(touch, { ...point, type: "pointerdown" });
+          await browser().evaluate(touch, { ...point, type: "pointerup" });
+        },
+        contextMenu: (target) => target.secondaryTap(),
+        scrollTo: (_within, target) => target.scrollIntoView(),
+        expectLinkTo: (link, href) => expect(link).toHaveAttribute("href", href),
+        textOf: async (target) => (await target.textContent()) ?? "",
+        scrollSideways: async (target) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("scrollSideways: the target is not on screen");
+          await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
+          await browser().mouse.wheel(240, 0);
+        },
+        stored: async (text) => {
+          const root = dirname(receipt.workspace);
+          const files = (await readdir(root, { recursive: true, withFileTypes: true }))
+            .filter((entry) => entry.isFile())
+            .map((entry) => relative(root, join(entry.parentPath, entry.name)))
+            .filter((file) => !file.startsWith("vite-cache/"));
+          const read = (file: string) => readFile(join(root, file), "latin1").catch((error: NodeJS.ErrnoException) => error.code === "ENOENT" ? "" : Promise.reject(error));
+          const holding = await Promise.all(files.map(async (file) => ((await read(file)).includes(text) ? [file] : [])));
+          return holding.flat();
+        },
+        secretDirectories: async () => (await readdir("/tmp")).filter((name) => name.startsWith(`hui-secret-${receipt.serverPid}-`)),
+        flip: async (target) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("flip: the switch is not on screen");
+          await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
+        },
+        intercept: async (method, path) => {
+          const { arrival, hold, settle } = holding<WebRoute>();
+          await browser().route(path, (route) => (route.request.method === method ? hold(route) : route.fallback()));
+          const decide = (handle: (route: WebRoute) => Promise<void>) => settle(handle).then(() => browser().unroute(path));
+          return {
+            arrived: () => arrival,
+            deliver: () => decide((route) => route.continue()),
+            reject: (status, error) => decide((route) => route.fulfill({ status, json: { error } })),
+            answer: (json) => decide((route) => route.fulfill({ status: 200, contentType: "application/json", body: json })),
+            deliverAndDrop: () => decide(async (route) => {
+              await deliverBehind(method, route.request.url, route.request.postData);
+              await route.abort();
+            }),
+          };
+        },
+      };
+
+      const iosSteps: Partial<typeof webSteps> = {
+        glyph: async (title) => {
+          const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
+          await expect(row).toHaveCount(1);
+          const glyph = row.getByTestId("session-glyph");
+          if (await glyph.count() === 0) return { label: "", animated: false };
+          return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
+        },
+      };
+
+      await use({
+        ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
+        ...(web ? {} : {
+          keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
+          hold: async (target: Locator, until: Locator) => {
+            await target.longPress();
+            await expect(until).toBeVisible();
+          },
+          textOf: async (target: Locator) => (await target.getByText(/\S/u).allTextContents()).join(" "),
+          contextMenu: (target: Locator) => target.longPress(),
+          clipboard: async ({ refuse = false } = {}) => {
+            if (refuse) notOnIos("clipboard({ refuse: true })")();
+            execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
+          },
+          copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
+          intercept: async (method: string, path: RegExp) => proxy!.intercept(method, path),
+          url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
+          scrollTo: async (within: Locator, target: Locator) => {
+            const shown = async () => (await within.getByText(/\S/u).allTextContents()).join("\n");
+            for (const direction of ["down", "up"] as const) {
+              for (let before = "", now = await shown(); now !== before; before = now, now = await shown()) {
+                if (await target.count() > 0) return;
+                await within.swipe({ direction });
+              }
+            }
+            throw new Error("scrollTo: the target is nowhere in the scroll container");
+          },
+          expectLinkTo: async (link: Locator, href: string) => {
+            await expect(link).toHaveCount(1);
+            await expect(fixtures.screen.getByTestId(href).filter({ hasText: (await link.textContent()) ?? "" })).toHaveCount(1);
+          },
+          ...iosSteps,
+        }),
+        workspace: receipt.workspace,
+        gateway: receipt.url,
+        api,
+        createSession: async (input) =>
+          (await api<{ session: { id: string } }>("POST", "/__hui/sessions", { cwd: receipt.workspace, ...input })).session,
+        prompt,
+        createSubagent: async (parent) => {
+          await prompt(parent, "E2E_SUBAGENTS_START");
+          let child: ListedSession | undefined;
+          await expect.poll(async () => {
+            const all = await sessions();
+            child = all.find((session) => session.parentId === parent.id);
+            return child?.status === "idle" && child.subagent?.status === "completed" && child.subagent.completionDelivery !== "pending"
+              && all.find((session) => session.id === parent.id)?.status === "idle";
+          }, { timeout: 30_000 }).toBe(true);
+          return { id: child!.id, title: child!.title };
+        },
+        provider: {
+          url: receipt.providerUrl,
+          held: () => control("GET", "/control/wait-replay-ready"),
+          release: () => control("POST", "/control/release-replay"),
+        },
+        restartGateway: async () => {
+          const stopped = receipt.serverPid;
+          process.kill(receipt.runnerPid, "SIGUSR2");
+          await expect.poll(async () => (receipt.serverPid = (await readReceipt()).serverPid) !== stopped, { timeout: 60_000 }).toBe(true);
+        },
+        exitRuntimes: async () => {
+          execFileSync("pkill", ["-P", String(receipt.serverPid), "-f", "pi-sdk-worker"]);
+        },
+        open: async (path) => {
+          if (web) return fixtures.app.open(path);
+          await launch();
+          await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
+        },
+        reload: () => (web ? browser().reload() : fixtures.app.restart()),
+        clearState,
+        repository: async () => {
+          const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
+          directories.push(path);
+          const git = (...args: string[]) => execFileSync("git", ["-C", path, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com",
+            "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
+          git("init", "--quiet", "--initial-branch=main");
+          await mkdir(join(path, "sub"));
+          await writeFile(join(path, "sub", "keep.txt"), "sub\n");
+          git("add", ".");
+          git("commit", "--quiet", "-m", "main");
+          git("switch", "--quiet", "-c", "release/1.0");
+          git("commit", "--quiet", "--allow-empty", "-m", "release");
+          git("switch", "--quiet", "-c", "feature/current", "main");
+          git("commit", "--quiet", "--allow-empty", "-m", "feature");
+          return { path, git };
+        },
+      });
+
+      await control("POST", "/control/release-replay");
+      for (const id of await taskIds()) {
+        if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+      }
+      for (const id of await botIds()) {
+        if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
+      }
+      for (const id of await backlogTaskIds()) {
+        if (!existingBacklogTasks.has(id)) await api("DELETE", `/__hui/backlog/items/${encodeURIComponent(id)}`);
+      }
+      for (const id of await sessionIds()) {
+        if (existing.has(id)) continue;
+        const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });
+        if (!response.ok && response.status !== 404) throw new Error(`DELETE /__hui/sessions/${id} answered ${response.status}`);
+      }
+      for (const { label } of await groups()) {
+        if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
+      }
+      await api("PUT", "/__hui/settings", settings);
+      for (const path of directories) await rm(path, { recursive: true, force: true });
+    } finally {
+      await proxy?.close();
     }
-    for (const id of await botIds()) {
-      if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
-    }
-    for (const id of await backlogTaskIds()) {
-      if (!existingBacklogTasks.has(id)) await api("DELETE", `/__hui/backlog/items/${encodeURIComponent(id)}`);
-    }
-    for (const id of await sessionIds()) {
-      if (existing.has(id)) continue;
-      const response = await fetch(`${receipt.url}/__hui/sessions/${id}`, { method: "DELETE", headers: { "x-hui": "1" } });
-      if (!response.ok && response.status !== 404) throw new Error(`DELETE /__hui/sessions/${id} answered ${response.status}`);
-    }
-    for (const { label } of await groups()) {
-      if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
-    }
-    await api("PUT", "/__hui/settings", settings);
-    for (const path of directories) await rm(path, { recursive: true, force: true });
   },
 });
