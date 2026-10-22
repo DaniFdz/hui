@@ -5,16 +5,16 @@ const { app, BrowserWindow, dialog, Menu, nativeTheme, shell, Notification } = r
 const { execFile } = require('node:child_process');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
-const { isInternal, isExternal, gatewayUrl, themeSource, notificationFromArgs } = require('./policy.cjs');
+const { isInternal, isExternal, gatewayUrl, themeSource, notificationFromUrl } = require('./policy.cjs');
 
 app.setName('HUI');
 // CLI and installed bundle use the same lock, cookies and IndexedDB location.
 app.setPath('userData', path.join(app.getPath('appData'), 'HUI'));
 let window;
 let url;
-const initialNotification = notificationFromArgs(process.argv);
-const pendingNotifications = initialNotification ? [initialNotification] : [];
+const pendingNotifications = [];
 const notifications = new Set();
+let launchedForNotification = false;
 
 // Electron's default viewMenu binds Zoom In to CommandOrControl+Plus only, which
 // needs Shift on US layouts, so the browser-standard Cmd/Ctrl+= does nothing.
@@ -116,10 +116,12 @@ function flushNotifications() {
 
 async function start() {
   if (!app.requestSingleInstanceLock()) { app.quit(); return; }
-  app.on('second-instance', (_event, args) => {
-    const request = notificationFromArgs(args);
+  app.on('second-instance', showWindow);
+  app.on('open-url', (event, link) => {
+    event.preventDefault();
+    if (!app.isReady()) launchedForNotification = true;
+    const request = notificationFromUrl(link);
     if (request) { pendingNotifications.push(request); flushNotifications(); }
-    else showWindow();
   });
   app.on('activate', showWindow);
   // Closing a window must not interrupt agent runs. Quit is explicit.
@@ -147,7 +149,7 @@ async function start() {
     url = gatewayUrl(output);
     await syncThemeSource();
     flushNotifications();
-    if (!initialNotification) showWindow();
+    if (!launchedForNotification) showWindow();
   } catch (error) {
     dialog.showErrorBox('HUI could not start', `${error.message}\nReinstall the npm package or run hui install-app to repair the launcher.`);
     app.quit();

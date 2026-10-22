@@ -116,7 +116,5 @@ Known limits:
 - The first alert that launches a never-opened HUI is lost behind the
   permission prompt, although the tool reports it queued. Opening HUI once
   shows the prompt instead.
-- Each alert sent while HUI runs starts a second HUI instance for about a
-  second, and a visible Dock shows a second HUI icon in that time.
 - After a crash or Force Quit, a leftover banner opens HUI without switching
   chats, because the new HUI process has no record of that banner.

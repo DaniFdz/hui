@@ -26,7 +26,7 @@ vi.mock("node:child_process", () => ({
     host.launches.push({ command, args });
     callback(host.failure, "", "");
     if (!host.failure && host.reply !== "none") {
-      const { replyTo } = JSON.parse(args.at(-1)?.slice("--hui-notification=".length) ?? "");
+      const { replyTo } = JSON.parse(decodeURIComponent(new URL(args.at(-1) ?? "").pathname));
       void fetch(new URL(host.reply, replyTo), { method: "POST" });
     }
   },
@@ -43,7 +43,7 @@ beforeEach(async () => {
   const resources = join(host.home, "Applications/HUI.app/Contents/Resources");
   await mkdir(resources, { recursive: true });
   await writeFile(join(resources, "hui-owner"), "org.harnessui.desktop");
-  await writeFile(join(resources, "hui-notifications"), "1");
+  await writeFile(join(resources, "hui-notifications"), "2");
 });
 afterEach(() => rm(host.home, { recursive: true, force: true }));
 
@@ -58,9 +58,10 @@ test("notifications carry the caller's regular or stable bot chat, not a model-s
     const launch = host.launches.at(-1);
     assert.ok(launch);
     assert.equal(launch.command, "/usr/bin/open");
-    assert.deepEqual(launch.args.slice(0, -1), ["-g", "-n", join(host.home, "Applications/HUI.app"), "--args"]);
-    const [, notification] = /^--hui-notification=(.+)$/u.exec(launch.args.at(-1) ?? "") ?? [];
-    const { replyTo, ...payload } = JSON.parse(notification ?? "");
+    assert.deepEqual(launch.args.slice(0, -1), ["-g", "-a", join(host.home, "Applications/HUI.app")]);
+    const link = new URL(launch.args.at(-1) ?? "");
+    assert.equal(link.protocol, "hui-notification:");
+    const { replyTo, ...payload } = JSON.parse(decodeURIComponent(link.pathname));
     assert.deepEqual(payload, { title: "Ready", message: "Open this chat.", url: expected });
     assert.match(replyTo, /^http:\/\/127\.0\.0\.1:\d+\/[a-f0-9]{64}\/$/);
   }
@@ -89,6 +90,8 @@ test("unsupported, stale and failed delivery never falls back to Script Editor o
   await unlink(join(resources, "hui-notifications"));
   await assert.rejects(notifyUser({ id: "caller" }, params), /hui install-app/);
   await writeFile(join(resources, "hui-notifications"), "1");
+  await assert.rejects(notifyUser({ id: "caller" }, params), /hui install-app/);
+  await writeFile(join(resources, "hui-notifications"), "2");
   await writeFile(join(resources, "hui-owner"), "someone-else");
   await assert.rejects(notifyUser({ id: "caller" }, params), /hui install-app/);
   assert.equal(host.launches.length, 0);

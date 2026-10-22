@@ -72,7 +72,7 @@ export async function installMacApp({ applications = join(homedir(), 'Applicatio
     await rm(join(resources, 'default_app.asar'), { force: true });
     await mkdir(join(resources, 'app'), { recursive: true });
     await writeFile(join(resources, 'hui-owner'), marker);
-    await writeFile(join(resources, 'hui-notifications'), '1');
+    await writeFile(join(resources, 'hui-notifications'), '2');
     await writeFile(join(resources, 'hui.icns'), icns);
     await writeFile(join(resources, 'app/package.json'), JSON.stringify({ name: 'hui', productName: 'HUI', version, main: 'main.cjs' }));
     await writeFile(join(resources, 'app/launch.json'), JSON.stringify(config));

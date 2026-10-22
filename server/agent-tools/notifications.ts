@@ -31,7 +31,7 @@ export async function notifyUser(
   const resources = join(bundle, "Contents", "Resources");
   const owner = await readFile(join(resources, "hui-owner"), "utf8").catch(() => "");
   const capability = await readFile(join(resources, "hui-notifications"), "utf8").catch(() => "");
-  if (owner !== "org.harnessui.desktop" || capability !== "1") {
+  if (owner !== "org.harnessui.desktop" || capability !== "2") {
     throw new Error("Install the current HUI desktop app with `hui install-app` to enable clickable chat notifications.");
   }
   const path = caller.bot ? `/bots/${encodeURIComponent(caller.bot)}` : `/sessions/${encodeURIComponent(caller.id)}`;
@@ -66,8 +66,8 @@ export async function notifyUser(
     await Promise.all([
       receipt,
       promisify(execFile)("/usr/bin/open", [
-        "-g", "-n", bundle, "--args",
-        `--hui-notification=${JSON.stringify({ title: params.title.trim(), message: params.message.trim(), url, replyTo: `http://127.0.0.1:${address.port}/${token}/` })}`,
+        "-g", "-a", bundle,
+        `hui-notification:${encodeURIComponent(JSON.stringify({ title: params.title.trim(), message: params.message.trim(), url, replyTo: `http://127.0.0.1:${address.port}/${token}/` }))}`,
       ], { timeout: 10_000, signal: deadline }),
     ]);
   } finally {

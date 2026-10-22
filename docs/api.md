@@ -58,8 +58,10 @@ HUI-owned desktop bundle. Unsupported or outdated installations fail instead
 of falling back to Script Editor. No public browser API is added.
 
 The native app receives a validated same-gateway chat URL and a one-use
-loopback acknowledgement address in a single `--hui-notification=<JSON>`
-argument, which survives Electron's reordering of a second instance's argv.
+loopback acknowledgement address in a `hui-notification:` URL, which the
+gateway opens with `open -g -a` on the app. A running app receives it as an
+Apple Event, so no second instance starts; no app claims the scheme, so links
+in other apps cannot open it.
 The tool returns `status: "queued"` only after the native app acknowledges;
 launch errors, cancellation, no acknowledgement or a notification macOS
 refuses fail the call. Callback tokens never enter tool output.

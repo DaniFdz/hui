@@ -7,10 +7,9 @@ import { test } from "vitest";
 import policy from './policy.cjs';
 
 const receipt = `http://127.0.0.1:12345/${'a'.repeat(64)}/`;
-const notificationSwitch = (payload) => `--hui-notification=${typeof payload === 'string' ? payload : JSON.stringify(payload)}`;
-const forwardedArgs = (payload) => ['/Applications/HUI.app/Contents/MacOS/Electron', notificationSwitch(payload), '--allow-file-access-from-files', '--enable-avfoundation'];
+const notificationUrl = (payload) => `hui-notification:${encodeURIComponent(typeof payload === 'string' ? payload : JSON.stringify(payload))}`;
 
-async function shell(t, settings = { themeMode: 'system' }, argv = []) {
+async function shell(t, settings = { themeMode: 'system' }, launchUrls = []) {
   const app = new EventEmitter();
   const windows = [];
   const errors = [];
@@ -30,7 +29,9 @@ async function shell(t, settings = { themeMode: 'system' }, argv = []) {
   app.setName = app.setPath = () => {};
   app.getPath = () => '/fixture/home';
   app.requestSingleInstanceLock = () => true;
-  app.whenReady = async () => {};
+  let ready = false;
+  app.whenReady = () => new Promise((resolve) => setImmediate(() => { ready = true; resolve(); }));
+  app.isReady = () => ready;
   app.quit = () => { quits++; };
   class Window extends EventEmitter {
     constructor(options) {
@@ -69,8 +70,9 @@ async function shell(t, settings = { themeMode: 'system' }, argv = []) {
       if (settings instanceof Error) throw settings;
       return { ok: true, json: async () => settings };
     },
-    process: { env: { HUI_DESKTOP_LAUNCH: JSON.stringify(config) }, argv },
+    process: { env: { HUI_DESKTOP_LAUNCH: JSON.stringify(config) }, argv: [] },
   });
+  for (const link of launchUrls) app.emit('open-url', { preventDefault() {} }, link);
   await new Promise(setImmediate);
   const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(setImmediate); };
   return {
@@ -78,6 +80,7 @@ async function shell(t, settings = { themeMode: 'system' }, argv = []) {
     setSettings: (next) => { settings = next; },
     failNextLoad: (error) => { loadFailure = error; },
     refuseNotifications: (message) => { refusal = message; },
+    openUrl: (link) => app.emit('open-url', { preventDefault() {} }, link),
     startup,
     completeSettings: (method) => onSettingsCompleted.handler({ method }),
     settingsFilter: () => onSettingsCompleted.filter,
@@ -119,9 +122,9 @@ test('each notification opens its own chat on click without changing the active 
   const state = await shell(t);
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
-  const args = (url) => forwardedArgs({ title: 'Ready', message: 'Open this chat.', url, replyTo: receipt });
-  state.app.emit('second-instance', {}, args('http://127.0.0.1:5174/bots/stable-bot'));
-  state.app.emit('second-instance', {}, args('http://127.0.0.1:5174/sessions/session-a'));
+  const alert = (url) => state.openUrl(notificationUrl({ title: 'Ready', message: 'Open this chat.', url, replyTo: receipt }));
+  alert('http://127.0.0.1:5174/bots/stable-bot');
+  alert('http://127.0.0.1:5174/sessions/session-a');
   assert.equal(state.notifications.length, 2);
   assert.equal(state.notifications.every((notification) => notification.shown), true);
   assert.deepEqual(state.notificationReceipts, Array(2).fill(`${receipt}queued`));
@@ -142,8 +145,8 @@ test('each notification opens its own chat on click without changing the active 
 
 test('notification-only startup stays windowless and accepts another notification while the gateway starts', async (t) => {
   const payload = (id) => ({ title: 'Ready', message: 'Open this chat.', url: `http://127.0.0.1:5174/sessions/${id}`, replyTo: receipt });
-  const state = await shell(t, { themeMode: 'system' }, ['/Applications/HUI.app/Contents/MacOS/Electron', notificationSwitch(payload('first'))]);
-  state.app.emit('second-instance', {}, forwardedArgs(payload('second')));
+  const state = await shell(t, { themeMode: 'system' }, [notificationUrl(payload('first'))]);
+  state.openUrl(notificationUrl(payload('second')));
   assert.equal(state.notifications.length, 0);
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
@@ -156,7 +159,17 @@ test('notification-only startup stays windowless and accepts another notificatio
   assert.equal(state.windows[1].url, 'http://127.0.0.1:5174/sessions/second');
 });
 
-test('notification arguments cannot open another origin, a non-chat path or executable URLs', async (t) => {
+test('an alert that arrives while the operator is opening HUI still lets the window open', async (t) => {
+  const state = await shell(t);
+  state.openUrl(notificationUrl({ title: 'Ready', message: 'Open this chat.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }));
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  assert.equal(state.notifications.length, 1);
+  assert.equal(state.windows.length, 1);
+  assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/');
+});
+
+test('notification URLs cannot open another origin, a non-chat path or executable URLs', async (t) => {
   const state = await shell(t);
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
@@ -166,13 +179,14 @@ test('notification arguments cannot open another origin, a non-chat path or exec
     'http://127.0.0.1:5174/sessions/a#other', 'http://user:password@127.0.0.1:5174/sessions/a',
     'http://127.0.0.1:5174/sessions/%E0%A4%A', 'javascript:alert(1)', 'file:///tmp/a',
   ]) {
-    state.app.emit('second-instance', {}, forwardedArgs({ title: 'Ready', message: 'Open.', url, replyTo: receipt }));
+    state.openUrl(notificationUrl({ title: 'Ready', message: 'Open.', url, replyTo: receipt }));
   }
   const receiptsBefore = state.notificationReceipts.length;
   for (const replyTo of ['https://example.com/receipt', 'http://localhost:12345/token/', 'file:///tmp/receipt']) {
-    state.app.emit('second-instance', {}, forwardedArgs({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo }));
+    state.openUrl(notificationUrl({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo }));
   }
-  state.app.emit('second-instance', {}, forwardedArgs('not JSON'));
+  state.openUrl(notificationUrl('not JSON'));
+  state.openUrl(`https://example.com/${encodeURIComponent(JSON.stringify({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }))}`);
   assert.equal(state.notificationReceipts.length, receiptsBefore);
   assert.equal(state.notifications.length, 0);
   assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/');
@@ -185,7 +199,7 @@ test('cancelled chat navigation neither quits HUI nor shows an error when anothe
   state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
   await state.settle();
   assert.equal(state.quits(), 0);
-  state.app.emit('second-instance', {}, forwardedArgs({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }));
+  state.openUrl(notificationUrl({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }));
   state.failNextLoad(aborted());
   state.notifications[0].emit('click');
   await state.settle();
@@ -199,7 +213,7 @@ test('a notification macOS refuses is reported as failed without a dialog or a w
   await state.settle();
   state.windows[0].emit('closed');
   state.refuseNotifications('Notifications are not allowed for this application');
-  state.app.emit('second-instance', {}, forwardedArgs({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }));
+  state.openUrl(notificationUrl({ title: 'Ready', message: 'Open.', url: 'http://127.0.0.1:5174/sessions/a', replyTo: receipt }));
   assert.deepEqual(state.notificationReceipts, [`${receipt}failed`]);
   assert.deepEqual(state.errors, []);
   assert.equal(state.windows.length, 1);
