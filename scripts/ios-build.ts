@@ -28,7 +28,7 @@ export async function buildCore(outDir: string): Promise<void> {
     },
   });
   if (!Array.isArray(outputs)) throw new Error("Vite did not return the core bundle");
-  const sources = outputs.flatMap(({ output: [chunk] }) => chunk.moduleIds);
+  const sources = outputs.flatMap(({ output: [chunk] }) => chunk.moduleIds.filter((id) => !id.startsWith("\0")));
   const files = [...sources, join(root, "scripts/ios-build.ts"), join(outDir, "hui-core.js")].map((file) => relative(root, file)).sort();
   const lines = await Promise.all(files.map(async (file) => `${createHash("sha256").update(await readFile(join(root, file))).digest("hex")}  ${file}\n`));
   await writeFile(join(outDir, "hui-core.sha256"), lines.join(""));

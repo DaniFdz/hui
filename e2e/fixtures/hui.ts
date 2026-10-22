@@ -1,26 +1,16 @@
 /**
- * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
- * delivers while dropping its answer or answers in its place, and the steps whose gesture differs per platform, such as
- * holding a control, opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
- * point instead of the input), attaching files from `files/` or made up of a name and a size, reading what a download
- * saved or what the page copied, opening a session's menu, reading a sidebar row's status glyph (its tooltip and
- * whether it spins) and whether its unread dot has the accent colour, and reading how a piece of the screen looks (its
- * text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have loaded to draw
- * its text, its text size in pixels and the colour of the focus ring it shows when reached from the keyboard), a
- * disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a `sub`
- * directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, the secret
- * directories the gateway wrote, a restart of the gateway against the same state and port, the end of its PI worker
- * processes, and, on the web, closing the page's WebSockets as a dropped connection would. The web page never opens
- * Vite's development socket, whose client reloads the page when the gateway restarts, which no installed gateway does.
- * On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of loading a page, and
- * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
- * would otherwise hand the relaunched app the deleted values; the web-only steps throw. On the web it also goes Back and
- * Forward through the browser's history, sizes the window as a phone held upright or sideways or as the desktop, tells
- * whether the page, its main area or the sidebar overflows sideways and whether a tap at a control's centre reaches it
- * (nothing covers it and it is not inert), and presses the command palette's chord: ⌘K where the page runs on an Apple
- * platform, Ctrl+K elsewhere. Test files import `test` from here, never from `e2e`, and never read `platform`, `device`
- * or `browser` themselves.
+ * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against (restartable against the same
+ * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
+ * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, searches of
+ * the gateway's state and secret directories, and every step whose gesture or reading differs per platform: taps,
+ * holds, context menus, switches (a Web Awesome switch draws its track over its input, so the web taps the point),
+ * attachments, downloads, the clipboard, status glyphs, how a piece of the screen looks, and on the web the window's
+ * size, Back and Forward, sideways overflow, whether a tap reaches a control and the command palette's chord. The web
+ * page never opens Vite's development socket, whose client reloads the page when the gateway restarts, which no
+ * installed gateway does. On iOS it relaunches the app pointed at the gateway, follows `hui://open` links, and clears
+ * the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd` would
+ * otherwise hand the relaunched app the deleted values; steps only the web has throw there. Test files import `test`
+ * from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -74,12 +64,13 @@ export type Hui = {
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
-  look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
+  look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
+  touchTap(target: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
@@ -90,9 +81,10 @@ export type Hui = {
 
 const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "pointerup" }) => {
   const target = document.elementFromPoint(x, y);
+  if (!target) throw new Error(`touch: nothing is at ${x}, ${y}`);
   const init = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y };
-  target?.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "touch", isPrimary: true }));
-  if (type === "pointerup") target?.dispatchEvent(new MouseEvent("click", init));
+  target.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "touch", isPrimary: true }));
+  if (type === "pointerup") target.dispatchEvent(new MouseEvent("click", init));
   return null;
 };
 
@@ -134,6 +126,7 @@ export const test = base.extend<{ hui: Hui }>({
     const sessions = async () => (await groups()).flatMap((group) => group.sessions);
     const sessionIds = async () => (await sessions()).map((session) => session.id);
     const taskIds = async () => (await api<{ tasks: { id: string }[] }>("GET", "/__hui/automation")).tasks.map((task) => task.id);
+    const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
     const prompt = async (session: { id: string }, text: string) => {
       await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
@@ -157,6 +150,7 @@ export const test = base.extend<{ hui: Hui }>({
     const existing = new Set(await sessionIds());
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
+    const existingBots = new Set(await botIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     if (web) await browser().addInitScript(trackSockets);
     await clearState();
@@ -260,12 +254,15 @@ export const test = base.extend<{ hui: Hui }>({
           while (behind && /^rgba\(.*, 0\)$|^color\(.* \/ 0\)$|^transparent$/u.test(getComputedStyle(behind).backgroundColor)) behind = behind.parentElement;
           if (!behind) throw new Error("look: nothing opaque is behind the target");
           const style = getComputedStyle(element);
+          let opacity = 1;
+          for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
           const fonts = style.fontFamily.split(",").map((family) => family.trim().replace(/^"(.*)"$/u, "$1"));
           const faces = [...document.fonts];
           const outerShadow = style.boxShadow.split(/,(?![^(]*\))/u).at(-1)!.trim();
           return {
             color: rgb(style.color),
             background: rgb(getComputedStyle(behind).backgroundColor),
+            opacity,
             fonts,
             loaded: fonts.filter((family) => faces.some((face) => face.family === family && face.status === "loaded")
               && document.fonts.check(`${style.fontStyle} ${style.fontWeight} ${style.fontSize} "${family}"`, element.textContent ?? "")),
@@ -314,6 +311,14 @@ export const test = base.extend<{ hui: Hui }>({
         const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         await browser().evaluate(touch, { ...point, type: "pointerdown" });
         await expect(until).toBeVisible();
+        await browser().evaluate(touch, { ...point, type: "pointerup" });
+      },
+      touchTap: async (target) => {
+        await target.scrollIntoView();
+        const box = await target.boundingBox();
+        if (!box) throw new Error("touchTap: the target is not on screen");
+        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        await browser().evaluate(touch, { ...point, type: "pointerdown" });
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
@@ -434,6 +439,9 @@ export const test = base.extend<{ hui: Hui }>({
     await control("POST", "/control/release-replay");
     for (const id of await taskIds()) {
       if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
+    }
+    for (const id of await botIds()) {
+      if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
     }
     for (const id of await sessionIds()) {
       if (existing.has(id)) continue;

@@ -242,6 +242,10 @@ const server = createServer(async (request, response) => {
   // message is longer than the run error card's summary, so the card offers Details.
   if (source.includes("E2E_ERROR_LONG")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
     message: `fixture provider error: ${"the fixture refuses this request on purpose; ".repeat(4)}see the fixture for why` } });
+  // E2E_OVERFLOW overflows the context window until PI's summary is in the request, so PI compacts and retries the turn.
+  if (source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
+    return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 213462 tokens > 200000 maximum" } });
+  }
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
 
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
@@ -800,6 +804,13 @@ const server = createServer(async (request, response) => {
   if (flattenedText(body.system).includes("context summarization assistant")) {
     if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
     text(response, "FIXTURE_SUMMARY");
+    return finish(response);
+  }
+  // E2E_CONTEXT_HOLDS followed by words answers which of them the request holds outside that question.
+  const wanted = /E2E_CONTEXT_HOLDS(?: [A-Z0-9_]+)+/u.exec(source)?.[0];
+  if (wanted) {
+    const rest = JSON.stringify([body.system, body.messages]).replaceAll(wanted, "");
+    text(response, `Earlier context: ${wanted.split(" ").slice(1).map((word) => `${word} ${rest.includes(word) ? "yes" : "no"}`).join(", ")}`);
     return finish(response);
   }
   // Attachment requests reach this branch. The request log is the proof that

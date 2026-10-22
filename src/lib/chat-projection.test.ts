@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { formatSubagentCompletionEvent } from "../../lib/subagent-completion.ts";
-import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel } from "./projection.ts";
+import { formatSubagentCompletionEvent } from "./subagent-completion.ts";
+import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel } from "./chat-projection.ts";
 
 test("a message HUI delivered names its sender and keeps only what they wrote", () => {
   assert.deepEqual(attributedMessage("[from @grace · hop 2] PR #7 needs **your** decision."), { sender: { kind: "bot", handle: "grace" }, body: "PR #7 needs **your** decision." });

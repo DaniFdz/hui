@@ -149,11 +149,12 @@ for (const file of files.filter((path) => under(path, "e2e", "evals", "scripts")
   if (targets.some((edge) => under(edge.to, "src")) && targets.some((edge) => under(edge.to, "server"))) violations.add(`${file} (R12)`);
 }
 
+const CORE_PACKAGES = new Set(["markdown-it", "markdown-it-cjk-friendly", "markdown-it-task-lists"]);
 const core = new Set(files.filter((file) => under(file, "ios/core") && !TEST.test(file)));
 for (const file of core) {
   for (const target of loads.get(file) ?? []) {
     if (under(target, "ios/core", "src/lib") && !target.endsWith("-store.ts")) core.add(target);
-    else violations.add(`${file} -> ${target} (R18)`);
+    else if (!CORE_PACKAGES.has(target)) violations.add(`${file} -> ${target} (R18)`);
   }
 }
 

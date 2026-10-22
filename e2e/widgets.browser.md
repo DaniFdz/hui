@@ -73,5 +73,5 @@ changed.
   document: `server/agent-tools/widget-sandbox.test.ts`.
 - Client projection, frame messages, link and height rules:
   `src/lib/widgets.test.ts`; sandbox attributes: `src/components/widget-card.test.ts`.
-- Transcript row: `src/views/chat/projection.test.ts`. Prompt and registration:
+- Transcript row: `src/lib/chat-projection.test.ts`. Prompt and registration:
   `server/runtimes/pi-sdk.test.ts`.

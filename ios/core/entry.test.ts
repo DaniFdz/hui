@@ -35,6 +35,34 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
       json(core.sessionTreeRows([session, { ...session, id: "b", parentId: "a" }], { selectedId: "", toggled: new Set() }).map((row) => [row.session.id, row.collapsed])), [["a", true]]),
     sidebarSessionGroups: () => assert.deepEqual(
       core.sidebarSessionGroups([{ label: "ungrouped", sessions: [session] }], "", core.DEFAULT_SIDEBAR_SESSION_OPTIONS).map((group) => group.key), ["ungrouped"]),
+    normalizeTranscript: () => assert.deepEqual(json(core.normalizeTranscript([{ id: "u", role: "user", text: "Hi" }]).map((item) => item.kind)), ["message"]),
+    reduceTranscript: () => assert.deepEqual(
+      json(core.reduceTranscript([], { type: "tool_start", id: "t", name: "read" }).map((item) => [item.kind, item.id])), [["tool", "t"]]),
+    appendPendingUser: () => assert.equal(core.appendPendingUser([], "p", "Hi", []).at(-1)?.kind, "message"),
+    settlePendingUser: () => assert.deepEqual(
+      json(core.settlePendingUser(core.appendPendingUser([], "p", "Hi", []), "p", false).map((item) => item.kind === "message" && item.failed)), [true]),
+    failPendingUser: () => assert.deepEqual(
+      json(core.failPendingUser([], "p", "Hi", []).map((item) => item.kind === "message" && [item.id, item.failed])), [["p", true]]),
+    dropDuplicateSend: () => assert.deepEqual(
+      json(core.dropDuplicateSend(core.appendPendingUser(core.appendPendingUser([{ kind: "message", id: "g", role: "user", text: "Hi" }], "e", "Hi", []), "p", "Hi", []), "p", "e")
+        .map((item) => item.id)), ["g"]),
+    chatRows: () => assert.deepEqual(json(core.chatRows([
+      { kind: "message", id: "u", role: "user", text: "Hi" },
+      { kind: "tool", id: "t", name: "read", args: { path: "/w/a.txt" }, status: "succeeded" },
+      { kind: "message", id: "u2", role: "user", text: "Again" },
+      { kind: "tool", id: "t", name: "codemode", args: { code: "x" }, details: { calls: [{ name: "read", args: "{}", status: "ok" }] }, status: "succeeded" },
+    ]).map((row) => row.kind === "activity" ? [row.key, row.label, row.items.map((item) => [item.key, item.read?.target ?? item.codemode?.outcome, ...(item.read ? [item.read.output] : [])])] : row.key)), [
+      "messages:u", ["activity:t", "Ran 1 command", [["tool:t", "a.txt", ""]]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call"]]],
+    ]),
+    workingLabel: () => assert.equal(core.workingLabel([{ kind: "tool", id: "t", name: "read", status: "running" }]), "Reading files…"),
+    SendRequests: () => {
+      const requests = new core.SendRequests(() => "r1");
+      requests.failed("a", requests.take("a", "Hi", []).requestId, "Hi", []);
+      assert.equal(requests.take("a", "Hi", []).requestId, "r1");
+    },
+    markdownTokens: () => assert.deepEqual(
+      json(core.markdownTokens("**Hi** `src/a.ts`", true)[1]?.children?.map((token) => token.type)),
+      ["text", "strong_open", "text", "strong_close", "text", "html_inline", "code_inline", "html_inline"]),
   };
   assert.deepEqual(Object.keys(core).sort(), Object.keys(calls).sort());
   for (const call of Object.values(calls)) call();

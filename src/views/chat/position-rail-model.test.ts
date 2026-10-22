@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { conversationFocusIndex, conversationMarkers, conversationPosition } from "./position-rail-model.ts";
-import { projectChatTranscript } from "./projection.ts";
+import { projectChatTranscript } from "../../lib/chat-projection.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 
 test("indexes every prompt and assistant message but not the folded activity between them", () => {

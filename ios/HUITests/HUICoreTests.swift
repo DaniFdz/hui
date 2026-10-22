@@ -35,4 +35,20 @@ struct HUICoreTests {
         #expect(try await core.sessionAccessibleName(session) == "Write release notes, status starting, tool pi, stage investigation")
         #expect(try await core.sessionStatusText(.idle) == "Idle")
     }
+
+    @Test func rowsAndItemsKeepUniqueKeysWhenToolIdsRepeat() async throws {
+        let core = try HUICore.bundled()
+        let entries = try JSONDecoder().decode([API.TranscriptEntry].self, from: Data(#"[{"kind":"message","entryId":"u1","role":"user","text":"One"},{"kind":"tool","id":"t","name":"read"},{"kind":"message","entryId":"u2","role":"user","text":"Two"},{"kind":"tool","id":"t","name":"read"}]"#.utf8))
+        let rows = try await core.transcript("k", snapshot: entries, streaming: false).rows
+        let keys = rows.map(\.key) + rows.flatMap { ($0.activity ?? []) + ($0.messages ?? []) }.map(\.key)
+        #expect(Set(keys).count == keys.count)
+        #expect(rows.compactMap { $0.activity?.first?.key } == ["tool:t", "tool:t#1"])
+    }
+
+    @Test func anUnknownKindDecodesAsUnrecognizedAndABrokenRowIsLeftOut() throws {
+        let json = #"[{"kind":"poll","key":"poll:p"},{"kind":"messages"},{"kind":"messages","key":"m","messages":[{"kind":"sticker","id":"s","key":"s"}]}]"#
+        let rows = try JSONDecoder().decode(ChatRows.self, from: Data(json.utf8)).rows
+        #expect(rows.map(\.kind) == [.unrecognized, .messages])
+        #expect(rows.last?.messages?.first?.kind == .unrecognized)
+    }
 }
