@@ -13,6 +13,7 @@ struct ChatView: View {
     @State private var expanded: Set<String> = []
     @State private var following = true
     @State private var userScrolling = false
+    @State private var overflowing = false
 
     init(id: String, client: GatewayClient, core: HUICore, title: String?) {
         self.core = core
@@ -78,11 +79,14 @@ struct ChatView: View {
                     following = false
                     withAnimation { proxy.scrollTo(opened, anchor: .top) }
                 }
-                .onChange(of: model.rows) {
-                    if following { proxy.scrollTo("end", anchor: .bottom) }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentSize.height - geometry.containerSize.height
+                } action: { _, overflow in
+                    overflowing = overflow > 0
+                    if following, overflowing { proxy.scrollTo("end", anchor: .bottom) }
                 }
                 .onChange(of: following) {
-                    if following, !userScrolling { proxy.scrollTo("end", anchor: .bottom) }
+                    if following, !userScrolling, overflowing { proxy.scrollTo("end", anchor: .bottom) }
                 }
         }
     }

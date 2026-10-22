@@ -116,7 +116,7 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   `Read <file>`, `Agent activity: <step>`) and takes every label from the core: the core's `chatRows` returns the rows with
   their activity labels and tool cards (`src/lib/chat-rows.ts`), and a `key` per row and item that the screen uses for
   identity, opening and scrolling (tool call ids repeat across turns); the working indicator comes from `workingLabel`. The transcript follows the bottom
-  while the reader's scroll leaves it within 48 points of the end, as the web's does; opening a card or activity row
+  while the reader's scroll leaves it within 48 points of the end, as the web's does. It scrolls only while its content is taller than the screen: a shorter transcript sits at the bottom through `.defaultScrollAnchor(.bottom)`, and `scrollTo` there moves the content past the bottom edge, leaving the screen blank until the content's height changes. Opening a card or activity row
   scrolls to it and stops following, and a send follows again. A plain button
   whose label has a `Spacer` needs `.contentShape(Rectangle())`, or a tap at its centre misses it.
 - `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
