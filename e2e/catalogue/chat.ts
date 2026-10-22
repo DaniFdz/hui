@@ -298,7 +298,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["chat-composer", "message-metadata", "clipboard-fallback"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -318,7 +318,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["message-metadata"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -338,7 +338,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessionsidrewind"],
     surfaces: ["route:POST /__hui/sessions/:id/rewind"],
     journeys: ["rewind-continue", "compaction-rewind"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -357,7 +357,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#new-sessions-run-on-pi-durable", "docs/api.md#post-__huisessionsidcompact"],
     surfaces: ["command:compact", "route:POST /__hui/sessions/:id/compact", "row:compaction", "item:compaction"],
     journeys: ["compaction-rewind"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -377,7 +377,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:POST /__hui/sessions/:id/compact", "route:POST /__hui/sessions/:id/follow-up", "route:POST /__hui/sessions/:id/abort"],
     journeys: ["compaction-rewind"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -387,7 +387,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessionsidcompact"],
     surfaces: ["route:POST /__hui/sessions/:id/compact"],
     journeys: ["compaction-rewind"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -397,7 +397,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: ["route:POST /__hui/sessions/:id/rewind", "row:compaction"],
     journeys: ["compaction-rewind"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -406,8 +406,7 @@ const cases: UseCase[] = [
     behaviour: "/clear, listed as \"Clear this session's context and start a fresh PI transcript\", keeps the same sidebar row and title, empties the transcript to Start a conversation and says \"Session context cleared.\"; the old transcript is kept on disk. With arguments or attachments it says \"Use /clear without arguments or attachments.\", while work is active \"Finish or stop active work before clearing the session.\", and a bot's chat neither lists nor runs it.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidclear"],
     surfaces: ["command:clear", "route:POST /__hui/sessions/:id/clear"],
-    journeys: ["clear-command"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -416,7 +415,7 @@ const cases: UseCase[] = [
     behaviour: "/reload while idle says \"Reloaded extensions, skills, prompts and context files.\" and the command menu then lists newly added skills and commands, with the transcript, model and thinking level unchanged. Arguments, attachments or active work are refused with a message, as for /clear.",
     spec: ["SPEC.md#new-sessions-run-on-pi-durable", "docs/api.md#post-__huisessionsidreload"],
     surfaces: ["command:reload", "route:POST /__hui/sessions/:id/reload"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -425,7 +424,7 @@ const cases: UseCase[] = [
     behaviour: "/btw <question> (or /side) opens a Side chat rail, \"Ephemeral · <model>\", that shows \"Asking utility model…\" and then the answer, noting \"This exchange is not added to the main transcript.\"; nothing enters the conversation, and Close side chat closes it. A bare /btw explains the expected form, attachments are refused and a failure shows inside the rail.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidbtw"],
     surfaces: ["command:btw", "command:side", "route:POST /__hui/sessions/:id/btw"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
