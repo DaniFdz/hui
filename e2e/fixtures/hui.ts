@@ -1,11 +1,11 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's address and barriers, a gateway request a test holds, rejects or delivers while
- * dropping its answer, and the steps whose gesture differs per platform, such as holding a control, opening a context
- * menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the point instead of the
- * input), attaching files from `files/`, reading what a download saved or what the page copied, opening a session's
- * menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a piece of the screen
- * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
+ * its API, the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
+ * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
+ * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
+ * point instead of the input), attaching files from `files/`, reading what a download saved or what the page copied,
+ * opening a session's menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a
+ * piece of the screen looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
  * keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
  * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and
@@ -31,6 +31,7 @@ type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
 type Intercepted = {
   arrived(): Promise<void>;
+  deliver(): Promise<void>;
   reject(status: number, error: string): Promise<void>;
   deliverAndDrop(): Promise<void>;
 };
@@ -272,6 +273,7 @@ export const test = base.extend<{ hui: Hui }>({
         };
         return {
           arrived: () => arrival,
+          deliver: () => settle((route) => route.continue()),
           reject: (status, error) => settle((route) => route.fulfill({ status, json: { error } })),
           deliverAndDrop: () => settle(async (route) => {
             const response = await fetch(route.request.url, {
