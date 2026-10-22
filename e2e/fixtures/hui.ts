@@ -32,6 +32,8 @@ import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { IOS_DEVICE, IOS_PORT } from "../../e2e.config.ts";
 
+const MAX_SCROLL_SWIPES = 20;
+
 type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
@@ -87,7 +89,7 @@ export type Hui = {
   touchTap(target: Locator): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
-  expectLinkTo(link: Locator, href: string): Promise<void>;
+  expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
@@ -475,7 +477,7 @@ export const test = base.extend<{ hui: Hui }>({
         },
         contextMenu: (target) => target.secondaryTap(),
         scrollTo: (_within, target) => target.scrollIntoView(),
-        expectLinkTo: (link, href) => expect(link).toHaveAttribute("href", href),
+        expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
         textOf: async (target) => (await target.textContent()) ?? "",
         scrollSideways: async (target) => {
           const box = await target.boundingBox();
@@ -524,41 +526,40 @@ export const test = base.extend<{ hui: Hui }>({
           if (await glyph.count() === 0) return { label: "", animated: false };
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
         },
+        keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
+        hold: async (target, until) => {
+          await target.longPress();
+          await expect(until).toBeVisible();
+        },
+        textOf: async (target) => (await target.getByText(/\S/u).allTextContents()).join(" "),
+        contextMenu: (target) => target.longPress(),
+        clipboard: async ({ refuse = false } = {}) => {
+          if (refuse) notOnIos("clipboard({ refuse: true })")();
+          execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
+        },
+        copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
+        intercept: async (method, path) => proxy!.intercept(method, path),
+        url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
+        scrollTo: async (within, target) => {
+          const shown = async () => (await within.getByText(/\S/u).allTextContents()).join("\n");
+          for (const direction of ["down", "up"] as const) {
+            for (let swipes = 0, before = "", now = await shown(); now !== before && swipes < MAX_SCROLL_SWIPES; swipes++, before = now, now = await shown()) {
+              if (await target.count() > 0) return;
+              await within.swipe({ direction });
+            }
+          }
+          await expect(target).not.toHaveCount(0);
+        },
+        expectLinkTo: async (within, name, href) => {
+          if (!name.trim()) throw new Error("expectLinkTo: the link needs a name");
+          await expect(within.getByRole("link", name)).toHaveCount(1);
+          await expect(within.getByTestId(href).filter({ hasText: name })).toHaveCount(1);
+        },
       };
 
       await use({
         ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
-        ...(web ? {} : {
-          keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
-          hold: async (target: Locator, until: Locator) => {
-            await target.longPress();
-            await expect(until).toBeVisible();
-          },
-          textOf: async (target: Locator) => (await target.getByText(/\S/u).allTextContents()).join(" "),
-          contextMenu: (target: Locator) => target.longPress(),
-          clipboard: async ({ refuse = false } = {}) => {
-            if (refuse) notOnIos("clipboard({ refuse: true })")();
-            execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
-          },
-          copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
-          intercept: async (method: string, path: RegExp) => proxy!.intercept(method, path),
-          url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
-          scrollTo: async (within: Locator, target: Locator) => {
-            const shown = async () => (await within.getByText(/\S/u).allTextContents()).join("\n");
-            for (const direction of ["down", "up"] as const) {
-              for (let before = "", now = await shown(); now !== before; before = now, now = await shown()) {
-                if (await target.count() > 0) return;
-                await within.swipe({ direction });
-              }
-            }
-            throw new Error("scrollTo: the target is nowhere in the scroll container");
-          },
-          expectLinkTo: async (link: Locator, href: string) => {
-            await expect(link).toHaveCount(1);
-            await expect(fixtures.screen.getByTestId(href).filter({ hasText: (await link.textContent()) ?? "" })).toHaveCount(1);
-          },
-          ...iosSteps,
-        }),
+        ...(web ? {} : iosSteps),
         workspace: receipt.workspace,
         gateway: receipt.url,
         api,

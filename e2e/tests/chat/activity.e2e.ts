@@ -26,8 +26,8 @@ test("a message written mid-turn keeps its own row with its links, live and afte
   for (const pass of ["live", "reloaded"]) {
     if (pass === "reloaded") await hui.reload();
     await expect(transcript.getByText("What to check for the checkout alert")).toBeVisible();
-    await hui.expectLinkTo(transcript.getByRole("link", "service dashboard"), "https://example.com/dashboard/checkout");
-    await hui.expectLinkTo(transcript.getByRole("link", "error logs"), "https://example.com/logs?query=status%3Aerror");
+    await hui.expectLinkTo(transcript, "service dashboard", "https://example.com/dashboard/checkout");
+    await hui.expectLinkTo(transcript, "error logs", "https://example.com/logs?query=status%3Aerror");
     await expect(transcript.getByText("Started two helpers in the background; I'll report when they're back.")).toBeVisible();
     await transcript.getByText("Ran 1 command").tap();
     await expect(transcript.getByRole("button", "Read fixture.txt")).toBeVisible();
