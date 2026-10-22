@@ -424,7 +424,7 @@ const cases: UseCase[] = [
     behaviour: "/btw <question> (or /side) opens a Side chat rail, \"Ephemeral · <model>\", that shows \"Asking utility model…\" and then the answer, noting \"This exchange is not added to the main transcript.\"; nothing enters the conversation, and Close side chat closes it. A bare /btw explains the expected form, attachments are refused and a failure shows inside the rail.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#post-__huisessionsidbtw"],
     surfaces: ["command:btw", "command:side", "route:POST /__hui/sessions/:id/btw"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
