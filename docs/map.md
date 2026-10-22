@@ -57,8 +57,8 @@ Pi Durable owns conversations, runs, queues and crash recovery.
   files before switching to a new release.
 - R18. Everything `ios/core/` loads, directly or through other modules, is in
   `ios/core/` or `src/lib/`, and none of it is a `*-store.ts`, an npm package or
-  a Node module, except markdown-it and the two plugins the Markdown parser
-  uses. The core runs in JavaScriptCore, which has no DOM, network or
+  a Node module, except markdown-it, the two markdown-it plugins the Markdown
+  parser uses and their dependencies. The core runs in JavaScriptCore, which has no DOM, network or
   timers, and `ios/core/entry.test.ts` runs its bundle without them.
 
 ## A message, start to finish
