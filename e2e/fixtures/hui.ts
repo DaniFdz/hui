@@ -10,8 +10,9 @@
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
  * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
- * included, with the app's own `Origin` and `Host`; it follows `hui://open` links and reads the address the app shows
- * from its app-route marker; each test starts by deleting only the app's preferences through `defaults`, and
+ * included, with the app's own `Origin` and `Host`; it follows `hui://open` links, reads the address the app shows
+ * from its app-route marker and scrolls a container by swiping it until the target is on screen (the device reports
+ * only on-screen nodes); each test starts by deleting only the app's preferences through `defaults`, and
  * `clearState` deletes them too before the engine empties the data container, because `cfprefsd` would otherwise hand
  * the relaunched app the deleted values; it reads a container's text as its texts and labels in order, since a device
  * reports no text for a container, and what the app copied from the simulator's pasteboard; steps only the web has
@@ -85,6 +86,7 @@ export type Hui = {
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
+  scrollTo(within: Locator, target: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
@@ -462,6 +464,7 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
       contextMenu: (target) => target.secondaryTap(),
+      scrollTo: (_within, target) => target.scrollIntoView(),
       textOf: async (target) => (await target.textContent()) ?? "",
       scrollSideways: async (target) => {
         const box = await target.boundingBox();
@@ -529,6 +532,16 @@ export const test = base.extend<{ hui: Hui }>({
         copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
         intercept: async (method: string, path: RegExp) => proxy!.intercept(method, path),
         url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
+        scrollTo: async (within: Locator, target: Locator) => {
+          const shown = async () => (await within.getByText(/\S/u).allTextContents()).join("\n");
+          for (const direction of ["down", "up"] as const) {
+            for (let before = "", now = await shown(); now !== before; before = now, now = await shown()) {
+              if (await target.count() > 0) return;
+              await within.swipe({ direction });
+            }
+          }
+          throw new Error("scrollTo: the target is nowhere in the scroll container");
+        },
         ...iosSteps,
       }),
       workspace: receipt.workspace,

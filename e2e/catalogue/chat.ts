@@ -232,7 +232,7 @@ const cases: UseCase[] = [
     surfaces: ["row:activity", "tool:edit", "tool:write", "item:thinking", "item:tool"],
     journeys: ["chat-composer", "message-metadata"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-024",

@@ -34,7 +34,7 @@ test("a message written mid-turn keeps its own row with its links, live and afte
   }
 });
 
-test("each stretch of activity folds under a label from what it holds and opens in order", { tags: ["CHAT-023"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("each stretch of activity folds under a label from what it holds and opens in order", { tags: ["CHAT-023"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
@@ -72,5 +72,6 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await expect(idle).toBeVisible();
   await transcript.getByText("Ran 3 commands, edited 1 file").tap();
   await inOrder(transcript.getByRole("button", "Read fixture.txt").last(), transcript.getByRole("button", "echo folded"), transcript.getByText("edit", { visible: true }));
+  await hui.scrollTo(transcript, transcript.getByText("Weighing the fixture."));
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();
 });
