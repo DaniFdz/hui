@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
 import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
-import { IOS_PORT } from "../../e2e.config.ts";
+import { IOS_DEVICE, IOS_PORT } from "../../e2e.config.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -141,8 +141,8 @@ export const test = base.extend<{ hui: Hui }>({
     const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", receipt.url] });
     const forgetPreferences = async () => {
       await device().closeApp();
-      const container = execFileSync("xcrun", ["simctl", "get_app_container", "HUI iPhone", "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
-      const forget = spawnSync("xcrun", ["simctl", "spawn", "HUI iPhone", "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
+      const container = execFileSync("xcrun", ["simctl", "get_app_container", IOS_DEVICE, "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
+      const forget = spawnSync("xcrun", ["simctl", "spawn", IOS_DEVICE, "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
       if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
     };
     const clearState = async () => {
