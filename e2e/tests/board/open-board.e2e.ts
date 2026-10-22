@@ -33,7 +33,12 @@ test("Kanban, directly below Contributions, opens /kanban with the five columns 
   const lane = board.getByLabel(workspace);
   await expect(lane.getByText(hui.workspace)).toBeVisible();
   await expect(lane.getByText("2")).toBeVisible();
-  await expect(board.getByLabel(basename(repo.path)).getByText(repo.path)).toBeVisible();
+  await expect(lane.getByText("1")).toHaveCount(2);
+  await expect(lane.getByText("0")).toHaveCount(3);
+  const repoLane = board.getByLabel(basename(repo.path));
+  await expect(repoLane.getByText(repo.path)).toBeVisible();
+  await expect(repoLane.getByText("1")).toHaveCount(2);
+  await expect(repoLane.getByText("0")).toHaveCount(4);
   await expect(board.getByText(child.title)).toBeHidden();
   await expect(board.getByText("Board archived")).toBeHidden();
 });

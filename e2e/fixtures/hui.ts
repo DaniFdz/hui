@@ -1,13 +1,14 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API (local backlog tasks included), the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
- * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
- * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
- * point instead of the input), tapping a control with a finger, which unlike a mouse doesn't hover it first, attaching
- * files from `files/` or made up of a name and a size, reading what a download saved or what the page copied, opening a
- * session's menu, dragging a control onto another and checking the screen before dropping it, reading a sidebar row's status glyph (its tooltip and whether it spins) and whether its unread dot
- * has the accent colour, and reading how a piece of the screen looks (its text colour and the colour behind it as RGB,
- * its opacity, its font families, those of HUI's bundled faces that have loaded to draw its text, its text size in
+ * its API (local backlog tasks included), the deterministic provider's address and barriers, a gateway request a test
+ * holds, then delivers, rejects or delivers while dropping its answer, and the steps whose gesture differs per
+ * platform, such as holding a control, opening a context menu, turning a switch (a Web Awesome switch draws its track
+ * over its input, so the web taps the point instead of the input), tapping a control with a finger, which unlike a
+ * mouse doesn't hover it first, attaching files from `files/` or made up of a name and a size, reading what a download
+ * saved or what the page copied, opening a session's menu, dragging a control onto another and checking the screen
+ * before dropping it, reading a sidebar row's status glyph (its tooltip and whether it spins) and whether its unread
+ * dot has the accent colour, and reading how a piece of the screen looks (its text colour and the colour behind it as
+ * RGB, its opacity, its font families, those of HUI's bundled faces that have loaded to draw its text, its text size in
  * pixels and the colour of the focus ring it shows when reached from the keyboard), a disposable Git repository (on
  * `feature/current`, with `main`, a `release/1.0` at its own commit and a `sub` directory) that it removes at teardown,
  * the files of the gateway's state and workspace that hold a text, the secret directories the gateway wrote, a restart

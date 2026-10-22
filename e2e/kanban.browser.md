@@ -21,8 +21,10 @@ shared tests in `e2e/tests/board/`. What remains here:
 
 1. The unread session shows status **Done**.
 2. **Let the agent decide** is disabled for an agent-placed card.
-3. **View** → **Custom groups** replaces project lanes with OTHER and
-   survives a reload; **Reset view** restores project lanes.
+3. **View** lists Group by and Sort by. **Custom groups** replaces project
+   lanes with OTHER and survives a reload; **Reset view** restores project
+   lanes.
+4. No page errors or console errors.
 
 Proof gap: pull-request inference is covered by server/unit tests only, not by
 this Browser journey.

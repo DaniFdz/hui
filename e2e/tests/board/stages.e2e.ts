@@ -30,8 +30,10 @@ test("Options → Move to → Testing moves the card once the server confirms, p
   const move = await hui.intercept("PATCH", new RegExp(`/__hui/sessions/${session.id}$`, "u"));
   const options = board.getByRole("button", "Stage: Investigation. Options for Menu move");
   await options.tap();
-  for (const stage of ["Investigation", "Implementation", "Testing", "Done"]) await expect(screen.getByLabel("Options for Menu move").getByText(stage, { visible: true })).toBeVisible();
-  await screen.getByLabel("Options for Menu move").getByText("Testing", { visible: true }).tap();
+  const menu = screen.getByLabel("Options for Menu move");
+  await expect(menu.getByText("Move to", { visible: true })).toBeVisible();
+  for (const stage of ["Investigation", "Implementation", "Testing", "Done"]) await expect(menu.getByText(stage, { visible: true })).toBeVisible();
+  await menu.getByText("Testing", { visible: true }).tap();
   await move.arrived();
   await expect(options).toBeDisabled();
   await expect(cell("Investigation").getByText("Menu move")).toBeVisible();
@@ -107,7 +109,7 @@ test("Shift+ArrowRight and Shift+ArrowLeft move the focused card a stage at a ti
   }
   await title("Done").press("Shift+ArrowRight");
   await expect(title("Done")).toBeFocused();
-  await expect(screen.getByText("Moved Keyed card to Done.")).toBeVisible();
+  expect(await placement(hui, session.id)).toBe("done from operator");
   await title("Done").press("Shift+ArrowLeft");
   await expect(screen.getByText("Moved Keyed card to Testing.")).toBeVisible();
   await expect(title("Testing")).toBeFocused();
