@@ -2,7 +2,7 @@
 // "Session status: …" from the core's label), the transcript of the core's rows anchored at the bottom, activity rows
 // that open to their thinking and tool cards, the working indicator ("Agent activity: …") and the composer (Message,
 // Send message, and Stop while a run streams). While the conversation loads it says so, and a failed load offers Try
-// again.
+// again. A send that fails stays marked "Not sent — draft recovered." with its text back in the draft, as on the web.
 import SwiftUI
 
 struct ChatView: View {
@@ -114,11 +114,16 @@ struct ChatView: View {
         case .messages:
             ForEach(row.messages ?? []) { message in
                 let user = message.role == "user"
-                MarkdownView(source: message.text ?? "", agent: !user, core: core)
-                    .padding(user ? 10 : 0)
-                    .background(user ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
-                    .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
-                    .opacity(message.pending == true ? 0.6 : 1)
+                VStack(alignment: .trailing, spacing: 4) {
+                    MarkdownView(source: message.text ?? "", agent: !user, core: core)
+                        .padding(user ? 10 : 0)
+                        .background(user ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
+                        .opacity(message.pending == true ? 0.6 : 1)
+                    if message.failed == true {
+                        Text("Not sent — draft recovered.").font(.caption).foregroundStyle(.red)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
             }
         case .activity:
             disclosure(row.id, label: model.streaming ? row.liveLabel : row.label) {
@@ -170,6 +175,16 @@ struct ChatView: View {
     }
 
     private var composer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let error = model.sendError {
+                Text(error).font(.caption).foregroundStyle(.red)
+            }
+            composerControls
+        }
+        .padding()
+    }
+
+    private var composerControls: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextField("Message", text: $draft, axis: .vertical)
                 .lineLimit(1...6)
@@ -184,7 +199,10 @@ struct ChatView: View {
                     let text = draft
                     draft = ""
                     following = true
-                    Task { await model.send(text) }
+                    Task {
+                        guard await !model.send(text) else { return }
+                        draft = draft.isEmpty ? text : "\(text)\n\n\(draft)"
+                    }
                 }
                 .labelStyle(.iconOnly)
                 .font(.title2)
@@ -192,7 +210,6 @@ struct ChatView: View {
                 .disabled(model.phase != .open)
             }
         }
-        .padding()
     }
 }
 
