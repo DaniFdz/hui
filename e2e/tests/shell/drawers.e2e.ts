@@ -63,6 +63,7 @@ test("on a phone Open settings navigation names the page, hides it behind the dr
   await screen.getByTestId("settings-page-link").filter({ hasText: "Diagnostics" }).tap();
   await expect(title).toHaveText("Diagnostics");
   await expect(title).toBeFocused();
+  await expect(open).toHaveAttribute("aria-expanded", "false");
   await expect(open).toContainText("Diagnostics");
   expect(await hui.url()).toMatch(/\/settings\/diagnostics$/u);
 
@@ -72,6 +73,7 @@ test("on a phone Open settings navigation names the page, hides it behind the dr
   await expect.poll(() => hui.reachable(width)).toBe(false);
   await screen.tapAt({ x: phone.width - 12, y: phone.height / 2 });
   await expect(open).toBeFocused();
+  await expect(open).toHaveAttribute("aria-expanded", "false");
   await expect.poll(() => hui.reachable(width)).toBe(true);
   await expect(title).toHaveText("Appearance");
   expect(await hui.url()).toMatch(/\/settings\/appearance$/u);
@@ -89,6 +91,10 @@ test("widening the window with either drawer open closes it and leaves the deskt
   await hui.wideScreen();
   await expect(screen.getByRole("button", "Collapse sidebar")).toBeVisible();
   await expect.poll(() => hui.reachable(start)).toBe(true);
+  await hui.phoneScreen();
+  await expect(screen.getByRole("button", "Open navigation")).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(() => hui.reachable(start)).toBe(true);
+  await hui.wideScreen();
   await screen.getByTestId("nav-item").filter({ hasText: "Kanban" }).tap();
   await expect(screen.getByTestId("page-title")).toHaveText("Kanban");
 
@@ -100,6 +106,10 @@ test("widening the window with either drawer open closes it and leaves the deskt
   await hui.wideScreen();
   await expect(screen.getByRole("button", "Exit Settings")).toBeVisible();
   await expect.poll(() => hui.reachable(width)).toBe(true);
+  await hui.phoneScreen();
+  await expect(screen.getByRole("button", "Open settings navigation")).toHaveAttribute("aria-expanded", "false");
+  await expect.poll(() => hui.reachable(width)).toBe(true);
+  await hui.wideScreen();
   await width.tap();
   await expect(screen.getByRole("listbox", "Message width")).toBeVisible();
 });

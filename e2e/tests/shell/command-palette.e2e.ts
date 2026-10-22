@@ -12,16 +12,16 @@ test("⌘K or Ctrl+K opens the palette's default list, the arrow keys move throu
   await expect(prompt).toBeFocused();
   await hui.paletteChord();
   await expect(input).toBeFocused();
-  await expect(screen.getByTestId("command-palette-results")).toHaveText(/^Navigation\s*New Session.*\s*Sessions.*\s*Automations.*\s*Plugins.*\s*Settings\s*Settings\s*Appearance and preferences$/iu);
+  await expect(screen.getByRole("option")).toHaveText([/^New Session/u, /^Sessions/u, /^Automations/u, /^Plugins/u, /^Settings/u]);
   await hui.paletteChord();
-  await expect(input).toBeHidden();
   await expect(prompt).toBeFocused();
+  await expect(input).toBeHidden();
 
   await hui.paletteChord();
   await expect(option(/^New Session/u)).toBeVisible();
   await input.press("Escape");
-  await expect(input).toBeHidden();
   await expect(prompt).toBeFocused();
+  await expect(input).toBeHidden();
 
   await hui.paletteChord();
   await input.press("ArrowDown");
@@ -31,8 +31,8 @@ test("⌘K or Ctrl+K opens the palette's default list, the arrow keys move throu
   await input.press("ArrowUp");
   await expect(option(/^Sessions/u)).toBeVisible();
   await input.press("Enter");
-  await expect(input).toBeHidden();
   await expect(screen.getByTestId("page-title")).toHaveText("Sessions");
+  await expect(input).toBeHidden();
   expect(await hui.url()).toMatch(/\/sessions$/u);
 });
 
@@ -52,19 +52,19 @@ test("typing a search lists matching chats, pages and Settings pages under their
 
   await input.fill("a model review");
   await results.getByText("A model review", { exact: true }).tap();
-  await expect(input).toBeHidden();
   await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("A model review");
+  await expect(input).toBeHidden();
   expect(await hui.url()).toMatch(new RegExp(`/sessions/${session.id}$`, "u"));
 
   await hui.paletteChord();
   await input.fill("usage");
   await results.getByText("Usage", { exact: true }).tap();
-  await expect(input).toBeHidden();
   await expect(screen.getByTestId("page-title")).toHaveText("Usage");
+  await expect(input).toBeHidden();
 
   await hui.paletteChord();
   await input.fill("diagnostics");
   await results.getByText("Diagnostics", { exact: true }).tap();
-  await expect(input).toBeHidden();
   await expect(screen.getByTestId("settings-page-title")).toHaveText("Diagnostics");
+  await expect(input).toBeHidden();
 });
