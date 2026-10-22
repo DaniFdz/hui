@@ -1,0 +1,89 @@
+/** A message's footer replies with a quote and copies it, and its context menu copies the text, a selection or code (CHAT-030, CHAT-032). */
+import { expect, type Screen } from "e2e";
+import { test, type Hui } from "../../fixtures/hui.ts";
+
+async function reply(screen: Screen, hui: Hui, prompt: string) {
+  const session = await hui.createSession({ title: "Message actions" });
+  await hui.open(`/sessions/${session.id}`);
+  await screen.getByLabel("Message").fill(prompt);
+  await screen.getByRole("button", "Send message").tap();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  return screen.getByTestId("transcript");
+}
+
+test("Copy response copies a reply and turns to Copied, and a sent prompt's context menu copies it, a selection or code", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+  await hui.clipboard();
+  const transcript = await reply(screen, hui, "Selected words stay put");
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
+  await transcript.getByRole("button", "Copy response").tap();
+  await expect(transcript.getByRole("button", "Copied")).toBeVisible();
+  await expect.poll(() => hui.copied()).toBe("Fixture response.");
+
+  const prompt = transcript.getByText("Selected words stay put");
+  await hui.contextMenu(prompt);
+  await screen.getByText("Copy as markdown").tap();
+  await expect(screen.getByText("Copy as markdown")).toBeHidden();
+  await expect.poll(() => hui.copied()).toBe("Selected words stay put");
+
+  await prompt.doubleTap();
+  await hui.contextMenu(prompt);
+  await screen.getByText("Copy selection").tap();
+  await expect.poll(() => hui.copied()).toBe("words");
+
+  await screen.getByLabel("Message").fill("E2E_CODE_PARITY");
+  await screen.getByRole("button", "Send message").tap();
+  const code = transcript.getByText(/^line 1: fixture/u);
+  await hui.contextMenu(code);
+  await screen.getByText("Copy code").tap();
+  await expect.poll(() => hui.copied()).toMatch(/^line 1: fixture .*\nline 10: fixture /su);
+});
+
+test("A message from a session has Copy message", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+  await hui.clipboard();
+  const parent = await hui.createSession({ title: "Coordinator" });
+  const child = await hui.createSubagent(parent);
+  await hui.open(`/sessions/${child.id}`);
+  const transcript = screen.getByTestId("transcript");
+  await expect(transcript.getByText("Subagent child result: the fixture contract is working.")).toBeVisible();
+  await transcript.getByRole("button", "Copy message").tap();
+  await expect(transcript.getByRole("button", "Copied")).toBeVisible();
+  await expect.poll(() => hui.copied()).toBe("E2E_SUBAGENT_CHILD");
+});
+
+test("A refused clipboard write leaves the menu item saying Copy failed — retry", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+  await hui.clipboard({ refuse: true });
+  const transcript = await reply(screen, hui, "Copy me");
+  await hui.contextMenu(transcript.getByText("Copy me"));
+  await screen.getByText("Copy as markdown").tap();
+  await expect(screen.getByText("Copy failed — retry")).toBeVisible();
+  expect(await hui.copied()).toBe("");
+});
+
+test("On a phone screen the latest reply's Copy response is visible and copies on the first tap", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+  await hui.phoneScreen();
+  await hui.clipboard();
+  const transcript = await reply(screen, hui, "Copy on a phone");
+  const copy = transcript.getByRole("button", "Copy response");
+  await expect(copy).toBeVisible();
+  await copy.tap();
+  await expect(transcript.getByRole("button", "Copied")).toBeVisible();
+  await expect.poll(() => hui.copied()).toBe("Fixture response.");
+});
+
+test("Reply to message quotes the message after the existing draft and leaves the caret at its end, without sending", { tags: ["CHAT-032"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const message = screen.getByLabel("Message");
+  const transcript = await reply(screen, hui, "First line\nSecond line");
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
+
+  await message.fill("My draft");
+  await transcript.getByRole("button", "Reply to message").first().tap();
+  await expect(message).toHaveValue("My draft\n\n> First line\n> Second line\n\n");
+  await transcript.getByRole("button", "Reply to message").last().tap();
+  await expect(message).toHaveValue("My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response.\n\n");
+  await expect(message).toBeFocused();
+  await hui.keyboard.down("x");
+  await hui.keyboard.up("x");
+  await expect(message).toHaveValue("My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response.\n\nx");
+  await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
+  await expect(transcript.getByText("My draft")).toBeHidden();
+});

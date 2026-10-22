@@ -298,7 +298,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["chat-composer", "message-metadata", "clipboard-fallback"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -318,7 +318,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["message-metadata"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
