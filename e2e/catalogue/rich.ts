@@ -42,7 +42,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-tables", "markdown-formatting"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -52,7 +52,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-tables"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
