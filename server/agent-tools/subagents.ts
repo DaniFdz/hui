@@ -876,10 +876,7 @@ export class SubagentService {
     let wake!: () => void;
     const woken = new Promise<void>((resolve) => { wake = resolve; });
     const listener = (records?: readonly SessionRecord[]) => { if (!records || finished(records)) wake(); };
-    const watched = this.sessions.watch(callerId, (message) => {
-      if (message.kind === "event" && message.event.type === "queue_update") steered(message.event.queue.steering);
-    });
-    const round = watched.snapshot.transcript.length;
+    let round = 0;
     let steeredBy: string | undefined;
     const steered = (steering: readonly string[]) => {
       const mark = `${round}\n${JSON.stringify(steering)}`;
@@ -887,6 +884,10 @@ export class SubagentService {
       steeredBy = mark;
       wake();
     };
+    const watched = this.sessions.watch(callerId, (message) => {
+      if (message.kind === "event" && message.event.type === "queue_update") steered(message.event.queue.steering);
+    });
+    round = watched.snapshot.transcript.length;
     steered(watched.snapshot.queue.steering);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let onAbort = () => {};
@@ -942,7 +943,7 @@ export class SubagentService {
       })),
       pending,
       ...(steeredBy !== undefined && pending.length
-        ? { interrupted: "A new message arrived for you; it follows once this tool call returns. Call agents_wait again for the pending tasks if they still matter." }
+        ? { interrupted: "A new message is waiting for you. You see it only once this tool call returns, or once the script returns when a codemode script called this. Return now, and call agents_wait again for the pending tasks if they still matter." }
         : {}),
     };
   }
