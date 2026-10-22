@@ -1,4 +1,4 @@
-// The session list, grouped as the web sidebar groups it; each row reads as the web's sidebar row does and ends with
+// The session list, grouped as the web sidebar groups it; each row reads as the web's sidebar row does and leads with
 // the core's status glyph (attention, the busy spinner or the unread dot). Its toolbar holds the web sidebar's
 // Filter & sort menu, with the same choices, and New group.
 import SwiftUI
@@ -22,10 +22,10 @@ struct SessionListView: View {
                 Section(group.label) {
                     ForEach(group.rows) { row in
                         HStack {
+                            SessionGlyphView(glyph: row.glyph)
                             NavigationLink(value: row.id) {
                                 Text(row.title)
                             }
-                            SessionGlyphView(glyph: row.glyph)
                         }
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(row.accessibleName)
