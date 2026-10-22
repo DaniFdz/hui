@@ -2,9 +2,11 @@
  * OptChat's compactor (spec section 4): a pump builds tree nodes in a strict
  * order, at most `jobs` at once. A node starts when it is not built or running,
  * its sources exist (the message, or both children built), and every view line
- * before its end is a built summary (rule 3). That rule gives OptMem's order for
- * free: messages are compressed one at a time, in order, while merges of finished
- * parts run alongside, and the compactor never sees a line that is not a summary.
+ * before its end is a built summary (rule 3), except that a message starts while
+ * fewer than `jobs` earlier ones still wait for theirs (revision 3c190e0), so the
+ * next turn does not wait for a burst of messages summarized one by one. Messages
+ * start in order, merges of finished parts run alongside, and a call's context
+ * stops at the first line not built: the compactor never sees one.
  * A source that already fits is its own node, with no model call. A failed node
  * is retried every `retryMs` forever (the next turn waits on it, so no backoff),
  * and only its first failure is reported. A call's context is the compaction
@@ -131,11 +133,13 @@ export class Compactor {
       let start = this.#frontier[l] ?? 0;
       while (tree.has(l, start)) start++;
       this.#frontier[l] = start;
-      for (let i = start; (i + 1) * span(l) <= count; i++) {
+      for (let i = start, waiting = 0; (i + 1) * span(l) <= count; i++) {
         if (this.#busy.size >= this.#options.jobs) return;
-        // Rule 3; `end` only grows with i, so no later node of this level is ready either.
-        if ((l === 0 ? i : (i + 1) * span(l)) > first) break;
-        if (tree.has(l, i) || this.#busy.has(key(l, i))) continue;
+        // Rule 3, relaxed for messages: either bound only grows with i, so no later node of this level is ready either.
+        if (l === 0 ? waiting >= this.#options.jobs : (i + 1) * span(l) > first) break;
+        if (tree.has(l, i)) continue;
+        if (l === 0) waiting++;
+        if (this.#busy.has(key(l, i))) continue;
         if (l > 0 && !(tree.has(l - 1, 2 * i) && tree.has(l - 1, 2 * i + 1))) continue;
         this.#start(l, i);
       }
@@ -190,7 +194,7 @@ export class Compactor {
   async #compress(l: number, i: number): Promise<string> {
     const { node, tries: limit } = this.#options;
     const { tree } = this.#host;
-    // Read now, in the pump's turn: rule 3 held for this context when the node started.
+    // Read now, in the pump's turn: the built lines before the node, up to the first that still waits for its summary.
     const context = `<chat>\n${this.#host.context(l === 0 ? i : (i + 1) * span(l)).join("\n")}\n</chat>`;
     const step = l === 0
       ? compressStep(node, this.#host.message(i).kind, this.#host.message(i).text)
