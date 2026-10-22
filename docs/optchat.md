@@ -44,8 +44,8 @@ type OptChatState = { enabled: boolean; name: string; model?: string; thinking?:
 |---|---|
 | `enabled` | absent document or `false`: plain Durable |
 | `name` | the agent's display name in OptChat's prompts (required when enabled) |
-| `model` | the compactor's model as `provider/id`; default: the conversation's own model |
-| `thinking` | the compactor's thinking level; default `medium` (the reference's choice) |
+| `model` | the compactor's model as `provider/id`; default: HUI's utility model, else the conversation's own |
+| `thinking` | the compactor's thinking level; default `medium` (the reference's choice), or the nearest level below it that the model has |
 
 The document is `latest` and `fork: "initial"`: a fork, such as a rewind, starts
 without OptChat. Change it only with the helpers, which also select OptChat's
@@ -131,15 +131,19 @@ one long run cannot be compacted either: that run fails (Durable section 8.3).
 
 **The compactor** (spec section 4) runs in the gateway: one model conversation per
 node, at most 8 per memory and 8 across the gateway, through the gateway's models
-with the document's model or the conversation's own, at medium thinking unless
-the document says otherwise. Its context is the compaction view's lines before
+with the document's model, else HUI's utility model, else the conversation's own,
+which also takes over a call the utility model fails. It thinks at medium unless
+the document says otherwise, or at the nearest level below that the model has: a
+summary is quick work a turn may be waiting on, so a model without medium gets
+low, not high. Its context is the compaction view's lines before
 the node ([The view](#the-view)), up to the first one that is not a summary yet:
 as revision `3c190e0` allows, a message starts while at most 7 earlier ones still
 wait for theirs, so a turn that brought many messages is summarized 8 at a time
 and the next turn's wait is that much shorter. Models cannot count bytes, so each
 step shows the limit as a ruler of that many dashes: the realistic sample line it
 replaces could end up copied into summaries, as revision `3c190e0` observed. A
-failed node is retried every 10 seconds; only its first failure is reported
+call that has not answered after 2 minutes fails like any other. A failed node
+is retried every 10 seconds; only its first failure is reported
 (`optchat_memory` diagnostic) and shown in the memory's status. Its usage
 (tokens, cache, cost) is counted in the status since the memory opened.
 
