@@ -138,7 +138,7 @@ struct SessionListView: View {
                 HStack {
                     Text(toast.error ?? "Archived “\(toast.title)”.").font(.footnote)
                     Spacer()
-                    Button("Restore") {
+                    Button(toast.restoring ? "Restoring…" : "Restore") {
                         guard let client else { return }
                         Task { await sessions.restoreArchived(client: client) }
                     }

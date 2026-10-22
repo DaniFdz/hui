@@ -1,6 +1,6 @@
 /**
  * The browser's pure session logic over the session API's types (src/api/sessions.ts): group labels as the sidebar
- * shows and the API stores them, the session menu's Move to group choices, icon presets and Copy notices, the
+ * shows and the API stores them, the session menu's Move to group choices and Copy notices, the
  * transcript as Markdown and how an unreachable host reads.
  */
 import { callMinutes, callTranscriptText } from "../voice/calls.ts";
@@ -21,12 +21,6 @@ export function sessionMoveGroupOptions(groups: readonly SessionGroup[]): Array<
   const labels = ["ungrouped", ...groups.map((group) => group.label)];
   return [...new Set(labels.map((label) => label || "ungrouped"))]
     .map((label) => ({ label: sessionGroupLabel(label), value: storedSessionGroup(label) }));
-}
-
-export const SESSION_ICONS = ["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯"] as const;
-export function normalizeCustomSessionIcon(value: string): string | undefined {
-  const icon = value.trim();
-  return icon && icon.length <= 32 ? icon : undefined;
 }
 
 export function sessionCopiedNotice(action: "link" | "markdown" | "id" | "jira"): string {

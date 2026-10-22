@@ -72,15 +72,6 @@ actor HUICore {
         try call("sessionMoveGroupOptions", groups)
     }
 
-    func sessionIcons() throws -> [String] {
-        guard let icons = exports.objectForKeyedSubscript("SESSION_ICONS") else { throw ScriptError(description: "hui-core.js has no SESSION_ICONS") }
-        return try decode(icons)
-    }
-
-    func normalizeCustomSessionIcon(_ value: String) throws -> String? {
-        try call("normalizeCustomSessionIcon", value)
-    }
-
     func sessionCopiedNotice(_ action: String) throws -> String {
         try call("sessionCopiedNotice", action)
     }

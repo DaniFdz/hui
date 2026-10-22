@@ -122,6 +122,8 @@ final class SessionsModel {
 
     func archive(_ row: Row, client: GatewayClient) async {
         guard await update(row.id, ["archived": .bool(true)], client: client) != nil else { return }
+        noticeTimer?.cancel()
+        notice = nil
         archiveToast = ArchiveToast(id: row.id, title: row.title)
         expireArchiveToast()
     }

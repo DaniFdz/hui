@@ -34,8 +34,6 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     sessionGroupLabel: () => assert.equal(core.sessionGroupLabel("ungrouped"), "OTHER"),
     sessionMoveGroupOptions: () => assert.deepEqual(json(core.sessionMoveGroupOptions([{ label: "Atlas", sessions: [] }])),
       [{ label: "OTHER", value: "" }, { label: "ATLAS", value: "Atlas" }]),
-    SESSION_ICONS: () => assert.equal(core.SESSION_ICONS[0], "🦞"),
-    normalizeCustomSessionIcon: () => assert.equal(core.normalizeCustomSessionIcon("  🐧 "), "🐧"),
     sessionCopiedNotice: () => assert.equal(core.sessionCopiedNotice("id"), "Session ID copied."),
     normalizeSidebarSessionOptions: () => assert.deepEqual(json(core.normalizeSidebarSessionOptions({ sortBy: "title", status: "nope" })),
       { groupBy: "custom", sortBy: "title", status: "all", hideEmpty: "filtering" }),
