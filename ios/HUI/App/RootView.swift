@@ -1,6 +1,6 @@
 // The root screen: Connect until a gateway answers, then the session list with a stack of destinations. A
 // hui://open?path=<path> link is resolved by the core's resolveNavigation, as the web resolves its address bar, and
-// replaces that stack; a link that arrives before the gateway connects opens once it does. The open screen's address is
+// replaces that stack at once, as an address does; a link that arrives before the gateway connects opens once it does. The open screen's address is
 // kept in the preferences after its gateway's, so the app opens it again when it restarts against the same gateway, as
 // a reload keeps the web's address. Archiving or deleting the open session's tree from its menu returns to the list,
 // as the web returns Home.
@@ -76,10 +76,14 @@ struct RootView: View {
 
     private func go(_ target: String) async {
         guard let resolution = try? await core.resolveNavigation(target) else { return }
-        switch resolution.target {
-        case .session(let id): path = [.session(id)]
-        case .page("sessions"): path = [.sessionsPage]
-        default: path = []
+        var instant = Transaction()
+        instant.disablesAnimations = true
+        withTransaction(instant) {
+            switch resolution.target {
+            case .session(let id): path = [.session(id)]
+            case .page("sessions"): path = [.sessionsPage]
+            default: path = []
+            }
         }
     }
 }

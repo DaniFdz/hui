@@ -75,6 +75,17 @@ struct SessionsModelTests {
         #expect(model.archiveToast?.restoring == false)
     }
 
+    @Test func archivingClosesTheSessionAndListsItAsArchivedOnTheSessionsPage() async throws {
+        let (model, host) = try start([snapshot([notes: "idle", login: "idle"])], routes: ["/__hui/sessions/\(notes)": [(200, try answer(notes) { $0.archived = true })]])
+        try await until { model.loaded }
+        let client = GatewayClient(baseURL: URL(string: "http://\(host)")!)
+        #expect(model.page("archived").isEmpty)
+        await model.archive(try #require(model.session(notes)), client: client)
+        #expect(model.closed == [notes])
+        #expect(model.page("archived").map(\.id) == [notes])
+        #expect(!model.page("active").map(\.id).contains(notes))
+    }
+
     private func start(_ frames: [String], routes: [String: [(status: Int, body: Data)]] = [:]) throws -> (SessionsModel, String) {
         let host = "\(UUID().uuidString.lowercased()).stub.test"
         GatewayStub.serve(host, list: try fixture("sessions.json"), events: Data(frames.map { $0 + "\n\n" }.joined().utf8), routes: routes)

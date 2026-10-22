@@ -430,8 +430,10 @@ export const test = base.extend<{ hui: Hui }>({
         return read.status === 0 ? read.stdout.trim() : `${receipt.url}/`;
       },
       sessionMenu: async (title) => {
-        const actions = fixtures.screen.getByRole("button", `Actions for ${title}`);
-        if (await actions.count() > 0) return actions.tap();
+        const open = (await sessions()).find((session) => session.title === title);
+        if (open && (await iosSteps.url!()).endsWith(`/sessions/${encodeURIComponent(open.id)}`)) {
+          return fixtures.screen.getByRole("button", `Actions for ${title}`).tap();
+        }
         await fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress();
       },
       glyph: async (title) => {
