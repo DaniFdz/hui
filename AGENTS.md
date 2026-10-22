@@ -77,6 +77,7 @@ corrects a new kind of slowness, and enforce it with a type, check or test.
 | A list or card carries what it shows: a subagent's card, not its task or report. | `server/sessions/session-payloads.test.ts` (`Api.SessionSubagent` type); `server/agent-tools/subagents.test.ts` "a parent's snapshot shows each child's card…" |
 | The browser reads event streams with `readEventStream`, which is linear. | `src/api/sessions.test.ts` "the browser reads every event stream through readEventStream" |
 | A long conversation draws its latest rows; a folded activity draws its items when it opens. | `src/views/home.test.ts` "a long conversation renders its latest rows…" |
+| The transcript's subagent and watcher cards blur nothing behind them (no `backdrop-filter`). Each blurred card added composited layers, and in a long chat whole rows stayed blank while scrolling. | `src/views/home.test.ts` "subagent and watcher cards blur nothing behind them…" |
 | A session row draws its actions menu when it opens. | `src/views/shell.test.ts` "a session row draws its actions menu only once it opens…" |
 | Streamed frames redraw at most once per animation frame. | `src/controllers/conversation-controller.test.ts` "streamed text, thinking and tool output redraw…" |
 | An idle conversation redraws only for its clocks, and a poll assigns state only when it changed. | `src/hui-app.test.ts` "an idle conversation redraws for its clocks…" and "the main app's bot roster redraws…"; `src/controllers/settings-controller.test.ts` "the newest power read wins…" |
