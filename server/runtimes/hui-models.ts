@@ -5,6 +5,7 @@ import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+import { ModelsError } from "@earendil-works/pi-ai";
 import { ModelRuntime, type ModelRuntimeAuthOverrides } from "@earendil-works/pi-coding-agent";
 import { credentialStore, type CredentialStore, ProviderAccounts } from "../pi/provider-accounts.ts";
 import { accountRouting } from "./provider-account-routing.ts";
@@ -57,11 +58,12 @@ function runKeyCommandsAsync(runtime: ModelRuntime, commands: ReadonlyMap<string
     const provider = typeof target === "string" ? target : target.provider;
     const command = commands.get(provider);
     if (command === undefined || overrides.apiKey !== undefined || runtime.getProviderAuthStatus(provider).source === "stored") return getAuth(target, overrides);
-    const run = execAsync(command, { timeout: 10_000 });
+    const run = execAsync(command, { timeout: 10_000, signal: overrides.signal });
     run.child.stdin?.end();
     const apiKey = await run.then(({ stdout }) => stdout.trim(), () => "");
-    if (!apiKey) throw new Error(`Failed to resolve API key for provider "${provider}" from shell command: ${command}`);
-    return getAuth(target, { ...overrides, apiKey });
+    if (apiKey) return getAuth(target, { ...overrides, apiKey });
+    overrides.signal?.throwIfAborted();
+    throw new ModelsError("auth", `API key auth failed for provider ${provider}`, { cause: new Error(`Failed to resolve API key for provider "${provider}" from shell command: ${command}`) });
   }) as ModelRuntime["getAuth"];
   return runtime;
 }
