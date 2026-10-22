@@ -16,7 +16,7 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -26,7 +26,7 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -36,7 +36,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -46,7 +46,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -66,7 +66,7 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -96,7 +96,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -106,7 +106,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -116,7 +116,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

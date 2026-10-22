@@ -2278,7 +2278,7 @@ function renderQuestion(props: HomeProps) {
   const titleId = sessionControlId(props, "question-title");
   const reasonId = sessionControlId(props, "question-reason");
   return html`<div class="agent-chat__question-dock" aria-live="polite">
-    <form class="session-question-card chat-question-panel" aria-labelledby=${titleId} @submit=${submit}
+    <form class="session-question-card chat-question-panel" data-testid="question-card" aria-labelledby=${titleId} @submit=${submit}
       @keydown=${(event: KeyboardEvent) => {
         if (event.key === "Escape") {
           // Consumed either way, or the page's Escape would stop the run. Password
