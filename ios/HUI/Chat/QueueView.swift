@@ -2,7 +2,8 @@
 // Steer or Follow up badge on each, and on HUI's own follow-ups Steer queued message while a run streams, Remove
 // queued message and Edit queued message (or a double tap), which opens a focused editor with Save queued message and
 // Cancel edit. With two or more follow-ups, dragging a row's Reorder queued message handle onto another row moves it
-// there. Every change goes to the gateway, and the queue it sends back redraws the rows.
+// there; VoiceOver moves it one place with the handle's adjustable action. Every change goes to the gateway, and the
+// queue it sends back redraws the rows.
 import SwiftUI
 
 struct QueueView: View {
@@ -16,7 +17,7 @@ struct QueueView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(model.queue.enumerated()), id: \.offset) { _, row in
+            ForEach(model.queue.enumerated().map { ($1.id.isEmpty ? "runtime-\($0)" : $1.id, $1) }, id: \.0) { _, row in
                 rowView(row)
             }
         }
@@ -25,6 +26,7 @@ struct QueueView: View {
         .accessibilityLabel("Queued messages")
         .onChange(of: model.queue) {
             if let editing, !editable.contains(editing) { self.editing = nil }
+            frames = frames.filter { editable.contains($0.key) }
         }
     }
 
@@ -76,6 +78,11 @@ struct QueueView: View {
             .accessibilityElement()
             .accessibilityLabel("Reorder queued message")
             .accessibilityAddTraits(.isButton)
+            .accessibilityAdjustableAction { direction in
+                guard let index = editable.firstIndex(of: id) else { return }
+                let target = direction == .increment ? index + 1 : index - 1
+                if editable.indices.contains(target) { change(.move(.init(itemId: id, toIndex: Double(target)))) }
+            }
             .gesture(DragGesture(coordinateSpace: .named("queue")).onEnded { drag in
                 guard let target = editable.firstIndex(where: { frames[$0].map { $0.minY...$0.maxY ~= drag.location.y } ?? false }),
                       editable[target] != id else { return }
