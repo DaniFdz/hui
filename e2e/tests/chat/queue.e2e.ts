@@ -73,7 +73,7 @@ test("Holding Send enqueues follow-ups, which PI takes in order once the run set
   await expect(queue).toBeHidden();
 });
 
-test("A follow-up opens in an editor from Edit or a double click, saves or cancels, and can be removed; a Steer row can't be edited", { tags: ["CHAT-007"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("A follow-up opens in an editor from Edit or a double click, saves or cancels, and can be removed; a Steer row can't be edited", { tags: ["CHAT-007"] }, async ({ screen, hui }) => {
   const { message, steer, queue, transcript, idle } = chat(screen);
   const editor = queue.getByRole("textbox", "Edit queued message");
   const edits = queue.getByRole("button", "Edit queued message");
@@ -116,7 +116,7 @@ test("A follow-up opens in an editor from Edit or a double click, saves or cance
 
   await hui.provider.release();
   await expect(transcript.getByText("Fixture response.")).toHaveCount(2);
-  await expect(transcript).toHaveText(/A steer.*Fixture response\..*Edited follow-up.*Fixture response\./su);
+  await expect.poll(() => hui.textOf(transcript)).toMatch(/A steer.*Fixture response\..*Edited follow-up.*Fixture response\./su);
   await expect(idle).toBeVisible();
   await expect(transcript.getByText("Original follow-up")).toBeHidden();
   await expect(transcript.getByText("Doomed follow-up")).toBeHidden();
