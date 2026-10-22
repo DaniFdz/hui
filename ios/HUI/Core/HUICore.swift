@@ -68,6 +68,18 @@ actor HUICore {
         try call("sessionGroupLabel", label)
     }
 
+    func sessionMoveGroupOptions(_ groups: [API.SessionGroup]) throws -> [MoveGroupOption] {
+        try call("sessionMoveGroupOptions", groups)
+    }
+
+    func sessionCopiedNotice(_ action: String) throws -> String {
+        try call("sessionCopiedNotice", action)
+    }
+
+    func sessionPath(_ id: String) throws -> String {
+        try call("navigationPath", ["kind": "session", "id": id])
+    }
+
     func sidebarSessionGroups(_ groups: [API.SessionGroup], options: SidebarOptions? = nil) throws -> [SidebarGroup] {
         try call("sidebarSessionGroups", groups, "", options ?? sidebarOptions(stored: nil))
     }
@@ -209,6 +221,11 @@ struct RequestId: Decodable, Sendable {
 struct SSEFrame: Decodable, Sendable {
     var name: String
     var payload: API.JSONValue
+}
+
+struct MoveGroupOption: Decodable, Hashable, Sendable {
+    var label: String
+    var value: String
 }
 
 struct SidebarGroup: Decodable, Sendable {

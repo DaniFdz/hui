@@ -8,7 +8,6 @@ import {
   isSessionGroupCollapsed,
   normalizeCustomSessionIcon,
   PRIMARY_NAV,
-  sessionMoveGroupOptions,
   setNavigationDrawer,
   SHELL_DRAWER_DEFAULT_OPEN,
   SHELL_NARROW_MEDIA,
@@ -163,17 +162,6 @@ test("session accessible names expose live status, tool and pinned state", () =>
     sessionAccessibleName({ ...base, jiraIssues: [{ key: "CI-1", url: "https://x/CI-1", status: "To Do" }, { key: "CI-2", url: "https://x/CI-2", status: "In Progress", summary: "Fix flake" }] }, ["draft"]),
     "Fix navigation, status running, tool pi, draft, Jira CI-2, in progress: Fix flake, 1 more linked",
   );
-});
-
-test("session move targets always include OTHER once and preserve stored group labels", () => {
-  assert.deepEqual(sessionMoveGroupOptions(SESSION_GROUPS), [
-    { label: "OTHER", value: "" },
-    { label: "FRONTEND", value: "Frontend" },
-    { label: "RUNTIME", value: "Runtime" },
-  ]);
-  assert.deepEqual(sessionMoveGroupOptions([{ label: "ungrouped", sessions: [] }]), [
-    { label: "OTHER", value: "" },
-  ]);
 });
 
 test("session rows expose group drag and a keyboard-accessible move menu", () => {

@@ -2,7 +2,9 @@
 // GET /__hui/sessions, then reads the stream for statuses and list changes, reconnecting with the core's backoff. The
 // stream's statuses win over every list and upsert once its snapshot arrived. Rows are projected by the core with the
 // web sidebar's Filter & sort options (kept on the device as the web keeps them in the browser), grouping,
-// subagent folding, labels and accessible names.
+// subagent folding, labels and accessible names. The session menu's actions patch or delete a session as the web's
+// do, with the web's notices: an archive keeps a toast with Restore for 15 s, other notices go after 6 s, and a
+// failure stays until the next one.
 import Foundation
 import Observation
 
@@ -14,6 +16,21 @@ final class SessionsModel {
         var title: String
         var accessibleName: String
         var glyph: SessionGlyph
+        var pinned: Bool
+        var unread: Bool
+        var group: String
+    }
+
+    struct Notice: Equatable {
+        var text: String
+        var failed: Bool
+    }
+
+    struct ArchiveToast: Equatable {
+        var id: String
+        var title: String
+        var restoring = false
+        var error: String?
     }
 
     struct Group: Identifiable, Equatable {
@@ -26,6 +43,9 @@ final class SessionsModel {
     private(set) var loaded = false
     private(set) var error: String?
     private(set) var options: SidebarOptions?
+    private(set) var moveGroups: [MoveGroupOption] = []
+    private(set) var notice: Notice?
+    private(set) var archiveToast: ArchiveToast?
 
     var filtering: Bool {
         options.map { $0.status != "all" } ?? false
@@ -40,6 +60,8 @@ final class SessionsModel {
     private var statuses: [String: API.SessionStatus]?
     private var projection = 0
     private var stream: Task<Void, Never>?
+    private var noticeTimer: Task<Void, Never>?
+    private var archiveTimer: Task<Void, Never>?
 
     init(core: HUICore) {
         self.core = core
@@ -61,6 +83,101 @@ final class SessionsModel {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    func notify(_ text: String, failed: Bool = false) {
+        noticeTimer?.cancel()
+        notice = Notice(text: text, failed: failed)
+        guard !failed else { return }
+        noticeTimer = Task {
+            try? await Task.sleep(for: .seconds(6))
+            if !Task.isCancelled { notice = nil }
+        }
+    }
+
+    @discardableResult
+    func update(_ id: String, _ patch: [String: API.JSONValue], client: GatewayClient) async -> API.SessionView? {
+        do {
+            let answer: SessionAnswer = try await client.send("PATCH", "/__hui/sessions/\(Self.escaped(id))", body: patch)
+            sessions[id] = withStreamStatus(answer.session)
+            await project()
+            return answer.session
+        } catch {
+            notify(error.localizedDescription, failed: true)
+            return nil
+        }
+    }
+
+    func setUnread(_ row: Row, client: GatewayClient) async {
+        if await update(row.id, ["unread": .bool(!row.unread)], client: client) != nil {
+            notify(row.unread ? "Marked as read." : "Marked as unread.")
+        }
+    }
+
+    func move(_ row: Row, to group: String, client: GatewayClient) async {
+        guard let moved = await update(row.id, ["group": .string(group)], client: client) else { return }
+        guard let label = try? await core.sessionGroupLabel(moved.group) else { return }
+        notify("Moved \(moved.title) to \(label).")
+    }
+
+    func archive(_ row: Row, client: GatewayClient) async {
+        guard await update(row.id, ["archived": .bool(true)], client: client) != nil else { return }
+        noticeTimer?.cancel()
+        notice = nil
+        archiveToast = ArchiveToast(id: row.id, title: row.title)
+        expireArchiveToast()
+    }
+
+    func restoreArchived(client: GatewayClient) async {
+        guard let toast = archiveToast, !toast.restoring else { return }
+        archiveTimer?.cancel()
+        archiveToast?.restoring = true
+        do {
+            let _: SessionAnswer = try await client.send("PATCH", "/__hui/sessions/\(Self.escaped(toast.id))", body: ["archived": API.JSONValue.bool(false)])
+            if archiveToast?.id == toast.id { archiveToast = nil }
+            notify("Session restored.")
+        } catch {
+            if archiveToast?.id == toast.id { archiveToast = ArchiveToast(id: toast.id, title: toast.title, error: error.localizedDescription) }
+        }
+    }
+
+    func dismissArchiveToast() {
+        archiveTimer?.cancel()
+        archiveToast = nil
+    }
+
+    private func expireArchiveToast() {
+        archiveTimer?.cancel()
+        archiveTimer = Task {
+            try? await Task.sleep(for: .seconds(15))
+            if !Task.isCancelled, archiveToast?.error == nil, archiveToast?.restoring == false { archiveToast = nil }
+        }
+    }
+
+    func remove(_ row: Row, client: GatewayClient) async {
+        do {
+            let _: API.JSONValue = try await client.send("DELETE", "/__hui/sessions/\(Self.escaped(row.id))")
+        } catch {
+            notify(error.localizedDescription, failed: true)
+        }
+    }
+
+    func copy(_ row: Row, _ action: String, client: GatewayClient, write: (String) -> Void) async {
+        do {
+            let text = action == "id" ? row.id : client.origin + (try await core.sessionPath(row.id))
+            write(text)
+            notify(try await core.sessionCopiedNotice(action))
+        } catch {
+            notify("Could not copy to the clipboard.", failed: true)
+        }
+    }
+
+    private static func escaped(_ id: String) -> String {
+        id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))) ?? id
+    }
+
+    private struct SessionAnswer: Decodable {
+        var session: API.SessionView
     }
 
     private func reproject() {
@@ -171,12 +288,15 @@ final class SessionsModel {
             for group in try await core.sidebarSessionGroups(input, options: options) {
                 var rows: [Row] = []
                 for session in try await core.foldedSessionTree(group.sessions) {
-                    rows.append(Row(id: session.id, title: session.title, accessibleName: try await core.sessionAccessibleName(session), glyph: try await core.sessionGlyph(session)))
+                    rows.append(Row(id: session.id, title: session.title, accessibleName: try await core.sessionAccessibleName(session), glyph: try await core.sessionGlyph(session),
+                                    pinned: session.pinned == true, unread: session.unread == true, group: session.group))
                 }
                 projected.append(Group(id: group.key, label: try await core.sessionGroupLabel(group.label), rows: rows))
             }
+            let moves = try await core.sessionMoveGroupOptions(input)
             guard current == projection else { return }
             groups = projected
+            moveGroups = moves
             loaded = true
         } catch {
             self.error = error.localizedDescription
