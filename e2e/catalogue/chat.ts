@@ -36,7 +36,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-004",
