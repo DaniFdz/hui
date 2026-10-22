@@ -40,18 +40,17 @@ test("selecting a row loads its conversation with its header and models, a faile
   await expect(screen.getByText("durable · INBOX · Idle", { visible: true })).toBeVisible();
 });
 
-test("rows show running, waiting and failed sessions and a parent's watcher or subagent live without being opened, and idle rows have no decoration", { tags: ["SESS-072"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("rows show running, waiting and failed sessions and a parent's watcher or subagent live without being opened, and idle rows have no decoration", { tags: ["SESS-072"] }, async ({ screen, hui }) => {
   const row = (title: string, status: string) => screen.getByLabel(new RegExp(`^${title}, status ${status}, tool durable, stage investigation(, unread)?$`, "u"));
   const runs = await hui.createSession({ title: "Runs a turn" });
   const asks = await hui.createSession({ title: "Asks a question" });
   const watches = await hui.createSession({ title: "Keeps a watcher" });
   const delegates = await hui.createSession({ title: "Delegates work" });
-  const viewer = await hui.createSession({ title: "Watching the list" });
   const ask = join(hui.workspace, "ask-sidebar.json");
   await writeFile(ask, JSON.stringify(question));
 
   try {
-    await hui.open(`/sessions/${viewer.id}`);
+    await hui.open("/");
     await expect(row("Runs a turn", "idle")).toBeVisible();
     expect(await hui.glyph("Runs a turn")).toEqual({ label: "", animated: false });
 
@@ -79,7 +78,7 @@ test("rows show running, waiting and failed sessions and a parent's watcher or s
     await expect(screen.getByLabel(/^Delegates work, status idle, watcher or subagent running, tool durable, stage investigation/u)).toBeVisible();
     expect(await hui.glyph("Delegates work")).toEqual({ label: "Watcher or subagent running", animated: true });
     await hui.provider.release();
-    await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Watching the list");
+    await expect(row("Delegates work", "idle")).toBeVisible();
   } finally {
     await rm(ask, { force: true });
   }

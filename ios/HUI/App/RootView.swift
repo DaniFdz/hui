@@ -18,7 +18,7 @@ struct RootView: View {
         Group {
             if gateway.state == .connected {
                 NavigationStack(path: $path) {
-                    SessionListView(sessions: sessions, notice: gateway.notice)
+                    SessionListView(sessions: sessions, client: gateway.client, notice: gateway.notice)
                         .navigationDestination(for: String.self) { id in
                             if let client = gateway.client {
                                 ChatView(id: id, client: client, core: core, title: sessions.session(id)?.title).id(id)

@@ -60,15 +60,20 @@ actor HUICore {
         try call("sessionStatusLabel", session)
     }
 
+    func sessionGlyph(_ session: API.SessionView) throws -> SessionGlyph {
+        try call("sessionGlyph", session)
+    }
+
     func sessionGroupLabel(_ label: String) throws -> String {
         try call("sessionGroupLabel", label)
     }
 
-    func sidebarSessionGroups(_ groups: [API.SessionGroup]) throws -> [SidebarGroup] {
-        guard let options = exports.objectForKeyedSubscript("DEFAULT_SIDEBAR_SESSION_OPTIONS"), options.isObject else {
-            throw ScriptError(description: "hui-core.js has no DEFAULT_SIDEBAR_SESSION_OPTIONS")
-        }
-        return try decode(invoke("sidebarSessionGroups", [json(groups), "", options]))
+    func sidebarSessionGroups(_ groups: [API.SessionGroup], options: SidebarOptions? = nil) throws -> [SidebarGroup] {
+        try call("sidebarSessionGroups", groups, "", options ?? sidebarOptions(stored: nil))
+    }
+
+    func sidebarOptions(stored json: String?) throws -> SidebarOptions {
+        try decode(invoke("normalizeSidebarSessionOptions", [invoke(global: "JSON", "parse", json ?? "null")]))
     }
 
     func foldedSessionTree(_ sessions: [API.SessionView]) throws -> [API.SessionView] {
@@ -199,6 +204,24 @@ struct SidebarGroup: Decodable, Sendable {
     var key: String
     var label: String
     var sessions: [API.SessionView]
+}
+
+struct SessionGlyph: Decodable, Equatable, Sendable {
+    struct Attention: Decodable, Equatable, Sendable {
+        var tone: String
+    }
+
+    var attention: Attention?
+    var busy: Bool
+    var unread: Bool
+    var label: String
+}
+
+struct SidebarOptions: Codable, Equatable, Sendable {
+    var groupBy: String
+    var sortBy: String
+    var status: String
+    var hideEmpty: String
 }
 
 struct SidebarTreeRow: Decodable, Sendable {

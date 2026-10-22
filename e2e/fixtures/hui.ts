@@ -4,7 +4,8 @@
  * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, searches
  * of the gateway's state and secret directories, and every step whose gesture or reading differs per platform: taps,
  * holds, context menus, switches (a Web Awesome switch draws its track over its input, so the web taps the point),
- * attachments, sideways scrolling, downloads, the clipboard, status glyphs, how a piece of the screen looks, and on the
+ * attachments, sideways scrolling, downloads, the clipboard, status glyphs (on iOS the row's session-glyph label and
+ * whether it is a spinner), how a piece of the screen looks, and on the
  * web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control and the command palette's
  * chord. The web page never opens Vite's development socket, whose client reloads the page when the gateway restarts,
  * which no installed gateway does. On iOS it relaunches the app pointed at the gateway and follows `hui://open` links;
@@ -399,9 +400,19 @@ export const test = base.extend<{ hui: Hui }>({
       },
     };
 
+    const iosSteps: Partial<typeof webSteps> = {
+      glyph: async (title) => {
+        const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
+        await expect(row).toHaveCount(1);
+        const glyph = row.getByTestId("session-glyph");
+        if (await glyph.count() === 0) return { label: "", animated: false };
+        return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
+      },
+    };
+
     await use({
       ...(web ? webSteps : Object.fromEntries(Object.keys(webSteps).map((step) => [step, notOnIos(step)])) as unknown as typeof webSteps),
-      ...(web ? {} : { keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") } }),
+      ...(web ? {} : { keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") }, ...iosSteps }),
       workspace: receipt.workspace,
       gateway: receipt.url,
       api,

@@ -36,6 +36,19 @@ struct HUICoreTests {
         #expect(try await core.sessionStatusText(.idle) == "Idle")
     }
 
+    @Test func readsStoredSidebarOptionsAndAppliesThem() async throws {
+        let core = try HUICore.bundled()
+        #expect(try await core.sidebarOptions(stored: nil) == SidebarOptions(groupBy: "custom", sortBy: "updated", status: "all", hideEmpty: "filtering"))
+        let stored = try await core.sidebarOptions(stored: #"{"sortBy":"title","status":"nope"}"#)
+        #expect(stored == SidebarOptions(groupBy: "custom", sortBy: "title", status: "all", hideEmpty: "filtering"))
+        let list = try JSONDecoder().decode(API.SessionList.self, from: fixture("sessions.json"))
+        let starting = try await core.sidebarSessionGroups(list.groups, options: SidebarOptions(groupBy: "none", sortBy: "title", status: "starting", hideEmpty: "filtering"))
+        #expect(starting.map(\.key) == ["\u{0}flat"])
+        #expect(starting[0].sessions.map(\.title) == starting[0].sessions.map(\.title).sorted())
+        let session = try #require(starting[0].sessions.first)
+        #expect(try await core.sessionGlyph(session) == SessionGlyph(busy: false, unread: false, label: ""))
+    }
+
     @Test func rowsAndItemsKeepUniqueKeysWhenToolIdsRepeat() async throws {
         let core = try HUICore.bundled()
         let entries = try JSONDecoder().decode([API.TranscriptEntry].self, from: Data(#"[{"kind":"message","entryId":"u1","role":"user","text":"One"},{"kind":"tool","id":"t","name":"read"},{"kind":"message","entryId":"u2","role":"user","text":"Two"},{"kind":"tool","id":"t","name":"read"}]"#.utf8))

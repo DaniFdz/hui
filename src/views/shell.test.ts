@@ -246,21 +246,23 @@ test("session rows mirror OpenClaw run and attention states", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
   const components = readFileSync(new URL("../styles/openclaw-reference/components.css", import.meta.url), "utf8");
+  const glyph = readFileSync(new URL("../lib/session/labels.ts", import.meta.url), "utf8");
 
-  assert.match(source, /session\.status === "waiting"[\s\S]*?Waiting for your answer/);
-  assert.match(source, /session\.status === "error"[\s\S]*?Session failed/);
+  assert.match(glyph, /session\.status === "waiting"[\s\S]*?Waiting for your answer/);
+  assert.match(glyph, /session\.status === "error"[\s\S]*?Session failed/);
   // A watcher or a subagent below it keeps an idle session spinning.
-  assert.match(source, /const busy = session\.status === "running" \|\| background;/);
+  assert.match(glyph, /const busy = session\.status === "running" \|\| background;/);
   assert.match(source, /busy \|\| session\.creating \? html`<span class="session-glyph session-glyph--running session-glyph--bare"/);
   assert.match(source, /class="session-glyph__ring"/);
   assert.match(components, /\.session-glyph__ring[\s\S]*?animation: session-run-spin 1\.6s linear infinite/);
   assert.match(styles, /\.sidebar-session-attention__icon--question \{ color: var\(--warn\)/);
   assert.match(styles, /\.sidebar-session-attention__icon--error \{ color: var\(--danger\)/);
   // A session out of reach is calm: its own muted mark, labelled by unreachableHost.
-  assert.match(source, /away \? \{ label: away\.status, icon: icons\.plug, tone: "away" \}/);
+  assert.match(glyph, /away \? \{ label: away\.status, tone: "away" as const \}/);
+  assert.match(source, /away: icons\.plug/);
   assert.match(styles, /\.sidebar-session-attention__icon--away \{ color: var\(--status-stopped\)/);
-  assert.match(source, /const unread = session\.unread === true && !attention/);
-  assert.doesNotMatch(source, /const unread =[^;]*!selected/);
+  assert.match(glyph, /const unread = session\.unread === true && !attention/);
+  assert.doesNotMatch(glyph, /const unread =[^;]*!selected/);
   assert.match(source, /class="sidebar-session-unread-dot"/);
   assert.match(styles, /\.sidebar-session-unread-dot[\s\S]*?background: var\(--accent\)/);
   assert.match(components, /prefers-reduced-motion: reduce[\s\S]*?\.session-glyph__ring/);

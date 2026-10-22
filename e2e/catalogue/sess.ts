@@ -190,7 +190,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-groups"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-021",
@@ -210,7 +210,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-groups"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-023",
@@ -702,7 +702,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisessionsevents"],
     surfaces: ["route:GET /__hui/sessions/events"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-073",
