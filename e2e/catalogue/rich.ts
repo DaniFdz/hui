@@ -90,7 +90,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["markdown-formatting"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -170,7 +170,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -180,7 +180,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds", KEYBOARD_ONLY],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Enter on a focused embed needs a hardware keyboard; tapping the diagram or its Open viewer control does the same (RICH-017).", decision: KEYBOARD_ONLY },
   },
   {
@@ -200,7 +200,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds", KEYBOARD_ONLY],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "These are key presses with visible equivalents: the zoom controls, Copy image and Close viewer (RICH-017, RICH-019, RICH-021).", decision: KEYBOARD_ONLY },
   },
   {
@@ -220,7 +220,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

@@ -17,18 +17,18 @@ Verified 2026-09-24 using the real HUI gateway and packaged PI 0.87.1.
 
 ## Observed
 
+The shared e2e suite covers the disclosure block, the table and the remote image
+(`e2e/tests/rich/`, RICH-003, RICH-004, RICH-009); this journey keeps the rest.
+
 - At 1440×960, bare `https://`, `www.` and email references are safe anchors.
   The trailing full stop stays outside the documentation anchor; the GitHub
   link receives the reference icon. The URL inside inline code remains plain.
 - Checked and unchecked GFM task items render as aligned, disabled checkbox
   controls, preserving transcript semantics without presenting editable state.
-- CommonMark nesting, aligned pipe tables, strikethrough and the OpenClaw-style
-  disclosure block render correctly. Activating **More formatting** reveals its
-  body with native keyboard-operable `<details>` behavior.
-- The remote image is not fetched or embedded; it renders as an **Open image**
-  placeholder. Raw HTML remains escaped by the unit/security coverage.
+- CommonMark nesting and strikethrough render correctly. Raw HTML remains
+  escaped by the unit/security coverage.
 - At 390×844, long references wrap within the message and the document has no
-  horizontal overflow. Tasks, tables and nested lists remain readable.
+  horizontal overflow. Tasks and nested lists remain readable.
 - A fresh stable tab reported no page errors and no console error entries.
 
 ## Automated checks and scope

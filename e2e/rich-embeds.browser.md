@@ -22,17 +22,16 @@ read or changed.
 
 ## Observed
 
-- Mermaid painted a real SVG flowchart and Vega-Lite painted a second SVG chart
-  from inline JSON. KaTeX produced accessible MathML/HTML for both formulae and
-  the TIP marker became a semantic callout. Their JavaScript remained in dynamic
-  chunks until the corresponding syntax appeared.
+The shared e2e suite covers the diagram, the chart and the callout
+(`e2e/tests/rich/`, RICH-010, RICH-011, RICH-013); this journey keeps the math and the X post.
+
+- KaTeX produced accessible MathML/HTML for both formulae.
 - Before consent: `twitterScript=false`, `iframe=false`, the privacy facade was
   visible and the labeled URL stayed an anchor.
 - After consent: the official Jack status `20` iframe rendered successfully.
   The widget's fixed desktop width was constrained by HUI to 310 px inside the
   328 px mobile card.
-- Desktop and mobile document/conversation overflow were both 0 px. On mobile
-  the diagram was 328 px wide with a 306 px SVG viewport.
+- Desktop and mobile document/conversation overflow were both 0 px.
 - The page reported zero runtime exceptions. X's optional settings/telemetry
   requests produced expected `ERR_CONNECTION_REFUSED` / `ERR_BLOCKED_BY_CLIENT`
   console resource errors in the managed privacy-filtered browser; the post

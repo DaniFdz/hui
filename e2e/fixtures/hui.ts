@@ -4,22 +4,21 @@
  * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
  * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
  * point instead of the input), tapping a control with a finger, which unlike a mouse doesn't hover it first, attaching
- * files from `files/` or made up of a name and a size, scrolling a piece of the screen sideways (a horizontal wheel on the
- * web, where a swipe drags instead), reading what a download saved or what the page copied, opening a
- * session's menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and whether its unread dot
- * has the accent colour, how far the page scrolls sideways, and reading how a piece of the screen looks (its text colour
- * and the colour behind it as RGB, its opacity, its font families, those of HUI's bundled faces that have loaded to draw
- * its text, its text size in pixels, weight and alignment, and the colour of the focus ring it shows when reached from
- * the keyboard), a disposable Git repository (on
- * `feature/current`, with `main`, a `release/1.0` at its own commit and a `sub` directory) that it removes at teardown,
- * the files of the gateway's state and workspace that hold a text, the secret directories the gateway wrote, a restart
- * of the gateway against the same state and port, the end of its PI worker processes, and, on the web, closing the
- * page's WebSockets as a dropped connection would. The web page never opens Vite's development socket, whose client
- * reloads the page when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at
- * the gateway, follows a `hui://open` link instead of loading a page, and clears the app's preferences through
- * `defaults` before the engine empties its data container, because `cfprefsd` would otherwise hand the relaunched app
- * the deleted values; the web-only steps throw. Test files import `test` from here, never from `e2e`, and never read
- * `platform`, `device` or `browser` themselves.
+ * files from `files/` or made up of a name and a size, scrolling a piece of the screen sideways (a horizontal wheel on
+ * the web, where a swipe drags instead), reading what a download saved or what the page copied (an image as its type),
+ * opening a session's menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and whether its
+ * unread dot has the accent colour, how far the page scrolls sideways, and reading how a piece of the screen looks (its
+ * text colour and the colour behind it as RGB, its opacity, its font families, those of HUI's bundled faces that have
+ * loaded to draw its text, its text size in pixels, weight and alignment, and the colour of the focus ring it shows
+ * when reached from the keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at
+ * its own commit and a `sub` directory) that it removes at teardown, the files of the gateway's state and workspace
+ * that hold a text, the secret directories the gateway wrote, a restart of the gateway against the same state and port,
+ * the end of its PI worker processes, and, on the web, closing the page's WebSockets as a dropped connection would. The
+ * web page never opens Vite's development socket, whose client reloads the page when the gateway restarts, which no
+ * installed gateway does. On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of
+ * loading a page, and clears the app's preferences through `defaults` before the engine empties its data container,
+ * because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps throw. Test files
+ * import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -169,6 +168,11 @@ export const test = base.extend<{ hui: Hui }>({
         navigator.clipboard.writeText = async (text) => {
           if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
           page.huiCopied = text;
+        };
+        navigator.clipboard.write = async (items) => {
+          if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
+          const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
+          page.huiCopied = blobs.map((blob) => blob.type).join(",");
         };
         if (refused) document.execCommand = () => false;
       }, refuse),
