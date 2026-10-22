@@ -80,23 +80,11 @@ Nightly and Release run it before publishing. `e2e/AGENTS.md` has the rules for
 writing a test.
 
 `npm run e2e:ios` runs the same tests on the iOS app, on a simulator named "HUI
-iPhone". It needs Xcode 27.1 with the iOS 27.0 simulator runtime. Create and boot
-the simulator once. The `printf` approves `hui://` links before the first boot, so
-the simulator never asks "Open in “HUI”?" when a test opens one:
-
-```sh
-udid=$(xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0)
-prefs=~/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences
-mkdir -p "$prefs"
-printf '%s' '<plist version="1.0"><dict><key>com.apple.CoreSimulator.CoreSimulatorBridge--&gt;hui</key><string>dev.hui.ios</string></dict></plist>' > "$prefs/com.apple.launchservices.schemeapproval.plist"
-xcrun simctl bootstatus "HUI iPhone" -b
-npx agent-device doctor
-```
-
-Then run `npm run ios:build` before each run, so the tests see the app as it is
-now, and `npm run e2e:ios`. Add `--tag <ID>` to run one use case's tests. The
-app's unit tests run with `npm run ios:core` and
-`xcodebuild test -project ios/HUI.xcodeproj -scheme HUI -destination 'platform=iOS Simulator,name=HUI iPhone'`.
+iPhone". It needs Xcode 27.1 with the iOS 27.0 simulator runtime. `ios/AGENTS.md`
+has the commands that create and boot the simulator once, build the app and run
+its unit tests. Run `npm run ios:build` before each run, so the tests see the app
+as it is now, then `npm run e2e:ios`. Add `--tag <ID>` to run one use case's
+tests.
 
 To debug a failing iOS test, open `trace.md` in its directory under
 `.e2e/results/`. It lists each step with the screen the app showed, and links the

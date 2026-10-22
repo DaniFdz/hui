@@ -52,7 +52,7 @@ or alternate persisted gateway state are introduced.
 
 The iOS app in `ios/` is a client of the same `/__hui/` routes as the browser. A
 pull request that changes a route or payload the app uses updates the app too,
-and the shared e2e tests that run on iOS fail when it doesn't.
+and the shared e2e tests that run on iOS fail when a route they use breaks.
 
 - Every request sends `x-hui: 1` and waits up to 20 seconds for an answer. A
   refusal shows the body's `error` message, as the browser does.

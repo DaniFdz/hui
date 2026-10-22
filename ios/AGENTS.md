@@ -58,11 +58,22 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
 
 ## Commands
 
+- Create and boot the "HUI iPhone" simulator once. The `printf` approves `hui://` links before its first boot, so it
+  never asks "Open in “HUI”?" when a test opens one:
+
+  ```sh
+  udid=$(xcrun simctl create "HUI iPhone" com.apple.CoreSimulator.SimDeviceType.iPhone-17 com.apple.CoreSimulator.SimRuntime.iOS-27-0)
+  prefs=~/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences
+  mkdir -p "$prefs"
+  printf '%s' '<plist version="1.0"><dict><key>com.apple.CoreSimulator.CoreSimulatorBridge--&gt;hui</key><string>dev.hui.ios</string></dict></plist>' > "$prefs/com.apple.launchservices.schemeapproval.plist"
+  xcrun simctl bootstatus "$udid" -b
+  npx agent-device doctor
+  ```
+
 - `npm run ios:build` builds the core, then runs
   `xcodebuild -project ios/HUI.xcodeproj -scheme HUI -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build`
   and `xcrun simctl install "HUI iPhone" ios/build/Build/Products/Release-iphonesimulator/HUI.app`. Boot the
-  simulator first; create it once with the commands in `CONTRIBUTING.md`, which approve `hui://` links before its
-  first boot.
+  simulator first.
 - `npm run ios:core` builds only the core.
 - `npm run e2e:ios` runs the shared e2e tests that run on iOS against the installed Release build, on the booted
   "HUI iPhone" simulator; `e2e/AGENTS.md` says how the target and fixture work. Run `npm run ios:build` first, so the

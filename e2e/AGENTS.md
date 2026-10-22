@@ -44,7 +44,7 @@ run by `../e2e.config.ts` against a disposable gateway that the visual-verificat
 
 The `ios` target runs the same tests on the "HUI iPhone" simulator (iOS 27.0) against a gateway on the fixed port
 47400, which the simulator reaches as `http://127.0.0.1:47400` because it shares the Mac's network. To run it
-locally, create and boot the simulator once (the commands are in `../CONTRIBUTING.md`), check the toolchain with
+locally, create and boot the simulator once (the commands are in `../ios/AGENTS.md`), check the toolchain with
 `npx agent-device doctor`, then run `npm run ios:build` and `npm run e2e:ios`. On iOS the fixture relaunches
 `dev.hui.ios` with `-HUIGatewayURL <gateway>` and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
 `hui.reload`, deletes the app's preferences through `defaults` before the engine empties its data container for

@@ -25,8 +25,8 @@ Follow .agents/skills/hui-visual-verification/SKILL.md for UI work. -->
 
 <!-- The e2e/catalogue/ IDs this PR adds or changes, and the platforms where each
 is required. If a test changed but the behaviour it proves didn't, or a new
-accessible name labels a control that already existed, put the IDs and the names
-in quotes on the line below. The E2E catalogue job reads it. -->
+accessible name labels a control that already existed, put the IDs, and the names
+in quotes, separated by commas, on the line below. The E2E catalogue job reads it. -->
 
 Unchanged behaviour:
 
