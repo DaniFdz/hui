@@ -3,9 +3,10 @@
  * the window never stops the gateway or its runs. Native notification clicks open their originating chat. */
 const { app, BrowserWindow, dialog, Menu, nativeTheme, shell, Notification } = require('electron');
 const { execFile } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
-const { isInternal, isExternal, gatewayUrl, themeSource, notificationFromUrl } = require('./policy.cjs');
+const { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, notificationFromUrl } = require('./policy.cjs');
 
 app.setName('HUI');
 // CLI and installed bundle use the same lock, cookies and IndexedDB location.
@@ -15,6 +16,7 @@ let url;
 const pendingNotifications = [];
 const notifications = new Set();
 let launchedForNotification = false;
+let launchedFromBanner;
 
 // Electron's default viewMenu binds Zoom In to CommandOrControl+Plus only, which
 // needs Shift on US layouts, so the browser-standard Cmd/Ctrl+= does nothing.
@@ -95,16 +97,25 @@ function showWindow(destination) {
   });
 }
 
+function bannerChat(id) {
+  const target = typeof id === 'string' && chatUrl(id.split('#')[0]);
+  return target && isInternal(target, new URL(url).origin) ? target : undefined;
+}
+
+function track(banner, target) {
+  notifications.add(banner);
+  banner.on('click', () => showWindow(target));
+  banner.once('close', () => notifications.delete(banner));
+}
+
 function flushNotifications() {
   if (!url) return;
   for (const request of pendingNotifications.splice(0)) {
     const acknowledge = (status) => fetch(new URL(status, request.replyTo), { method: 'POST', signal: AbortSignal.timeout(5_000) }).catch(() => {});
     if (!isInternal(request.url, new URL(url).origin)) { void acknowledge('wrong-gateway'); continue; }
     if (!Notification.isSupported()) { void acknowledge('unsupported'); continue; }
-    const notification = new Notification({ title: request.title, body: request.message });
-    notifications.add(notification);
-    notification.on('click', () => showWindow(request.url));
-    notification.once('close', () => notifications.delete(notification));
+    const notification = new Notification({ id: `${request.url}#${randomUUID()}`, title: request.title, body: request.message });
+    track(notification, request.url);
     notification.once('failed', () => {
       notifications.delete(notification);
       void acknowledge('failed');
@@ -126,6 +137,7 @@ async function start() {
     flushNotifications();
   });
   app.on('activate', showWindow);
+  app.once('ready', (_event, launchInfo) => { launchedFromBanner = launchInfo?.identifier; });
   // Closing a window must not interrupt agent runs. Quit is explicit.
   app.on('window-all-closed', () => {});
   await app.whenReady();
@@ -146,12 +158,15 @@ async function start() {
         timeout: 30000, maxBuffer: 1024 * 1024,
       }, (error, stdout) => error ? reject(error) : resolve(stdout));
     });
+    const leftBanners = await Notification.getHistory();
     // The existing CLI authenticates gateway identity and prevents duplicates.
     // Closing or quitting the UI must never stop a shared gateway or its jobs.
     url = gatewayUrl(output);
     await syncThemeSource();
+    for (const banner of leftBanners) track(banner, bannerChat(banner.id));
     flushNotifications();
-    if (!launchedForNotification) showWindow();
+    const bannerTarget = bannerChat(launchedFromBanner);
+    if (bannerTarget || !launchedForNotification) showWindow(bannerTarget);
   } catch (error) {
     dialog.showErrorBox('HUI could not start', `${error.message}\nReinstall the npm package or run hui install-app to repair the launcher.`);
     app.quit();

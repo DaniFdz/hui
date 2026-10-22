@@ -27,6 +27,17 @@ function themeSource(mode) {
   return mode === 'light' || mode === 'dark' ? mode : 'system';
 }
 
+function chatUrl(value) {
+  try {
+    const target = new URL(value);
+    const segments = target.pathname.split('/');
+    if (target.protocol !== 'http:' || target.username || target.password || target.search || target.hash
+      || segments.length !== 3 || !['sessions', 'bots'].includes(segments[1])
+      || !decodeURIComponent(segments[2]).trim() || decodeURIComponent(segments[2]).length > 200) return;
+    return target.href;
+  } catch { return; }
+}
+
 function notificationFromUrl(link) {
   try {
     const { protocol, pathname } = new URL(link);
@@ -40,13 +51,10 @@ function notificationFromUrl(link) {
     const reply = new URL(value.replyTo);
     if (reply.protocol !== 'http:' || reply.hostname !== '127.0.0.1' || !reply.port
       || reply.username || reply.password || reply.search || reply.hash || !/^\/[a-f0-9]{64}\/$/.test(reply.pathname)) return;
-    const target = new URL(value.url);
-    const segments = target.pathname.split('/');
-    if (target.protocol !== 'http:' || target.username || target.password || target.search || target.hash
-      || segments.length !== 3 || !['sessions', 'bots'].includes(segments[1])
-      || !decodeURIComponent(segments[2]).trim() || decodeURIComponent(segments[2]).length > 200) return;
-    return { title: value.title.trim(), message: value.message.trim(), url: target.href, replyTo: reply.href };
+    const target = chatUrl(value.url);
+    if (!target) return;
+    return { title: value.title.trim(), message: value.message.trim(), url: target, replyTo: reply.href };
   } catch { return; }
 }
 
-module.exports = { isInternal, isExternal, gatewayUrl, themeSource, notificationFromUrl };
+module.exports = { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, notificationFromUrl };

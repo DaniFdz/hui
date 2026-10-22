@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -9,7 +10,16 @@ import policy from './policy.cjs';
 const receipt = `http://127.0.0.1:12345/${'a'.repeat(64)}/`;
 const notificationUrl = (payload) => `hui-notification:${encodeURIComponent(typeof payload === 'string' ? payload : JSON.stringify(payload))}`;
 
-async function shell(t, settings = { themeMode: 'system' }, launchUrls = []) {
+const leftBanner = (id) => Object.assign(new EventEmitter(), { id });
+const bannerIds = async (t, ...chats) => {
+  const writer = await shell(t);
+  writer.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await writer.settle();
+  for (const url of chats) writer.openUrl(notificationUrl({ title: 'Ready', message: 'Open this chat.', url, replyTo: receipt }));
+  return writer.notifications.map((notification) => notification.options.id);
+};
+
+async function shell(t, settings = { themeMode: 'system' }, launchUrls = [], delivered = []) {
   const app = new EventEmitter();
   const windows = [];
   const errors = [];
@@ -56,11 +66,12 @@ async function shell(t, settings = { themeMode: 'system' }, launchUrls = []) {
   }
   class NativeNotification extends EventEmitter {
     static isSupported() { startup.push('notification permission'); return true; }
+    static async getHistory() { return delivered; }
     constructor(options) { super(); this.options = options; notifications.push(this); }
     show() { this.shown = true; if (refusal) this.emit('failed', {}, refusal); else this.emit('show'); }
   }
   const electron = { app, BrowserWindow: Window, Notification: NativeNotification, dialog: { showErrorBox: (...args) => errors.push(args) }, Menu: { buildFromTemplate: (menu) => menu, setApplicationMenu(menu) { applicationMenu = menu; } }, nativeTheme, shell: { openExternal: async () => {} } };
-  const modules = { electron, 'node:child_process': { execFile: (...args) => { startup.push('gateway'); launchArgs = args; complete = args[3]; } }, 'node:fs': {}, 'node:path': path, './policy.cjs': policy };
+  const modules = { electron, 'node:child_process': { execFile: (...args) => { startup.push('gateway'); launchArgs = args; complete = args[3]; } }, 'node:crypto': crypto, 'node:fs': {}, 'node:path': path, './policy.cjs': policy };
   t.onTestFinished(() => {});
   vm.runInNewContext(await readFile(new URL('./main.cjs', import.meta.url), 'utf8'), {
     require: (name) => modules[name], URL, AbortSignal,
@@ -130,7 +141,8 @@ test('each notification opens its own chat on click without changing the active 
   assert.deepEqual(state.notificationReceipts, Array(2).fill(`${receipt}queued`));
   assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/');
   assert.equal(state.windows[0].focused, undefined);
-  assert.deepEqual({ ...state.notifications[0].options }, { title: 'Ready', body: 'Open this chat.' });
+  assert.equal(state.notifications[0].options.title, 'Ready');
+  assert.equal(state.notifications[0].options.body, 'Open this chat.');
   state.notifications[0].emit('click');
   assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/bots/stable-bot');
   assert.equal(state.windows[0].focused, true);
@@ -175,6 +187,37 @@ test('a link that is not an alert does not keep HUI windowless when it launches 
   await state.settle();
   assert.equal(state.windows.length, 1);
   assert.equal(state.notifications.length, 0);
+});
+
+test('clicking a banner left by a crashed HUI launches HUI on its chat, but only on the same gateway', async (t) => {
+  const [botBanner] = await bannerIds(t, 'http://127.0.0.1:5174/bots/stable-bot');
+  for (const [identifier, gateway, opened] of [
+    [botBanner, 'http://127.0.0.1:5174/', 'http://127.0.0.1:5174/bots/stable-bot'],
+    [botBanner, 'http://127.0.0.1:5175/', 'http://127.0.0.1:5175/'],
+    [crypto.randomUUID(), 'http://127.0.0.1:5174/', 'http://127.0.0.1:5174/'],
+  ]) {
+    const state = await shell(t);
+    state.app.emit('ready', {}, { actionIdentifier: 'com.apple.UNNotificationDefaultActionIdentifier', identifier });
+    state.complete(null, JSON.stringify({ status: 'running', url: gateway }));
+    await state.settle();
+    assert.equal(state.windows.length, 1);
+    assert.equal(state.windows[0].url, opened);
+  }
+});
+
+test('banners left by a crashed HUI stay separate and open their chat after HUI restarts', async (t) => {
+  const [first, second] = await bannerIds(t, 'http://127.0.0.1:5174/sessions/left', 'http://127.0.0.1:5174/sessions/left');
+  assert.notEqual(first, second);
+  const left = [leftBanner(first), leftBanner(crypto.randomUUID())];
+  const state = await shell(t, { themeMode: 'system' }, [], left);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.windows[0].emit('closed');
+  left[1].emit('click');
+  assert.equal(state.windows[1].url, 'http://127.0.0.1:5174/');
+  left[0].emit('click');
+  assert.equal(state.windows[1].url, 'http://127.0.0.1:5174/sessions/left');
+  assert.equal(state.windows[1].focused, true);
 });
 
 test('notification URLs cannot open another origin, a non-chat path or executable URLs', async (t) => {

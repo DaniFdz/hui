@@ -3337,5 +3337,6 @@ The desktop app asks macOS for notification permission when it launches,
 because an alert sent while that prompt is open is never shown. An alert that
 itself launches HUI before notifications were ever allowed is still lost, and
 the call reports it queued. Quitting the app removes its banners from
-Notification Center; a banner left behind by a crash or Force Quit opens HUI
-without switching chats.
+Notification Center. A banner left behind by a crash or Force Quit still opens
+its chat, whether its click starts HUI or reaches HUI after it restarted, as
+long as the gateway kept its address.
