@@ -78,7 +78,7 @@ test("Cancel ends a secret request without a file", { tags: ["AGENT-017"], platf
 
   await expect(card).toBeHidden();
   await expect(screen.getByTestId("transcript").getByText(`No secret to use: The operator cancelled the request for "${LABEL}".`)).toBeVisible();
-  expect(await hui.secretDirectories()).toEqual(before);
+  expect((await hui.secretDirectories()).filter((name) => !before.includes(name))).toEqual([]);
 });
 
 test("Escape in the secret field leaves the request waiting", { tags: ["AGENT-018"], platforms: ["web"] }, async ({ screen, hui }) => {

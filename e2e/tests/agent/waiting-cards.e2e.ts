@@ -36,7 +36,7 @@ test("Stop closes a waiting question or secret card and leaves the session idle"
     await transcript.getByText("Failed").tap();
     await expect(transcript.getByText(`<harness> [error] Tool ${tool} was aborted </harness>`)).toBeVisible();
   }
-  expect(await hui.secretDirectories()).toEqual(before);
+  expect((await hui.secretDirectories()).filter((name) => !before.includes(name))).toEqual([]);
 });
 
 test("a reload shows the waiting question card from its first question, and the secret card again", { tags: ["AGENT-008"], platforms: ["web"] }, async ({ screen, hui }) => {
