@@ -19,6 +19,7 @@ import { navigationPath } from "../lib/navigation.ts";
 import { botLook, type BotView } from "../lib/bots/bots.ts";
 import type { BotTrigger } from "../api/schema/bot-triggers.ts";
 import type { WorkerState } from "../api/schema/workers.ts";
+import type { UsageTotals } from "../api/schema/diagnostics.ts";
 import { rosterFaceState, type BotFaceSize, type BotFaceState } from "../lib/bots/face.ts";
 import "../components/bot-face.ts";
 import type { AutomationRun, AutomationSnapshot, AutomationTask, AutomationTaskInput } from "../api/schema/automation.ts";
@@ -382,6 +383,8 @@ export type BotPanelProps = {
   /** The Tools page's state and actions (`BotToolsController.props`). */
   tools: Omit<BotToolsProps, "bot">;
   facts?: { state: BotFactsState } & BotFactsActions;
+  /** The overview's cost: its chat's and subagents' spend, until it is first read. */
+  usage: { botId: string; usage?: UsageTotals; error: string };
   /** The triggers, on the overview and their page (`BotTriggersController.props`). */
   triggers: Omit<BotTriggersProps, "bot" | "now">;
   /** The Settings page: everything but the bot, the ids and its face, which the panel supplies. */
@@ -639,6 +642,40 @@ function renderActivity(props: BotPanelProps, now: number) {
   </section>`;
 }
 
+function dollars(amount: number): string {
+  return amount > 0 && amount < 0.01 ? "<$0.01" : `$${amount.toFixed(2)}`;
+}
+
+/** What the bot has cost, its chat's, its subagents' and its memory summaries' spend, with the cost per model under it. */
+function renderCost(props: BotPanelProps) {
+  const { bot } = props;
+  const { usage, error } = props.usage.botId === bot.id ? props.usage : { usage: undefined, error: "" };
+  const memory = bot.memory?.usage.cost ?? 0;
+  const reported = usage && (usage.costUsd !== null || memory > 0);
+  const rows = [
+    ...(usage?.models ?? []).map(({ model, costUsd }) => ({ name: model, cost: costUsd })).toSorted((a, b) => b.cost - a.cost),
+    ...(memory > 0 ? [{ name: "Memory summaries, since HUI started", cost: memory }] : []),
+  ];
+  const subagents = Math.max(0, (usage?.sessions ?? 1) - 1);
+  return html`<section class="bot-overview__section" aria-labelledby=${`${props.id}-overview-cost`}>
+    ${overviewHead(props, "cost", "Cost")}
+    ${bot.worker
+      ? html`<p class="bot-panel__hint">${bot.name}'s cost is kept on ${bot.worker.name}.</p>`
+      : !usage
+        ? html`<p class="bot-panel__state" role=${error ? "alert" : "status"}>${error || "Reading cost…"}</p>`
+        : html`<details class="bot-overview__list bot-cost">
+            <summary class="bot-overview__setup"><span class="bot-overview__name">Total</span>
+              <span class="bot-overview__value">${reported ? dollars((usage.costUsd ?? 0) + memory) : "Not reported"}</span>${icons.chevron}</summary>
+            ${rows.length
+              ? html`<ul class="bot-cost__models" aria-label="Cost per model">${rows.map((row) => html`<li class="bot-overview__setup">
+                  <span class="bot-overview__value bot-cost__model" title=${row.name}>${row.name}</span><span class="bot-cost__amount">${dollars(row.cost)}</span></li>`)}</ul>`
+              : html`<p class="bot-panel__hint bot-cost__empty">No model has reported a cost yet.</p>`}
+          </details>
+          ${subagents ? html`<p class="bot-panel__hint">Includes ${subagents === 1 ? "one subagent" : `${subagents} subagents`}.</p>` : nothing}
+          ${usage.unavailable.length ? html`<p class="bot-panel__hint">${usage.unavailable.length === 1 ? "One session's" : `${usage.unavailable.length} sessions'`} cost could not be read.</p>` : nothing}`}
+  </section>`;
+}
+
 /** Where the bot works, short: its own folder (the one HUI made, named by its id), or a chosen folder's last two
  * names; the whole path is the row's title. */
 function workspaceLabel(bot: Pick<BotView, "id" | "cwd">): string {
@@ -678,6 +715,7 @@ function renderOverview(props: BotPanelProps) {
       ${renderRoutinesSummary(props)}
       ${renderTriggersSummary(props, now)}
       ${renderActivity(props, now)}
+      ${renderCost(props)}
     </div>
     ${renderSetup(props)}
   </div>`;

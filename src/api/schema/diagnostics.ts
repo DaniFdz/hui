@@ -22,4 +22,4 @@ export type UiErrorReceipt = { "recorded": number; "dropped": number; };
 
 export type UiErrorReport = { "kind": UiErrorKind; "message": string; "count": number; "firstAt"?: string; "lastAt"?: string; "location"?: string; "page"?: string; "request"?: { "method": string; "path": string; }; };
 
-export type UsageTotals = { "sessions": number; "filesRead": number; "records": number; "inputTokens": number; "outputTokens": number; "cacheReadTokens": number; "cacheWriteTokens": number; "totalTokens": number; "costUsd": (number) | (null); "models": Array<{ "model": string; "tokens": number; }>; "unavailable": Array<string>; };
+export type UsageTotals = { "sessions": number; "filesRead": number; "records": number; "inputTokens": number; "outputTokens": number; "cacheReadTokens": number; "cacheWriteTokens": number; "totalTokens": number; "costUsd": (number) | (null); "models": Array<{ "model": string; "tokens": number; "costUsd": number; }>; "unavailable": Array<string>; };

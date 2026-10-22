@@ -1,5 +1,6 @@
 /** Public bot payloads (HUI-18) and the routes that exchange them; the bot registry's stored records are not ones. */
 import { Type, type Static } from "typebox";
+import { UsageTotals } from "./diagnostics.ts";
 
 export const VoiceLanguage = Type.Enum([
   "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr", "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi",
@@ -271,6 +272,9 @@ export type BotFactPatch = Static<typeof BotFactPatch>;
 export const BotFactsResponse = Type.Object({ facts: Type.Array(BotFact) }, { $id: "BotFactsResponse" });
 export type BotFactsResponse = Static<typeof BotFactsResponse>;
 
+export const BotUsageResponse = Type.Object({ usage: UsageTotals }, { $id: "BotUsageResponse" });
+export type BotUsageResponse = Static<typeof BotUsageResponse>;
+
 export const routeSchemas = [
   { method: "GET", path: "/__hui/bots/events", response: BotsStreamFrame, events: BotsStreamFrame },
   { method: "GET", path: "/__hui/bots", response: BotsResponse },
@@ -284,6 +288,7 @@ export const routeSchemas = [
   { method: "GET", path: "/__hui/bots/:id/memory", response: BotMemoryResponse },
   { method: "GET", path: "/__hui/bots/:id/memory/zoom", response: BotMemoryZoom },
   { method: "GET", path: "/__hui/bots/:id/catalog", response: BotCatalog },
+  { method: "GET", path: "/__hui/bots/:id/usage", response: BotUsageResponse },
   { method: "GET", path: "/__hui/bots/:id/soul", response: BotSoul },
   { method: "PUT", path: "/__hui/bots/:id/soul", request: BotSoulRequest, response: BotSoul },
   { method: "GET", path: "/__hui/bots/:id/facts", response: BotFactsResponse },

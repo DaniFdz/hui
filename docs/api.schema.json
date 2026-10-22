@@ -3275,6 +3275,17 @@
       "type": "string",
       "const": "listener"
     },
+    "BotUsageResponse": {
+      "type": "object",
+      "required": [
+        "usage"
+      ],
+      "properties": {
+        "usage": {
+          "$ref": "#/$defs/UsageTotals"
+        }
+      }
+    },
     "BotView": {
       "type": "object",
       "required": [
@@ -11416,13 +11427,17 @@
             "type": "object",
             "required": [
               "model",
-              "tokens"
+              "tokens",
+              "costUsd"
             ],
             "properties": {
               "model": {
                 "type": "string"
               },
               "tokens": {
+                "type": "number"
+              },
+              "costUsd": {
                 "type": "number"
               }
             }
@@ -13138,6 +13153,7 @@
       "BotSoulRequest",
       "BotTagging",
       "BotToolGroup",
+      "BotUsageResponse",
       "BotView",
       "BotVoice",
       "BotVoicePatch",
@@ -13671,6 +13687,13 @@
       "path": "/__hui/bots/:id/triggers/:trigger/token",
       "response": {
         "$ref": "#/$defs/BotTriggerCreated"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/usage",
+      "response": {
+        "$ref": "#/$defs/BotUsageResponse"
       }
     },
     {

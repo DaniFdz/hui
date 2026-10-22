@@ -50,7 +50,9 @@ export const test = base.extend<{ hui: Hui }>({
       (await api<SessionList>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions.map((session) => session.id));
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
 
+    const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
     const existing = new Set(await sessionIds());
+    const existingBots = new Set(await botIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
 
@@ -94,6 +96,8 @@ export const test = base.extend<{ hui: Hui }>({
     });
 
     await control("POST", "/control/release-replay");
+    // A bot's chat goes only with its bot.
+    for (const id of await botIds()) if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
     for (const id of await sessionIds()) if (!existing.has(id)) await api("DELETE", `/__hui/sessions/${id}`);
     await api("PUT", "/__hui/settings", settings);
   },

@@ -25,7 +25,7 @@ export type DiagnosticEvent = Static<typeof DiagnosticEvent>;
 export const UsageTotals = Type.Object({
   sessions: Type.Number(), filesRead: Type.Number(), records: Type.Number(), inputTokens: Type.Number(), outputTokens: Type.Number(),
   cacheReadTokens: Type.Number(), cacheWriteTokens: Type.Number(), totalTokens: Type.Number(), costUsd: Type.Union([Type.Number(), Type.Null()]),
-  models: Type.Immutable(Type.Array(Type.Object({ model: Type.String(), tokens: Type.Number() }))),
+  models: Type.Immutable(Type.Array(Type.Object({ model: Type.String(), tokens: Type.Number(), costUsd: Type.Number() }))),
   unavailable: Type.Immutable(Type.Array(Type.String())),
 }, { $id: "UsageTotals" });
 export type UsageTotals = Static<typeof UsageTotals>;

@@ -30,7 +30,7 @@ type UsageTotals = {
   cacheWriteTokens: number;
   totalTokens: number;
   costUsd: number | null;
-  models: readonly { model: string; tokens: number }[];
+  models: readonly { model: string; tokens: number; costUsd: number }[];
   unavailable: readonly string[];
 };
 
