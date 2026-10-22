@@ -54,6 +54,10 @@ page errors before starting. Use fresh snapshots after every rerender.
 
 ## Visible-control journey
 
+The shared tests in `e2e/tests/chat/` cover the attachment limits (CHAT-014), a reload
+mid-turn (CHAT-015), the run error card (CHAT-020), Sending… (CHAT-066) and a send the
+gateway rejects (CHAT-012), so their steps are gone from here.
+
 1. Create `HUI-04 Browser E2E` with **Project directory** set to the isolated
    workspace. Wait for `Idle` and model `HUI E2E Fixture`.
 2. Send `E2E_RICH`. Assert **Running**, visible thinking, a running then
@@ -66,49 +70,26 @@ page errors before starting. Use fresh snapshots after every rerender.
    image block; the stored file must be below the isolated
    `xdg/hui/attachments` tree. Reload after settlement and assert the original
    image/file names remain while neither the immutable path nor the HUI manifest
-   appears in the visible message. Unicode and spaces in a display name are
-   valid; path separators and controls are rejected. Uploading more than eight,
-   a file larger than 12 MB, or more than 16 MB total must show an error and
-   create no prompt request.
+   appears in the visible message.
 4. Send `E2E_ABORT`. Wait for `Abort prefix` and **Stop**, activate Stop, then
    assert **Idle**, no Stop, and an enabled composer. Send one normal message to
    prove the session remains usable.
-5. Send `E2E_REPLAY`. Wait for `Replay prefix`, reload the same direct session
-   URL while the gateway remains running, and assert `Running` plus the prefix.
-   Release the provider barrier with:
-
-   ```bash
-   curl -fsS -X POST http://127.0.0.1:43127/control/release-replay
-   ```
-
-   Assert exactly `Replay prefix — replay suffix`, with neither loss nor
-   duplication, then `Idle`.
-6. Hold a second `E2E_REPLAY` at its barrier. Submit `STEER_QUEUED` as **Steer**
+5. Hold an `E2E_REPLAY` at its barrier. Submit `STEER_QUEUED` as **Steer**
    and `FOLLOWUP_QUEUED` as **Follow up**. Assert both queue rows in the UI,
    release the provider barrier, and verify the provider receives them in that
    order. As each row leaves the queue, assert it appears as a user turn before
    the next blocked response finishes. The queue must empty and the session
    return to `Idle`.
-7. Send `/hui-e2e-question`. Assert the modal named **HUI E2E question**, answer
+6. Send `/hui-e2e-question`. Assert the modal named **HUI E2E question**, answer
    through its labelled input, and verify it closes, clears the command, returns
    focus to **Message**, and settles to `Idle`. Repeat and cancel with Escape,
    checking the same focus/cleanup behavior.
-8. Send `E2E_TOOL_FAILURE`; assert the `read` card is visibly failed and keeps
-   its error output. Send `E2E_ERROR`; assert an alert containing `fixture
-   provider error`, return to Idle, reload, and verify PI's durable error row.
-9. Change **Thinking level**, reload the direct session URL, and assert the
+7. Send `E2E_TOOL_FAILURE`; assert the `read` card is visibly failed and keeps
+   its error output.
+8. Change **Thinking level**, reload the direct session URL, and assert the
    choice persisted. Resize to 390×844 and 844×390; assert document, main,
    header and composer have no horizontal overflow and every composer control
    remains inside the viewport.
-10. For the prompt endpoint only, wrap `window.fetch` in a manually controlled
-    promise without forwarding the request. Prepare one exact payload (text and
-    an attachment), submit it, and wait for **Sending…**. Assert the textarea,
-    attachment picker, removal controls and submit action remain disabled for
-    the whole acknowledgement window: the user cannot start or alter another
-    draft while ownership of the submitted payload is unresolved. Reject the
-    controlled promise, then assert the composer restores exactly the submitted
-    text and attachment once, with the failed pending turn and visible error.
-    Restore the original fetch by reloading.
 
 ## Stable selectors
 
