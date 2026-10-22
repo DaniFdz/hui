@@ -1,7 +1,7 @@
 // The JavaScriptCore host for hui-core.js, the pure logic the app shares with the web (ios/core/entry.ts): one
 // JSContext on its own serial queue, called with JSON in and decoded JSON out, plus the types its answers decode into.
-// Each open conversation's transcript stays in the context, keyed by session id, so a streamed event crosses the
-// bridge alone and only the projected rows come back.
+// Each open conversation's transcript stays in the context, keyed by the handle its model minted, so a streamed event
+// crosses the bridge alone and only the projected rows come back.
 import Foundation
 import JavaScriptCore
 
@@ -77,29 +77,29 @@ actor HUICore {
         return rows.map(\.session)
     }
 
-    func transcript(_ session: String, snapshot entries: [API.TranscriptEntry], streaming: Bool) throws -> ChatProjection {
+    func transcript(_ handle: String, snapshot entries: [API.TranscriptEntry], streaming: Bool) throws -> ChatProjection {
         let options = try json(["streaming": streaming])
-        return try project(session, invoke("normalizeTranscript", [json(entries), options]))
+        return try project(handle, invoke("normalizeTranscript", [json(entries), options]))
     }
 
-    func transcript(_ session: String, event: API.SessionEvent) throws -> ChatProjection {
-        try project(session, invoke("reduceTranscript", [items(session), json(event)]))
+    func transcript(_ handle: String, event: API.SessionEvent) throws -> ChatProjection {
+        try project(handle, invoke("reduceTranscript", [items(handle), json(event)]))
     }
 
-    func transcript(_ session: String, pending id: String, text: String) throws -> ChatProjection {
-        try project(session, invoke("appendPendingUser", [items(session), id, text, json([String]())]))
+    func transcript(_ handle: String, pending id: String, text: String) throws -> ChatProjection {
+        try project(handle, invoke("appendPendingUser", [items(handle), id, text, json([String]())]))
     }
 
-    func transcript(_ session: String, settle id: String, accepted: Bool) throws -> ChatProjection {
-        try project(session, invoke("settlePendingUser", [items(session), id, accepted]))
+    func transcript(_ handle: String, settle id: String, accepted: Bool) throws -> ChatProjection {
+        try project(handle, invoke("settlePendingUser", [items(handle), id, accepted]))
     }
 
     func markdownTokens(_ source: String, agent: Bool) throws -> [MarkdownToken] {
         try call("markdownTokens", source, agent)
     }
 
-    func closeTranscript(_ session: String) {
-        transcripts[session] = nil
+    func closeTranscript(_ handle: String) {
+        transcripts[handle] = nil
     }
 
     func takeRequestId(_ session: String, text: String) throws -> String {
@@ -111,13 +111,13 @@ actor HUICore {
         _ = try invoke("failed", [session, requestId, text, json([String]())], on: requests())
     }
 
-    private func items(_ session: String) throws -> JSValue {
-        if let items = transcripts[session] { return items }
+    private func items(_ handle: String) throws -> JSValue {
+        if let items = transcripts[handle] { return items }
         return try json([String]())
     }
 
-    private func project(_ session: String, _ items: JSValue) throws -> ChatProjection {
-        transcripts[session] = items
+    private func project(_ handle: String, _ items: JSValue) throws -> ChatProjection {
+        transcripts[handle] = items
         let projected = try invoke("projectChatTranscript", [items])
         var rows: [ChatRow] = try decode(projected)
         for index in rows.indices where rows[index].kind == .activity {

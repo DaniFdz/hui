@@ -1,8 +1,11 @@
 // One open session's conversation, as the web's conversation controller owns it: `POST /__hui/sessions/:id/open`
 // paints it, then the session stream keeps it live. Every connect mints a new one-use ticket, the snapshot replaces
 // the transcript, a drop reconnects with the core's backoff, and a refusal or close code 4404 stops for good. The core
-// reduces the transcript and projects its rows; a generation number keeps a late answer from overwriting a newer one.
-// Sending reuses a failed send's request id through the core's `SendRequests`.
+// reduces the transcript and projects its rows, held under a handle this model mints, so a reopened session's next
+// model never shares it; a generation number keeps a late answer from reaching the core or overwriting a newer one, and
+// stopping cancels the socket's receive. Sending reuses a failed send's request id through the core's `SendRequests`.
+// A failed send stays in the transcript marked failed, and hands its text back for the draft, as the web's composer
+// does.
 import Foundation
 import Observation
 
@@ -20,6 +23,7 @@ final class ConversationModel {
     static let sessionGone = 4404
 
     let id: String
+    private let handle = UUID().uuidString
     private(set) var phase = Phase.loading
     private(set) var session: API.SessionView?
     private(set) var statusLabel = ""
@@ -54,28 +58,36 @@ final class ConversationModel {
     func stop() {
         task?.cancel()
         generation += 1
-        let id = id
-        Task { [core] in await core.closeTranscript(id) }
+        let handle = handle
+        Task { [core] in await core.closeTranscript(handle) }
     }
 
-    func send(_ text: String) async {
+    /// Sends `text` as a prompt; false when it wasn't sent, so the composer gets the text back.
+    func send(_ text: String) async -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { return true }
+        let current = generation
         let pending = "user-\(UUID().uuidString)"
         sendError = nil
         do {
-            show(try await core.transcript(id, pending: pending, text: text))
+            guard current == generation else { return false }
+            show(try await core.transcript(handle, pending: pending, text: text))
             let requestId = try await core.takeRequestId(id, text: text)
             do {
                 let _: API.SessionPromptResponse = try await client.post(path("prompt"), body: PromptRequest(text: text, requestId: requestId))
-                show(try await core.transcript(id, settle: pending, accepted: true))
+                guard current == generation else { return true }
+                show(try await core.transcript(handle, settle: pending, accepted: true))
+                return true
             } catch {
                 try await core.sendFailed(id, requestId: requestId, text: text)
-                show(try await core.transcript(id, settle: pending, accepted: false))
                 sendError = error.localizedDescription
+                guard current == generation else { return false }
+                show(try await core.transcript(handle, settle: pending, accepted: false))
+                return false
             }
         } catch {
             sendError = error.localizedDescription
+            return false
         }
     }
 
@@ -140,7 +152,7 @@ final class ConversationModel {
         while current == generation, !Task.isCancelled {
             let text: String
             do {
-                text = try await socket.receive()
+                text = try await withTaskCancellationHandler { try await socket.receive() } onCancel: { socket.close() }
             } catch {
                 return socket.closeCode == Self.sessionGone ? .ended("This session no longer exists.") : .dropped
             }
@@ -149,6 +161,7 @@ final class ConversationModel {
                 onLive()
                 connectionNote = ""
             }
+            guard current == generation, !Task.isCancelled else { return .dropped }
             do {
                 let frame = try JSONDecoder().decode(API.SessionStreamFrame.self, from: Data(text.utf8))
                 if case .closed = frame { return .ended("The runtime exited — this session is no longer streaming.") }
@@ -172,11 +185,16 @@ final class ConversationModel {
         case .snapshot(let snapshot):
             try await apply(snapshot.data, current)
         case .transcript(let transcript):
-            let projection = try await core.transcript(id, snapshot: transcript.data, streaming: false)
+            guard current == generation else { return }
+            let projection = try await core.transcript(handle, snapshot: transcript.data, streaming: false)
             if current == generation { show(projection) }
         case .event(let event):
-            if case .turnStart = event.data { streaming = true }
-            let projection = try await core.transcript(id, event: event.data)
+            guard current == generation else { return }
+            if case .turnStart = event.data {
+                streaming = true
+                stopping = false
+            }
+            let projection = try await core.transcript(handle, event: event.data)
             if current == generation { show(projection) }
         case .status(let status):
             await setStatus(status.data.status, current)
@@ -186,7 +204,8 @@ final class ConversationModel {
     }
 
     private func apply(_ snapshot: API.SessionSnapshot, _ current: Int) async throws {
-        let projection = try await core.transcript(id, snapshot: snapshot.transcript, streaming: Self.streaming(snapshot.status))
+        guard current == generation else { return }
+        let projection = try await core.transcript(handle, snapshot: snapshot.transcript, streaming: Self.streaming(snapshot.status))
         guard current == generation else { return }
         show(projection)
         await setStatus(snapshot.status, current)
