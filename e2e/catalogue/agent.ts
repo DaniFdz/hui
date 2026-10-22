@@ -146,7 +146,7 @@ const cases: UseCase[] = [
     spec: [...SECRETS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -156,7 +156,7 @@ const cases: UseCase[] = [
     spec: SECRETS,
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -166,7 +166,7 @@ const cases: UseCase[] = [
     spec: [...SECRETS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -176,7 +176,7 @@ const cases: UseCase[] = [
     spec: SECRETS,
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard-only affordance; on iOS the card is closed only with Cancel, which AGENT-017 covers.", decision: KEYBOARD },
   },
   {
