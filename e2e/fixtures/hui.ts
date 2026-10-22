@@ -1,11 +1,11 @@
 /**
  * HUI's fixture for the shared e2e suite: the disposable gateway each target runs against, setup and cleanup through
- * its API, the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
+ * its API (local backlog tasks included), the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
  * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
  * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
  * point instead of the input), tapping a control with a finger, which unlike a mouse doesn't hover it first, attaching
  * files from `files/` or made up of a name and a size, reading what a download saved or what the page copied, opening a
- * session's menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and whether its unread dot
+ * session's menu, dragging a control onto another and checking the screen before dropping it, reading a sidebar row's status glyph (its tooltip and whether it spins) and whether its unread dot
  * has the accent colour, and reading how a piece of the screen looks (its text colour and the colour behind it as RGB,
  * its opacity, its font families, those of HUI's bundled faces that have loaded to draw its text, its text size in
  * pixels and the colour of the focus ring it shows when reached from the keyboard), a disposable Git repository (on
@@ -70,6 +70,7 @@ export type Hui = {
   attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
+  drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
@@ -127,6 +128,8 @@ export const test = base.extend<{ hui: Hui }>({
     const sessionIds = async () => (await sessions()).map((session) => session.id);
     const taskIds = async () => (await api<{ tasks: { id: string }[] }>("GET", "/__hui/automation")).tasks.map((task) => task.id);
     const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
+    const backlogTaskIds = async () => (await api<{ items: { id: string; kind: string }[] }>("GET", "/__hui/backlog")).items
+      .filter((item) => item.kind === "local").map((item) => item.id);
     const prompt = async (session: { id: string }, text: string) => {
       await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
@@ -151,6 +154,7 @@ export const test = base.extend<{ hui: Hui }>({
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
     const existingBots = new Set(await botIds());
+    const existingBacklogTasks = new Set(await backlogTaskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     if (web) await browser().addInitScript(trackSockets);
     await clearState();
@@ -286,6 +290,20 @@ export const test = base.extend<{ hui: Hui }>({
         await expect(until).toBeVisible();
         await browser().evaluate(touch, { ...point, type: "pointerup" });
       },
+      drag: async (target, onto, whileOver) => {
+        const centre = async (locator: Locator) => {
+          const box = await locator.boundingBox();
+          if (!box) throw new Error("drag: a target is not on screen");
+          return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        };
+        const from = await centre(target);
+        const to = await centre(onto);
+        await browser().mouse.move(from.x, from.y);
+        await browser().mouse.down();
+        await browser().mouse.move(to.x, to.y);
+        await whileOver();
+        await browser().mouse.up();
+      },
       touchTap: async (target) => {
         await target.scrollIntoView();
         const box = await target.boundingBox();
@@ -414,6 +432,9 @@ export const test = base.extend<{ hui: Hui }>({
     }
     for (const id of await botIds()) {
       if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
+    }
+    for (const id of await backlogTaskIds()) {
+      if (!existingBacklogTasks.has(id)) await api("DELETE", `/__hui/backlog/items/${encodeURIComponent(id)}`);
     }
     for (const id of await sessionIds()) {
       if (existing.has(id)) continue;
