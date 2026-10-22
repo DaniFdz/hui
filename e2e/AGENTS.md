@@ -27,8 +27,12 @@ in the order of `AREAS` in `catalogue/types.ts`). It is the checklist the shared
   `catalogue/surfaces-server.ts`) and fails when no use case claims one. A surface no screen uses goes into
   `catalogue/not-ui.ts` with its reason. Every journey has a class in `catalogue/journeys.ts`.
 - A change that adds or changes a user outcome adds or updates its entry in the same PR, and a use case it changes
-  leaves the web backlog with its shared test. `scripts/e2e-baseline-check.ts` (the E2E catalogue workflow) checks
-  both against the pull request's base.
+  leaves the web and iOS backlogs with its shared test. An accessible name new in `src/` appears in a shared test that
+  runs on both targets. A use case changes when its entry's behaviour, surfaces or spec change, or when the body of a
+  test tagged with it does; the PR that adds a backlog use case's first test and takes it off one platform's backlog
+  doesn't count. A test fix that leaves the behaviour alone, or a new name for a control that already existed, goes on
+  the PR description's `Unchanged behaviour:` line instead (IDs, and names in quotes, separated by commas).
+  `scripts/e2e-baseline-check.ts` (the E2E catalogue workflow) checks all of this against the pull request's base.
 
 ## The shared e2e suite
 
