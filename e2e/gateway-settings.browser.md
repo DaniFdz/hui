@@ -10,19 +10,20 @@
 
 ## Observed journey
 
+The connected state (Connecting…, Connected, HTTP + SSE, Full Access, uptime, sessions and Idle refreshing on their
+own) is proven by `e2e/tests/set/gateway.e2e.ts`; these steps cover the rest.
+
 1. Open Home → Settings → Gateway using Browser-tool clicks.
-2. Confirm green Connected, HTTP + SSE, Full Access, zero registered sessions,
-   Idle, and uptime advancing from seconds to `1m` via automatic health polling.
-3. Simulate only health-request failure in this test tab by temporarily wrapping
+2. Simulate only health-request failure in this test tab by temporarily wrapping
    `window.fetch` to reject `/__hui/health` with `TypeError`; leave other requests
    and the gateway process untouched.
-4. Observe automatic red Disconnected, Retry connection, and Last known values.
-5. Resize to mobile; inspect the error screen and confirm no horizontal overflow.
-6. Restore the original fetch implementation and click Retry connection.
+3. Observe automatic red Disconnected, Retry connection, and Last known values.
+4. Resize to mobile; inspect the error screen and confirm no horizontal overflow.
+5. Restore the original fetch implementation and click Retry connection.
    Confirm Connected returns and the stale/error notices disappear.
-7. Emulate dark mode and inspect the green connection state and runtime values
+6. Emulate dark mode and inspect the green connection state and runtime values
    on mobile. Restore light mode for the desktop handoff.
-8. Browser errors and error-level console messages: both empty.
+7. Browser errors and error-level console messages: both empty.
 
 The failed transport is injected, not a real process shutdown. Long uptimes,
 active counts, missing PI state, first-load failure/loading, and invalid duration
