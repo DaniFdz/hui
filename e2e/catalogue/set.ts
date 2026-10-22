@@ -724,7 +724,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Privacy & Security shows the Full Access runtime model, the x-hui: 1 browser API guard, the active transport, how many PI credential sources exist with their values redacted, and what diagnostics exclude and how long activity is kept. A failed read of PI or the gateway shows the reason with Retry.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["settings-page:security", "route:GET /__hui/health", "route:GET /__hui/pi"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
