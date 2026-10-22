@@ -1,5 +1,5 @@
 /** Pure decisions for the desktop shell, kept apart from the Electron process code: which URLs stay in the window,
- * which open externally, what counts as a valid gateway address, and how the saved theme maps to Electron's. */
+ * which open externally, validated notification destinations, gateway addresses and the saved color scheme. */
 const { URL } = require('node:url');
 const { isIP } = require('node:net');
 
@@ -27,4 +27,25 @@ function themeSource(mode) {
   return mode === 'light' || mode === 'dark' ? mode : 'system';
 }
 
-module.exports = { isInternal, isExternal, gatewayUrl, themeSource };
+function notificationFromArgs(args = []) {
+  const index = args.indexOf('--hui-notification');
+  if (index < 0 || typeof args[index + 1] !== 'string' || args[index + 1].length > 8_000) return;
+  try {
+    const value = JSON.parse(args[index + 1]);
+    if (!value || typeof value !== 'object' || Array.isArray(value)
+      || typeof value.title !== 'string' || !value.title.trim() || value.title.length > 120
+      || typeof value.message !== 'string' || !value.message.trim() || value.message.length > 1_000
+      || typeof value.url !== 'string' || typeof value.replyTo !== 'string') return;
+    const reply = new URL(value.replyTo);
+    if (reply.protocol !== 'http:' || reply.hostname !== '127.0.0.1' || !reply.port
+      || reply.username || reply.password || reply.search || reply.hash || !/^\/[a-f0-9]{64}\/$/.test(reply.pathname)) return;
+    const target = new URL(value.url);
+    const segments = target.pathname.split('/');
+    if (target.protocol !== 'http:' || target.username || target.password || target.search || target.hash
+      || segments.length !== 3 || !['sessions', 'bots'].includes(segments[1])
+      || !decodeURIComponent(segments[2]).trim() || decodeURIComponent(segments[2]).length > 200) return;
+    return { title: value.title.trim(), message: value.message.trim(), url: target.href, replyTo: reply.href };
+  } catch { return; }
+}
+
+module.exports = { isInternal, isExternal, gatewayUrl, themeSource, notificationFromArgs };

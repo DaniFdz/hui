@@ -48,6 +48,24 @@ Window close and application quit do not stop the shared gateway. Existing
 stop/restart/update busy-work checks remain unchanged; no desktop HTTP endpoints
 or alternate persisted gateway state are introduced.
 
+### Desktop notifications
+
+The agent-only `notify_user` tool takes `title` (1–120 characters) and `message`
+(1–1000 characters), with no destination parameter. The gateway binds it to the
+authenticated caller, using a stable bot URL when that caller is a bot's chat.
+The initial implementation requires the managed macOS gateway and a current
+HUI-owned desktop bundle. Unsupported or outdated installations fail instead
+of falling back to Script Editor. No public browser API is added.
+
+The native app receives a validated same-gateway chat URL and a one-use
+loopback acknowledgement address. The tool returns `status: "queued"` only
+after the native app acknowledges; launch errors, cancellation or no
+acknowledgement fail the call. Callback tokens never enter tool output.
+Clicking the banner opens its originating conversation, creating a window if
+needed. Delivery alone does not change focus. macOS settings may suppress the
+banner, and queued is not proof the operator read it. Notification calls are
+not replayed after a crash. Browser and iPhone push are outside this version.
+
 ## Gateway lifecycle boundary
 
 The standalone production gateway and Vite development plugin share the same

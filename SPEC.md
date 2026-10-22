@@ -3309,3 +3309,23 @@ The bundle has its own name/icon, is ad-hoc signed, depends on the npm/Node
 installation, stores no credentials, and never replaces an unrelated app. It
 changes no PI/HUI persistence formats. Native macOS behavior remains a release
 verification gate until tested on-device.
+
+### Clickable desktop notifications
+
+The explicit `notify_user` agent tool takes a title and message and binds the
+notification to its authenticated caller's regular session or stable bot chat.
+It accepts no destination, URL or command from the model. The first version
+requires a managed macOS gateway and a current, registered HUI desktop app.
+It does not provide browser push or iPhone notifications.
+
+The banner belongs to HUI, not Script Editor. Delivery does not change the
+active chat or open a window. Clicking a banner opens and focuses its own chat,
+including when HUI has no window. Each banner keeps its own destination, and
+the desktop app accepts only chat URLs on its managed gateway's origin.
+
+The tool waits for the desktop app's acknowledgement over a one-use private
+loopback callback. Missing or outdated apps, unsupported platforms, cancellation,
+launch failures and missing acknowledgements fail explicitly. A queued result
+is not a read receipt and macOS settings can suppress banners. Notifications
+are requested alerts, not automatic messages for every response, and must not
+contain secrets. They are unsafe to replay after a runtime crash.

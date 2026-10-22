@@ -66,6 +66,7 @@ import {
 import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
 import { SubagentService } from "./agent-tools/subagents.ts";
 import { presentMediaForSession } from "./agent-tools/presented-media.ts";
+import { notifyUser } from "./agent-tools/notifications.ts";
 import { GitHubCli } from "./integrations/github.ts";
 import { GitHubContributionsReader } from "./integrations/github-contributions.ts";
 import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./integrations/github-previews.ts";
@@ -341,6 +342,12 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "notify_user") {
+    const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
+    if (!caller) throw new Error("Conversation no longer exists.");
+    const bot = caller.bot ? (await bots.list({ archived: "all" })).find(({ id, sessionId }) => id === caller.bot && sessionId === caller.id) : undefined;
+    return notifyUser({ id: caller.id, ...(bot ? { bot: bot.id } : {}) }, invocation.params, invocation.signal);
   }
   if (invocation.action === "secret_request") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);

@@ -1,17 +1,20 @@
 /** Electron window shell around the gateway's web UI. It starts or reuses the gateway through the installed CLI, shows
  * one sandboxed window confined to that origin and hands every other link to the system browser. Closing or quitting
- * the window never stops the gateway or its runs. */
-const { app, BrowserWindow, dialog, Menu, nativeTheme, shell } = require('electron');
+ * the window never stops the gateway or its runs. Native notification clicks open their originating chat. */
+const { app, BrowserWindow, dialog, Menu, nativeTheme, shell, Notification } = require('electron');
 const { execFile } = require('node:child_process');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
-const { isInternal, isExternal, gatewayUrl, themeSource } = require('./policy.cjs');
+const { isInternal, isExternal, gatewayUrl, themeSource, notificationFromArgs } = require('./policy.cjs');
 
 app.setName('HUI');
 // CLI and installed bundle use the same lock, cookies and IndexedDB location.
 app.setPath('userData', path.join(app.getPath('appData'), 'HUI'));
 let window;
 let url;
+const initialNotification = notificationFromArgs(process.argv);
+const pendingNotifications = initialNotification ? [initialNotification] : [];
+const notifications = new Set();
 
 // Electron's default viewMenu binds Zoom In to CommandOrControl+Plus only, which
 // needs Shift on US layouts, so the browser-standard Cmd/Ctrl+= does nothing.
@@ -41,9 +44,13 @@ async function syncThemeSource() {
   nativeTheme.themeSource = mode;
 }
 
-function showWindow() {
+function showWindow(destination) {
   if (!url) return;
+  const target = typeof destination === 'string' ? destination : undefined;
   if (window && !window.isDestroyed()) {
+    if (target) void window.loadURL(target).catch((error) => {
+      if (error.code !== 'ERR_ABORTED') dialog.showErrorBox('HUI could not open the chat', error.message);
+    });
     if (window.isMinimized()) window.restore();
     window.show();
     window.focus();
@@ -81,15 +88,40 @@ function showWindow() {
   window.on('focus', () => { void syncThemeSource(); });
   window.once('ready-to-show', () => window?.show());
   window.on('closed', () => { window = undefined; });
-  void window.loadURL(url).catch((error) => {
+  void window.loadURL(target ?? url).catch((error) => {
+    if (error.code === 'ERR_ABORTED') return;
     dialog.showErrorBox('HUI could not open', error.message);
     app.quit();
   });
 }
 
+function flushNotifications() {
+  if (!url) return;
+  for (const request of pendingNotifications.splice(0)) {
+    const acknowledge = (status) => fetch(new URL(status, request.replyTo), { method: 'POST', signal: AbortSignal.timeout(5_000) }).catch(() => {});
+    if (!isInternal(request.url, new URL(url).origin)) { void acknowledge('wrong-gateway'); continue; }
+    if (!Notification.isSupported()) { void acknowledge('unsupported'); continue; }
+    const notification = new Notification({ title: request.title, body: request.message });
+    notifications.add(notification);
+    notification.on('click', () => showWindow(request.url));
+    notification.once('close', () => notifications.delete(notification));
+    notification.once('failed', (_event, error) => {
+      notifications.delete(notification);
+      void acknowledge('failed');
+      dialog.showErrorBox('HUI notification could not be shown', String(error));
+    });
+    notification.once('show', () => { void acknowledge('queued'); });
+    notification.show();
+  }
+}
+
 async function start() {
   if (!app.requestSingleInstanceLock()) { app.quit(); return; }
-  app.on('second-instance', showWindow);
+  app.on('second-instance', (_event, args) => {
+    const request = notificationFromArgs(args);
+    if (request) { pendingNotifications.push(request); flushNotifications(); }
+    else showWindow();
+  });
   app.on('activate', showWindow);
   // Closing a window must not interrupt agent runs. Quit is explicit.
   app.on('window-all-closed', () => {});
@@ -111,7 +143,8 @@ async function start() {
     // Closing or quitting the UI must never stop a shared gateway or its jobs.
     url = gatewayUrl(output);
     await syncThemeSource();
-    showWindow();
+    flushNotifications();
+    if (!initialNotification) showWindow();
   } catch (error) {
     dialog.showErrorBox('HUI could not start', `${error.message}\nReinstall the npm package or run hui install-app to repair the launcher.`);
     app.quit();

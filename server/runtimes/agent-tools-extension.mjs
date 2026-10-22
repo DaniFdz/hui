@@ -1,6 +1,6 @@
 /**
  * HUI's agent tools for PI conversations: shared terminals, sibling sessions and subagents, media, secret
- * requests, task suggestions, the stage and watchers. Each tool only declares its schema and forwards the call
+ * requests, desktop notifications, task suggestions, the stage and watchers. Each tool only declares its schema and forwards the call
  * over HUI's agent bridge; the gateway owns the state and decides what the bound caller may do.
  */
 import { Type } from "typebox";
@@ -169,6 +169,25 @@ Every question also offers a free-text answer the card adds itself, and the user
         content: [{ type: "text", text: `Presented ${count} media ${count === 1 ? "item" : "items"} in HUI.` }],
         details: result,
       };
+    },
+  });
+
+  pi.registerTool({
+    name: "notify_user",
+    label: "Notify user",
+    description: "Queue a native HUI desktop notification on the macOS gateway. Clicking it opens this conversation, not whichever chat was last active. Requires the current HUI desktop app; macOS settings may suppress the banner.",
+    promptSnippet: "Send a clickable desktop notification that opens this chat",
+    promptGuidelines: [
+      "Use notify_user when the operator asked for an alert or an important update from an agreed background task. Do not notify for every response.",
+      "Keep the title and message short and keep secrets out of notifications. Put the details in this chat. HUI supplies the destination automatically.",
+      "A queued notification is not proof a banner appeared or the operator read it. Report an unavailable desktop app or platform instead of falling back to Script Editor alerts.",
+    ],
+    parameters: Type.Object({
+      title: Type.String({ minLength: 1, maxLength: 120 }),
+      message: Type.String({ minLength: 1, maxLength: 1_000 }),
+    }, { additionalProperties: false }),
+    async execute(_toolCallId, params, signal) {
+      return output(await invokeHuiBridge("notify_user", params, { timeoutMs: 20_000, signal }));
     },
   });
 
