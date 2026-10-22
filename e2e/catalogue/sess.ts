@@ -28,11 +28,11 @@ const cases: UseCase[] = [
   {
     id: "SESS-003",
     title: "Choose a project directory from suggestions",
-    behaviour: "Typing in Project directory lists matching folders under the typed prefix; choosing one fills the field and inspects its Git checkout. When the session will run on a worker, the folders come from that worker instead of this machine.",
+    behaviour: "Typing in Project directory lists matching folders under the typed prefix; choosing one fills the field and inspects its Git checkout.",
     spec: ["docs/api.md#get-__huidirectoriesqprefixworkerid"],
     surfaces: ["page:new-session", "route:GET /__hui/directories"],
     journeys: ["session-launch", "checkout-selector"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -42,7 +42,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessions", "docs/api.md#model-catalog-selection"],
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-launch"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -61,7 +61,7 @@ const cases: UseCase[] = [
     behaviour: "New Session lists up to five Recent chats, the most recently updated top-level sessions that are not archived, each with its relative time. Activating one opens that session.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:new-session", "nav:session"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

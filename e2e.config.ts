@@ -10,7 +10,7 @@ const branch = execFileSync("git", ["branch", "--show-current"], { encoding: "ut
 
 const launcher = (target: string, port: string) => ({
   executable: "node",
-  args: ["e2e/visual-verification.mjs", "launch", "--branch", branch, "--port", port, "--receipt-dir", ".e2e/hui"],
+  args: ["e2e/visual-verification.mjs", "launch", "--branch", branch, "--port", port, "--receipt-dir", ".e2e/hui", "--fast-fixture"],
   startupTimeout: 120_000,
   log: `.e2e/logs/hui-${target}.log`,
 });

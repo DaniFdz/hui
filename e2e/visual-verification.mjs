@@ -297,7 +297,7 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
         { id: "fixture", name: demo ? "Demo model" : "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
         // --fast-fixture: a Claude Opus 5.5 id, so the composer offers Maximum effort and Speed (fast mode).
         ...process.argv.includes("--fast-fixture") ? [{
-          id: "claude-opus-5-5", name: "Opus fixture", reasoning: true, input: ["text"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          id: "anthropic/claude-opus-5-5", name: "Opus fixture", reasoning: true, input: ["text"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           thinkingLevelMap: { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" },
         }] : [],
       ],
