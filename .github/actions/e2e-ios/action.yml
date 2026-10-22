@@ -20,12 +20,12 @@ runs:
         prefs=~/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences
         mkdir -p "$prefs"
         printf '%s' '<plist version="1.0"><dict><key>com.apple.CoreSimulator.CoreSimulatorBridge--&gt;hui</key><string>dev.hui.ios</string></dict></plist>' > "$prefs/com.apple.launchservices.schemeapproval.plist"
-        xcrun simctl bootstatus "HUI iPhone" -b
+        xcrun simctl bootstatus "$udid" -b
     # agent-device's XCTest runner, which it builds on first use.
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.agent-device
-        key: agent-device-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        key: agent-device-${{ runner.os }}-${{ hashFiles('package-lock.json', '.github/actions/e2e-ios/action.yml') }}
     # The unit tests install a Debug build, so they run before the Release build the suite uses.
     - shell: bash
       run: npm run ios:core
