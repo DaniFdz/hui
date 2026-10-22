@@ -3057,7 +3057,9 @@ PI's own extension runner, bound to the conversation:
   loaded their extensions again, or after 30 seconds.
 
 An extension that blocks the event loop holds up every session; PI's worker
-isolates each session's extensions in a process of its own.
+isolates each session's extensions in a process of its own. A models.json
+`!command` API key still runs on every request, as in PI, but HUI runs it
+without blocking, so a slow token command holds up only its own request.
 
 Compaction is Durable's too, with Durable's semantics where they differ from
 PI's. `/compact`, **Compact now** and the harness's own compactions (background

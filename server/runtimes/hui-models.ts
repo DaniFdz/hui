@@ -1,8 +1,11 @@
-/** HUI connections overlay PI's runtime without writing PI configuration. */
+/** HUI connections overlay PI's runtime without writing PI configuration, and its models.json `!command` keys run
+ * without blocking the process. */
+import { exec } from "node:child_process";
 import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import { promisify } from "node:util";
+import { ModelRuntime, type ModelRuntimeAuthOverrides } from "@earendil-works/pi-coding-agent";
 import { credentialStore, type CredentialStore, ProviderAccounts } from "../pi/provider-accounts.ts";
 import { accountRouting } from "./provider-account-routing.ts";
 import { CONFIG_DIR } from "../paths.ts";
@@ -30,6 +33,39 @@ export async function writeProviderSelections(selections: ProviderSelections, di
   await rename(temporary, join(dir, "models.json"));
 }
 
+const execAsync = promisify(exec);
+type AuthTarget = string | Parameters<ModelRuntime["getAuth"]>[0];
+
+async function keyCommands(agentDir: string, selections: ProviderSelections): Promise<Map<string, string>> {
+  let providers: unknown;
+  try { providers = (JSON.parse(await readFile(join(agentDir, "models.json"), "utf8")) as { providers?: unknown }).providers; }
+  catch { return new Map(); }
+  return new Map(Object.entries(providers ?? {}).flatMap(([id, config]) => {
+    const key: unknown = (config as { apiKey?: unknown } | null)?.apiKey;
+    return typeof key === "string" && key.startsWith("!") && !Object.hasOwn(selections, id) ? [[id, key.slice(1)] as const] : [];
+  }));
+}
+
+/** PI runs a models.json `!command` API key with execSync on every request (earendil-works/pi#11186). Durable
+ * sessions share the gateway's event loop, so each run froze every session and browser request, for seconds when
+ * the command is a token CLI. Run it per request as PI does, without blocking. On Windows PI picks a configured
+ * shell, so it keeps its own run there. */
+function runKeyCommandsAsync(runtime: ModelRuntime, commands: ReadonlyMap<string, string>): ModelRuntime {
+  if (process.platform === "win32") return runtime;
+  const getAuth = runtime.getAuth.bind(runtime) as (target: AuthTarget, overrides?: ModelRuntimeAuthOverrides) => ReturnType<ModelRuntime["getAuth"]>;
+  runtime.getAuth = (async (target: AuthTarget, overrides: ModelRuntimeAuthOverrides = {}) => {
+    const provider = typeof target === "string" ? target : target.provider;
+    const command = commands.get(provider);
+    if (command === undefined || overrides.apiKey !== undefined || runtime.getProviderAuthStatus(provider).source === "stored") return getAuth(target, overrides);
+    const run = execAsync(command, { timeout: 10_000 });
+    run.child.stdin?.end();
+    const apiKey = await run.then(({ stdout }) => stdout.trim(), () => "");
+    if (!apiKey) throw new Error(`Failed to resolve API key for provider "${provider}" from shell command: ${command}`);
+    return getAuth(target, { ...overrides, apiKey });
+  }) as ModelRuntime["getAuth"];
+  return runtime;
+}
+
 export function createHuiModelRuntime(dir = PROVIDERS_DIR) {
   return ModelRuntime.create({ authPath: join(dir, "auth.json"), modelsPath: null, allowModelNetwork: false });
 }
@@ -40,7 +76,8 @@ export function createHuiModelRuntime(dir = PROVIDERS_DIR) {
 export async function createSessionModelRuntime(agentDir: string, dir = PROVIDERS_DIR) {
   const selections = await readProviderSelections(dir);
   const pi = await ModelRuntime.create({ credentials: credentialStore(join(agentDir, "auth.json")), modelsPath: join(agentDir, "models.json") });
-  if (!Object.keys(selections).length) return pi;
+  const commands = await keyCommands(agentDir, selections);
+  if (!Object.keys(selections).length) return runKeyCommandsAsync(pi, commands);
   const managed = await createHuiModelRuntime(dir);
   const accounts = new ProviderAccounts(dir);
   const routing = await accountRouting(accounts);
@@ -67,5 +104,5 @@ export async function createSessionModelRuntime(agentDir: string, dir = PROVIDER
   }
   routing.install(combined, new Set(Object.keys(selections)));
   await combined.refresh({ allowNetwork: false });
-  return combined;
+  return runKeyCommandsAsync(combined, commands);
 }

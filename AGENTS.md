@@ -81,6 +81,7 @@ corrects a new kind of slowness, and enforce it with a type, check or test.
 | A session row draws its actions menu when it opens. | `src/views/shell.test.ts` "a session row draws its actions menu only once it opens…" |
 | Streamed frames redraw at most once per animation frame. | `src/controllers/conversation-controller.test.ts` "streamed text, thinking and tool output redraw…" |
 | An idle conversation redraws only for its clocks, and a poll assigns state only when it changed. | `src/hui-app.test.ts` "an idle conversation redraws for its clocks…" and "the main app's bot roster redraws…"; `src/controllers/settings-controller.test.ts` "the newest power read wins…" |
+| A model request never blocks the gateway's event loop, which every Durable session and browser request waits on: a models.json `!command` key runs asynchronously, once per request as in PI. | `server/runtimes/hui-models.test.ts` "a models.json key command runs while the event loop keeps going…" |
 | A change to what opening, streaming or listing a session sends or draws is measured on a slow link. | Judgment: the procedure and the last numbers are in `e2e/remote-loading.browser.md`. |
 
 ## Change Discipline
