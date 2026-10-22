@@ -1,9 +1,9 @@
 // The root screen: Connect until a gateway answers, then the session list with a stack of destinations. A
 // hui://open?path=<path> link is resolved by the core's resolveNavigation, as the web resolves its address bar, and
-// replaces that stack at once, as an address does; a link that arrives before the gateway connects opens once it does. The open screen's address is
-// kept in the preferences after its gateway's, so the app opens it again when it restarts against the same gateway, as
-// a reload keeps the web's address. Archiving or deleting the open session's tree from its menu returns to the list,
-// as the web returns Home.
+// replaces that stack at once, as an address does; a link that arrives before the gateway connects opens once it does.
+// The open screen's address is kept in the preferences after its gateway's, so the app opens it again when it restarts
+// against the same gateway, as a reload keeps the web's address. Archiving or deleting the open session's tree from its
+// menu returns to the list, as the web returns Home.
 import SwiftUI
 
 struct RootView: View {
@@ -56,11 +56,11 @@ struct RootView: View {
                 case .sessionsPage: "/sessions"
                 case nil: "/"
                 }
-                openSession = gateway.url + address
+                if path.last == last { openSession = gateway.url + address }
             }
         }
         .onChange(of: sessions.closed) {
-            if let open = path.last?.session, sessions.closed.contains(open) { path = [] }
+            if path.contains(where: { $0.session.map(sessions.closed.contains) == true }) { path = [] }
             sessions.closed = []
         }
         .onOpenURL { url in

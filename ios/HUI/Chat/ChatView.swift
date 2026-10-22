@@ -53,7 +53,7 @@ struct ChatView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let session = sessions.session(model.id) {
+            if let session = sessions.session(model.id) ?? model.session {
                 Menu {
                     SessionMenu(session: session, sessions: sessions, client: client, markdown: model.markdown)
                 } label: {
