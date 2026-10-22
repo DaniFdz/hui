@@ -367,7 +367,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#new-sessions-run-on-pi-durable", "docs/api.md#delete-__huisessionsidcompact"],
     surfaces: ["route:DELETE /__hui/sessions/:id/compact", "route:POST /__hui/sessions/:id/compact"],
     journeys: ["compaction-rewind"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {

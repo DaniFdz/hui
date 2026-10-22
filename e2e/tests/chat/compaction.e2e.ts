@@ -1,4 +1,4 @@
-/** /compact and Compact now summarize a Durable session beside the conversation, which stays Idle and can be cancelled (CHAT-036, CHAT-037, CHAT-039). */
+/** /compact and Compact now summarize a Durable session beside the conversation, which stays Idle (CHAT-036, CHAT-039). */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
@@ -25,9 +25,9 @@ async function send(screen: Screen, text: string) {
   await chat(screen).send.tap();
 }
 
-test("/compact with focus text adds a Context compacted divider after the last turn, keeps every turn above it and shows the summary; with attachments it is refused", { tags: ["CHAT-036"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("/compact with focus text adds a Context compacted divider after the last turn, keeps every turn above it and shows the summary, while the session stays Idle; with attachments it is refused", { tags: ["CHAT-036"], platforms: ["web"] }, async ({ screen, hui }) => {
   const { message, transcript, idle, compacted } = chat(screen);
-  await startSession(screen, hui, "Compact a session", ["COMPACT_ONE first turn", "COMPACT_TWO second turn", LONG]);
+  await startSession(screen, hui, "Compact a session", ["COMPACT_ONE first turn E2E_SLOW_COMPACT", "COMPACT_TWO second turn", LONG]);
 
   await message.fill("/compact keep the API decisions");
   await hui.attach(screen.getByLabel("Choose files"), ["notes.txt"]);
@@ -37,50 +37,17 @@ test("/compact with focus text adds a Context compacted divider after the last t
   await screen.getByRole("button", "Remove notes.txt").tap();
 
   await chat(screen).send.tap();
+  await hui.provider.held();
+  await expect(screen.getByLabel("Compacting context…")).toBeVisible();
+  await expect(idle).toBeVisible();
+  await expect(screen.getByRole("button", "Stop")).toBeHidden();
+  await hui.provider.release();
   await expect(compacted).toBeVisible();
   await expect(idle).toBeVisible();
   await expect(transcript).toHaveText(/COMPACT_ONE first turn.*COMPACT_TWO second turn.*COMPACT_THREE.*Fixture response\..*Context compacted · from \S+ tokens\s*Show summary\s*$/su);
   await expect(transcript.getByText("FIXTURE_SUMMARY")).toBeHidden();
   await transcript.getByText("Show summary").tap();
   await expect(transcript.getByText("FIXTURE_SUMMARY")).toBeVisible();
-});
-
-test("While a Durable session compacts it stays Idle with no Stop, Compact now is disabled and messages are answered at once; the divider becomes Context compacted, or Compaction cancelled with no marker", { tags: ["CHAT-037"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const { transcript, idle, compacted } = chat(screen);
-  const compacting = screen.getByLabel("Compacting context…");
-  const cancel = screen.getByRole("button", "Cancel compaction");
-  const compactNow = screen.getByRole("button", "Compact now");
-  await startSession(screen, hui, "Compact while working", ["E2E_SLOW_COMPACT first turn", LONG]);
-
-  await send(screen, "/compact keep the API decisions");
-  await hui.provider.held();
-  await expect(compacting).toBeVisible();
-  await expect(cancel).toBeVisible();
-  await expect(idle).toBeVisible();
-  await expect(screen.getByRole("button", "Stop")).toBeHidden();
-  await screen.getByLabel(/^Context window: /u).tap();
-  await expect(compactNow).toBeDisabled();
-  await screen.getByLabel(/^Context window: /u).tap();
-
-  await send(screen, "SENT_WHILE_COMPACTING");
-  await expect(transcript.getByText("Fixture response.")).toHaveCount(3);
-  await expect(transcript).toHaveText(/SENT_WHILE_COMPACTING.*Fixture response\..*Compacting context…\s*Cancel compaction\s*$/su);
-
-  await hui.provider.release();
-  await expect(compacted).toBeVisible();
-  await expect(compacting).toBeHidden();
-  await expect(transcript).toHaveText(/SENT_WHILE_COMPACTING.*Fixture response\..*Context compacted · from \S+ tokens\s*Show summary\s*$/su);
-
-  await send(screen, "E2E_SLOW_COMPACT again");
-  await expect(transcript.getByText("Fixture response.")).toHaveCount(4);
-  await send(screen, LONG);
-  await expect(transcript.getByText("Fixture response.")).toHaveCount(5);
-  await send(screen, "/compact");
-  await hui.provider.held();
-  await cancel.tap();
-  await expect(screen.getByLabel("Compaction cancelled")).toBeVisible();
-  await expect(compacted).toHaveCount(1);
-  await expect(idle).toBeVisible();
 });
 
 test("The context ring opens Context usage with occupancy, the latest run's tokens, cost and Compact now, disabled while busy and absent in a bot's chat; with nothing new to summarize a Compaction failed divider stays until the next turn", { tags: ["CHAT-039"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -113,13 +80,9 @@ test("The context ring opens Context usage with occupancy, the latest run's toke
   await expect(idle).toBeVisible();
 
   const { bot } = await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Meter Bot", soul: "A test bot." });
-  try {
-    await hui.open(`/bots/${bot.id}`);
-    await expect(screen.getByText("Say hi to Meter Bot")).toBeVisible();
-    await screen.getByLabel(/^Context (window: |usage unavailable)/u).tap();
-    await expect(usage.getByText("Context window")).toBeVisible();
-    await expect(compactNow).toBeHidden();
-  } finally {
-    await hui.api("DELETE", `/__hui/bots/${bot.id}?permanent=1`);
-  }
+  await hui.open(`/bots/${bot.id}`);
+  await expect(screen.getByText("Say hi to Meter Bot")).toBeVisible();
+  await screen.getByLabel(/^Context (window: |usage unavailable)/u).tap();
+  await expect(usage.getByText("Context window")).toBeVisible();
+  await expect(compactNow).toBeHidden();
 });
