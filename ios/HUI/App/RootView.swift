@@ -20,7 +20,9 @@ struct RootView: View {
                 NavigationStack(path: $path) {
                     SessionListView(sessions: sessions, notice: gateway.notice)
                         .navigationDestination(for: String.self) { id in
-                            SessionPlaceholderView(id: id, sessions: sessions)
+                            if let client = gateway.client {
+                                ChatView(id: id, client: client, core: core, title: sessions.session(id)?.title).id(id)
+                            }
                         }
                 }
             } else {

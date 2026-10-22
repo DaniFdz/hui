@@ -30,6 +30,21 @@ struct GatewayClient: Sendable {
         return try JSONDecoder().decode(Response.self, from: data)
     }
 
+    func post<Response: Decodable>(_ path: String, body: some Encodable = [String: String](), as _: Response.Type = Response.self) async throws -> Response {
+        var request = try request(path)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONEncoder().encode(body)
+        let (data, response) = try await reach(timeout: Self.responseTimeout) { try await URLSession.shared.data(for: request) }
+        try Self.check(response, path: path, body: data)
+        return try JSONDecoder().decode(Response.self, from: data)
+    }
+
+    var origin: String {
+        let port = baseURL.port.map { ":\($0)" } ?? ""
+        return "\(baseURL.scheme ?? "http")://\(baseURL.host() ?? "")\(port)"
+    }
+
     func stream(_ path: String) async throws -> URLSession.AsyncBytes {
         var request = try request(path, timeout: Self.streamStallTimeout)
         request.setValue("text/event-stream", forHTTPHeaderField: "accept")

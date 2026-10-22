@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { codemodeSummary, codemodeToolPresentation, formatCallDuration } from "./codemode-tool-card.ts";
+import { codemodeSummary, codemodeToolPresentation, formatCallDuration } from "../../lib/tool-cards.ts";
 
 const code = 'await tools.read({ path: "a.ts" });';
 const read = (status: string, extra: Record<string, unknown> = {}) => ({ name: "read", args: '{"path":"a.ts"}', status, ...extra });
