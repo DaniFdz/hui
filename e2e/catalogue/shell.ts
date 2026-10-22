@@ -96,7 +96,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "openclaw-primary-ui-parity", "visual-parity-2026-09-24", "sidebar-toolbar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -116,7 +116,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: [],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Resizing a browser window; the iPhone app is always narrow.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {

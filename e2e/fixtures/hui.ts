@@ -16,9 +16,9 @@
  * On iOS it relaunches the app pointed at the gateway, follows a `hui://open` link instead of loading a page, and
  * clears the app's preferences through `defaults` before the engine empties its data container, because `cfprefsd`
  * would otherwise hand the relaunched app the deleted values; the web-only steps throw. On the web it also goes Back and
- * Forward through the browser's history, sizes the window as a phone held upright or sideways, and tells whether the
- * page or its main area scrolls sideways and whether a tap at a control's centre reaches it (nothing covers it and it
- * is not inert). Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or
+ * Forward through the browser's history, sizes the window as a phone held upright or sideways or as the desktop, and tells whether the
+ * page, its main area or the sidebar overflows sideways and whether a tap at a control's centre reaches it (nothing
+ * covers it and it is not inert). Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or
  * `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -59,6 +59,7 @@ export type Hui = {
   clearState(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
+  wideScreen(): Promise<void>;
   back(): Promise<void>;
   forward(): Promise<void>;
   overflowsSideways(): Promise<boolean>;
@@ -178,20 +179,27 @@ export const test = base.extend<{ hui: Hui }>({
         await browser().setViewport(phone);
         return phone;
       },
-      overflowsSideways: () => browser().evaluate(() => [document.documentElement, document.querySelector(".main")]
-        .some((element) => element !== null && element.scrollWidth > element.clientWidth)),
+      overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
+        .some((element) => element.scrollWidth > element.clientWidth)),
       reachable: async (target) => {
+        await target.scrollIntoView();
         const box = await target.boundingBox();
         if (!box) throw new Error("reachable: the target lays out no box");
         return browser().evaluate(({ x, y, width, height }) => {
           const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
-          for (let element = document.elementFromPoint(x + width / 2, y + height / 2); element; element = element.parentElement) {
+          const [cx, cy] = [x + width / 2, y + height / 2];
+          let hit = document.elementFromPoint(cx, cy);
+          for (let inner = hit?.shadowRoot?.elementFromPoint(cx, cy); inner && inner !== hit; inner = hit.shadowRoot?.elementFromPoint(cx, cy)) hit = inner;
+          let matched = false;
+          for (let element = hit; element; element = element.parentElement ?? (element.getRootNode() as ShadowRoot).host ?? null) {
+            if (element.hasAttribute("inert")) return false;
             const rect = element.getBoundingClientRect();
-            if (same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height)) return element.closest("[inert]") === null;
+            matched ||= same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
           }
-          return false;
+          return matched;
         }, box);
       },
+      wideScreen: () => browser().setViewport({ width: 1440, height: 900 }),
       back: () => browser().back(),
       forward: () => browser().forward(),
       peek: (target) => target.hover(),
