@@ -11,6 +11,7 @@ test("number keys, arrows, Space and Enter answer the card, and Escape declines 
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const row = (role: "radio" | "checkbox", label: string) => card.getByRole(role, new RegExp(`^${label} `, "u"));
+  const typed = card.getByRole("textbox", "Your own answer");
   const session = await hui.createSession({ title: "Keyboard answers" });
   await hui.open(`/sessions/${session.id}`);
   await screen.getByLabel("Message").fill(ask([
@@ -23,6 +24,10 @@ test("number keys, arrows, Space and Enter answer the card, and Escape declines 
   await expect(row("radio", "Reading")).toBeFocused();
   await row("radio", "Reading").press("2");
   await expect(row("radio", "Writing")).toBeChecked();
+  await expect(row("radio", "Writing")).toBeFocused();
+  await row("radio", "Writing").press("3");
+  await expect(typed).toBeFocused();
+  await typed.press("ArrowUp");
   await expect(row("radio", "Writing")).toBeFocused();
   await row("radio", "Writing").press("ArrowUp");
   await expect(row("radio", "Reading")).toBeFocused();
@@ -41,10 +46,10 @@ test("number keys, arrows, Space and Enter answer the card, and Escape declines 
   await row("checkbox", "Unit tests").press("ArrowLeft");
   await expect(card.getByText("1/3")).toBeVisible();
   await expect(row("radio", "Writing")).toBeFocused();
-  await row("radio", "Writing").press("ControlOrMeta+Enter");
+  await row("radio", "Writing").press("Enter");
   await expect(card.getByText("2/3")).toBeVisible();
   await expect(row("checkbox", "Lint")).toBeFocused();
-  await row("checkbox", "Lint").press("Enter");
+  await card.getByRole("button", "Back").press("ControlOrMeta+Enter");
   await expect(card.getByText("3/3")).toBeVisible();
   await expect(row("radio", "Staging")).toBeFocused();
   await row("radio", "Staging").press("ArrowDown");
@@ -55,7 +60,6 @@ test("number keys, arrows, Space and Enter answer the card, and Escape declines 
 
   await screen.getByLabel("Message").fill(ask([{ header: "Scope", question: "What should the next release cover?", options: ["Reading", "Writing"] }]));
   await screen.getByRole("button", "Send message").tap();
-  const typed = card.getByRole("textbox", "Your own answer");
   await typed.fill("Only the API");
   await typed.press("Escape");
   await expect(row("radio", "Reading")).toBeFocused();
