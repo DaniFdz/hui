@@ -51,6 +51,7 @@ final class SessionsModel {
     private(set) var archiveToast: ArchiveToast?
     var closed: Set<String> = []
     var removing: API.SessionView?
+    var renaming = ""
     var selected = "" {
         didSet { if selected != oldValue { reproject() } }
     }

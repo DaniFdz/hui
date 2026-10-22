@@ -69,6 +69,9 @@ struct RootView: View {
                 }
             }
         }
+        .onChange(of: sessions.renaming) {
+            if !sessions.renaming.isEmpty, path.last?.session != sessions.renaming { path = [.session(sessions.renaming)] }
+        }
         .onChange(of: sessions.closed) {
             if path.contains(where: { $0.session.map(sessions.closed.contains) == true }) { path = [] }
             if sessions.closed.contains(sessions.selected) { sessions.selected = "" }

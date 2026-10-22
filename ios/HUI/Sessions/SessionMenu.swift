@@ -1,5 +1,5 @@
 // The web's session menu for one session, shared by a row's touch-and-hold menu and the chat's toolbar: Pin or Unpin,
-// Mark as read or unread, Archive, Move to group, Copy (Session link, Session ID and, for the open conversation,
+// Rename… (which opens the session with its title as a Session name field), Mark as read or unread, Archive, Move to group, Copy (Session link, Session ID and, for the open conversation,
 // Conversation as Markdown) and Delete…. `SessionNotices` puts its notices, the archive toast and the Delete…
 // confirmation on every screen of the stack.
 import SwiftUI
@@ -14,6 +14,9 @@ struct SessionMenu: View {
     var body: some View {
         Button(session.pinned == true ? "Unpin session" : "Pin session", systemImage: "pin") {
             Task { await sessions.update(session.id, ["pinned": .bool(session.pinned != true)], client: client) }
+        }
+        Button("Rename…", systemImage: "pencil") {
+            sessions.renaming = session.id
         }
         Button(session.unread == true ? "Mark as read" : "Mark as unread", systemImage: "circle") {
             Task { await sessions.setUnread(session, client: client) }

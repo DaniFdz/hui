@@ -51,7 +51,7 @@ test("the session menu's Pin session keeps a row first in every sort with a Pinn
   await expect.poll(order).toEqual(["Mike menu", "Alpha menu", "Zulu menu"]);
 });
 
-test("Rename… opens the session's title as a Session name field that saves on Enter or leaving it and cancels on Escape or an empty name", { tags: ["SESS-032"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Rename… opens the session's title as a Session name field that saves on leaving it, cancels an empty name and keeps the title across a reload", { tags: ["SESS-032"] }, async ({ screen, hui }) => {
   const name = screen.getByLabel("Session name");
   const heading = screen.getByTestId("session-title", { visible: true });
   const row = (title: string) => screen.getByLabel(`${title}, status idle, tool durable, stage investigation`);
@@ -65,32 +65,55 @@ test("Rename… opens the session's title as a Session name field that saves on 
 
   await hui.open(`/sessions/${other.id}`);
   await expect(heading).toHaveText("Somewhere else");
+  await hui.sessionList();
   await rename("Rename me");
   await expect.poll(() => hui.url()).toMatch(new RegExp(`/sessions/${session.id}$`, "u"));
+  await name.fill("Renamed on leaving");
+  await screen.getByLabel("Message", { visible: true }).tap();
+  await expect(heading).toHaveText("Renamed on leaving");
+  await hui.sessionList();
+  await expect(row("Renamed on leaving")).toBeVisible();
+
+  await hui.open(`/sessions/${session.id}`);
+  await rename("Renamed on leaving");
+  await name.fill("   ");
+  await screen.getByLabel("Message", { visible: true }).tap();
+  await expect(name).toBeHidden();
+  await expect(heading).toHaveText("Renamed on leaving");
+
+  await hui.reload();
+  await expect(heading).toHaveText("Renamed on leaving");
+  await hui.sessionList();
+  await expect(row("Renamed on leaving")).toBeVisible();
+  await expect(row("Rename me")).toBeHidden();
+});
+
+test("the Session name field saves on Enter and cancels on Escape or an empty name", { tags: ["SESS-032"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const name = screen.getByLabel("Session name");
+  const heading = screen.getByTestId("session-title", { visible: true });
+  const row = (title: string) => screen.getByLabel(`${title}, status idle, tool durable, stage investigation`);
+  const rename = async (title: string) => {
+    await hui.sessionMenu(title);
+    await screen.getByText("Rename…", { visible: true }).tap();
+    await expect(name).toHaveValue(title);
+  };
+  const session = await hui.createSession({ title: "Rename me" });
+
+  await hui.open(`/sessions/${session.id}`);
+  await rename("Rename me");
   await name.fill("Renamed with Enter");
   await name.press("Enter");
   await expect(heading).toHaveText("Renamed with Enter");
   await expect(row("Renamed with Enter")).toBeVisible();
 
   await rename("Renamed with Enter");
-  await name.fill("Renamed on leaving");
-  await screen.getByLabel("Message", { visible: true }).tap();
-  await expect(heading).toHaveText("Renamed on leaving");
-  await expect(row("Renamed on leaving")).toBeVisible();
-
-  await rename("Renamed on leaving");
   await name.fill("Not kept");
   await name.press("Escape");
   await expect(name).toBeHidden();
-  await expect(heading).toHaveText("Renamed on leaving");
-  await rename("Renamed on leaving");
+  await expect(heading).toHaveText("Renamed with Enter");
+  await rename("Renamed with Enter");
   await name.fill("   ");
   await name.press("Enter");
   await expect(name).toBeHidden();
-  await expect(heading).toHaveText("Renamed on leaving");
-
-  await hui.reload();
-  await expect(heading).toHaveText("Renamed on leaving");
-  await expect(row("Renamed on leaving")).toBeVisible();
-  await expect(row("Rename me")).toBeHidden();
+  await expect(heading).toHaveText("Renamed with Enter");
 });

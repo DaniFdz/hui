@@ -1,5 +1,6 @@
 // The chat screen for one session, named as the web's chat names its controls: the toolbar's "Actions for <title>"
-// session menu (`SessionMenu`, with Conversation as Markdown), the header (the title as a heading,
+// session menu (`SessionMenu`, with Conversation as Markdown), the header (the title as a heading, or the Session name
+// field while Rename… is on: leaving it or Return saves a trimmed, non-empty title, as the web's commits on blur or Enter;
 // "Session status: …" from the core's label), the transcript of the core's rows anchored at the bottom, activity rows
 // that open to their thinking and tool cards (`ToolCardView`), the working indicator ("Agent activity: …"), the message
 // queue and the composer (Message and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
@@ -20,6 +21,8 @@ struct ChatView: View {
     @State private var following = true
     @State private var nearBottom = true
     @FocusState private var composing: Bool
+    @FocusState private var naming: Bool
+    @State private var name = ""
 
     init(id: String, client: GatewayClient, core: HUICore, sessions: SessionsModel) {
         self.core = core
@@ -68,10 +71,24 @@ struct ChatView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(model.session?.title ?? sessions.session(model.id)?.title ?? "")
-                .font(.headline)
-                .accessibilityIdentifier("session-title")
-                .accessibilityAddTraits(.isHeader)
+            if sessions.renaming == model.id {
+                TextField("Session name", text: $name)
+                    .font(.headline)
+                    .accessibilityLabel("Session name")
+                    .focused($naming)
+                    .submitLabel(.done)
+                    .onSubmit(rename)
+                    .onChange(of: naming) { if !naming { rename() } }
+                    .task {
+                        name = title
+                        naming = true
+                    }
+            } else {
+                Text(title)
+                    .font(.headline)
+                    .accessibilityIdentifier("session-title")
+                    .accessibilityAddTraits(.isHeader)
+            }
             if !model.statusLabel.isEmpty {
                 Text(model.statusLabel)
                     .font(.caption)
@@ -85,6 +102,18 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal)
         .padding(.vertical, 8)
+    }
+
+    private var title: String {
+        sessions.session(model.id)?.title ?? model.session?.title ?? ""
+    }
+
+    private func rename() {
+        guard sessions.renaming == model.id else { return }
+        sessions.renaming = ""
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != title else { return }
+        Task { await sessions.update(model.id, ["title": .string(trimmed)], client: client) }
     }
 
     private var transcript: some View {
