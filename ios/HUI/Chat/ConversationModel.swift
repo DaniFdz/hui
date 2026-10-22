@@ -4,7 +4,8 @@
 // reduces the transcript and projects its rows, held under a handle this model mints, so a reopened session's next
 // model never shares it; a generation number keeps a late answer from reaching the core or overwriting a newer one, and
 // stopping cancels the socket's receive. Sending reuses a failed send's request id through the core's `SendRequests`.
-// A failed send stays in the transcript marked failed, and hands its text back for the draft, as the web's composer
+// A failed send stays in the transcript marked failed, added again if a snapshot replaced it meanwhile, and hands its
+// text back for the draft; a resend the gateway answers as a duplicate drops both local copies, as the web's composer
 // does.
 import Foundation
 import Observation
@@ -72,17 +73,19 @@ final class ConversationModel {
         do {
             guard current == generation else { return false }
             show(try await core.transcript(handle, pending: pending, text: text))
-            let requestId = try await core.takeRequestId(id, text: text)
+            let request = try await core.takeRequestId(id, text: text)
             do {
-                let _: API.SessionPromptResponse = try await client.post(path("prompt"), body: PromptRequest(text: text, requestId: requestId))
+                let answer: API.SessionPromptResponse = try await client.post(path("prompt"), body: PromptRequest(text: text, requestId: request.requestId))
                 guard current == generation else { return true }
-                show(try await core.transcript(handle, settle: pending, accepted: true))
+                show(try await answer.duplicate == true
+                    ? core.transcript(handle, duplicate: pending, earlierRow: request.earlierRow)
+                    : core.transcript(handle, accepted: pending))
                 return true
             } catch {
-                try await core.sendFailed(id, requestId: requestId, text: text)
+                try await core.sendFailed(id, requestId: request.requestId, text: text, row: pending)
                 sendError = error.localizedDescription
                 guard current == generation else { return false }
-                show(try await core.transcript(handle, settle: pending, accepted: false))
+                show(try await core.transcript(handle, failed: pending, text: text))
                 return false
             }
         } catch {

@@ -21,7 +21,7 @@ import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts"
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
 import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
-import { appendPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
+import { appendPendingUser, dropDuplicateSend, failPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
 
@@ -661,8 +661,7 @@ export class ComposerController {
     void request(session.id, trimmed, attachments, requestId)
       .then(({ duplicate }) => {
         if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
-        // The gateway had the first attempt all along: its message is in the session, so drop the local copies.
-        if (duplicate) this.#conversation.transcript = this.#conversation.transcript.filter((item) => item.id !== pendingId && item.id !== earlierRow);
+        if (duplicate) this.#conversation.transcript = dropDuplicateSend(this.#conversation.transcript, pendingId, earlierRow);
         else if (mode === "prompt") this.#conversation.transcript = settlePendingUser(this.#conversation.transcript, pendingId, true);
         this.#conversation.streaming = streamingAfterSubmission(
           this.#conversation.streaming,
@@ -675,9 +674,7 @@ export class ComposerController {
       .catch(async (error: unknown) => {
         this.#sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
         const stillSelected = isSelectedSession(session.id, this.#conversation.selected?.id);
-        // The gateway's snapshots may have replaced the local row and then withdrawn theirs: show it failed again.
-        if (stillSelected && mode === "prompt") this.#conversation.transcript = settlePendingUser(this.#conversation.transcript.some((item) => item.id === pendingId)
-          ? this.#conversation.transcript : appendPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments), pendingId, false);
+        if (stillSelected && mode === "prompt") this.#conversation.transcript = failPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments);
         this.#host.requestUpdate();
         const stored = stillSelected
           ? { text: this.draft, attachments: this.attachments }

@@ -90,8 +90,16 @@ actor HUICore {
         try project(handle, invoke("appendPendingUser", [items(handle), id, text, json([String]())]))
     }
 
-    func transcript(_ handle: String, settle id: String, accepted: Bool) throws -> ChatProjection {
-        try project(handle, invoke("settlePendingUser", [items(handle), id, accepted]))
+    func transcript(_ handle: String, accepted id: String) throws -> ChatProjection {
+        try project(handle, invoke("settlePendingUser", [items(handle), id, true]))
+    }
+
+    func transcript(_ handle: String, failed id: String, text: String) throws -> ChatProjection {
+        try project(handle, invoke("failPendingUser", [items(handle), id, text, json([String]())]))
+    }
+
+    func transcript(_ handle: String, duplicate id: String, earlierRow: String?) throws -> ChatProjection {
+        try project(handle, invoke("dropDuplicateSend", [items(handle), id, earlierRow ?? JSValue(undefinedIn: context) as Any]))
     }
 
     func markdownTokens(_ source: String, agent: Bool) throws -> [MarkdownToken] {
@@ -102,13 +110,12 @@ actor HUICore {
         transcripts[handle] = nil
     }
 
-    func takeRequestId(_ session: String, text: String) throws -> String {
-        let answer: RequestId = try decode(invoke("take", [session, text, json([String]())], on: requests()))
-        return answer.requestId
+    func takeRequestId(_ session: String, text: String) throws -> RequestId {
+        try decode(invoke("take", [session, text, json([String]())], on: requests()))
     }
 
-    func sendFailed(_ session: String, requestId: String, text: String) throws {
-        _ = try invoke("failed", [session, requestId, text, json([String]())], on: requests())
+    func sendFailed(_ session: String, requestId: String, text: String, row: String) throws {
+        _ = try invoke("failed", [session, requestId, text, json([String]()), row], on: requests())
     }
 
     private func items(_ handle: String) throws -> JSValue {
@@ -178,8 +185,9 @@ struct ChatProjection: Equatable, Sendable {
     var working: String
 }
 
-private struct RequestId: Decodable {
+struct RequestId: Decodable, Sendable {
     var requestId: String
+    var earlierRow: String?
 }
 
 struct SSEFrame: Decodable, Sendable {

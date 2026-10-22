@@ -1,6 +1,7 @@
 // One session's conversation against a stubbed gateway (its open, connect and prompt routes) and scripted sockets:
 // tickets per connect, the Origin header, the snapshot replacing the transcript, streamed events, reconnects, 429,
-// close code 4404, and a stopped model closing its socket without touching the core again.
+// close code 4404, a stopped model closing its socket without touching the core again, and a failed send and its
+// resend.
 import Foundation
 import Synchronization
 import Testing
@@ -81,21 +82,62 @@ struct ConversationModelTests {
 
     @Test func aFailedSendKeepsItsRequestIdForTheResend() async throws {
         let core = try HUICore.bundled()
-        let first = try await core.takeRequestId("a", text: "Hi")
-        try await core.sendFailed("a", requestId: first, text: "Hi")
-        #expect(try await core.takeRequestId("a", text: "Hi") == first)
-        #expect(try await core.takeRequestId("a", text: "Hi") != first)
+        let first = try await core.takeRequestId("a", text: "Hi").requestId
+        try await core.sendFailed("a", requestId: first, text: "Hi", row: "user-1")
+        let resend = try await core.takeRequestId("a", text: "Hi")
+        #expect(resend.requestId == first)
+        #expect(resend.earlierRow == "user-1")
+        #expect(try await core.takeRequestId("a", text: "Hi").requestId != first)
+    }
+
+    @Test func aSnapshotDuringAFailedSendStillShowsItFailed() async throws {
+        let model = try await failSend(withSnapshot: [])
+        defer { model.stop() }
+        #expect(messages(model) == [Shown(text: "Hi", failed: true)])
+    }
+
+    @Test func aFailedSendThenADuplicateResendLeavesOneMessage() async throws {
+        let model = try await failSend(withSnapshot: [user("g1", "Hi")], prompt: [(200, Data(#"{"ok":true,"duplicate":true}"#.utf8))])
+        defer { model.stop() }
+        #expect(messages(model) == [Shown(text: "Hi"), Shown(text: "Hi", failed: true)])
+        #expect(await model.send("Hi"))
+        #expect(messages(model) == [Shown(text: "Hi")])
+    }
+
+    private struct Shown: Equatable {
+        var text: String
+        var failed = false
+    }
+
+    private func messages(_ model: ConversationModel) -> [Shown] {
+        model.rows.flatMap { $0.messages ?? [] }.map { Shown(text: $0.text ?? "", failed: $0.failed == true) }
+    }
+
+    private func failSend(withSnapshot entries: [String], prompt: [(status: Int, body: Data)] = []) async throws -> ConversationModel {
+        let sockets = Sockets([[snapshot([])]], hold: true)
+        let (model, host) = try start(sockets, prompt: [(503, Data(#"{"error":"The runtime is not ready yet."}"#.utf8))] + prompt)
+        try await until { model.phase == .open && sockets.opened.first?.waiting == true }
+        GatewayStub.hold(host, "/__hui/sessions/a/prompt")
+        let sent = Task { await model.send("Hi") }
+        try await until { GatewayStub.held(host) == 1 && model.rows.count == 1 }
+        sockets.opened[0].deliver(snapshot(entries))
+        try await until { messages(model).count == entries.count && model.rows.allSatisfy { $0.messages?.allSatisfy { $0.pending != true } ?? true } }
+        GatewayStub.release(host)
+        #expect(await sent.value == false)
+        #expect(model.sendError == "The runtime is not ready yet.")
+        return model
     }
 
     private var ticket: (status: Int, body: Data) { (200, Data(#"{"url":"/__hui/sessions/a/stream?ticket=t"}"#.utf8)) }
 
-    private func start(_ sockets: Sockets, core: HUICore? = nil, open: [(status: Int, body: Data)]? = nil, connect: [(status: Int, body: Data)]? = nil) throws -> (ConversationModel, String) {
+    private func start(_ sockets: Sockets, core: HUICore? = nil, open: [(status: Int, body: Data)]? = nil, connect: [(status: Int, body: Data)]? = nil, prompt: [(status: Int, body: Data)] = []) throws -> (ConversationModel, String) {
         let host = "\(UUID().uuidString.lowercased()).stub.test"
         let session = try JSONDecoder().decode(API.SessionList.self, from: fixture("sessions.json")).groups[0].sessions[0]
         let opened = #"{"session":\#(String(decoding: try JSONEncoder().encode(session), as: UTF8.self)),"transcript":[],"snapshot":\#(snapshotData([]))}"#
         GatewayStub.serve(host, routes: [
             "/__hui/sessions/a/open": open ?? [(200, Data(opened.utf8))],
             "/__hui/sessions/a/connect": connect ?? [ticket],
+            "/__hui/sessions/a/prompt": prompt,
         ])
         let model = ConversationModel(id: "a", client: GatewayClient(baseURL: URL(string: "http://\(host):4100")!), core: try core ?? HUICore.bundled(), connector: sockets.connect)
         model.start()

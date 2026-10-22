@@ -41,6 +41,11 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     appendPendingUser: () => assert.equal(core.appendPendingUser([], "p", "Hi", []).at(-1)?.kind, "message"),
     settlePendingUser: () => assert.deepEqual(
       json(core.settlePendingUser(core.appendPendingUser([], "p", "Hi", []), "p", false).map((item) => item.kind === "message" && item.failed)), [true]),
+    failPendingUser: () => assert.deepEqual(
+      json(core.failPendingUser([], "p", "Hi", []).map((item) => item.kind === "message" && [item.id, item.failed])), [["p", true]]),
+    dropDuplicateSend: () => assert.deepEqual(
+      json(core.dropDuplicateSend(core.appendPendingUser(core.appendPendingUser([{ kind: "message", id: "g", role: "user", text: "Hi" }], "e", "Hi", []), "p", "Hi", []), "p", "e")
+        .map((item) => item.id)), ["g"]),
     chatRows: () => assert.deepEqual(json(core.chatRows([
       { kind: "message", id: "u", role: "user", text: "Hi" },
       { kind: "tool", id: "t", name: "read", args: { path: "/w/a.txt" }, status: "succeeded" },

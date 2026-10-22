@@ -8,7 +8,7 @@ export { decodeSseFrame, reconnectDelay } from "../../src/lib/event-stream.ts";
 export { sessionAccessibleName, sessionStatusLabel, sessionStatusText } from "../../src/lib/session/labels.ts";
 export { sessionGroupLabel } from "../../src/lib/session/sessions.ts";
 export { DEFAULT_SIDEBAR_SESSION_OPTIONS, sessionTreeRows, sidebarSessionGroups } from "../../src/lib/session/sidebar-sessions.ts";
-export { appendPendingUser, normalizeTranscript, reduceTranscript, settlePendingUser } from "../../src/lib/transcript-state.ts";
+export { appendPendingUser, dropDuplicateSend, failPendingUser, normalizeTranscript, reduceTranscript, settlePendingUser } from "../../src/lib/transcript-state.ts";
 export { workingLabel } from "../../src/lib/chat-projection.ts";
 export { chatRows } from "../../src/lib/chat-rows.ts";
 export { SendRequests } from "../../src/lib/composer/send-requests.ts";

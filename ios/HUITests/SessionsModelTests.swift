@@ -1,5 +1,6 @@
 // The live session list against a stubbed gateway: the recorded sessions.json and a scripted events stream, served
-// by a URLProtocol on a host of each test's own, which also serves other tests' scripted routes.
+// by a URLProtocol on a host of each test's own, which also serves other tests' scripted routes and can hold a request
+// until a test releases it.
 import Foundation
 import Synchronization
 import Testing
@@ -79,12 +80,14 @@ struct SessionsModelTests {
     }
 }
 
-final class GatewayStub: URLProtocol {
+final class GatewayStub: URLProtocol, @unchecked Sendable {
     private struct Host {
         var list = Data()
         var events = Data()
         var routes: [String: [(status: Int, body: Data)]] = [:]
         var paths: [String] = []
+        var held: Set<String> = []
+        var waiting: [GatewayStub] = []
     }
 
     private static let hosts = Mutex<[String: Host]>([:])
@@ -104,6 +107,22 @@ final class GatewayStub: URLProtocol {
         hosts.withLock { $0[host]?.paths ?? [] }
     }
 
+    static func hold(_ host: String, _ path: String) {
+        hosts.withLock { _ = $0[host]?.held.insert(path) }
+    }
+
+    static func held(_ host: String) -> Int {
+        hosts.withLock { $0[host]?.waiting.count ?? 0 }
+    }
+
+    static func release(_ host: String) {
+        let waiting = hosts.withLock { hosts in
+            defer { hosts[host]?.waiting = [] }
+            return hosts[host]?.waiting ?? []
+        }
+        for request in waiting { request.startLoading() }
+    }
+
     override class func canInit(with request: URLRequest) -> Bool {
         guard let host = request.url?.host() else { return false }
         return hosts.withLock { $0[host] != nil }
@@ -115,6 +134,10 @@ final class GatewayStub: URLProtocol {
         guard let url = request.url, let host = url.host() else { return }
         let path = url.path()
         let (served, route) = Self.hosts.withLock { hosts -> (Host?, (status: Int, body: Data)?) in
+            if hosts[host]?.held.remove(path) != nil {
+                hosts[host]?.waiting.append(self)
+                return (nil, nil)
+            }
             hosts[host]?.paths.append(path)
             let route = hosts[host]?.routes[path]?.first
             if (hosts[host]?.routes[path]?.count ?? 0) > 1 { hosts[host]?.routes[path]?.removeFirst() }
