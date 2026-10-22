@@ -8,7 +8,7 @@ test("a fresh app connects to the address typed on Connect to HUI, remembers it 
   await hui.open("/");
   await expect(row).toBeVisible();
 
-  await app.clearState();
+  await hui.clearState();
   await expect(screen.getByText("Connect to HUI")).toBeVisible();
   await screen.getByRole("button", "Connect").tap();
   await expect(screen.getByText("Enter the gateway's address, such as http://127.0.0.1:4000.")).toBeVisible();

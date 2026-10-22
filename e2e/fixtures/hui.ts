@@ -8,11 +8,13 @@
  * looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
  * keyboard), and a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory) that it removes at teardown. On iOS it relaunches the app pointed at the gateway and follows a
- * `hui://open` link instead of loading a page, and the web-only steps throw. Test files import `test` from here, never
+ * `sub` directory) that it removes at teardown. On iOS it relaunches the app pointed at the gateway, follows a
+ * `hui://open` link instead of loading a page, and clears the app's preferences through `defaults` before the engine
+ * empties its data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the
+ * web-only steps throw. Test files import `test` from here, never
  * from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,6 +43,7 @@ export type Hui = {
   provider: { held(): Promise<void>; release(): Promise<void> };
   open(path: string): Promise<void>;
   reload(): Promise<void>;
+  clearState(): Promise<void>;
   url(): Promise<string>;
   phoneScreen(): Promise<{ width: number; height: number }>;
   clipboard(options?: { refuse?: boolean }): Promise<void>;
@@ -102,6 +105,15 @@ export const test = base.extend<{ hui: Hui }>({
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
     const device = () => (fixtures as unknown as { device: Device }).device;
     const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", receipt.url] });
+    const clearState = async () => {
+      if (!web) {
+        await device().closeApp();
+        const container = execFileSync("xcrun", ["simctl", "get_app_container", "HUI iPhone", "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
+        const forget = spawnSync("xcrun", ["simctl", "spawn", "HUI iPhone", "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
+        if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
+      }
+      await fixtures.app.clearState();
+    };
     const notOnIos = (step: string) => () => {
       throw new Error(`hui.${step} is not on iOS yet; keep the test on platforms: ['web']`);
     };
@@ -110,11 +122,11 @@ export const test = base.extend<{ hui: Hui }>({
     const existingGroups = new Set((await groups()).map((group) => group.label));
     const existingTasks = new Set(await taskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
-    await fixtures.app.clearState();
+    await clearState();
     if (!web) await launch();
     const repositories: string[] = [];
 
-    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "repository"> = {
+    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "clearState" | "repository"> = {
       url: () => browser().url(),
       clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
         const page = window as unknown as { huiCopied: string };
@@ -289,6 +301,7 @@ export const test = base.extend<{ hui: Hui }>({
         await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
       },
       reload: () => (web ? browser().reload() : fixtures.app.restart()),
+      clearState,
       repository: async () => {
         const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
         repositories.push(path);

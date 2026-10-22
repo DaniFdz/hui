@@ -123,12 +123,13 @@ test("every shared test names known use cases, and a skipped one covers only use
   assert.deepEqual(problems, []);
 });
 
-test("shared tests use no agent steps, retries, skips, platform reads or sleeps, and the fixture doesn't sleep", () => {
+test("shared tests use no agent steps, retries, skips, platform reads, app.clearState() or sleeps, and the fixture doesn't sleep", () => {
   const sleep: [RegExp, string] = [/\b(?:setTimeout|setInterval|waitForTimeout|sleep|delay)\s*\(/u, "a sleep"];
   const forbidden: [RegExp, string][] = [
     [/\bagent\b/u, "an agent step"],
     [/\bretries\b/u, "retries"],
     [/\.skip\(/u, "test.skip("],
+    [/\bapp\.clearState\(/u, "app.clearState(), which leaves the iOS app's preferences behind; use hui.clearState()"],
     [/\b(?:platform|device|browser)\b/u, "a platform, device or browser read, which only e2e/fixtures/hui.ts may do"],
     sleep,
   ];
