@@ -49,9 +49,10 @@ locally, create and boot the simulator once (the commands are in `../ios/AGENTS.
 `dev.hui.ios` with `-HUIGatewayURL <gateway>` and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
 `hui.reload`, deletes the app's preferences through `defaults` before each test (the app keeps nothing else) and also
 empties its data container through the engine for `hui.clearState` (a test never calls `app.clearState()`, whose
-deleted preferences `cfprefsd` can still hand the relaunched app), long-presses for `hui.hold`, and throws "not on iOS
-yet" from the steps only the web engine has (hover, request interception, the clipboard, glyphs, looks and the rest),
-so a test that needs one keeps `platforms: ['web']`. A device reports no text for a container, only its label, so a
+deleted preferences `cfprefsd` can still hand the relaunched app), long-presses for `hui.hold` and `hui.contextMenu`,
+empties and reads the simulator's pasteboard (`simctl pbcopy`, `pbpaste`) for `hui.clipboard` and `hui.copied`, and
+throws "not on iOS yet" from the steps only the web engine has (hover, request interception, a refused clipboard,
+glyphs, looks and the rest), so a test that needs one keeps `platforms: ['web']`. A device reports no text for a container, only its label, so a
 test reads a container's text in order with `hui.textOf(container)` (on iOS its texts and control labels joined)
 rather than `toHaveText` on the container.
 

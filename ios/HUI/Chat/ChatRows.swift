@@ -1,8 +1,9 @@
 // The chat's view models as the core's `chatRows` returns them (src/lib/chat-rows.ts): transcript items
 // (`TranscriptItem` in src/api/sessions.ts) grouped into rows, each row and item with a unique `key`, activity rows with
-// their labels and tool items with their cards. Mirrored by hand, so scripts/ios-contract.test.mjs checks both kind
-// enums against the TypeScript unions. A kind a newer gateway adds is logged, decodes as `unrecognized` and draws
-// nothing, and a row that fails to decode is logged and left out, so the rest of the chat keeps working.
+// their labels and tool items with their cards and printed input. Mirrored by hand, so scripts/ios-contract.test.mjs
+// checks both kind enums against the TypeScript unions. A kind a newer gateway adds is logged, decodes as
+// `unrecognized` and draws nothing, and a row that fails to decode is logged and left out, so the rest of the chat
+// keeps working.
 import Foundation
 import OSLog
 
@@ -45,6 +46,7 @@ struct TranscriptItem: Decodable, Equatable, Sendable {
     var read: ReadCard?
     var command: CommandCard?
     var codemode: CodemodeCard?
+    var input: String?
 }
 
 struct ReadCard: Decodable, Equatable, Sendable {
@@ -60,9 +62,22 @@ struct CommandCard: Decodable, Equatable, Sendable {
 
 struct CodemodeCard: Decodable, Equatable, Sendable {
     var code: String
+    var calls: [CodemodeCall]
+    var state: String
+    var failedCalls: Int
     var output: String
+    var wallSeconds: String?
+    var fullOutputPath: String?
     var summary: String
     var outcome: String
+}
+
+struct CodemodeCall: Decodable, Equatable, Sendable {
+    var name: String
+    var args: String
+    var status: String
+    var duration: String
+    var error: String?
 }
 
 struct ChatRow: Decodable, Equatable, Sendable {

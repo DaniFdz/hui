@@ -10,8 +10,8 @@
  * which no installed gateway does. On iOS it relaunches the app pointed at the gateway and follows `hui://open` links;
  * each test starts by deleting only the app's preferences through `defaults`, and `clearState` deletes them too before
  * the engine empties the data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values;
- * it reads a container's text as its texts and labels in order, since a device reports no text for a container; steps
- * only the web has throw there. Test files import
+ * it reads a container's text as its texts and labels in order, since a device reports no text for a container, and
+ * reads what the app copied from the simulator's pasteboard; steps only the web has throw there. Test files import
  * `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -411,6 +411,12 @@ export const test = base.extend<{ hui: Hui }>({
           await expect(until).toBeVisible();
         },
         textOf: async (target: Locator) => (await target.getByText(/\S/u).allTextContents()).join(" "),
+        contextMenu: (target: Locator) => target.longPress(),
+        clipboard: async ({ refuse = false } = {}) => {
+          if (refuse) notOnIos("clipboard({ refuse: true })")();
+          execFileSync("xcrun", ["simctl", "pbcopy", "HUI iPhone"], { input: "" });
+        },
+        copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", "HUI iPhone"], { encoding: "utf8" }),
       }),
       workspace: receipt.workspace,
       gateway: receipt.url,

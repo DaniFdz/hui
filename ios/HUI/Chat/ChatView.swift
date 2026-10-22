@@ -1,9 +1,9 @@
 // The chat screen for one session, named as the web's chat names its controls: the header (the title as a heading,
 // "Session status: …" from the core's label), the transcript of the core's rows anchored at the bottom, activity rows
-// that open to their thinking and tool cards, the working indicator ("Agent activity: …"), the message queue and the
-// composer (Message and Send message; while a run streams, Stop with an empty draft, otherwise "Steer message; touch and
-// hold to enqueue", whose hold menu offers Enqueue). While the conversation loads it says so, and a failed load offers
-// Try again. A send that fails stays marked "Not sent — draft recovered." with its text back in the draft, as on the web.
+// that open to their thinking and tool cards (`ToolCardView`), the working indicator ("Agent activity: …"), the message
+// queue and the composer (Message and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
+// message; touch and hold to enqueue", whose hold menu offers Enqueue). A tap in the transcript puts the keyboard away.
+// While the conversation loads it says so, and a failed load offers Try again. A send that fails stays marked "Not sent — draft recovered." with its text back in the draft, as on the web.
 import SwiftUI
 
 struct ChatView: View {
@@ -15,6 +15,7 @@ struct ChatView: View {
     @State private var position = ScrollPosition(idType: String.self, edge: .bottom)
     @State private var following = true
     @State private var nearBottom = true
+    @FocusState private var composing: Bool
 
     init(id: String, client: GatewayClient, core: HUICore, title: String?) {
         self.core = core
@@ -109,6 +110,7 @@ struct ChatView: View {
             withAnimation { position.scrollTo(id: opened, anchor: .top) }
         }
         .scrollDismissesKeyboard(.interactively)
+        .simultaneousGesture(TapGesture().onEnded { composing = false })
         .accessibilityIdentifier("transcript")
     }
 
@@ -196,6 +198,7 @@ struct ChatView: View {
                 .lineLimit(1...6)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("Message")
+                .focused($composing)
                 .overlay(alignment: .leading) {
                     if draft.isEmpty {
                         Text(model.streaming ? "Add to this run…" : "Send a message…")
@@ -233,73 +236,5 @@ struct ChatView: View {
             guard await !model.send(text, mode: mode) else { return }
             draft = draft.isEmpty ? text : "\(text)\n\n\(draft)"
         }
-    }
-}
-
-struct ToolCardView: View {
-    let item: TranscriptItem
-    @Binding var expanded: Bool
-
-    private var running: Bool { (item.status ?? "running") == "running" }
-    private var failed: Bool { item.failed == true || item.status == "failed" }
-    private var outcome: String { failed ? "failed" : running ? "Running" : "Completed" }
-
-    var body: some View {
-        if let read = item.read {
-            card(label: "Read \(read.target)", title: Text("Read ").bold() + Text(read.target)) {
-                Text(read.detail).font(.caption).foregroundStyle(.secondary)
-                output(read.output)
-                Text(outcome).font(.caption)
-            }
-        } else if let command = item.command {
-            card(label: command.preview, title: Text("$ ").foregroundStyle(.secondary) + Text(command.preview).font(.system(.footnote, design: .monospaced))) {
-                output("$ \(command.command)")
-                output(item.output ?? "")
-                Text(outcome).font(.caption)
-            }
-        } else if let codemode = item.codemode {
-            card(label: "codemode \(codemode.summary)", title: Text("codemode ").bold() + Text(codemode.summary)) {
-                output(codemode.code)
-                output(codemode.output)
-                Text(codemode.outcome).font(.caption)
-            }
-        } else {
-            card(label: item.name ?? "tool", title: Text(item.name ?? "tool").bold() + Text(" \(failed ? "Failed" : running ? "Running" : "Completed")")) {
-                if let args = item.args { output(Self.printable(args)) }
-                if let text = item.output { output(text.isEmpty ? "No output" : text) }
-            }
-        }
-    }
-
-    private func card(label: String, title: Text, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button { expanded.toggle() } label: {
-                HStack {
-                    title.lineLimit(1)
-                    Spacer()
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down").accessibilityHidden(true)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(label)
-            if expanded {
-                VStack(alignment: .leading, spacing: 6) { content() }
-                    .padding(8)
-                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
-            }
-        }
-    }
-
-    @ViewBuilder private func output(_ text: String) -> some View {
-        if !text.isEmpty {
-            Text(text).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-        }
-    }
-
-    private static func printable(_ value: API.JSONValue) -> String {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return (try? encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) } ?? ""
     }
 }
