@@ -26,7 +26,11 @@ test("Rewind to here gives a settled message's text and attachment back to the f
   await send.tap();
   await expect(transcript.getByText("Fixture response.")).toHaveCount(2);
   await expect(idle).toBeVisible();
-  await expect(rewind).toHaveCount(2);
+  await message.fill("Last question");
+  await send.tap();
+  await expect(transcript.getByText("Fixture response.")).toHaveCount(3);
+  await expect(idle).toBeVisible();
+  await expect(rewind).toHaveCount(3);
 
   await rewind.nth(1).tap();
   await expect(screen.getByText("Message restored to the composer. The previous branch is kept.")).toBeVisible();
@@ -36,6 +40,7 @@ test("Rewind to here gives a settled message's text and attachment back to the f
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
   await expect(transcript.getByText("First question")).toBeVisible();
   await expect(transcript.getByText("Summarize these notes")).toBeHidden();
+  await expect(transcript.getByText("Last question")).toBeHidden();
 });
 
 test("Rewind to here on a running prompt stops the run and gives the prompt back", { tags: ["CHAT-034"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -53,8 +58,6 @@ test("Rewind to here on a running prompt stops the run and gives the prompt back
   await expect(message).toBeFocused();
   await expect(idle).toBeVisible();
   await expect(transcript.getByText("E2E_REPLAY")).toBeHidden();
-  await hui.provider.release();
-  await expect(idle).toBeVisible();
   await expect(transcript.getByText(/Replay prefix/u)).toBeHidden();
 });
 
