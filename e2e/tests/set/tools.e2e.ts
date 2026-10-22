@@ -25,6 +25,7 @@ test("With the browser tool off, new and restarted sessions lose it, running one
   await expect(browserTool).toBeChecked({ checked: false });
   await expect(off).toHaveCount(3);
   await expect(off.first()).toBeVisible();
+  await expect(screen.getByText("Stopped", { exact: true })).toBeHidden();
   await expect(screen.getByRole("button", "Start")).toBeDisabled();
 
   await reply(running, call("browser", { action: "tabs" }), "tool answered: <harness> [error] The browser tool is turned off in HUI Settings → Tools → Browser.");
@@ -68,5 +69,5 @@ test("Codemode is on by default; turned off, a running script finishes and the s
   await screen.getByLabel("Message").fill(call("codemode", { code: 'return "second script";' }));
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText("tool answered: <harness> [error] Tool codemode is not available </harness>")).toBeVisible();
-  await expect(transcript.getByText(/second script/u)).toHaveCount(0);
+  await expect(transcript.getByText(/second script/u)).toBeHidden();
 });
