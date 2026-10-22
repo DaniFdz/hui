@@ -377,7 +377,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:POST /__hui/sessions/:id/compact", "route:POST /__hui/sessions/:id/follow-up", "route:POST /__hui/sessions/:id/abort"],
     journeys: ["compaction-rewind"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -397,7 +397,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: ["route:POST /__hui/sessions/:id/rewind", "row:compaction"],
     journeys: ["compaction-rewind"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
