@@ -259,6 +259,12 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  const reply = /E2E_REPLY:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
+  if (reply) {
+    text(response, Buffer.from(reply, "base64url").toString("utf8"));
+    return finish(response);
+  }
+
   // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
   // response, and the next answer quotes every result. E2E_HOLD:<the same> does too, and a `fixture_echo` call among
   // them runs until POST /control/release-replay.
