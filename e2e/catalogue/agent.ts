@@ -56,7 +56,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Number keys, arrows, Enter chords and Escape are keyboard-only; the visible rows, Next, Back, Submit and Cancel cover them.", decision: KEYBOARD },
   },
   {
