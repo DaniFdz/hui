@@ -163,6 +163,10 @@ export class SubagentService {
   #running = new Map<string, string>();
   /** `agents_wait` calls, told about every registry change, and with nothing when the service shuts down. */
   #waiters = new Set<(records?: readonly SessionRecord[]) => void>();
+  /** Per caller, the steering that last ended its `agents_wait`, with the transcript length it ended at: that steering
+   * reaches the model only once the tool round ends, so it does not end another wait of the same round (a script
+   * waiting in a loop would spin). */
+  #steeredWaits = new Map<string, string>();
   private readonly sessions: SessionAccess;
   private readonly registryReader: typeof readRegistry;
   private readonly registryUpdater: typeof updateRegistry;
@@ -851,8 +855,9 @@ export class SubagentService {
     await settle();
   }
 
-  /** Wait until every listed child of the caller has finished, or the timeout passes. What it returns counts as
-   * delivered, so the parent is not told again. */
+  /** Wait until every listed child of the caller has finished, the timeout passes or a message is steered to the
+   * caller, which it would otherwise read only after the wait. What it returns counts as delivered, so the parent is not
+   * told again. */
   async #wait(callerId: string, params: Record<string, unknown>, signal?: AbortSignal) {
     const ids = params["ids"];
     if (!Array.isArray(ids) || !ids.length || ids.length > MAX_WAIT_IDS || !ids.every((id) => typeof id === "string" && id.trim())) {
@@ -871,6 +876,18 @@ export class SubagentService {
     let wake!: () => void;
     const woken = new Promise<void>((resolve) => { wake = resolve; });
     const listener = (records?: readonly SessionRecord[]) => { if (!records || finished(records)) wake(); };
+    const watched = this.sessions.watch(callerId, (message) => {
+      if (message.kind === "event" && message.event.type === "queue_update") steered(message.event.queue.steering);
+    });
+    const round = watched.snapshot.transcript.length;
+    let steeredBy: string | undefined;
+    const steered = (steering: readonly string[]) => {
+      const mark = `${round}\n${JSON.stringify(steering)}`;
+      if (!steering.length || mark === this.#steeredWaits.get(callerId)) return;
+      steeredBy = mark;
+      wake();
+    };
+    steered(watched.snapshot.queue.steering);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let onAbort = () => {};
     this.#waiters.add(listener);
@@ -894,6 +911,7 @@ export class SubagentService {
       }
     } finally {
       this.#waiters.delete(listener);
+      watched.unsubscribe();
       signal?.removeEventListener("abort", onAbort);
       if (timer) {
         clearTimeout(timer);
@@ -911,6 +929,8 @@ export class SubagentService {
           ? { ...record, subagent: { ...record.subagent, completionDelivery: "delivered" as const } } : record)));
       for (const id of returned) this.#admitted.delete(id);
     }
+    if (steeredBy !== undefined) this.#steeredWaits.set(callerId, steeredBy);
+    const pending = records.filter((record) => record && ACTIVE_STATUSES.has(record.subagent!.status)).map((record) => record!.subagent!.taskId);
     return {
       completed: done.map((record) => ({
         taskId: record.subagent!.taskId,
@@ -920,7 +940,10 @@ export class SubagentService {
         ...(record.subagent!.summary ? { result: record.subagent!.summary } : {}),
         ...(record.subagent!.error ? { error: record.subagent!.error } : {}),
       })),
-      pending: records.filter((record) => record && ACTIVE_STATUSES.has(record.subagent!.status)).map((record) => record!.subagent!.taskId),
+      pending,
+      ...(steeredBy !== undefined && pending.length
+        ? { interrupted: "A new message arrived for you; it follows once this tool call returns. Call agents_wait again for the pending tasks if they still matter." }
+        : {}),
     };
   }
 
