@@ -1,7 +1,7 @@
 /**
  * The iOS app mirrors the core's own output by hand (plan 4.5, item 2), so this compares the kinds of the unions it
  * decodes with their Swift enums: `ChatProjectionRow` with `ChatRowKind`, and `TranscriptItem` with
- * `TranscriptItemKind` (ios/HUI/Chat/ChatRows.swift).
+ * `TranscriptItemKind` (ios/HUI/Chat/ChatRows.swift), apart from their `unrecognized` fallback.
  */
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -19,7 +19,7 @@ function unionKinds(source, type) {
 function swiftCases(source, name) {
   const body = new RegExp(`enum ${name}: String[^{]*\\{([^}]*)\\}`, "u").exec(source)?.[1];
   assert.ok(body, `enum ${name} not found`);
-  return [...body.matchAll(/case ([^\n]+)/gu)].flatMap((match) => match[1].split(",").map((name) => name.trim())).sort();
+  return [...body.matchAll(/case ([^\n]+)/gu)].flatMap((match) => match[1].split(",").map((name) => name.trim())).filter((name) => name !== "unrecognized").sort();
 }
 
 test("the Swift kind enums match the core's row and transcript item kinds", async () => {

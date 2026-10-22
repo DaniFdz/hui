@@ -113,8 +113,9 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   stream's snapshot arrived its statuses win over every list and upsert, and a session the snapshot leaves out is idle.
   Every listed session has a status label, so a deep link to one the sidebar hides (archived, a Swarm helper) opens.
 - The chat screen (`Chat/ChatView.swift`) names its controls as the web's chat does (`Message`, `Send message`, `Stop`,
-  `Read <file>`, `Agent activity: <step>`) and takes every label from the core: activity rows from `activityLabel`, the
-  working indicator from `workingLabel`, tool cards from `src/lib/tool-cards.ts`. The transcript follows the bottom
+  `Read <file>`, `Agent activity: <step>`) and takes every label from the core: the core's `chatRows` returns the rows with
+  their activity labels and tool cards (`src/lib/chat-rows.ts`), and a `key` per row and item that the screen uses for
+  identity, opening and scrolling (tool call ids repeat across turns); the working indicator comes from `workingLabel`. The transcript follows the bottom
   until a card or activity row is opened, which scrolls to it, and follows again after the next send. A plain button
   whose label has a `Spacer` needs `.contentShape(Rectangle())`, or a tap at its centre misses it.
 - `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session

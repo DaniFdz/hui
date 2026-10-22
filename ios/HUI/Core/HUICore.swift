@@ -118,24 +118,8 @@ actor HUICore {
 
     private func project(_ handle: String, _ items: JSValue) throws -> ChatProjection {
         transcripts[handle] = items
-        let projected = try invoke("projectChatTranscript", [items])
-        var rows: [ChatRow] = try decode(projected)
-        for index in rows.indices where rows[index].kind == .activity {
-            guard let activity = projected.atIndex(index)?.forProperty("items") else { continue }
-            rows[index].label = try invoke("activityLabel", [activity, false]).toString() ?? ""
-            rows[index].liveLabel = try invoke("activityLabel", [activity, true]).toString() ?? ""
-            for (offset, item) in (rows[index].activity ?? []).enumerated() where item.kind == .tool {
-                guard let tool = activity.atIndex(offset) else { continue }
-                rows[index].activity?[offset].read = try decode(invoke("readToolPresentation", [tool]))
-                rows[index].activity?[offset].command = try decode(invoke("commandToolPresentation", [tool]))
-                let codemode = try invoke("codemodeToolPresentation", [tool])
-                guard var card: CodemodeCard = try decode(codemode) else { continue }
-                card.summary = try invoke("codemodeSummary", [codemode]).toString()
-                card.outcome = try invoke("codemodeOutcome", [codemode]).toString()
-                rows[index].activity?[offset].codemode = card
-            }
-        }
-        return ChatProjection(rows: rows, working: try decode(invoke("workingLabel", [items])))
+        let rows: ChatRows = try decode(invoke("chatRows", [items]))
+        return ChatProjection(rows: rows.rows, working: try decode(invoke("workingLabel", [items])))
     }
 
     private func requests() throws -> JSValue {

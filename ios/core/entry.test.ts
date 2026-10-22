@@ -12,7 +12,6 @@ const session = {
   id: "a", title: "Build", group: "ungrouped", cwd: "/w", displayCwd: "/w", tool: "pi", status: "idle", stage: "testing",
   stageOrigin: "agent", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
 } as const;
-const codemode = { kind: "tool", id: "c", name: "codemode", args: { code: "x" }, details: { calls: [{ name: "read", args: "{}", status: "ok" }] }, status: "succeeded" } as const;
 
 test("the core bundle runs with no DOM, network or timers, and every export answers there", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "hui-ios-core-"));
@@ -42,20 +41,20 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     appendPendingUser: () => assert.equal(core.appendPendingUser([], "p", "Hi", []).at(-1)?.kind, "message"),
     settlePendingUser: () => assert.deepEqual(
       json(core.settlePendingUser(core.appendPendingUser([], "p", "Hi", []), "p", false).map((item) => item.kind === "message" && item.failed)), [true]),
-    projectChatTranscript: () => assert.deepEqual(
-      json(core.projectChatTranscript([{ kind: "message", id: "u", role: "user", text: "Hi" }]).map((row) => row.kind)), ["messages"]),
-    activityLabel: () => assert.equal(core.activityLabel([{ kind: "tool", id: "t", name: "read", status: "succeeded" }], false), "Ran 1 command"),
+    chatRows: () => assert.deepEqual(json(core.chatRows([
+      { kind: "message", id: "u", role: "user", text: "Hi" },
+      { kind: "tool", id: "t", name: "read", args: { path: "/w/a.txt" }, status: "succeeded" },
+      { kind: "message", id: "u2", role: "user", text: "Again" },
+      { kind: "tool", id: "t", name: "codemode", args: { code: "x" }, details: { calls: [{ name: "read", args: "{}", status: "ok" }] }, status: "succeeded" },
+    ]).map((row) => row.kind === "activity" ? [row.key, row.label, row.items.map((item) => [item.key, item.read?.target ?? item.codemode?.outcome])] : row.key)), [
+      "messages:u", ["activity:t", "Ran 1 command", [["tool:t", "a.txt"]]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call"]]],
+    ]),
     workingLabel: () => assert.equal(core.workingLabel([{ kind: "tool", id: "t", name: "read", status: "running" }]), "Reading files…"),
     SendRequests: () => {
       const requests = new core.SendRequests(() => "r1");
       requests.failed("a", requests.take("a", "Hi", []).requestId, "Hi", []);
       assert.equal(requests.take("a", "Hi", []).requestId, "r1");
     },
-    readToolPresentation: () => assert.equal(core.readToolPresentation({ kind: "tool", id: "t", name: "read", args: { path: "/w/a.txt" } })?.target, "a.txt"),
-    commandToolPresentation: () => assert.equal(core.commandToolPresentation({ kind: "tool", id: "t", name: "bash", args: { command: "bash -lc 'npm test'" } })?.preview, "npm test"),
-    codemodeToolPresentation: () => assert.equal(core.codemodeToolPresentation(codemode)?.tools, "read"),
-    codemodeSummary: () => assert.equal(core.codemodeSummary(core.codemodeToolPresentation(codemode)!), "read"),
-    codemodeOutcome: () => assert.equal(core.codemodeOutcome(core.codemodeToolPresentation(codemode)!), "Completed · 1 call"),
     markdownTokens: () => assert.deepEqual(
       json(core.markdownTokens("**Hi** `src/a.ts`", true)[1]?.children?.map((token) => token.type)),
       ["text", "strong_open", "text", "strong_close", "text", "html_inline", "code_inline", "html_inline"]),

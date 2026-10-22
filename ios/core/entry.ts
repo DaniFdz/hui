@@ -9,7 +9,7 @@ export { sessionAccessibleName, sessionStatusLabel, sessionStatusText } from "..
 export { sessionGroupLabel } from "../../src/lib/session/sessions.ts";
 export { DEFAULT_SIDEBAR_SESSION_OPTIONS, sessionTreeRows, sidebarSessionGroups } from "../../src/lib/session/sidebar-sessions.ts";
 export { appendPendingUser, normalizeTranscript, reduceTranscript, settlePendingUser } from "../../src/lib/transcript-state.ts";
-export { activityLabel, projectChatTranscript, workingLabel } from "../../src/lib/chat-projection.ts";
+export { workingLabel } from "../../src/lib/chat-projection.ts";
+export { chatRows } from "../../src/lib/chat-rows.ts";
 export { SendRequests } from "../../src/lib/composer/send-requests.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";
-export { codemodeOutcome, codemodeSummary, codemodeToolPresentation, commandToolPresentation, readToolPresentation } from "../../src/lib/tool-cards.ts";

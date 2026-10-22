@@ -2,7 +2,7 @@
 // (src/lib/markdown/parser.ts), so both clients read Markdown alike: paragraphs, headings, list items, quotes, code
 // blocks and rules as views, inline text as one AttributedString (bold, italic, strikethrough, code, links). Raw HTML
 // shows as text, as the web escapes it, and a link the parser hides (an unsafe scheme) stays plain text. Until the core
-// answers, the source shows as plain text.
+// answers for the current source, it shows as plain text.
 import SwiftUI
 
 struct MarkdownToken: Decodable, Equatable, Sendable {
@@ -23,12 +23,12 @@ struct MarkdownView: View {
     let source: String
     let agent: Bool
     let core: HUICore
-    @State private var tokens: [MarkdownToken]?
+    @State private var parsed: (source: String, tokens: [MarkdownToken])?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let tokens {
-                ForEach(Array(Self.blocks(tokens).enumerated()), id: \.offset) { _, block in
+            if let parsed, parsed.source == source {
+                ForEach(Array(Self.blocks(parsed.tokens).enumerated()), id: \.offset) { _, block in
                     view(block)
                 }
             } else {
@@ -36,7 +36,7 @@ struct MarkdownView: View {
             }
         }
         .task(id: source) {
-            tokens = try? await core.markdownTokens(source, agent: agent)
+            parsed = (try? await core.markdownTokens(source, agent: agent)).map { (source, $0) }
         }
     }
 

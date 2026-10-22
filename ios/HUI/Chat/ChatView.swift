@@ -89,7 +89,7 @@ struct ChatView: View {
     private var transcriptScroll: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(model.rows.enumerated()), id: \.offset) { _, row in
+                ForEach(model.rows, id: \.key) { row in
                     rowView(row)
                 }
                 if model.streaming {
@@ -112,7 +112,7 @@ struct ChatView: View {
     @ViewBuilder private func rowView(_ row: ChatRow) -> some View {
         switch row.kind {
         case .messages:
-            ForEach(row.messages ?? []) { message in
+            ForEach(row.messages ?? [], id: \.key) { message in
                 let user = message.role == "user"
                 VStack(alignment: .trailing, spacing: 4) {
                     MarkdownView(source: message.text ?? "", agent: !user, core: core)
@@ -126,14 +126,14 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
             }
         case .activity:
-            disclosure(row.id, label: model.streaming ? row.liveLabel : row.label) {
-                ForEach(row.activity ?? []) { item in
+            disclosure(row.key, label: (model.streaming ? row.liveLabel : row.label) ?? "") {
+                ForEach(row.activity ?? [], id: \.key) { item in
                     activityItem(item)
                 }
             }
         case .compaction:
             Text("Conversation compacted").font(.caption).foregroundStyle(.secondary)
-        case .call, .subagentEvent, .botCreated:
+        case .call, .subagentEvent, .botCreated, .unrecognized:
             EmptyView()
         }
     }
@@ -145,7 +145,7 @@ struct ChatView: View {
         case .error:
             Text(item.text ?? "").foregroundStyle(.red)
         case .tool:
-            ToolCardView(item: item, expanded: expandedBinding("tool:\(item.id)")).id("tool:\(item.id)")
+            ToolCardView(item: item, expanded: expandedBinding(item.key)).id(item.key)
         default:
             EmptyView()
         }
@@ -235,10 +235,10 @@ struct ToolCardView: View {
                 Text(outcome).font(.caption)
             }
         } else if let codemode = item.codemode {
-            card(label: "codemode \(codemode.summary ?? "")", title: Text("codemode ").bold() + Text(codemode.summary ?? "")) {
+            card(label: "codemode \(codemode.summary)", title: Text("codemode ").bold() + Text(codemode.summary)) {
                 output(codemode.code)
                 output(codemode.output)
-                Text(codemode.outcome ?? outcome).font(.caption)
+                Text(codemode.outcome).font(.caption)
             }
         } else {
             card(label: item.name ?? "tool", title: Text(item.name ?? "tool").bold() + Text(" \(failed ? "Failed" : running ? "Running" : "Completed")")) {
