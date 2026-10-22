@@ -16,7 +16,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -26,7 +26,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page", "nav:kanban", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -36,7 +36,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT, "docs/api.md#gateway-lifecycle-boundary"],
     surfaces: ["nav:page", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24", "webawesome-controls"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -46,7 +46,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -56,7 +56,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, "docs/api.md#gateway-lifecycle-boundary"],
     surfaces: ["nav:session", "nav:bot", "route:POST /__hui/sessions/:id/open"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -66,7 +66,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: ["nav:home", "nav:page", "nav:settings", "nav:session"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -76,7 +76,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "sidebar-toolbar", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -86,7 +86,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page"],
     journeys: ["shell-navigation", "update-notice", "openclaw-primary-ui-parity", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -96,7 +96,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "openclaw-primary-ui-parity", "visual-parity-2026-09-24", "sidebar-toolbar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -106,7 +106,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, KEYBOARD],
     surfaces: [],
     journeys: ["shell-navigation", "webawesome-controls", "update-notice", "sidebar-toolbar", "openclaw-primary-ui-parity"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: ESCAPE_ONLY, decision: KEYBOARD },
   },
   {
@@ -116,7 +116,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: [],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Resizing a browser window; the iPhone app is always narrow.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
@@ -126,7 +126,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: [],
     journeys: ["sidebar-toolbar", "shell-navigation", "openclaw-primary-ui-parity", "update-notice"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The collapse toggle exists only in the wide layout; the iPhone app is always narrow.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
@@ -136,7 +136,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: [],
     journeys: ["visual-parity-2026-09-24", "shell-navigation"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "A keyboard chord, which an iPhone cannot press.", decision: KEYBOARD },
   },
   {
@@ -146,7 +146,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: ["nav:page", "nav:settings", "nav:session"],
     journeys: ["visual-parity-2026-09-24", "webawesome-controls"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
