@@ -14,7 +14,7 @@ const inOrder = async (...items: Locator[]) => {
 const call = (verb: "CALL" | "HOLD", calls: { name: string; input: Record<string, unknown> }[]) =>
   `E2E_${verb}:${Buffer.from(JSON.stringify(calls)).toString("base64url")}`;
 
-test("a message written mid-turn keeps its own row with its links, live and after a reload", { tags: ["CHAT-024"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a message written mid-turn keeps its own row with its links, live and after a reload", { tags: ["CHAT-024"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const session = await hui.createSession({ title: "Mid-turn message" });
   await hui.open(`/sessions/${session.id}`);
@@ -25,16 +25,16 @@ test("a message written mid-turn keeps its own row with its links, live and afte
 
   for (const pass of ["live", "reloaded"]) {
     if (pass === "reloaded") await hui.reload();
-    await expect(transcript.getByText("What to check")).toBeVisible();
-    expect(await transcript.getByText("service dashboard").getAttribute("href")).toBe("https://example.com/dashboard/checkout");
-    expect(await transcript.getByText("error logs").getAttribute("href")).toBe("https://example.com/logs?query=status%3Aerror");
+    await expect(transcript.getByText("What to check for the checkout alert")).toBeVisible();
+    await hui.expectLinkTo(transcript, "service dashboard", "https://example.com/dashboard/checkout");
+    await hui.expectLinkTo(transcript, "error logs", "https://example.com/logs?query=status%3Aerror");
     await expect(transcript.getByText("Started two helpers in the background; I'll report when they're back.")).toBeVisible();
     await transcript.getByText("Ran 1 command").tap();
     await expect(transcript.getByRole("button", "Read fixture.txt")).toBeVisible();
   }
 });
 
-test("each stretch of activity folds under a label from what it holds and opens in order", { tags: ["CHAT-023"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("each stretch of activity folds under a label from what it holds and opens in order", { tags: ["CHAT-023"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
@@ -72,5 +72,6 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await expect(idle).toBeVisible();
   await transcript.getByText("Ran 3 commands, edited 1 file").tap();
   await inOrder(transcript.getByRole("button", "Read fixture.txt").last(), transcript.getByRole("button", "echo folded"), transcript.getByText("edit", { visible: true }));
+  await hui.scrollTo(transcript, transcript.getByText("Weighing the fixture."));
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();
 });

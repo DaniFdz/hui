@@ -3,7 +3,8 @@
 // replaces that stack at once, as an address does; a link that arrives before the gateway connects opens once it does.
 // The open screen's address is kept in the preferences after its gateway's, so the app opens it again when it restarts
 // against the same gateway, as a reload keeps the web's address. Archiving or deleting the open session's tree from its
-// menu returns to the list, as the web returns Home.
+// menu returns to the list, as the web returns Home. The screen's container carries the address it shows as its
+// accessibility value, under the identifier app-route, for tests; VoiceOver doesn't speak a container's value.
 import SwiftUI
 
 struct RootView: View {
@@ -11,6 +12,7 @@ struct RootView: View {
     @State private var gateway = GatewayModel()
     @State private var sessions: SessionsModel
     @State private var path: [Screen] = []
+    @State private var route = "/"
     @AppStorage("HUIOpenSession") private var openSession = ""
 
     init(core: HUICore) {
@@ -39,6 +41,9 @@ struct RootView: View {
                 ConnectView(gateway: gateway)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("app-route")
+        .accessibilityValue(route)
         .task {
             if !gateway.url.isEmpty { await gateway.connect() }
         }
@@ -56,7 +61,10 @@ struct RootView: View {
                 case .sessionsPage: "/sessions"
                 case nil: "/"
                 }
-                if path.last == last { openSession = gateway.url + address }
+                if path.last == last {
+                    route = address
+                    openSession = gateway.url + address
+                }
             }
         }
         .onChange(of: sessions.closed) {
