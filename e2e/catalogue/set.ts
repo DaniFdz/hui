@@ -522,7 +522,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#managed-browser", "docs/api.md#managed-browser-api-and-tool"],
     surfaces: ["settings-page:tools", "setting:browser.enabled"],
     journeys: ["browser-tool"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -551,7 +551,7 @@ const cases: UseCase[] = [
     behaviour: "With “Codemode tool” off, sessions stop being offered codemode from their next request while a running script finishes; it is on by default.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["setting:codemode.enabled"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
