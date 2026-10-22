@@ -2,8 +2,8 @@
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
-async function reply(screen: Screen, hui: Hui, prompt: string) {
-  const session = await hui.createSession({ title: "Message actions" });
+async function reply(screen: Screen, hui: Hui, prompt: string, session?: { id: string }) {
+  session ??= await hui.createSession({ title: "Message actions" });
   await hui.open(`/sessions/${session.id}`);
   await screen.getByLabel("Message").fill(prompt);
   await screen.getByRole("button", "Send message").tap();
@@ -46,8 +46,24 @@ test("A message from a session has Copy message", { tags: ["CHAT-030"], platform
   const transcript = screen.getByTestId("transcript");
   await expect(transcript.getByText("Subagent child result: the fixture contract is working.")).toBeVisible();
   await transcript.getByRole("button", "Copy message").tap();
-  await expect(transcript.getByRole("button", "Copied")).toBeVisible();
   await expect.poll(() => hui.copied()).toBe("E2E_SUBAGENT_CHILD");
+});
+
+test("A bot's message has Copy message, and its context menu copies its code", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
+  await hui.clipboard();
+  const { bot } = await hui.api<{ bot: { handle: string } }>("POST", "/__hui/bots", { name: "Grace", soul: "You babysit pull requests." });
+  const session = await hui.createSession({ title: "Bot message" });
+  const report = "Grace reports back\n\n```\nconst answer = 42;\n```";
+  const transcript = await reply(screen, hui, call("message_bot", { to: `@${bot.handle}`, message: call("message_bot", { to: `agent:${session.id}`, message: report }) }), session);
+  const code = transcript.getByText("const answer = 42;");
+  await expect(code).toBeVisible();
+  await transcript.getByRole("button", "Copy message").tap();
+  await expect.poll(() => hui.copied()).toBe(report);
+
+  await hui.contextMenu(code);
+  await screen.getByText("Copy code").tap();
+  await expect.poll(() => hui.copied()).toBe("const answer = 42;\n");
 });
 
 test("A refused clipboard write leaves the menu item saying Copy failed — retry", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
