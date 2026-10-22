@@ -16,7 +16,7 @@ test("ArrowDown, Enter and Tab complete local paths in the New Session message w
 
   await hui.open("/");
   await screen.getByPlaceholder("~/").fill(repository.path);
-  await expect(screen.getByLabel("Checkout: main")).toBeVisible();
+  await expect(screen.getByLabel("Checkout: feature/current")).toBeVisible();
   await message.fill("Review @sub/");
   await expect(active(/^sub\/keep\.txt/u)).toBeVisible();
   await message.press("ArrowDown");

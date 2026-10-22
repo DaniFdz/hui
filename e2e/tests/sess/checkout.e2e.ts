@@ -1,4 +1,4 @@
-/** New Session's Checkout popover starts on the current checkout switched to another branch, or in a new worktree named by the utility model, and links to the branch prefix setting (SESS-009, SESS-010, SESS-011). */
+/** New Session's Checkout popover starts on the current branch, switches the checkout to another branch, or starts a new worktree named by the utility model, and links to the branch prefix setting (SESS-009, SESS-010, SESS-011). */
 import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { expect, type Screen } from "e2e";
@@ -13,7 +13,7 @@ const chooseDirectory = async (screen: Screen, path: string) => {
   await screen.getByText("Pick where this session works, then say what to do.").tap();
 };
 
-test("Current checkout suggests branches, switches to the chosen one before the session exists, and shows Git's refusal", { tags: ["SESS-009"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the Checkout trigger shows the current branch, and Current checkout switches to a suggested branch before the session exists or shows Git's refusal", { tags: ["SESS-009"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const head = () => repository.git("branch", "--show-current");
   const keep = join(repository.path, "sub", "keep.txt");
@@ -22,18 +22,18 @@ test("Current checkout suggests branches, switches to the chosen one before the 
   await writeFile(keep, "dirty\n");
   const from = screen.getByLabel("From");
   const suggestions = screen.getByLabel("Branch suggestions");
+  const message = screen.getByPlaceholder("What should this session work on?");
   const start = screen.getByRole("button", "Start session");
+  const transcript = screen.getByTestId("transcript");
   const before = await sessions(hui);
 
   await hui.open("/");
   await chooseDirectory(screen, repository.path);
-  await screen.getByLabel("Checkout: main").tap();
+  await screen.getByLabel("Checkout: feature/current").tap();
   await expect(screen.getByText("Current checkout")).toBeVisible();
+  await expect(from).toHaveValue("");
   await expect(suggestions).toBeHidden();
-  await expect(screen.getByText("feature/current", { exact: true })).toBeVisible();
-  await expect(from).toHaveValue("main");
-  await from.fill("");
-  await expect(screen.getByLabel("Checkout: feature/current")).toBeVisible();
+  await from.tap();
   await expect(suggestions).toBeVisible();
   expect(await suggestions.getByText(/^(main|feature\/current|release\/1\.0)$/u).allTextContents()).toEqual(["main", "feature/current", "release/1.0"]);
   await expect(screen.getByText("Starts by switching this checkout to the selected branch or commit.")).toBeVisible();
@@ -46,7 +46,7 @@ test("Current checkout suggests branches, switches to the chosen one before the 
   await expect(screen.getByPlaceholder("Generated from the prompt")).toBeHidden();
 
   await screen.getByText("Pick where this session works, then say what to do.").tap();
-  await screen.getByPlaceholder("What should this session work on?").fill("Work on the release");
+  await message.fill("Work on the release");
   await start.tap();
   await expect(screen.getByText("Could not start session")).toBeVisible();
   await expect(screen.getByText(/^Could not change Git checkout: error: Your local changes to the following files would be overwritten by checkout:/u)).toBeVisible();
@@ -59,7 +59,15 @@ test("Current checkout suggests branches, switches to the chosen one before the 
   await expect.poll(async () => (await sessions(hui)).length).toBe(before.length + 1);
   expect(head()).toBe("release/1.0");
   expect((await sessions(hui)).find(({ title }) => title === "Work on the release")?.cwd).toBe(repository.path);
-  await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
+
+  await hui.open("/");
+  await chooseDirectory(screen, repository.path);
+  await expect(screen.getByLabel("Checkout: release/1.0")).toBeVisible();
+  await message.fill("Stay on the release");
+  await start.tap();
+  await expect(transcript.getByText("Stay on the release")).toBeVisible();
+  expect(head()).toBe("release/1.0");
 });
 
 test("New worktree starts the session in a new checkout on a utility-named branch from the chosen ref", { tags: ["SESS-010"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -72,13 +80,13 @@ test("New worktree starts the session in a new checkout on a utility-named branc
 
   await hui.open("/");
   await chooseDirectory(screen, repository.path);
-  await screen.getByLabel("Checkout: main").tap();
+  await screen.getByLabel("Checkout: feature/current").tap();
   await screen.getByText("New worktree").tap();
-  await expect(screen.getByLabel("Checkout: New worktree from main")).toBeVisible();
+  await expect(screen.getByLabel("Checkout: New worktree from feature/current")).toBeVisible();
   await expect(name).toBeVisible();
   await expect(name).toHaveValue("");
   await expect(screen.getByText("Creates branch e2e/<name> in a separate checkout.")).toBeVisible();
-  await screen.getByLabel("From").fill("");
+  await screen.getByLabel("From").tap();
   await screen.getByLabel("Branch suggestions").getByText("release/1.0").tap();
   await expect(screen.getByLabel("Checkout: New worktree from release/1.0")).toBeVisible();
 
@@ -94,16 +102,24 @@ test("New worktree starts the session in a new checkout on a utility-named branc
   expect(repository.git("branch", "--show-current")).toBe("feature/current");
 });
 
-test("Configure default prefix opens the worktree settings at the branch prefix field", { tags: ["SESS-011"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Configure default prefix opens the worktree settings scrolled to the branch prefix field", { tags: ["SESS-011"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
+  const phone = await hui.phoneScreen();
 
   await hui.open("/");
   await chooseDirectory(screen, repository.path);
-  await screen.getByLabel("Checkout: main").tap();
+  await screen.getByLabel("Checkout: feature/current").tap();
   await screen.getByText("New worktree").tap();
   await screen.getByText("Configure default prefix").tap();
   const prefix = screen.getByLabel("Workspace branch prefix");
   await expect(prefix).toBeVisible();
   await expect(prefix).toHaveValue("feature/");
   expect(new URL(await hui.url()).pathname).toBe("/settings/worktrees");
+  const title = screen.getByTestId("settings-page-title");
+  await expect(title).toHaveText("Worktrees");
+  await expect.poll(async () => {
+    const field = (await prefix.boundingBox())!;
+    const top = (await title.boundingBox())!;
+    return { fieldInView: field.y >= 0 && field.y + field.height <= phone.height, titleScrolledAway: top.y + top.height <= 0 };
+  }).toEqual({ fieldInView: true, titleScrolledAway: true });
 });
