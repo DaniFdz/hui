@@ -72,7 +72,7 @@ test("Enable word wrap wraps a block's long line and becomes Disable word wrap, 
   const copy = transcript.getByRole("button", "Copy code");
   await expect(code).toBeVisible();
   const overflowing = async () => (await edges(code)).right > (await edges(copy)).right;
-  expect(await overflowing()).toBe(true);
+  await expect.poll(overflowing).toBe(true);
 
   await transcript.getByRole("button", "Enable word wrap").tap();
   await expect(transcript.getByRole("button", "Disable word wrap")).toBeVisible();
@@ -92,10 +92,11 @@ test("A block taller than its limit shows Show N hidden lines, which reveals the
   const show = transcript.getByRole("button", "Show 5 hidden lines");
   const code = transcript.getByText(/^step\(1\);/u);
   const after = transcript.getByText("After the code.");
+  const revealed = async () => (await edges(code)).bottom <= (await edges(after)).top;
   await expect(show).toBeVisible();
-  expect((await edges(code)).bottom).toBeGreaterThan((await edges(show)).top);
+  await expect.poll(revealed).toBe(false);
 
   await show.tap();
   await expect(show).toBeHidden();
-  await expect.poll(async () => (await edges(code)).bottom <= (await edges(after)).top).toBe(true);
+  await expect.poll(revealed).toBe(true);
 });

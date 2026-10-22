@@ -259,7 +259,6 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
-  // E2E_REPLY:<base64url Markdown> answers with that Markdown, so a test keeps the reply it checks beside its checks.
   const reply = /E2E_REPLY:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
   if (reply) {
     text(response, Buffer.from(reply, "base64url").toString("utf8"));

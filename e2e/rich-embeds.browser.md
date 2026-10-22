@@ -25,7 +25,9 @@ read or changed.
 The shared e2e suite covers the diagram, the chart and the callout
 (`e2e/tests/rich/`, RICH-010, RICH-011, RICH-013); this journey keeps the math and the X post.
 
-- KaTeX produced accessible MathML/HTML for both formulae.
+- KaTeX produced accessible MathML/HTML for both formulae. The Mermaid, Vega-Lite
+  and KaTeX JavaScript remained in dynamic chunks until the corresponding syntax
+  appeared.
 - Before consent: `twitterScript=false`, `iframe=false`, the privacy facade was
   visible and the labeled URL stayed an anchor.
 - After consent: the official Jack status `20` iframe rendered successfully.

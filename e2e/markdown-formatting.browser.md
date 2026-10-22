@@ -25,8 +25,9 @@ The shared e2e suite covers the disclosure block, the table and the remote image
   link receives the reference icon. The URL inside inline code remains plain.
 - Checked and unchecked GFM task items render as aligned, disabled checkbox
   controls, preserving transcript semantics without presenting editable state.
-- CommonMark nesting and strikethrough render correctly. Raw HTML remains
-  escaped by the unit/security coverage.
+- CommonMark nesting and strikethrough render correctly. The **More formatting**
+  disclosure block opens with native keyboard-operable `<details>` behavior.
+  Raw HTML remains escaped by the unit/security coverage.
 - At 390×844, long references wrap within the message and the document has no
   horizontal overflow. Tasks and nested lists remain readable.
 - A fresh stable tab reported no page errors and no console error entries.

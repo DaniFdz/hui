@@ -29,6 +29,7 @@ test("A mermaid fence shows Rendering diagram…, then the diagram within the tr
   await expect(diagram.getByText("Useful model")).toBeVisible();
   await expect(transcript.getByText("Rendering diagram…")).toBeHidden();
   expect(await within(diagram, transcript)).toBe(true);
+  for (const label of ["Idea", "Explain clearly", "Use concise prose"]) await expect.poll(() => within(diagram.getByText(label), diagram)).toBe(true);
   expect(await hui.overflowX()).toBe(0);
 
   await hui.reload();
@@ -52,8 +53,8 @@ test("chart, vega-lite and vegalite fences show Rendering chart…, then charts 
   const charts = transcript.getByLabel("Data chart");
   await expect(charts.getByRole("button", "Open chart viewer")).toHaveCount(3);
   for (const drawn of await charts.all()) {
-    expect((await drawn.boundingBox())!.height).toBeGreaterThanOrEqual(160);
     expect(await within(drawn, transcript)).toBe(true);
+    for (const label of ["Prose", "Chart"]) await expect.poll(() => within(drawn.getByText(label, { exact: true }), drawn)).toBe(true);
   }
   await expect(transcript.getByText("Rendering chart…")).toBeHidden();
   await expect(transcript.getByText("Open in Vega Editor")).toBeHidden();

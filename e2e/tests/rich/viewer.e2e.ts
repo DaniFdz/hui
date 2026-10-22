@@ -25,6 +25,14 @@ async function embeds(screen: Screen, hui: Hui) {
   return { diagram, chart };
 }
 
+async function fitted(viewer: Locator) {
+  const level = viewer.getByRole("button", /^Zoom \d+%\. Fit to screen$/u);
+  await expect(level).toBeEnabled();
+  const opened = await level.getAttribute("aria-label");
+  await level.tap();
+  await expect(level).toHaveAttribute("aria-label", opened!);
+}
+
 const inside = async (inner: Locator, outer: Locator) => {
   const [a, b] = [(await inner.boundingBox())!, (await outer.boundingBox())!];
   return a.x >= b.x && a.y >= b.y && a.x + a.width <= b.x + b.width && a.y + a.height <= b.y + b.height;
@@ -37,7 +45,8 @@ test("Clicking a diagram or chart, or its Open viewer control, opens the viewer 
 
   await diagram.getByText("Useful model").tap();
   await expect(viewer).toBeVisible();
-  for (const label of ["Idea", "Explain clearly", "Use concise prose"]) expect(await inside(viewer.getByText(label), stage)).toBe(true);
+  await fitted(viewer);
+  for (const label of ["Idea", "Explain clearly", "Use concise prose"]) await expect.poll(() => inside(viewer.getByText(label), stage)).toBe(true);
   await screen.getByRole("button", "Close viewer").tap();
   await expect(viewer).toBeHidden();
   await expect(diagram).toBeFocused();
@@ -48,10 +57,18 @@ test("Clicking a diagram or chart, or its Open viewer control, opens the viewer 
   await expect(viewer).toBeHidden();
   await expect(diagram).toBeFocused();
 
+  const chartViewer = screen.getByLabel("Chart viewer: chart");
   await chart.tap();
-  await expect(screen.getByLabel("Chart viewer: chart")).toBeVisible();
+  await expect(chartViewer).toBeVisible();
+  await fitted(chartViewer);
   await screen.getByLabel("Chart: scroll or pinch to zoom, drag to pan").tap({ position: { x: 4, y: 4 } });
-  await expect(screen.getByLabel("Chart viewer: chart")).toBeHidden();
+  await expect(chartViewer).toBeHidden();
+  await expect(chart).toBeFocused();
+
+  await chart.getByRole("button", "Open chart viewer").tap();
+  await expect(chartViewer).toBeVisible();
+  await screen.getByRole("button", "Close viewer").tap();
+  await expect(chartViewer).toBeHidden();
   await expect(chart).toBeFocused();
 });
 
@@ -83,12 +100,14 @@ test("Copy source copies a diagram's or chart's fenced source and reports Source
 
 test("A remote Markdown image is not fetched and links to the original, and an inline data: image opens in the viewer", { tags: ["RICH-009"], platforms: ["web"] }, async ({ screen, hui }) => {
   const remote = await hui.intercept("GET", /example\.com/u);
+  let fetched = false;
+  void remote.arrived().then(() => { fetched = true; });
   const transcript = await reply(screen, hui, say(`A remote image: ![demo](https://example.com/demo.png)\n\nAn inline one: ![swatch](data:image/svg+xml;base64,${Buffer.from(SVG).toString("base64")})`));
   await expect(transcript.getByText("External image not loaded: demo")).toBeVisible();
   await expect(transcript.getByText("Open image", { exact: true })).toHaveAttribute("href", "https://example.com/demo.png");
   await transcript.getByRole("button", "Open image: swatch").tap();
   await expect(screen.getByLabel("Image viewer: swatch")).toBeVisible();
-  expect(await Promise.race([remote.arrived().then(() => "fetched"), Promise.resolve("not fetched")])).toBe("not fetched");
+  expect(fetched).toBe(false);
 });
 
 test("In the viewer + and - zoom, 0 fits, 1 shows actual size, arrows pan, Ctrl+C copies the image and Escape closes it, focusing the embed", { tags: ["RICH-020"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -99,20 +118,24 @@ test("In the viewer + and - zoom, 0 fits, 1 shows actual size, arrows pan, Ctrl+
   const viewer = screen.getByLabel("Mermaid diagram viewer: mermaid-diagram");
   await expect(viewer).toBeVisible();
   const level = viewer.getByRole("button", /^Zoom \d+%\. Fit to screen$/u);
+  await expect(level).toBeEnabled();
   const zoom = async () => Number(/\d+/u.exec((await level.getAttribute("aria-label"))!)![0]);
-  const fitted = await zoom();
+  const fit = await zoom();
   const key = async (name: string) => {
     await hui.keyboard.down(name);
     await hui.keyboard.up(name);
   };
 
   await key("+");
-  await expect.poll(zoom).toBeGreaterThan(fitted);
+  await expect.poll(zoom).toBeGreaterThan(fit);
   await key("-");
   await key("-");
-  await expect.poll(zoom).toBeLessThan(fitted);
+  await expect.poll(zoom).toBeLessThan(fit);
   await key("0");
-  await expect.poll(zoom).toBe(fitted);
+  await expect.poll(zoom).toBe(fit);
+  await key("+");
+  await expect.poll(zoom).toBeGreaterThan(fit);
+  expect(await zoom()).not.toBe(100);
   await key("1");
   await expect.poll(zoom).toBe(100);
 
