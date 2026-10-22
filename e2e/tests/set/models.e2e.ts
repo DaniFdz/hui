@@ -60,3 +60,26 @@ test("Models shows PI's defaults, cycling, credential sources and the collapsed 
   await expect(catalog).toBeVisible({ timeout: 60_000 });
   await expect(screen.getByText("Could not read pi configuration: pi is unreachable")).toBeHidden();
 });
+
+test("the utility model names a new session from its first prompt and answers /btw in the side rail without touching the transcript", { tags: ["SET-047"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const transcript = screen.getByTestId("transcript");
+  const rail = screen.getByLabel("Side chat");
+  const settings = await hui.api<{ models: Record<string, string> }>("GET", "/__hui/settings");
+  await hui.api("PUT", "/__hui/settings", { ...settings, models: { ...settings.models, utility: "hui-e2e/anthropic/claude-opus-5-5" } });
+
+  await hui.open("/");
+  await screen.getByPlaceholder("~/").fill(hui.workspace);
+  await screen.getByPlaceholder("What should this session work on?").fill("Plan the release notes");
+  await screen.getByRole("button", "Start session").tap();
+  await expect(transcript.getByText("Fixture response.")).toBeVisible();
+  await expect(screen.getByTestId("session-title", { visible: true })).toHaveText("Improve session naming");
+
+  await screen.getByLabel("Message").fill("/btw which model answers this?");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(rail.getByText("Ephemeral · hui-e2e/anthropic/claude-opus-5-5")).toBeVisible();
+  await expect(rail.getByText("which model answers this?")).toBeVisible();
+  await expect(rail.getByText("Fixture response.")).toBeVisible();
+  await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
+  await expect(transcript.getByText("Plan the release notes")).toBeVisible();
+  await expect(transcript.getByText("which model answers this?")).toBeHidden();
+});
