@@ -23,3 +23,40 @@ test("Primary, Fallback and Utility list the catalog and Use PI default, say whe
   await expect(screen.getByRole("button", "Fallback model: HUI SDK Fixture")).toBeVisible();
   await expect(screen.getByRole("button", "Utility model: Opus fixture")).toBeVisible();
 });
+
+test("Models shows PI's defaults, cycling, credential sources and the collapsed catalog from PI's settings path, says while it reads and offers Retry when the read fails", { tags: ["SET-050"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const reading = screen.getByText("Reading pi configuration…");
+  const catalog = screen.getByText("Available catalog · 2 models");
+  const opusRow = screen.getByText("hui-e2e/anthropic/claude-opus-5-5", { exact: true });
+
+  const loading = await hui.intercept("GET", /\/__hui\/pi$/u);
+  await hui.open("/settings/models");
+  await loading.arrived();
+  await expect(reading).toBeVisible();
+  await expect(catalog).toBeHidden();
+  await loading.deliver();
+  await expect(catalog).toBeVisible({ timeout: 60_000 });
+  await expect(reading).toBeHidden();
+  await expect(screen.getByText("Read-only fallbacks used when HUI has no primary route.")).toBeVisible();
+  await expect(screen.getByText("pi's default provider.")).toBeVisible();
+  await expect(screen.getByText("hui-e2e", { exact: true })).toBeVisible();
+  await expect(screen.getByText("fixture", { exact: true })).toBeVisible();
+  await expect(screen.getByText("high", { exact: true })).toBeVisible();
+  await expect(screen.getByText("Not configured, so pi cycles through its own list.")).toBeVisible();
+  await expect(screen.getByText("No provider credentials found.")).toBeVisible();
+  await expect(screen.getByText(/HUI never writes here\./u)).toHaveText(/^Read from \/\S+\/agent\/settings\.json ?\. HUI never writes here\.$/u);
+  await expect(screen.getByText("Problems reading pi's configuration.")).toBeHidden();
+  await expect(opusRow).toBeHidden();
+  await catalog.tap();
+  await expect(screen.getByText("hui-e2e/fixture", { exact: true })).toBeVisible();
+  await expect(opusRow).toBeVisible();
+
+  const failing = await hui.intercept("GET", /\/__hui\/pi$/u);
+  await hui.reload();
+  await failing.reject(500, "pi is unreachable");
+  await expect(screen.getByText("Could not read pi configuration: pi is unreachable")).toBeVisible();
+  await expect(catalog).toBeHidden();
+  await screen.getByRole("button", "Retry").tap();
+  await expect(catalog).toBeVisible({ timeout: 60_000 });
+  await expect(screen.getByText("Could not read pi configuration: pi is unreachable")).toBeHidden();
+});
