@@ -135,11 +135,11 @@ edits the project; `npm run ios:build` builds the core, then the app, and instal
 | `ios/core/` | The JavaScriptCore core: `entry.ts` re-exports pure `src/lib/` functions (navigation, server-sent event frames, reconnect backoff, the sidebar's groups and session labels, the transcript reducer, the chat projection, send request ids and Markdown tokens). `npm run ios:core` (`scripts/ios-build.ts`) bundles it into `ios/HUI/Resources/Generated/hui-core.js`, with `hui-core.sha256` beside it listing the bundle and its inputs for the Xcode build to check; git ignores both |
 | `ios/HUI/App/` | `HUIApp.swift` (entry point, loads the core), `RootView.swift` (Connect, then the session list; `hui://open?path=` links through the core's `resolveNavigation`), `GatewayModel.swift` (gateway URL and version check), `ConnectView.swift` |
 | `ios/HUI/Sessions/` | `SessionsModel.swift` (the live list: `GET /__hui/sessions`, the events stream, reconnects), `SessionListView.swift` (rows grouped and named as the web sidebar's), `SessionPlaceholderView.swift` (title and status until the chat screen lands) |
-| `ios/HUI/Chat/` | `ChatRows.swift`: the transcript items and chat rows the core returns, mirrored by hand and checked by `scripts/ios-contract.test.mjs` |
+| `ios/HUI/Chat/` | `ConversationModel.swift` (one open session: open, the session stream with tickets, `Origin` and reconnects, the core's transcript and rows, send and Stop), `SessionSocket.swift` (the stream's WebSocket), `ChatRows.swift` (the transcript items and chat rows the core returns, mirrored by hand and checked by `scripts/ios-contract.test.mjs`) |
 | `ios/HUI/Core/` | `HUICore.swift`: the JavaScriptCore host that runs `hui-core.js` on its own serial queue, and the types its answers decode into |
 | `ios/HUI/Gateway/` | `API.swift`: the `API` namespace of the payload types, and the `JSONValue` they use for open values; `GatewayClient.swift` (`x-hui`, deadlines, error bodies); `EventStream.swift` (server-sent event framing) |
 | `ios/HUI/Gateway/Schema/` | The payload types, one Swift file per API area, generated from `docs/api.schema.json` by `npm run api:schema` |
-| `ios/HUITests/` | Swift unit tests: SSE framing, the core bridge, and decoding of payloads recorded from a fixture gateway (`Fixtures/`) |
+| `ios/HUITests/` | Swift unit tests: SSE framing, the core bridge, the session list and a conversation against a stubbed gateway, and decoding of payloads recorded from a fixture gateway (`Fixtures/`) |
 
 ## Elsewhere
 

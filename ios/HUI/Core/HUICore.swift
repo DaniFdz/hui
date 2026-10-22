@@ -1,5 +1,7 @@
 // The JavaScriptCore host for hui-core.js, the pure logic the app shares with the web (ios/core/entry.ts): one
 // JSContext on its own serial queue, called with JSON in and decoded JSON out, plus the types its answers decode into.
+// Each open conversation's transcript stays in the context, keyed by session id, so a streamed event crosses the
+// bridge alone and only the projected rows come back.
 import Foundation
 import JavaScriptCore
 
@@ -11,6 +13,8 @@ actor HUICore {
     private let queue = DispatchSerialQueue(label: "dev.hui.core")
     private let context: JSContext
     private let exports: JSValue
+    private var transcripts: [String: JSValue] = [:]
+    private var sendRequests: JSValue?
 
     nonisolated var unownedExecutor: UnownedSerialExecutor { queue.asUnownedSerialExecutor() }
 
@@ -73,16 +77,71 @@ actor HUICore {
         return rows.map(\.session)
     }
 
+    func transcript(_ session: String, snapshot entries: [API.TranscriptEntry], streaming: Bool) throws -> ChatProjection {
+        let options = try json(["streaming": streaming])
+        return try project(session, invoke("normalizeTranscript", [json(entries), options]))
+    }
+
+    func transcript(_ session: String, event: API.SessionEvent) throws -> ChatProjection {
+        try project(session, invoke("reduceTranscript", [items(session), json(event)]))
+    }
+
+    func transcript(_ session: String, pending id: String, text: String) throws -> ChatProjection {
+        try project(session, invoke("appendPendingUser", [items(session), id, text, json([String]())]))
+    }
+
+    func transcript(_ session: String, settle id: String, accepted: Bool) throws -> ChatProjection {
+        try project(session, invoke("settlePendingUser", [items(session), id, accepted]))
+    }
+
+    func closeTranscript(_ session: String) {
+        transcripts[session] = nil
+    }
+
+    func takeRequestId(_ session: String, text: String) throws -> String {
+        let answer: RequestId = try decode(invoke("take", [session, text, json([String]())], on: requests()))
+        return answer.requestId
+    }
+
+    func sendFailed(_ session: String, requestId: String, text: String) throws {
+        _ = try invoke("failed", [session, requestId, text, json([String]())], on: requests())
+    }
+
+    private func items(_ session: String) throws -> JSValue {
+        if let items = transcripts[session] { return items }
+        return try json([String]())
+    }
+
+    private func project(_ session: String, _ items: JSValue) throws -> ChatProjection {
+        transcripts[session] = items
+        return ChatProjection(rows: try decode(invoke("projectChatTranscript", [items])), working: try decode(invoke("workingLabel", [items])))
+    }
+
+    private func requests() throws -> JSValue {
+        if let sendRequests { return sendRequests }
+        let newId: @convention(block) () -> String = { UUID().uuidString }
+        guard let constructor = exports.objectForKeyedSubscript("SendRequests"),
+              let requests = constructor.construct(withArguments: [JSValue(object: newId, in: context) as Any]) else {
+            throw ScriptError(description: "hui-core.js has no SendRequests")
+        }
+        try rethrow("SendRequests")
+        sendRequests = requests
+        return requests
+    }
+
+    private func rethrow(_ name: String) throws {
+        guard let exception = context.exception else { return }
+        context.exception = nil
+        throw ScriptError(description: "\(name): \(exception.toString() ?? "exception")")
+    }
+
     private func call<Answer: Decodable>(_ name: String, _ arguments: any Encodable...) throws -> Answer {
         try decode(invoke(name, arguments.map(json)))
     }
 
-    private func invoke(_ name: String, _ arguments: [Any]) throws -> JSValue {
-        let result = exports.invokeMethod(name, withArguments: arguments)
-        if let exception = context.exception {
-            context.exception = nil
-            throw ScriptError(description: "\(name): \(exception.toString() ?? "exception")")
-        }
+    private func invoke(_ name: String, _ arguments: [Any], on target: JSValue? = nil) throws -> JSValue {
+        let result = (target ?? exports).invokeMethod(name, withArguments: arguments)
+        try rethrow(name)
         guard let result else { throw ScriptError(description: "\(name) returned nothing") }
         return result
     }
@@ -107,6 +166,15 @@ actor HUICore {
         }
         return result
     }
+}
+
+struct ChatProjection: Equatable, Sendable {
+    var rows: [ChatRow]
+    var working: String
+}
+
+private struct RequestId: Decodable {
+    var requestId: String
 }
 
 struct SSEFrame: Decodable, Sendable {

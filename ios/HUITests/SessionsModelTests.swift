@@ -1,5 +1,5 @@
 // The live session list against a stubbed gateway: the recorded sessions.json and a scripted events stream, served
-// by a URLProtocol on a host of each test's own.
+// by a URLProtocol on a host of each test's own, which also serves other tests' scripted routes.
 import Foundation
 import Synchronization
 import Testing
@@ -77,23 +77,13 @@ struct SessionsModelTests {
         let json = String(decoding: try JSONEncoder().encode(session), as: UTF8.self)
         return #"event: sessions\#ndata: {"revision":\#(revision),"upserts":[\#(json)]}"#
     }
-
-    private func until(_ condition: () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
-        while !condition() {
-            guard ContinuousClock.now < deadline else {
-                Issue.record("the session list never reached the expected state")
-                return
-            }
-            try await Task.sleep(for: .milliseconds(10))
-        }
-    }
 }
 
 final class GatewayStub: URLProtocol {
     private struct Host {
-        var list: Data
-        var events: Data
+        var list = Data()
+        var events = Data()
+        var routes: [String: [(status: Int, body: Data)]] = [:]
         var paths: [String] = []
     }
 
@@ -103,6 +93,11 @@ final class GatewayStub: URLProtocol {
     static func serve(_ host: String, list: Data, events: Data) {
         _ = registered
         hosts.withLock { $0[host] = Host(list: list, events: events) }
+    }
+
+    static func serve(_ host: String, routes: [String: [(status: Int, body: Data)]]) {
+        _ = registered
+        hosts.withLock { $0[host] = Host(routes: routes) }
     }
 
     static func paths(_ host: String) -> [String] {
@@ -118,11 +113,20 @@ final class GatewayStub: URLProtocol {
 
     override func startLoading() {
         guard let url = request.url, let host = url.host() else { return }
-        let served = Self.hosts.withLock { hosts -> Host? in
-            hosts[host]?.paths.append(url.path())
-            return hosts[host]
+        let path = url.path()
+        let (served, route) = Self.hosts.withLock { hosts -> (Host?, (status: Int, body: Data)?) in
+            hosts[host]?.paths.append(path)
+            let route = hosts[host]?.routes[path]?.first
+            if (hosts[host]?.routes[path]?.count ?? 0) > 1 { hosts[host]?.routes[path]?.removeFirst() }
+            return (hosts[host], route)
         }
         guard let served else { return }
+        if let route {
+            client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: route.status, httpVersion: "HTTP/1.1", headerFields: ["content-type": "application/json"])!, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: route.body)
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         let stream = url.path() == "/__hui/sessions/events"
         let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["content-type": stream ? "text/event-stream" : "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
