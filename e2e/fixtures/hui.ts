@@ -362,8 +362,7 @@ export const test = base.extend<{ hui: Hui }>({
       restartGateway: async () => {
         const stopped = receipt.serverPid;
         process.kill(receipt.runnerPid, "SIGUSR2");
-        await expect.poll(async () => (await readReceipt()).serverPid !== stopped, { timeout: 60_000 }).toBe(true);
-        receipt.serverPid = (await readReceipt()).serverPid;
+        await expect.poll(async () => (receipt.serverPid = (await readReceipt()).serverPid) !== stopped, { timeout: 60_000 }).toBe(true);
       },
       exitRuntimes: async () => {
         execFileSync("pkill", ["-P", String(receipt.serverPid), "-f", "pi-sdk-worker"]);

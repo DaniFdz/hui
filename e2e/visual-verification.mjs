@@ -242,7 +242,6 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     await writeFile(join(providersDir, "models.json"), JSON.stringify({ "openai-codex": { models: [] }, anthropic: { models: [] }, openai: { models: [] }, "opencode-go": { models: [] } }), { mode: 0o600 });
   }
   const children = [];
-  const retired = new Set();
   let stopping;
   async function stop() {
     if (stopping) return stopping;
@@ -271,7 +270,7 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     child.stderr.pipe(log, { end: false });
     child.once("close", () => log.end());
     child.once("exit", (code, signal) => {
-      if (!stopping && !retired.has(child)) {
+      if (!stopping && children.includes(child)) {
         process.stderr.write(`Fixture child ${script} exited (${code ?? signal}).\n`);
         process.exitCode = code || 1;
         void stop();
@@ -410,6 +409,7 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
         server.on("message", onMessage);
         return () => server.off("message", onMessage);
       });
+      port ??= Number(new URL(receipt.url).port);
       return server;
     };
     let server = await serve();
@@ -433,15 +433,15 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     process.on("SIGUSR2", () => {
       restarting = restarting.then(async () => {
         if (stopping) return;
-        retired.add(server);
+        children.splice(children.indexOf(server), 1);
         const exited = once(server, "exit");
         server.kill("SIGTERM");
         await exited;
-        children.splice(children.indexOf(server), 1);
         server = await serve();
         await save();
         await publish();
       }).catch((error) => {
+        if (stopping) return;
         process.stderr.write(`Gateway restart failed: ${error.message}\n`);
         process.exitCode = 1;
         void stop();

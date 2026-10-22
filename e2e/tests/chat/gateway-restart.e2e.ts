@@ -13,8 +13,13 @@ test("a run cut off by a gateway restart carries on without manual action, on Pi
     await screen.getByRole("button", "Send message").tap();
     await hui.provider.held();
     await expect(transcript.getByText("Replay prefix —", { exact: false })).toBeVisible();
+    const reconnect = await hui.intercept("POST", /\/__hui\/sessions\/[^/]+\/connect$/u);
     await hui.restartGateway();
+    await reconnect.arrived();
+    await expect(screen.getByText("Reconnecting — draft preserved.")).toBeVisible();
+    await reconnect.deliver();
     await hui.provider.held();
+    await expect(screen.getByText("Reconnecting — draft preserved.")).toBeHidden();
     await expect(status("Running")).toBeVisible();
   };
 

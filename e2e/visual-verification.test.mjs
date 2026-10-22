@@ -71,7 +71,7 @@ test("--port and --receipt-dir are checked before launch", () => {
   }
 });
 
-test("--port fixes the app's port and --receipt-dir gets the public receipt once ready", { timeout: 60_000 }, async (context) => {
+test("--port fixes the app's port, --receipt-dir gets the public receipt once ready, and SIGUSR2 restarts the gateway there", { timeout: 60_000 }, async (context) => {
   const free = createServer();
   await new Promise((resolveListen) => free.listen(0, "127.0.0.1", resolveListen));
   const { port } = free.address();
@@ -86,7 +86,15 @@ test("--port fixes the app's port and --receipt-dir gets the public receipt once
   });
   const printed = await fixture.ready;
   assert.equal(new URL(printed.url).port, String(port));
-  assert.deepEqual(JSON.parse(await readFile(join(receiptDir, `receipt-${port}.json`), "utf8")), printed);
+  const shared = join(receiptDir, `receipt-${port}.json`);
+  assert.deepEqual(JSON.parse(await readFile(shared, "utf8")), printed);
+  fixture.child.kill("SIGUSR2");
+  let restarted = printed;
+  while (restarted.serverPid === printed.serverPid) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    restarted = JSON.parse(await readFile(shared, "utf8"));
+  }
+  assert.deepEqual({ ...restarted, serverPid: printed.serverPid }, printed);
   assert.equal((await cleanup(printed.receipt)).portsClosed, true);
 });
 

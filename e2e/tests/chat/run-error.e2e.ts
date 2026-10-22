@@ -34,6 +34,8 @@ test("a failed run's error card copies the error, comes back after a dismiss and
   await expect(summary).toBeHidden();
   await hui.reload();
   await expect(summary).toBeVisible();
+  await transcript.getByText("Run details").tap();
+  await expect(transcript.getByText("see the fixture for why", { exact: false })).toBeVisible();
 
   await continueRun.tap();
   await expect(transcript.getByText("Continue from where you left off.")).toBeVisible();

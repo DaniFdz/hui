@@ -16,7 +16,8 @@ test makes yet: the unread dot on a phone.
 
 1. Created a session through **New session** and sent `E2E_REPLAY`, left the
    chat through the visible **New session** action, then released the
-   provider. The sidebar row changed to `status idle, ... unread`.
+   provider. The sidebar row changed to `status idle, ... unread`, and its
+   unread dot rendered in the accent colour.
 2. Repeated the visual check at 390×844 with the navigation drawer open.
    `innerWidth`, `body.scrollWidth` and `documentElement.scrollWidth` were all
    390, with the same accent unread dot.
