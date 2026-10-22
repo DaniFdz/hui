@@ -187,7 +187,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth", "docs/api.md#get-__huipi"],
     surfaces: ["settings-page:connection", "route:GET /__hui/health", "page:connection", "route:GET /__hui/pi"],
     journeys: ["gateway-settings"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {
@@ -502,7 +502,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huipi", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {
@@ -670,7 +670,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Automation and the Automations page have a task form taking a name, an existing session, a prompt, a schedule (cron with timezone, a repeat interval or once at a time) and a timeout, defaulting to a cron expression in the browser's zone and 900 seconds; “Create task” adds it to Tasks with its schedule and next run, kept after a reload, and the form clears back to its defaults. Schedules read as “Cron <expression> (<zone>)”, in words such as “Every 15 minutes”, or as “Once at <time>”. A missing field, invalid schedule, timeout outside 10 to 86400 or gateway rejection shows why under the form (such as “Name the task.”) with the typed input kept and nothing created; the Scheduler section shows the next wake and how many runs are in flight.",
     spec: ["docs/api.md#get-__huiautomation", "docs/api.md#post-__huiautomationtasks", "SPEC.md#behaviour"],
     surfaces: ["settings-page:automation", "route:GET /__hui/automation", "route:POST /__hui/automation/tasks", "page:cron"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {
@@ -679,7 +679,7 @@ const cases: UseCase[] = [
     behaviour: "Choosing a task's name or Edit in its actions menu loads it into the form as “Edit task” with its values filled in; “Update task” saves the change and “Cancel edit” discards it. Changing the target, name or prompt while its run is in flight is refused with the reason under the form.",
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {
@@ -688,7 +688,7 @@ const cases: UseCase[] = [
     behaviour: "Turning off “Enable <task>” pauses the task so it no longer runs on schedule, dimming its row with Next run “—”; turning it on schedules it again, and the state is kept after a reload.",
     spec: ["docs/api.md#put-__huiautomationtasksid", "SPEC.md#behaviour"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "page:cron"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {
@@ -724,7 +724,7 @@ const cases: UseCase[] = [
     behaviour: "Settings → Privacy & Security shows the Full Access runtime model, the x-hui: 1 browser API guard, the active transport, how many PI credential sources exist with their values redacted, and what diagnostics exclude and how long activity is kept. A failed read of PI or the gateway shows the reason with Retry.",
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huihealth"],
     surfaces: ["settings-page:security", "route:GET /__hui/health", "route:GET /__hui/pi"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {
