@@ -8,10 +8,10 @@
  * clipboard, status glyphs, how a piece of the screen looks, and on the web the window's size, Back and Forward,
  * sideways overflow, whether a tap reaches a control and the command palette's chord. The web page never opens Vite's
  * development socket, whose client reloads the page when the gateway restarts, which no installed gateway does. On iOS
- * it relaunches the app pointed at the gateway, follows `hui://open` links, and clears the app's preferences through
- * `defaults` before the engine empties its data container, because `cfprefsd` would otherwise hand the relaunched app
- * the deleted values; steps only the web has throw there. Test files import `test` from here, never from `e2e`, and
- * never read `platform`, `device` or `browser` themselves.
+ * it relaunches the app pointed at the gateway and follows `hui://open` links; each test starts by deleting only the
+ * app's preferences through `defaults`, and `clearState` deletes them too before the engine empties the data container,
+ * because `cfprefsd` would otherwise hand the relaunched app the deleted values; steps only the web has throw there.
+ * Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser` themselves.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
 import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
-import { IOS_PORT } from "../../e2e.config.ts";
+import { IOS_DEVICE, IOS_PORT } from "../../e2e.config.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
@@ -140,13 +140,14 @@ export const test = base.extend<{ hui: Hui }>({
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
     const device = () => (fixtures as unknown as { device: Device }).device;
     const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", receipt.url] });
+    const forgetPreferences = async () => {
+      await device().closeApp();
+      const container = execFileSync("xcrun", ["simctl", "get_app_container", IOS_DEVICE, "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
+      const forget = spawnSync("xcrun", ["simctl", "spawn", IOS_DEVICE, "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
+      if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
+    };
     const clearState = async () => {
-      if (!web) {
-        await device().closeApp();
-        const container = execFileSync("xcrun", ["simctl", "get_app_container", "HUI iPhone", "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
-        const forget = spawnSync("xcrun", ["simctl", "spawn", "HUI iPhone", "defaults", "delete", join(container, "Library/Preferences/dev.hui.ios")], { encoding: "utf8" });
-        if (forget.status !== 0 && !forget.stderr.includes("not found")) throw new Error(`defaults delete dev.hui.ios answered ${forget.status}: ${forget.stderr}`);
-      }
+      if (!web) await forgetPreferences();
       await fixtures.app.clearState();
     };
     const notOnIos = (step: string) => () => {
@@ -160,8 +161,11 @@ export const test = base.extend<{ hui: Hui }>({
     const existingBacklogTasks = new Set(await backlogTaskIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     if (web) await browser().addInitScript(trackSockets);
-    await clearState();
-    if (!web) await launch();
+    if (web) await clearState();
+    else {
+      await forgetPreferences();
+      await launch();
+    }
     const directories: string[] = [];
 
     const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {

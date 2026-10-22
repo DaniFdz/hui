@@ -1,10 +1,11 @@
-/** The shared e2e suite: HUI's web UI in a browser and the iOS app on the "HUI iPhone" simulator, each against a disposable gateway started by the visual-verification launcher. */
+/** The shared e2e suite: HUI's web UI in a browser and the iOS app on a simulator ("HUI iPhone" and port 47400 unless `E2E_IOS_DEVICE` and `E2E_IOS_PORT` name another, so two checkouts can run at once), each against a disposable gateway started by the visual-verification launcher. */
 import { execFileSync } from "node:child_process";
 import type { E2EConfig } from "e2e";
 import { mobile } from "@e2e-dev/mobile";
 import { web } from "@e2e-dev/web";
 
-export const IOS_PORT = 47400;
+export const IOS_DEVICE = process.env.E2E_IOS_DEVICE ?? "HUI iPhone";
+export const IOS_PORT = Number(process.env.E2E_IOS_PORT ?? 47400);
 
 const branch = execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim() || "HEAD";
 
@@ -29,7 +30,7 @@ export default {
     },
     {
       name: "ios",
-      engine: mobile({ platform: "ios", device: "HUI iPhone" }),
+      engine: mobile({ platform: "ios", device: IOS_DEVICE }),
       app: {
         bundleId: "dev.hui.ios",
         readyUrl: `http://127.0.0.1:${IOS_PORT}/`,
