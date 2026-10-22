@@ -767,27 +767,28 @@ test("a run end is announced once nothing else will run, and is failed when it e
   const manager = new LiveSessions(factory(started));
   const ends: import("./sessions/live-sessions.ts").RunEnd[] = [];
   manager.watchRunEnds((end) => ends.push(end));
-  manager.ensure(recordFor("run-ends"));
-  await waitForBoot(manager, "run-ends");
+  const id = `run-ends-${crypto.randomUUID()}`;
+  manager.ensure(recordFor(id));
+  await waitForBoot(manager, id);
   const runtime = started[0]!;
-  await manager.prompt("run-ends", "first");
-  await manager.followUp("run-ends", "second");
+  await manager.prompt(id, "first");
+  await manager.followUp(id, "second");
   runtime.emit({ type: "settled" });
   await waitFor("the queued message to start", () => runtime.prompts.at(-1) === "second");
   assert.deepEqual(ends, [], "not between a run and its queued message");
   runtime.emit({ type: "settled" });
   await waitFor("the run to end", () => ends.length === 1, { state: () => ends });
-  assert.deepEqual(ends, [{ id: "run-ends", failed: false, prompt: "second" }]);
+  assert.deepEqual(ends, [{ id, failed: false, prompt: "second" }]);
 
   runtime.history = [...runtime.history, { kind: "error", message: "provider failed" }];
-  await manager.prompt("run-ends", "third");
+  await manager.prompt(id, "third");
   runtime.emit({ type: "settled" });
   await waitFor("the failed run to end", () => ends.length === 2);
-  assert.deepEqual(ends[1], { id: "run-ends", failed: true, prompt: "third" });
+  assert.deepEqual(ends[1], { id, failed: true, prompt: "third" });
 
-  await manager.prompt("run-ends", "fourth");
+  await manager.prompt(id, "fourth");
   runtime.exit();
-  assert.deepEqual(ends[2], { id: "run-ends", failed: true, prompt: "fourth" });
+  assert.deepEqual(ends[2], { id, failed: true, prompt: "fourth" });
   assert.equal(ends.length, 3);
   manager.disposeAll();
 });
