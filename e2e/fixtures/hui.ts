@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
 import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
+import { IOS_PORT } from "../../e2e.config.ts";
 
 type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number };
 type Rgb = [number, number, number];
@@ -79,7 +80,7 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
 export const test = base.extend<{ hui: Hui }>({
   hui: async (fixtures, use) => {
     const web = fixtures.platform === "web";
-    const port = web ? new URL(fixtures.app.baseUrl!).port : "47400";
+    const port = web ? new URL(fixtures.app.baseUrl!).port : IOS_PORT;
     const file = new URL(`../../.e2e/hui/receipt-${port}.json`, import.meta.url);
     await expect.poll(() => readFile(file).then(() => true, () => false), { timeout: 60_000 }).toBe(true);
     const receipt = JSON.parse(await readFile(file, "utf8")) as Receipt;

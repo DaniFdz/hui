@@ -4,6 +4,8 @@ import type { E2EConfig } from "e2e";
 import { mobile } from "@e2e-dev/mobile";
 import { web } from "@e2e-dev/web";
 
+export const IOS_PORT = 47400;
+
 const branch = execFileSync("git", ["branch", "--show-current"], { encoding: "utf8" }).trim() || "HEAD";
 
 const launcher = (target: string, port: string) => ({
@@ -30,8 +32,8 @@ export default {
       engine: mobile({ platform: "ios", device: "HUI iPhone" }),
       app: {
         bundleId: "dev.hui.ios",
-        readyUrl: "http://127.0.0.1:47400/",
-        command: launcher("ios", "47400"),
+        readyUrl: `http://127.0.0.1:${IOS_PORT}/`,
+        command: launcher("ios", String(IOS_PORT)),
       },
     },
   ],
