@@ -3,7 +3,7 @@
  * its API, the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
  * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
  * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
- * point instead of the input), attaching files from `files/`, reading what a download saved or what the page copied,
+ * point instead of the input), attaching files from `files/` or made up of a name and a size, reading what a download saved or what the page copied,
  * opening a session's menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a
  * piece of the screen looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
  * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
@@ -59,7 +59,7 @@ export type Hui = {
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; fonts: string[]; loaded: string[]; size: number; ring: Rgb | null }>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
-  attach(target: Locator, files: string[]): Promise<void>;
+  attach(target: Locator, files: (string | { name: string; bytes: number })[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
@@ -129,7 +129,7 @@ export const test = base.extend<{ hui: Hui }>({
     const settings = await api<unknown>("GET", "/__hui/settings");
     await clearState();
     if (!web) await launch();
-    const repositories: string[] = [];
+    const directories: string[] = [];
 
     const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "clearState" | "repository"> = {
       url: () => browser().url(),
@@ -200,7 +200,15 @@ export const test = base.extend<{ hui: Hui }>({
           };
         }, box);
       },
-      attach: (target, files) => target.setInputFiles(files.map((name) => fileURLToPath(new URL(`files/${name}`, import.meta.url)))),
+      attach: async (target, files) => {
+        const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
+        if (made) directories.push(made);
+        await target.setInputFiles(await Promise.all(files.map(async (file) => {
+          if (typeof file === "string") return fileURLToPath(new URL(`files/${file}`, import.meta.url));
+          await writeFile(join(made, file.name), Buffer.alloc(file.bytes, "x"));
+          return join(made, file.name);
+        })));
+      },
       download: async (target) => {
         const file = await browser().waitForDownload(() => target.tap());
         return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
@@ -322,7 +330,7 @@ export const test = base.extend<{ hui: Hui }>({
       clearState,
       repository: async () => {
         const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
-        repositories.push(path);
+        directories.push(path);
         const git = (...args: string[]) => execFileSync("git", ["-C", path, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com",
           "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
         git("init", "--quiet", "--initial-branch=main");
@@ -351,6 +359,6 @@ export const test = base.extend<{ hui: Hui }>({
       if (!existingGroups.has(label)) await api("DELETE", `/__hui/session-groups/${encodeURIComponent(label)}`);
     }
     await api("PUT", "/__hui/settings", settings);
-    for (const path of repositories) await rm(path, { recursive: true, force: true });
+    for (const path of directories) await rm(path, { recursive: true, force: true });
   },
 });

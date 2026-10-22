@@ -141,7 +141,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["chat-composer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
