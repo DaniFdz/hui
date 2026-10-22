@@ -49,7 +49,9 @@ openclaw browser errors --target-id "$TARGET" --clear --json
 1. Snapshot the page with `openclaw browser snapshot --target-id "$TARGET"
    --format ai`. Fill **Project directory** with the exact isolated path
    `$HUI_E2E_ROOT/workspace`, click **Start session** and take fresh snapshots
-   until the session reads `Idle`. Do not call a session API directly.
+   until the session reads `Idle`. Do not call a session API directly. Inspect
+   requests filtered by `/models`: exactly one exists, it occurs after the
+   session opens, and its status is `200`, never a `409` loop.
 2. Type `Reply with exactly: HUI_BROWSER_E2E_OK` into **Message** and click
    **Send**. With the intentionally empty PI agent directory, assert that HUI shows
    PI's missing-provider-credential message and returns the session to

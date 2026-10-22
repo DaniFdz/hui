@@ -4,7 +4,8 @@ This HUI-03 journey exercises only visible controls against real PI processes.
 The shared tests in `e2e/tests/sess/` now prove pinning, renaming, search,
 collapsing and the group actions. What is left here is a gateway restart and
 transparent resume (SESS-057), the Sessions page (SESS-058), PI's session file
-after a rename (SESS-063) and the delete dialog's Escape (SESS-041).
+after a rename (SESS-063), the delete dialog's Escape (SESS-041) and the PI
+transcript a removed session leaves on disk (SESS-065).
 
 ## Isolated setup
 
@@ -41,7 +42,9 @@ directories.
 4. Navigate through the sidebar to **Sessions**. Search by group, open a result,
    and verify **New Session** navigates to the functional creation form.
 5. Open Alpha, click **Delete**, press Escape, and assert focus returns to the
-   Delete button.
+   Delete button. Open the dialog again and click **Remove from HUI**. Assert
+   Alpha is absent from `sessions.json` and its isolated PI transcript file
+   still exists with unchanged contents.
 
 Inspect Browser page errors and requests. SSE failures while the gateway is
 deliberately down, stream aborts during navigation/deletion, and the known

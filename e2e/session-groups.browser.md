@@ -52,7 +52,7 @@ for inspection. No operator registry or transcripts are modified.
 
 The shared tests in `e2e/tests/sess/` (`sidebar-filters.e2e.ts`, `session-groups.e2e.ts` and `group-defaults.e2e.ts`)
 now prove creating groups, search, sort, grouping, the status filter, Hide empty groups and the group Git defaults.
-What is left here is the keyboard and the menu's layout on small screens (SESS-041).
+What is left here is the keyboard (SESS-041) and the layout of the menu and the group dialogs on a phone.
 
 1. On iPhone 13 emulation (390×664 CSS px, DPR 3), open navigation and the Filter & sort menu.
    **End** scrolls the last option, Never, into view; Enter applies it. Escape
@@ -62,6 +62,10 @@ What is left here is the keyboard and the menu's layout on small screens (SESS-0
    trigger, remains in bounds and scrolls. Resize the open drawer to desktop:
    the drawer state clears and main is not left inert. Desktop menu selection
    also works with Home/ArrowDown/Enter.
+4. From the mobile drawer, choose **Rename group**, **New session defaults** and
+   **Delete group** in a group's Group options menu. Each time the drawer closes
+   before the dialog opens, the dialog fits x=12…378, and once it closes main is
+   no longer inert.
 
 The portrait menu measured x=40…264, y=225…654 with scrollable content (737 px
 content, 427 px client height). Landscape measured x=232…456, y=10…187. There
