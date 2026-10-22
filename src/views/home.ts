@@ -416,7 +416,7 @@ function renderLaunchFeedback(props: HomeProps) {
   if (!props.note) return nothing;
   const failed = props.noteLevel === "error";
   return html`
-    <div id="launch-feedback"
+    <div id="launch-feedback" data-testid="launch-feedback"
       class="callout ${failed ? "danger" : ""} new-session-page__alert new-session-page__feedback"
       role=${noteAnnouncement(props.noteLevel)} aria-atomic="true">
       ${failed ? html`<span class="new-session-page__alert-icon" aria-hidden="true">${icons.alertTriangle}</span>` : nothing}
@@ -687,7 +687,7 @@ function renderLaunchForm(props: HomeProps) {
           ${props.launchWorker ? nothing : renderCheckoutPicker(props)}
         </div>
         <div class="agent-chat__composer-shell new-session-page__composer">
-          <div class="agent-chat__input agent-chat__input--mobile-toolbar" @click=${focusComposerFromSurface}>
+          <div class="agent-chat__input agent-chat__input--mobile-toolbar" data-testid="new-session-composer" @click=${focusComposerFromSurface}>
             ${renderLocalPathMenu({ ...props.localPathMenu, id: sessionControlId(props, LOCAL_PATH_MENU_ID) })}
             ${renderSlashMenu({ ...props.commandMenu, id: sessionControlId(props, SLASH_MENU_ID), loading: false, error: "", streaming: false,
               commands: props.commandMenu.commands, browseSession: !props.launching && commandQuery?.start === 0,
