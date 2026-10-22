@@ -116,10 +116,11 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   `Read <file>`, `Agent activity: <step>`) and takes every label from the core: the core's `chatRows` returns the rows with
   their activity labels and tool cards (`src/lib/chat-rows.ts`), and a `key` per row and item that the screen uses for
   identity, opening and scrolling (tool call ids repeat across turns); the working indicator comes from `workingLabel`. The transcript follows the bottom
-  while the reader's scroll leaves it within 48 points of the end, as the web's does. It scrolls only while its content is taller than the screen: a shorter transcript sits at the bottom through `.defaultScrollAnchor(.bottom)`, and `scrollTo` there moves the content past the bottom edge, leaving the screen blank until the content's height changes. Layout can move a following transcript off
-  the bottom without changing its height (a lazy row's estimate settling as the working indicator goes), so leaving the
-  last 48 points without the reader's scroll goes back to the end (`Chat/TranscriptFollow.swift`). Opening a card or activity row
-  scrolls to it and stops following, and a send follows again. A plain button
+  until the reader scrolls more than 48 points up from it, as the web's does, and follows again once they scroll back. The
+  scroll view keeps the bottom itself: `.defaultScrollAnchor(.bottom)` for the initial offset and for short content, and for
+  size changes while following, so no code scrolls as rows grow or settle. Opening a card or activity row scrolls to it and
+  stops following, and a send follows again by scrolling to the bottom edge (`ScrollPosition`; scrolling to the last lazy
+  row's id can land short of it). A plain button
   whose label has a `Spacer` needs `.contentShape(Rectangle())`, or a tap at its centre misses it.
 - `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
   has a destination, and anything else returns to the list. On the iOS 27.0 simulator `xcrun simctl openurl` opens

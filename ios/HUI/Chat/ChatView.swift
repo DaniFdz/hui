@@ -11,7 +11,9 @@ struct ChatView: View {
     @State private var model: ConversationModel
     @State private var draft = ""
     @State private var expanded: Set<String> = []
-    @State private var follow = TranscriptFollow()
+    @State private var position = ScrollPosition(idType: String.self, edge: .bottom)
+    @State private var following = true
+    @State private var readerScrolling = false
     @State private var sends = 0
 
     init(id: String, client: GatewayClient, core: HUICore, title: String?) {
@@ -71,30 +73,6 @@ struct ChatView: View {
     }
 
     private var transcript: some View {
-        ScrollViewReader { proxy in
-            transcriptScroll
-                .onChange(of: expanded) { old, new in
-                    guard let opened = new.subtracting(old).first else { return }
-                    follow.stop()
-                    withAnimation { proxy.scrollTo(opened, anchor: .top) }
-                }
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentSize.height - geometry.containerSize.height
-                } action: { _, overflow in
-                    if follow.overflowChanged(overflow) { proxy.scrollTo("end", anchor: .bottom) }
-                }
-                .onScrollGeometryChange(for: Bool.self) { geometry in
-                    geometry.contentSize.height + geometry.contentInsets.bottom - geometry.visibleRect.maxY < 48
-                } action: { _, nearBottom in
-                    if follow.nearBottomChanged(nearBottom) { proxy.scrollTo("end", anchor: .bottom) }
-                }
-                .onChange(of: sends) {
-                    if follow.follow() { proxy.scrollTo("end", anchor: .bottom) }
-                }
-        }
-    }
-
-    private var transcriptScroll: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 ForEach(model.rows, id: \.key) { row in
@@ -108,13 +86,29 @@ struct ChatView: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Agent activity: \(model.working)")
                 }
-                Color.clear.frame(height: 1).id("end")
             }
             .padding()
         }
-        .defaultScrollAnchor(.bottom)
+        .scrollPosition($position)
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(.bottom, for: .alignment)
+        .defaultScrollAnchor(following ? .bottom : .top, for: .sizeChanges)
         .onScrollPhaseChange { _, phase in
-            follow.scrollingChanged([.tracking, .interacting, .decelerating].contains(phase))
+            readerScrolling = [.tracking, .interacting, .decelerating].contains(phase)
+        }
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentSize.height + geometry.contentInsets.bottom - geometry.visibleRect.maxY < 48
+        } action: { _, nearBottom in
+            if readerScrolling { following = nearBottom }
+        }
+        .onChange(of: expanded) { old, new in
+            guard let opened = new.subtracting(old).first else { return }
+            following = false
+            withAnimation { position.scrollTo(id: opened, anchor: .top) }
+        }
+        .onChange(of: sends) {
+            following = true
+            position.scrollTo(edge: .bottom)
         }
         .scrollDismissesKeyboard(.interactively)
         .accessibilityIdentifier("transcript")
