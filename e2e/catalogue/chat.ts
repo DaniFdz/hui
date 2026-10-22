@@ -181,7 +181,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: [],
     journeys: ["interrupted-recovery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

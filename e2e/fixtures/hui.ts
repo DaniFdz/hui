@@ -3,13 +3,14 @@
  * its API, the deterministic provider's address and barriers, a gateway request a test holds, then delivers, rejects or
  * delivers while dropping its answer, and the steps whose gesture differs per platform, such as holding a control,
  * opening a context menu, turning a switch (a Web Awesome switch draws its track over its input, so the web taps the
- * point instead of the input), attaching files from `files/` or made up of a name and a size, reading what a download saved or what the page copied,
- * opening a session's menu, reading a sidebar row's status glyph (its tooltip and whether it spins) and reading how a
- * piece of the screen looks (its text colour and the colour behind it as RGB, its font families, those of HUI's bundled faces that have
- * loaded to draw its text, its text size in pixels and the colour of the focus ring it shows when reached from the
- * keyboard), a disposable Git repository (on `feature/current`, with `main`, a `release/1.0` at its own commit and a
- * `sub` directory) that it removes at teardown, the files of the gateway's state and workspace that hold a text, and
- * the secret directories the gateway wrote. On iOS it relaunches the app pointed at the gateway, follows a `hui://open`
+ * point instead of the input), attaching files from `files/` or made up of a name and a size, reading what a download
+ * saved or what the page copied, opening a session's menu, reading a sidebar row's status glyph (its tooltip and
+ * whether it spins) and reading how a piece of the screen looks (its text colour and the colour behind it as RGB, its
+ * font families, those of HUI's bundled faces that have loaded to draw its text, its text size in pixels and the colour
+ * of the focus ring it shows when reached from the keyboard), a disposable Git repository (on `feature/current`, with
+ * `main`, a `release/1.0` at its own commit and a `sub` directory) that it removes at teardown, the files of the
+ * gateway's state and workspace that hold a text, the secret directories the gateway wrote, and a restart of the
+ * gateway against the same state and port. On iOS it relaunches the app pointed at the gateway, follows a `hui://open`
  * link instead of loading a page, and clears the app's preferences through `defaults` before the engine empties its
  * data container, because `cfprefsd` would otherwise hand the relaunched app the deleted values; the web-only steps
  * throw. Test files import `test` from here, never from `e2e`, and never read `platform`, `device` or `browser`
@@ -25,7 +26,7 @@ import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { IOS_PORT } from "../../e2e.config.ts";
 
-type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number };
+type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
 type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
@@ -44,6 +45,7 @@ export type Hui = {
   createSubagent(parent: { id: string }): Promise<{ id: string; title: string }>;
   prompt(session: { id: string }, text: string): Promise<void>;
   provider: { url: string; held(): Promise<void>; release(): Promise<void> };
+  restartGateway(): Promise<void>;
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   clearState(): Promise<void>;
@@ -84,7 +86,8 @@ export const test = base.extend<{ hui: Hui }>({
     const port = web ? new URL(fixtures.app.baseUrl!).port : IOS_PORT;
     const file = new URL(`../../.e2e/hui/receipt-${port}.json`, import.meta.url);
     await expect.poll(() => readFile(file).then(() => true, () => false), { timeout: 60_000 }).toBe(true);
-    const receipt = JSON.parse(await readFile(file, "utf8")) as Receipt;
+    const readReceipt = async () => JSON.parse(await readFile(file, "utf8")) as Receipt;
+    const receipt = await readReceipt();
 
     const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
       const response = await fetch(receipt.url + path, {
@@ -131,7 +134,7 @@ export const test = base.extend<{ hui: Hui }>({
     if (!web) await launch();
     const directories: string[] = [];
 
-    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "open" | "reload" | "clearState" | "repository"> = {
+    const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "open" | "reload" | "clearState" | "repository"> = {
       url: () => browser().url(),
       clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
         const page = window as unknown as { huiCopied: string };
@@ -320,6 +323,12 @@ export const test = base.extend<{ hui: Hui }>({
         url: receipt.providerUrl,
         held: () => control("GET", "/control/wait-replay-ready"),
         release: () => control("POST", "/control/release-replay"),
+      },
+      restartGateway: async () => {
+        const stopped = receipt.serverPid;
+        process.kill(receipt.runnerPid, "SIGUSR2");
+        await expect.poll(async () => (await readReceipt()).serverPid !== stopped, { timeout: 60_000 }).toBe(true);
+        receipt.serverPid = (await readReceipt()).serverPid;
       },
       open: async (path) => {
         if (web) return fixtures.app.open(path);
