@@ -461,8 +461,9 @@ extension completion now settles correctly, including after extension questions.
 The HUI-owned `/clear` command resets an idle chat through PI's native
 `new_session` RPC while preserving the HUI row and the previous PI transcript.
 Browser proof and protocol limits are recorded in
-[`e2e/slash-commands.browser.md`](../e2e/slash-commands.browser.md) and
-[`e2e/clear-command.browser.md`](../e2e/clear-command.browser.md).
+[`e2e/slash-commands.browser.md`](../e2e/slash-commands.browser.md); the shared
+test [`e2e/tests/chat/clear-command.e2e.ts`](../e2e/tests/chat/clear-command.e2e.ts)
+covers the command.
 
 The 2026-09-25 composer follow-up adds catalog-resolved `$` references for skills
 and plugin actions, and combines leading `/` discovery with absolute-path

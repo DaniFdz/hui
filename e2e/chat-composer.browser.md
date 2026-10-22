@@ -55,15 +55,14 @@ page errors before starting. Use fresh snapshots after every rerender.
 ## Visible-control journey
 
 The shared tests in `e2e/tests/chat/` cover the attachment limits (CHAT-014), a reload
-mid-turn (CHAT-015), the run error card (CHAT-020), Sending… (CHAT-066) and a send the
-gateway rejects (CHAT-012), so their steps are gone from here.
+mid-turn (CHAT-015), the run error card (CHAT-020), Sending… (CHAT-066), a send the
+gateway rejects (CHAT-012) and Copy response (CHAT-030), so their steps are gone from here.
 
 1. Create `HUI-04 Browser E2E` with **Project directory** set to the isolated
    workspace. Wait for `Idle` and model `HUI E2E Fixture`.
 2. Send `E2E_RICH`. Assert **Running**, visible thinking, a running then
    completed `read` tool card with `fixture contents`, the final `Tool complete`
-   Markdown heading/list/code, then **Idle**. Activate **Copy response** and
-   assert its visible copied status.
+   Markdown heading/list/code, then **Idle**.
 3. Upload a tiny PNG and `notes.txt` through **Attach images or files**. Assert
    thumbnail/names/removal controls; send `E2E_ATTACHMENTS`. Assert names on the
    user turn and `Attachment received by PI.`. The provider log must contain an
