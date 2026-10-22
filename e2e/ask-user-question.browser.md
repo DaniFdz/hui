@@ -5,8 +5,7 @@ The shared tests in `e2e/tests/agent/` (`questions.e2e.ts`, `question-keyboard.e
 questions, multi-select, previews, the keyboard, Cancel, Stop, a reload, parallel calls,
 invalid calls and untrusted text. This journey keeps the checks no shared test makes
 yet: the question timeout (AGENT-013, SET-056), HUI's tool winning over a PI extension
-of the same name (AGENT-014), a gateway restart dropping a pending card (AGENT-021) and
-what Stop settles a question as (AGENT-064).
+of the same name (AGENT-014) and a gateway restart dropping a pending card (AGENT-021).
 
 Only the model provider is mocked (`e2e/fixtures/pi-provider-fixture.mjs`): a prompt
 holding `E2E_ASK_USER:<name>` makes it call `ask_user_question` with the

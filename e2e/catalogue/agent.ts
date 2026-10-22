@@ -555,16 +555,6 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
-  {
-    id: "AGENT-064",
-    title: "Have Stop count a waiting question as declined and a secret request as cancelled",
-    behaviour: "When Stop ends a run that waits on a card, the gateway settles the question as declined and the secret request as cancelled, as Cancel does. No shared test sees it yet: the aborted run discards the result, so the tool row only reads that the call was aborted.",
-    spec: [...QUESTIONS, ...SECRETS],
-    surfaces: [],
-    journeys: ["ask-user-question", "secret-requests"],
-    web: "backlog",
-    ios: "backlog",
-  },
 ];
 
 export default cases;
