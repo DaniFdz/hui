@@ -13,6 +13,7 @@ export { workingLabel } from "../../src/lib/chat-projection.ts";
 export { chatRows } from "../../src/lib/chat-rows.ts";
 export { SendRequests } from "../../src/lib/composer/send-requests.ts";
 export { composerPlaceholder, queueRows } from "../../src/lib/composer/state.ts";
+export { composerCommands, composerSendAction, slashMenu } from "../../src/lib/composer/slash-commands.ts";
 export { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "../../src/lib/run-error.ts";
 export { replyDraft } from "../../src/lib/message-metadata.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";

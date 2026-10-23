@@ -82,6 +82,53 @@ export function filterSlashCommands(commands: readonly ComposerCommand[], query:
   ).sort((a, b) => order[a.source] - order[b.source] || a.name.localeCompare(b.name));
 }
 
+/** The command menu for `text` with the caret at `caret`: each matching command with the reference it inserts and the
+ * text it completes to, or null when the caret is not on a command word. */
+export function slashMenu(catalog: readonly ComposerCommand[], text: string, caret = text.length) {
+  const query = slashCommandQuery(text, caret);
+  return query && filterSlashCommands(catalog, query.text).map((command) => ({
+    ...command,
+    reference: commandReference(command, catalog),
+    completion: completeCommandReference(text, command, catalog, query.start).text,
+  }));
+}
+
+export type ComposerSendAction =
+  | { kind: "refuse"; note: string }
+  | { kind: "clear" | "reload" }
+  | { kind: "compact"; instructions?: string }
+  | { kind: "side"; question: string }
+  | { kind: "prompt" };
+
+/** What sending `text` does: a HUI command, a refusal with the note that says why, or a prompt. `steering` is a steer or
+ * follow-up, `busy` a running turn or a session that isn't idle. */
+export function composerSendAction(text: string, context: { bot: boolean; attachments: number; steering: boolean; busy: boolean }): ComposerSendAction {
+  const trimmed = text.trim();
+  const botRefusal = context.bot ? botChatCommandRefusal(trimmed) : undefined;
+  if (botRefusal) return { kind: "refuse", note: botRefusal };
+  const clear = parseClearCommand(trimmed);
+  const reload = parseReloadCommand(trimmed);
+  const command = clear ? "clear" : reload ? "reload" : undefined;
+  if (command) {
+    if ((clear ?? reload) === "invalid" || context.attachments) return { kind: "refuse", note: `Use /${command} without arguments or attachments.` };
+    if (context.steering || context.busy) return { kind: "refuse", note: `Finish or stop active work before ${command}ing the session.` };
+    return { kind: command };
+  }
+  const compact = parseCompactCommand(trimmed);
+  if (compact) {
+    if (context.attachments) return { kind: "refuse", note: "Use /compact without attachments." };
+    if (context.steering) return { kind: "refuse", note: "Finish or stop active work before compacting the session." };
+    return { kind: "compact", ...compact };
+  }
+  if (/^\/(?:btw|side)(?:\s|$)/iu.test(trimmed)) {
+    const question = /^\/(?:btw|side)(?:\s+([\s\S]+))?$/iu.exec(trimmed)?.[1]?.trim();
+    if (!question) return { kind: "refuse", note: "Add a question after /btw. Example: /btw which file are we editing?" };
+    if (context.attachments) return { kind: "refuse", note: "/btw does not support attachments in this build." };
+    return { kind: "side", question };
+  }
+  return { kind: "prompt" };
+}
+
 /** Both discovery menus insert the same stable alias in place of the word at `start`; templates keep their slash syntax. */
 export function completeCommandReference(text: string, command: ComposerCommand, catalog: readonly ComposerCommand[], start = 0): { text: string; caret: number } {
   const rest = text.slice(start).replace(/^[/$][^\s]*/u, "") || " ";

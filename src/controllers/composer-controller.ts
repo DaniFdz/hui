@@ -20,7 +20,7 @@ import { SendRequests } from "../lib/composer/send-requests.ts";
 import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
+import { completeCommandReference, composerCommands, composerSendAction, filterSlashCommands, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
 import { appendPendingUser, dropDuplicateSend, failPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
@@ -542,24 +542,18 @@ export class ComposerController {
     if (!session || (!trimmed && !hasImage) || this.#conversation.opening || this.sending || this.#conversation.connection !== "live") {
       return;
     }
-    // The gateway refuses these for a bot's permanent chat; say why without a round trip.
-    const botRefusal = session.bot ? botChatCommandRefusal(trimmed) : undefined;
-    if (botRefusal) {
-      this.#deps.showNote(botRefusal, "error");
+    const action = composerSendAction(trimmed, {
+      bot: Boolean(session.bot),
+      attachments: attachments.length,
+      steering: mode !== "prompt",
+      busy: this.#conversation.streaming || session.status !== "idle",
+    });
+    if (action.kind === "refuse") {
+      this.#deps.showNote(action.note, "error");
       return;
     }
-    const clearCommand = parseClearCommand(trimmed);
-    const reloadCommand = parseReloadCommand(trimmed);
-    const command = clearCommand ? "clear" : reloadCommand ? "reload" : undefined;
-    if (command) {
-      if ((clearCommand ?? reloadCommand) === "invalid" || attachments.length) {
-        this.#deps.showNote(`Use /${command} without arguments or attachments.`, "error");
-        return;
-      }
-      if (mode !== "prompt" || this.#conversation.streaming || session.status !== "idle") {
-        this.#deps.showNote(`Finish or stop active work before ${command}ing the session.`, "error");
-        return;
-      }
+    if (action.kind === "clear" || action.kind === "reload") {
+      const command = action.kind;
       this.#deps.showNote("", "info");
       this.sending = true;
       this.#host.requestUpdate();
@@ -592,25 +586,12 @@ export class ComposerController {
       });
       return;
     }
-    const compact = parseCompactCommand(trimmed);
-    if (compact) {
-      if (attachments.length || mode !== "prompt") {
-        this.#deps.showNote(attachments.length ? "Use /compact without attachments." : "Finish or stop active work before compacting the session.", "error");
-        return;
-      }
-      this.#compactNow(compact.instructions, text);
+    if (action.kind === "compact") {
+      this.#compactNow(action.instructions, text);
       return;
     }
-    const sideQuestion = /^\/(?:btw|side)(?:\s+([\s\S]+))?$/iu.exec(trimmed)?.[1]?.trim();
-    if (/^\/(?:btw|side)(?:\s|$)/iu.test(trimmed)) {
-      if (!sideQuestion) {
-        this.#deps.showNote("Add a question after /btw. Example: /btw which file are we editing?", "error");
-        return;
-      }
-      if (attachments.length) {
-        this.#deps.showNote("/btw does not support attachments in this build.", "error");
-        return;
-      }
+    if (action.kind === "side") {
+      const sideQuestion = action.question;
       this.draftEdit += 1;
       this.setDraft("");
       void this.persistDraft(sessionDraftKey(session.id), "", []);

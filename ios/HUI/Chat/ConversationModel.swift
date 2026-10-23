@@ -48,6 +48,8 @@ final class ConversationModel {
     private(set) var continuing = false
     private(set) var runError: RunErrorNotice?
     private(set) var question: API.SessionQuestion?
+    private(set) var commands: [ComposerCommand] = []
+    var note: Note?
     private var dismissedRunError: String?
     private var modelsRequested = false
 
@@ -100,6 +102,10 @@ final class ConversationModel {
         let pending = "user-\(UUID().uuidString)"
         let prompt = mode == .prompt
         sendError = nil
+        let context = SendContext(bot: session?.bot != nil, steering: !prompt, busy: streaming || session?.status != .idle)
+        if let action = try? await core.composerSendAction(text, context: context), !["prompt", "compact", "side"].contains(action.kind) {
+            return await run(action)
+        }
         do {
             guard current == generation else { return false }
             if prompt { show(try await core.transcript(handle, pending: pending, text: text)) }
@@ -124,6 +130,49 @@ final class ConversationModel {
             sendError = error.localizedDescription
             return false
         }
+    }
+
+    struct Note: Equatable {
+        var text: String
+        var error = false
+    }
+
+    private func run(_ action: SendAction) async -> Bool {
+        switch action.kind {
+        case "refuse":
+            note = Note(text: action.note ?? "", error: true)
+            return false
+        case "clear":
+            note = nil
+            do {
+                let answer: API.SessionClearResponse = try await client.post(path("clear"))
+                try await apply(answer.snapshot, generation)
+                note = Note(text: "Session context cleared.")
+                return true
+            } catch {
+                note = Note(text: error.localizedDescription, error: true)
+                return false
+            }
+        case "reload":
+            note = nil
+            do {
+                let _: API.JSONValue = try await client.post(path("reload"))
+                await loadCommands()
+                note = Note(text: "Reloaded extensions, skills, prompts and context files.")
+                return true
+            } catch {
+                note = Note(text: error.localizedDescription, error: true)
+                return false
+            }
+        default:
+            return false
+        }
+    }
+
+    func loadCommands() async {
+        guard let answer: API.SessionCommandsResponse = try? await client.get(path("commands")),
+              let catalog = try? await core.composerCommands(answer.commands, bot: session?.bot != nil) else { return }
+        commands = catalog
     }
 
     /// Edits, removes, moves or steers a queued follow-up; true when the gateway took the change.
@@ -331,6 +380,7 @@ final class ConversationModel {
         if [.idle, .running, .waiting].contains(status), !modelsRequested {
             modelsRequested = true
             Task { await loadModels() }
+            Task { await loadCommands() }
         }
         streaming = Self.streaming(status)
         if !streaming { stopping = false }

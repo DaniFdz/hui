@@ -14,7 +14,10 @@
 // Reply to message (the core's quote after the draft) and the core's Copy label, which reads Copied for 1.5 s, and
 // touching and holding a message offers Copy as markdown, or Copy code on a code block (the web's context menu). The open question's card
 // (`QuestionCardView`) sits above the composer, and an answered `ask_user_question` call reads as the core's summary
-// ("Your answers", or "Unanswered questions" once it expired).
+// ("Your answers", or "Unanswered questions" once it expired). An empty conversation reads "Start a conversation". Typing
+// a command word opens the core's "Commands and paths" menu (`SlashMenuView`), and the core decides what a send does:
+// /clear and /reload run here, a refusal keeps the draft, and either leaves its note above the composer with Dismiss
+// notification, as the web's toast.
 import SwiftUI
 
 struct ChatView: View {
@@ -35,6 +38,7 @@ struct ChatView: View {
     @FocusState private var composing: Bool
     @FocusState private var naming: Bool
     @State private var name = ""
+    @State private var slashOptions: [SlashOption] = []
 
     init(id: String, client: GatewayClient, core: HUICore, sessions: SessionsModel) {
         self.core = core
@@ -60,6 +64,13 @@ struct ChatView: View {
                     Button("Try again") { model.start() }.buttonStyle(.bordered)
                 }
                 .padding()
+                Spacer()
+            case .open where model.rows.isEmpty && !model.streaming:
+                Spacer()
+                VStack(spacing: 4) {
+                    Text("Start a conversation").font(.headline)
+                    Text("Send a message below.").foregroundStyle(.secondary)
+                }
                 Spacer()
             case .open:
                 transcript
@@ -354,6 +365,12 @@ struct ChatView: View {
             if let runError = model.shownRunError {
                 runErrorCard(runError)
             }
+            if let note = model.note {
+                noteToast(note)
+            }
+            if !slashOptions.isEmpty {
+                SlashMenuView(options: slashOptions) { option in draft = option.completion }
+            }
             if let question = model.question {
                 QuestionCardView(question: question, core: core) { reply in Task { await model.answer(reply) } }
                     .onAppear { composing = false }
@@ -362,6 +379,21 @@ struct ChatView: View {
             modelPicker
         }
         .padding()
+    }
+
+    private func noteToast(_ note: ConversationModel.Note) -> some View {
+        HStack(alignment: .top) {
+            if note.error {
+                Image(systemName: "exclamationmark.triangle").accessibilityHidden(true)
+            }
+            Text(note.text).frame(maxWidth: .infinity, alignment: .leading)
+            Button("Dismiss notification", systemImage: "xmark") { model.note = nil }
+                .labelStyle(.iconOnly)
+        }
+        .font(.callout)
+        .foregroundStyle(note.error ? .red : .primary)
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func runErrorCard(_ error: RunErrorNotice) -> some View {
@@ -407,6 +439,9 @@ struct ChatView: View {
                 .accessibilityLabel("Message")
                 .accessibilityValue(draft)
                 .focused($composing)
+                .task(id: "\(draft)\u{0}\(model.commands.count)") {
+                    slashOptions = (try? await core.slashMenu(model.commands, text: draft)) ?? []
+                }
                 .task(id: "\(model.session?.status.rawValue ?? "") \(model.reconnecting || model.stopped) \(model.streaming)") {
                     if let text = try? await core.composerPlaceholder(status: model.session?.status, reconnecting: model.reconnecting || model.stopped, streaming: model.streaming) {
                         placeholder = text
