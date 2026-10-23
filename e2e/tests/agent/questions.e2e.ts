@@ -169,18 +169,20 @@ test("a multi-select question takes several picks and typed text", { tags: ["AGE
   await expect(screen.getByTestId("transcript").getByText('tool answered: User has answered your questions: "Which checks should run before merging?"="Lint, Browser tests, A smoke run". You can now continue with the user\'s answers in mind.')).toBeVisible();
 });
 
-test("the focused option's preview shows beside the options, under them on a phone, and reaches the agent", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
+const PREVIEWS = ask([{
+  header: "Layout",
+  question: "Which layout should the settings page use?",
+  options: [
+    { label: "Sidebar", description: "Sections in a left column.", preview: "Sections on the left.\n\n**Sidebar layout**" },
+    { label: "Tabs", description: "Sections as tabs.", preview: `Tabs across the top.\n\n**Tabs layout**\n\n${Array.from({ length: 40 }, (_, index) => `- Tab line ${index + 1}`).join("\n")}` },
+  ],
+}]);
+
+test("the focused option's preview shows beside the options and scrolls on its own", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
   const preview = card.getByLabel("Preview");
-  await asked(hui, screen, "Previews", ask([{
-    header: "Layout",
-    question: "Which layout should the settings page use?",
-    options: [
-      { label: "Sidebar", description: "Sections in a left column.", preview: "Sections on the left.\n\n**Sidebar layout**" },
-      { label: "Tabs", description: "Sections as tabs.", preview: `Tabs across the top.\n\n**Tabs layout**\n\n${Array.from({ length: 40 }, (_, index) => `- Tab line ${index + 1}`).join("\n")}` },
-    ],
-  }]));
+  await asked(hui, screen, "Previews", PREVIEWS);
 
   await expect(preview.getByText("Sidebar layout")).toBeVisible();
   expect((await box(preview)).x).toBeGreaterThanOrEqual((await box(option("Sidebar"))).x + (await box(option("Sidebar"))).width);
@@ -191,13 +193,24 @@ test("the focused option's preview shows beside the options, under them on a pho
   expect((await box(last)).y).toBeGreaterThan((await box(preview)).y + (await box(preview)).height);
   await last.scrollIntoView();
   expect((await box(last)).y + (await box(last)).height).toBeLessThanOrEqual((await box(preview)).y + (await box(preview)).height);
+});
 
+test("the focused option's preview shows under the options on a phone and reaches the agent", { tags: ["AGENT-004"] }, async ({ screen, hui }) => {
+  const card = screen.getByTestId("question-card");
+  const preview = card.getByLabel("Preview");
   await hui.phoneScreen();
+  await asked(hui, screen, "Previews on a phone", PREVIEWS);
+
+  await card.getByTestId("question-option").filter({ hasText: "Tabs" }).tap();
   await expect(preview.getByText("Tabs layout")).toBeVisible();
   const typed = card.getByPlaceholder("Type something…");
   expect((await box(preview)).y).toBeGreaterThanOrEqual((await box(typed)).y + (await box(typed)).height);
   await card.getByRole("button", "Submit").tap();
-  await expect(screen.getByTestId("transcript").getByText('"Which layout should the settings page use?"="Tabs". selected preview: Tabs across the top.', { exact: false })).toBeVisible();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  const transcript = screen.getByTestId("transcript");
+  const answered = transcript.getByText('"Which layout should the settings page use?"="Tabs". selected preview: Tabs across the top.', { exact: false });
+  await hui.scrollTo(transcript, answered);
+  await expect(answered).toBeVisible();
 });
 
 test("Cancel declines the questions and the agent goes on", { tags: ["AGENT-006"] }, async ({ screen, hui }) => {

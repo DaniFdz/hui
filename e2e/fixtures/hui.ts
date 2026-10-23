@@ -539,6 +539,11 @@ export const test = base.extend<{ hui: Hui }>({
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
         },
         keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
+        phoneScreen: async (orientation = "portrait") => {
+          if (orientation !== "portrait") notOnIos("phoneScreen(\"landscape\")")();
+          const { width, height } = (await fixtures.screen.getByTestId("app-route").boundingBox())!;
+          return { width, height };
+        },
         sessionList: () => fixtures.screen.getByRole("button", "Sessions").tap(),
         hold: async (target, until) => {
           await target.longPress();
