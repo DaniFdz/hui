@@ -46,7 +46,7 @@ import { AutomationService, automationStoreFailure, executeAutomationTask } from
 import { BotRoutines } from "./bots/routines.ts";
 import { ROUTINES_TOOL } from "./bots/durable-routines.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
-import { readObservability, recordDiagnosticEvent } from "./observability.ts";
+import { aggregateUsage, readObservability, recordDiagnosticEvent } from "./observability.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { createDurableBots } from "./bots/durable-access.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
@@ -124,8 +124,9 @@ export const diffRoutes = createDiffRoutes({ session: async (id) => (await readR
 export const themeRoutes = createThemeRoutes();
 export const updateRoutes = createUpdateRoutes();
 export const settingsRoutes = createSettingsRoutes({ writeSettings });
+const durableUsage = async (conversationId: number) => durableHost().conversationUsage(conversationId as never);
 export const diagnosticsRoutes = createDiagnosticsRoutes({
-  observability: async () => readObservability(await readRegistry(), async (conversationId) => durableHost().conversationUsage(conversationId as never)),
+  observability: async () => readObservability(await readRegistry(), durableUsage),
 });
 export const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
@@ -180,6 +181,7 @@ export const bots = new BotService({
   // A bot without a model of its own starts on Settings' primary model, as a new session does.
   conversations: botConversations,
   memory: botMemory,
+  usage: (records) => aggregateUsage(records, durableUsage),
   // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
   // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
   workers: botWorkers,

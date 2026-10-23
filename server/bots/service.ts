@@ -50,7 +50,9 @@ import {
 import { SessionBusyError, type HuiQuestion, type LiveSessions } from "../sessions/live-sessions.ts";
 import type { PromptAttachment, RuntimePromptOptions, RuntimePromptResult, RuntimeQuestion, TranscriptEntry } from "../runtimes/types.ts";
 import type { SessionRecord } from "../sessions/sessions.ts";
-import { rootSessionId } from "../sessions/session-tree.ts";
+import { rootSessionId, sessionTreeIds } from "../sessions/session-tree.ts";
+import { aggregateUsage } from "../observability.ts";
+import type { UsageTotals } from "../api/diagnostics.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
 
@@ -231,6 +233,8 @@ export type BotServiceDeps = {
   now?: () => number;
   messagesPerHour?: number;
   readyTimeoutMs?: number;
+  /** Totals sessions' spend; absent, Durable sessions report their store unavailable. */
+  usage?: (records: readonly SessionRecord[]) => Promise<UsageTotals>;
   report?: (event: { level: "info" | "warning" | "error"; action: string; summary: string; detail?: string }) => void;
 };
 
@@ -929,6 +933,15 @@ export class BotService {
     if (status === "starting") throw new BotConflictError(`@${bot.handle}'s chat is still starting.`);
     if (status === "running" || status === "waiting") await this.#sessions.abort(bot.sessionId);
     return this.#viewOf(bot);
+  }
+
+  /** What the bot's chat and every subagent under it cost, per model. A worker's sessions are counted there, not here. */
+  async usage(target: string): Promise<UsageTotals> {
+    const bot = await this.resolve(target);
+    const records = await this.#deps.readSessions();
+    const ids = sessionTreeIds(records, bot.sessionId);
+    const tree = records.filter((record) => ids.has(record.id));
+    return (this.#deps.usage ?? aggregateUsage)(tree);
   }
 
   async memory(target: string): Promise<{ status: BotMemoryStatus; view: string }> {

@@ -1943,3 +1943,12 @@ test("a worker's host gets the bots section only for a bot that runs on it", asy
   await assert.rejects(h.service.workerSection("w-1", home.id), BotNotFoundError);
   await assert.rejects(h.service.workerSection("w-2", rover.id), BotNotFoundError);
 });
+
+test("a bot's cost counts its chat and every subagent under it, never another session", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  const now = new Date().toISOString();
+  const record = (id: string, parentId?: string): SessionRecord => ({ id, title: id, group: "", cwd: h.dir, tool: "durable", createdAt: now, updatedAt: now, ...(parentId ? { parentId } : {}) });
+  h.setRecords([...h.records(), record("child", ada.sessionId), record("grandchild", "child"), record("other"), record("other-child", "other")]);
+  assert.equal((await h.service.usage(ada.handle)).sessions, 3);
+});

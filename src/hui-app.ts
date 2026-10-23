@@ -53,6 +53,7 @@ import { ComposerController } from "./controllers/composer-controller.ts";
 import { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
+import { BotUsageController } from "./controllers/bot-usage-controller.ts";
 import { BotToolsController } from "./controllers/bot-tools-controller.ts";
 import { BotTriggersController } from "./controllers/bot-triggers-controller.ts";
 import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder } from "./views/bots.ts";
@@ -296,6 +297,7 @@ export class HuiApp extends HuiElement {
     onFrame: () => {
       this.followBotTools();
       this.followBotTriggers();
+      this.followBotUsage();
     },
     notify: (message, failed) => this.sessions.notify(message, failed),
     navigate: (target, replace) => this.navigate(target, replace),
@@ -315,6 +317,7 @@ export class HuiApp extends HuiElement {
   /** The panel's Tools page: what the operator can turn off in the bot's chat, kept in its own controller. */
   private botTools = new BotToolsController(this);
   private botFacts = new BotFactsController(this);
+  private botUsage = new BotUsageController(this);
   /** The bot's triggers, read while its overview or Triggers page shows. */
   private botTriggers = new BotTriggersController(this, { visible: () => this.botTriggersVisible() });
   private botRosterTick = 0;
@@ -1940,6 +1943,12 @@ export class HuiApp extends HuiElement {
     if (bot) this.botTriggers.follow(bot);
   }
 
+  /** The overview shows the bot's cost, read again whenever its chat changes state. A worker keeps its own. */
+  private followBotUsage() {
+    const bot = this.botPanelShows("overview") ? this.activeBot() : undefined;
+    if (bot && !bot.worker) void this.botUsage.show(bot);
+  }
+
   /** The panel's page decides what is read: the overview and Routines poll Automation like its page, the overview and
    * Triggers read the triggers, Tools its catalog, and the overview and Settings PI's model catalog. */
   private syncBotPanelData() {
@@ -1951,6 +1960,7 @@ export class HuiApp extends HuiElement {
       this.automation.stopPolling();
     }
     this.botTriggers.sync(this.botTriggersVisible() ? this.activeBot() : undefined);
+    this.followBotUsage();
     const factsBot = this.botPanelShows("facts") ? this.activeBot() : undefined;
     if (factsBot) void this.botFacts.load(factsBot.id);
     const toolsBot = this.botPanelShows("tools") ? this.activeBot() : undefined;
@@ -2122,6 +2132,7 @@ export class HuiApp extends HuiElement {
         },
         tools: this.botTools.props(bot),
         facts: this.botFacts,
+        usage: this.botUsage.state,
         triggers: this.botTriggers.props(bot),
         settings: {
           models: this.control.pi?.model.catalog ?? [],
