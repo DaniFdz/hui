@@ -67,7 +67,10 @@ smaller bodies, and clients that accept neither encoding, get the identity body.
 its explicitly resolved Tailscale DNS name, or a name granted with `--allow-host`
 or `HUI_GATEWAY_ALLOWED_HOSTS`, or listed in `allowHosts` of `gateway/config.json`). A proxy that connects over loopback but answers
 on a name of its own, such as `tailscale serve`, is the case that needs one;
-unusable entries are refused rather than silently ignored. The default production
+unusable entries are refused rather than silently ignored. The production
+gateway keeps an idle keep-alive connection open for 120 s, longer than such a
+proxy keeps one (Tailscale Serve: 90 s), so the proxy closes it first and never
+sends a request on a connection the gateway is closing. The default production
 port is
 4173. The CLI accepts `HUI_GATEWAY_HOST` / `HUI_GATEWAY_PORT` as validated
 start/run/restart defaults, including when invoked by Electron. Explicit CLI
