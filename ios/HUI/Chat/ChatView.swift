@@ -439,7 +439,7 @@ struct ChatView: View {
                 .accessibilityLabel("Message")
                 .accessibilityValue(draft)
                 .focused($composing)
-                .task(id: "\(draft)\u{0}\(model.commands.count)") {
+                .task(id: [AnyHashable(draft), AnyHashable(model.commands)]) {
                     slashOptions = (try? await core.slashMenu(model.commands, text: draft)) ?? []
                 }
                 .task(id: "\(model.session?.status.rawValue ?? "") \(model.reconnecting || model.stopped) \(model.streaming)") {

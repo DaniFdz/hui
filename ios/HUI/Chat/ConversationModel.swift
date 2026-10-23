@@ -49,6 +49,7 @@ final class ConversationModel {
     private(set) var runError: RunErrorNotice?
     private(set) var question: API.SessionQuestion?
     private(set) var commands: [ComposerCommand] = []
+    private(set) var commanding = false
     var note: Note?
     private var dismissedRunError: String?
     private var modelsRequested = false
@@ -98,13 +99,14 @@ final class ConversationModel {
     func send(_ text: String, mode: SendMode = .prompt) async -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return true }
+        guard !commanding else { return false }
         let current = generation
         let pending = "user-\(UUID().uuidString)"
         let prompt = mode == .prompt
         sendError = nil
         let context = SendContext(bot: session?.bot != nil, steering: !prompt, busy: streaming || session?.status != .idle)
-        if let action = try? await core.composerSendAction(text, context: context), !["prompt", "compact", "side"].contains(action.kind) {
-            return await run(action)
+        if let action = try? await core.composerSendAction(text, context: context), ![.prompt, .compact, .side].contains(action.kind) {
+            return await run(action, current)
         }
         do {
             guard current == generation else { return false }
@@ -137,34 +139,27 @@ final class ConversationModel {
         var error = false
     }
 
-    private func run(_ action: SendAction) async -> Bool {
-        switch action.kind {
-        case "refuse":
+    private func run(_ action: SendAction, _ current: Int) async -> Bool {
+        if action.kind == .refuse {
             note = Note(text: action.note ?? "", error: true)
             return false
-        case "clear":
-            note = nil
-            do {
+        }
+        note = nil
+        commanding = true
+        defer { commanding = false }
+        do {
+            if action.kind == .clear {
                 let answer: API.SessionClearResponse = try await client.post(path("clear"))
-                try await apply(answer.snapshot, generation)
-                note = Note(text: "Session context cleared.")
-                return true
-            } catch {
-                note = Note(text: error.localizedDescription, error: true)
-                return false
-            }
-        case "reload":
-            note = nil
-            do {
+                try await apply(answer.snapshot, current)
+            } else {
                 let _: API.JSONValue = try await client.post(path("reload"))
                 await loadCommands()
-                note = Note(text: "Reloaded extensions, skills, prompts and context files.")
-                return true
-            } catch {
-                note = Note(text: error.localizedDescription, error: true)
-                return false
             }
-        default:
+            guard current == generation else { return true }
+            note = Note(text: action.kind == .clear ? "Session context cleared." : "Reloaded extensions, skills, prompts and context files.")
+            return true
+        } catch {
+            if current == generation { note = Note(text: error.localizedDescription, error: true) }
             return false
         }
     }
@@ -379,8 +374,10 @@ final class ConversationModel {
         statusLabel = label
         if [.idle, .running, .waiting].contains(status), !modelsRequested {
             modelsRequested = true
-            Task { await loadModels() }
-            Task { await loadCommands() }
+            Task {
+                await loadModels()
+                await loadCommands()
+            }
         }
         streaming = Self.streaming(status)
         if !streaming { stopping = false }

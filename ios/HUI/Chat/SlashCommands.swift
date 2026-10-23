@@ -26,7 +26,11 @@ struct SendContext: Encodable {
 }
 
 struct SendAction: Decodable {
-    var kind: String
+    enum Kind: String, Decodable {
+        case refuse, clear, reload, compact, side, prompt
+    }
+
+    var kind: Kind
     var note: String?
     var instructions: String?
     var question: String?
@@ -40,16 +44,16 @@ struct SlashMenuView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(options, id: \.self) { option in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(option.reference).font(.callout.monospaced())
-                        Text(option.description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Button { select(option) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(option.reference).font(.callout.monospaced())
+                            Text(option.description).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
-                    .onTapGesture { select(option) }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityAddTraits(.isButton)
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 10)
