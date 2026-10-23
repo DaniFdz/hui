@@ -51,7 +51,7 @@ test("/reload lists skills and commands added since the session started and keep
   for (const description of added) await expect(menu.getByText(description)).toBeVisible();
 });
 
-test("/reload refuses arguments, attachments and active work", { tags: ["CHAT-042"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("/reload refuses arguments and active work", { tags: ["CHAT-042"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const transcript = screen.getByTestId("transcript");
   const session = await hui.createSession({ title: "Reload refused" });
@@ -73,6 +73,13 @@ test("/reload refuses arguments, attachments and active work", { tags: ["CHAT-04
   await expect(message).toHaveValue("/reload everything");
   await screen.getByRole("button", "Dismiss notification").tap();
   await expect(screen.getByText("Use /reload without arguments or attachments.")).toBeHidden();
+});
+
+test("/reload refuses attachments", { tags: ["CHAT-042"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const message = screen.getByLabel("Message");
+  const session = await hui.createSession({ title: "Reload refused" });
+  await hui.open(`/sessions/${session.id}`);
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
   await message.fill("/reload");
   await screen.getByLabel("Add attachment").first().tap();
