@@ -125,7 +125,12 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   view, since its content grows below the screen there, and a send follows again by scrolling to the bottom edge (`ScrollPosition`; scrolling to the last lazy row's id can land
   short of it). A plain button
   whose label has a `Spacer` needs `.contentShape(Rectangle())`, or a tap at its centre misses it.
-- `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
-  has a destination, and anything else returns to the list. On the iOS 27.0 simulator `xcrun simctl openurl` opens
+- Settings (`Settings/`) shows each page as a `Form` under its web title, with the page list, Search settings (the
+  core's `filterSettingsPages`) and Exit Settings in the Open settings navigation sheet, as the web's phone drawer.
+  `SettingsModel` reads and writes `/__hui/settings` one write at a time and loads the chosen theme's file; its
+  `Themed` modifier gives every screen the theme's `#rrggbb` background, foreground, card and primary colours, and
+  `RootView` applies Color mode and Text size (as Dynamic Type sizes).
+- `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to: a session, the Sessions
+  page or a Settings page; anything else returns to the list. On the iOS 27.0 simulator `xcrun simctl openurl` opens
   the app directly, whether HUI or another app is in front; if iOS shows its "Open in “HUI”?" confirmation instead,
   a test has to accept it.

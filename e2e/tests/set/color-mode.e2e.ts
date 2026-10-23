@@ -2,9 +2,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Color mode switches the variant, keeps it, and System follows the device", { tags: ["SET-006"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Color mode switches the variant, keeps it, and System follows the device", { tags: ["SET-006"] }, async ({ screen, hui }) => {
   const modes = screen.getByLabel("Color mode");
-  const chosen = (name: string) => modes.getByRole("button", { name, pressed: true });
+  const chosen = (name: string) => hui.pressed(modes, name);
 
   await hui.deviceAppearance("light");
   await hui.open("/settings/appearance");
@@ -29,7 +29,7 @@ test("Color mode switches the variant, keeps it, and System follows the device",
   await expect.poll(() => hui.appearance()).toBe("light");
 });
 
-test("a theme with one variant turns Color mode off", { tags: ["SET-006"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a theme with one variant turns Color mode off", { tags: ["SET-006"] }, async ({ screen, hui }) => {
   const modes = screen.getByLabel("Color mode");
 
   await hui.api("PUT", "/__hui/settings", { ...(await hui.api<Record<string, unknown>>("GET", "/__hui/settings")), theme: "dracula" });

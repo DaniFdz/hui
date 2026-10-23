@@ -8,6 +8,7 @@ import {
   modeTokens,
   swatchesFor,
   themeColor,
+  themePalettes,
   THEME_COLOR_TOKENS,
   type ShadcnTheme,
   type ThemeTokens,
@@ -373,4 +374,13 @@ test("shadcn-theme preserves the shared runtime fixtures", () => {
   for (const fixture of fixtures) {
     assert.deepEqual(mapTheme(fixture.input) ?? null, fixture.expected);
   }
+});
+
+test("themePalettes reads every color format the web accepts and moves a user accent to read on each mode's page", () => {
+  const palettes = themePalettes({ light: { background: "hsl(0 0% 100%)", foreground: "#111", card: "rgb(250, 250, 250)", accent: "oklch(0.6 0.2 250)" }, dark: { background: "#000000", foreground: "#ffffff" } }, "#f5b942");
+  assert.equal(palettes?.variant, "both");
+  assert.deepEqual([palettes?.light?.background, palettes?.light?.foreground, palettes?.light?.card], ["#ffffff", "#111111", "#fafafa"]);
+  assert.notEqual(palettes?.light?.accent, "#f5b942");
+  assert.equal(palettes?.dark?.accent, "#f5b942");
+  assert.equal(themePalettes({ light: { background: "var(--x)", foreground: "#000" } }), undefined);
 });

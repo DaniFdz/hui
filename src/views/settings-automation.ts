@@ -4,6 +4,7 @@
  * Rendering stays free of fetches: every mutation is a prop callback.
  */
 import { html, nothing, type TemplateResult } from "lit";
+import { SETTINGS_COPY } from "../lib/settings/pages.ts";
 import type {
   AutomationRun,
   AutomationSchedule,
@@ -361,7 +362,7 @@ export function renderAutomationPage(props: AutomationProps, renderSection: Sect
   const state = automationState(props);
   if (state !== "ready") {
     return html`
-      <p class="settings-page__intro">Scheduled tasks, manual runs and run history owned by HUI.</p>
+      <p class="settings-page__intro">${SETTINGS_COPY.intros.automation}</p>
       <div class="settings-page__note settings-page__intro" role=${state === "error" ? "alert" : "status"}>
         ${state === "error" ? props.automationError : "Reading automation state…"}
         ${state === "error"
@@ -373,7 +374,7 @@ export function renderAutomationPage(props: AutomationProps, renderSection: Sect
   const snapshot = props.automation as AutomationSnapshot;
   const { tasks, runs, scheduler: { nextWakeAt } } = snapshot;
   return html`<div class="cron-page settings-stack">
-    <p class="settings-page__intro">Scheduled tasks, manual runs and run history owned by HUI.</p>
+    <p class="settings-page__intro">${SETTINGS_COPY.intros.automation}</p>
     ${renderSection(
       "Scheduler",
       snapshot.scheduler.activeRuns

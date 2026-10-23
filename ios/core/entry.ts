@@ -17,3 +17,6 @@ export { composerCommands, composerSendAction, slashMenu } from "../../src/lib/c
 export { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "../../src/lib/run-error.ts";
 export { replyDraft } from "../../src/lib/message-metadata.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";
+export { filterSettingsPages, SETTINGS_COPY } from "../../src/lib/settings/pages.ts";
+export { themePalettes } from "../../src/lib/theme/shadcn-theme.ts";
+export { effectiveColorScheme } from "../../src/lib/theme/theme.ts";
