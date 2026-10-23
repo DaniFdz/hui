@@ -1,11 +1,12 @@
 /**
  * The chat's rows as the iOS core hands them to the app, in one call per change: `projectChatTranscript`'s rows with
- * each activity row's labels and each tool's card presentation and printed input attached, and a `key` on every row
+ * each activity row's labels, its question summary (`questionnaireSummary`) and each tool's card presentation and
+ * printed input attached, and a `key` on every row
  * and item that stays unique when tool call ids repeat across turns (the id, plus how many earlier rows or items
  * shared it).
  */
 import type { TranscriptItem } from "../api/sessions.ts";
-import { activityLabel, projectChatTranscript, type ChatActivity, type ChatMessage, type ChatProjectionRow } from "./chat-projection.ts";
+import { activityLabel, projectChatTranscript, questionnaireSummary, type ChatActivity, type ChatMessage, type ChatProjectionRow } from "./chat-projection.ts";
 import { codemodeOutcome, codemodeSummary, codemodeToolPresentation, commandToolPresentation, formatCallDuration, printable, readToolOutput, readToolPresentation } from "./tool-cards.ts";
 
 function toolCards(item: ChatActivity) {
@@ -30,7 +31,7 @@ type ActivityRow = Extract<ChatProjectionRow, { kind: "activity" }>;
 type ChatRow =
   | Keyed<Exclude<ChatProjectionRow, { kind: "messages" | "activity" }>>
   | Keyed<Omit<Extract<ChatProjectionRow, { kind: "messages" }>, "messages"> & { messages: Keyed<ChatMessage>[] }>
-  | Keyed<Omit<ActivityRow, "items"> & { label: string; liveLabel: string; items: Keyed<ChatActivity & ReturnType<typeof toolCards>>[] }>;
+  | Keyed<Omit<ActivityRow, "items"> & { label: string; liveLabel: string; answers: ReturnType<typeof questionnaireSummary> | null; items: Keyed<ChatActivity & ReturnType<typeof toolCards>>[] }>;
 
 export function chatRows(items: readonly TranscriptItem[]): ChatRow[] {
   const seen = new Map<string, number>();
@@ -48,6 +49,7 @@ export function chatRows(items: readonly TranscriptItem[]): ChatRow[] {
       key: rowKey,
       label: activityLabel(row.items, false),
       liveLabel: activityLabel(row.items, true),
+      answers: questionnaireSummary(row.items) ?? null,
       items: row.items.map((item) => ({ ...item, key: key(`${item.kind}:${item.id}`), ...toolCards(item) })),
     };
   });

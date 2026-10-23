@@ -565,6 +565,8 @@ export const test = base.extend<{ hui: Hui }>({
           const at = bmp.readUInt32LE(10) + row * Math.ceil((width * bytes) / 4) * 4 + Math.round(2 * scale) * bytes;
           return (bmp[at]! + bmp[at + 1]! + bmp[at + 2]!) / 3 < 128 ? "dark" : "light";
         },
+        stored: webSteps.stored,
+        secretDirectories: webSteps.secretDirectories,
         phoneScreen: async (orientation = "portrait") => {
           if (orientation !== "portrait") throw new Error("phoneScreen: the iPhone app runs in portrait");
           const box = await fixtures.screen.getByTestId("app-route").boundingBox();
@@ -620,7 +622,7 @@ export const test = base.extend<{ hui: Hui }>({
           for (const direction of ["down", "up"] as const) {
             for (let swipes = 0, before = "", now = await shown(); now !== before && swipes < MAX_SCROLL_SWIPES; swipes++, before = now, now = await shown()) {
               if (await target.count() > 0) return;
-              await within.swipe({ direction });
+              await within.swipe({ direction, momentum: "slow" });
             }
           }
           await expect(target).not.toHaveCount(0);

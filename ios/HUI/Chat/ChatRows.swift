@@ -1,6 +1,6 @@
 // The chat's view models as the core's `chatRows` returns them (src/lib/chat-rows.ts): transcript items
 // (`TranscriptItem` in src/api/sessions.ts) grouped into rows, each row and item with a unique `key`, activity rows with
-// their labels and tool items with their cards and printed input. Mirrored by hand, so scripts/ios-contract.test.mjs
+// their labels and question summary, and tool items with their cards and printed input. Mirrored by hand, so scripts/ios-contract.test.mjs
 // checks both kind enums against the TypeScript unions. A kind a newer gateway adds is logged, decodes as
 // `unrecognized` and draws nothing, and a row that fails to decode is logged and left out, so the rest of the chat
 // keeps working.
@@ -86,9 +86,10 @@ struct ChatRow: Decodable, Equatable, Sendable {
     var activity: [TranscriptItem]?
     var label: String?
     var liveLabel: String?
+    var answers: QuestionnaireSummary?
 
     private enum CodingKeys: String, CodingKey {
-        case kind, key, messages, items, label, liveLabel
+        case kind, key, messages, items, label, liveLabel, answers
     }
 
     init(from decoder: any Decoder) throws {
@@ -99,6 +100,25 @@ struct ChatRow: Decodable, Equatable, Sendable {
         activity = kind == .activity ? try container.decodeIfPresent([TranscriptItem].self, forKey: .items) : nil
         label = try container.decodeIfPresent(String.self, forKey: .label)
         liveLabel = try container.decodeIfPresent(String.self, forKey: .liveLabel)
+        answers = try container.decodeIfPresent(QuestionnaireSummary.self, forKey: .answers)
+    }
+}
+
+struct QuestionnaireSummary: Decodable, Equatable, Sendable {
+    var cancelled: Bool
+    var answers: [API.QuestionnaireAnswer]
+    var timedOut: Bool?
+    var timeoutMinutes: Double?
+    var asked: [Asked]
+
+    struct Asked: Decodable, Equatable, Sendable {
+        var header: String?
+        var question: String?
+        var options: [Option]
+    }
+
+    struct Option: Decodable, Equatable, Sendable {
+        var label: String?
     }
 }
 

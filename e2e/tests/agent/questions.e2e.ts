@@ -1,5 +1,5 @@
 /** An agent's ask_user_question call opens one card above the composer, and what the operator picks, types or declines reaches the agent (AGENT-001, AGENT-002, AGENT-003, AGENT-004, AGENT-006, AGENT-009, AGENT-010, AGENT-011). */
-import { expect, type Locator } from "e2e";
+import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
 type Question = { header: string; question: string; multiSelect?: boolean; options: { label: string; description: string; preview?: string }[] };
@@ -21,16 +21,21 @@ const box = async (target: Locator) => (await target.boundingBox())!;
 const openSession = async (hui: Hui, title: string) => {
   const session = await hui.createSession({ title });
   await hui.open(`/sessions/${session.id}`);
+  return session;
 };
 
-test("one question's card takes a pick or typed text and leaves a summary", { tags: ["AGENT-001"], platforms: ["web"] }, async ({ screen, hui }) => {
+const asked = async (hui: Hui, screen: Screen, title: string, prompt: string) => {
+  const session = await openSession(hui, title);
+  await expect(screen.getByLabel("Message")).toBeVisible();
+  await hui.prompt(session, prompt);
+};
+
+test("one question's card takes a pick or typed text and leaves a summary", { tags: ["AGENT-001"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
   const submit = card.getByRole("button", "Submit");
-  await openSession(hui, "One question");
-  await screen.getByLabel("Message").fill(ask([DATABASE]));
-  await screen.getByRole("button", "Send message").tap();
+  await asked(hui, screen, "One question", ask([DATABASE]));
 
   await expect(screen.getByLabel("Session status: Waiting for your answer")).toBeVisible();
   await expect(card).toHaveCount(1);
@@ -63,9 +68,7 @@ test("one question's card takes a pick or typed text and leaves a summary", { ta
   await expect(summary.getByText("Database")).toBeVisible();
   await expect(summary.getByText("MySQL, as the team knows it")).toBeVisible();
 
-  await openSession(hui, "Typed answer");
-  await screen.getByLabel("Message").fill(ask([DATABASE]));
-  await screen.getByRole("button", "Send message").tap();
+  await asked(hui, screen, "Typed answer", ask([DATABASE]));
   await expect(submit).toBeDisabled();
   await card.getByLabel("Your own answer").fill("DynamoDB");
   await expect(submit).toBeEnabled();
@@ -96,14 +99,12 @@ const NOTES: Question = {
   ],
 };
 
-test("four questions share one card whose chips, Next and Back keep the answers", { tags: ["AGENT-002"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("four questions share one card whose chips, Next and Back keep the answers", { tags: ["AGENT-002"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
   const chip = (name: string) => card.getByRole("tab", name);
-  await openSession(hui, "Four questions");
-  await screen.getByLabel("Message").fill(ask([SCOPE, DATABASE, DEPLOY, NOTES]));
-  await screen.getByRole("button", "Send message").tap();
+  await asked(hui, screen, "Four questions", ask([SCOPE, DATABASE, DEPLOY, NOTES]));
 
   await expect(card.getByText("Questions")).toBeVisible();
   await expect(card.getByText("1/4")).toBeVisible();
@@ -139,11 +140,10 @@ test("four questions share one card whose chips, Next and Back keep the answers"
   await expect(summary.getByText("Notes")).toBeHidden();
 });
 
-test("a multi-select question takes several picks and typed text", { tags: ["AGENT-003"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a multi-select question takes several picks and typed text", { tags: ["AGENT-003"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
-  await openSession(hui, "Several answers");
-  await screen.getByLabel("Message").fill(ask([{
+  await asked(hui, screen, "Several answers", ask([{
     header: "Checks",
     question: "Which checks should run before merging?",
     multiSelect: true,
@@ -153,7 +153,6 @@ test("a multi-select question takes several picks and typed text", { tags: ["AGE
       { label: "Browser tests", description: "The slow suite." },
     ],
   }]));
-  await screen.getByRole("button", "Send message").tap();
 
   await expect(card.getByText("Choose all that apply.")).toBeVisible();
   await option("Browser tests").tap();
@@ -170,20 +169,20 @@ test("a multi-select question takes several picks and typed text", { tags: ["AGE
   await expect(screen.getByTestId("transcript").getByText('tool answered: User has answered your questions: "Which checks should run before merging?"="Lint, Browser tests, A smoke run". You can now continue with the user\'s answers in mind.')).toBeVisible();
 });
 
-test("the focused option's preview shows beside the options, under them on a phone, and reaches the agent", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
+const PREVIEWS = ask([{
+  header: "Layout",
+  question: "Which layout should the settings page use?",
+  options: [
+    { label: "Sidebar", description: "Sections in a left column.", preview: "Sections on the left.\n\n**Sidebar layout**" },
+    { label: "Tabs", description: "Sections as tabs.", preview: `Tabs across the top.\n\n**Tabs layout**\n\n${Array.from({ length: 40 }, (_, index) => `- Tab line ${index + 1}`).join("\n")}` },
+  ],
+}]);
+
+test("the focused option's preview shows beside the options and scrolls on its own", { tags: ["AGENT-004"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
   const preview = card.getByLabel("Preview");
-  await openSession(hui, "Previews");
-  await screen.getByLabel("Message").fill(ask([{
-    header: "Layout",
-    question: "Which layout should the settings page use?",
-    options: [
-      { label: "Sidebar", description: "Sections in a left column.", preview: "Sections on the left.\n\n**Sidebar layout**" },
-      { label: "Tabs", description: "Sections as tabs.", preview: `Tabs across the top.\n\n**Tabs layout**\n\n${Array.from({ length: 40 }, (_, index) => `- Tab line ${index + 1}`).join("\n")}` },
-    ],
-  }]));
-  await screen.getByRole("button", "Send message").tap();
+  await asked(hui, screen, "Previews", PREVIEWS);
 
   await expect(preview.getByText("Sidebar layout")).toBeVisible();
   expect((await box(preview)).x).toBeGreaterThanOrEqual((await box(option("Sidebar"))).x + (await box(option("Sidebar"))).width);
@@ -194,21 +193,30 @@ test("the focused option's preview shows beside the options, under them on a pho
   expect((await box(last)).y).toBeGreaterThan((await box(preview)).y + (await box(preview)).height);
   await last.scrollIntoView();
   expect((await box(last)).y + (await box(last)).height).toBeLessThanOrEqual((await box(preview)).y + (await box(preview)).height);
+});
 
+test("the focused option's preview shows under the options on a phone and reaches the agent", { tags: ["AGENT-004"] }, async ({ screen, hui }) => {
+  const card = screen.getByTestId("question-card");
+  const preview = card.getByLabel("Preview");
   await hui.phoneScreen();
+  await asked(hui, screen, "Previews on a phone", PREVIEWS);
+
+  await card.getByTestId("question-option").filter({ hasText: "Tabs" }).tap();
   await expect(preview.getByText("Tabs layout")).toBeVisible();
   const typed = card.getByPlaceholder("Type something…");
   expect((await box(preview)).y).toBeGreaterThanOrEqual((await box(typed)).y + (await box(typed)).height);
   await card.getByRole("button", "Submit").tap();
-  await expect(screen.getByTestId("transcript").getByText('"Which layout should the settings page use?"="Tabs". selected preview: Tabs across the top.', { exact: false })).toBeVisible();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  const transcript = screen.getByTestId("transcript");
+  const answered = transcript.getByText('"Which layout should the settings page use?"="Tabs". selected preview: Tabs across the top.', { exact: false });
+  await hui.scrollTo(transcript, answered);
+  await expect(answered).toBeVisible();
 });
 
-test("Cancel declines the questions and the agent goes on", { tags: ["AGENT-006"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Cancel declines the questions and the agent goes on", { tags: ["AGENT-006"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
-  await openSession(hui, "Declined questions");
-  await screen.getByLabel("Message").fill(ask([DATABASE]));
-  await screen.getByRole("button", "Send message").tap();
+  await asked(hui, screen, "Declined questions", ask([DATABASE]));
   await card.getByRole("button", "Cancel").tap();
 
   await expect(card).toBeHidden();
@@ -221,9 +229,7 @@ test("parallel question calls show one card at a time, each answered on its own"
   const card = screen.getByTestId("question-card");
   const options = card.getByTestId("question-option");
   const questions = ["Which database should the service use?", "Where should it run first?"];
-  await openSession(hui, "Parallel questions");
-  await screen.getByLabel("Message").fill(ask([DATABASE], [DEPLOY]));
-  await screen.getByRole("button", "Send message").tap();
+  await asked(hui, screen, "Parallel questions", ask([DATABASE], [DEPLOY]));
 
   const shown = card.getByText(new RegExp(`^(${questions.map((question) => question.replace("?", "\\?")).join("|")})$`, "u"));
   await expect(shown).toBeVisible();
@@ -245,39 +251,42 @@ test("parallel question calls show one card at a time, each answered on its own"
   await expect(screen.getByTestId("transcript").getByText('tool answered: User has answered your questions: "Which database should the service use?"="SQLite". You can now continue with the user\'s answers in mind. | User has answered your questions: "Where should it run first?"="Production". You can now continue with the user\'s answers in mind.')).toBeVisible();
 });
 
-test("a call the card can't show opens no card and fails back to the agent with its reason", { tags: ["AGENT-010"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a call the card can't show opens no card and fails back to the agent with its reason", { tags: ["AGENT-010"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const two = DATABASE.options;
-  await openSession(hui, "Invalid questions");
-  await screen.getByLabel("Message").fill(ask(
+  await asked(hui, screen, "Invalid questions", ask(
     [SCOPE, DATABASE, DEPLOY, NOTES, { header: "Extra", question: "One too many?", options: two }],
     [{ ...DATABASE, options: [two[0]!, { label: "Other", description: "Something else." }] }],
     [{ ...DATABASE, options: [two[0]!, two[0]!] }],
     [{ ...DATABASE, header: "A header far too long" }],
     [{ ...DATABASE, multiSelect: true, options: [{ ...two[0]!, preview: "**Postgres**" }, two[1]!] }],
   ));
-  await screen.getByRole("button", "Send message").tap();
 
-  await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText(/^tool answered: /u));
+  await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(screen.getByTestId("question-card")).toBeHidden();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command").nth(4));
   for (const group of await transcript.getByText("Ran 1 command").all()) await group.tap();
   await expect(transcript.getByText("Failed")).toHaveCount(5);
-  for (const failed of await transcript.getByText("Failed").all()) await failed.tap();
+  for (let index = 4; index >= 0; index--) await transcript.getByText("Failed", { exact: true }).nth(index).tap({ position: { x: 4, y: 4 } });
   for (const reason of [
     '<harness> [error] Validation failed for tool "ask_user_question": - questions: must not have more than 4 items',
     '<harness> [error] questions[0].options[1].label "Other" is reserved: the card already offers a free-text answer. </harness>',
     "<harness> [error] questions[0].options must have unique labels. </harness>",
     '<harness> [error] Validation failed for tool "ask_user_question": - questions.0.header: must not have more than 16 characters',
     "<harness> [error] questions[0]: previews are for single-select questions only. </harness>",
-  ]) await expect(transcript.getByText(reason, { exact: !reason.includes("Validation failed") })).toBeVisible();
+  ]) {
+    const shown = transcript.getByText(reason, { exact: !reason.includes("Validation failed") });
+    await hui.scrollTo(transcript, shown);
+    await expect(shown).toBeVisible();
+  }
 });
 
 test("question text from the agent shows as text, wraps and keeps the card's actions in reach", { tags: ["AGENT-011"], platforms: ["web"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const word = "Unbroken".repeat(40);
-  await openSession(hui, "Untrusted question");
-  await screen.getByLabel("Message").fill(ask([{
+  await asked(hui, screen, "Untrusted question", ask([{
     header: "<b>Bold</b>",
     question: `<img src=x onerror="document.title='owned'"> ${word}?`,
     options: [
@@ -287,7 +296,6 @@ test("question text from the agent shows as text, wraps and keeps the card's act
       { label: "Fourth", description: "One more option.".repeat(30) },
     ],
   }]));
-  await screen.getByRole("button", "Send message").tap();
 
   await expect(card.getByText("<b>Bold</b>")).toBeVisible();
   await expect(card.getByText(`<img src=x onerror="document.title='owned'"> ${word}?`)).toBeVisible();
