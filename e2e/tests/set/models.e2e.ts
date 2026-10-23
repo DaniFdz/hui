@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Primary, Fallback and Utility list the catalog and Use PI default, say when each runs and keep the choice after a reload", { tags: ["SET-045"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Primary, Fallback and Utility list the catalog and Use PI default, say when each runs and keep the choice after a reload", { tags: ["SET-045"] }, async ({ screen, hui }) => {
   await hui.open("/settings/models");
   await expect(screen.getByText("Saved by HUI and applied to new sessions.")).toBeVisible({ timeout: 60_000 });
   await expect(screen.getByText("The smartest model you have. Speed doesn't matter: it does the real work of new sessions and bots.")).toBeVisible();
@@ -11,7 +11,7 @@ test("Primary, Fallback and Utility list the catalog and Use PI default, say whe
 
   for (const [route, model] of [["Primary model", "Opus fixture"], ["Fallback model", "HUI SDK Fixture"], ["Utility model", "Opus fixture"]] as const) {
     await screen.getByRole("button", `${route}: Use PI default`).tap();
-    await expect(screen.getByLabel(route, { exact: true })).toHaveText("Use PI default HUI SDK Fixture Opus fixture");
+    await expect.poll(() => hui.textOf(screen.getByLabel(route, { exact: true }))).toMatch(/^\s*Use PI default\s*HUI SDK Fixture\s*Opus fixture\s*$/u);
     await screen.getByLabel(route, { exact: true }).getByText(model, { exact: true }).tap();
     await expect(screen.getByRole("button", `${route}: ${model}`)).toBeVisible();
   }

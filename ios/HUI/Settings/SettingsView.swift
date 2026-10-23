@@ -1,7 +1,8 @@
 // The web's Settings shell as its phone layout shows it: the open page under its title, and Open settings navigation
 // bringing up the page list as a sheet, with Search settings (the core's filterSettingsPages), the pages in their
-// groups, whether settings were saved and Exit Settings. Appearance is a Form with the web's Theme, Color mode, Text size and
-// Chat preferences; the other pages show their web introduction until their controls are built.
+// groups, whether settings were saved and Exit Settings; whether they were saved also stays at the bottom of every page. Appearance is a Form with the web's Theme, Color mode, Text size and
+// Chat preferences; Models and Diagnostics are in SettingsPages.swift; the other pages show their web introduction until
+// their controls are built.
 // The words the web's Settings shell shares (page introductions, the empty search, the Color mode and Text size
 // names) come from the core's SETTINGS_COPY.
 import SwiftUI
@@ -20,15 +21,28 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section {
-                Text(pages.first { $0.id == page }?.label ?? "").font(.largeTitle.bold()).accessibilityIdentifier("settings-page-title").accessibilityAddTraits(.isHeader)
-                Text(settings.copy.intros[page] ?? "").foregroundStyle(.secondary)
+                Text(pages.first { $0.id == page }?.label ?? "").typeface(.largeTitle, weight: .bold).accessibilityIdentifier("settings-page-title").accessibilityAddTraits(.isHeader)
+                Text(settings.copy.intros[page] ?? "").typeface(.body).foregroundStyle(.secondary)
             }
-            .listRowBackground(card)
-            if page == "appearance" { AppearanceSections(settings: settings, client: client) }
-            Section {
+            .listRowBackground(Color.clear)
+            switch page {
+            case "appearance": AppearanceSections(settings: settings, client: client)
+            case "models": ModelsSections(settings: settings, client: client)
+            case "diagnostics": DiagnosticsSections(client: client)
+            default: EmptyView()
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            VStack(alignment: .leading, spacing: 4) {
                 SaveIndicator(failed: settings.saveFailed)
+                if page == "appearance" {
+                    Text(settings.saveFailed ? "Could not write settings.json — changes apply now but will not be remembered." : "Saved to ~/.config/hui/settings.json")
+                        .typeface(.footnote).foregroundStyle(.secondary)
+                }
             }
-            .listRowBackground(card)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(.bar)
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -69,7 +83,7 @@ private struct SaveIndicator: View {
     let failed: Bool
 
     var body: some View {
-        Label(failed ? "Settings not saved" : "Settings saved locally", systemImage: "circle.fill")
+        Label { Text(failed ? "Settings not saved" : "Settings saved locally").typeface(.body) } icon: { Image(systemName: "circle.fill") }
             .foregroundStyle(failed ? .red : .secondary)
     }
 }
@@ -99,7 +113,7 @@ private struct SettingsNavigation: View {
                     .background(.quaternary, in: .rect(cornerRadius: 10))
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(groups, id: \.self) { group in
-                            if !group.isEmpty { Text(group).font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 8) }
+                            if !group.isEmpty { Text(group).typeface(.footnote, weight: .semibold).foregroundStyle(.secondary).padding(.top, 8) }
                             ForEach(shown.filter { $0.group == group }, id: \.id) { entry in
                                 Button { select(entry.id) } label: { Text(entry.label).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()) }
                                     .accessibilityIdentifier("settings-page-link")
@@ -145,8 +159,12 @@ private struct AppearanceSections: View {
     var body: some View {
         if let current = settings.settings {
             Section {
-                Choices(label: "Theme", options: settings.themes.map { ($0.id, $0.name) }, chosen: current.theme) { theme in
-                    Task { await settings.choose(theme: theme, client) }
+                if let themes = settings.themes {
+                    Choices(label: "Theme", options: themes.map { ($0.id, $0.name) }, chosen: current.theme) { theme in
+                        Task { await settings.choose(theme: theme, client) }
+                    }
+                } else {
+                    Text("No themes could be loaded; the built-in defaults are in use.").typeface(.body)
                 }
             } header: {
                 Text("Theme")
@@ -160,7 +178,7 @@ private struct AppearanceSections: View {
             } header: {
                 Text("Color mode")
             } footer: {
-                Text(settings.variant == "both" ? "Follows your system setting unless you pick one." : "This theme only carries a \(settings.variant) variant, so the mode follows the theme.")
+                Text(settings.variant == "both" ? "Follows your system setting unless you pick one." : "This theme only carries a \(settings.variant) variant, so the mode follows the theme.").typeface(.footnote)
             }
             .listRowBackground(card)
             Section {
@@ -170,7 +188,7 @@ private struct AppearanceSections: View {
             } header: {
                 Text("Text size")
             } footer: {
-                Text("Scales every text size in the interface together. Using default: 100%.")
+                Text("Scales every text size in the interface together. Using default: 100%.").typeface(.footnote)
             }
             .listRowBackground(card)
             Section {
@@ -179,6 +197,7 @@ private struct AppearanceSections: View {
                     Text("Comfortable").tag(API.Settings.Chat.MessageWidth.comfortable)
                     Text("Wide").tag(API.Settings.Chat.MessageWidth.wide)
                 }
+                Text("Controls the maximum width of the conversation and composer.").typeface(.footnote).foregroundStyle(.secondary)
                 Toggle("Collapse task progress", isOn: Binding(get: { current.chat.collapseTaskProgress }, set: { on in settings.change(client) { $0.chat.collapseTaskProgress = on } }))
                 Picker("Send shortcut", selection: Binding(get: { current.chat.sendShortcut }, set: { shortcut in settings.change(client) { $0.chat.sendShortcut = shortcut } })) {
                     Text("Enter").tag(API.Settings.Chat.SendShortcut.enter)
@@ -189,13 +208,9 @@ private struct AppearanceSections: View {
             } header: {
                 Text("Chat")
             } footer: {
-                Text("Composer and conversation preferences. Stored for this HUI client.")
+                Text("Composer and conversation preferences. Stored for this HUI client.").typeface(.footnote)
             }
             .listRowBackground(card)
-            Section {
-                Text(settings.saveFailed ? "Could not write settings.json — changes apply now but will not be remembered." : "Saved to ~/.config/hui/settings.json")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
         } else {
             Text("Reading settings…")
         }

@@ -4,7 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 type Snapshot = { retention: { maximum: number }; usage: { totalTokens: number }; debug: Record<string, string> };
 
-test("Diagnostics shows the gateway's platform, Node, activity held out of its limit and tokens, after reading or a failed read retried", { tags: ["SET-074"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Diagnostics shows the gateway's platform, Node, activity held out of its limit and tokens, after reading or a failed read retried", { tags: ["SET-074"] }, async ({ screen, hui }) => {
   const read = await hui.intercept("GET", /\/__hui\/observability$/u);
   await hui.open("/settings/diagnostics");
   await read.arrived();

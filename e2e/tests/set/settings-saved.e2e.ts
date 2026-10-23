@@ -2,9 +2,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("the footer and Appearance say a change was saved, and a failed write applies now but is forgotten after a reload", { tags: ["SET-004"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the footer and Appearance say a change was saved, and a failed write applies now but is forgotten after a reload", { tags: ["SET-004"] }, async ({ screen, hui }) => {
   const sizes = screen.getByLabel("Text size");
-  const chosen = (name: string) => sizes.getByRole("button", { name, pressed: true });
+  const chosen = (name: string) => hui.pressed(sizes, name);
   const saved = screen.getByText("Settings saved locally");
   const notSaved = screen.getByText("Settings not saved");
   const probe = screen.getByText("Controls the maximum width of the conversation and composer.");

@@ -54,7 +54,8 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(settings.colorScheme)
-        .dynamicTypeSize(settings.dynamicTypeSize)
+        .font(.system(size: 17 * settings.textScale))
+        .environment(\.textScale, settings.textScale)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app-route")
         .accessibilityValue(route)
