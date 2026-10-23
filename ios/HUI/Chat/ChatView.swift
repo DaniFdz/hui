@@ -72,7 +72,10 @@ struct ChatView: View {
             }
         }
         .task { model.start() }
-        .task(id: group) { groupLabel = await sessions.groupLabel(group) }
+        .task(id: group) {
+            let label = await sessions.groupLabel(group)
+            if !Task.isCancelled { groupLabel = label }
+        }
         .onDisappear { model.stop() }
     }
 
@@ -98,7 +101,7 @@ struct ChatView: View {
                         .accessibilityIdentifier("session-title")
                         .accessibilityAddTraits(.isHeader)
                 }
-                if !model.statusLabel.isEmpty {
+                if !model.statusLabel.isEmpty, !groupLabel.isEmpty {
                     HStack(spacing: 0) {
                         Text(meta)
                         Text(model.statusLabel).accessibilityLabel("Session status: \(model.statusLabel)")
