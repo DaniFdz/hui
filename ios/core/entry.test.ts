@@ -65,7 +65,7 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     ]),
     composerCommands: () => assert.equal(core.composerCommands([], true, true).some((command: { name: string }) => command.name === "clear"), false),
     composerSendAction: () => assert.equal(core.composerSendAction("/reload", { bot: false, attachments: 0, steering: false, busy: false }).kind, "reload"),
-    slashMenu: () => assert.equal(core.slashMenu(core.composerCommands([], true), "/rel")[0].completion, "/reload "),
+    slashMenu: () => assert.equal(core.slashMenu(core.composerCommands([], true), "/rel")?.[0]?.completion, "/reload "),
     replyDraft: () => assert.equal(core.replyDraft("Draft", "a\nb"), "Draft\n\n> a\n> b\n\n"),
     workingLabel: () => assert.equal(core.workingLabel([{ kind: "tool", id: "t", name: "read", status: "running" }]), "Reading files…"),
     composerPlaceholder: () => assert.equal(core.composerPlaceholder({ reconnecting: true, streaming: false, coarsePointer: true, applePlatform: true }), "Draft while HUI reconnects…"),
