@@ -114,7 +114,7 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   Every listed session has a status label, so a deep link to one the sidebar hides (archived, a Swarm helper) opens.
 - The chat screen (`Chat/ChatView.swift`) names its controls as the web's chat does (`Message`, `Send message`, `Stop`, `Model: <name>`, `Continue without a prompt`,
   `Steer message; touch and hold to enqueue` with its `Enqueue` hold menu, `Queued messages` and its row controls,
-  `Read <file>`, `Agent activity: <step>`) and takes every label from the core: the core's `chatRows` returns the rows with
+  `Read <file>`, `Agent activity: <step>`, each message row's `Reply to message` and Copy button with its label from the core, and a message's touch-and-hold `Copy as markdown` and a code block's `Copy code`) and takes every label from the core: the core's `chatRows` returns the rows with
   their activity labels and tool cards (`src/lib/chat-rows.ts`), and a `key` per row and item that the screen uses for
   identity, opening and scrolling (tool call ids repeat across turns); the working indicator comes from `workingLabel` and the run error card from `latestRunError`, the composer's placeholder from `composerPlaceholder` (the field sets `accessibilityValue(draft)`, because XCTest otherwise reports an empty field's placeholder as its value). A dropped stream reads "Reconnecting — draft preserved." and a stopped one "Stream stopped — draft preserved." above the composer, and Send waits for the stream; the web writes these two inline too, and its unreachable-worker variant isn't on iOS yet. The transcript follows the bottom
   as the web's does, decided where the reader's scroll stops: a scroll that stops more than 48 points up from the bottom

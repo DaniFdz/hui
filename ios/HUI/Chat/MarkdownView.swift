@@ -3,7 +3,8 @@
 // checkboxes as ☐ and ☑), quotes, code blocks and rules as views, inline text as one AttributedString (bold, italic, strikethrough, code, links). Raw HTML
 // shows as text, as the web escapes it, and a link the parser hides (an unsafe scheme) stays plain text. While a streamed
 // reply only grows, the last answer's tokens stay drawn until the core answers for the new text; a source replaced by a
-// different one shows as plain text until then, and so does a source the core fails to parse.
+// different one shows as plain text until then, and so does a source the core fails to parse. Given the message's
+// Markdown, a code block's touch-and-hold menu copies its code (Copy code, not on a math block) or the message (Copy as markdown).
 import SwiftUI
 
 struct MarkdownToken: Decodable, Equatable, Sendable {
@@ -24,6 +25,7 @@ struct MarkdownView: View {
     let source: String
     let agent: Bool
     let core: HUICore
+    var copyMarkdown: String?
     @State private var parsed: (source: String, tokens: [MarkdownToken])?
 
     var body: some View {
@@ -45,7 +47,7 @@ struct MarkdownView: View {
 
     enum Block {
         case text(AttributedString, prefix: String, font: Font?)
-        case code(String)
+        case code(String, math: Bool)
         case rule
     }
 
@@ -56,11 +58,17 @@ struct MarkdownView: View {
                 if !prefix.isEmpty { Text(prefix).accessibilityHidden(true) }
                 Text(text).font(font).textSelection(.enabled)
             }
-        case .code(let code):
+        case .code(let code, let math):
             ScrollView(.horizontal) {
-                Text(code).font(.system(.footnote, design: .monospaced)).textSelection(.enabled).padding(8)
+                Text(code.trimmingCharacters(in: .newlines)).font(.system(.footnote, design: .monospaced)).textSelection(.enabled).padding(8)
             }
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+            .contextMenu {
+                if let copyMarkdown {
+                    if !math { Button("Copy code") { UIPasteboard.general.string = code } }
+                    Button("Copy as markdown") { UIPasteboard.general.string = copyMarkdown }
+                }
+            }
         case .rule:
             Divider()
         }
@@ -95,7 +103,7 @@ struct MarkdownView: View {
                 let lead = String(repeating: "▍", count: quote) + prefix
                 blocks.append(.text(inline(token.children ?? []), prefix: lead, font: font))
                 prefix = ""
-            case "fence", "code_block", "hui_math_block": blocks.append(.code(token.content.trimmingCharacters(in: .newlines)))
+            case "fence", "code_block", "hui_math_block": blocks.append(.code(token.content, math: token.type == "hui_math_block"))
             case "html_block": blocks.append(.text(AttributedString(token.content.trimmingCharacters(in: .newlines)), prefix: "", font: nil))
             case "hr": blocks.append(.rule)
             default: continue

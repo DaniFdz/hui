@@ -10,9 +10,14 @@
 // While the conversation loads it says so, and a failed load offers Try again. A send reads "Sending…" until the
 // gateway takes it, and one that fails stays marked "Not sent — draft recovered." with its text back in the draft, as
 // on the web. A run that ended on an error shows the core's error card above the composer (Details, Copy error,
-// Continue, Dismiss error). The user's own prompts show as plain text, as on the web. The open question's card
+// Continue, Dismiss error). The user's own prompts show as plain text and a bot's or session's message as Markdown without HUI's header, as on the web. A settled message row ends in
+// Reply to message (the core's quote after the draft) and the core's Copy label, which reads Copied for 1.5 s, and
+// touching and holding a message offers Copy as markdown, or Copy code on a code block (the web's context menu). The open question's card
 // (`QuestionCardView`) sits above the composer, and an answered `ask_user_question` call reads as the core's summary
-// ("Your answers", or "Unanswered questions" once it expired).
+// ("Your answers", or "Unanswered questions" once it expired). An empty conversation reads "Start a conversation". Typing
+// a command word opens the core's "Commands and paths" menu (`SlashMenuView`), and the core decides what a send does:
+// /clear and /reload run here, a refusal keeps the draft, and either leaves its note above the composer with Dismiss
+// notification, as the web's toast.
 import SwiftUI
 
 struct ChatView: View {
@@ -28,9 +33,12 @@ struct ChatView: View {
     @State private var nearBottom = true
     @State private var placeholder = "Send a message…"
     @State private var errorDetailsShown = false
+    @State private var copiedKey = ""
+    @State private var copiedReset: Task<Void, Never>?
     @FocusState private var composing: Bool
     @FocusState private var naming: Bool
     @State private var name = ""
+    @State private var slashOptions: [SlashOption] = []
 
     init(id: String, client: GatewayClient, core: HUICore, sessions: SessionsModel) {
         self.core = core
@@ -56,6 +64,13 @@ struct ChatView: View {
                     Button("Try again") { model.start() }.buttonStyle(.bordered)
                 }
                 .padding()
+                Spacer()
+            case .open where model.rows.isEmpty && !model.streaming:
+                Spacer()
+                VStack(spacing: 4) {
+                    Text("Start a conversation").font(.headline)
+                    Text("Send a message below.").foregroundStyle(.secondary)
+                }
                 Spacer()
             case .open:
                 transcript
@@ -192,17 +207,23 @@ struct ChatView: View {
         case .messages:
             ForEach(row.messages ?? [], id: \.key) { message in
                 let user = message.role == "user"
+                let text = message.shown ?? message.text ?? ""
                 VStack(alignment: .trailing, spacing: 4) {
                     Group {
-                        if user {
-                            Text(message.text ?? "").textSelection(.enabled)
+                        if message.markdown == true {
+                            MarkdownView(source: text, agent: true, core: core, copyMarkdown: message.pending == true ? nil : text)
                         } else {
-                            MarkdownView(source: message.text ?? "", agent: true, core: core)
+                            Text(text)
                         }
                     }
                         .padding(user ? 10 : 0)
                         .background(user ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
                         .opacity(message.pending == true ? 0.6 : 1)
+                        .contextMenu {
+                            if message.pending != true, !text.isEmpty {
+                                Button("Copy as markdown") { UIPasteboard.general.string = text }
+                            }
+                        }
                     if message.pending == true {
                         Text("Sending…").font(.caption).foregroundStyle(.secondary)
                     }
@@ -211,6 +232,10 @@ struct ChatView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
+            }
+            if let footer = row.footer {
+                messageFooter(footer, key: row.key)
+                    .frame(maxWidth: .infinity, alignment: row.messages?.last?.role == "user" ? .trailing : .leading)
             }
         case .activity where row.answers != nil:
             questionnaireSummary(row.answers!)
@@ -225,6 +250,31 @@ struct ChatView: View {
         case .call, .subagentEvent, .botCreated, .unrecognized:
             EmptyView()
         }
+    }
+
+    private func messageFooter(_ footer: ChatRow.Footer, key: String) -> some View {
+        HStack(spacing: 16) {
+            Button("Reply to message", systemImage: "text.bubble") {
+                Task {
+                    guard let quoted = try? await core.replyDraft(draft, quoting: footer.text) else { return }
+                    draft = quoted
+                    composing = true
+                }
+            }
+            Button(copiedKey == key ? "Copied" : footer.copyLabel, systemImage: copiedKey == key ? "checkmark" : "doc.on.doc") {
+                UIPasteboard.general.string = footer.text
+                copiedKey = key
+                copiedReset?.cancel()
+                copiedReset = Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if !Task.isCancelled { copiedKey = "" }
+                }
+            }
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
 
     private func questionnaireSummary(_ summary: QuestionnaireSummary) -> some View {
@@ -315,6 +365,12 @@ struct ChatView: View {
             if let runError = model.shownRunError {
                 runErrorCard(runError)
             }
+            if let note = model.note {
+                noteToast(note)
+            }
+            if !slashOptions.isEmpty {
+                SlashMenuView(options: slashOptions) { option in draft = option.completion }
+            }
             if let question = model.question {
                 QuestionCardView(question: question, core: core) { reply in Task { await model.answer(reply) } }
                     .onAppear { composing = false }
@@ -323,6 +379,21 @@ struct ChatView: View {
             modelPicker
         }
         .padding()
+    }
+
+    private func noteToast(_ note: ConversationModel.Note) -> some View {
+        HStack(alignment: .top) {
+            if note.error {
+                Image(systemName: "exclamationmark.triangle").accessibilityHidden(true)
+            }
+            Text(note.text).frame(maxWidth: .infinity, alignment: .leading)
+            Button("Dismiss notification", systemImage: "xmark") { model.note = nil }
+                .labelStyle(.iconOnly)
+        }
+        .font(.callout)
+        .foregroundStyle(note.error ? .red : .primary)
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func runErrorCard(_ error: RunErrorNotice) -> some View {
@@ -368,6 +439,9 @@ struct ChatView: View {
                 .accessibilityLabel("Message")
                 .accessibilityValue(draft)
                 .focused($composing)
+                .task(id: [AnyHashable(draft), AnyHashable(model.commands)]) {
+                    slashOptions = (try? await core.slashMenu(model.commands, text: draft)) ?? []
+                }
                 .task(id: "\(model.session?.status.rawValue ?? "") \(model.reconnecting || model.stopped) \(model.streaming)") {
                     if let text = try? await core.composerPlaceholder(status: model.session?.status, reconnecting: model.reconnecting || model.stopped, streaming: model.streaming) {
                         placeholder = text

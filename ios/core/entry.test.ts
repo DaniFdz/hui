@@ -60,9 +60,13 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
       { kind: "tool", id: "t", name: "read", args: { path: "/w/a.txt" }, status: "succeeded" },
       { kind: "message", id: "u2", role: "user", text: "Again" },
       { kind: "tool", id: "t", name: "codemode", args: { code: "x" }, details: { calls: [{ name: "read", args: "{}", status: "ok", durationMs: 1500 }] }, status: "succeeded" },
-    ]).map((row) => row.kind === "activity" ? [row.key, row.label, row.items.map((item) => [item.key, item.read?.target ?? item.codemode?.outcome, item.read?.output ?? item.codemode?.calls[0]?.duration, item.input])] : row.key)), [
-      "messages:u", ["activity:t", "Ran 1 command", [["tool:t", "a.txt", "", '{\n  "path": "/w/a.txt"\n}']]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call", "1.5s", '{\n  "code": "x"\n}']]],
+    ]).map((row) => row.kind === "activity" ? [row.key, row.label, row.items.map((item) => [item.key, item.read?.target ?? item.codemode?.outcome, item.read?.output ?? item.codemode?.calls[0]?.duration, item.input])] : row.kind === "messages" && row.key === "messages:u" ? [row.key, row.footer] : row.key)), [
+      ["messages:u", { text: "Hi", copyLabel: "Copy prompt" }], ["activity:t", "Ran 1 command", [["tool:t", "a.txt", "", '{\n  "path": "/w/a.txt"\n}']]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call", "1.5s", '{\n  "code": "x"\n}']]],
     ]),
+    composerCommands: () => assert.equal(core.composerCommands([], true, true).some((command: { name: string }) => command.name === "clear"), false),
+    composerSendAction: () => assert.equal(core.composerSendAction("/reload", { bot: false, attachments: 0, steering: false, busy: false }).kind, "reload"),
+    slashMenu: () => assert.equal(core.slashMenu(core.composerCommands([], true), "/rel")?.[0]?.completion, "/reload "),
+    replyDraft: () => assert.equal(core.replyDraft("Draft", "a\nb"), "Draft\n\n> a\n> b\n\n"),
     workingLabel: () => assert.equal(core.workingLabel([{ kind: "tool", id: "t", name: "read", status: "running" }]), "Reading files…"),
     composerPlaceholder: () => assert.equal(core.composerPlaceholder({ reconnecting: true, streaming: false, coarsePointer: true, applePlatform: true }), "Draft while HUI reconnects…"),
     latestRunError: () => assert.deepEqual(json(core.latestRunError([{ kind: "error", id: "e", text: "Boom\nwhy" }], false)), { key: "0:Boom\nwhy", summary: "Boom", detail: "Boom\nwhy", multiline: true }),
