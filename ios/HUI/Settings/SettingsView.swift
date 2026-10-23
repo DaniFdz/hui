@@ -159,8 +159,12 @@ private struct AppearanceSections: View {
     var body: some View {
         if let current = settings.settings {
             Section {
-                Choices(label: "Theme", options: settings.themes.map { ($0.id, $0.name) }, chosen: current.theme) { theme in
-                    Task { await settings.choose(theme: theme, client) }
+                if let themes = settings.themes {
+                    Choices(label: "Theme", options: themes.map { ($0.id, $0.name) }, chosen: current.theme) { theme in
+                        Task { await settings.choose(theme: theme, client) }
+                    }
+                } else {
+                    Text("No themes could be loaded; the built-in defaults are in use.").typeface(.body)
                 }
             } header: {
                 Text("Theme")
