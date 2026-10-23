@@ -1,4 +1,5 @@
 /** Generated from docs/api.schema.json by scripts/api-schema.ts. Do not edit. */
+import type { UsageTotals } from "./diagnostics.ts";
 
 export type BotAccessRequest = { "id": string; "sessionId": string; "title": string; "message": string; };
 
@@ -69,6 +70,8 @@ export type BotSoulRequest = { "soul": string; };
 export type BotTagging = "anyone" | "mention" | "nobody";
 
 export type BotToolGroup = "files" | "shell" | "hui" | "extension" | "bots";
+
+export type BotUsageResponse = { "usage": UsageTotals; };
 
 export type BotView = { "id": string; "handle": string; "name": string; "title"?: string; "description"?: string; "tagging"?: "mention" | "nobody"; "cwd": string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; "hidden"?: boolean; "archived"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillRef>; "sessionId": string; "createdAt": string; "updatedAt": string; "worker"?: { "id": string; "name": string; }; "status": BotSessionStatus; "soul": boolean; "lastMessage"?: BotLastMessage; "unread": boolean; "memory"?: BotMemoryStatus; "routines": number; };
 

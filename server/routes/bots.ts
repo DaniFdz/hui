@@ -19,6 +19,7 @@
  *   GET    /__hui/bots/:id/memory/html       the OptChat browse page (text/html); also a same-origin link's page load
  *   GET    /__hui/bots/:id/catalog           BotCatalog: the tools and skills the operator can turn off, what is off,
  *                                            and a pending access request
+ *   GET    /__hui/bots/:id/usage             { usage }: what its chat and the subagents under it cost, per model
  *   GET    /__hui/bots/:id/soul              { soul } (SOUL.md's text, null while the bot has none)
  *   PUT    /__hui/bots/:id/soul              { soul } replaces SOUL.md atomically; "" removes it (the first conversation again)
  *
@@ -31,7 +32,7 @@ import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineErro
 import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import {
-  BotCatalog, BotDeleted, BotFactsResponse, BotMemoryResponse, BotMemoryZoom, BotMessageResult, BotResponse, BotSoul, BotsResponse,
+  BotCatalog, BotDeleted, BotFactsResponse, BotMemoryResponse, BotMemoryZoom, BotMessageResult, BotResponse, BotSoul, BotsResponse, BotUsageResponse,
   routeSchemas as botRouteSchemas,
 } from "../api/bots.ts";
 import { SessionBusyError } from "../sessions/live-sessions.ts";
@@ -44,7 +45,7 @@ export const BOTS_EVENTS_ROUTE = "/__hui/bots/events";
 /** The memory page, which a link opens: `hui.ts` also accepts a same-origin page load there (docs/api.md#bots). */
 export const BOT_MEMORY_PAGE = /^\/__hui\/bots\/[A-Za-z0-9_-]{1,100}\/memory\/html$/u;
 const FACTS_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/facts(?:\/([A-Za-z0-9_-]{1,100}))?$/u;
-const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul|catalog))?)?$/u;
+const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul|catalog|usage))?)?$/u;
 /** SOUL.md reaches 20,000 characters, up to four bytes each, and JSON may escape them. */
 const BOT_BODY_BYTES = 256 * 1024;
 /** Messages may carry attachments, like prompts. */
@@ -179,6 +180,7 @@ export function createBotRoutes(deps: Deps) {
         return reply(BotResponse, { bot: action === "restore" ? await service.restore(id) : await service.stop(id) });
       }
       if (method !== "GET") return notAllowed;
+      if (action === "usage") return reply(BotUsageResponse, { usage: await service.usage(id) });
       if (action === "memory") return reply(BotMemoryResponse, await service.memory(id));
       if (action === "memory/html") return { status: 200, html: await service.memoryHtml(id) };
       const zoomId = request.query.get("id") ?? "";

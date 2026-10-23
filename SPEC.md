@@ -1954,7 +1954,11 @@ everything the Bots tab can, through the same routes.
   **overview**, after OpenAI's Dots (decision below): its face, name, role and
   what it is doing, with Call (while it can be called) and Edit; its routines
   and triggers, a line each with an enable switch and a + that opens their page
-  on its add form; *Activity*, the latest runs of both, newest first; and
+  on its add form; *Activity*, the latest runs of both, newest first; *Cost*,
+  a Total of what its chat, the subagents under it and its memory summaries
+  (counted since HUI started) cost, read again whenever its chat changes state,
+  that opens the cost per model (a bot on a worker says its cost is kept there;
+  a cost no model reported reads *Not reported*, never $0.00); and
   *Setup*, a row each for Tagging (who may tag it), Model (its model and
   thinking), Tools & skills (what is off), Calls (voice and language) and
   Workspace (its own folder, or the end of the one chosen). Wide, the overview

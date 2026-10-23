@@ -1,9 +1,10 @@
 /**
  * Client half of the bots API (`/__hui/bots`, owned by `server/`; the contract is in `docs/api.md`): reading the
- * roster, the live list stream, and creating, editing, archiving, restoring and deleting a bot. Records are
+ * roster, the live list stream, creating, editing, archiving, restoring and deleting a bot, and what it cost. Records are
  * normalized by src/lib/bots/bots.ts on the way in.
  */
-import type { BotInput, BotPatch, BotView } from "./schema/bots.ts";
+import type { BotInput, BotPatch, BotUsageResponse, BotView } from "./schema/bots.ts";
+import type { UsageTotals } from "./schema/diagnostics.ts";
 import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
 import { readEventStream, reconnectDelay } from "./sessions.ts";
@@ -123,4 +124,9 @@ export async function restoreBot(id: string): Promise<BotView> {
 /** Deletes an archived bot for good: its routines and chat go from HUI; its files stay. */
 export async function deleteBot(id: string): Promise<void> {
   await fetchJson<unknown>(botUrl(id, "?permanent=1"), { method: "DELETE", signal: AbortSignal.timeout(30_000) });
+}
+
+/** What a bot's chat and the subagents under it cost, per model. */
+export async function loadBotUsage(id: string): Promise<UsageTotals> {
+  return (await fetchJson<BotUsageResponse>(`${BOTS_URL}/${encodeURIComponent(id)}/usage`)).usage;
 }

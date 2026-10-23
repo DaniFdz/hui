@@ -1727,6 +1727,10 @@ Query `id=&n=`.
 
 200 `BotCatalog`. What the operator can turn off in the bot's chat and what is off, read from its `hui.bot` document; a roster copy that differs is repaired. It opens the chat (as a message would), so an extension's tools are listed; an archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). An access request the chat waits on comes along as `request`. Archived bots too
 
+### `GET /__hui/bots/:id/usage`
+
+200 `BotUsageResponse`: `{ usage: UsageTotals }`, as `GET /__hui/observability` totals it, over the bot's chat and every subagent session under it (by `parentId`). `usage.sessions` counts them; each `models` entry adds its reported `costUsd`. A bot on a worker gets `costUsd: null` here: its sessions are counted there, and the overview does not ask. Memory summaries are not included; their spend is the bot's `memory.usage`. Archived bots too
+
 ### `GET /__hui/bots/:id/soul`
 
 200 `BotSoul`. SOUL.md's text, trimmed (at most 256 KiB is read), or `null` while the bot has none. Archived bots too
@@ -3664,7 +3668,8 @@ process; a development server prints them.
 Usage is aggregated from numeric `usage` metadata already present in PI-owned
 session JSONL files. HUI does not persist a second usage store and never returns
 message content. `costUsd` is `null` when PI did not record cost; HUI does not
-estimate it. Oversized or unreadable transcripts are reported as partial data.
+estimate it. Each `models` entry carries its tokens and the cost reported for that model
+(0 without one). Oversized or unreadable transcripts are reported as partial data.
 
 ### `GET /__hui/diagnostics/export`
 
