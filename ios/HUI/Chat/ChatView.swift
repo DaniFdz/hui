@@ -137,7 +137,13 @@ struct ChatView: View {
             ForEach(row.messages ?? [], id: \.key) { message in
                 let user = message.role == "user"
                 VStack(alignment: .trailing, spacing: 4) {
-                    MarkdownView(source: message.text ?? "", agent: !user, core: core)
+                    Group {
+                        if user {
+                            Text(message.text ?? "").textSelection(.enabled)
+                        } else {
+                            MarkdownView(source: message.text ?? "", agent: true, core: core)
+                        }
+                    }
                         .padding(user ? 10 : 0)
                         .background(user ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
                         .opacity(message.pending == true ? 0.6 : 1)

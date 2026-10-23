@@ -182,7 +182,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["interrupted-recovery"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-019",

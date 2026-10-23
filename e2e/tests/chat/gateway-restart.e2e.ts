@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a run cut off by a gateway restart carries on without manual action, on Pi Durable and on PI's worker", { tags: ["CHAT-018"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a run cut off by a gateway restart carries on without manual action, on Pi Durable and on PI's worker", { tags: ["CHAT-018"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript", { visible: true });
   const status = (value: string) => screen.getByLabel(`Session status: ${value}`, { visible: true });
   const recovery = transcript.getByText(/^The previous run was interrupted while handling this request:\s+E2E_REPLAY\s+Review the latest transcript and workspace state/u);
