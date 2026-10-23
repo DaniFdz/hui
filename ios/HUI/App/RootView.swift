@@ -6,13 +6,14 @@
 // menu returns to the list, as the web returns Home. Going back to the list keeps the session it came from selected,
 // so its tree stays expanded as the web's sidebar keeps it beside the open chat. The screen's container carries the
 // address it shows as its accessibility value, under the identifier app-route, for tests; VoiceOver doesn't speak a
-// container's value.
+// container's value. The gateway's settings, read once it connects, set every screen's colour mode and text size.
 import SwiftUI
 
 struct RootView: View {
     let core: HUICore
     @State private var gateway = GatewayModel()
     @State private var sessions: SessionsModel
+    @State private var settings = SettingsModel()
     @State private var path: [Screen] = []
     @State private var route = "/"
     @State private var navigations = 0
@@ -36,6 +37,9 @@ struct RootView: View {
                                 }
                             case .sessionsPage:
                                 SessionsPageView(sessions: sessions, client: gateway.client)
+                            case .settings(let page):
+                                SettingsView(page: page, core: core, settings: settings, client: gateway.client,
+                                             select: { chosen in replace([.settings(chosen)]) }, exit: { path = [] })
                             }
                         }
                 }
@@ -44,6 +48,8 @@ struct RootView: View {
                 ConnectView(gateway: gateway)
             }
         }
+        .preferredColorScheme(settings.colorScheme)
+        .dynamicTypeSize(settings.dynamicTypeSize)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app-route")
         .accessibilityValue(route)
@@ -53,6 +59,7 @@ struct RootView: View {
         .onChange(of: gateway.state) {
             guard gateway.state == .connected, let client = gateway.client else { return }
             sessions.start(client)
+            Task { await settings.load(client) }
             if path.isEmpty, openSession.hasPrefix("\(gateway.url)/") { Task { await go(String(openSession.dropFirst(gateway.url.count))) } }
         }
         .onChange(of: path) {
@@ -62,6 +69,7 @@ struct RootView: View {
                 let address = switch last {
                 case .session(let id): (try? await core.sessionPath(id)) ?? "/"
                 case .sessionsPage: "/sessions"
+                case .settings(let page): "/settings/\(page)"
                 case nil: "/"
                 }
                 if path.last == last {
@@ -93,21 +101,25 @@ struct RootView: View {
         navigations += 1
         let navigation = navigations
         guard let resolution = try? await core.resolveNavigation(target), navigation == navigations else { return }
+        switch resolution.target {
+        case .session(let id): replace([.session(id)])
+        case .page("sessions"): replace([.sessionsPage])
+        case .settings(let page): replace([.settings(page)])
+        default: replace([])
+        }
+    }
+
+    private func replace(_ screens: [Screen]) {
         var instant = Transaction()
         instant.disablesAnimations = true
-        withTransaction(instant) {
-            switch resolution.target {
-            case .session(let id): path = [.session(id)]
-            case .page("sessions"): path = [.sessionsPage]
-            default: path = []
-            }
-        }
+        withTransaction(instant) { path = screens }
     }
 }
 
 enum Screen: Hashable {
     case session(String)
     case sessionsPage
+    case settings(String)
 
     var session: String? {
         if case .session(let id) = self { id } else { nil }

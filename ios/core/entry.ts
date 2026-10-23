@@ -15,3 +15,4 @@ export { SendRequests } from "../../src/lib/composer/send-requests.ts";
 export { composerPlaceholder, queueRows } from "../../src/lib/composer/state.ts";
 export { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "../../src/lib/run-error.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";
+export { filterSettingsPages } from "../../src/lib/settings/pages.ts";

@@ -40,6 +40,10 @@ actor HUICore {
         try call("resolveNavigation", path)
     }
 
+    func filterSettingsPages(_ query: String) throws -> [SettingsPageEntry] {
+        try call("filterSettingsPages", query)
+    }
+
     func decodeSseFrame(_ chunk: String) throws -> SSEFrame? {
         try call("decodeSseFrame", chunk)
     }

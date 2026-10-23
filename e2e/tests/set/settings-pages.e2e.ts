@@ -57,22 +57,24 @@ test("on a phone Open settings navigation shows the page list as a drawer, and E
   await expect(title).toBeHidden();
 });
 
-test("Search settings keeps the pages whose name or group matches, says when none does, and clears", { tags: ["SET-002"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Search settings keeps the pages whose name or group matches, says when none does, and clears", { tags: ["SET-002"] }, async ({ screen, hui }) => {
   const pages = screen.getByLabel("Settings pages");
   const search = screen.getByLabel("Search settings");
   const clear = screen.getByRole("button", "Clear settings search");
+  const listed = async () => (await hui.textOf(pages)).replace(/\s+/gu, " ").trim().toLowerCase();
 
   await hui.open("/settings/appearance");
+  await hui.settingsPages();
   await expect(clear).toBeHidden();
   await search.fill("diagnostics");
-  await expect(pages).toHaveText("System Diagnostics", { ignoreCase: true });
+  await expect.poll(listed).toBe("system diagnostics");
   await search.fill("connections");
-  await expect(pages).toHaveText("Connections Gateway Integrations Workers", { ignoreCase: true });
+  await expect.poll(listed).toBe("connections gateway integrations workers");
   await search.fill("no such page");
-  await expect(pages).toHaveText("No settings match.");
+  await expect.poll(listed).toBe("no settings match.");
 
   await clear.tap();
   await expect(search).toHaveValue("");
-  await expect(pages).toHaveText(EVERY_PAGE, { ignoreCase: true });
+  await expect.poll(listed).toBe(EVERY_PAGE.toLowerCase());
   await expect(clear).toBeHidden();
 });

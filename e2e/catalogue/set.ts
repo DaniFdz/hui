@@ -20,7 +20,7 @@ const cases: UseCase[] = [
     surfaces: ["nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-003",

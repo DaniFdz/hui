@@ -6,7 +6,7 @@
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
  * clipboard, the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
- * shell's drawer media, the navigation drawer; on iOS, Back), the session menu (on iOS the open chat's toolbar menu,
+ * shell's drawer media, the navigation drawer; on iOS, Back), the Settings page list (the drawer on a phone, on iOS its sheet), the session menu (on iOS the open chat's toolbar menu,
  * else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
  * a piece of the screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
@@ -77,6 +77,7 @@ export type Hui = {
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
+  settingsPages(): Promise<void>;
   sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
@@ -356,6 +357,11 @@ export const test = base.extend<{ hui: Hui }>({
             await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
           }
         },
+        settingsPages: async () => {
+          const close = fixtures.screen.getByRole("button", "Close settings navigation", { visible: true });
+          const open = fixtures.screen.getByRole("button", "Open settings navigation", { visible: true });
+          if (await close.count() === 0 && await open.count() > 0) await open.tap();
+        },
         sessionMenu: async (title) => {
           const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
           await row.hover();
@@ -565,6 +571,10 @@ export const test = base.extend<{ hui: Hui }>({
           if (await glyph.count() === 0) return { label: "", animated: false };
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
         },
+        settingsPages: async () => {
+          await fixtures.screen.getByRole("button", "Open settings navigation").tap();
+          await expect(fixtures.screen.getByRole("button", "Close settings navigation")).toBeVisible();
+        },
         keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
         hold: async (target, until) => {
           await target.longPress();
@@ -636,7 +646,7 @@ export const test = base.extend<{ hui: Hui }>({
           await launch();
           await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
           const { target } = resolveNavigation(new URL(path, receipt.url).pathname);
-          const shown = target.kind === "session" ? navigationPath(target) : target.kind === "page" && target.page.id === "sessions" ? "/sessions" : undefined;
+          const shown = target.kind === "session" || target.kind === "settings" ? navigationPath(target) : target.kind === "page" && target.page.id === "sessions" ? "/sessions" : undefined;
           if (shown) await expect.poll(async () => new URL(await iosSteps.url!()).pathname).toBe(shown);
         },
         reload: () => (web ? browser().reload() : fixtures.app.restart()),

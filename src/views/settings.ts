@@ -8,6 +8,9 @@ import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
+import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
+
+export { filterSettingsPages, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
@@ -55,34 +58,7 @@ const SCALE_LABELS: Record<TextScaleStop, string> = {
   140: "XXL",
 };
 
-export const SETTINGS_PAGES = [
-  { id: "appearance", label: "Appearance", group: "", icon: "palette" },
-  { id: "connection", label: "Gateway", group: "Connections", icon: "radio" },
-  { id: "integrations", label: "Integrations", group: "Connections", icon: "grid" },
-  { id: "workers", label: "Workers", group: "Connections", icon: "globe" },
-  { id: "models", label: "Models", group: "Agents & Tools", icon: "box" },
-  { id: "plugins", label: "Plugins", group: "Agents & Tools", icon: "plug" },
-  { id: "skills", label: "Skills", group: "Agents & Tools", icon: "zap" },
-  { id: "tools", label: "Tools", group: "Agents & Tools", icon: "wrench" },
-  { id: "memory", label: "Memory", group: "Agents & Tools", icon: "book" },
-  { id: "automation", label: "Automation", group: "Agents & Tools", icon: "terminal" },
-  { id: "security", label: "Privacy & Security", group: "Privacy & Security", icon: "shieldCheck" },
-  { id: "worktrees", label: "Worktrees", group: "System", icon: "gitBranch" },
-  { id: "diagnostics", label: "Diagnostics", group: "System", icon: "bug" },
-] as const;
-
-export type SettingsPage = (typeof SETTINGS_PAGES)[number]["id"];
-
-const SETTINGS_GROUPS = ["", "Connections", "Agents & Tools", "Privacy & Security", "System"] as const;
 export const SETTINGS_DRAWER_DEFAULT_OPEN = false;
-
-
-export function filterSettingsPages(query: string) {
-  const normalized = query.trim().toLocaleLowerCase();
-  return normalized
-    ? SETTINGS_PAGES.filter((page) => `${page.label} ${page.group}`.toLocaleLowerCase().includes(normalized))
-    : [...SETTINGS_PAGES];
-}
 
 export type SettingsProps = AutomationProps & {
   page: SettingsPage;
