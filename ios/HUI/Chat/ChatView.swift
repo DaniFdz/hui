@@ -292,6 +292,7 @@ struct ChatView: View {
             if open {
                 following = false
                 expanded.insert(id)
+                if nearBottom { withAnimation { position.scrollTo(id: id) } }
             } else {
                 expanded.remove(id)
             }

@@ -121,7 +121,8 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   stops following, and one that stops nearer follows again and settles on the bottom. The scroll view keeps the bottom
   itself: `.defaultScrollAnchor(.bottom)` for the initial offset and for short content, and for size changes while
   following, so no code scrolls as rows grow or settle. Opening a card or activity row stops following and,
-  as on the web, opens it in place without scrolling, and a send follows again by scrolling to the bottom edge (`ScrollPosition`; scrolling to the last lazy row's id can land
+  as on the web, opens it in place; only at the bottom does it scroll the least needed to bring the opened row into
+  view, since its content grows below the screen there, and a send follows again by scrolling to the bottom edge (`ScrollPosition`; scrolling to the last lazy row's id can land
   short of it). A plain button
   whose label has a `Spacer` needs `.contentShape(Rectangle())`, or a tap at its centre misses it.
 - `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to; for now only a session
