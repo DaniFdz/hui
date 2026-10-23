@@ -152,7 +152,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open", "route:POST /__hui/sessions/:id/connect"],
     journeys: ["chat-composer", "position-rail"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-016",
