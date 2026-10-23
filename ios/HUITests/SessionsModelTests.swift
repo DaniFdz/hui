@@ -89,7 +89,7 @@ struct SessionsModelTests {
     private func start(_ frames: [String], routes: [String: [(status: Int, body: Data)]] = [:]) throws -> (SessionsModel, String) {
         let host = "\(UUID().uuidString.lowercased()).stub.test"
         GatewayStub.serve(host, list: try fixture("sessions.json"), events: Data(frames.map { $0 + "\n\n" }.joined().utf8), routes: routes)
-        let model = SessionsModel(core: try HUICore.bundled())
+        let model = SessionsModel(core: try HUICore.bundled(), defaults: try #require(UserDefaults(suiteName: host)))
         model.start(GatewayClient(baseURL: URL(string: "http://\(host)")!))
         return (model, host)
     }

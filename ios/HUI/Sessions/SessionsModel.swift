@@ -68,6 +68,7 @@ final class SessionsModel {
     private static let optionsKey = "hui.sidebar-session-options"
 
     private let core: HUICore
+    private let defaults: UserDefaults
     private var revision = -Double.infinity
     private var layout: [API.SessionListLayoutGroup] = []
     private var sessions: [String: API.SessionView] = [:]
@@ -77,8 +78,9 @@ final class SessionsModel {
     private var noticeTimer: Task<Void, Never>?
     private var archiveTimer: Task<Void, Never>?
 
-    init(core: HUICore) {
+    init(core: HUICore, defaults: UserDefaults = .standard) {
         self.core = core
+        self.defaults = defaults
     }
 
     func session(_ id: String) -> API.SessionView? {
@@ -107,7 +109,7 @@ final class SessionsModel {
 
     func setOptions(_ options: SidebarOptions) {
         self.options = options
-        UserDefaults.standard.set(String(decoding: (try? JSONEncoder().encode(options)) ?? Data(), as: UTF8.self), forKey: Self.optionsKey)
+        defaults.set(String(decoding: (try? JSONEncoder().encode(options)) ?? Data(), as: UTF8.self), forKey: Self.optionsKey)
         reproject()
     }
 
@@ -251,7 +253,7 @@ final class SessionsModel {
     private func run(_ client: GatewayClient) async {
         if icons.isEmpty { icons = (try? await core.sessionIcons()) ?? [] }
         if options == nil {
-            options = try? await core.sidebarOptions(stored: UserDefaults.standard.string(forKey: Self.optionsKey))
+            options = try? await core.sidebarOptions(stored: defaults.string(forKey: Self.optionsKey))
             if options == nil { options = try? await core.sidebarOptions(stored: nil) }
         }
         var attempt = 0
