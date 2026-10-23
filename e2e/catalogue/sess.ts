@@ -170,7 +170,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-parity", "session-menu-shortcuts"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-019",

@@ -35,23 +35,26 @@ test("Delete… confirms first, Cancel keeps the tree, and Remove from HUI remov
   await expect(screen.getByRole("button", `Open ${child.title}`)).toBeHidden();
 });
 
-test("a background session that settles stays unread until it is opened, and the menu marks it by hand", { tags: ["SESS-018"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a background session that settles stays unread until it is opened, and the menu marks it by hand", { tags: ["SESS-018"] }, async ({ screen, hui }) => {
   const unread = screen.getByLabel("Background work, status idle, tool durable, stage investigation, unread");
   const read = screen.getByLabel("Background work, status idle, tool durable, stage investigation");
   const background = await hui.createSession({ title: "Background work" });
   const here = await hui.createSession({ title: "Foreground work" });
 
   await hui.open(`/sessions/${here.id}`);
+  await hui.sessionList();
   await expect(read).toBeVisible();
   await hui.prompt(background, "Hello from elsewhere");
   await expect(unread).toBeVisible();
   await hui.reload();
+  await hui.sessionList();
   await expect(unread).toBeVisible();
   await hui.open("/sessions");
   await expect(screen.getByText("Unread", { exact: true })).toBeVisible();
 
   await hui.open(`/sessions/${background.id}`);
   await expect(screen.getByTestId("transcript").getByText("Fixture response.")).toBeVisible();
+  await hui.sessionList();
   await expect(read).toBeVisible();
   await hui.sessionMenu("Background work");
   await screen.getByText("Mark as unread", { visible: true }).tap();
