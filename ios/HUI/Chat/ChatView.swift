@@ -224,6 +224,7 @@ struct ChatView: View {
                 .lineLimit(1...6)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("Message")
+                .accessibilityValue(draft)
                 .focused($composing)
                 .task(id: "\(model.session?.status.rawValue ?? "") \(model.reconnecting || model.stopped) \(model.streaming)") {
                     if let text = try? await core.composerPlaceholder(status: model.session?.status, reconnecting: model.reconnecting || model.stopped, streaming: model.streaming) {
