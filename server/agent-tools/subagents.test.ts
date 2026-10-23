@@ -914,6 +914,29 @@ test("agents_wait returns what finished by its timeout, and a collected subagent
   });
 });
 
+test("a message steered to the waiting parent ends agents_wait, and ends one wait per tool round", async (t) => {
+  const state = await swarm(2);
+  t.onTestFinished(() => { vi.useRealTimers(); state.service.dispose(); state.manager.disposeAll(); });
+  type Waited = { completed: unknown[]; pending: string[]; interrupted?: string };
+  const wait = () => state.service.handle("parent", "agents_wait", { ids: ["task-0", "task-1"], timeoutSeconds: 5 }) as Promise<Waited>;
+  const steer = (...steering: string[]) => state.parentRuntime.emit({ type: "queue_update", queue: { steering, followUp: [] } });
+
+  steer("Stop waiting, the page resolved");
+  const steered = await wait();
+  assert.deepEqual(steered.pending, ["task-0", "task-1"]);
+  assert.match(steered.interrupted ?? "", /new message/u);
+
+  // Still queued until this round ends, the same message leaves a script's next wait alone instead of spinning it.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const next = wait();
+  await vi.advanceTimersByTimeAsync(5_000);
+  assert.deepEqual(await next, { completed: [], pending: ["task-0", "task-1"] });
+
+  const later = wait();
+  steer("Stop waiting, the page resolved", "Another page fired");
+  assert.match((await later).interrupted ?? "", /new message/u);
+});
+
 test("a running swarm does not hold back an ordinary result, and Stop reports nothing back, finished results included", async (t) => {
   const state = await swarm(2, ["task-ordinary", "child-ordinary"]);
   t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });

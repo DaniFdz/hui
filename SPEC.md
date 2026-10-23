@@ -1301,16 +1301,20 @@ typically from one `codemode` script that spawns many helpers and awaits them
 together, instead of arriving as a completion event. `agents_wait` takes the
 caller's own children's task IDs and returns once all of them have finished, or
 at its timeout (600 s by default, at most an hour) with those finished so far and
-the pending ones; Stop cancels the wait. In one tree at most 32 collected children
-start or run at once; more wait in a queue held in memory (saved as `starting`) and
-start in spawn order as slots free; at most 50 may be queued or running, and the
-next is refused. Collected children have their own limits and do not count toward
-the eight. A collected child, or anything below one, cannot spawn collected
-children. Nothing is lost: a result no wait returned is delivered as an ordinary
-completion event once the parent is no longer busy, and a returned result is never
-delivered again. The operator's Stop on the parent also cancels its queued and
-running collected children, and those cancellations are not reported back. A
-restart interrupts queued ones like any active task.
+the pending ones; Stop cancels the wait. Any message steered to the waiting
+session (the operator's Steer, or the result of a finished ordinary child) also
+ends it at once with those finished so far, because the model reads steering only
+after the tool call. The same queued steering ends only one wait per tool round,
+so a script that waits again does not spin. In one tree at most 32 collected
+children start or run at once; more wait in a queue held in memory (saved as
+`starting`) and start in spawn order as slots free; at most 50 may be queued or
+running, and the next is refused. Collected children have their own limits and do
+not count toward the eight. A collected child, or anything below one, cannot
+spawn collected children. Nothing is lost: a result no wait returned is delivered
+as an ordinary completion event once the parent is no longer busy, and a returned
+result is never delivered again. The operator's Stop on the parent also cancels
+its queued and running collected children, and those cancellations are not
+reported back. A restart interrupts queued ones like any active task.
 
 Visibility is the current session tree, not the whole registry: parent, child
 and sibling sessions can exchange bounded messages and history, while unrelated
@@ -3053,7 +3057,10 @@ PI's own extension runner, bound to the conversation:
   loaded their extensions again, or after 30 seconds.
 
 An extension that blocks the event loop holds up every session; PI's worker
-isolates each session's extensions in a process of its own.
+isolates each session's extensions in a process of its own. A models.json
+`!command` API key still runs on every request, as in PI, but HUI runs it
+without blocking, so a slow token command holds up only its own request. On
+Windows, and for a `!command` header value, PI's own blocking run remains.
 
 Compaction is Durable's too, with Durable's semantics where they differ from
 PI's. `/compact`, **Compact now** and the harness's own compactions (background

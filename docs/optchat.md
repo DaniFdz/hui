@@ -133,10 +133,13 @@ one long run cannot be compacted either: that run fails (Durable section 8.3).
 node, at most 8 per memory and 8 across the gateway, through the gateway's models
 with the document's model or the conversation's own, at medium thinking unless
 the document says otherwise. Its context is the compaction view's lines before
-the node ([The view](#the-view)). Models cannot count bytes, so each step shows
-the limit as a ruler of that many dashes: the realistic sample line it replaces
-could end up copied into summaries, as revision `3c190e0` observed. A failed
-node is retried every 10 seconds; only its first failure is reported
+the node ([The view](#the-view)), up to the first one that is not a summary yet:
+as revision `3c190e0` allows, a message starts while at most 7 earlier ones still
+wait for theirs, so a turn that brought many messages is summarized 8 at a time
+and the next turn's wait is that much shorter. Models cannot count bytes, so each
+step shows the limit as a ruler of that many dashes: the realistic sample line it
+replaces could end up copied into summaries, as revision `3c190e0` observed. A
+failed node is retried every 10 seconds; only its first failure is reported
 (`optchat_memory` diagnostic) and shown in the memory's status. Its usage
 (tokens, cache, cost) is counted in the status since the memory opened.
 
@@ -299,9 +302,6 @@ grow), for example `jq -r '"\(.i) \(.kind): \(.text)"' main/*.jsonl`.
   calls would write the same marked prefix, the second holds off until the first
   one's response begins, so the write is paid once. It is Anthropic-specific: a
   follow-up.
-- **Compactions start in the original order.** The revision lets a message's
-  compaction begin as soon as at most 7 earlier lines still wait for a summary.
-  That changes latency, not what is cached: a follow-up.
 - **The revision's new prompt is not used.** The gist has no license, so this
   change takes the revision's ideas in HUI's own code and words and copies none of
   its text.

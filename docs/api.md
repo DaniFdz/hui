@@ -89,7 +89,10 @@ smaller bodies, and clients that accept neither encoding, get the identity body.
 its explicitly resolved Tailscale DNS name, or a name granted with `--allow-host`
 or `HUI_GATEWAY_ALLOWED_HOSTS`, or listed in `allowHosts` of `gateway/config.json`). A proxy that connects over loopback but answers
 on a name of its own, such as `tailscale serve`, is the case that needs one;
-unusable entries are refused rather than silently ignored. The default production
+unusable entries are refused rather than silently ignored. The production
+gateway keeps an idle keep-alive connection open for 120 s, longer than such a
+proxy keeps one (Tailscale Serve: 90 s), so the proxy closes it first and never
+sends a request on a connection the gateway is closing. The default production
 port is
 4173. The CLI accepts `HUI_GATEWAY_HOST` / `HUI_GATEWAY_PORT` as validated
 start/run/restart defaults, including when invoked by Electron. Explicit CLI
@@ -1065,7 +1068,7 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 | Tool | Contract |
 |---|---|
 | `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking, a bounded run timeout and `collect`; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
-| `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished or at the timeout (default 600, 1-3600 s) with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId] }`; an abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
+| `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished, at the timeout (default 600, 1-3600 s), or as soon as a message is steered to the caller (once per change of its steering queue in a tool round), with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId], interrupted?: string }`; `interrupted` says a steered message ended the wait while tasks were pending. An abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |

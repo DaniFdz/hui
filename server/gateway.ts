@@ -76,6 +76,9 @@ export async function runGateway(options: GatewayOptions): Promise<{ state: Gate
       });
     });
   });
+  // A reverse proxy such as `tailscale serve` (Go: 90 s idle connections) sends a request on an idle connection and
+  // answers 502 when Node's 5 s keep-alive has just closed it; it retries only GETs. The proxy must close first.
+  server.keepAliveTimeout = 120_000;
   let state: GatewayState;
   const detachTerminals = attachTerminalTransport(server, allowed);
   const detachStreams = attachLiveStreams(server, allowed);

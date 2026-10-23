@@ -137,7 +137,7 @@ Every question also offers a free-text answer the card adds itself, and the user
   pi.registerTool({
     name: "agents_wait",
     label: "Wait for subagents",
-    description: "Wait until the listed subagents of this session have finished and return their results; at the timeout, return those finished so far and the pending ones.",
+    description: "Wait until the listed subagents of this session have finished and return their results; at the timeout, or as soon as a new message arrives for this session, return those finished so far and the pending ones.",
     parameters: Type.Object({
       ids: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { minItems: 1, maxItems: 100, description: "taskIds from sessions_spawn." }),
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 3_600, description: "Default 600." })),
