@@ -27,9 +27,9 @@ struct SessionsPageView: View {
                         Text(session.title)
                         HStack {
                             ForEach([("Pinned", session.pinned), ("Unread", session.unread), ("Archived", session.archived)].filter { $0.1 == true }, id: \.0) { chip in
-                                Text(chip.0).font(.caption).padding(.horizontal, 6).background(.quaternary, in: .capsule)
+                                Text(chip.0).typeface(.caption).padding(.horizontal, 6).background(.quaternary, in: .capsule)
                             }
-                            Text(session.archived == true ? "archived" : session.status.rawValue).font(.caption).foregroundStyle(.secondary)
+                            Text(session.archived == true ? "archived" : session.status.rawValue).typeface(.caption).foregroundStyle(.secondary)
                         }
                     }
                     Spacer()

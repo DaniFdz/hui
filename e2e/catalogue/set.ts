@@ -39,7 +39,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisettings", "docs/api.md#put-__huisettings"],
     surfaces: ["route:GET /__hui/settings", "route:PUT /__hui/settings"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-005",

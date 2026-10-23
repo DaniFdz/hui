@@ -10,7 +10,8 @@
  * its sheet), the chosen button of a group (aria-pressed; on iOS the selected trait), the app's colour scheme (on iOS
  * read from a screenshot) and the device's (on iOS set through `simctl ui` and restored after the test), the session menu (on iOS the open chat's toolbar menu,
  * else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
- * a piece of the screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
+ * a piece of the screen looks (on iOS its colours from a screenshot and its type from the value the app's typeface
+ * reports), and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
  * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
@@ -84,7 +85,7 @@ export type Hui = {
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
-  pressed(within: Locator, name: string): Locator;
+  pressed(within: Locator, name: string, on?: boolean): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
@@ -274,7 +275,7 @@ export const test = base.extend<{ hui: Hui }>({
     const device = () => (fixtures as unknown as { device: Device }).device;
     const proxy = web ? undefined : await gatewayProxy(receipt.url);
     try {
-      const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", proxy!.url] });
+      const launch = () => device().openApp("dev.hui.ios", { relaunch: true, launchArguments: ["-HUIGatewayURL", proxy!.url, "-HUILooks", "YES"] });
       const forgetPreferences = async () => {
         await device().closeApp();
         const container = execFileSync("xcrun", ["simctl", "get_app_container", IOS_DEVICE, "dev.hui.ios", "data"], { encoding: "utf8" }).trim();
@@ -395,7 +396,7 @@ export const test = base.extend<{ hui: Hui }>({
           return shown;
         }, title),
         overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
-        pressed: (within, name) => within.getByRole("button", { name, pressed: true }),
+        pressed: (within, name, on = true) => within.getByRole("button", { name, pressed: on }),
         appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
         deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
         look: async (target) => {
@@ -545,25 +546,72 @@ export const test = base.extend<{ hui: Hui }>({
         },
       };
 
+      const screenshot = async () => {
+        const route = await fixtures.screen.getByTestId("app-route").boundingBox();
+        if (!route) throw new Error("screenshot: the app shows no screen");
+        const shot = join(await mkdtemp(join(tmpdir(), "hui-e2e-shot-")), "screen.bmp");
+        directories.push(dirname(shot));
+        execFileSync("xcrun", ["simctl", "io", IOS_DEVICE, "screenshot", "--type=bmp", shot], { stdio: "ignore" });
+        const bmp = await readFile(shot);
+        const width = bmp.readInt32LE(18), height = Math.abs(bmp.readInt32LE(22)), bytes = bmp.readUInt16LE(28) / 8;
+        const scale = width / (route.x + route.width);
+        const pixel = (x: number, y: number): Rgb => {
+          const top = Math.min(height - 1, Math.floor(y * scale));
+          const row = bmp.readInt32LE(22) > 0 ? height - 1 - top : top;
+          const at = bmp.readUInt32LE(10) + row * Math.ceil((width * bytes) / 4) * 4 + Math.min(width - 1, Math.floor(x * scale)) * bytes;
+          return [bmp[at + 2]!, bmp[at + 1]!, bmp[at]!];
+        };
+        return { scale, pixel };
+      };
       const deviceScheme = () => execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance"], { encoding: "utf8" }).trim();
       const startScheme = web ? "" : deviceScheme();
       const iosSteps: Partial<typeof webSteps> = {
-        pressed: (within, name) => within.getByRole("button", { name, selected: true }),
+        pressed: (within, name, on = true) => within.getByRole("button", { name, selected: on }),
         deviceAppearance: async (scheme) => {
           execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", scheme]);
         },
         appearance: async () => {
           const box = await fixtures.screen.getByTestId("app-route").boundingBox();
           if (!box) throw new Error("appearance: the app shows no screen");
-          const shot = join(await mkdtemp(join(tmpdir(), "hui-e2e-shot-")), "screen.bmp");
-          directories.push(dirname(shot));
-          execFileSync("xcrun", ["simctl", "io", IOS_DEVICE, "screenshot", "--type=bmp", shot], { stdio: "ignore" });
-          const bmp = await readFile(shot);
-          const width = bmp.readInt32LE(18), height = Math.abs(bmp.readInt32LE(22)), bytes = bmp.readUInt16LE(28) / 8;
-          const scale = width / (box.x + box.width);
-          const row = bmp.readInt32LE(22) > 0 ? height - 1 - Math.round((box.y + box.height / 2) * scale) : Math.round((box.y + box.height / 2) * scale);
-          const at = bmp.readUInt32LE(10) + row * Math.ceil((width * bytes) / 4) * 4 + Math.round(2 * scale) * bytes;
-          return (bmp[at]! + bmp[at + 1]! + bmp[at + 2]!) / 3 < 128 ? "dark" : "light";
+          const [r, g, b] = (await screenshot()).pixel(box.x + 2, box.y + box.height / 2);
+          return (r + g + b) / 3 < 128 ? "dark" : "light";
+        },
+        look: async (target) => {
+          if (await target.count() === 0) await iosSteps.scrollTo!(fixtures.screen.getByTestId("app-route"), target);
+          const box = await target.boundingBox();
+          if (!box) throw new Error("look: the target lays out no box");
+          const shot = await screenshot();
+          const ranked = (edgeOnly: boolean) => {
+            const counts = new Map<string, number>();
+            for (let y = box.y; y < box.y + box.height; y += 1 / shot.scale) {
+              for (let x = box.x; x < box.x + box.width; x += 1 / shot.scale) {
+                if (edgeOnly && y > box.y && y + 1 / shot.scale < box.y + box.height && x > box.x && x + 1 / shot.scale < box.x + box.width) continue;
+                const key = shot.pixel(x, y).join(",");
+                counts.set(key, (counts.get(key) ?? 0) + 1);
+              }
+            }
+            return [...counts].sort((a, b) => b[1] - a[1]).map(([key]) => key.split(",").map(Number) as Rgb);
+          };
+          const background = ranked(true)[0]!;
+          const inside = ranked(false);
+          const distance = (rgb: Rgb) => Math.max(...rgb.map((channel, index) => Math.abs(channel - background[index]!)));
+          const farthest = Math.max(...inside.map(distance));
+          const color = inside.find((rgb) => farthest > 0 && distance(rgb) >= farthest / 2) ?? background;
+          const reading = Object.fromEntries((await target.inputValue()).split(";").map((pair) => pair.split("=") as [string, string]));
+          const typed = (field: string) => {
+            if (reading[field] === undefined) throw new Error(`look: on iOS the target reports no ${field}; give its Text a typeface`);
+            return reading[field];
+          };
+          const unread = (field: string) => () => { throw new Error(`look: iOS can't read ${field} yet`); };
+          return Object.defineProperties({ color, background }, {
+            size: { get: () => Number(typed("size")) },
+            fonts: { get: () => typed("fonts").split(",") },
+            weight: { get: unread("weight") },
+            opacity: { get: unread("opacity") },
+            loaded: { get: unread("loaded") },
+            align: { get: unread("align") },
+            ring: { get: unread("ring") },
+          }) as Awaited<ReturnType<typeof webSteps.look>>;
         },
         stored: webSteps.stored,
         secretDirectories: webSteps.secretDirectories,

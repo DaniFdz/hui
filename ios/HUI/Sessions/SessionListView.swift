@@ -15,10 +15,10 @@ struct SessionListView: View {
     var body: some View {
         List {
             if let notice {
-                Text(notice).font(.footnote).foregroundStyle(.secondary)
+                Text(notice).typeface(.footnote).foregroundStyle(.secondary)
             }
             if let error = sessions.error {
-                Text(error).font(.footnote).foregroundStyle(.red)
+                Text(error).typeface(.footnote).foregroundStyle(.red)
             }
             ForEach(sessions.groups) { group in
                 Section(group.label) {
@@ -31,7 +31,7 @@ struct SessionListView: View {
                                     HStack {
                                         Text(row.title)
                                         if row.pinned {
-                                            Text("Pinned").font(.caption).padding(.horizontal, 6).background(.quaternary, in: .capsule)
+                                            Text("Pinned").typeface(.caption).padding(.horizontal, 6).background(.quaternary, in: .capsule)
                                         }
                                     }
                                 }

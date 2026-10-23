@@ -78,7 +78,7 @@ struct SessionNotices: ViewModifier {
         VStack(spacing: 8) {
             if let toast = sessions.archiveToast {
                 HStack {
-                    Text(toast.error ?? "Archived “\(toast.title)”.").font(.footnote)
+                    Text(toast.error ?? "Archived “\(toast.title)”.").typeface(.footnote)
                     Spacer()
                     Button(toast.restoring ? "Restoring…" : "Restore") {
                         guard let client else { return }
@@ -95,7 +95,7 @@ struct SessionNotices: ViewModifier {
             }
             if let notice = sessions.notice {
                 Text(notice.text)
-                    .font(.footnote)
+                    .typeface(.footnote)
                     .foregroundStyle(notice.failed ? .red : .primary)
                     .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -128,7 +128,7 @@ private struct IconPanel: View {
                                 .buttonStyle(.borderedProminent)
                                 .disabled(custom == nil)
                         }
-                        Text("Any emoji works.").font(.footnote).foregroundStyle(.secondary)
+                        Text("Any emoji works.").typeface(.footnote).foregroundStyle(.secondary)
                     }
                     .task(id: emoji) {
                         custom = nil
@@ -143,7 +143,7 @@ private struct IconPanel: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 6), spacing: 12) {
                         ForEach(sessions.icons, id: \.self) { icon in
                             Button(icon) { choose(icon) }
-                                .font(.title2)
+                                .typeface(.title2)
                                 .accessibilityLabel("Set icon \(icon)")
                                 .accessibilityAddTraits(session.icon == icon ? .isSelected : [])
                         }

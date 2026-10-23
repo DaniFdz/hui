@@ -86,14 +86,8 @@ final class SettingsModel {
         settings.flatMap { Color(hex: $0.accent) }
     }
 
-    var dynamicTypeSize: DynamicTypeSize {
-        switch settings?.textScale {
-        case ._90: .medium
-        case ._110: .xLarge
-        case ._125: .xxLarge
-        case ._140: .xxxLarge
-        default: .large
-        }
+    var textScale: Double {
+        (settings?.textScale.rawValue ?? 100) / 100
     }
 }
 
