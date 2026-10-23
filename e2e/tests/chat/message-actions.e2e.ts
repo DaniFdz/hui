@@ -13,7 +13,7 @@ async function reply(screen: Screen, hui: Hui, prompt: string, session?: { id: s
   return transcript;
 }
 
-test("Copy response copies a reply and turns to Copied, and a sent prompt's context menu copies it, a selection or code", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Copy response copies a reply and turns to Copied, and a sent prompt's context menu copies it or code", { tags: ["CHAT-030"] }, async ({ screen, hui }) => {
   await hui.clipboard();
   const transcript = await reply(screen, hui, "Selected words stay put");
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
@@ -27,21 +27,26 @@ test("Copy response copies a reply and turns to Copied, and a sent prompt's cont
   await expect(screen.getByText("Copy as markdown")).toBeHidden();
   await expect.poll(() => hui.copied()).toBe("Selected words stay put");
 
-  await prompt.doubleTap();
-  await hui.contextMenu(prompt);
-  await screen.getByText("Copy selection").tap();
-  await expect.poll(() => hui.copied()).toBe("words");
-
   await screen.getByLabel("Message").fill("E2E_CODE_PARITY");
   await screen.getByRole("button", "Send message").tap();
-  await expect(transcript.getByRole("button", "Copy response")).toHaveCount(2);
   const code = transcript.getByText(/^line 1: fixture/u);
+  await expect(code).toBeVisible();
   await hui.contextMenu(code);
   await screen.getByText("Copy code").tap();
   await expect.poll(() => hui.copied()).toMatch(/^line 1: fixture .*\nline 10: fixture /su);
 });
 
-test("A message from a session has Copy message", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("A sent prompt's context menu copies a selection", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+  await hui.clipboard();
+  const transcript = await reply(screen, hui, "Selected words stay put");
+  const prompt = transcript.getByText("Selected words stay put");
+  await prompt.doubleTap();
+  await hui.contextMenu(prompt);
+  await screen.getByText("Copy selection").tap();
+  await expect.poll(() => hui.copied()).toBe("words");
+});
+
+test("A message from a session has Copy message", { tags: ["CHAT-030"] }, async ({ screen, hui }) => {
   await hui.clipboard();
   const parent = await hui.createSession({ title: "Coordinator" });
   const child = await hui.createSubagent(parent);
@@ -52,7 +57,7 @@ test("A message from a session has Copy message", { tags: ["CHAT-030"], platform
   await expect.poll(() => hui.copied()).toBe("E2E_SUBAGENT_CHILD");
 });
 
-test("A bot's message has Copy message, and its context menu copies its code", { tags: ["CHAT-030"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("A bot's message has Copy message, and its context menu copies its code", { tags: ["CHAT-030"] }, async ({ screen, hui }) => {
   const call = (name: string, input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name, input })).toString("base64url")}`;
   await hui.clipboard();
   const { bot } = await hui.api<{ bot: { handle: string } }>("POST", "/__hui/bots", { name: "Grace", soul: "You babysit pull requests." });
@@ -90,7 +95,7 @@ test("On a phone screen the latest reply's Copy response is visible and copies o
   await expect.poll(() => hui.copied()).toBe("Fixture response.");
 });
 
-test("Reply to message quotes the message after the existing draft and leaves the caret at its end, without sending", { tags: ["CHAT-032"], platforms: ["web"] }, async ({ screen, hui }) => {
+async function replyTwice(screen: Screen, hui: Hui) {
   const message = screen.getByLabel("Message");
   const transcript = await reply(screen, hui, "First line\nSecond line");
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
@@ -101,9 +106,19 @@ test("Reply to message quotes the message after the existing draft and leaves th
   await transcript.getByRole("button", "Reply to message").last().tap();
   await expect(message).toHaveValue("My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response.\n\n");
   await expect(message).toBeFocused();
+  return { message, transcript };
+}
+
+test("Reply to message quotes the message after the existing draft and focuses the composer, without sending", { tags: ["CHAT-032"] }, async ({ screen, hui }) => {
+  const { transcript } = await replyTwice(screen, hui);
+  await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
+  await expect(transcript.getByText("My draft")).toBeHidden();
+});
+
+test("Reply to message leaves the caret at the end of the composer", { tags: ["CHAT-032"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const { message, transcript } = await replyTwice(screen, hui);
   await hui.keyboard.down("x");
   await hui.keyboard.up("x");
   await expect(message).toHaveValue("My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response.\n\nx");
   await expect(transcript.getByText("Fixture response.")).toHaveCount(1);
-  await expect(transcript.getByText("My draft")).toBeHidden();
 });

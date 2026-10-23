@@ -1,6 +1,6 @@
 // The chat's view models as the core's `chatRows` returns them (src/lib/chat-rows.ts): transcript items
 // (`TranscriptItem` in src/api/sessions.ts) grouped into rows, each row and item with a unique `key`, activity rows with
-// their labels and question summary, and tool items with their cards and printed input. Mirrored by hand, so scripts/ios-contract.test.mjs
+// their labels and question summary, messages with their shown text and whether it is Markdown, message rows with their footer (the text Reply and Copy use and the Copy label), and tool items with their cards and printed input. Mirrored by hand, so scripts/ios-contract.test.mjs
 // checks both kind enums against the TypeScript unions. A kind a newer gateway adds is logged, decodes as
 // `unrecognized` and draws nothing, and a row that fails to decode is logged and left out, so the rest of the chat
 // keeps working.
@@ -46,6 +46,8 @@ struct TranscriptItem: Decodable, Equatable, Sendable {
     var command: CommandCard?
     var codemode: CodemodeCard?
     var input: String?
+    var shown: String?
+    var markdown: Bool?
 }
 
 struct ReadCard: Decodable, Equatable, Sendable {
@@ -87,9 +89,15 @@ struct ChatRow: Decodable, Equatable, Sendable {
     var label: String?
     var liveLabel: String?
     var answers: QuestionnaireSummary?
+    var footer: Footer?
+
+    struct Footer: Decodable, Equatable, Sendable {
+        var text: String
+        var copyLabel: String
+    }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, key, messages, items, label, liveLabel, answers
+        case kind, key, messages, items, label, liveLabel, answers, footer
     }
 
     init(from decoder: any Decoder) throws {
@@ -101,6 +109,7 @@ struct ChatRow: Decodable, Equatable, Sendable {
         label = try container.decodeIfPresent(String.self, forKey: .label)
         liveLabel = try container.decodeIfPresent(String.self, forKey: .liveLabel)
         answers = try container.decodeIfPresent(QuestionnaireSummary.self, forKey: .answers)
+        footer = try container.decodeIfPresent(Footer.self, forKey: .footer)
     }
 }
 

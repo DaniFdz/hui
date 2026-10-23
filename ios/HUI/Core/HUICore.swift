@@ -148,6 +148,10 @@ actor HUICore {
         var applePlatform = true
     }
 
+    func replyDraft(_ draft: String, quoting text: String) throws -> String {
+        try call("replyDraft", draft, text)
+    }
+
     func continueAfterErrorPrompt() throws -> String {
         try decode(exports.objectForKeyedSubscript("CONTINUE_AFTER_ERROR_PROMPT"))
     }
