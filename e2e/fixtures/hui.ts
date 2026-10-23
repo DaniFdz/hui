@@ -6,7 +6,9 @@
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
  * clipboard, the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
- * shell's drawer media, the navigation drawer; on iOS, Back), the Settings page list (the drawer on a phone, on iOS its sheet), the session menu (on iOS the open chat's toolbar menu,
+ * shell's drawer media, the navigation drawer; on iOS, Back), the Settings page list (the drawer on a phone, on iOS
+ * its sheet), the chosen button of a group (aria-pressed; on iOS the selected trait), the app's colour scheme (on iOS
+ * read from a screenshot) and the device's (on iOS set through `simctl ui` and restored after the test), the session menu (on iOS the open chat's toolbar menu,
  * else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
  * a piece of the screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
@@ -593,6 +595,7 @@ export const test = base.extend<{ hui: Hui }>({
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
         },
         settingsPages: async () => {
+          if (await fixtures.screen.getByRole("button", "Close settings navigation").count() > 0) return;
           await fixtures.screen.getByRole("button", "Open settings navigation").tap();
           await expect(fixtures.screen.getByRole("button", "Close settings navigation")).toBeVisible();
         },

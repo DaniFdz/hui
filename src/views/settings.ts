@@ -10,7 +10,6 @@ import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
 import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
 
-export { filterSettingsPages, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
@@ -41,6 +40,8 @@ import {
   unbindDrawerMedia,
 } from "./shell.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
+
+export { filterSettingsPages, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
 
 loadViewAssets(() => import("../styles/openclaw-workspaces.css"));
 

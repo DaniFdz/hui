@@ -1,6 +1,6 @@
 // The gateway's settings document, as the web's settings controller holds it: read once the gateway connects, changed
 // here at once and written back whole with PUT /__hui/settings. A write the gateway refuses keeps the change for now
-// and sets saveFailed, so Settings says it was not saved, and the next start reads what the gateway kept. The chosen
+// and sets saveFailed, so Settings says it was not saved; writes go one at a time, in order, and the next start reads what the gateway kept. The chosen
 // theme's file says which variants it carries (a theme with one variant fixes the colour mode, as on the web) and the
 // colours of each: its background, foreground, card and primary tokens, written as #rrggbb, become the app's colours,
 // and the accent override, when set, its tint.
@@ -16,6 +16,7 @@ final class SettingsModel {
     private(set) var themes: [API.ThemeRef] = []
     private(set) var palettes: [String: ThemePalette] = [:]
     private var writes = 0
+    private var writing: Task<Void, Never>?
 
     func load(_ client: GatewayClient) async {
         settings = try? await client.get("/__hui/settings")
@@ -33,10 +34,16 @@ final class SettingsModel {
     }
 
     private func loadTheme(_ client: GatewayClient) async {
-        guard let theme = settings?.theme, let ref = themes.first(where: { $0.id == theme }),
-              case .object(let file) = try? await client.get(ref.url, as: API.JSONValue.self), settings?.theme == theme else { return }
+        let theme = settings?.theme
+        let file: API.JSONValue? = if let ref = themes.first(where: { $0.id == theme }) { try? await client.get(ref.url) } else { nil }
+        guard settings?.theme == theme else { return }
+        guard case .object(let file) = file else {
+            variant = "both"
+            palettes = [:]
+            return
+        }
         let modes = if case .object(let vars) = file["cssVars"] { vars } else { file }
-        variant = modes["light"] == nil ? "dark" : modes["dark"] == nil ? "light" : "both"
+        variant = modes["light"] == nil && modes["dark"] != nil ? "dark" : modes["dark"] == nil && modes["light"] != nil ? "light" : "both"
         palettes = modes.compactMapValues { mode in
             guard case .object(let tokens) = mode else { return nil }
             return ThemePalette(tokens)
@@ -49,7 +56,9 @@ final class SettingsModel {
         settings = next
         writes += 1
         let write = writes
-        Task {
+        let previous = writing
+        writing = Task {
+            await previous?.value
             let saved = try? await client.send("PUT", "/__hui/settings", body: next, as: API.Settings.self)
             guard write == writes else { return }
             saveFailed = saved == nil
@@ -109,16 +118,13 @@ struct Themed: ViewModifier {
     @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
-        if let palette = settings.palette(scheme) {
-            content
-                .scrollContentBackground(.hidden)
-                .background(palette.background)
-                .foregroundStyle(palette.foreground)
-                .tint(settings.accent ?? palette.primary)
-                .environment(\.themeCard, palette.card)
-        } else {
-            content.tint(settings.accent)
-        }
+        let palette = settings.palette(scheme)
+        content
+            .scrollContentBackground(palette == nil ? .automatic : .hidden)
+            .background(palette?.background ?? .clear)
+            .foregroundStyle(palette?.foreground ?? .primary)
+            .tint(settings.accent ?? palette?.primary)
+            .environment(\.themeCard, palette?.card)
     }
 }
 

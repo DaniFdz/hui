@@ -32,17 +32,17 @@ struct RootView: View {
                         .modifier(Themed(settings: settings))
                         .navigationDestination(for: Screen.self) { screen in
                             Group {
-                            switch screen {
-                            case .session(let id):
-                                if let client = gateway.client {
-                                    ChatView(id: id, client: client, core: core, sessions: sessions).id(id)
+                                switch screen {
+                                case .session(let id):
+                                    if let client = gateway.client {
+                                        ChatView(id: id, client: client, core: core, sessions: sessions).id(id)
+                                    }
+                                case .sessionsPage:
+                                    SessionsPageView(sessions: sessions, client: gateway.client)
+                                case .settings(let page):
+                                    SettingsView(page: page, core: core, settings: settings, client: gateway.client,
+                                                 select: { chosen in replace([.settings(chosen)]) }, exit: { path = [] })
                                 }
-                            case .sessionsPage:
-                                SessionsPageView(sessions: sessions, client: gateway.client)
-                            case .settings(let page):
-                                SettingsView(page: page, core: core, settings: settings, client: gateway.client,
-                                             select: { chosen in replace([.settings(chosen)]) }, exit: { path = [] })
-                            }
                             }
                             .modifier(Themed(settings: settings))
                         }

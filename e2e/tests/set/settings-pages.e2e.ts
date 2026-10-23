@@ -61,7 +61,8 @@ test("Search settings keeps the pages whose name or group matches, says when non
   const pages = screen.getByLabel("Settings pages");
   const search = screen.getByLabel("Search settings");
   const clear = screen.getByRole("button", "Clear settings search");
-  const listed = async () => (await hui.textOf(pages)).replace(/\s+/gu, " ").trim().toLowerCase();
+  const shown = async () => (await hui.textOf(pages)).replace(/\s+/gu, " ").trim();
+  const listed = async () => (await shown()).toLowerCase();
 
   await hui.open("/settings/appearance");
   await hui.settingsPages();
@@ -71,7 +72,7 @@ test("Search settings keeps the pages whose name or group matches, says when non
   await search.fill("connections");
   await expect.poll(listed).toBe("connections gateway integrations workers");
   await search.fill("no such page");
-  await expect.poll(listed).toBe("no settings match.");
+  await expect.poll(shown).toBe("No settings match.");
 
   await clear.tap();
   await expect(search).toHaveValue("");
