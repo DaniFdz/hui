@@ -6,7 +6,6 @@ import {
   APP_SHELL_DRAWER_MEDIA,
   filterSessionGroups,
   isSessionGroupCollapsed,
-  normalizeCustomSessionIcon,
   PRIMARY_NAV,
   setNavigationDrawer,
   SHELL_DRAWER_DEFAULT_OPEN,
@@ -188,9 +187,6 @@ test("session menu mirrors the compatible OpenClaw action hierarchy", () => {
 test("session appearance picker centers reset controls and accepts custom emoji", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
-  assert.equal(normalizeCustomSessionIcon("  🐧  "), "🐧");
-  assert.equal(normalizeCustomSessionIcon("   "), undefined);
-  assert.equal(normalizeCustomSessionIcon("x".repeat(33)), undefined);
   assert.match(source, /aria-label="Custom emoji…"/);
   assert.match(source, /class="session-menu__icon-custom-input"/);
   assert.match(source, /\$\{icons\.circleX\}/);

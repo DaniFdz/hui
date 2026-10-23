@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { sessionMoveGroupOptions, transcriptAsMarkdown, unreachableHost } from "./sessions.ts";
+import { normalizeCustomSessionIcon, sessionMoveGroupOptions, transcriptAsMarkdown, unreachableHost } from "./sessions.ts";
 
 test("conversation Markdown preserves visible message, thinking, tool and error rows", () => {
   assert.equal(transcriptAsMarkdown([
@@ -35,4 +35,10 @@ test("session move targets always include OTHER once and preserve stored group l
   assert.deepEqual(sessionMoveGroupOptions([{ label: "ungrouped", sessions: [] }]), [
     { label: "OTHER", value: "" },
   ]);
+});
+
+test("a custom session icon is trimmed and at most 32 characters", () => {
+  assert.equal(normalizeCustomSessionIcon("  🐧  "), "🐧");
+  assert.equal(normalizeCustomSessionIcon("   "), undefined);
+  assert.equal(normalizeCustomSessionIcon("x".repeat(33)), undefined);
 });

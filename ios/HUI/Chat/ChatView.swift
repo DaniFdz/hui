@@ -1,6 +1,9 @@
-// The chat screen for one session, named as the web's chat names its controls: the header (the title as a heading,
-// "<runtime> · <GROUP> · <status>" with the status read as "Session status: …" from the core's label, and Continue
-// without a prompt for an SDK-worker session), the transcript of the core's rows anchored at the bottom, activity rows
+// The chat screen for one session, named as the web's chat names its controls: the toolbar's "Actions for <title>"
+// session menu (`SessionMenu`, with Conversation as Markdown), the header (the title as a heading, or the Session name
+// field while Rename… is on: leaving it or Return saves a trimmed, non-empty title, as the web's commits on blur or Enter;
+// the web's "<runtime> · <GROUP> · <status>" line from the session list's copy, its group and status labels from the core
+// and its status read as "Session status: …", and Continue without a prompt for an SDK-worker session), the transcript of
+// the core's rows anchored at the bottom, activity rows
 // that open to their thinking and tool cards (`ToolCardView`), the working indicator ("Agent activity: …"), the message
 // queue and the composer (Message, the "Model: …" menu and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
 // message; touch and hold to enqueue", whose hold menu offers Enqueue). A tap in the transcript puts the keyboard away.
@@ -14,20 +17,25 @@ import SwiftUI
 
 struct ChatView: View {
     let core: HUICore
-    let title: String?
+    let client: GatewayClient
+    let sessions: SessionsModel
     @State private var model: ConversationModel
     @State private var draft = ""
     @State private var expanded: Set<String> = []
+    @State private var groupLabel = ""
     @State private var position = ScrollPosition(idType: String.self, edge: .bottom)
     @State private var following = true
     @State private var nearBottom = true
     @State private var placeholder = "Send a message…"
     @State private var errorDetailsShown = false
     @FocusState private var composing: Bool
+    @FocusState private var naming: Bool
+    @State private var name = ""
 
-    init(id: String, client: GatewayClient, core: HUICore, title: String?) {
+    init(id: String, client: GatewayClient, core: HUICore, sessions: SessionsModel) {
         self.core = core
-        self.title = title
+        self.client = client
+        self.sessions = sessions
         _model = State(initialValue: ConversationModel(id: id, client: client, core: core))
     }
 
@@ -56,26 +64,54 @@ struct ChatView: View {
             composer.layoutPriority(1)
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let session = sessions.session(model.id) ?? model.session {
+                Menu {
+                    SessionMenu(session: session, sessions: sessions, client: client, markdown: model.markdown)
+                } label: {
+                    Label("Actions for \(session.title)", systemImage: "ellipsis.circle")
+                }
+            }
+        }
         .task { model.start() }
+        .task(id: group) {
+            let label = await sessions.groupLabel(group)
+            if !Task.isCancelled { groupLabel = label }
+        }
         .onDisappear { model.stop() }
     }
 
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(model.session?.title ?? title ?? "")
-                    .font(.headline)
-                    .accessibilityIdentifier("session-title")
-                    .accessibilityAddTraits(.isHeader)
-                if !model.statusLabel.isEmpty {
+                if sessions.renaming == model.id {
+                    TextField("Session name", text: $name)
+                        .font(.headline)
+                        .accessibilityLabel("Session name")
+                        .focused($naming)
+                        .submitLabel(.done)
+                        .onSubmit(rename)
+                        .onChange(of: naming) { if !naming { rename() } }
+                        .onDisappear(perform: rename)
+                        .task {
+                            name = title
+                            naming = true
+                        }
+                } else {
+                    Text(title)
+                        .font(.headline)
+                        .accessibilityIdentifier("session-title")
+                        .accessibilityAddTraits(.isHeader)
+                }
+                if !model.statusLabel.isEmpty, !groupLabel.isEmpty {
                     HStack(spacing: 0) {
-                        Text("\(model.origin) · ")
+                        Text(meta)
                         Text(model.statusLabel).accessibilityLabel("Session status: \(model.statusLabel)")
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityElement(children: .contain)
-                    .accessibilityLabel("\(model.origin) · \(model.statusLabel)")
+                    .accessibilityLabel(meta + model.statusLabel)
                 }
                 if !model.connectionNote.isEmpty {
                     Text(model.connectionNote).font(.caption).foregroundStyle(.orange)
@@ -92,6 +128,27 @@ struct ChatView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
+    }
+
+    private var meta: String {
+        guard let session = sessions.session(model.id) ?? model.session else { return "" }
+        return "\(session.parentId == nil ? session.tool : "Subagent")\(session.worker.map { " on \($0.name)" } ?? "") · \(groupLabel) · "
+    }
+
+    private var group: String {
+        sessions.session(model.id)?.group ?? model.session?.group ?? ""
+    }
+
+    private var title: String {
+        sessions.session(model.id)?.title ?? model.session?.title ?? ""
+    }
+
+    private func rename() {
+        guard sessions.renaming == model.id else { return }
+        sessions.renaming = ""
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != title else { return }
+        Task { await sessions.update(model.id, ["title": .string(trimmed)], client: client) }
     }
 
     private var transcript: some View {

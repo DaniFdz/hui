@@ -1,10 +1,17 @@
 /**
  * The browser's pure session logic over the session API's types (src/api/sessions.ts): group labels as the sidebar
- * shows and the API stores them, the session menu's Move to group choices and Copy notices, the
+ * shows and the API stores them, the session menu's Move to group choices, Copy notices and Icon choices, the
  * transcript as Markdown and how an unreachable host reads.
  */
 import { callMinutes, callTranscriptText } from "../voice/calls.ts";
 import type { SessionGroup, SessionView, TranscriptItem } from "../../api/sessions.ts";
+
+export const SESSION_ICONS = ["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯"] as const;
+
+export function normalizeCustomSessionIcon(value: string): string | undefined {
+  const icon = value.trim();
+  return icon && icon.length <= 32 ? icon : undefined;
+}
 
 /** Labels are presentation, not registry identifiers. Preserve stored spelling. */
 export function sessionGroupLabel(label: string): string {

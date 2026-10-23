@@ -2,10 +2,9 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Copy puts the session link, the session ID and the open conversation on the clipboard", { tags: ["SESS-038"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const menu = screen.getByTestId("session-row").filter({ hasText: "Copy source" });
+test("Copy puts the session link, the session ID and the open conversation on the clipboard", { tags: ["SESS-038"] }, async ({ screen, hui }) => {
   const copy = async (choice: string) => {
-    await hui.sessionMenu("Copy source");
+    const menu = await hui.sessionMenu("Copy source");
     await menu.getByText("Copy", { exact: true, visible: true }).tap();
     await menu.getByText(choice, { exact: true, visible: true }).tap();
   };
