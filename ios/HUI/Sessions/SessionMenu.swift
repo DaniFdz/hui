@@ -130,7 +130,10 @@ private struct IconPanel: View {
                         }
                         Text("Any emoji works.").font(.footnote).foregroundStyle(.secondary)
                     }
-                    .task(id: emoji) { custom = await sessions.normalizedIcon(emoji) }
+                    .task(id: emoji) {
+                        custom = nil
+                        custom = await sessions.normalizedIcon(emoji)
+                    }
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Back", systemImage: "chevron.left") { entering = false }

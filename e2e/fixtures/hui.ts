@@ -33,6 +33,7 @@ import { expect, test as base, type Locator } from "e2e";
 import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { IOS_DEVICE, IOS_PORT } from "../../e2e.config.ts";
+import { navigationPath, resolveNavigation } from "../../src/lib/navigation.ts";
 
 const MAX_SCROLL_SWIPES = 20;
 
@@ -348,7 +349,9 @@ export const test = base.extend<{ hui: Hui }>({
         peek: (target) => target.hover(),
         sessionList: async () => {
           const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
-          if (phone) await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
+          if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
+            await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
+          }
         },
         sessionMenu: async (title) => {
           const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
@@ -627,6 +630,9 @@ export const test = base.extend<{ hui: Hui }>({
           if (web) return fixtures.app.open(path);
           await launch();
           await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
+          const { target } = resolveNavigation(new URL(path, receipt.url).pathname);
+          const shown = target.kind === "session" ? navigationPath(target) : target.kind === "page" && target.page.id === "sessions" ? "/sessions" : undefined;
+          if (shown) await expect.poll(async () => new URL(await iosSteps.url!()).pathname).toBe(shown);
         },
         reload: () => (web ? browser().reload() : fixtures.app.restart()),
         clearState,

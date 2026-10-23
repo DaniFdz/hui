@@ -4,7 +4,8 @@
 // web sidebar's Filter & sort options (kept on the device as the web keeps them in the browser), grouping,
 // subagent folding, labels and accessible names. The session menu's actions patch or delete a session as the web's
 // do, with the web's notices: an archive keeps a toast with Restore for 15 s, other notices go after 6 s, and a
-// failure stays until the next one.
+// failure stays until the next one. It also holds the menu's pending steps for the screens: the session being
+// renamed, given an icon or removed, the trees an archive or delete closed, and the shared preset icons.
 import Foundation
 import Observation
 

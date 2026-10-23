@@ -15,6 +15,7 @@ struct RootView: View {
     @State private var sessions: SessionsModel
     @State private var path: [Screen] = []
     @State private var route = "/"
+    @State private var navigations = 0
     @AppStorage("HUIOpenSession") private var openSession = ""
 
     init(core: HUICore) {
@@ -89,7 +90,9 @@ struct RootView: View {
     }
 
     private func go(_ target: String) async {
-        guard let resolution = try? await core.resolveNavigation(target) else { return }
+        navigations += 1
+        let navigation = navigations
+        guard let resolution = try? await core.resolveNavigation(target), navigation == navigations else { return }
         var instant = Transaction()
         instant.disablesAnimations = true
         withTransaction(instant) {

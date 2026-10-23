@@ -79,6 +79,7 @@ struct ChatView: View {
                     .submitLabel(.done)
                     .onSubmit(rename)
                     .onChange(of: naming) { if !naming { rename() } }
+                    .onDisappear(perform: rename)
                     .task {
                         name = title
                         naming = true
