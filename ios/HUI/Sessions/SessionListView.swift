@@ -1,7 +1,7 @@
 // The session list, grouped as the web sidebar groups it; each row reads as the web's sidebar row does and leads with
 // the core's status glyph (attention, the busy spinner or the unread dot) and, when neither attention nor the spinner
 // shows, the session's icon. Its toolbar holds the web sidebar's
-// Filter & sort menu, with the same choices, the Sessions page and New group. A parent row has the web's Expand or
+// Filter & sort menu, with the same choices, the Sessions page, Settings and New group. A parent row has the web's Expand or
 // Collapse subagents toggle, and touching and holding a row opens the web's session menu (`SessionMenu`).
 import SwiftUI
 
@@ -83,6 +83,9 @@ struct SessionListView: View {
                 }
                 NavigationLink(value: Screen.sessionsPage) {
                     Label("Sessions", systemImage: "tablecells")
+                }
+                NavigationLink(value: Screen.settings("appearance")) {
+                    Label("Settings", systemImage: "gearshape")
                 }
                 Button("New group", systemImage: "folder.badge.plus") {
                     groupName = ""

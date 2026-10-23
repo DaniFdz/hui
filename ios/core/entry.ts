@@ -15,3 +15,6 @@ export { SendRequests } from "../../src/lib/composer/send-requests.ts";
 export { composerPlaceholder, queueRows } from "../../src/lib/composer/state.ts";
 export { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "../../src/lib/run-error.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";
+export { filterSettingsPages, SETTINGS_COPY } from "../../src/lib/settings/pages.ts";
+export { themePalettes } from "../../src/lib/theme/shadcn-theme.ts";
+export { effectiveColorScheme } from "../../src/lib/theme/theme.ts";

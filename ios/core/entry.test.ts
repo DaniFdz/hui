@@ -76,6 +76,11 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     markdownTokens: () => assert.deepEqual(
       json(core.markdownTokens("**Hi** `src/a.ts`", true)[1]?.children?.map((token) => token.type)),
       ["text", "strong_open", "text", "strong_close", "text", "html_inline", "code_inline", "html_inline"]),
+    filterSettingsPages: () => assert.deepEqual(json(core.filterSettingsPages("connections").map((page) => page.label)), ["Gateway", "Integrations", "Workers"]),
+    SETTINGS_COPY: () => assert.equal(core.SETTINGS_COPY.scales[125], "XL"),
+    themePalettes: () => assert.deepEqual(json(core.themePalettes({ dark: { background: "oklch(0 0 0)", foreground: "rgb(255 255 255)" } })),
+      { variant: "dark", dark: { background: "#000000", foreground: "#ffffff", card: "#0f0f0f", accent: "#ffffff" } }),
+    effectiveColorScheme: () => assert.equal(core.effectiveColorScheme("light", "dark"), "dark"),
   };
   assert.deepEqual(Object.keys(core).sort(), Object.keys(calls).sort());
   for (const call of Object.values(calls)) call();

@@ -6,7 +6,9 @@
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
  * clipboard, the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
- * shell's drawer media, the navigation drawer; on iOS, Back), the session menu (on iOS the open chat's toolbar menu,
+ * shell's drawer media, the navigation drawer; on iOS, Back), the Settings page list (the drawer on a phone, on iOS
+ * its sheet), the chosen button of a group (aria-pressed; on iOS the selected trait), the app's colour scheme (on iOS
+ * read from a screenshot) and the device's (on iOS set through `simctl ui` and restored after the test), the session menu (on iOS the open chat's toolbar menu,
  * else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
  * a piece of the screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
@@ -77,10 +79,12 @@ export type Hui = {
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
+  settingsPages(): Promise<void>;
   sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
+  pressed(within: Locator, name: string): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
@@ -356,6 +360,11 @@ export const test = base.extend<{ hui: Hui }>({
             await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
           }
         },
+        settingsPages: async () => {
+          const close = fixtures.screen.getByRole("button", "Close settings navigation", { visible: true });
+          const open = fixtures.screen.getByRole("button", "Open settings navigation", { visible: true });
+          if (await close.count() === 0 && await open.count() > 0) await open.tap();
+        },
         sessionMenu: async (title) => {
           const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
           await row.hover();
@@ -386,6 +395,7 @@ export const test = base.extend<{ hui: Hui }>({
           return shown;
         }, title),
         overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+        pressed: (within, name) => within.getByRole("button", { name, pressed: true }),
         appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
         deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
         look: async (target) => {
@@ -535,7 +545,26 @@ export const test = base.extend<{ hui: Hui }>({
         },
       };
 
+      const deviceScheme = () => execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance"], { encoding: "utf8" }).trim();
+      const startScheme = web ? "" : deviceScheme();
       const iosSteps: Partial<typeof webSteps> = {
+        pressed: (within, name) => within.getByRole("button", { name, selected: true }),
+        deviceAppearance: async (scheme) => {
+          execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", scheme]);
+        },
+        appearance: async () => {
+          const box = await fixtures.screen.getByTestId("app-route").boundingBox();
+          if (!box) throw new Error("appearance: the app shows no screen");
+          const shot = join(await mkdtemp(join(tmpdir(), "hui-e2e-shot-")), "screen.bmp");
+          directories.push(dirname(shot));
+          execFileSync("xcrun", ["simctl", "io", IOS_DEVICE, "screenshot", "--type=bmp", shot], { stdio: "ignore" });
+          const bmp = await readFile(shot);
+          const width = bmp.readInt32LE(18), height = Math.abs(bmp.readInt32LE(22)), bytes = bmp.readUInt16LE(28) / 8;
+          const scale = width / (box.x + box.width);
+          const row = bmp.readInt32LE(22) > 0 ? height - 1 - Math.round((box.y + box.height / 2) * scale) : Math.round((box.y + box.height / 2) * scale);
+          const at = bmp.readUInt32LE(10) + row * Math.ceil((width * bytes) / 4) * 4 + Math.round(2 * scale) * bytes;
+          return (bmp[at]! + bmp[at + 1]! + bmp[at + 2]!) / 3 < 128 ? "dark" : "light";
+        },
         stored: webSteps.stored,
         secretDirectories: webSteps.secretDirectories,
         phoneScreen: async (orientation = "portrait") => {
@@ -566,6 +595,11 @@ export const test = base.extend<{ hui: Hui }>({
           const glyph = row.getByTestId("session-glyph");
           if (await glyph.count() === 0) return { label: "", animated: false };
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
+        },
+        settingsPages: async () => {
+          if (await fixtures.screen.getByRole("button", "Close settings navigation").count() > 0) return;
+          await fixtures.screen.getByRole("button", "Open settings navigation").tap();
+          await expect(fixtures.screen.getByRole("button", "Close settings navigation")).toBeVisible();
         },
         keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
         hold: async (target, until) => {
@@ -638,7 +672,7 @@ export const test = base.extend<{ hui: Hui }>({
           await launch();
           await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
           const { target } = resolveNavigation(new URL(path, receipt.url).pathname);
-          const shown = target.kind === "session" ? navigationPath(target) : target.kind === "page" && target.page.id === "sessions" ? "/sessions" : undefined;
+          const shown = target.kind === "session" || target.kind === "settings" ? navigationPath(target) : target.kind === "page" && target.page.id === "sessions" ? "/sessions" : undefined;
           if (shown) await expect.poll(async () => new URL(await iosSteps.url!()).pathname).toBe(shown);
         },
         reload: () => (web ? browser().reload() : fixtures.app.restart()),
@@ -662,6 +696,7 @@ export const test = base.extend<{ hui: Hui }>({
       });
 
       await control("POST", "/control/release-replay");
+      if (!web && deviceScheme() !== startScheme) execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", startScheme]);
       for (const id of await taskIds()) {
         if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
       }

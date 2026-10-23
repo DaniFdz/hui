@@ -40,6 +40,22 @@ actor HUICore {
         try call("resolveNavigation", path)
     }
 
+    func filterSettingsPages(_ query: String) throws -> [SettingsPageEntry] {
+        try call("filterSettingsPages", query)
+    }
+
+    func settingsCopy() throws -> SettingsCopy {
+        try decode(exports.forProperty("SETTINGS_COPY"))
+    }
+
+    func themePalettes(_ file: API.JSONValue, accent: String) throws -> ThemePalettes? {
+        try call("themePalettes", file, accent)
+    }
+
+    func effectiveColorScheme(_ mode: String, variant: String) throws -> String {
+        try call("effectiveColorScheme", mode, variant)
+    }
+
     func decodeSseFrame(_ chunk: String) throws -> SSEFrame? {
         try call("decodeSseFrame", chunk)
     }
