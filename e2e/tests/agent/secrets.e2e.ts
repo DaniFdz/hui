@@ -70,7 +70,7 @@ test("a secret request opens a masked card and the agent gets a file it uses", {
   expect(await hui.stored(value)).toEqual([]);
 });
 
-test("Cancel ends a secret request without a file", { tags: ["AGENT-017"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Cancel ends a secret request without a file", { tags: ["AGENT-017"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const before = await hui.secretDirectories();
   await requestSecret(hui, screen, "Cancelled secret");

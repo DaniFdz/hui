@@ -23,7 +23,7 @@ const openSession = async (hui: Hui, title: string) => {
   await hui.open(`/sessions/${session.id}`);
 };
 
-test("one question's card takes a pick or typed text and leaves a summary", { tags: ["AGENT-001"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("one question's card takes a pick or typed text and leaves a summary", { tags: ["AGENT-001"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
@@ -203,7 +203,7 @@ test("the focused option's preview shows beside the options, under them on a pho
   await expect(screen.getByTestId("transcript").getByText('"Which layout should the settings page use?"="Tabs". selected preview: Tabs across the top.', { exact: false })).toBeVisible();
 });
 
-test("Cancel declines the questions and the agent goes on", { tags: ["AGENT-006"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Cancel declines the questions and the agent goes on", { tags: ["AGENT-006"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   await openSession(hui, "Declined questions");

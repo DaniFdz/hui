@@ -528,6 +528,8 @@ export const test = base.extend<{ hui: Hui }>({
       };
 
       const iosSteps: Partial<typeof webSteps> = {
+        stored: webSteps.stored,
+        secretDirectories: webSteps.secretDirectories,
         sessionMenu: (title) => fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress(),
         glyph: async (title) => {
           const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });

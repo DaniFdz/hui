@@ -7,7 +7,9 @@
 // While the conversation loads it says so, and a failed load offers Try again. A send reads "Sending…" until the
 // gateway takes it, and one that fails stays marked "Not sent — draft recovered." with its text back in the draft, as
 // on the web. A run that ended on an error shows the core's error card above the composer (Details, Copy error,
-// Continue, Dismiss error). The user's own prompts show as plain text, as on the web.
+// Continue, Dismiss error). The user's own prompts show as plain text, as on the web. The open question's card
+// (`QuestionCardView`) sits above the composer, and an answered `ask_user_question` call reads as the core's summary
+// ("Your answers", or "Unanswered questions" once it expired).
 import SwiftUI
 
 struct ChatView: View {
@@ -51,7 +53,7 @@ struct ChatView: View {
                 transcript
             }
             Divider()
-            composer
+            composer.layoutPriority(1)
         }
         .navigationBarTitleDisplayMode(.inline)
         .task { model.start() }
@@ -158,6 +160,8 @@ struct ChatView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
             }
+        case .activity where row.answers != nil:
+            questionnaireSummary(row.answers!)
         case .activity:
             disclosure(row.key, label: (model.streaming ? row.liveLabel : row.label) ?? "") {
                 ForEach(row.activity ?? [], id: \.key) { item in
@@ -168,6 +172,36 @@ struct ChatView: View {
             Text("Conversation compacted").font(.caption).foregroundStyle(.secondary)
         case .call, .subagentEvent, .botCreated, .unrecognized:
             EmptyView()
+        }
+    }
+
+    private func questionnaireSummary(_ summary: QuestionnaireSummary) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if summary.timedOut == true {
+                summaryLine("Expired", "No answer within \(summary.timeoutMinutes.map { String(Int($0)) } ?? "") minutes. The agent continued without your answer; reply in the chat to decide.")
+                ForEach(Array(summary.asked.enumerated()), id: \.offset) { _, asked in
+                    summaryLine(asked.header ?? "", "\(asked.question ?? "") \(asked.options.compactMap(\.label).joined(separator: ", "))")
+                }
+            } else if summary.cancelled || summary.answers.isEmpty {
+                Text("You declined to answer.")
+            } else {
+                ForEach(Array(summary.answers.enumerated()), id: \.offset) { _, answer in
+                    summaryLine(answer.header, answer.selected.joined(separator: ", "))
+                }
+            }
+        }
+        .font(.callout)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(summary.timedOut == true ? "Unanswered questions" : "Your answers")
+    }
+
+    private func summaryLine(_ title: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).bold()
+            Text(text)
         }
     }
 
@@ -222,6 +256,10 @@ struct ChatView: View {
             }
             if let runError = model.shownRunError {
                 runErrorCard(runError)
+            }
+            if let question = model.question {
+                QuestionCardView(question: question, core: core) { reply in Task { await model.answer(reply) } }
+                    .onAppear { composing = false }
             }
             composerControls
             modelPicker

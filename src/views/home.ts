@@ -50,7 +50,6 @@ import "../components/datadog-embeds.ts";
 import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
-import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
 import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
@@ -59,7 +58,7 @@ import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/markdown/slack-link.ts";
-import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
+import { activityLabel, attributedMessage, questionnaireSummary, type QuestionnaireSummary, browserPreviewRow, projectChatTranscript, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../lib/chat-projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
 import { renderReadToolCard, renderToolFileReference } from "./chat/read-tool-card.ts";
@@ -1022,24 +1021,6 @@ function widgetActivity(items: readonly ChatActivity[]): WidgetView | undefined 
   const item = items.length === 1 ? items[0] : undefined;
   const view = item?.kind === "tool" ? widgetView(item) : undefined;
   return view?.state === "failed" ? undefined : view;
-}
-
-type QuestionnaireSummary = QuestionnaireResult & { asked: readonly QuestionnaireQuestion[] };
-
-/** An ended `ask_user_question` call, kept in sight like the card it replaced: what the operator chose, or, when
- * nobody answered in time, what was asked. A running or failed one stays an ordinary tool row. */
-function questionnaireSummary(items: readonly ChatActivity[]): QuestionnaireSummary | undefined {
-  const item = items.length === 1 ? items[0] : undefined;
-  if (item?.kind !== "tool" || item.name !== "ask_user_question" || item.status !== "succeeded") return undefined;
-  const details = item.details as Partial<QuestionnaireResult> | undefined;
-  // Only HUI's own result: a PI extension's call of the same name (older transcripts) has another shape.
-  const answers = details?.answers;
-  if (!Array.isArray(answers) || !answers.every((answer) => typeof answer?.header === "string" && Array.isArray(answer.selected))) return undefined;
-  if (details?.timedOut !== true) return { cancelled: details?.cancelled === true, answers, asked: [] };
-  // The call's own input as the model wrote it, before PI's argument conversion took a lone question for a list of one.
-  const raw = (item.args as { questions?: unknown } | undefined)?.questions;
-  const asked = [raw ?? []].flat().filter((question): question is QuestionnaireQuestion => Array.isArray((question as Partial<QuestionnaireQuestion> | null)?.options));
-  return { cancelled: true, answers: [], timedOut: true, timeoutMinutes: details.timeoutMinutes, asked };
 }
 
 function renderQuestionnaireSummary(id: string, result: QuestionnaireSummary): TemplateResult {
