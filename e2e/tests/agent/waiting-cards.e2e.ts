@@ -10,8 +10,8 @@ const QUESTIONS = `E2E_CALL:${Buffer.from(JSON.stringify({ name: "ask_user_quest
 const send = async (hui: Hui, screen: Screen, title: string, prompt: string) => {
   const session = await hui.createSession({ title });
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByLabel("Message").fill(prompt);
-  await screen.getByRole("button", "Send message").tap();
+  await expect(screen.getByLabel("Message")).toBeVisible();
+  await hui.prompt(session, prompt);
 };
 
 test("Stop closes a waiting question or secret card and leaves the session idle", { tags: ["AGENT-007"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -39,7 +39,7 @@ test("Stop closes a waiting question or secret card and leaves the session idle"
   expect((await hui.secretDirectories()).filter((name) => !before.includes(name))).toEqual([]);
 });
 
-test("a reload shows the waiting question card from its first question, and the secret card again", { tags: ["AGENT-008"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a reload shows the waiting question card from its first question, and the secret card again", { tags: ["AGENT-008"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const waiting = screen.getByLabel("Session status: Waiting for your answer");
 

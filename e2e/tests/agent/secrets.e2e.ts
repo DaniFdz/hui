@@ -30,7 +30,9 @@ test("a secret request opens a masked card and the agent gets a file it uses", {
   expect(await field.inputValue().catch((error: { code?: string }) => error.code)).toBe("POLICY_DENIED");
   await expect(card.getByRole("button", "Cancel")).toBeVisible();
   await expect(screen.getByLabel("Session status: Waiting for your answer")).toBeVisible();
+  await hui.sessionList();
   await expect.poll(() => hui.glyph("Provided secret")).toEqual({ label: "Waiting for your answer", animated: false });
+  await screen.getByTestId("session-row").filter({ hasText: "Provided secret" }).tap();
   await field.fill(value);
   await card.getByRole("button", "Submit").tap();
 
