@@ -6,7 +6,7 @@
 // menu returns to the list, as the web returns Home. Going back to the list keeps the session it came from selected,
 // so its tree stays expanded as the web's sidebar keeps it beside the open chat. The screen's container carries the
 // address it shows as its accessibility value, under the identifier app-route, for tests; VoiceOver doesn't speak a
-// container's value. The gateway's settings, read once it connects, set every screen's colour mode and text size.
+// container's value. The gateway's settings, read once it connects, set every screen's colour mode, theme colours and text size.
 import SwiftUI
 
 struct RootView: View {
@@ -29,7 +29,9 @@ struct RootView: View {
             if gateway.state == .connected {
                 NavigationStack(path: $path) {
                     SessionListView(sessions: sessions, client: gateway.client, notice: gateway.notice)
+                        .modifier(Themed(settings: settings))
                         .navigationDestination(for: Screen.self) { screen in
+                            Group {
                             switch screen {
                             case .session(let id):
                                 if let client = gateway.client {
@@ -41,6 +43,8 @@ struct RootView: View {
                                 SettingsView(page: page, core: core, settings: settings, client: gateway.client,
                                              select: { chosen in replace([.settings(chosen)]) }, exit: { path = [] })
                             }
+                            }
+                            .modifier(Themed(settings: settings))
                         }
                 }
                 .modifier(SessionNotices(sessions: sessions, client: gateway.client))

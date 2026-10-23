@@ -82,6 +82,7 @@ export type Hui = {
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
+  pressed(within: Locator, name: string): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
@@ -392,6 +393,7 @@ export const test = base.extend<{ hui: Hui }>({
           return shown;
         }, title),
         overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+        pressed: (within, name) => within.getByRole("button", { name, pressed: true }),
         appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
         deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
         look: async (target) => {
@@ -541,7 +543,26 @@ export const test = base.extend<{ hui: Hui }>({
         },
       };
 
+      const deviceScheme = () => execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance"], { encoding: "utf8" }).trim();
+      const startScheme = web ? "" : deviceScheme();
       const iosSteps: Partial<typeof webSteps> = {
+        pressed: (within, name) => within.getByRole("button", { name, selected: true }),
+        deviceAppearance: async (scheme) => {
+          execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", scheme]);
+        },
+        appearance: async () => {
+          const box = await fixtures.screen.getByTestId("app-route").boundingBox();
+          if (!box) throw new Error("appearance: the app shows no screen");
+          const shot = join(await mkdtemp(join(tmpdir(), "hui-e2e-shot-")), "screen.bmp");
+          directories.push(dirname(shot));
+          execFileSync("xcrun", ["simctl", "io", IOS_DEVICE, "screenshot", "--type=bmp", shot], { stdio: "ignore" });
+          const bmp = await readFile(shot);
+          const width = bmp.readInt32LE(18), height = Math.abs(bmp.readInt32LE(22)), bytes = bmp.readUInt16LE(28) / 8;
+          const scale = width / (box.x + box.width);
+          const row = bmp.readInt32LE(22) > 0 ? height - 1 - Math.round((box.y + box.height / 2) * scale) : Math.round((box.y + box.height / 2) * scale);
+          const at = bmp.readUInt32LE(10) + row * Math.ceil((width * bytes) / 4) * 4 + Math.round(2 * scale) * bytes;
+          return (bmp[at]! + bmp[at + 1]! + bmp[at + 2]!) / 3 < 128 ? "dark" : "light";
+        },
         phoneScreen: async (orientation = "portrait") => {
           if (orientation !== "portrait") throw new Error("phoneScreen: the iPhone app runs in portrait");
           const box = await fixtures.screen.getByTestId("app-route").boundingBox();
@@ -670,6 +691,7 @@ export const test = base.extend<{ hui: Hui }>({
       });
 
       await control("POST", "/control/release-replay");
+      if (!web && deviceScheme() !== startScheme) execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", startScheme]);
       for (const id of await taskIds()) {
         if (!existingTasks.has(id)) await api("DELETE", `/__hui/automation/tasks/${id}`);
       }

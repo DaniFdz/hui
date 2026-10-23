@@ -1,6 +1,6 @@
 // The web's Settings shell as its phone layout shows it: the open page under its title, and Open settings navigation
 // bringing up the page list as a sheet, with Search settings (the core's filterSettingsPages), the pages in their
-// groups, whether settings were saved and Exit Settings. Appearance is a Form with the web's Color mode, Text size and
+// groups, whether settings were saved and Exit Settings. Appearance is a Form with the web's Theme, Color mode, Text size and
 // Chat preferences; the other pages show their web introduction until their controls are built.
 import SwiftUI
 
@@ -13,6 +13,7 @@ struct SettingsView: View {
     let exit: () -> Void
     @State private var navigating = false
     @State private var pages: [SettingsPageEntry] = []
+    @Environment(\.themeCard) private var card
 
     var body: some View {
         Form {
@@ -20,10 +21,12 @@ struct SettingsView: View {
                 Text(pages.first { $0.id == page }?.label ?? "").font(.largeTitle.bold()).accessibilityIdentifier("settings-page-title").accessibilityAddTraits(.isHeader)
                 Text(SettingsView.intros[page] ?? "").foregroundStyle(.secondary)
             }
+            .listRowBackground(card)
             if page == "appearance" { AppearanceSections(settings: settings, client: client) }
             Section {
                 SaveIndicator(failed: settings.saveFailed)
             }
+            .listRowBackground(card)
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -39,6 +42,7 @@ struct SettingsView: View {
                 navigating = false
                 exit()
             }, close: { navigating = false })
+            .modifier(Themed(settings: settings))
         }
         .task {
             pages = (try? await core.filterSettingsPages("")) ?? []
@@ -138,18 +142,29 @@ private struct SettingsNavigation: View {
 private struct AppearanceSections: View {
     let settings: SettingsModel
     let client: GatewayClient?
+    @Environment(\.themeCard) private var card
 
     var body: some View {
         if let current = settings.settings {
             Section {
+                Choices(label: "Theme", options: settings.themes.map { ($0.id, $0.name) }, chosen: current.theme) { theme in
+                    Task { await settings.choose(theme: theme, client) }
+                }
+            } header: {
+                Text("Theme")
+            }
+            .listRowBackground(card)
+            Section {
                 Choices(label: "Color mode", options: [(API.Settings.ThemeMode.system, "System"), (.light, "Light"), (.dark, "Dark")], chosen: current.themeMode) { mode in
                     settings.change(client) { $0.themeMode = mode }
                 }
+                .disabled(settings.variant != "both")
             } header: {
                 Text("Color mode")
             } footer: {
-                Text("Follows your system setting unless you pick one.")
+                Text(settings.variant == "both" ? "Follows your system setting unless you pick one." : "This theme only carries a \(settings.variant) variant, so the mode follows the theme.")
             }
+            .listRowBackground(card)
             Section {
                 Choices(label: "Text size", options: [(API.Settings.TextScale._90, "Small 90%"), (._100, "Default 100%"), (._110, "Large 110%"), (._125, "XL 125%"), (._140, "XXL 140%")], chosen: current.textScale) { scale in
                     settings.change(client) { $0.textScale = scale }
@@ -159,6 +174,7 @@ private struct AppearanceSections: View {
             } footer: {
                 Text("Scales every text size in the interface together. Using default: 100%.")
             }
+            .listRowBackground(card)
             Section {
                 Picker("Message width", selection: Binding(get: { current.chat.messageWidth }, set: { width in settings.change(client) { $0.chat.messageWidth = width } })) {
                     Text("Compact").tag(API.Settings.Chat.MessageWidth.compact)
@@ -177,6 +193,7 @@ private struct AppearanceSections: View {
             } footer: {
                 Text("Composer and conversation preferences. Stored for this HUI client.")
             }
+            .listRowBackground(card)
             Section {
                 Text(settings.saveFailed ? "Could not write settings.json — changes apply now but will not be remembered." : "Saved to ~/.config/hui/settings.json")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -196,7 +213,7 @@ private struct Choices<Value: Hashable>: View {
     var body: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 96))]) {
             ForEach(options, id: \.0) { option in
-                Button { pick(option.0) } label: { Text(option.1).frame(maxWidth: .infinity) }
+                Button { pick(option.0) } label: { Text(option.1).lineLimit(1).minimumScaleFactor(0.6).frame(maxWidth: .infinity) }
                     .buttonStyle(.bordered)
                     .tint(chosen == option.0 ? .accentColor : .secondary)
                     .accessibilityAddTraits(chosen == option.0 ? .isSelected : [])
