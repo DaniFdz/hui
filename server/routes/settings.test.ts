@@ -48,6 +48,8 @@ type OriginalSettings = {
     keepAwake: boolean;
   };
 
+  notifications: { tool: boolean; runFinished: boolean; runFailed: boolean; needsInput: boolean };
+
   models: {
     primary: string;
     fallback: string;

@@ -762,6 +762,72 @@ test("manual continuation remains available after automatic recovery is exhauste
   assert.equal(durable?.runRecoveryAttempts, undefined);
 });
 
+test("a run end is announced once nothing else will run, and is failed when it ends in an error or its runtime exits mid-turn", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const ends: import("./sessions/live-sessions.ts").RunEnd[] = [];
+  manager.watchRunEnds((end) => ends.push(end));
+  const id = `run-ends-${crypto.randomUUID()}`;
+  manager.ensure(recordFor(id));
+  await waitForBoot(manager, id);
+  const runtime = started[0]!;
+  await manager.prompt(id, "first");
+  await manager.followUp(id, "second");
+  runtime.emit({ type: "settled" });
+  await waitFor("the queued message to start", () => runtime.prompts.at(-1) === "second");
+  assert.deepEqual(ends, [], "not between a run and its queued message");
+  runtime.emit({ type: "settled" });
+  await waitFor("the run to end", () => ends.length === 1, { state: () => ends });
+  assert.deepEqual(ends, [{ id, failed: false, prompt: "second" }]);
+
+  runtime.history = [...runtime.history, { kind: "error", message: "provider failed" }];
+  await manager.prompt(id, "third");
+  runtime.emit({ type: "settled" });
+  await waitFor("the failed run to end", () => ends.length === 2);
+  assert.deepEqual(ends[1], { id, failed: true, prompt: "third" });
+
+  await manager.prompt(id, "fourth");
+  runtime.exit();
+  assert.deepEqual(ends[2], { id, failed: true, prompt: "fourth" });
+  assert.equal(ends.length, 3);
+  manager.disposeAll();
+});
+
+test("a run end names the message that started its run, through recoveries and subagent results, and Stop announces none", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const ends: import("./sessions/live-sessions.ts").RunEnd[] = [];
+  manager.watchRunEnds((end) => ends.push(end));
+  manager.ensure({ ...recordFor("origins"), runPrompt: "[trigger: PR merged · #7] check it" });
+  await waitForBoot(manager, "origins");
+  const runtime = started[0]!;
+  runtime.emit({ type: "settled" });
+  await waitFor("the resumed run to end", () => ends.length === 1);
+
+  await manager.prompt("origins", "[routine: Digest] summarize");
+  runtime.emit({ type: "settled" });
+  await waitFor("the routine's run to end", () => ends.length === 2);
+  await manager.prompt("origins", "[HUI subagent completion event]\nchild done");
+  runtime.emit({ type: "settled" });
+  await waitFor("the run its subagent continued to end", () => ends.length === 3);
+  await manager.prompt("origins", "HUI restarted while this ran. Continue: [from @grace] deploy", undefined, "[from @grace] deploy");
+  runtime.emit({ type: "settled" });
+  await waitFor("the recovered run to end", () => ends.length === 4);
+  assert.deepEqual(ends.map(({ prompt }) => prompt), [
+    "[trigger: PR merged · #7] check it", "[routine: Digest] summarize", "[routine: Digest] summarize", "[from @grace] deploy",
+  ]);
+
+  await manager.prompt("origins", "stop me");
+  await manager.abort("origins");
+  runtime.emit({ type: "settled" });
+  await manager.prompt("origins", "fails after the stop");
+  runtime.emit({ type: "error", message: "provider failed" });
+  runtime.emit({ type: "settled" });
+  await waitFor("the failed run to end", () => ends.length === 5);
+  assert.deepEqual(ends[4], { id: "origins", failed: true, prompt: "fails after the stop" }, "the stopped run sent nothing, and an error the history drops still fails the run");
+  manager.disposeAll();
+});
+
 test("settled background activity becomes unread and a reader clears it", async () => {
   const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));

@@ -3323,16 +3323,24 @@ verification gate until tested on-device.
 
 ### Clickable desktop notifications
 
-The explicit `notify_user` agent tool takes a title and message and binds the
-notification to its authenticated caller's regular session or stable bot chat.
-It accepts no destination, URL or command from the model. The first version
-requires a managed macOS gateway and a current, registered HUI desktop app.
-It does not provide browser push or iPhone notifications.
+The explicit `notify_user` agent tool takes a title, an optional subtitle, an
+optional message and a priority, and binds the notification to its
+authenticated caller's regular session or stable bot chat. It accepts no
+destination, URL or command from the model. It is off by default; Settings →
+Tools turns it on for every conversation, and a bot's own tool settings can
+still turn it off for that bot. Priority `low` shows the banner without a
+sound, `normal` (the default) plays the default sound, and `high` also bounces
+HUI's Dock icon until the operator opens HUI. macOS gives an app no way to
+break through Focus or keep a banner on screen. The first version requires a
+managed macOS gateway and a current, registered HUI desktop app. It does not
+provide browser push or iPhone notifications.
 
 The banner belongs to HUI, not Script Editor. Delivery does not change the
 active chat or open a window. Clicking a banner opens and focuses its own chat,
 including when HUI has no window. Each banner keeps its own destination, and
-the desktop app accepts only chat URLs on its managed gateway's origin.
+the desktop app accepts only chat URLs on its managed gateway's origin. When
+the HUI window is in front and shows the notification's chat, the app shows no
+banner, and `notify_user` reports `in-view` instead of `queued`.
 
 The tool waits for the desktop app's acknowledgement over a one-use private
 loopback callback. Missing or outdated apps, unsupported platforms, cancellation,
@@ -3351,3 +3359,29 @@ the call reports it queued. Quitting the app removes its banners from
 Notification Center. A banner left behind by a crash or Force Quit still opens
 its chat, whether its click starts HUI or reaches HUI after it restarted, as
 long as the gateway kept its address.
+
+### Notification settings
+
+Settings → Notifications chooses which of HUI's own events notify the operator
+through the same desktop app:
+
+- **Run finished**, off by default: a run the operator started has ended, and
+  its chat waits for them. That covers runs in regular sessions, and bot turns
+  that the operator's own message started. Subagents, bot routines, triggers,
+  bot kickoffs, and messages from other bots, agents or sessions don't count.
+  A chat with queued messages or subagents still running hasn't finished; it
+  finishes once it has handled their results.
+- **Run failed**, on by default: such a run ended with an error.
+- **Needs your input**, on by default: any conversation, subagents and bots
+  included, is waiting for the operator to answer a question, give a secret,
+  allow access or confirm something. It notifies once each time the
+  conversation starts waiting.
+
+The banner's title is the chat's name, and its subtitle is "Finished", "Run
+failed" or "Needs your input". Its body is the first question's title, and is
+empty for finished and failed runs, so agent output never reaches the lock
+screen. Needs-your-input banners play the default sound; finished and failed
+ones are silent. A gateway on another platform sends none. On macOS, when the
+gateway isn't the managed one or the desktop app can't show a notification,
+HUI skips it and records why in diagnostics. Scheduled tasks you set up in a
+regular session count as runs you started; a bot's routines don't.

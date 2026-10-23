@@ -268,8 +268,8 @@ test("a conversation without OptChat sends Durable's requests unchanged and is n
   assert.deepEqual(second.messages.map((message) => message.role), ["user", "assistant", "user"], "the history goes as it is");
   assert.equal(blocks(second.messages[0]!)[0]!.text, "PLAIN_ONE first");
   assert.doesNotMatch(JSON.stringify(requests), /<chat>|You keep no memory between turns/u);
-  const offered = [...[...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name), "message_bot"];
-  assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools, codemode and message_bot, as before OptChat");
+  const offered = [...[...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name).filter((name) => name !== "notify_user"), "message_bot"];
+  assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools but the notification tool Settings leaves off, codemode and message_bot, as before OptChat");
   assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), offered);
   const id = Number(session.sessionId) as ConversationId;
   const harness = await host.open();

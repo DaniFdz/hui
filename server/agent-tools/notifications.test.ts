@@ -43,7 +43,7 @@ beforeEach(async () => {
   const resources = join(host.home, "Applications/HUI.app/Contents/Resources");
   await mkdir(resources, { recursive: true });
   await writeFile(join(resources, "hui-owner"), "org.harnessui.desktop");
-  await writeFile(join(resources, "hui-notifications"), "2");
+  await writeFile(join(resources, "hui-notifications"), "3");
 });
 afterEach(() => rm(host.home, { recursive: true, force: true }));
 
@@ -52,7 +52,7 @@ test("notifications carry the caller's regular or stable bot chat, not a model-s
     [{ id: "session-a" }, "http://127.0.0.1:4173/sessions/session-a"],
     [{ id: "bot-session", bot: "stable-bot" }, "http://127.0.0.1:4173/bots/stable-bot"],
   ] satisfies [{ id: string; bot?: string }, string][]) {
-    const result = await notifyUser(caller, { title: " Ready ", message: " Open this chat. " });
+    const result = await notifyUser(caller, { title: " Ready ", subtitle: " Tests ", message: " Open this chat. ", priority: "high" });
     assert.equal(result.status, "queued");
     assert.equal(result.url, expected);
     const launch = host.launches.at(-1);
@@ -62,20 +62,32 @@ test("notifications carry the caller's regular or stable bot chat, not a model-s
     const link = new URL(launch.args.at(-1) ?? "");
     assert.equal(link.protocol, "hui-notification:");
     const { replyTo, ...payload } = JSON.parse(decodeURIComponent(link.pathname));
-    assert.deepEqual(payload, { title: "Ready", message: "Open this chat.", url: expected });
+    assert.deepEqual(payload, { title: "Ready", subtitle: "Tests", message: "Open this chat.", priority: "high", url: expected });
     assert.match(replyTo, /^http:\/\/127\.0\.0\.1:\d+\/[a-f0-9]{64}\/$/);
   }
+  await notifyUser({ id: "session-a" }, { title: "Ready", subtitle: " ", message: "" });
+  const link = new URL(host.launches.at(-1)?.args.at(-1) ?? "");
+  const { replyTo: _replyTo, ...defaults } = JSON.parse(decodeURIComponent(link.pathname));
+  assert.deepEqual(defaults, { title: "Ready", priority: "normal", url: "http://127.0.0.1:4173/sessions/session-a" });
   for (const params of [
     { title: "Ready", message: "Open", url: "https://example.com" },
     { title: "Ready", message: "Open", sessionId: "someone-else" },
     { title: " ", message: "Open" },
-    { title: "Ready", message: " " },
     { title: "x".repeat(121), message: "Open" },
+    { title: "Ready", subtitle: "x".repeat(121) },
     { title: "Ready", message: "x".repeat(1_001) },
+    { title: "Ready", priority: "urgent" },
   ]) {
     await assert.rejects(notifyUser({ id: "caller" }, params), /requires a title/);
   }
-  assert.equal(host.launches.length, 2, "invalid requests never launch an app");
+  assert.equal(host.launches.length, 3, "invalid requests never launch an app");
+});
+
+test("an alert for the chat the operator has in front reports in-view instead of queued", async () => {
+  host.reply = "in-view";
+  const result = await notifyUser({ id: "session-a" }, { title: "Ready" });
+  assert.equal(result.status, "in-view");
+  assert.match(result.message, /in front/);
 });
 
 test("unsupported, stale and failed delivery never falls back to Script Editor or reports sent", async () => {
@@ -89,9 +101,9 @@ test("unsupported, stale and failed delivery never falls back to Script Editor o
   const resources = join(host.home, "Applications/HUI.app/Contents/Resources");
   await unlink(join(resources, "hui-notifications"));
   await assert.rejects(notifyUser({ id: "caller" }, params), /hui install-app/);
-  await writeFile(join(resources, "hui-notifications"), "1");
-  await assert.rejects(notifyUser({ id: "caller" }, params), /hui install-app/);
   await writeFile(join(resources, "hui-notifications"), "2");
+  await assert.rejects(notifyUser({ id: "caller" }, params), /hui install-app/);
+  await writeFile(join(resources, "hui-notifications"), "3");
   await writeFile(join(resources, "hui-owner"), "someone-else");
   await assert.rejects(notifyUser({ id: "caller" }, params), /hui install-app/);
   assert.equal(host.launches.length, 0);

@@ -6,6 +6,7 @@ import { HUI_PAGES, type HuiPage } from "./pages.ts";
 
 export const ROUTABLE_SETTINGS_PAGES = [
   "appearance",
+  "notifications",
   "connection",
   "integrations",
   "workers",

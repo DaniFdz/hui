@@ -722,6 +722,24 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "SET-076",
+    title: "Choose which session events notify you",
+    behaviour: "Settings → Notifications has “Run finished”, off by default, and “Run failed” and “Needs your input”, both on; each switch is kept after a reload. The HUI app on macOS then notifies when a run you started finishes or fails, or a chat starts waiting for you.",
+    spec: ["SPEC.md#notification-settings"],
+    surfaces: ["settings-page:notifications", "setting:notifications.runFinished", "setting:notifications.runFailed", "setting:notifications.needsInput"],
+    web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "SET-077",
+    title: "Turn the notification tool on",
+    behaviour: "Settings → Tools → Notifications → “Notification tool” is off by default, and sessions are not offered notify_user; once it is on, they are offered it from their next request.",
+    spec: ["SPEC.md#clickable-desktop-notifications"],
+    surfaces: ["setting:notifications.tool"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

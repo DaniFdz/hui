@@ -537,8 +537,11 @@ export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): Dur
 }
 
 /** The tools every bot's chat on `host` has before extensions that the operator can turn off: what a chat that isn't
- * running there is checked against. Never the ones that act on another machine (`gatewayOnlyTools`). */
+ * running there is checked against. Never the ones that act on another machine (`gatewayOnlyTools`), nor notify_user
+ * while Settings leaves it off. */
 export async function builtinBotOffer(host: DurableHost): Promise<OfferedTool[]> {
-  const codemode = (await host.settings()).codemode.enabled ? modelCallable(host.codemode) : [];
-  return builtinOffer(host.codingTools, host.huiTools.filter((tool) => !host.gatewayOnlyTools.includes(tool.name)), host.botTools, codemode);
+  const settings = await host.settings();
+  const codemode = settings.codemode.enabled ? modelCallable(host.codemode) : [];
+  const huiTools = host.huiTools.filter((tool) => !host.gatewayOnlyTools.includes(tool.name) && (settings.notifications.tool || tool.name !== "notify_user"));
+  return builtinOffer(host.codingTools, huiTools, host.botTools, codemode);
 }

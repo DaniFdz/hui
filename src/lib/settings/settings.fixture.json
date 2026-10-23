@@ -39,6 +39,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -94,6 +100,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -151,6 +163,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -206,6 +224,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -269,6 +293,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -327,6 +357,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -384,6 +420,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -448,6 +490,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -505,6 +553,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -564,6 +618,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -622,6 +682,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -679,6 +745,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -740,6 +812,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -804,6 +882,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -861,6 +945,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -922,6 +1012,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -981,6 +1077,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -1040,6 +1142,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1098,6 +1206,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1155,6 +1269,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -1216,6 +1336,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1275,6 +1401,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -1336,6 +1468,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1396,6 +1534,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1455,6 +1599,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -1516,6 +1666,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1575,6 +1731,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -1636,6 +1798,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1696,6 +1864,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1755,6 +1929,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -1818,6 +1998,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1880,6 +2066,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1940,6 +2132,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -1999,6 +2197,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -2063,6 +2267,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -2122,6 +2332,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -2183,6 +2399,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -2242,6 +2464,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -2303,6 +2531,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -2362,6 +2596,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -2423,6 +2663,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -2482,6 +2728,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -2546,6 +2798,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -2605,6 +2863,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -2667,6 +2931,12 @@
       "power": {
         "keepAwake": false
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -2730,6 +3000,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -2795,6 +3071,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -2855,6 +3137,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -2918,6 +3206,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -2975,6 +3269,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -3034,6 +3334,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -3091,6 +3397,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -3150,6 +3462,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -3207,6 +3525,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -3266,6 +3590,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -3324,6 +3654,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -3381,6 +3717,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -3457,6 +3799,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -3542,6 +3890,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -3606,6 +3960,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -3663,6 +4023,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -3722,6 +4088,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -3779,6 +4151,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -3838,6 +4216,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -3895,6 +4279,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -3954,6 +4344,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -4011,6 +4407,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4077,6 +4479,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -4136,6 +4544,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4197,6 +4611,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -4257,6 +4677,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -4317,6 +4743,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -4376,6 +4808,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4436,6 +4874,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4496,6 +4940,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4556,6 +5006,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4616,6 +5072,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4677,6 +5139,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -4736,6 +5204,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4797,6 +5271,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -4856,6 +5336,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -4919,6 +5405,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "openai/model",
         "fallback": "anthropic/model",
@@ -4976,6 +5468,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5035,6 +5533,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -5092,6 +5596,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5151,6 +5661,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -5208,6 +5724,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5267,6 +5789,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -5324,6 +5852,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5383,6 +5917,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -5440,6 +5980,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5499,6 +6045,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -5556,6 +6108,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5615,6 +6173,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -5672,6 +6236,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5731,6 +6301,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -5788,6 +6364,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5847,6 +6429,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -5904,6 +6492,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -5963,6 +6557,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -6020,6 +6620,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -6079,6 +6685,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -6136,6 +6748,12 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",
@@ -6195,6 +6813,12 @@
       "power": {
         "keepAwake": true
       },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
       "models": {
         "primary": "",
         "fallback": "",
@@ -6252,6 +6876,214 @@
       },
       "power": {
         "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": ""
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": {
+        "tool": true,
+        "runFinished": true,
+        "runFailed": false,
+        "needsInput": false
+      }
+    },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100,
+      "chat": {
+        "messageWidth": "comfortable",
+        "collapseTaskProgress": false,
+        "sendShortcut": "enter",
+        "githubEmbeds": true,
+        "datadogEmbeds": true
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": ""
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": true,
+        "runFinished": true,
+        "runFailed": false,
+        "needsInput": false
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": ""
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": {
+        "tool": "yes",
+        "runFinished": 1,
+        "runFailed": "no",
+        "needsInput": null
+      }
+    },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100,
+      "chat": {
+        "messageWidth": "comfortable",
+        "collapseTaskProgress": false,
+        "sendShortcut": "enter",
+        "githubEmbeds": true,
+        "datadogEmbeds": true
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": ""
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": ""
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false
+      }
+    }
+  },
+  {
+    "input": {
+      "notifications": "nope"
+    },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100,
+      "chat": {
+        "messageWidth": "comfortable",
+        "collapseTaskProgress": false,
+        "sendShortcut": "enter",
+        "githubEmbeds": true,
+        "datadogEmbeds": true
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": ""
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
       },
       "models": {
         "primary": "",

@@ -1592,6 +1592,21 @@ test("a codemode script's calls show on its own tool row, live and once it ends;
   assert.ok((await session.inspect()).tools.some((tool) => tool.name === "codemode"), "on again: back from the next request");
 });
 
+test("notify_user reaches a session only while Settings → Tools turns the notification tool on", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const huiSettings = normalizeSettings(undefined);
+  const host = f.host({ huiSettings });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-notify-user" }, host);
+  const offered = async () => (await session.inspect()).tools.some((tool) => tool.name === "notify_user");
+  assert.equal(await offered(), false, "off by default");
+  huiSettings.notifications = { ...huiSettings.notifications, tool: true };
+  await host.applyTools();
+  assert.equal(await offered(), true, "on: the open session gets it");
+  await settledAfter(session, "hello with the notification tool");
+  const request = (await providerRequests(f.log)).at(-1) as { tools?: { name?: string }[] };
+  assert.ok(request.tools?.some((tool) => tool.name === "notify_user"), "and its next request offers it");
+});
+
 test("an extension tool's ctx.executeTool() runs nested calls, and tool_result redaction reaches what scripts get", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t, { extensions: { "nested.js": `export default function (pi) {
     pi.registerTool({

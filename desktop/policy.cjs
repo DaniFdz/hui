@@ -44,16 +44,21 @@ function notificationFromUrl(link) {
     const payload = protocol === 'hui-notification:' ? decodeURIComponent(pathname) : '';
     if (!payload || payload.length > 8_000) return;
     const value = JSON.parse(payload);
+    const optional = (text, limit) => text === undefined || (typeof text === 'string' && text.length <= limit);
     if (!value || typeof value !== 'object' || Array.isArray(value)
       || typeof value.title !== 'string' || !value.title.trim() || value.title.length > 120
-      || typeof value.message !== 'string' || !value.message.trim() || value.message.length > 1_000
+      || !optional(value.subtitle, 120) || !optional(value.message, 1_000)
+      || !['low', 'normal', 'high', undefined].includes(value.priority)
       || typeof value.url !== 'string' || typeof value.replyTo !== 'string') return;
     const reply = new URL(value.replyTo);
     if (reply.protocol !== 'http:' || reply.hostname !== '127.0.0.1' || !reply.port
       || reply.username || reply.password || reply.search || reply.hash || !/^\/[a-f0-9]{64}\/$/.test(reply.pathname)) return;
     const target = chatUrl(value.url);
     if (!target) return;
-    return { title: value.title.trim(), message: value.message.trim(), url: target, replyTo: reply.href };
+    return {
+      title: value.title.trim(), subtitle: value.subtitle?.trim() ?? '', message: value.message?.trim() ?? '',
+      priority: value.priority ?? 'normal', url: target, replyTo: reply.href,
+    };
   } catch { return; }
 }
 

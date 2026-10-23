@@ -565,6 +565,15 @@ const cases: UseCase[] = [
     ios: { excluded: "This version posts notifications on the macOS gateway, not the iPhone.", decision: "SPEC.md#clickable-desktop-notifications" },
   },
   {
+    id: "AGENT-061",
+    title: "Get HUI's own notifications about your chats",
+    behaviour: "With Settings → Notifications on, the HUI app on macOS shows a silent “Finished” or “Run failed” banner when a run you started ends, and a “Needs your input” banner with the first question's title when a chat starts waiting for you. Subagents, bot routines and triggers don't send finished banners, and the chat in front gets none.",
+    spec: ["SPEC.md#notification-settings"],
+    surfaces: [],
+    web: { excluded: "Native macOS Notification Center is outside the web runner; e2e/desktop-package.browser.md records the native proof.", decision: "SPEC.md#notification-settings" },
+    ios: { excluded: "This version notifies on the macOS gateway, not the iPhone.", decision: "SPEC.md#notification-settings" },
+  },
+  {
     id: "AGENT-060",
     title: "See when a desktop notification is unavailable",
     behaviour: "A notify_user call on an unsupported or unmanaged gateway fails with an explicit error in the chat instead of reporting a queued notification or sending a Script Editor alert.",

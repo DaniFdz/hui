@@ -148,7 +148,7 @@ test("a plain conversation is offered none of a bot's own tools or sections, and
   const id = durableConversationId(session.sessionFile)!;
   assert.equal(await harness.snapshot(BotDoc, id, durableContext), undefined, "no bot document is written");
   const agent = await harness.snapshot(AgentDoc, id, durableContext);
-  assert.equal(agent?.tools, undefined, "nothing is filtered");
+  assert.deepEqual(agent?.tools, { remove: ["notify_user"] }, "nothing is filtered but the notification tool, which Settings leaves off");
 });
 
 test("a bot's conversation is created in one commit with bot document and memory, offers message_bot, and reads SOUL.md on every request", { timeout: 90_000 }, async (t) => {

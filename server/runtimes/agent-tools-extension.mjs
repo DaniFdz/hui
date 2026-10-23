@@ -175,16 +175,19 @@ Every question also offers a free-text answer the card adds itself, and the user
   pi.registerTool({
     name: "notify_user",
     label: "Notify user",
-    description: "Queue a native HUI desktop notification on the macOS gateway. Clicking it opens this conversation, not whichever chat was last active. Requires the current HUI desktop app; macOS settings may suppress the banner.",
+    description: "Queue a native HUI desktop notification on the macOS gateway. Clicking it opens this conversation, not whichever chat was last active. Priority low shows it without a sound, normal plays the default sound, and high also bounces HUI's Dock icon until the operator opens HUI. Requires the current HUI desktop app; macOS settings may suppress the banner.",
     promptSnippet: "Send a clickable desktop notification that opens this chat",
     promptGuidelines: [
       "Use notify_user when the operator asked for an alert or an important update from an agreed background task. Do not notify for every response.",
-      "Keep the title and message short and keep secrets out of notifications. Put the details in this chat. HUI supplies the destination automatically.",
-      "A queued notification is not proof a banner appeared or the operator read it. Report an unavailable desktop app or platform instead of falling back to Script Editor alerts.",
+      "Keep the title, subtitle and message short and keep secrets out of notifications. Put the details in this chat. HUI supplies the destination automatically.",
+      "Use priority high only for what needs the operator now; leave routine updates at normal or low.",
+      "A queued notification is not proof a banner appeared or the operator read it, and in-view means the operator has this chat in front. Report an unavailable desktop app or platform instead of falling back to Script Editor alerts.",
     ],
     parameters: Type.Object({
       title: Type.String({ minLength: 1, maxLength: 120 }),
-      message: Type.String({ minLength: 1, maxLength: 1_000 }),
+      subtitle: Type.Optional(Type.String({ maxLength: 120 })),
+      message: Type.Optional(Type.String({ maxLength: 1_000 })),
+      priority: Type.Optional(Type.Union([Type.Literal("low"), Type.Literal("normal"), Type.Literal("high")])),
     }, { additionalProperties: false }),
     async execute(_toolCallId, params, signal) {
       return output(await invokeHuiBridge("notify_user", params, { timeoutMs: 20_000, signal }));

@@ -66,7 +66,8 @@ import {
 import { registerAgentToolHandler } from "./agent-tools/bridge.ts";
 import { SubagentService } from "./agent-tools/subagents.ts";
 import { presentMediaForSession } from "./agent-tools/presented-media.ts";
-import { notifyUser } from "./agent-tools/notifications.ts";
+import { deliverDesktopNotification, notifyUser } from "./agent-tools/notifications.ts";
+import { watchSessionNotifications, type NotificationTarget } from "./sessions/session-notifications.ts";
 import { GitHubCli } from "./integrations/github.ts";
 import { GitHubContributionsReader } from "./integrations/github-contributions.ts";
 import { GitHubPreviews, ghGraphQL, previewPullRequestFetcher } from "./integrations/github-previews.ts";
@@ -326,6 +327,22 @@ export const secretRequests = new SecretRequests({ onChange: (id) => liveSession
 export const secretFiles = new SecretFiles();
 export const questionnaires = new Questionnaires({ onChange: (id) => liveSessions.notifySnapshot(id) });
 liveSessions.setHuiQuestionProvider((id) => [...secretRequests.questions(id), ...questionnaires.questions(id)]);
+
+async function notificationChat(sessionId: string): Promise<NotificationTarget | undefined> {
+  const record = (await readRegistry()).find(({ id }) => id === sessionId);
+  if (!record) return undefined;
+  const bot = record.bot ? (await bots.list({ archived: "all" })).find(({ id, sessionId }) => id === record.bot && sessionId === record.id) : undefined;
+  return { id: record.id, title: (bot?.name ?? record.title).slice(0, 120) || "HUI", subagent: record.parentId !== undefined, ...(bot ? { bot: bot.id } : {}) };
+}
+
+if (process.platform === "darwin") {
+  watchSessionNotifications({
+    sessions: liveSessions,
+    settings: async () => (await readHuiSettings()).notifications,
+    chat: notificationChat,
+    deliver: deliverDesktopNotification,
+  });
+}
 // A stopped turn must not leave its pages running in the headless browser.
 liveSessions.setAbortListener((id) => managedBrowser.closeOwner(id));
 registerAgentToolHandler(async (invocation) => {
@@ -346,10 +363,10 @@ registerAgentToolHandler(async (invocation) => {
     return setAgentStage(invocation.callerSessionId, invocation.params);
   }
   if (invocation.action === "notify_user") {
-    const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
-    if (!caller) throw new Error("Conversation no longer exists.");
-    const bot = caller.bot ? (await bots.list({ archived: "all" })).find(({ id, sessionId }) => id === caller.bot && sessionId === caller.id) : undefined;
-    return notifyUser({ id: caller.id, ...(bot ? { bot: bot.id } : {}) }, invocation.params, invocation.signal);
+    if (!(await readHuiSettings()).notifications.tool) throw new Error("The notification tool is off. The operator can turn it on in Settings → Tools.");
+    const chat = await notificationChat(invocation.callerSessionId);
+    if (!chat) throw new Error("Conversation no longer exists.");
+    return notifyUser(chat, invocation.params, invocation.signal);
   }
   if (invocation.action === "secret_request") {
     const caller = (await readRegistry()).find(({ id }) => id === invocation.callerSessionId);
@@ -428,8 +445,10 @@ async function writeSettings(raw: unknown): Promise<Settings> {
   // Off withdraws every VS Code frame's access and stops the server; a new executable applies to the next start.
   await vscode.applySettings(settings.vscode);
   macPower?.setKeepAwake(settings.power.keepAwake);
-  // Codemode is offered per conversation.
-  if (before.codemode.enabled !== settings.codemode.enabled) await durableHost().applyTools();
+  // Codemode and the notification tool are offered per conversation.
+  if (before.codemode.enabled !== settings.codemode.enabled || before.notifications.tool !== settings.notifications.tool) {
+    await durableHost().applyTools();
+  }
   return settings;
 }
 

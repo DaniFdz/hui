@@ -24,6 +24,7 @@
     "/tasks",
     "/usage",
     "/settings/appearance",
+    "/settings/notifications",
     "/settings/connection",
     "/settings/integrations",
     "/settings/workers",
