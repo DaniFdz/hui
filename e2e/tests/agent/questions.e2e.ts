@@ -99,7 +99,7 @@ const NOTES: Question = {
   ],
 };
 
-test("four questions share one card whose chips, Next and Back keep the answers", { tags: ["AGENT-002"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("four questions share one card whose chips, Next and Back keep the answers", { tags: ["AGENT-002"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const option = (label: string) => card.getByTestId("question-option").filter({ hasText: label });
@@ -238,7 +238,7 @@ test("parallel question calls show one card at a time, each answered on its own"
   await expect(screen.getByTestId("transcript").getByText('tool answered: User has answered your questions: "Which database should the service use?"="SQLite". You can now continue with the user\'s answers in mind. | User has answered your questions: "Where should it run first?"="Production". You can now continue with the user\'s answers in mind.')).toBeVisible();
 });
 
-test("a call the card can't show opens no card and fails back to the agent with its reason", { tags: ["AGENT-010"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a call the card can't show opens no card and fails back to the agent with its reason", { tags: ["AGENT-010"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const two = DATABASE.options;
   await asked(hui, screen, "Invalid questions", ask(
@@ -249,19 +249,25 @@ test("a call the card can't show opens no card and fails back to the agent with 
     [{ ...DATABASE, multiSelect: true, options: [{ ...two[0]!, preview: "**Postgres**" }, two[1]!] }],
   ));
 
-  await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText(/^tool answered: /u));
+  await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(screen.getByTestId("question-card")).toBeHidden();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command").nth(4));
   for (const group of await transcript.getByText("Ran 1 command").all()) await group.tap();
   await expect(transcript.getByText("Failed")).toHaveCount(5);
-  for (const failed of await transcript.getByText("Failed").all()) await failed.tap();
+  for (let index = 4; index >= 0; index--) await transcript.getByText("Failed", { exact: true }).nth(index).tap({ position: { x: 4, y: 4 } });
   for (const reason of [
     '<harness> [error] Validation failed for tool "ask_user_question": - questions: must not have more than 4 items',
     '<harness> [error] questions[0].options[1].label "Other" is reserved: the card already offers a free-text answer. </harness>',
     "<harness> [error] questions[0].options must have unique labels. </harness>",
     '<harness> [error] Validation failed for tool "ask_user_question": - questions.0.header: must not have more than 16 characters',
     "<harness> [error] questions[0]: previews are for single-select questions only. </harness>",
-  ]) await expect(transcript.getByText(reason, { exact: !reason.includes("Validation failed") })).toBeVisible();
+  ]) {
+    const shown = transcript.getByText(reason, { exact: !reason.includes("Validation failed") });
+    await hui.scrollTo(transcript, shown);
+    await expect(shown).toBeVisible();
+  }
 });
 
 test("question text from the agent shows as text, wraps and keeps the card's actions in reach", { tags: ["AGENT-011"], platforms: ["web"] }, async ({ screen, hui }) => {

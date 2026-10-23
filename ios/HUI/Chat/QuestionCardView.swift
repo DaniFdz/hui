@@ -146,7 +146,7 @@ private struct QuestionnaireCard: View {
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel(answered ? "\(each.header) (answered)" : each.header)
                     .accessibilityValue("tab")
-                    .accessibilityAddTraits(index == step ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityAddTraits(index == step ? .isSelected : [])
                 }
             }
         }

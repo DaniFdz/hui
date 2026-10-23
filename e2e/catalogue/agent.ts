@@ -27,7 +27,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "AGENT-003",
@@ -107,7 +107,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "AGENT-011",

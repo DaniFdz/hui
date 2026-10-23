@@ -560,7 +560,7 @@ export const test = base.extend<{ hui: Hui }>({
           for (const direction of ["down", "up"] as const) {
             for (let swipes = 0, before = "", now = await shown(); now !== before && swipes < MAX_SCROLL_SWIPES; swipes++, before = now, now = await shown()) {
               if (await target.count() > 0) return;
-              await within.swipe({ direction });
+              await within.swipe({ direction, momentum: "slow" });
             }
           }
           await expect(target).not.toHaveCount(0);

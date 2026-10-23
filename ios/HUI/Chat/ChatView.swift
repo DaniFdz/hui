@@ -125,11 +125,6 @@ struct ChatView: View {
             following = nearBottom
             if following { withAnimation { position.scrollTo(edge: .bottom) } }
         }
-        .onChange(of: expanded) { old, new in
-            guard let opened = new.subtracting(old).first else { return }
-            following = false
-            withAnimation { position.scrollTo(id: opened, anchor: .top) }
-        }
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(TapGesture().onEnded { composing = false })
         .accessibilityIdentifier("transcript")
@@ -237,7 +232,12 @@ struct ChatView: View {
 
     private func expandedBinding(_ id: String) -> Binding<Bool> {
         Binding(get: { expanded.contains(id) }, set: { open in
-            if open { expanded.insert(id) } else { expanded.remove(id) }
+            if open {
+                following = false
+                expanded.insert(id)
+            } else {
+                expanded.remove(id)
+            }
         })
     }
 
