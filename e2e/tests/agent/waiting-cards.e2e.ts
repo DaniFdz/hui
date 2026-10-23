@@ -14,7 +14,7 @@ const send = async (hui: Hui, screen: Screen, title: string, prompt: string) => 
   await hui.prompt(session, prompt);
 };
 
-test("Stop closes a waiting question or secret card and leaves the session idle", { tags: ["AGENT-007"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Stop closes a waiting question or secret card and leaves the session idle", { tags: ["AGENT-007"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const idle = screen.getByLabel("Session status: Idle");

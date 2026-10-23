@@ -77,7 +77,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["ask-user-question", "secret-requests"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "AGENT-008",
@@ -147,7 +147,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "AGENT-016",
@@ -157,7 +157,7 @@ const cases: UseCase[] = [
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "AGENT-017",

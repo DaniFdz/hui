@@ -14,7 +14,7 @@ const requestSecret = async (hui: Hui, screen: Screen, title: string, tool?: "pi
   return session;
 };
 
-test("a secret request opens a masked card and the agent gets a file it uses", { tags: ["AGENT-015", "AGENT-016"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a secret request opens a masked card and the agent gets a file it uses", { tags: ["AGENT-015", "AGENT-016"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const value = `sk-e2e-${crypto.randomUUID()}`;
