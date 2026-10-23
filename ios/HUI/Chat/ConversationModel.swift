@@ -45,6 +45,8 @@ final class ConversationModel {
     private(set) var currentModel: API.RuntimeModel?
     private(set) var models: [API.RuntimeModel] = []
     private(set) var continuing = false
+    private(set) var runError: RunErrorNotice?
+    private var dismissedRunError: String?
     private var modelsRequested = false
 
     private let client: GatewayClient
@@ -159,6 +161,20 @@ final class ConversationModel {
             sendError = error.localizedDescription
         }
         continuing = false
+    }
+
+    var shownRunError: RunErrorNotice? {
+        guard !streaming, let runError, runError.key != dismissedRunError else { return nil }
+        return runError
+    }
+
+    func dismissRunError() {
+        dismissedRunError = runError?.key
+    }
+
+    func continueAfterError() async {
+        guard let prompt = try? await core.continueAfterErrorPrompt() else { return }
+        _ = await send(prompt)
     }
 
     private func run(_ current: Int) async {
@@ -310,6 +326,7 @@ final class ConversationModel {
     private func show(_ projection: ChatProjection) {
         rows = projection.rows
         working = projection.working
+        runError = projection.runError
     }
 
     private func path(_ action: String) -> String {

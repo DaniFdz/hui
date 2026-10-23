@@ -6,7 +6,8 @@
 // message; touch and hold to enqueue", whose hold menu offers Enqueue). A tap in the transcript puts the keyboard away.
 // While the conversation loads it says so, and a failed load offers Try again. A send reads "Sending…" until the
 // gateway takes it, and one that fails stays marked "Not sent — draft recovered." with its text back in the draft, as
-// on the web.
+// on the web. A run that ended on an error shows the core's error card above the composer (Details, Copy error,
+// Continue, Dismiss error). The user's own prompts show as plain text, as on the web.
 import SwiftUI
 
 struct ChatView: View {
@@ -19,6 +20,7 @@ struct ChatView: View {
     @State private var following = true
     @State private var nearBottom = true
     @State private var placeholder = "Send a message…"
+    @State private var errorDetailsShown = false
     @FocusState private var composing: Bool
 
     init(id: String, client: GatewayClient, core: HUICore, title: String?) {
@@ -218,10 +220,48 @@ struct ChatView: View {
             if let error = model.sendError {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
+            if let runError = model.shownRunError {
+                runErrorCard(runError)
+            }
             composerControls
             modelPicker
         }
         .padding()
+    }
+
+    private func runErrorCard(_ error: RunErrorNotice) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label {
+                Text(error.summary).bold()
+            } icon: {
+                Image(systemName: "exclamationmark.triangle").accessibilityHidden(true)
+            }
+            if error.multiline {
+                Button("Details") { errorDetailsShown.toggle() }.font(.caption)
+                if errorDetailsShown {
+                    ScrollView {
+                        Text(error.detail)
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 160)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Error details")
+                }
+            }
+            HStack {
+                Button("Copy error") { UIPasteboard.general.string = error.detail }
+                Button("Continue") { Task { await model.continueAfterError() } }
+                    .disabled(model.phase != .open || model.reconnecting || model.stopped)
+                Spacer()
+                Button("Dismiss error", systemImage: "xmark") { model.dismissRunError() }
+                    .labelStyle(.iconOnly)
+            }
+            .font(.callout)
+        }
+        .foregroundStyle(.red)
+        .padding(10)
+        .background(.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var composerControls: some View {
