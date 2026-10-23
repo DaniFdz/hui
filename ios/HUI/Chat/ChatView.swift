@@ -1,7 +1,7 @@
 // The chat screen for one session, named as the web's chat names its controls: the toolbar's "Actions for <title>"
 // session menu (`SessionMenu`, with Conversation as Markdown), the header (the title as a heading, or the Session name
 // field while Rename… is on: leaving it or Return saves a trimmed, non-empty title, as the web's commits on blur or Enter;
-// "Session status: …" from the core's label), the transcript of the core's rows anchored at the bottom, activity rows
+// the web's "<tool> · <GROUP> · <status>" line, its status read as "Session status: …" from the core's label), the transcript of the core's rows anchored at the bottom, activity rows
 // that open to their thinking and tool cards (`ToolCardView`), the working indicator ("Agent activity: …"), the message
 // queue and the composer (Message and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
 // message; touch and hold to enqueue", whose hold menu offers Enqueue). A tap in the transcript puts the keyboard away.
@@ -91,10 +91,14 @@ struct ChatView: View {
                     .accessibilityAddTraits(.isHeader)
             }
             if !model.statusLabel.isEmpty {
-                Text(model.statusLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("Session status: \(model.statusLabel)")
+                HStack(spacing: 0) {
+                    Text(meta)
+                    Text(model.statusLabel).accessibilityLabel("Session status: \(model.statusLabel)")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(meta + model.statusLabel)
             }
             if !model.connectionNote.isEmpty {
                 Text(model.connectionNote).font(.caption).foregroundStyle(.orange)
@@ -103,6 +107,11 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal)
         .padding(.vertical, 8)
+    }
+
+    private var meta: String {
+        guard let session = sessions.session(model.id) ?? model.session else { return "" }
+        return [session.parentId == nil ? session.tool : "Subagent", sessions.groupLabel(session) ?? ""].map { "\($0) · " }.joined()
     }
 
     private var title: String {

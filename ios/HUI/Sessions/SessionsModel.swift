@@ -142,6 +142,10 @@ final class SessionsModel {
         }
     }
 
+    func groupLabel(_ session: API.SessionView) -> String? {
+        moveGroups.first { $0.value == session.group }?.label
+    }
+
     func setUnread(_ session: API.SessionView, client: GatewayClient) async {
         let unread = session.unread == true
         if await update(session.id, ["unread": .bool(!unread)], client: client) != nil {
