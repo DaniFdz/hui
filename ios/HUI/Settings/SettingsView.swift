@@ -1,7 +1,8 @@
 // The web's Settings shell as its phone layout shows it: the open page under its title, and Open settings navigation
 // bringing up the page list as a sheet, with Search settings (the core's filterSettingsPages), the pages in their
 // groups, whether settings were saved and Exit Settings; whether they were saved also stays at the bottom of every page. Appearance is a Form with the web's Theme, Color mode, Text size and
-// Chat preferences; the other pages show their web introduction until their controls are built.
+// Chat preferences; Models and Diagnostics are in SettingsPages.swift; the other pages show their web introduction until
+// their controls are built.
 // The words the web's Settings shell shares (page introductions, the empty search, the Color mode and Text size
 // names) come from the core's SETTINGS_COPY.
 import SwiftUI
@@ -24,7 +25,12 @@ struct SettingsView: View {
                 Text(settings.copy.intros[page] ?? "").typeface(.body).foregroundStyle(.secondary)
             }
             .listRowBackground(Color.clear)
-            if page == "appearance" { AppearanceSections(settings: settings, client: client) }
+            switch page {
+            case "appearance": AppearanceSections(settings: settings, client: client)
+            case "models": ModelsSections(settings: settings, client: client)
+            case "diagnostics": DiagnosticsSections(client: client)
+            default: EmptyView()
+            }
         }
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
