@@ -64,6 +64,9 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
       "messages:u", ["activity:t", "Ran 1 command", [["tool:t", "a.txt", "", '{\n  "path": "/w/a.txt"\n}']]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call", "1.5s", '{\n  "code": "x"\n}']]],
     ]),
     workingLabel: () => assert.equal(core.workingLabel([{ kind: "tool", id: "t", name: "read", status: "running" }]), "Reading files…"),
+    composerPlaceholder: () => assert.equal(core.composerPlaceholder({ reconnecting: true, streaming: false, coarsePointer: true, applePlatform: true }), "Draft while HUI reconnects…"),
+    latestRunError: () => assert.deepEqual(json(core.latestRunError([{ kind: "error", id: "e", text: "Boom\nwhy" }], false)), { key: "0:Boom\nwhy", summary: "Boom", detail: "Boom\nwhy", multiline: true }),
+    CONTINUE_AFTER_ERROR_PROMPT: () => assert.equal(core.CONTINUE_AFTER_ERROR_PROMPT, "Continue from where you left off."),
     queueRows: () => assert.deepEqual(json(core.queueRows({ steering: ["Now"], followUp: [] })), [{ id: "", text: "Now", label: "Steer", editable: false }]),
     SendRequests: () => {
       const requests = new core.SendRequests(() => "r1");

@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a failed run's error card copies the error, comes back after a dismiss and a reload, and Continue resumes the chat", { tags: ["CHAT-020"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a failed run's error card copies the error, comes back after a dismiss and a reload, and Continue resumes the chat", { tags: ["CHAT-020"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const idle = screen.getByLabel("Session status: Idle");
   const summary = screen.getByText(/^400 .*fixture provider error: the fixture refuses this request on purpose.*…$/u);
@@ -26,7 +26,7 @@ test("a failed run's error card copies the error, comes back after a dismiss and
   await expect(transcript.getByText("see the fixture for why", { exact: false })).toBeVisible();
 
   await screen.getByText("Details", { exact: true }).tap();
-  await expect(screen.getByLabel("Error details")).toContainText("on purpose; see the fixture for why");
+  await expect.poll(() => hui.textOf(screen.getByLabel("Error details"))).toContain("on purpose; see the fixture for why");
   await screen.getByRole("button", "Copy error").tap();
   await expect.poll(() => hui.copied()).toMatch(/^400 .*fixture provider error: .*see the fixture for why/u);
 

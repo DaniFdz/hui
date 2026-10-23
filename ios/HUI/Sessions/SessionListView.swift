@@ -128,9 +128,11 @@ private struct SessionGlyphView: View {
                 ProgressView()
             } else if glyph.unread {
                 Circle().fill(.tint).frame(width: 8, height: 8)
+            } else {
+                Color.clear
             }
         }
-        .frame(width: 20)
+        .frame(width: 20, height: 20)
         .accessibilityLabel(glyph.label)
         .accessibilityIdentifier("session-glyph")
     }
