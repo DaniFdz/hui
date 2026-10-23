@@ -1,5 +1,5 @@
 /** Pure decisions for the desktop shell, kept apart from the Electron process code: which URLs stay in the window,
- * which open externally, what counts as a valid gateway address, and how the saved theme maps to Electron's. */
+ * which open externally, validated notification destinations, gateway addresses and the saved color scheme. */
 const { URL } = require('node:url');
 const { isIP } = require('node:net');
 
@@ -27,4 +27,34 @@ function themeSource(mode) {
   return mode === 'light' || mode === 'dark' ? mode : 'system';
 }
 
-module.exports = { isInternal, isExternal, gatewayUrl, themeSource };
+function chatUrl(value) {
+  try {
+    const target = new URL(value);
+    const segments = target.pathname.split('/');
+    if (target.protocol !== 'http:' || target.username || target.password || target.search || target.hash
+      || segments.length !== 3 || !['sessions', 'bots'].includes(segments[1])
+      || !decodeURIComponent(segments[2]).trim() || decodeURIComponent(segments[2]).length > 200) return;
+    return target.href;
+  } catch { return; }
+}
+
+function notificationFromUrl(link) {
+  try {
+    const { protocol, pathname } = new URL(link);
+    const payload = protocol === 'hui-notification:' ? decodeURIComponent(pathname) : '';
+    if (!payload || payload.length > 8_000) return;
+    const value = JSON.parse(payload);
+    if (!value || typeof value !== 'object' || Array.isArray(value)
+      || typeof value.title !== 'string' || !value.title.trim() || value.title.length > 120
+      || typeof value.message !== 'string' || !value.message.trim() || value.message.length > 1_000
+      || typeof value.url !== 'string' || typeof value.replyTo !== 'string') return;
+    const reply = new URL(value.replyTo);
+    if (reply.protocol !== 'http:' || reply.hostname !== '127.0.0.1' || !reply.port
+      || reply.username || reply.password || reply.search || reply.hash || !/^\/[a-f0-9]{64}\/$/.test(reply.pathname)) return;
+    const target = chatUrl(value.url);
+    if (!target) return;
+    return { title: value.title.trim(), message: value.message.trim(), url: target, replyTo: reply.href };
+  } catch { return; }
+}
+
+module.exports = { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, notificationFromUrl };

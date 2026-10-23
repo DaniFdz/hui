@@ -555,6 +555,24 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "AGENT-059",
+    title: "Open the originating chat from a desktop notification",
+    behaviour: "An explicit notify_user call posts a native HUI notification on macOS without switching the active chat. Clicking it opens and focuses its own regular session or stable bot chat, including when HUI has no window. A queued result requires the desktop app's acknowledgement, not just a process launch.",
+    spec: ["SPEC.md#clickable-desktop-notifications", "docs/api.md#desktop-notifications"],
+    surfaces: ["tool:notify_user"],
+    web: { excluded: "Native macOS Notification Center and Electron windows are outside the web runner; desktop tests cover routing and e2e/desktop-package.browser.md records the native macOS proof.", decision: "SPEC.md#clickable-desktop-notifications" },
+    ios: { excluded: "This version posts notifications on the macOS gateway, not the iPhone.", decision: "SPEC.md#clickable-desktop-notifications" },
+  },
+  {
+    id: "AGENT-060",
+    title: "See when a desktop notification is unavailable",
+    behaviour: "A notify_user call on an unsupported or unmanaged gateway fails with an explicit error in the chat instead of reporting a queued notification or sending a Script Editor alert.",
+    spec: ["SPEC.md#clickable-desktop-notifications", "docs/api.md#desktop-notifications"],
+    surfaces: ["tool:notify_user"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
