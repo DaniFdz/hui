@@ -1,10 +1,9 @@
 // The session list, grouped as the web sidebar groups it; each row reads as the web's sidebar row does and leads with
-// the core's status glyph (attention, the busy spinner or the unread dot). Its toolbar holds the web sidebar's
-// Filter & sort menu, with the same choices, and New group. Touching and holding a row opens the web's session menu:
-// pin, mark read or unread, archive, Move to group, Copy and Delete…, whose notices and archive toast show at the
-// bottom.
+// the core's status glyph (attention, the busy spinner or the unread dot) and, when neither attention nor the spinner
+// shows, the session's icon. Its toolbar holds the web sidebar's
+// Filter & sort menu, with the same choices, the Sessions page and New group. A parent row has the web's Expand or
+// Collapse subagents toggle, and touching and holding a row opens the web's session menu (`SessionMenu`).
 import SwiftUI
-import UIKit
 
 struct SessionListView: View {
     let sessions: SessionsModel
@@ -12,7 +11,6 @@ struct SessionListView: View {
     let notice: String?
     @State private var naming = false
     @State private var groupName = ""
-    @State private var removing: SessionsModel.Row?
 
     var body: some View {
         List {
@@ -26,22 +24,35 @@ struct SessionListView: View {
                 Section(group.label) {
                     ForEach(group.rows) { row in
                         HStack {
-                            SessionGlyphView(glyph: row.glyph)
-                            NavigationLink(value: row.id) {
-                                HStack {
-                                    Text(row.title)
-                                    if row.pinned {
-                                        Text("Pinned").font(.caption).padding(.horizontal, 6).background(.quaternary, in: .capsule)
+                            HStack {
+                                SessionGlyphView(glyph: row.glyph)
+                                if !row.icon.isEmpty, !row.glyph.busy, row.glyph.attention == nil { Text(row.icon) }
+                                NavigationLink(value: Screen.session(row.id)) {
+                                    HStack {
+                                        Text(row.title)
+                                        if row.pinned {
+                                            Text("Pinned").font(.caption).padding(.horizontal, 6).background(.quaternary, in: .capsule)
+                                        }
                                     }
                                 }
+                                .accessibilityLabel(row.title)
                             }
-                            .accessibilityLabel(row.title)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(row.accessibleName)
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityIdentifier("session-row")
+                            if row.hasChildren {
+                                Button("\(row.collapsed ? "Expand" : "Collapse") subagents of \(row.title)", systemImage: row.collapsed ? "chevron.right" : "chevron.down") {
+                                    sessions.toggleTree(row.id)
+                                }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.borderless)
+                            }
                         }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(row.accessibleName)
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityIdentifier("session-row")
-                        .contextMenu { menu(row) }
+                        .padding(.leading, CGFloat(row.depth) * 16)
+                        .contextMenu {
+                            if let client, let session = sessions.session(row.id) { SessionMenu(session: session, sessions: sessions, client: client) }
+                        }
                     }
                 }
             }
@@ -57,16 +68,6 @@ struct SessionListView: View {
                 ProgressView()
             }
         }
-        .safeAreaInset(edge: .bottom) { toasts }
-        .alert(removing.map { "Remove \($0.title) from HUI?" } ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { row in
-            Button("Remove from HUI", role: .destructive) {
-                guard let client else { return }
-                Task { await sessions.remove(row, client: client) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("HUI will remove this session and all its subagents, including nested subagents, and stop their runtimes. Their PI transcripts remain on disk and are not deleted.")
-        }
         .navigationTitle("Sessions")
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -79,6 +80,9 @@ struct SessionListView: View {
                     } label: {
                         Label("Filter & sort", systemImage: "line.3.horizontal.decrease.circle")
                     }
+                }
+                NavigationLink(value: Screen.sessionsPage) {
+                    Label("Sessions", systemImage: "tablecells")
                 }
                 Button("New group", systemImage: "folder.badge.plus") {
                     groupName = ""
@@ -95,72 +99,6 @@ struct SessionListView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-    }
-
-    @ViewBuilder
-    private func menu(_ row: SessionsModel.Row) -> some View {
-        if let client {
-            Button(row.pinned ? "Unpin session" : "Pin session", systemImage: "pin") {
-                Task { await sessions.update(row.id, ["pinned": .bool(!row.pinned)], client: client) }
-            }
-            Button(row.unread ? "Mark as read" : "Mark as unread", systemImage: "circle") {
-                Task { await sessions.setUnread(row, client: client) }
-            }
-            Button("Archive session", systemImage: "archivebox") {
-                Task { await sessions.archive(row, client: client) }
-            }
-            Menu("Move to group", systemImage: "folder") {
-                ForEach(sessions.moveGroups, id: \.value) { group in
-                    Button(group.label) {
-                        Task { await sessions.move(row, to: group.value, client: client) }
-                    }
-                    .disabled(group.value == row.group)
-                }
-            }
-            Menu("Copy", systemImage: "doc.on.doc") {
-                Button("Session link", systemImage: "link") {
-                    Task { await sessions.copy(row, "link", client: client) { UIPasteboard.general.string = $0 } }
-                }
-                Button("Session ID", systemImage: "number") {
-                    Task { await sessions.copy(row, "id", client: client) { UIPasteboard.general.string = $0 } }
-                }
-            }
-            Button("Delete…", systemImage: "trash", role: .destructive) {
-                removing = row
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var toasts: some View {
-        VStack(spacing: 8) {
-            if let toast = sessions.archiveToast {
-                HStack {
-                    Text(toast.error ?? "Archived “\(toast.title)”.").font(.footnote)
-                    Spacer()
-                    Button(toast.restoring ? "Restoring…" : "Restore") {
-                        guard let client else { return }
-                        Task { await sessions.restoreArchived(client: client) }
-                    }
-                    .disabled(toast.restoring)
-                    Button("Dismiss archive notification", systemImage: "xmark") {
-                        sessions.dismissArchiveToast()
-                    }
-                    .labelStyle(.iconOnly)
-                }
-                .padding(12)
-                .background(.regularMaterial, in: .rect(cornerRadius: 12))
-            }
-            if let notice = sessions.notice {
-                Text(notice.text)
-                    .font(.footnote)
-                    .foregroundStyle(notice.failed ? .red : .primary)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.regularMaterial, in: .rect(cornerRadius: 12))
-            }
-        }
-        .padding(.horizontal)
     }
 
     private func choices(_ title: String, _ key: WritableKeyPath<SidebarOptions, String>, _ options: SidebarOptions, _ values: [(String, String)]) -> some View {

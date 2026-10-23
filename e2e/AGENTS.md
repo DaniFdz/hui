@@ -51,8 +51,7 @@ time on a second simulator: set `E2E_IOS_DEVICE` to its name and `E2E_IOS_PORT` 
 another folder, because two runs sharing one fail with "already bound". On iOS the fixture relaunches
 `dev.hui.ios` with `-HUIGatewayURL` pointing at a proxy in front of the gateway, which holds the requests a test
 intercepts with `hui.intercept` and passes everything else through, WebSocket upgrades included (`hui.dropStreams` cuts those), and follows `hui://open?path=<path>` for `hui.open`, restarts the app for
-`hui.reload`, goes back to the session list with its Sessions button for `hui.sessionList` (the web's sidebar is
-already on screen), deletes the app's preferences through `defaults` before each test (the app keeps nothing else) and also
+`hui.reload`, taps Back until the session list shows for `hui.sessionList` (see below), deletes the app's preferences through `defaults` before each test (the app keeps nothing else) and also
 empties its data container through the engine for `hui.clearState` (a test never calls `app.clearState()`, whose
 deleted preferences `cfprefsd` can still hand the relaunched app), long-presses for `hui.hold` and `hui.contextMenu`,
 empties and reads the simulator's pasteboard (`simctl pbcopy`, `pbpaste`) for `hui.clipboard` and `hui.copied`, reads
@@ -63,7 +62,15 @@ throws "not on iOS yet" from the steps only the web engine has (hover, a refused
 looks and the rest), so a test that needs one keeps `platforms: ['web']`. A device reports no text for a container,
 only its label, so a test reads a container's text in order with `hui.textOf(container)` (on iOS its texts and control
 labels joined) rather than `toHaveText` on the container. On iOS `hui.glyph` reads the row's session-glyph label and
-whether it is a spinner.
+whether it is a spinner, and `hui.sessionMenu(title)` opens the open chat's toolbar menu when that session is the
+open screen and long-presses its row otherwise, returning the menu's scope (the row on the web); `hui.phoneScreen()`
+returns the app's own screen size in portrait.
+
+An iPhone shows one screen at a time, so a test calls `hui.sessionList()` before it checks session rows while a chat
+or the Sessions page is open: on the web's wide layout the sidebar is always there and it does nothing, on the web's
+phone layout (the shell's drawer media) it opens the navigation drawer, and on iOS it taps Back until the list shows (the list keeps the session
+it came back from selected, as the web's sidebar does). It never stands in for a check: when a test goes on in the
+chat, it opens that chat again.
 
 - Import `test` from `fixtures/hui.ts` and `expect` from `e2e`. The fixture owns the gateway's API setup and cleanup,
   the fixture provider's barriers and the steps that differ per platform; a test never reads `platform`, `device` or

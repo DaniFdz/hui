@@ -170,7 +170,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-parity", "session-menu-shortcuts"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-019",
@@ -309,7 +309,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-registry", "session-menu-shortcuts"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-033",
@@ -319,7 +319,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-parity"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-034",
@@ -329,7 +329,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle", "session-menu-shortcuts", "session-menu-parity"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-035",
@@ -339,7 +339,7 @@ const cases: UseCase[] = [
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["session-menu-shortcuts"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-036",
@@ -349,7 +349,7 @@ const cases: UseCase[] = [
     surfaces: ["page:sessions", "route:PATCH /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle", "session-menu-parity"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-037",
@@ -359,7 +359,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-lifecycle", "session-registry", "session-tree-lifecycle", "session-menu-shortcuts"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-038",
@@ -369,7 +369,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-menu-parity"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-039",

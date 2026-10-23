@@ -5,9 +5,10 @@
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
- * clipboard, the session menu (on iOS a long press on the row), status glyphs (on iOS the row's session-glyph label
- * and whether it is a spinner), how a piece of the
- * screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
+ * clipboard, the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
+ * shell's drawer media, the navigation drawer; on iOS, Back), the session menu (on iOS the open chat's toolbar menu,
+ * else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
+ * a piece of the screen looks, and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
  * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
@@ -32,6 +33,7 @@ import { expect, test as base, type Locator } from "e2e";
 import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { IOS_DEVICE, IOS_PORT } from "../../e2e.config.ts";
+import { navigationPath, resolveNavigation } from "../../src/lib/navigation.ts";
 
 const MAX_SCROLL_SWIPES = 20;
 
@@ -67,7 +69,6 @@ export type Hui = {
   wideScreen(): Promise<void>;
   paletteChord(): Promise<void>;
   back(): Promise<void>;
-  sessionList(): Promise<void>;
   forward(): Promise<void>;
   overflowsSideways(): Promise<boolean>;
   reachable(target: Locator): Promise<boolean>;
@@ -75,7 +76,8 @@ export type Hui = {
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   peek(target: Locator): Promise<void>;
-  sessionMenu(title: string): Promise<void>;
+  sessionList(): Promise<void>;
+  sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
@@ -346,13 +348,19 @@ export const test = base.extend<{ hui: Hui }>({
           await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
         },
         back: () => browser().back(),
-        sessionList: async () => {},
         forward: () => browser().forward(),
         peek: (target) => target.hover(),
+        sessionList: async () => {
+          const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
+          if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
+            await fixtures.screen.getByRole("button", "Open navigation", { visible: true }).tap();
+          }
+        },
         sessionMenu: async (title) => {
           const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
           await row.hover();
           await row.getByRole("button", `Actions for ${title}`).tap();
+          return row;
         },
         glyph: (title) => browser().evaluate((name) => {
           const row = [...document.querySelectorAll("[data-testid='session-row']")].find((element) => element.textContent?.includes(name));
@@ -528,7 +536,28 @@ export const test = base.extend<{ hui: Hui }>({
       };
 
       const iosSteps: Partial<typeof webSteps> = {
-        sessionMenu: (title) => fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress(),
+        phoneScreen: async (orientation = "portrait") => {
+          if (orientation !== "portrait") throw new Error("phoneScreen: the iPhone app runs in portrait");
+          const box = await fixtures.screen.getByTestId("app-route").boundingBox();
+          if (!box) throw new Error("phoneScreen: the app shows no screen");
+          return { width: box.x + box.width, height: box.y + box.height };
+        },
+        sessionList: async () => {
+          for (let address = await iosSteps.url!(); new URL(address).pathname !== "/";) {
+            const shown = address;
+            await fixtures.screen.getByTestId("BackButton").tap();
+            await expect.poll(async () => (address = await iosSteps.url!())).not.toBe(shown);
+          }
+        },
+        sessionMenu: async (title) => {
+          const open = (await sessions()).find((session) => session.title === title);
+          if (open && (await iosSteps.url!()).endsWith(`/sessions/${encodeURIComponent(open.id)}`)) {
+            await fixtures.screen.getByRole("button", `Actions for ${title}`).tap();
+          } else {
+            await fixtures.screen.getByTestId("session-row").filter({ hasText: title }).getByRole("button", title).longPress();
+          }
+          return fixtures.screen;
+        },
         glyph: async (title) => {
           const row = fixtures.screen.getByTestId("session-row").filter({ hasText: title });
           await expect(row).toHaveCount(1);
@@ -537,7 +566,6 @@ export const test = base.extend<{ hui: Hui }>({
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
         },
         keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
-        sessionList: () => fixtures.screen.getByRole("button", "Sessions").tap(),
         hold: async (target, until) => {
           await target.longPress();
           await expect(until).toBeVisible();
@@ -551,7 +579,7 @@ export const test = base.extend<{ hui: Hui }>({
         copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
         intercept: async (method, path) => proxy!.intercept(method, path),
         dropStreams: async () => proxy!.dropStreams(),
-        url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
+        url: async () => proxy!.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         scrollTo: async (within, target) => {
           const bar = within.getByLabel(/^Vertical scroll bar/u).first();
           const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
@@ -607,6 +635,9 @@ export const test = base.extend<{ hui: Hui }>({
           if (web) return fixtures.app.open(path);
           await launch();
           await device().openLink(`hui://open?path=${encodeURIComponent(path)}`);
+          const { target } = resolveNavigation(new URL(path, receipt.url).pathname);
+          const shown = target.kind === "session" ? navigationPath(target) : target.kind === "page" && target.page.id === "sessions" ? "/sessions" : undefined;
+          if (shown) await expect.poll(async () => new URL(await iosSteps.url!()).pathname).toBe(shown);
         },
         reload: () => (web ? browser().reload() : fixtures.app.restart()),
         clearState,

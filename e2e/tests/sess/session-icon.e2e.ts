@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Icon sets a preset, a custom emoji or no icon, and the icon survives a reload", { tags: ["SESS-033"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Icon sets a preset, a custom emoji or no icon, and the icon survives a reload", { tags: ["SESS-033"] }, async ({ screen, hui }) => {
   const row = screen.getByLabel("Iconic session, status idle, tool durable, stage investigation");
   const icon = async () => {
     await hui.sessionMenu("Iconic session");
@@ -12,6 +12,7 @@ test("Icon sets a preset, a custom emoji or no icon, and the icon survives a rel
   const set = screen.getByRole("button", "Set");
   const session = await hui.createSession({ title: "Iconic session" });
   await hui.open(`/sessions/${session.id}`);
+  await hui.sessionList();
 
   await icon();
   for (const preset of ["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯"]) await expect(screen.getByRole("button", `Set icon ${preset}`)).toBeVisible();
@@ -33,6 +34,7 @@ test("Icon sets a preset, a custom emoji or no icon, and the icon survives a rel
   await set.tap();
   await expect(row.getByText("🐧")).toBeVisible();
   await hui.reload();
+  await hui.sessionList();
   await expect(row.getByText("🐧")).toBeVisible();
 });
 

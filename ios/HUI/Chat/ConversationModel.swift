@@ -8,7 +8,7 @@
 // text back for the draft; a resend the gateway answers as a duplicate drops both local copies, as the web's composer
 // does. While a run streams a send can steer it or queue a follow-up instead, which adds no transcript row; the queue
 // comes from the snapshot and `queue_update` events as the core's rows, and its changes go to `POST …/queue`.
-// The header's origin reads "<runtime> · <GROUP>" as the web's does. The snapshot names the running model, and once the
+// The snapshot names the running model, and once the
 // runtime is ready the model list loads, once per model, as the web's conversation controller loads it; choosing one
 // goes to `POST …/model`. An SDK-worker session can continue without a prompt (`POST …/resume`).
 import Foundation
@@ -41,7 +41,6 @@ final class ConversationModel {
     private(set) var reconnecting = false
     private(set) var stopped = false
     private(set) var sendError: String?
-    private(set) var origin = ""
     private(set) var currentModel: API.RuntimeModel?
     private(set) var models: [API.RuntimeModel] = []
     private(set) var continuing = false
@@ -78,6 +77,10 @@ final class ConversationModel {
         generation += 1
         let handle = handle
         Task { [core] in await core.closeTranscript(handle) }
+    }
+
+    func markdown() async throws -> String {
+        try await core.transcriptMarkdown(handle)
     }
 
     enum SendMode: String {
@@ -302,11 +305,9 @@ final class ConversationModel {
     private func setStatus(_ status: API.SessionStatus, _ current: Int) async {
         guard var session else { return }
         session.status = status
-        guard let label = try? await core.sessionStatusLabel(session), let group = try? await core.sessionGroupLabel(session.group),
-              current == generation else { return }
+        guard let label = try? await core.sessionStatusLabel(session), current == generation else { return }
         self.session = session
         statusLabel = label
-        origin = "\(session.parentId == nil ? session.tool : "Subagent")\(session.worker.map { " on \($0.name)" } ?? "") · \(group)"
         if [.idle, .running, .waiting].contains(status), !modelsRequested {
             modelsRequested = true
             Task { await loadModels() }
