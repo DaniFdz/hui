@@ -7,9 +7,11 @@
 import { currentSettings } from "../settings/settings-store.ts";
 import { fetchThemeFile, fetchThemeList, postThemeImport, type ThemeRef } from "../../api/themes.ts";
 import { applyThemeMode, type ThemeMode, type ThemeVariant } from "./theme.ts";
-import { mapTheme, swatchesFor, themeColor, type ShadcnTheme, type ThemeSwatches, type ThemeTokens } from "./shadcn-theme.ts";
+import { accentSurfaces, mapTheme, swatchesFor, type AccentSurfaces, type ShadcnTheme, type ThemeSwatches } from "./shadcn-theme.ts";
+
+export { accentSurfaces, type AccentSurfaces } from "./shadcn-theme.ts";
 import { controlUiAccentInk } from "./accent-contrast.ts";
-import { readableAccent, type Rgb } from "./color-contrast.ts";
+import { readableAccent } from "./color-contrast.ts";
 
 export type ThemePreview = { id: string; name: string } & ThemeSwatches;
 
@@ -18,20 +20,6 @@ let selectedId = "";
 let selectedVariant: ThemeVariant = "both";
 let selectedTokens: Readonly<Record<string, string>> | undefined;
 let selectedSurfaces: AccentSurfaces = {};
-
-/** The page surfaces a user accent must read on, per mode the active theme carries. */
-export type AccentSurfaces = { light?: readonly Rgb[]; dark?: readonly Rgb[] };
-
-/** A mode's page and card colors, the surfaces accent text appears on. */
-export function accentSurfaces(modes: { light?: ThemeTokens; dark?: ThemeTokens }): AccentSurfaces {
-  const read = (tokens: ThemeTokens | undefined) => {
-    const surfaces = tokens ? [themeColor(tokens["--bg"]), themeColor(tokens["--card"])] : [];
-    return surfaces.every((surface): surface is Rgb => surface !== undefined) && surfaces.length ? surfaces : undefined;
-  };
-  const light = read(modes.light);
-  const dark = read(modes.dark);
-  return { ...(light ? { light } : {}), ...(dark ? { dark } : {}) };
-}
 
 const ACCENT_TOKENS = [
   "--ring", "--accent", "--accent-foreground", "--accent-hover",

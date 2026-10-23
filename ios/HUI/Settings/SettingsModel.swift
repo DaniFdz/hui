@@ -26,10 +26,10 @@ final class SettingsModel {
 
     init(core: HUICore) {
         self.core = core
+        Task { if let copy = try? await core.settingsCopy() { self.copy = copy } }
     }
 
     func load(_ client: GatewayClient) async {
-        if let copy = try? await core.settingsCopy() { self.copy = copy }
         settings = try? await client.get("/__hui/settings")
         themes = (try? await client.get("/__hui/themes", as: API.ThemesResponse.self))?.themes ?? []
         await loadTheme(client)
@@ -68,10 +68,11 @@ final class SettingsModel {
     func change(_ client: GatewayClient?, _ edit: (inout API.Settings) -> Void) {
         guard var next = settings, let client else { return }
         edit(&next)
+        let looksChanged = next.theme != settings?.theme || next.accent != settings?.accent || next.themeMode != settings?.themeMode
         settings = next
         writes += 1
         let write = writes
-        Task { await refreshLook() }
+        if looksChanged { Task { await refreshLook() } }
         let previous = writing
         writing = Task {
             await previous?.value

@@ -1,7 +1,9 @@
 // The web's Settings shell as its phone layout shows it: the open page under its title, and Open settings navigation
 // bringing up the page list as a sheet, with Search settings (the core's filterSettingsPages), the pages in their
 // groups, whether settings were saved and Exit Settings. Appearance is a Form with the web's Theme, Color mode, Text size and
-// Chat preferences; the other pages show their web introduction until their controls are built. The words the web's Settings shell shares (page introductions, the empty search, the Color mode and Text size names) come from the core's SETTINGS_COPY.
+// Chat preferences; the other pages show their web introduction until their controls are built.
+// The words the web's Settings shell shares (page introductions, the empty search, the Color mode and Text size
+// names) come from the core's SETTINGS_COPY.
 import SwiftUI
 
 struct SettingsView: View {
