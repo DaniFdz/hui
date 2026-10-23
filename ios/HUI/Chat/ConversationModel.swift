@@ -8,6 +8,9 @@
 // text back for the draft; a resend the gateway answers as a duplicate drops both local copies, as the web's composer
 // does. While a run streams a send can steer it or queue a follow-up instead, which adds no transcript row; the queue
 // comes from the snapshot and `queue_update` events as the core's rows, and its changes go to `POST …/queue`.
+// The header's origin reads "<runtime> · <GROUP>" as the web's does. The snapshot names the running model, and once the
+// runtime is ready the model list loads, once per model, as the web's conversation controller loads it; choosing one
+// goes to `POST …/model`. An SDK-worker session can continue without a prompt (`POST …/resume`).
 import Foundation
 import Observation
 
@@ -35,7 +38,16 @@ final class ConversationModel {
     private(set) var streaming = false
     private(set) var stopping = false
     private(set) var connectionNote = ""
+    private(set) var reconnecting = false
+    private(set) var stopped = false
     private(set) var sendError: String?
+    private(set) var origin = ""
+    private(set) var currentModel: API.RuntimeModel?
+    private(set) var models: [API.RuntimeModel] = []
+    private(set) var continuing = false
+    private(set) var runError: RunErrorNotice?
+    private var dismissedRunError: String?
+    private var modelsRequested = false
 
     private let client: GatewayClient
     private let core: HUICore
@@ -55,6 +67,9 @@ final class ConversationModel {
         generation += 1
         let current = generation
         phase = .loading
+        reconnecting = false
+        stopped = false
+        connectionNote = ""
         task = Task { await run(current) }
     }
 
@@ -127,6 +142,41 @@ final class ConversationModel {
         }
     }
 
+    func selectModel(_ choice: API.RuntimeModel) async {
+        do {
+            let answer: API.SessionModelResponse = try await client.post(path("model"), body: API.SessionModelRequest(provider: choice.provider, modelId: choice.id))
+            if let model = answer.model { currentModel = model }
+        } catch {
+            sendError = error.localizedDescription
+        }
+    }
+
+    func resume() async {
+        guard phase == .open, !continuing, !streaming else { return }
+        continuing = true
+        sendError = nil
+        do {
+            let _: API.JSONValue = try await client.post(path("resume"))
+        } catch {
+            sendError = error.localizedDescription
+        }
+        continuing = false
+    }
+
+    var shownRunError: RunErrorNotice? {
+        guard !streaming, let runError, runError.key != dismissedRunError else { return nil }
+        return runError
+    }
+
+    func dismissRunError() {
+        dismissedRunError = runError?.key
+    }
+
+    func continueAfterError() async {
+        guard let prompt = try? await core.continueAfterErrorPrompt() else { return }
+        _ = await send(prompt)
+    }
+
     private func run(_ current: Int) async {
         do {
             let opened: API.SessionOpenResponse = try await client.post(path("open"))
@@ -145,10 +195,12 @@ final class ConversationModel {
             case .ended(let note):
                 connectionNote = note
                 streaming = false
+                reconnecting = false
+                stopped = true
                 return
             case .dropped:
                 attempt += 1
-                connectionNote = "Reconnecting…"
+                reconnecting = true
                 guard let delay = try? await core.reconnectDelay(attempt: attempt) else { return }
                 try? await Task.sleep(for: delay)
             }
@@ -184,7 +236,7 @@ final class ConversationModel {
             if !live {
                 live = true
                 onLive()
-                connectionNote = ""
+                reconnecting = false
             }
             guard current == generation, !Task.isCancelled else { return .dropped }
             do {
@@ -237,6 +289,7 @@ final class ConversationModel {
         let projection = try await core.transcript(handle, snapshot: snapshot.transcript, streaming: Self.streaming(snapshot.status))
         guard current == generation else { return }
         show(projection)
+        if let model = snapshot.model { currentModel = model }
         try await setQueue(snapshot.queue, current)
         await setStatus(snapshot.status, current)
     }
@@ -249,16 +302,31 @@ final class ConversationModel {
     private func setStatus(_ status: API.SessionStatus, _ current: Int) async {
         guard var session else { return }
         session.status = status
-        guard let label = try? await core.sessionStatusLabel(session), current == generation else { return }
+        guard let label = try? await core.sessionStatusLabel(session), let group = try? await core.sessionGroupLabel(session.group),
+              current == generation else { return }
         self.session = session
         statusLabel = label
+        origin = "\(session.parentId == nil ? session.tool : "Subagent")\(session.worker.map { " on \($0.name)" } ?? "") · \(group)"
+        if [.idle, .running, .waiting].contains(status), !modelsRequested {
+            modelsRequested = true
+            Task { await loadModels() }
+        }
         streaming = Self.streaming(status)
         if !streaming { stopping = false }
+    }
+
+    private func loadModels() async {
+        guard let answer: API.SessionModelsResponse = try? await client.get(path("models")) else {
+            modelsRequested = false
+            return
+        }
+        models = answer.models
     }
 
     private func show(_ projection: ChatProjection) {
         rows = projection.rows
         working = projection.working
+        runError = projection.runError
     }
 
     private func path(_ action: String) -> String {

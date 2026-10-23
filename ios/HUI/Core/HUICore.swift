@@ -123,6 +123,22 @@ actor HUICore {
         try call("markdownTokens", source, agent)
     }
 
+    func composerPlaceholder(status: API.SessionStatus?, reconnecting: Bool, streaming: Bool) throws -> String {
+        try call("composerPlaceholder", ComposerPlaceholderInput(status: status, reconnecting: reconnecting, streaming: streaming))
+    }
+
+    private struct ComposerPlaceholderInput: Encodable {
+        var status: API.SessionStatus?
+        var reconnecting: Bool
+        var streaming: Bool
+        var coarsePointer = true
+        var applePlatform = true
+    }
+
+    func continueAfterErrorPrompt() throws -> String {
+        try decode(exports.objectForKeyedSubscript("CONTINUE_AFTER_ERROR_PROMPT"))
+    }
+
     func queueRows(_ queue: API.RuntimeQueue) throws -> [QueueRow] {
         try call("queueRows", queue)
     }
@@ -147,7 +163,7 @@ actor HUICore {
     private func project(_ handle: String, _ items: JSValue) throws -> ChatProjection {
         transcripts[handle] = items
         let rows: ChatRows = try decode(invoke("chatRows", [items]))
-        return ChatProjection(rows: rows.rows, working: try decode(invoke("workingLabel", [items])))
+        return ChatProjection(rows: rows.rows, working: try decode(invoke("workingLabel", [items])), runError: try decode(invoke("latestRunError", [items, false])))
     }
 
     private func requests() throws -> JSValue {
@@ -204,6 +220,14 @@ actor HUICore {
 struct ChatProjection: Equatable, Sendable {
     var rows: [ChatRow]
     var working: String
+    var runError: RunErrorNotice?
+}
+
+struct RunErrorNotice: Decodable, Equatable, Sendable {
+    var key: String
+    var summary: String
+    var detail: String
+    var multiline: Bool
 }
 
 struct QueueRow: Decodable, Hashable, Sendable {

@@ -67,6 +67,7 @@ export type Hui = {
   wideScreen(): Promise<void>;
   paletteChord(): Promise<void>;
   back(): Promise<void>;
+  sessionList(): Promise<void>;
   forward(): Promise<void>;
   overflowsSideways(): Promise<boolean>;
   reachable(target: Locator): Promise<boolean>;
@@ -196,6 +197,9 @@ const gatewayProxy = async (gateway: string) => {
           response.destroy();
         }),
       };
+    },
+    dropStreams: () => {
+      for (const socket of upgraded) socket.destroy();
     },
     close: async () => {
       const closed = new Promise((resolve) => server.close(resolve));
@@ -342,6 +346,7 @@ export const test = base.extend<{ hui: Hui }>({
           await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
         },
         back: () => browser().back(),
+        sessionList: async () => {},
         forward: () => browser().forward(),
         peek: (target) => target.hover(),
         sessionMenu: async (title) => {
@@ -532,6 +537,7 @@ export const test = base.extend<{ hui: Hui }>({
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
         },
         keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
+        sessionList: () => fixtures.screen.getByRole("button", "Sessions").tap(),
         hold: async (target, until) => {
           await target.longPress();
           await expect(until).toBeVisible();
@@ -544,9 +550,11 @@ export const test = base.extend<{ hui: Hui }>({
         },
         copied: async () => execFileSync("xcrun", ["simctl", "pbpaste", IOS_DEVICE], { encoding: "utf8" }),
         intercept: async (method, path) => proxy!.intercept(method, path),
+        dropStreams: async () => proxy!.dropStreams(),
         url: async () => receipt.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         scrollTo: async (within, target) => {
-          const shown = async () => (await within.getByText(/\S/u).allTextContents()).join("\n");
+          const bar = within.getByLabel(/^Vertical scroll bar/u).first();
+          const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
           for (const direction of ["down", "up"] as const) {
             for (let swipes = 0, before = "", now = await shown(); now !== before && swipes < MAX_SCROLL_SWIPES; swipes++, before = now, now = await shown()) {
               if (await target.count() > 0) return;

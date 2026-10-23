@@ -1,7 +1,7 @@
 // One session's conversation against a stubbed gateway (its open, connect and prompt routes) and scripted sockets:
 // tickets per connect, the Origin header, the snapshot replacing the transcript, streamed events, reconnects, 429,
 // close code 4404, a stopped model closing its socket without touching the core again, a failed send and its
-// resend, and the queue: its rows from the core, a steer that adds no transcript row, and a refused queue change.
+// resend, and the queue: its rows from the core, a steer that adds no transcript row, and a refused queue change, and a run error shown until dismissed.
 import Foundation
 import Synchronization
 import Testing
@@ -18,7 +18,8 @@ struct ConversationModelTests {
         #expect(model.statusLabel == "Running")
         #expect(model.working == "Writing response…")
         #expect(sockets.connected.first == Connected(url: "ws://\(host):4100/__hui/sessions/a/stream?ticket=t", origin: "http://\(host):4100"))
-        #expect(GatewayStub.paths(host).prefix(2) == ["/__hui/sessions/a/open", "/__hui/sessions/a/connect"])
+        #expect(GatewayStub.paths(host).filter { !$0.hasSuffix("/models") }.prefix(2) == ["/__hui/sessions/a/open", "/__hui/sessions/a/connect"])
+        try await until { GatewayStub.paths(host).contains("/__hui/sessions/a/models") }
     }
 
     @Test func aDropReconnectsWithANewTicketAndTheSnapshotReplacesTheTranscript() async throws {
@@ -28,6 +29,17 @@ struct ConversationModelTests {
         try await until { model.rows.map(\.kind) == [.messages, .messages] && model.rows.last?.messages?.first?.text == "Done" }
         #expect(sockets.connected.count == 2)
         #expect(GatewayStub.paths(host).filter { $0.hasSuffix("/connect") }.count >= 2)
+    }
+
+    @Test func aRunErrorShowsUntilDismissed() async throws {
+        let sockets = Sockets([[snapshot([user("u1", "Hi"), #"{"kind":"error","message":"Boom\nwhy"}"#])]])
+        let (model, _) = try start(sockets)
+        defer { model.stop() }
+        try await until { model.shownRunError != nil }
+        #expect(model.shownRunError?.summary == "Boom")
+        #expect(model.shownRunError?.multiline == true)
+        model.dismissRunError()
+        #expect(model.shownRunError == nil)
     }
 
     @Test func closeCode4404EndsTheStream() async throws {

@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a dropped stream keeps the draft and holds sending until it is back, and an exited runtime stops the stream", { tags: ["CHAT-016"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a dropped stream keeps the draft and holds sending until it is back, and an exited runtime stops the stream", { tags: ["CHAT-016"] }, async ({ screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const transcript = screen.getByTestId("transcript");
