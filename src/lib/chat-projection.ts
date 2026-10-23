@@ -5,6 +5,7 @@
  * the live browser preview goes. Presentation only; PI's transcript keeps the order and the data.
  */
 import type { TranscriptItem } from "../api/sessions.ts";
+import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "./subagent-completion.ts";
 import { agentReplyTo, botKickoffName, botTurnOrigin } from "./bots/bots.ts";
 
@@ -203,4 +204,22 @@ export function browserPreviewRow(rows: readonly ChatProjectionRow[]): { index: 
     return { index, pending: (call.status ?? "running") === "running", currentTurn };
   }
   return undefined;
+}
+
+export type QuestionnaireSummary = QuestionnaireResult & { asked: readonly QuestionnaireQuestion[] };
+
+/** An ended `ask_user_question` call, kept in sight like the card it replaced: what the operator chose, or, when
+ * nobody answered in time, what was asked. A running or failed one stays an ordinary tool row. */
+export function questionnaireSummary(items: readonly ChatActivity[]): QuestionnaireSummary | undefined {
+  const item = items.length === 1 ? items[0] : undefined;
+  if (item?.kind !== "tool" || item.name !== "ask_user_question" || item.status !== "succeeded") return undefined;
+  const details = item.details as Partial<QuestionnaireResult> | undefined;
+  // Only HUI's own result: a PI extension's call of the same name (older transcripts) has another shape.
+  const answers = details?.answers;
+  if (!Array.isArray(answers) || !answers.every((answer) => typeof answer?.header === "string" && Array.isArray(answer.selected))) return undefined;
+  if (details?.timedOut !== true) return { cancelled: details?.cancelled === true, answers, asked: [] };
+  // The call's own input as the model wrote it, before PI's argument conversion took a lone question for a list of one.
+  const raw = (item.args as { questions?: unknown } | undefined)?.questions;
+  const asked = [raw ?? []].flat().filter((question): question is QuestionnaireQuestion => Array.isArray((question as Partial<QuestionnaireQuestion> | null)?.options));
+  return { cancelled: true, answers: [], timedOut: true, timeoutMinutes: details.timeoutMinutes, asked };
 }

@@ -14,7 +14,7 @@ const requestSecret = async (hui: Hui, screen: Screen, title: string, tool?: "pi
   return session;
 };
 
-test("a secret request opens a masked card and the agent gets a file it uses", { tags: ["AGENT-015", "AGENT-016"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a secret request opens a masked card and the agent gets a file it uses", { tags: ["AGENT-015", "AGENT-016"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("question-card");
   const value = `sk-e2e-${crypto.randomUUID()}`;
@@ -30,7 +30,9 @@ test("a secret request opens a masked card and the agent gets a file it uses", {
   expect(await field.inputValue().catch((error: { code?: string }) => error.code)).toBe("POLICY_DENIED");
   await expect(card.getByRole("button", "Cancel")).toBeVisible();
   await expect(screen.getByLabel("Session status: Waiting for your answer")).toBeVisible();
+  await hui.sessionList();
   await expect.poll(() => hui.glyph("Provided secret")).toEqual({ label: "Waiting for your answer", animated: false });
+  await screen.getByTestId("session-row").filter({ hasText: "Provided secret" }).tap();
   await field.fill(value);
   await card.getByRole("button", "Submit").tap();
 
@@ -70,7 +72,7 @@ test("a secret request opens a masked card and the agent gets a file it uses", {
   expect(await hui.stored(value)).toEqual([]);
 });
 
-test("Cancel ends a secret request without a file", { tags: ["AGENT-017"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Cancel ends a secret request without a file", { tags: ["AGENT-017"] }, async ({ screen, hui }) => {
   const card = screen.getByTestId("question-card");
   const before = await hui.secretDirectories();
   await requestSecret(hui, screen, "Cancelled secret");

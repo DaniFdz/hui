@@ -10,7 +10,9 @@
 // comes from the snapshot and `queue_update` events as the core's rows, and its changes go to `POST …/queue`.
 // The snapshot names the running model, and once the
 // runtime is ready the model list loads, once per model, as the web's conversation controller loads it; choosing one
-// goes to `POST …/model`. An SDK-worker session can continue without a prompt (`POST …/resume`).
+// goes to `POST …/model`. An SDK-worker session can continue without a prompt (`POST …/resume`). The open question
+// (an `ask_user_question` card or a secret request) is the snapshot's, kept while it stays pending, or the first one a
+// `question` event brings; answering hides it and `POST …/question` sends the answer, and a refusal shows it again.
 import Foundation
 import Observation
 
@@ -45,6 +47,7 @@ final class ConversationModel {
     private(set) var models: [API.RuntimeModel] = []
     private(set) var continuing = false
     private(set) var runError: RunErrorNotice?
+    private(set) var question: API.SessionQuestion?
     private var dismissedRunError: String?
     private var modelsRequested = false
 
@@ -166,6 +169,17 @@ final class ConversationModel {
         continuing = false
     }
 
+    func answer(_ reply: QuestionReply) async {
+        guard let shown = question, let questionId = shown.id else { return }
+        question = nil
+        do {
+            let _: API.JSONValue = try await client.post(path("question"), body: QuestionAnswer(id: questionId, reply: reply))
+        } catch {
+            if question == nil { question = shown }
+            sendError = error.localizedDescription
+        }
+    }
+
     var shownRunError: RunErrorNotice? {
         guard !streaming, let runError, runError.key != dismissedRunError else { return nil }
         return runError
@@ -274,6 +288,10 @@ final class ConversationModel {
                 streaming = true
                 stopping = false
             }
+            if case .question(let asked) = event.data {
+                if question == nil, asked.question.id != nil { question = asked.question }
+                return
+            }
             if case .queueUpdate(let update) = event.data {
                 try await setQueue(update.queue, current)
                 return
@@ -292,6 +310,8 @@ final class ConversationModel {
         let projection = try await core.transcript(handle, snapshot: snapshot.transcript, streaming: Self.streaming(snapshot.status))
         guard current == generation else { return }
         show(projection)
+        let shown = snapshot.questions.filter { $0.id != nil }
+        question = shown.first { $0.id == question?.id } ?? shown.first
         if let model = snapshot.model { currentModel = model }
         try await setQueue(snapshot.queue, current)
         await setStatus(snapshot.status, current)
@@ -338,8 +358,48 @@ final class ConversationModel {
         status == .running || status == .waiting
     }
 
+    enum QuestionReply {
+        case value(String)
+        case answers([Answer])
+        case cancelled
+
+        struct Answer: Encodable, Equatable {
+            var selected: [String]
+            var custom: String?
+        }
+    }
+
+    private struct QuestionAnswer: Encodable {
+        var id: String
+        var reply: QuestionReply
+
+        private enum CodingKeys: String, CodingKey {
+            case id, value, answers, cancelled
+        }
+
+        func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            switch reply {
+            case .value(let value): try container.encode(value, forKey: .value)
+            case .answers(let answers): try container.encode(answers, forKey: .answers)
+            case .cancelled: try container.encode(true, forKey: .cancelled)
+            }
+        }
+    }
+
     private struct PromptRequest: Encodable {
         var text: String
         var requestId: String
+    }
+}
+
+extension API.SessionQuestion {
+    var id: String? {
+        switch self {
+        case .secret(let secret): secret.id
+        case .questionnaire(let questionnaire): questionnaire.id
+        default: nil
+        }
     }
 }

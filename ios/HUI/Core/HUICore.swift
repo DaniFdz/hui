@@ -209,7 +209,9 @@ actor HUICore {
     }
 
     private func json(_ value: any Encodable) throws -> JSValue {
-        let text = String(decoding: try JSONEncoder().encode(value), as: UTF8.self)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        let text = String(decoding: try encoder.encode(value), as: UTF8.self)
         return try invoke(global: "JSON", "parse", text)
     }
 
