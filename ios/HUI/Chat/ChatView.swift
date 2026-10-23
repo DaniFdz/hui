@@ -31,6 +31,7 @@ struct ChatView: View {
     @State private var placeholder = "Send a message…"
     @State private var errorDetailsShown = false
     @State private var copiedKey = ""
+    @State private var copiedReset: Task<Void, Never>?
     @FocusState private var composing: Bool
     @FocusState private var naming: Bool
     @State private var name = ""
@@ -252,9 +253,10 @@ struct ChatView: View {
             Button(copiedKey == key ? "Copied" : footer.copyLabel, systemImage: copiedKey == key ? "checkmark" : "doc.on.doc") {
                 UIPasteboard.general.string = footer.text
                 copiedKey = key
-                Task {
+                copiedReset?.cancel()
+                copiedReset = Task {
                     try? await Task.sleep(for: .seconds(1.5))
-                    if copiedKey == key { copiedKey = "" }
+                    if !Task.isCancelled { copiedKey = "" }
                 }
             }
         }

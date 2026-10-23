@@ -4,7 +4,7 @@
 // shows as text, as the web escapes it, and a link the parser hides (an unsafe scheme) stays plain text. While a streamed
 // reply only grows, the last answer's tokens stay drawn until the core answers for the new text; a source replaced by a
 // different one shows as plain text until then, and so does a source the core fails to parse. Given the message's
-// Markdown, a code block's touch-and-hold menu copies its code (Copy code) or the message (Copy as markdown).
+// Markdown, a code block's touch-and-hold menu copies its code (Copy code, not on a math block) or the message (Copy as markdown).
 import SwiftUI
 
 struct MarkdownToken: Decodable, Equatable, Sendable {
@@ -47,7 +47,7 @@ struct MarkdownView: View {
 
     enum Block {
         case text(AttributedString, prefix: String, font: Font?)
-        case code(String)
+        case code(String, math: Bool)
         case rule
     }
 
@@ -58,14 +58,14 @@ struct MarkdownView: View {
                 if !prefix.isEmpty { Text(prefix).accessibilityHidden(true) }
                 Text(text).font(font).textSelection(.enabled)
             }
-        case .code(let code):
+        case .code(let code, let math):
             ScrollView(.horizontal) {
                 Text(code.trimmingCharacters(in: .newlines)).font(.system(.footnote, design: .monospaced)).textSelection(.enabled).padding(8)
             }
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
             .contextMenu {
                 if let copyMarkdown {
-                    Button("Copy code") { UIPasteboard.general.string = code }
+                    if !math { Button("Copy code") { UIPasteboard.general.string = code } }
                     Button("Copy as markdown") { UIPasteboard.general.string = copyMarkdown }
                 }
             }
@@ -103,7 +103,7 @@ struct MarkdownView: View {
                 let lead = String(repeating: "▍", count: quote) + prefix
                 blocks.append(.text(inline(token.children ?? []), prefix: lead, font: font))
                 prefix = ""
-            case "fence", "code_block", "hui_math_block": blocks.append(.code(token.content))
+            case "fence", "code_block", "hui_math_block": blocks.append(.code(token.content, math: token.type == "hui_math_block"))
             case "html_block": blocks.append(.text(AttributedString(token.content.trimmingCharacters(in: .newlines)), prefix: "", font: nil))
             case "hr": blocks.append(.rule)
             default: continue

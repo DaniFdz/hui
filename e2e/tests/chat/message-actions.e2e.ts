@@ -31,6 +31,8 @@ test("Copy response copies a reply and turns to Copied, and a sent prompt's cont
   await screen.getByRole("button", "Send message").tap();
   const code = transcript.getByText(/^line 1: fixture/u);
   await expect(code).toBeVisible();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await expect(transcript.getByRole("button", "Copy response").last()).toBeVisible();
   await hui.contextMenu(code);
   await screen.getByText("Copy code").tap();
   await expect.poll(() => hui.copied()).toMatch(/^line 1: fixture .*\nline 10: fixture /su);
