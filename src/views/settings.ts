@@ -5,10 +5,10 @@
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal/font.ts";
-import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/theme/appearance.ts";
+import { TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
-import { SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
+import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
 
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
@@ -44,20 +44,6 @@ import { loadViewAssets } from "../lib/view-assets.ts";
 export { filterSettingsPages, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
 
 loadViewAssets(() => import("../styles/openclaw-workspaces.css"));
-
-const MODE_LABELS: Record<ThemeMode, string> = {
-  system: "System",
-  light: "Light",
-  dark: "Dark",
-};
-
-const SCALE_LABELS: Record<TextScaleStop, string> = {
-  90: "Small",
-  100: "Default",
-  110: "Large",
-  125: "XL",
-  140: "XXL",
-};
 
 export const SETTINGS_DRAWER_DEFAULT_OPEN = false;
 
@@ -268,7 +254,7 @@ function renderThemeSection(props: SettingsProps) {
                 ?disabled=${!selectable}
                 @click=${() => props.onSelectMode(mode)}
               >
-                ${MODE_LABELS[mode]}
+                ${SETTINGS_COPY.modes[mode]}
               </button>
             `,
           )}
@@ -454,7 +440,7 @@ function renderTextSizeSection(props: SettingsProps) {
                   textScale: stop,
                 })}
               >
-                <span class="settings-text-scale__sample">${SCALE_LABELS[stop]}</span>
+                <span class="settings-text-scale__sample">${SETTINGS_COPY.scales[stop]}</span>
                 <span class="settings-text-scale__label">${stop}%</span>
               </button>
             `,
@@ -638,7 +624,7 @@ function renderSkillsPage(props: SettingsProps) {
 /** One section per external service: Jira, GitHub, then Datadog. */
 function renderIntegrationsPage() {
   return html`
-    <p class="settings-page__intro">Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.</p>
+    <p class="settings-page__intro">${SETTINGS_COPY.intros.integrations}</p>
     <hui-jira-settings></hui-jira-settings>
     <hui-github-settings></hui-github-settings>
     <hui-datadog-settings></hui-datadog-settings>
@@ -841,7 +827,7 @@ export function renderConnectionPage(props: SettingsProps) {
   const tone = failed ? "danger" : health ? "ok" : "warn";
   const label = failed ? "Disconnected" : health ? "Connected" : "Connecting…";
   return html`
-    <p class="settings-page__intro">Gateway access and live PI runtime state.</p>
+    <p class="settings-page__intro">${SETTINGS_COPY.intros.connection}</p>
     ${renderSection(
       "Access",
       "Connection checked every 3 seconds while this page is visible.",
@@ -866,7 +852,7 @@ function renderPluginsPage(props: SettingsProps) {
   if (!pi) return renderPiMissing(props);
   const resources = pi.settings.resources;
   return html`
-    <p class="settings-page__intro">PI packages and extension sources. Disable one to exclude it from new HUI SDK runtimes without uninstalling it or changing PI settings.</p>
+    <p class="settings-page__intro">${SETTINGS_COPY.intros.plugins}</p>
     ${renderSection(
       "Add package",
       "Paste a package page from pi.dev/packages.",
@@ -900,7 +886,7 @@ function renderMemoryPage(props: SettingsProps) {
   const data = props.workspaces;
   if (!data) return html`<div class="settings-page__note settings-page__intro" role=${props.workspaceError ? "alert" : "status"}>${props.workspaceError || "Reading workspace inventory…"}${props.workspaceError ? html`<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button>` : nothing}</div>`;
   return html`
-    <p class="settings-page__intro">Workspace-local context and memory inventory. Nothing is copied into PI or OpenClaw.</p>
+    <p class="settings-page__intro">${SETTINGS_COPY.intros.memory}</p>
     ${renderSection(
       "Sources",
       data.memory.length ? `${data.memory.length} file${data.memory.length === 1 ? "" : "s"} discovered` : "No workspace memory sources found.",
@@ -915,9 +901,7 @@ function renderMemoryPage(props: SettingsProps) {
 
 function renderAppearancePage(props: SettingsProps) {
   return html`
-    <p class="settings-page__intro">
-      Theme, chat, and sidebar preferences for this Control UI client.
-    </p>
+    <p class="settings-page__intro">${SETTINGS_COPY.intros.appearance}</p>
     ${renderLanguageSection()} ${renderThemeSection(props)} ${renderAccentSection(props)} ${renderFontSection(props)}
     ${renderTextSizeSection(props)} ${renderChatSection(props)}
     <p class="settings-page__note settings-page__intro">
@@ -931,7 +915,7 @@ function renderAppearancePage(props: SettingsProps) {
 function renderDiagnosticsPage(props: SettingsProps) {
   const snapshot = props.observability;
   if (!snapshot) return html`<div class="settings-page__note settings-page__intro" role=${props.observabilityError ? "alert" : "status"}>${props.observabilityError || "Reading diagnostics…"}<button type="button" class="btn" @click=${props.onRefreshObservability}>Retry</button></div>`;
-  return html`<p class="settings-page__intro">Runtime logs, activity, health and a redacted diagnostic export.</p>
+  return html`<p class="settings-page__intro">${SETTINGS_COPY.intros.diagnostics}</p>
     ${renderSection("Gateway", "Current process-level diagnostic state.", html`
       ${renderRow("Runtime", `${snapshot.debug.platform} · ${snapshot.debug.node}`, html`<span class="settings-row__value">Online</span>`)}
       ${renderRow("Activity retention", "Best-effort in-memory operational metadata.", html`<span>${snapshot.debug.eventCount} / ${snapshot.retention.maximum}</span>`)}
@@ -961,7 +945,7 @@ function renderWorktreesSettingsPage(props: SettingsProps) {
 
 function renderSecurityPage(props: SettingsProps) {
   const authenticated = props.pi?.model.authenticated ?? [];
-  return html`<p class="settings-page__intro">Local exposure, credential boundaries and diagnostic privacy.</p>
+  return html`<p class="settings-page__intro">${SETTINGS_COPY.intros.security}</p>
     ${renderSection("Access", "HUI keeps the agreed Full Access runtime model without an approval interception layer.", html`
       ${renderRow("Runtime permissions", "HUI delegates tool execution to the configured PI runtime.", html`<span class="settings-row__value">${props.health?.access ?? "Full Access"}</span>`)}
       ${renderRow("Browser API guard", "Every /__hui/ request requires the local-client header; cross-origin preflights are refused.", html`<code>x-hui: 1</code>`)}
@@ -1087,7 +1071,7 @@ export function renderSettingsPage(props: SettingsProps) {
             )}
           </section>
         `)}
-        <p class="settings-sidebar__empty" hidden>No settings match.</p>
+        <p class="settings-sidebar__empty" hidden>${SETTINGS_COPY.noMatch}</p>
       </nav>
       <footer class="settings-sidebar__footer">
         <span class="settings-save-indicator ${props.saveFailed ? "settings-save-indicator--danger settings-status--danger" : ""}" role="status">

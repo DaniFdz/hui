@@ -13,7 +13,7 @@ struct RootView: View {
     let core: HUICore
     @State private var gateway = GatewayModel()
     @State private var sessions: SessionsModel
-    @State private var settings = SettingsModel()
+    @State private var settings: SettingsModel
     @State private var path: [Screen] = []
     @State private var route = "/"
     @State private var navigations = 0
@@ -22,6 +22,7 @@ struct RootView: View {
     init(core: HUICore) {
         self.core = core
         _sessions = State(initialValue: SessionsModel(core: core))
+        _settings = State(initialValue: SettingsModel(core: core))
     }
 
     var body: some View {

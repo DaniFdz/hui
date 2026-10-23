@@ -9,7 +9,7 @@ import { fetchThemeFile, fetchThemeList, postThemeImport, type ThemeRef } from "
 import { applyThemeMode, type ThemeMode, type ThemeVariant } from "./theme.ts";
 import { mapTheme, swatchesFor, themeColor, type ShadcnTheme, type ThemeSwatches, type ThemeTokens } from "./shadcn-theme.ts";
 import { controlUiAccentInk } from "./accent-contrast.ts";
-import { parseColor, readableOn, toHex, TEXT_CONTRAST, type Rgb } from "./color-contrast.ts";
+import { readableAccent, type Rgb } from "./color-contrast.ts";
 
 export type ThemePreview = { id: string; name: string } & ThemeSwatches;
 
@@ -74,14 +74,6 @@ function applyTokens(tokens: Readonly<Record<string, string>>): void {
   }
 }
 
-/** The accent as chosen, or moved to the lightness that reads on these surfaces (hue kept). */
-function solvedAccent(accent: string, surfaces: readonly Rgb[] | undefined): string {
-  const source = parseColor(accent);
-  if (!source || !surfaces?.length) return accent;
-  const solved = readableOn(source, surfaces, TEXT_CONTRAST);
-  return solved === source ? accent : toHex(solved);
-}
-
 /**
  * The accent roles for a user accent. Without surfaces the accent is used as
  * chosen. With them, each mode the theme carries gets the accent at a lightness
@@ -90,8 +82,8 @@ function solvedAccent(accent: string, surfaces: readonly Rgb[] | undefined): str
  * hover then moves toward that mode's ink instead of always toward white.
  */
 export function accentOverrideTokens(accent: string, surfaces: AccentSurfaces = {}): Record<string, string> {
-  const light = surfaces.light ? solvedAccent(accent, surfaces.light) : undefined;
-  const dark = surfaces.dark ? solvedAccent(accent, surfaces.dark) : undefined;
+  const light = surfaces.light ? readableAccent(accent, surfaces.light) : undefined;
+  const dark = surfaces.dark ? readableAccent(accent, surfaces.dark) : undefined;
   const pair = (forLight: string, forDark: string) => light !== undefined && dark !== undefined
     ? (forLight === forDark ? forLight : `light-dark(${forLight}, ${forDark})`)
     : light !== undefined ? forLight : forDark;

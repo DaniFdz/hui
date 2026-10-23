@@ -1,9 +1,10 @@
 // The gateway's settings document, as the web's settings controller holds it: read once the gateway connects, changed
 // here at once and written back whole with PUT /__hui/settings. A write the gateway refuses keeps the change for now
-// and sets saveFailed, so Settings says it was not saved; writes go one at a time, in order, and the next start reads what the gateway kept. The chosen
-// theme's file says which variants it carries (a theme with one variant fixes the colour mode, as on the web) and the
-// colours of each: its background, foreground, card and primary tokens, written as #rrggbb, become the app's colours,
-// and the accent override, when set, its tint.
+// and sets saveFailed, so Settings says it was not saved; writes go one at a time, in order, and the next start reads
+// what the gateway kept. The chosen theme's file goes through the core's themePalettes, the mapping the web applies, so
+// every colour format the web accepts works: it says which variants the theme carries (a theme with one variant fixes
+// the colour mode, through the core's effectiveColorScheme) and each mode's background, text, card and accent, the
+// accent override solved to read on that mode's page as on the web.
 import Observation
 import SwiftUI
 
@@ -12,13 +13,23 @@ import SwiftUI
 final class SettingsModel {
     private(set) var settings: API.Settings?
     private(set) var saveFailed = false
+    private(set) var copy = SettingsCopy()
     private(set) var variant = "both"
+    private(set) var colorScheme: ColorScheme?
     private(set) var themes: [API.ThemeRef] = []
-    private(set) var palettes: [String: ThemePalette] = [:]
+    private(set) var palettes = ThemePalettes()
+    private let core: HUICore
+    private var themeFile: API.JSONValue?
     private var writes = 0
     private var writing: Task<Void, Never>?
+    private var looks = 0
+
+    init(core: HUICore) {
+        self.core = core
+    }
 
     func load(_ client: GatewayClient) async {
+        if let copy = try? await core.settingsCopy() { self.copy = copy }
         settings = try? await client.get("/__hui/settings")
         themes = (try? await client.get("/__hui/themes", as: API.ThemesResponse.self))?.themes ?? []
         await loadTheme(client)
@@ -30,24 +41,28 @@ final class SettingsModel {
     }
 
     func palette(_ scheme: ColorScheme) -> ThemePalette? {
-        palettes[scheme == .dark ? "dark" : "light"] ?? palettes.values.first
+        (scheme == .dark ? palettes.dark : palettes.light) ?? palettes.dark ?? palettes.light
     }
 
     private func loadTheme(_ client: GatewayClient) async {
         let theme = settings?.theme
         let file: API.JSONValue? = if let ref = themes.first(where: { $0.id == theme }) { try? await client.get(ref.url) } else { nil }
         guard settings?.theme == theme else { return }
-        guard case .object(let file) = file else {
-            variant = "both"
-            palettes = [:]
-            return
-        }
-        let modes = if case .object(let vars) = file["cssVars"] { vars } else { file }
-        variant = modes["light"] == nil && modes["dark"] != nil ? "dark" : modes["dark"] == nil && modes["light"] != nil ? "light" : "both"
-        palettes = modes.compactMapValues { mode in
-            guard case .object(let tokens) = mode else { return nil }
-            return ThemePalette(tokens)
-        }
+        themeFile = file
+        await refreshLook()
+    }
+
+    private func refreshLook() async {
+        looks += 1
+        let look = looks
+        let accent = settings?.accent ?? ""
+        let found: ThemePalettes? = if let themeFile { try? await core.themePalettes(themeFile, accent: accent) } else { nil }
+        let variant = found?.variant ?? "both"
+        let scheme = (try? await core.effectiveColorScheme(settings?.themeMode.rawValue ?? "system", variant: variant)) ?? ""
+        guard look == looks else { return }
+        self.variant = variant
+        palettes = found ?? ThemePalettes()
+        colorScheme = scheme == "dark" ? .dark : scheme == "light" ? .light : nil
     }
 
     func change(_ client: GatewayClient?, _ edit: (inout API.Settings) -> Void) {
@@ -56,20 +71,13 @@ final class SettingsModel {
         settings = next
         writes += 1
         let write = writes
+        Task { await refreshLook() }
         let previous = writing
         writing = Task {
             await previous?.value
             let saved = try? await client.send("PUT", "/__hui/settings", body: next, as: API.Settings.self)
             guard write == writes else { return }
             saveFailed = saved == nil
-        }
-    }
-
-    var colorScheme: ColorScheme? {
-        switch variant == "both" ? settings?.themeMode.rawValue : variant {
-        case "dark": .dark
-        case "light": .light
-        default: nil
         }
     }
 
@@ -88,22 +96,17 @@ final class SettingsModel {
     }
 }
 
-struct ThemePalette: Equatable {
-    var background: Color
-    var foreground: Color
-    var card: Color
-    var primary: Color
+struct ThemePalettes: Decodable, Equatable, Sendable {
+    var variant = "both"
+    var light: ThemePalette?
+    var dark: ThemePalette?
+}
 
-    init?(_ tokens: [String: API.JSONValue]) {
-        func color(_ name: String) -> Color? {
-            if case .string(let hex) = tokens[name] { Color(hex: hex) } else { nil }
-        }
-        guard let background = color("background"), let foreground = color("foreground") else { return nil }
-        self.background = background
-        self.foreground = foreground
-        card = color("card") ?? background
-        primary = color("primary") ?? foreground
-    }
+struct ThemePalette: Decodable, Equatable, Sendable {
+    var background: String
+    var foreground: String
+    var card: String
+    var accent: String
 }
 
 extension Color {
@@ -121,10 +124,10 @@ struct Themed: ViewModifier {
         let palette = settings.palette(scheme)
         content
             .scrollContentBackground(palette == nil ? .automatic : .hidden)
-            .background(palette?.background ?? .clear)
-            .foregroundStyle(palette?.foreground ?? .primary)
-            .tint(settings.accent ?? palette?.primary)
-            .environment(\.themeCard, palette?.card)
+            .background(palette.flatMap { Color(hex: $0.background) } ?? .clear)
+            .foregroundStyle(palette.flatMap { Color(hex: $0.foreground) } ?? .primary)
+            .tint(palette.flatMap { Color(hex: $0.accent) } ?? settings.accent)
+            .environment(\.themeCard, palette.flatMap { Color(hex: $0.card) })
     }
 }
 

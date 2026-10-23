@@ -1,7 +1,7 @@
 // The web's Settings shell as its phone layout shows it: the open page under its title, and Open settings navigation
 // bringing up the page list as a sheet, with Search settings (the core's filterSettingsPages), the pages in their
 // groups, whether settings were saved and Exit Settings. Appearance is a Form with the web's Theme, Color mode, Text size and
-// Chat preferences; the other pages show their web introduction until their controls are built.
+// Chat preferences; the other pages show their web introduction until their controls are built. The words the web's Settings shell shares (page introductions, the empty search, the Color mode and Text size names) come from the core's SETTINGS_COPY.
 import SwiftUI
 
 struct SettingsView: View {
@@ -19,7 +19,7 @@ struct SettingsView: View {
         Form {
             Section {
                 Text(pages.first { $0.id == page }?.label ?? "").font(.largeTitle.bold()).accessibilityIdentifier("settings-page-title").accessibilityAddTraits(.isHeader)
-                Text(SettingsView.intros[page] ?? "").foregroundStyle(.secondary)
+                Text(settings.copy.intros[page] ?? "").foregroundStyle(.secondary)
             }
             .listRowBackground(card)
             if page == "appearance" { AppearanceSections(settings: settings, client: client) }
@@ -35,7 +35,7 @@ struct SettingsView: View {
             }
         }
         .sheet(isPresented: $navigating) {
-            SettingsNavigation(page: page, core: core, saveFailed: settings.saveFailed, select: { chosen in
+            SettingsNavigation(page: page, core: core, noMatch: settings.copy.noMatch, saveFailed: settings.saveFailed, select: { chosen in
                 navigating = false
                 select(chosen)
             }, exit: {
@@ -48,18 +48,13 @@ struct SettingsView: View {
             pages = (try? await core.filterSettingsPages("")) ?? []
         }
     }
+}
 
-    static let intros = [
-        "appearance": "Theme, chat, and sidebar preferences for this Control UI client.",
-        "connection": "Gateway access and live PI runtime state.",
-        "integrations": "Connect HUI to external services. Credentials stay on this machine and are never sent to the browser.",
-        "plugins": "PI packages and extension sources. Disable one to exclude it from new HUI SDK runtimes without uninstalling it or changing PI settings.",
-        "memory": "Workspace-local context and memory inventory. Nothing is copied into PI or OpenClaw.",
-        "automation": "Scheduled tasks, manual runs and run history owned by HUI.",
-        "security": "Local exposure, credential boundaries and diagnostic privacy.",
-        "worktrees": "Linked worktrees of the Git repositories your HUI sessions use, plus those New Session created in ~/.config/hui/worktrees. Main checkouts are not listed.",
-        "diagnostics": "Runtime logs, activity, health and a redacted diagnostic export.",
-    ]
+struct SettingsCopy: Decodable, Sendable {
+    var noMatch = ""
+    var modes: [String: String] = [:]
+    var scales: [String: String] = [:]
+    var intros: [String: String] = [:]
 }
 
 struct SettingsPageEntry: Decodable, Hashable, Sendable {
@@ -80,6 +75,7 @@ private struct SaveIndicator: View {
 private struct SettingsNavigation: View {
     let page: String
     let core: HUICore
+    let noMatch: String
     let saveFailed: Bool
     let select: (String) -> Void
     let exit: () -> Void
@@ -110,7 +106,7 @@ private struct SettingsNavigation: View {
                                     .foregroundStyle(entry.id == page ? Color.accentColor : .primary)
                             }
                         }
-                        if shown.isEmpty { Text("No settings match.").foregroundStyle(.secondary) }
+                        if shown.isEmpty { Text(noMatch).foregroundStyle(.secondary) }
                     }
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Settings pages")
@@ -155,7 +151,7 @@ private struct AppearanceSections: View {
             }
             .listRowBackground(card)
             Section {
-                Choices(label: "Color mode", options: [(API.Settings.ThemeMode.system, "System"), (.light, "Light"), (.dark, "Dark")], chosen: current.themeMode) { mode in
+                Choices(label: "Color mode", options: ["system", "light", "dark"].map { (API.Settings.ThemeMode(rawValue: $0), settings.copy.modes[$0] ?? $0) }, chosen: current.themeMode) { mode in
                     settings.change(client) { $0.themeMode = mode }
                 }
                 .disabled(settings.variant != "both")
@@ -166,7 +162,7 @@ private struct AppearanceSections: View {
             }
             .listRowBackground(card)
             Section {
-                Choices(label: "Text size", options: [(API.Settings.TextScale._90, "Small 90%"), (._100, "Default 100%"), (._110, "Large 110%"), (._125, "XL 125%"), (._140, "XXL 140%")], chosen: current.textScale) { scale in
+                Choices(label: "Text size", options: [90, 100, 110, 125, 140].map { (API.Settings.TextScale(rawValue: Double($0)), "\(settings.copy.scales[String($0)] ?? "") \($0)%") }, chosen: current.textScale) { scale in
                     settings.change(client) { $0.textScale = scale }
                 }
             } header: {
