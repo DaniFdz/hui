@@ -16,7 +16,7 @@ const replay = (hui: Hui, session: string, id: string) => hui.api<{ data: string
  * interactive shell is ready are echoed by the terminal and then discarded. */
 const ready = (hui: Hui, session: string, id: string) => expect.poll(async () => (await replay(hui, session, id)).trim()).not.toBe("");
 
-/** Types into a terminal's shell, one key at a time, the way the operator does after tapping it. */
+/** Taps a terminal and types a command and Enter into its shell, the way the operator does. */
 const run = async (hui: Hui, terminal: Locator, command: string) => {
   await terminal.tap();
   await hui.type(`${command}\n`);
@@ -141,6 +141,11 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   await hui.prompt(stranger, "E2E_SHARED_TERMINAL");
   await hui.open(`/sessions/${stranger.id}`);
   await expect(screen.getByText("No shared terminal was opened.")).toBeVisible();
+
+  const child = await hui.createSubagent(session);
+  await hui.prompt(child, "E2E_SHARED_TERMINAL");
+  await hui.open(`/sessions/${child.id}`);
+  await expect(screen.getByText("No shared terminal was opened.")).toBeVisible();
   expect(await replay(hui, session.id, id)).not.toContain("No shared terminal");
 });
 
@@ -180,13 +185,14 @@ test("End terminal stops its shell and closes its tab while the other terminals 
 
 test("below 1100px the key bar interrupts a running program, locks Ctrl on a double tap and recalls the last command", { tags: ["WORK-032"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
-  const session = await hui.createSession({ title: "Terminal keys", cwd: repository.path });
+  const session = await hui.createSession({ title: "Key bar", cwd: repository.path });
   const terminal = screen.getByLabel("Shared terminal input", { visible: true });
 
   await hui.phoneScreen();
   await hui.open(`/sessions/${session.id}`);
   await screen.getByRole("button", "Open terminal").tap();
-  const key = (name: string) => screen.getByRole("button", name);
+  const keys = screen.getByLabel("Terminal keys");
+  const key = (name: string) => keys.getByRole("button", name);
   for (const name of ["Escape", "Tab", "Control for next keystroke", "Up arrow", "Down arrow", "Left arrow", "Right arrow"]) {
     await expect(key(name)).toBeVisible();
   }
@@ -209,8 +215,7 @@ test("below 1100px the key bar interrupts a running program, locks Ctrl on a dou
   await run(hui, terminal, "echo AFTER");
   await expect.poll(() => replay(hui, session.id, id)).toContain("AFTER");
 
-  await key("Control for next keystroke").tap();
-  await key("Control for next keystroke").tap();
+  await key("Control for next keystroke").doubleTap();
   await expect(key("Control, locked on")).toHaveAttribute("aria-pressed", "true");
 });
 
