@@ -1,4 +1,4 @@
-/** A message's footer replies with a quote and copies it, and its context menu copies the text, a selection or code (CHAT-030, CHAT-032). */
+/** A message's footer replies with a quote and copies it, and its context menu copies the text, a selection or code (CHAT-030, CHAT-032). The composer's quoted draft is matched without its trailing blank line, which a device's text field does not report. */
 import { expect, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
@@ -55,7 +55,8 @@ test("A message from a session has Copy message", { tags: ["CHAT-030"] }, async 
   await hui.open(`/sessions/${child.id}`);
   const transcript = screen.getByTestId("transcript");
   await expect(transcript.getByText("Subagent child result: the fixture contract is working.")).toBeVisible();
-  await transcript.getByRole("button", "Copy message").tap();
+  await hui.messageActions(transcript.getByText("E2E_SUBAGENT_CHILD"));
+  await screen.getByRole("button", "Copy message").tap();
   await expect.poll(() => hui.copied()).toBe("E2E_SUBAGENT_CHILD");
 });
 
@@ -68,7 +69,8 @@ test("A bot's message has Copy message, and its context menu copies its code", {
   const transcript = await reply(screen, hui, call("message_bot", { to: `@${bot.handle}`, message: call("message_bot", { to: `agent:${session.id}`, message: report }) }), session);
   const code = transcript.getByText("const answer = 42;");
   await expect(code).toBeVisible();
-  await transcript.getByRole("button", "Copy message").tap();
+  await hui.messageActions(transcript.getByText("Grace reports back"));
+  await screen.getByRole("button", "Copy message").tap();
   await expect.poll(() => hui.copied()).toBe(report);
 
   await hui.contextMenu(code);
@@ -103,10 +105,12 @@ async function replyTwice(screen: Screen, hui: Hui) {
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
 
   await message.fill("My draft");
-  await transcript.getByRole("button", "Reply to message").first().tap();
-  await expect(message).toHaveValue("My draft\n\n> First line\n> Second line\n\n");
-  await transcript.getByRole("button", "Reply to message").last().tap();
-  await expect(message).toHaveValue("My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response.\n\n");
+  await hui.messageActions(transcript.getByText(/^First line/u));
+  await screen.getByRole("button", "Reply to message").first().tap();
+  await expect(message).toHaveValue(/^My draft\n\n> First line\n> Second line\n*$/u);
+  await hui.messageActions(transcript.getByText("Fixture response."));
+  await screen.getByRole("button", "Reply to message").last().tap();
+  await expect(message).toHaveValue(/^My draft\n\n> First line\n> Second line\n\n\n\n> Fixture response\.\n*$/u);
   await expect(message).toBeFocused();
   return { message, transcript };
 }

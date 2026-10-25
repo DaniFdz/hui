@@ -10,9 +10,10 @@
 // While the conversation loads it says so, and a failed load offers Try again. A send reads "Sending…" until the
 // gateway takes it, and one that fails stays marked "Not sent — draft recovered." with its text back in the draft, as
 // on the web. A run that ended on an error shows the core's error card above the composer (Details, Copy error,
-// Continue, Dismiss error). The user's own prompts show as plain text and a bot's or session's message as Markdown without HUI's header, as on the web. A settled message row ends in
-// Reply to message (the core's quote after the draft) and the core's Copy label, which reads Copied for 1.5 s, and
-// touching and holding a message offers Copy as markdown, or Copy code on a code block (the web's context menu). The open question's card
+// Continue, Dismiss error). The user's own prompts show as plain text and a bot's or session's message as Markdown without HUI's header, as on the web. As on a touch screen's web, a settled message
+// row shows no actions of its own: touching and holding a message offers Reply to message (the core's quote after the
+// draft) and the core's Copy label (Copy response, Copy prompt or Copy message), plus Copy as markdown, or Copy code
+// on a code block (the web's context menu), and only the latest reply keeps its Copy visible, reading Copied for 1.5 s. The open question's card
 // (`QuestionCardView`) sits above the composer, and an answered `ask_user_question` call reads as the core's summary
 // ("Your answers", or "Unanswered questions" once it expired). An empty conversation reads "Start a conversation". Typing
 // a command word opens the core's "Commands and paths" menu (`SlashMenuView`), and the core decides what a send does:
@@ -205,6 +206,7 @@ struct ChatView: View {
     @ViewBuilder private func rowView(_ row: ChatRow) -> some View {
         switch row.kind {
         case .messages:
+            let lastKey = row.messages?.last?.key
             ForEach(row.messages ?? [], id: \.key) { message in
                 let user = message.role == "user"
                 let text = message.shown ?? message.text ?? ""
@@ -220,6 +222,10 @@ struct ChatView: View {
                         .background(user ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 12))
                         .opacity(message.pending == true ? 0.6 : 1)
                         .contextMenu {
+                            if message.key == lastKey, let footer = row.footer {
+                                Button("Reply to message") { reply(quoting: footer.text) }
+                                Button(copiedKey == row.key ? "Copied" : footer.copyLabel) { copy(footer.text, key: row.key) }
+                            }
                             if message.pending != true, !text.isEmpty {
                                 Button("Copy as markdown") { UIPasteboard.general.string = text }
                             }
@@ -233,9 +239,15 @@ struct ChatView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
             }
-            if let footer = row.footer {
-                messageFooter(footer, key: row.key)
-                    .frame(maxWidth: .infinity, alignment: row.messages?.last?.role == "user" ? .trailing : .leading)
+            if row.key == latestReply, let footer = row.footer {
+                Button(copiedKey == row.key ? "Copied" : footer.copyLabel, systemImage: copiedKey == row.key ? "checkmark" : "doc.on.doc") {
+                    copy(footer.text, key: row.key)
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         case .activity where row.answers != nil:
             questionnaireSummary(row.answers!)
@@ -252,29 +264,26 @@ struct ChatView: View {
         }
     }
 
-    private func messageFooter(_ footer: ChatRow.Footer, key: String) -> some View {
-        HStack(spacing: 16) {
-            Button("Reply to message", systemImage: "text.bubble") {
-                Task {
-                    guard let quoted = try? await core.replyDraft(draft, quoting: footer.text) else { return }
-                    draft = quoted
-                    composing = true
-                }
-            }
-            Button(copiedKey == key ? "Copied" : footer.copyLabel, systemImage: copiedKey == key ? "checkmark" : "doc.on.doc") {
-                UIPasteboard.general.string = footer.text
-                copiedKey = key
-                copiedReset?.cancel()
-                copiedReset = Task {
-                    try? await Task.sleep(for: .seconds(1.5))
-                    if !Task.isCancelled { copiedKey = "" }
-                }
-            }
+    private var latestReply: String? {
+        model.rows.last { $0.kind == .messages && $0.messages?.last?.role == "assistant" }?.key
+    }
+
+    private func copy(_ text: String, key: String) {
+        UIPasteboard.general.string = text
+        copiedKey = key
+        copiedReset?.cancel()
+        copiedReset = Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            if !Task.isCancelled { copiedKey = "" }
         }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.borderless)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+    }
+
+    private func reply(quoting text: String) {
+        Task {
+            guard let quoted = try? await core.replyDraft(draft, quoting: text) else { return }
+            draft = quoted
+            composing = true
+        }
     }
 
     private func questionnaireSummary(_ summary: QuestionnaireSummary) -> some View {
