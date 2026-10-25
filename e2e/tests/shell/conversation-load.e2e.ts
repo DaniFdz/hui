@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a connection lost while opening a conversation shows its reason and Try again restores the saved conversation", { tags: ["SHELL-024"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a connection lost while opening a conversation shows its reason and Try again restores the saved conversation", { tags: ["SHELL-024"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Recover this conversation" });
   await hui.prompt(session, "Saved before the connection failed");
   await hui.open("/");

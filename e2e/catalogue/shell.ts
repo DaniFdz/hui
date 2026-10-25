@@ -197,7 +197,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SHELL-025",
