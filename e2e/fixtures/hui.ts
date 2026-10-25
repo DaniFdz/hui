@@ -42,7 +42,7 @@ const MAX_SCROLL_SWIPES = 20;
 type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
-type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
+type ListedSession = { id: string; title: string; status: string; parentId?: string; runtime?: { active: true }; subagent?: { status: string; completionDelivery?: string } };
 type GatewayRequest = { incoming: IncomingMessage; body: Buffer; response: ServerResponse };
 type Intercepted = {
   arrived(): Promise<void>;
@@ -96,6 +96,8 @@ export type Hui = {
   textOf(target: Locator): Promise<string>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
+  /** A real touch gesture on a target: a tap, or a drag of `drag` pixels down the screen. */
+  touch(target: Locator, gesture?: { drag?: number }): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
   wheel(target: Locator, deltaY: number): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
@@ -227,6 +229,23 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
   return null;
 };
 
+/** Touch events a browser sends; a canvas reads them where it never sees a synthetic pointer. */
+const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
+  const target = document.elementFromPoint(x, y);
+  if (!target) throw new Error(`touch: nothing is at ${x}, ${y}`);
+  const at = (clientY: number) => new Touch({ identifier: 1, target, clientX: x, clientY, screenX: x, screenY: clientY });
+  const fire = (type: string, moving: Touch[], ended: Touch[]) => target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: moving, changedTouches: ended, targetTouches: moving }));
+  fire("touchstart", [at(y)], [at(y)]);
+  for (let moved = 0; Math.abs(moved) < Math.abs(drag);) {
+    moved = Math.sign(drag) * Math.min(Math.abs(moved) + 40, Math.abs(drag));
+    fire("touchmove", [at(y + moved)], [at(y + moved)]);
+  }
+  // The finger settles where it stopped, so the drag ends without the momentum a flick would leave.
+  if (drag) fire("touchmove", [at(y + drag)], [at(y + drag)]);
+  fire("touchend", [], [at(y + drag)]);
+  return null;
+};
+
 const trackSockets = () => {
   const sockets = new Set<WebSocket>();
   (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets = sockets;
@@ -269,7 +288,14 @@ export const test = base.extend<{ hui: Hui }>({
     const backlogTaskIds = async () => (await api<{ items: { id: string; kind: string }[] }>("GET", "/__hui/backlog")).items
       .filter((item) => item.kind === "local").map((item) => item.id);
     const prompt = async (session: { id: string }, text: string) => {
-      await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
+      const state = async () => (await sessions()).find(({ id }) => id === session.id);
+      // A stored row reports idle before its runtime exists, and a prompt then is refused as still starting, so the
+      // fixture opens the chat as the operator does and waits for the runtime the prompt needs.
+      if ((await state())?.runtime?.active !== true) await api("POST", `/__hui/sessions/${session.id}/open`);
+      await expect.poll(async () => {
+        const found = await state();
+        return found?.runtime?.active === true && found.status === "idle";
+      }, { timeout: 30_000 }).toBe(true);
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
     };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
@@ -504,6 +530,11 @@ export const test = base.extend<{ hui: Hui }>({
           const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
           await browser().evaluate(touch, { ...point, type: "pointerdown" });
           await browser().evaluate(touch, { ...point, type: "pointerup" });
+        },
+        touch: async (target, { drag = 0 } = {}) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("touch: the target is not on screen");
+          await browser().evaluate(swipe, { x: box.x + box.width / 2, y: box.y + box.height / 2, drag });
         },
         contextMenu: (target) => target.secondaryTap(),
         scrollTo: (_within, target) => target.scrollIntoView(),

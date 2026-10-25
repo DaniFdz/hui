@@ -12,9 +12,21 @@ const item = (screen: Pick<Locator, "getByText">, key: string) => screen.getByTe
 const terminals = (hui: Hui, session: string) => hui.api<{ terminals: Terminal[] }>("GET", `/__hui/sessions/${session}/terminals`).then(({ terminals }) => terminals);
 /** The bytes the gateway replays into this terminal: what its shell has printed. */
 const replay = (hui: Hui, session: string, id: string) => hui.api<{ data: string }>("GET", `/__hui/sessions/${session}/terminals/${id}`).then(({ data }) => data);
-/** Waits for the shell to have started, so its prompt is in the replay before input is typed: keys typed before an
- * interactive shell is ready are echoed by the terminal and then discarded. */
-const ready = (hui: Hui, session: string, id: string) => expect.poll(async () => (await replay(hui, session, id)).trim()).not.toBe("");
+/** Waits for the shell to have started, so its prompt is in the replay before input is typed: the shell runs the
+ * machine's own startup files, which a loaded machine can take many seconds over. */
+const ready = (hui: Hui, session: string, id: string) => expect.poll(async () => (await replay(hui, session, id)).trim(), { timeout: 60_000 }).not.toBe("");
+
+/** Whether the host still has a process a shell reported: the shell prints its own pid, or a program's, and the test
+ * asks this machine instead of the terminal registry. */
+const alive = (pid: number) => {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+};
+
+/** The number a shell printed for `pattern`, once its output is in the replay. */
+const reported = async (hui: Hui, session: string, id: string, pattern: RegExp) => {
+  await expect.poll(() => replay(hui, session, id)).toMatch(pattern);
+  return Number(pattern.exec(await replay(hui, session, id))![1]);
+};
 
 /** Taps a terminal and types a command and Enter into its shell, the way the operator does. */
 const run = async (hui: Hui, terminal: Locator, command: string) => {
@@ -165,8 +177,16 @@ test("End terminal stops its shell and closes its tab while the other terminals 
   const opened = await terminals(hui, session.id);
   expect(opened).toHaveLength(2);
   for (const { id } of opened) await ready(hui, session.id, id);
+  const first = opened.find(({ title }) => title === "Terminal 1")!;
+  const second = opened.find(({ title }) => title === "Terminal 2")!;
 
   await pane.getByRole("tab", "Terminal 1").tap();
+  await run(hui, terminal, "sleep 600 & echo CHILD=$! SHELL=$$");
+  const child = await reported(hui, session.id, first.id, /CHILD=(\d+) SHELL=\d+/u);
+  const shell = await reported(hui, session.id, first.id, /CHILD=\d+ SHELL=(\d+)/u);
+  expect(alive(shell)).toBe(true);
+  expect(alive(child)).toBe(true);
+
   await pane.getByRole("button", "Terminal actions").tap();
   await screen.getByText("End terminal", { visible: true }).tap();
   await expect(pane.getByRole("tab")).toHaveCount(1);
@@ -175,12 +195,18 @@ test("End terminal stops its shell and closes its tab while the other terminals 
   const left = await terminals(hui, session.id);
   expect(left).toHaveLength(1);
   expect(left[0]?.status).toBe("running");
+  await expect.poll(() => alive(shell)).toBe(false);
+  await expect.poll(() => alive(child)).toBe(false);
 
+  await run(hui, terminal, "echo SELF=$$");
+  const self = await reported(hui, session.id, second.id, /SELF=(\d+)/u);
+  expect(alive(self)).toBe(true);
   await run(hui, terminal, "exit 3");
   await expect(pane.getByText("Shared · Exited · 3")).toBeVisible();
   await expect(pane.getByRole("tab", "Terminal 2")).toBeVisible();
   expect((await terminals(hui, session.id))[0]?.status).toBe("exited");
   expect((await terminals(hui, session.id))[0]?.exitCode).toBe(3);
+  await expect.poll(() => alive(self)).toBe(false);
 });
 
 test("below 1100px the key bar interrupts a running program, locks Ctrl on a double tap and recalls the last command", { tags: ["WORK-032"], platforms: ["web"] }, async ({ screen, hui }) => {

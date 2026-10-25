@@ -243,7 +243,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: ["work-view:terminal", "route:GET /__hui/sessions/:owner/terminals", "route:POST /__hui/sessions/:owner/terminals", "route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -253,7 +253,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals", "docs/api.md#shared-terminal-api-and-tool"],
     surfaces: ["work-view:terminal", "route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -263,7 +263,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: ["work-view:terminal", "route:POST /__hui/sessions/:owner/terminals"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -273,7 +273,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals", "docs/api.md#shared-terminal-api-and-tool"],
     surfaces: ["tool:terminal"],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -293,7 +293,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals", "docs/api.md#shared-terminal-api-and-tool"],
     surfaces: ["route:POST /__hui/sessions/:owner/terminals/:id"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -323,7 +323,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -333,7 +333,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
