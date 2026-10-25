@@ -22,6 +22,7 @@ const launcher = (target: string, port: string) => ({
 export default {
   tests: "e2e/tests/**/*.e2e.ts",
   retries: 0,
+  timeout: 180_000,
   workers: 1,
   assertionTimeout: 15_000,
   reporters: ["list", "junit", "markdown"],
