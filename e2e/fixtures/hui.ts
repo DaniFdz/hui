@@ -77,6 +77,7 @@ export type Hui = {
   clipboard(options?: { refuse?: boolean }): Promise<void>;
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
+  type(text: string): Promise<void>;
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
   settingsPages(): Promise<void>;
@@ -96,6 +97,7 @@ export type Hui = {
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
+  wheel(target: Locator, deltaY: number): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
@@ -321,6 +323,7 @@ export const test = base.extend<{ hui: Hui }>({
         }, refuse),
         copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
         keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+        type: (text) => browser().keyboard.type(text),
         phoneScreen: async (orientation = "portrait") => {
           const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
           await browser().setViewport(phone);
@@ -511,6 +514,12 @@ export const test = base.extend<{ hui: Hui }>({
           if (!box) throw new Error("scrollSideways: the target is not on screen");
           await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
           await browser().mouse.wheel(240, 0);
+        },
+        wheel: async (target, deltaY) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("wheel: the target is not on screen");
+          await browser().mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await browser().mouse.wheel(0, deltaY);
         },
         stored: async (text) => {
           const root = dirname(receipt.workspace);

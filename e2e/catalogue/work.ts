@@ -415,7 +415,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["work-view:files", "route:GET /__hui/sessions/:id/files", "route:GET /__hui/sessions/:id/files/list"],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -495,7 +495,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/files/search"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -515,7 +515,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:POST /__hui/sessions/:id/files/entry"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -525,7 +525,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:DELETE /__hui/sessions/:id/files/entry"],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
