@@ -1,8 +1,10 @@
 These are the faces HUI bundles, the same ones the web loads from `public/fonts`: the eight interface, chat and code
 faces plus HUI's Nerd Font symbols. iOS registers a font file with CoreText, which reads TrueType and OpenType, not the
-woff2 subsets the web ships, so each file is one of those subsets decompressed. The licence of every face is its
-OpenFont License text in `public/fonts`, and the symbols face carries the MIT and bundled icon-set licences of
-`public/fonts/symbols-nerd-font-mono-LICENSE.txt`.
+woff2 subsets the web ships, so each file is one of those subsets decompressed. `Licenses/` holds the licence text of
+every face, copied from the web's `public/fonts` (`<face>-OFL.txt`, and the symbols face's MIT and bundled icon-set
+licences in `hui-nerd-font-symbols-LICENSE.txt`), because the app ships these files and the fonts' licences along with
+them: the Xcode target copies them into the app bundle beside the faces. A new face here copies its licence text into
+`Licenses/` in the same change.
 
 Rebuild one from the web's copy with fontTools and brotli, which `uv` fetches without installing anything:
 
