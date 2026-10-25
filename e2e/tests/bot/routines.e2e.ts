@@ -18,7 +18,7 @@ test("Add routine takes a name, a prompt and a cadence, refuses an empty name or
   await expect(screen.getByLabel("Repeat every")).toBeVisible();
   const units = await hui.textOf(screen.getByLabel("Interval unit"));
   for (const unit of ["minutes", "hours", "days"]) expect(units).toContain(unit);
-  await expect(screen.getByText(/^Times are in \S+/u)).toBeVisible();
+  const zone = (await hui.textOf(screen.getByText(/^Times are in \S+/u))).replace("Times are in ", "").replace(/\..*$/u, "");
 
   await screen.getByRole("button", "Add routine").tap();
   await expect(screen.getByText("Name the routine.")).toBeVisible();
@@ -34,9 +34,20 @@ test("Add routine takes a name, a prompt and a cadence, refuses an empty name or
   await expect(screen.getByText("Inbox digest", { exact: true })).toBeVisible();
   await expect(screen.getByText(/^Daily at 08:00 · next /u)).toBeVisible();
   await expect(screen.getByRole("switch", "Enable Inbox digest")).toBeChecked();
-  const scheduled = (await hui.api<{ tasks: { name: string; schedule: { kind: string; expression: string }; enabled: boolean; prompt: string }[] }>("GET", "/__hui/automation")).tasks.find((task) => task.name === "Inbox digest")!;
+  const tasks = async () => (await hui.api<{ tasks: { sessionId: string; name: string; schedule: { kind: string; expression: string; timezone: string }; enabled: boolean; prompt: string }[] }>("GET", "/__hui/automation")).tasks.filter((task) => task.sessionId === bot.sessionId);
+  const scheduled = (await tasks()).find((task) => task.name === "Inbox digest")!;
   expect(scheduled).toEqual(expect.objectContaining({ enabled: true, prompt: "Summarize my inbox for the day." }));
-  expect(scheduled.schedule).toEqual(expect.objectContaining({ kind: "cron", expression: "0 8 * * *" }));
+  expect(scheduled.schedule).toEqual(expect.objectContaining({ kind: "cron", expression: "0 8 * * *", timezone: zone }));
+
+  await screen.getByPlaceholder("Inbox digest").fill("Weekly digest");
+  await screen.getByPlaceholder("What should the bot do each time?").fill("Summarize the week.");
+  await hui.flip(screen.getByText("Weekly", { exact: true }).first());
+  await screen.getByLabel("Day of the week").selectOption({ label: "Monday" });
+  await screen.getByLabel("Weekly time").fill("09:30");
+  await screen.getByRole("button", "Add routine").tap();
+  await expect(screen.getByText(/^Mondays at 09:30 · next /u)).toBeVisible();
+  expect((await tasks()).find((task) => task.name === "Weekly digest")!.schedule).
+    toEqual(expect.objectContaining({ kind: "cron", expression: "30 9 * * 1", timezone: zone }));
 
   const refusal = await hui.intercept("POST", /\/__hui\/automation\/tasks$/u);
   await screen.getByPlaceholder("Inbox digest").fill("Second digests");
@@ -54,6 +65,7 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
     name: "Weekly digest", sessionId: bot.sessionId, prompt: "Summarize the week.", enabled: true,
     schedule: { kind: "cron", expression: "0 9 * * 1", timezone: "UTC" },
   });
+  const tasks = async () => (await hui.api<{ tasks: { sessionId: string; enabled: boolean }[] }>("GET", "/__hui/automation")).tasks.filter((task) => task.sessionId === bot.sessionId);
   await openRoutines(screen, hui, bot);
   await expect(screen.getByText(/^Mondays at 09:00 · next /u)).toBeVisible();
 
@@ -69,7 +81,7 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
   await expect(overviewSwitch).toBeChecked();
   await hui.flip(overviewSwitch);
   await expect(screen.getByText(/^Mondays at 09:00 · paused$/u)).toBeVisible();
-  await expect.poll(async () => (await hui.api<{ tasks: { enabled: boolean }[] }>("GET", "/__hui/automation")).tasks[0]?.enabled).toBe(false);
+  await expect.poll(async () => (await tasks()).map((task) => task.enabled)).toEqual([false]);
   await expect(overviewSwitch).toBeChecked({ checked: false });
 
   await screen.getByText("Weekly digest", { exact: true }).tap();
@@ -82,5 +94,5 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
   await expect(screen.getByText(/^No routines yet\./u)).toBeVisible();
   await screen.getByRole("button", "Back to Routine owner").tap();
   await expect(screen.getByText(/^No routines yet\. Ask Routine owner to do something on a schedule, or add one\.$/u)).toBeVisible();
-  expect((await hui.api<{ tasks: unknown[] }>("GET", "/__hui/automation")).tasks).toEqual([]);
+  expect(await tasks()).toEqual([]);
 });

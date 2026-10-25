@@ -12,8 +12,13 @@ test("a bot's name and title save on Enter or on leaving the field, the @handle 
   await expect(screen.getByText("@renamable")).toBeVisible();
   await expect(screen.getByRole("button", "Save")).toBeHidden();
 
+  const titleSave = await hui.intercept("PATCH", new RegExp(`/__hui/bots/${bot.id}$`, "u"));
   await title.fill("Fixture tester");
   await title.press("Tab");
+  await titleSave.arrived();
+  await expect(screen.getByText("Saving…")).toBeVisible();
+  await titleSave.deliver();
+  await expect(screen.getByText("Saving…")).toBeHidden();
   await expect.poll(async () => (await hui.api<{ bot: { title: string } }>("GET", `/__hui/bots/${bot.id}`)).bot.title).toBe("Fixture tester");
   await expect(screen.getByText("Fixture tester · Idle")).toBeVisible();
 

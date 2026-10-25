@@ -1,4 +1,4 @@
-/** New bot makes a bot at once and opens its chat on its own first question, and a bot's chat shows its identity, its panel and its menu and marks the bot read (BOT-004, BOT-010). */
+/** New bot makes a bot at once and opens its chat on its own first question, and a bot's chat shows its face, name, title and status, its panel and its menu, invites you when empty and marks the bot read (BOT-004, BOT-010). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -14,6 +14,8 @@ test("New bot creates a bot at once, opens its chat on its first question, lists
   await create.tap();
   await item.tap();
   await expect.poll(() => hui.url()).toMatch(/\/bots\/[0-9a-f-]+$/u);
+  const created = (await hui.api<{ bots: { id: string; name: string }[] }>("GET", "/__hui/bots")).bots.find((bot) => bot.name === "New Bot")!;
+  expect(await hui.url()).toMatch(new RegExp(`/bots/${created.id}$`, "u"));
   await expect(screen.getByText("New Bot was created")).toBeVisible();
   await expect(screen.getByTestId("transcript").getByText(NAME_QUESTION)).toBeVisible();
   await expect.poll(async () => (await hui.api<{ bots: { name: string }[] }>("GET", "/__hui/bots")).bots.length).toBe(2);
@@ -41,6 +43,8 @@ test("opening a bot's chat shows its name, status, panel and menu, an empty chat
   await screen.getByRole("button", "Hide the bot panel").tap();
   await expect(screen.getByLabel("Solo: bot panel")).toBeHidden();
   await expect.poll(() => screen.getByText("Solo", { exact: true }).count()).toBe(2);
+  await expect.poll(async () => (await hui.faces()).map((face) => face.size)).toEqual(["sm", "md", "lg"]);
+  await expect.poll(async () => (await hui.faces()).filter((face) => face.shape !== "")).toHaveLength(3);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(screen.getByText("Fixture helper · Idle")).toBeVisible();
   await expect(screen.getByText("Say hi to Solo")).toBeVisible();

@@ -29,7 +29,7 @@ test("Memory saves a fact with its kind, source and count, keeps it across a rel
   expect(listed).toContain(text);
   expect(listed).toContain("Manually saved · our planning conversation");
   expect(listed).toMatch(/Created \d/u);
-  expect(await hui.stored(text)).not.toEqual(expect.arrayContaining([expect.stringMatching(/provider/u)]));
+  expect(await hui.stored(text)).not.toEqual(expect.arrayContaining([expect.stringMatching(/^artifacts\//u)]));
 
   await hui.reload();
   await openMemory(screen, hui, bot);
@@ -76,8 +76,14 @@ test("Memory edits a saved memory keeping its source, cancels an edit, and pins 
 
 test("Delete memory asks, quotes the memory, keeps it on Cancel and removes it from later turns", { tags: ["BOT-039"], platforms: ["web"] }, async ({ screen, hui }) => {
   const bot = await makeBot(hui, "Forgetful");
-  const text = "Prefer the short report b7c1.";
+  const text = "Prefer the short report ALPHA4411 with BETA5522.";
   await hui.api("POST", `/__hui/bots/${bot.id}/facts`, { kind: "preference", text });
+  const transcript = screen.getByTestId("transcript");
+  await hui.open(`/bots/${bot.id}`);
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await screen.getByLabel("Message").fill("E2E_CONTEXT_HOLDS ALPHA4411");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(transcript.getByText("Earlier context: ALPHA4411 yes")).toBeVisible();
   await openMemory(screen, hui, bot);
   await expect(screen.getByText("1 / 40 memories")).toBeVisible();
 
@@ -96,7 +102,9 @@ test("Delete memory asks, quotes the memory, keeps it on Cancel and removes it f
   await expect(screen.getByText("No explicit memories yet. Save only what you want this bot to keep.")).toBeVisible();
   expect((await hui.api<{ facts: unknown[] }>("GET", `/__hui/bots/${bot.id}/facts`)).facts).toEqual([]);
 
-  await hui.api("POST", `/__hui/bots/${bot.id}/messages`, { text: "E2E_REPLY:UmVhZHkgd2hlbiB5b3UgYXJlLg" });
-  await expect.poll(async () => (await hui.api<{ bot: { status: string } }>("GET", `/__hui/bots/${bot.id}`)).bot.status, { timeout: 30_000 }).toBe("idle");
-  expect(await hui.stored(text)).not.toEqual(expect.arrayContaining([expect.stringMatching(/durable|sessions/u)]));
+  await hui.open(`/bots/${bot.id}`);
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await screen.getByLabel("Message").fill("E2E_CONTEXT_HOLDS BETA5522");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(transcript.getByText("Earlier context: BETA5522 no")).toBeVisible();
 });
