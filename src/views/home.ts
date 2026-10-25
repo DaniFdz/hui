@@ -2408,7 +2408,7 @@ function renderSessionStatus(status: string) {
 
 function renderHeader(props: HomeProps, session: SessionView) {
   return html`
-    <header class="transcript__head chat-pane__header" tabindex="-1" draggable=${props.paneMovable ? "true" : "false"}>
+    <header class="transcript__head chat-pane__header" tabindex="-1" data-testid="chat-header" draggable=${props.paneMovable ? "true" : "false"}>
       <div class="chat-pane__header-leading">
         ${renderPaneMoveHandle(props.paneMovable)}
         ${props.mobileNavLayout ? html`<button

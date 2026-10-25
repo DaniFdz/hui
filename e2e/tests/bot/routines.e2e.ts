@@ -84,6 +84,9 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
     schedule: { kind: "cron", expression: "0 9 * * 1", timezone: "UTC" },
   });
   const tasks = async () => (await hui.api<{ tasks: { sessionId: string; enabled: boolean }[] }>("GET", "/__hui/automation")).tasks.filter((task) => task.sessionId === bot.sessionId);
+  await hui.open("/cron");
+  await expect(screen.getByTestId("page-title")).toHaveText("Automations");
+  await expect(screen.getByRole("button", "Edit Weekly digest")).toBeVisible();
   await openRoutines(screen, hui, bot);
   await expect(screen.getByText(/^Mondays at 09:00 · next /u)).toBeVisible();
 
@@ -118,4 +121,8 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
   await screen.getByRole("button", "Back to Routine owner").tap();
   await expect(screen.getByText(/^No routines yet\. Ask Routine owner to do something on a schedule, or add one\.$/u)).toBeVisible();
   await expect.poll(async () => await tasks()).toEqual([]);
+  await hui.open("/cron");
+  await expect(screen.getByTestId("page-title")).toHaveText("Automations");
+  await expect(screen.getByText("Nothing scheduled")).toBeVisible();
+  await expect(screen.getByRole("button", "Edit Weekly digest")).toBeHidden();
 });

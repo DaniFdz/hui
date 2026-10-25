@@ -25,8 +25,11 @@ test("Run now queues the routine's prompt behind a busy bot, sends it into the c
   await expect(transcript.getByText("Morning check")).toBeVisible();
   await expect(transcript.getByText("Routine")).toBeVisible();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
-  await expect(screen.getByText("Completed")).toBeVisible();
-  await expect(screen.getByText(/^Run now · /u)).toBeVisible();
+  const latestRuns = screen.getByLabel("Latest runs");
+  await expect(latestRuns.getByText("Morning check")).toBeVisible();
+  await expect(latestRuns.getByText("Completed")).toBeVisible();
+  await expect(latestRuns.getByText(/^Run now · /u)).toBeVisible();
+  await expect(latestRuns.getByText("Fixture response.")).toBeVisible();
   const runs = async () => (await hui.api<{ runs: { sessionId: string; taskName: string; status: string; summary?: string }[] }>("GET", "/__hui/automation")).runs.filter((run) => run.sessionId === bot.sessionId);
   expect(await runs()).toEqual([expect.objectContaining({ taskName: "Morning check", status: "completed", summary: "Fixture response." })]);
 
@@ -35,6 +38,8 @@ test("Run now queues the routine's prompt behind a busy bot, sends it into the c
     schedule: { kind: "cron", expression: "0 9 * * *", timezone: "UTC" },
   });
   await screen.getByRole("button", "Run now: Broken check").tap();
+  await expect(latestRuns.getByText("Needs attention")).toBeVisible();
+  await expect(latestRuns.getByText(/^The routine's input was not answered: model_error: 400/u)).toBeVisible();
   await expect(screen.getByText("Needs attention")).toBeVisible();
   await expect(screen.getByText(/^The routine's input was not answered: model_error: 400/u).first()).toBeVisible();
 

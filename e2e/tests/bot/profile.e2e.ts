@@ -8,6 +8,9 @@ test("a bot's name and title save on Enter or on leaving the field, the @handle 
   await screen.getByRole("button", "Edit Renamable").tap();
   const name = screen.getByRole("textbox", "Name");
   const title = screen.getByRole("textbox", "Title");
+  const row = (field: typeof name) => screen.getByTestId("bot-setting").filter({ has: field });
+  const nameRow = row(name);
+  const titleRow = row(title);
   await expect(name).toHaveValue("Renamable");
   await expect(screen.getByText("@renamable")).toBeVisible();
   await expect(screen.getByRole("button", "Save")).toBeHidden();
@@ -16,9 +19,10 @@ test("a bot's name and title save on Enter or on leaving the field, the @handle 
   await title.fill("Fixture tester");
   await title.press("Tab");
   await titleSave.arrived();
-  await expect(screen.getByText("Saving…")).toBeVisible();
+  await expect(titleRow.getByText("Saving…")).toBeVisible();
+  await expect(nameRow.getByText("Saving…")).toHaveCount(0);
   await titleSave.deliver();
-  await expect(screen.getByText("Saving…")).toBeHidden();
+  await expect(titleRow.getByText("Saving…")).toBeHidden();
   await expect.poll(async () => (await hui.api<{ bot: { title: string } }>("GET", `/__hui/bots/${bot.id}`)).bot.title).toBe("Fixture tester");
   await expect(screen.getByText("Fixture tester · Idle")).toBeVisible();
 
@@ -26,9 +30,9 @@ test("a bot's name and title save on Enter or on leaving the field, the @handle 
   await name.fill("Scout");
   await name.press("Enter");
   await save.arrived();
-  await expect(screen.getByText("Saving…")).toBeVisible();
+  await expect(nameRow.getByText("Saving…")).toBeVisible();
   await save.deliver();
-  await expect(screen.getByText("Saving…")).toBeHidden();
+  await expect(nameRow.getByText("Saving…")).toBeHidden();
   await expect(screen.getByText("@scout")).toBeVisible();
   await expect.poll(() => screen.getByText("Scout", { exact: true }).count()).toBe(2);
   await expect(screen.getByLabel(/^Scout,/u)).toBeVisible();
@@ -42,7 +46,7 @@ test("a bot's name and title save on Enter or on leaving the field, the @handle 
   await name.fill("Taken name");
   await name.press("Enter");
   await refusal.reject(409, "That handle is taken.");
-  await expect(screen.getByText("That handle is taken.")).toBeVisible();
+  await expect(nameRow.getByText("That handle is taken.")).toBeVisible();
   await expect(name).toHaveValue("Taken name");
   await expect.poll(async () => (await hui.api<{ bot: { name: string; handle: string } }>("GET", `/__hui/bots/${bot.id}`)).bot).toEqual(expect.objectContaining({ name: "Pathfinder", handle: "pathfinder" }));
 });

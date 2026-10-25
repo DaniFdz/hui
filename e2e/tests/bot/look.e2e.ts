@@ -25,6 +25,7 @@ test("Look offers thirteen shapes, ears and a colour, each saves at once and the
 
   await screen.getByRole("button", "Edit Facemaker").tap();
   const summary = screen.getByLabel(/^Look: /u);
+  const profile = screen.getByLabel("Profile");
   await summary.tap();
   for (const shape of SHAPES) await expect(screen.getByLabel(shape)).toBeVisible();
   for (const ears of EARS) await expect(screen.getByLabel(ears)).toBeVisible();
@@ -33,9 +34,9 @@ test("Look offers thirteen shapes, ears and a colour, each saves at once and the
   const save = await hui.intercept("PATCH", new RegExp(`/__hui/bots/${bot.id}$`, "u"));
   await choose("Star");
   await save.arrived();
-  await expect(screen.getByText("Saving…")).toBeVisible();
+  await expect(profile.getByText("Saving…")).toBeVisible();
   await save.deliver();
-  await expect(screen.getByText("Saving…")).toBeHidden();
+  await expect(profile.getByText("Saving…")).toBeHidden();
   await expect.poll(async () => (await stored()).shape).toBe("star");
   await expect.poll(async () => (await rosterFace()).shape).toBe("star");
 
