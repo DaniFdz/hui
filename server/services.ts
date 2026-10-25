@@ -24,7 +24,7 @@ import { CallBroker, providerCallAccounts } from "./bots/calls.ts";
 import { createCallRoutes } from "./routes/calls.ts";
 import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
 import { optChatBotMemory } from "./bots/memory.ts";
-import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bots/souls.ts";
+import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -187,7 +187,7 @@ export const bots = new BotService({
   // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
   // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
   workers: botWorkers,
-  souls: localBotSouls(),
+  files: localBotFiles(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
@@ -266,11 +266,11 @@ export const botTemplateRoutes = createBotTemplateRoutes({
 });
 // A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag (a
 // worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
-// SOUL.md (or has its first conversation) in its `soul` section, from its home folder in HUI's configuration; a worker's
-// host reads the home folders it keeps itself.
+// SOUL.md, USER.md and MEMORY.md in its `soul`, `operator` and `memory` sections, from its home folder in HUI's
+// configuration; a worker's host reads the home folders it keeps itself.
 durableHost().configureDurableBots(createDurableBots(durableHost(), {
   section: (botId) => bots.section(botId),
-  souls: {
+  home: {
     home: (botId) => botHome(botId),
     operator: async () => soulOperatorName((await readHuiSettings()).profileName),
     // From the last registry read: a bot still called "New Bot" asks for a name first.

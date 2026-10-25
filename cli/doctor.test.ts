@@ -169,6 +169,7 @@ test("a state with every session on Durable is healthy", async () => {
   assert.deepEqual(report, { ok: true, checks: [
     { id: "pi-sessions", title: "PI sessions", status: "ok", summary: "every session runs on Pi Durable", items: [], notes: [] },
     { id: "triggers", title: "Triggers", status: "ok", summary: "nothing left of GitHub, Sessions, Webhook or Slack triggers", items: [], notes: [] },
+    { id: "bots", title: "Bot files", status: "ok", summary: "No bot keeps a memory section in its SOUL.md", items: [], notes: ["A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own."] },
   ] });
-  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers");
+  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers\n✓ Bot files: No bot keeps a memory section in its SOUL.md\n  A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own.");
 });

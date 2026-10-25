@@ -19,8 +19,8 @@ export type {
 export const BOT_EXPORT_FORMAT = "hui-bot";
 /** 2: a template, reviewed for personal information. A version 1 export (an exact copy, memory included) still imports. */
 export const BOT_EXPORT_VERSION = 2;
-/** The zip's files: `bot.json`, `SOUL.md`, each own skill's folder under `skills/`; `memory.md` only in version 1. */
-export const BOT_EXPORT_FILES = { manifest: "bot.json", soul: "SOUL.md", memory: "memory.md", skills: "skills" } as const;
+/** The zip's files: `bot.json`, `SOUL.md`, `BOOTSTRAP.md` when the operator wrote one, each own skill's folder under `skills/`; `memory.md` only in version 1. */
+export const BOT_EXPORT_FILES = { manifest: "bot.json", soul: "SOUL.md", bootstrap: "BOOTSTRAP.md", memory: "memory.md", skills: "skills" } as const;
 
 /** `bot.json`, version 2: what of a bot travels once its review is done. No handle, path, date or memory. */
 export type BotExportManifest = {
@@ -364,8 +364,10 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
 
   const ending = (text: string) => text.endsWith("\n") ? text : `${text}\n`;
   const files: BotExportBuild["files"] = [{ path: BOT_EXPORT_FILES.manifest, text: ending(JSON.stringify(manifest, null, 2)) }];
+  // SOUL.md and BOOTSTRAP.md are the bot's; USER.md and MEMORY.md describe the operator and never enter a review.
+  const exported = new Set<string>([BOT_EXPORT_FILES.soul, BOT_EXPORT_FILES.bootstrap]);
   for (const part of review.parts) {
-    if (part.id !== BOT_EXPORT_FILES.soul && !part.id.startsWith(`${BOT_EXPORT_FILES.skills}/`)) continue;
+    if (!exported.has(part.id) && !part.id.startsWith(`${BOT_EXPORT_FILES.skills}/`)) continue;
     const change = review.files.find((file) => file.part === part.id);
     if (change && group(change.id, change.group) === "remove") continue;
     files.push({ path: part.id, text: ending(fields(part.id)["text"] ?? "") });

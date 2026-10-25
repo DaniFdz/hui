@@ -1370,12 +1370,16 @@ conversations in the host's own store and files, without starting them),
 `put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. A host whose
 `hello` lists the `bots` feature also answers the bot operations of
 [bots on a worker](#bots-on-a-worker), against its own store: `bot.create
-{botId,cwd?,model?,thinking?,soul?,memory}` (`{reference,cwd}`; it always makes the
-bot's home, and SOUL.md there when `soul` is given), `bot.directory {cwd}`,
+{botId,cwd?,model?,thinking?,memory,files?}` (`{reference,cwd}`; it always makes the
+bot's home, and its prompt files there when `files` gives them as
+`{soul?,user?,memory?,bootstrap?}`), `bot.directory {cwd}`,
 `bot.configure {reference,cwd}`, `bot.forget {reference}`, `bot.last-message
 {reference}`, `bot.call-record {reference,record}`, `bot.home.prepare {botId}`,
 `bot.soul.read {botId}` (`{soul}`, null without one), `bot.soul.write {botId,soul?}`
-(without `soul` it removes SOUL.md), `bot.remove-home {botId,cwd?}` (the bot's
+(without `soul` it removes SOUL.md), `bot.file.read {botId,file}` and
+`bot.file.write {botId,file,text?}` (`{file,text}`, null without one; a host lists
+`bot-files` when it keeps all four, so a gateway refuses USER.md and MEMORY.md on
+one that predates them instead of dropping them), `bot.remove-home {botId,cwd?}` (the bot's
 home with everything in it, under the gateway's own guard; only SOUL.md when
 `cwd`, the bot's working directory, lies inside it),
 `bot.memory.configure|status|view|zoom|html {reference,…}` (a memory this store
@@ -1563,6 +1567,38 @@ Durable's compactions are declined. The gateway reads it through
 `DurableHost.optchat` (`optChatBotMemory` in `server/bots/memory.ts`); a chat
 whose conversation has no OptChat, or a store this process does not own, has no
 memory to read.
+
+### Prompt files
+
+A bot's home folder, `<bots dir>/<id>` (owner-only), holds four files, each read
+to every request as its own prompt section:
+
+| File | Section | Who writes it | In an export |
+| --- | --- | --- | --- |
+| `SOUL.md` (20,000 chars) | `soul`, last | The bot, with `write_soul`, on the operator's turns (and HUI's kickoff) | **Yes** |
+| `USER.md` (6,000) | `operator` | The bot, with `update_user`, on the operator's turns | **Never** |
+| `MEMORY.md` (10,000) | `memory` | The bot, with `update_memory`, on the operator's turns | **Never** |
+| `BOOTSTRAP.md` (6,000) | `soul`, while `SOUL.md` is absent | **Only the operator** | **Yes** |
+
+SOUL.md is who the bot is and how it works (timeless, no dates, no operator
+data); USER.md is what it knows about the operator; MEMORY.md is what it chose
+to keep, by topic, not the chat's log. `BOOTSTRAP.md`, when present, replaces
+the questions of the first conversation with the operator's own onboarding
+body, inside HUI's fixed rules (the operator's request first, one or two
+questions at a time, only the operator's turns may write the files).
+
+```ts
+type BotFile = "soul" | "user" | "memory" | "bootstrap";
+type BotFileText = { file: BotFile; text: string | null }; // null while the bot has none
+```
+
+`GET /__hui/bots/:id/files/:file` answers `BotFileText` (404 for another name,
+which is no route). `PUT /__hui/bots/:id/files/bootstrap` takes `{ text }`
+(`""` removes it) and answers `BotFileText`; `PUT` on `user` or `memory` is 400:
+the bot writes those when the operator tells it to, and `SOUL.md` keeps its
+older route below. `hui doctor` moves an old `## What you already know`
+section into `MEMORY.md` and names `hui bot split`, which sends the bot what
+belongs in each file so it sorts the rest itself.
 
 ### Explicit knowledge
 
@@ -1754,6 +1790,14 @@ Query `id=&n=`.
 ### `PUT /__hui/bots/:id/soul`
 
 200 `BotSoul`. `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409
+
+### `GET /__hui/bots/:id/files/:file`
+
+200 `BotFileText`. One of `soul`, `user`, `memory` or `bootstrap`: its text, trimmed (at most 256 KiB is read), or `null` while it is absent. Read on the host that runs the chat, so a bot on an offline worker is 503. Archived bots too
+
+### `PUT /__hui/bots/:id/files/bootstrap`
+
+200 `BotFileText`. `{ text }`, nothing else: at most 6,000 characters after trimming, written atomically as `PUT …/soul` writes (mode 0600, in the bot's home folder); `""` removes it, so the first conversation uses HUI's own questions again. It applies from the bot's next request, and only while it has no SOUL.md. Archived bots are 409. `PUT` on `user` or `memory` answers 400: the bot writes those with `update_user`/`update_memory`, on the operator's turns
 
 `GET /__hui/bots/:id/memory/html` answers 200 `text/html`: OptChat's self-contained browse page (the view, every message, each tree level; everything escaped). A link opens it, so like an attachment it takes `x-hui: 1` or a browser-attested `sec-fetch-site: same-origin` page load; any other request is 403 (cross-site, same-site, `none`, none at all). Served with `content-security-policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (inline styles only, never framed), `nosniff`, `cache-control: no-store` and `cross-origin-resource-policy: same-origin`
 
@@ -2558,7 +2602,7 @@ handle, so no bot's `/__hui/bots/:id` is ever one of them.
 
 ### `POST /__hui/bots/import/preview`
 
-200 `BotImportPreview`. `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `open` (a HUI template's open points, as SOUL.md's *Not agreed yet* will list them), `needs` (what it needs to work, one line each), `triggers` (each `{ name, filter, prompt?, delivery?, cooldownSeconds }`, created disabled), `dropped` and `notes` (one line each); a skill of a HUI template has its `files` (`{ path, text }`, in full). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created
+200 `BotImportPreview`. `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `memory` (MEMORY.md: what the source bot knew, reference data), `bootstrap` (the source's onboarding body, when it has one), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `open` (a HUI template's open points, as SOUL.md's *Not agreed yet* will list them), `needs` (what it needs to work, one line each), `triggers` (each `{ name, filter, prompt?, delivery?, cooldownSeconds }`, created disabled), `dropped` and `notes` (one line each); a skill of a HUI template has its `files` (`{ path, text }`, in full). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created
 
 ### `POST /__hui/bots/import`
 
@@ -2583,25 +2627,27 @@ nothing is ever written from a source but the bot's own files below.
 | Format | Recognized by | What it brings |
 | --- | --- | --- |
 | Grok Bot | a marketplace link, or a page's source pasted | The bot object in the page's server-components payload (its `self.__next_f.push` chunks, text rows resolved): name, author, description, instructions (the soul), memories `{ name, description }`, skills `{ name, description, content }`, routines, integrations `{ name, description }` and an emoji. x.ai can change the page: a page without one is 400, and its message says to copy the bot's instructions and paste them instead |
-| OpenClaw workspace | SOUL.md or IDENTITY.md at the top of a folder or a zip (one wrapping folder allowed) | SOUL.md (the soul); IDENTITY.md's `- Name:`, `- Emoji:`, `- Vibe:` (description) and `- Creature:` (title) lines, bold or not, a value on the line below too, template hints skipped; MEMORY.md's sections and USER.md (memories); HEARTBEAT.md's checklist (a routine every 30 minutes); `skills/*/SKILL.md`. Left out with the reason: AGENTS.md (OpenClaw's operating manual: memory files, heartbeats, group chats; it describes OpenClaw's runtime rather than the bot, and HUI's own prompt covers how a bot works here), TOOLS.md, BOOTSTRAP.md, the daily `memory/*.md` logs, an avatar image and a skill's supporting files |
+| OpenClaw workspace | SOUL.md or IDENTITY.md at the top of a folder or a zip (one wrapping folder allowed) | SOUL.md (the soul); IDENTITY.md's `- Name:`, `- Emoji:`, `- Vibe:` (description) and `- Creature:` (title) lines, bold or not, a value on the line below too, template hints skipped; MEMORY.md's sections and USER.md (memories, saved as MEMORY.md, never the soul); HEARTBEAT.md's checklist (a routine every 30 minutes); `skills/*/SKILL.md`. Left out with the reason: AGENTS.md (OpenClaw's operating manual: memory files, heartbeats, group chats; it describes OpenClaw's runtime rather than the bot, and HUI's own prompt covers how a bot works here), TOOLS.md, BOOTSTRAP.md (only HUI exports carry theirs), the daily `memory/*.md` logs, an avatar image and a skill's supporting files |
 | Claude Code subagent | front matter with `name` or `description` (a `.md`, or `.claude/agents/*.md` in a folder, each a candidate) | `name` (as a display name: `code-reviewer` is Code Reviewer), `description`, `model` (`inherit` is none), `color` (its face's color), the body (the soul), and `tools`: only the HUI tools those map to stay on (below); `mcp__…` tools become integrations |
 | Letta agent file | JSON with `agents` (blocks and tools by id beside them), or one agent with `system` and `core_memory`/`llm_config` | The `persona` block (the soul), the system prompt under *Instructions* unless it is Letta's stock prompt, the `human` block and custom blocks (memories), tools (integrations; their code is never imported; Letta's memory and messaging tools are left out), `llm_config` (the model). The message history is skipped |
 | Character card | V2/V3 JSON (`spec`), V1 fields, or a PNG's `ccv3` (first) or `chara` text chunk | `system_prompt` (its `{{original}}` dropped), `description`, `personality` and `scenario` (the soul), `first_mes` (the opener), the character book's enabled entries (memories), `nickname` (title); `{{char}}` is the bot's name and `{{user}}` Settings' profile name (else "the operator", "you" in the opener). Example messages, alternate greetings, post-history instructions, creator notes and the image are left out |
 | CrewAI agents.yaml | a YAML mapping of agents with `role`, `goal` or `backstory` (each agent a candidate) | `role` (the title), `goal` and `backstory` (the soul), `llm` (the model), `tools` (integrations); CrewAI's `{placeholders}` are kept and noted |
-| HUI template | `bot.json` with `format: "hui-bot"` | Version 2 (below): its profile, SOUL.md, skills with their files, routines (a cron runs in this gateway's time zone), triggers, turned-off lists, open points and needs. Version 1 (an exact copy from before): the same without the last four, plus its handle and `memory.md`, which joins what it already knows |
+| HUI template | `bot.json` with `format: "hui-bot"` | Version 2 (below): its profile, SOUL.md, BOOTSTRAP.md when the operator wrote one, skills with their files, routines (a cron runs in this gateway's time zone), triggers, turned-off lists, open points and needs. Its USER.md and MEMORY.md never travel. Version 1 (an exact copy from before): the same without the last four, plus its handle and `memory.md`, which becomes what it knew, in MEMORY.md |
 | Plain text | anything else | The text is the soul; a short first heading names the bot |
 
 What creating does with a template, the same plan for the preview and the create:
 
-- **Soul.** SOUL.md, as `POST /__hui/bots`'s `soul`: the bot skips its first
-  conversation. A persona longer than 20,000 characters is cut there, with a
-  note. A template without one creates a bot that has its first conversation,
-  and then its memories and opener are left out.
-- **Memories** go into SOUL.md, under *What you already know* after the persona,
-  while they fit in its 20,000 characters (the rest are listed as left out).
-  OptChat's memory is the chat's own log, a projection of its Durable entries,
-  so nothing else can seed it; in SOUL.md the bot reads them on every request
-  and the operator changes them by telling it or with `hui bot soul`.
+- **Soul and memory.** SOUL.md is the persona only, as `POST /__hui/bots`'s
+  `soul`: the bot skips its first conversation, and a persona longer than 20,000
+  characters is cut there, with a note. What the template knew (its memories,
+  and an old *What you already know* section) becomes `MEMORY.md`, reference
+  data under a note that it came from that source, while it fits in 10,000
+  characters (the rest are listed as left out); it is never exported again.
+  `USER.md` is never seeded from a template: it describes the previous
+  operator, and a new bot starts blank about its new one. A HUI template's
+  `BOOTSTRAP.md`, when it has one, travels with it. A template without a
+  persona creates a bot that has its first conversation; its memories are kept
+  either way.
 - **Opener.** The bot's first turn: a kickoff (`botOpenerKickoffText`: the
   `[HUI bot created]` marker, so the chat shows "<name> was created", never the
   operator's bubble) that asks it to send the opener as written. Its answer is a
@@ -2737,13 +2783,15 @@ ends last.
 `BotExportReview`: `id`, `botId`, `name`, `model` (absent: none read it),
 `warning` (no name of the operator's for the cleanup, no utility model, or parts it didn't read), `parts` (`{ id, label,
 kind: "text" | "script", fields: [{ key, text }], read, unread? }`: `profile`,
-`SOUL.md`, `skills/<name>/<path>`, `routines/<n>`, `triggers/<n>`; texts after the
+`SOUL.md`, `BOOTSTRAP.md` when the operator wrote one, `skills/<name>/<path>`,
+`routines/<n>`, `triggers/<n>`; `USER.md` and `MEMORY.md` are never parts. Texts after the
 cleanup, a script's as it is), `cleanup` (`{ part, field, kind, sample, count }`,
 a secret shown by its first four characters), `changes` (`{ id: "c1", part, quote,
 group, reason, replacement, label, question }`), `files` (each script the cleanup
 or a change touches: `{ id: "f1", part, group, reasons, question }`, `remove` for a
 cleanup hit or a removed passage, else `confirm`), `needs` (`{ id: "n1", text }`),
-`leftOut` (one line each) and `meta` (what travels unread: look, models, voice,
+`leftOut` (one line each; what it knows about the operator and what it keeps are
+listed as never carried) and `meta` (what travels unread: look, models, voice,
 schedules, filters, lists).
 
 **The zip** (`buildExport`, shared by the gateway and the dialog): the picked

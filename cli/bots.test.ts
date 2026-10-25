@@ -50,8 +50,9 @@ async function fakeGateway(t: TestContext) {
     view("id-ada", "ada", { title: "Researcher", routines: 1, soul: true, memory: { messages: 2, built: 3, pending: 0, viewBytes: 300, viewLines: 2, usage: { calls: 1, input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0 } } }),
     view("id-bob", "bob"), view("id-old", "old", { archived: true }),
   ];
-  /** SOUL.md per bot id, as the soul route reads and writes it. */
+  /** SOUL.md per bot id, as the soul route reads and writes it, and the bot's other home files by `id/file`. */
   const souls = new Map<string, string>([["id-ada", "# Who I am\nAda, a researcher."]]);
+  const fileTexts = new Map<string, string>([["id-ada/user", "Prefers brief answers."], ["id-ada/memory", "# MEMORY.md\n\n## Projects\n\nHUI."], ["id-ada/bootstrap", "Ask what they need."]]);
   const tasks: AutomationTask[] = [{
     id: "task-1", name: "Morning", description: "", sessionId: "s-ada", prompt: "check", schedule: { kind: "every", everyMs: 86_400_000 },
     enabled: true, timeoutSeconds: 900, createdAt: "", updatedAt: "", nextRunAt: "2026-10-06T07:00:00.000Z",
@@ -112,6 +113,18 @@ async function fakeGateway(t: TestContext) {
         return reply(200, { status: { messages: 12, built: 11, pending: 1, viewBytes: 4096, viewLines: 9, waiting: true, usage }, view: "<chat>\n0+8|user: plans\n</chat>" });
       }
       if (action === "memory/zoom") return reply(200, { text: `${url.searchParams.get("id")}+0|user: the plan` });
+      if (action?.startsWith("files/")) {
+        const file = action.slice("files/".length);
+        const key = `${bot.id}/${file}`;
+        if (request.method === "GET") return reply(200, { file, text: fileTexts.get(key) ?? null });
+        if (request.method === "PUT" && file === "bootstrap") {
+          const text = String(body?.["text"] ?? "").trim();
+          if (text) fileTexts.set(key, text);
+          else fileTexts.delete(key);
+          return reply(200, { file, text: text || null });
+        }
+        return reply(400, { error: "Only BOOTSTRAP.md can be replaced here." });
+      }
       if (action === "catalog") return reply(200, catalogFor(bot));
       if (action === "soul" && request.method === "GET") return reply(200, { soul: souls.get(bot.id) ?? null });
       if (action === "soul" && request.method === "PUT") {
@@ -481,22 +494,53 @@ test("send reads - from stdin and exits 0 when answered, 1 on failure or timeout
   assert.deepEqual(gateway.calls.at(-1)?.body, { text: "go", wait: true }, "without --timeout the gateway's default applies");
 });
 
-test("memory prints the status and view, zooms a line and saves the browse page", async (t) => {
+test("history prints the status and view, zooms a line and saves the browse page; memory is MEMORY.md", async (t) => {
   const gateway = await fakeGateway(t);
   const dir = await mkdtemp(join(tmpdir(), "hui-cli-memory-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const term = terminal();
-  await botCommand(gateway.base, "memory", ["ada"], {}, term.io);
+  await botCommand(gateway.base, "history", ["ada"], {}, term.io);
   assert.equal(term.out, "12 messages · 11 summaries built · 1 pending · view 4 KB in 9 lines · summarizing · compactor 3 calls, 6200 tokens in, 400 out, $0.0123\n<chat>\n0+8|user: plans\n</chat>\n");
   const zoom = terminal();
-  await botCommand(gateway.base, "memory", ["ada"], { zoom: "16+4" }, zoom.io);
+  await botCommand(gateway.base, "history", ["ada"], { zoom: "16+4" }, zoom.io);
   assert.equal(gateway.calls.at(-1)?.path, "/__hui/bots/id-ada/memory/zoom?id=16&n=4");
   assert.equal(zoom.out, "16+0|user: the plan\n");
   const html = terminal();
   html.io.cwd = dir;
-  await botCommand(gateway.base, "memory", ["ada"], { html: "memory.html" }, html.io);
+  await botCommand(gateway.base, "history", ["ada"], { html: "memory.html" }, html.io);
   assert.equal(await readFile(join(dir, "memory.html"), "utf8"), "<!doctype html><title>memory</title>");
   assert.equal(html.out, `Wrote @ada's memory to ${join(dir, "memory.html")}.\n`);
+
+  // `memory` and `user` read the files the bot keeps; the old zoom flags still reach the history.
+  const memory = terminal();
+  await botCommand(gateway.base, "memory", ["ada"], {}, memory.io);
+  assert.equal(memory.out, "# MEMORY.md\n\n## Projects\n\nHUI.\n");
+  const user = terminal();
+  await botCommand(gateway.base, "user", ["ada"], {}, user.io);
+  assert.equal(user.out, "Prefers brief answers.\n");
+  const none = terminal();
+  await botCommand(gateway.base, "memory", ["bob"], {}, none.io);
+  assert.match(none.out, /@bob has no MEMORY\.md yet/u);
+  const moved = terminal();
+  await botCommand(gateway.base, "memory", ["ada"], { zoom: "1+1" }, moved.io);
+  assert.match(moved.err, /hui bot history/u);
+  assert.equal(gateway.calls.at(-1)?.path, "/__hui/bots/id-ada/memory/zoom?id=1&n=1");
+  const bootstrap = terminal();
+  await botCommand(gateway.base, "bootstrap", ["ada"], {}, bootstrap.io);
+  assert.equal(bootstrap.out, "Ask what they need.\n");
+  const source = join(dir, "bootstrap.md");
+  await writeFile(source, "Ask their name first.\n");
+  const replaced = terminal();
+  await botCommand(gateway.base, "bootstrap", ["ada"], { file: source }, replaced.io);
+  assert.match(replaced.out, /Replaced @ada's BOOTSTRAP\.md \(\d+ characters\); its first conversation follows it while it has no SOUL\.md\./u);
+  // The split message names the three files and the tools that write them; the bot does the moving.
+  const split = terminal();
+  await botCommand(gateway.base, "split", ["ada"], {}, split.io);
+  assert.equal(split.out, "Sent to @ada.\n");
+  const sent = gateway.calls.findLast((call) => call.path === "/__hui/bots/id-ada/messages");
+  assert.match(String(sent?.body?.["text"]), /^\[HUI bot split\] HUI now keeps your prompt in three files/u);
+  assert.match(String(sent?.body?.["text"]), /update_user/u);
+  assert.match(String(sent?.body?.["text"]), /write_soul/u);
 });
 
 test("routines are the bot's Automation tasks: list, add on a schedule, run and remove by name", async (t) => {

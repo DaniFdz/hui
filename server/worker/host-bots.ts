@@ -6,7 +6,7 @@
  * created here exactly as the gateway creates a local one, its `hui.bot`
  * document and OptChat in one commit. Every bot has a home here, HUI's private
  * folder for it under the data directory (`home(botId)`), as the gateway keeps
- * one under its configuration: its SOUL.md lives there (`bots/souls.ts`, the
+ * one under its configuration: its home folder lives there (`bots/home.ts`, the
  * gateway's own implementation and guard, on this directory), and a bot without
  * a directory of its own works there. The bot itself (its record, routines,
  * roster) stays with the gateway; nothing here knows other bots.
@@ -21,15 +21,15 @@
 import { BOT_FACTS_FILE, localBotFacts } from "../bots/facts.ts";
 import { realpath, rm, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
-import { BOT_LIMITS, BOT_THINKING_LEVELS, type BotMemoryStatus } from "../bots-format.ts";
+import { BOT_LIMITS, BOT_THINKING_LEVELS, botFile, type BotMemoryStatus } from "../bots-format.ts";
 import { parseCallRecord } from "../calls-format.ts";
 import { durableBotConversations } from "../bots/conversations.ts";
 import { BotMemoryUnavailableError, optChatBotMemory, type BotMemorySettings } from "../bots/memory.ts";
 import { BOT_TEMPLATE_LIMITS } from "../bots/templates/formats.ts";
 import { BOT_SKILL_NAME, localBotSkills, type BotOwnSkill } from "../bots/skills.ts";
 import { caseClash, skillFilePath } from "../bots/templates/common.ts";
-import { localBotSouls } from "../bots/souls.ts";
-import { BotConflictError, BotInputError, BotNotFoundError, accessField, normalizeSoul } from "../bots/bots.ts";
+import { localBotFiles } from "../bots/home.ts";
+import { BotConflictError, BotInputError, BotNotFoundError, accessField, normalizeBootstrap, normalizeHomeFile, normalizeSoul } from "../bots/bots.ts";
 import { createDurableBots, type DurableBotsDeps } from "../bots/durable-access.ts";
 import type { DurableHost } from "../runtimes/durable-host.ts";
 import { durableConversationId } from "../runtimes/durable.ts";
@@ -50,6 +50,8 @@ export const BOT_ACCESS_FRAME = "bot.access";
 export const BOT_SKILLS_FEATURE = "bot-skills";
 /** What `hello` lists when `bot.skills.*` also carry the files beside a SKILL.md (a template's scripts). */
 export const BOT_SKILL_FILES_FEATURE = "bot-skill-files";
+/** What `hello` lists when the host keeps a bot's whole home (`bot.file.read`/`bot.file.write`: USER.md, MEMORY.md and BOOTSTRAP.md beside SOUL.md). */
+export const BOT_FILES_FEATURE = "bot-files";
 
 const ID = /^[A-Za-z0-9_-]{1,100}$/u;
 const MODEL = /^[^/\s]+\/\S+$/u;
@@ -148,7 +150,7 @@ export function hostBots(options: HostBotsOptions) {
   const home = (id: string) => join(options.botsDir, botId(id));
   /** SOUL.md in those homes, with the gateway's guard: a deleted bot's home goes only when it really is that folder of
    * this bots directory, and a link in its place is removed, never followed. */
-  const souls = localBotSouls(options.botsDir);
+  const homes = localBotFiles(options.botsDir);
   const facts = localBotFacts(options.botsDir);
   // The worker wire otherwise transports only Error.message; preserve the facts API's status categories explicitly.
   const factsReply = async (read: () => Promise<unknown>) => {
@@ -165,7 +167,7 @@ export function hostBots(options: HostBotsOptions) {
   // Its SOUL.md (or its first conversation) from its home here, and write_soul writes it there.
   options.durable.configureDurableBots(createDurableBots(options.durable, {
     section: options.section, recorded: options.recorded,
-    souls: { home, operator: options.operator, name: (id) => names.get(id) },
+    home: { home, operator: options.operator, name: (id) => names.get(id) },
   }));
 
   /** A directory chosen for the bot that lies inside its home here: deleting the home would take it along. */
@@ -222,13 +224,21 @@ export function hostBots(options: HostBotsOptions) {
         const settings = memorySettings(params["memory"]);
         const model = optionalModel(params["model"], "The bot's model");
         const thinking = optionalLevel(params["thinking"], "The thinking level");
-        const soul = params["soul"] === undefined ? "" : normalizeSoul(params["soul"]);
+        // Its prompt files, as `{ soul, user, memory, bootstrap }`; an older gateway sends `soul` alone.
+        const files = isRecord(params["files"]) ? params["files"] : {};
+        const fileText = (file: "soul" | "user" | "memory" | "bootstrap") => {
+          const raw = files[file];
+          if (raw === undefined) return "";
+          return file === "bootstrap" ? normalizeBootstrap(raw) : normalizeHomeFile(raw, file);
+        };
+        const soul = fileText("soul") || (params["soul"] === undefined ? "" : normalizeSoul(params["soul"]));
         // What is off from its first turn, as the gateway checked it against this host's offer (`bot.offer`).
         const access = params["access"] === undefined ? undefined : accessField(params["access"]);
         const cwd = params["cwd"] === undefined ? home(id) : await directory(params["cwd"]);
-        await souls.prepare(id);
+        await homes.prepare(id);
         try {
-          if (soul) await souls.write(id, soul);
+          const written = { soul, user: fileText("user"), memory: fileText("memory"), bootstrap: fileText("bootstrap") };
+          for (const [file, text] of Object.entries(written)) if (text) await homes.write(id, text, file as "soul" | "user" | "memory" | "bootstrap");
           const reference = await conversations.create({
             botId: id, cwd,
             ...(model ? { model } : {}),
@@ -239,7 +249,7 @@ export function hostBots(options: HostBotsOptions) {
           names.set(id, settings.name);
           return { reference, cwd };
         } catch (error) {
-          await souls.remove(id).catch(() => {});
+          await homes.remove(id).catch(() => {});
           throw error;
         }
       },
@@ -273,7 +283,7 @@ export function hostBots(options: HostBotsOptions) {
         return {};
       },
       "bot.home.prepare": async (params) => {
-        await souls.prepare(botId(params["botId"]));
+        await homes.prepare(botId(params["botId"]));
         return {};
       },
       "bot.facts.retire": async (params) => factsReply(async () => { await facts.retire(botId(params["botId"])); return []; }),
@@ -281,7 +291,13 @@ export function hostBots(options: HostBotsOptions) {
       "bot.facts.create": async (params) => factsReply(() => facts.create(botId(params["botId"]), params["input"])),
       "bot.facts.update": async (params) => factsReply(() => facts.update(botId(params["botId"]), botId(params["factId"]), params["input"])),
       "bot.facts.delete": async (params) => factsReply(() => facts.delete(botId(params["botId"]), botId(params["factId"]), params["revision"] as number)),
-      "bot.soul.read": async (params) => ({ soul: (await souls.read(botId(params["botId"]))) ?? null }),
+      "bot.soul.read": async (params) => ({ soul: (await homes.read(botId(params["botId"]), "soul")) ?? null }),
+      /** One of a bot's home files, by name; the older `bot.soul.*` frames stay for an older gateway. */
+      "bot.file.read": async (params) => {
+        const file = botFile(String(params["file"] ?? ""));
+        if (!file) throw new Error("A bot file is required: soul, user, memory or bootstrap.");
+        return { file, text: (await homes.read(botId(params["botId"]), file)) ?? null };
+      },
       /** Writes a bot's own skills into its home here (an import's), each `{ name, text, files? }`: its folder's name, SKILL.md
        * and the files beside it. */
       "bot.skills.write": async (params) => {
@@ -293,8 +309,18 @@ export function hostBots(options: HostBotsOptions) {
       "bot.soul.write": async (params) => {
         const id = botId(params["botId"]);
         const soul = params["soul"] === undefined || params["soul"] === null ? "" : normalizeSoul(params["soul"]);
-        if (soul) await souls.prepare(id);
-        await souls.write(id, soul || undefined);
+        if (soul) await homes.prepare(id);
+        await homes.write(id, soul || undefined, "soul");
+        return {};
+      },
+      "bot.file.write": async (params) => {
+        const id = botId(params["botId"]);
+        const file = botFile(String(params["file"] ?? ""));
+        if (!file) throw new Error("A bot file is required: soul, user, memory or bootstrap.");
+        const text = params["text"] === undefined || params["text"] === null ? ""
+          : file === "bootstrap" ? normalizeBootstrap(params["text"]) : normalizeHomeFile(params["text"], file);
+        if (text) await homes.prepare(id);
+        await homes.write(id, text || undefined, file);
         return {};
       },
       "bot.last-message": async (params) => {
@@ -309,17 +335,20 @@ export function hostBots(options: HostBotsOptions) {
       },
       /**
        * A deleted bot's home with everything in it (SOUL.md and every file HUI or the bot put there), as the gateway
-       * removes its own (`localBotSouls.remove`): only the folder of this bots directory named by the bot's id, never
+       * removes its own (`localBotFiles.remove`): only the folder of this bots directory named by the bot's id, never
        * through a link. When `cwd`, the directory the bot worked in, lies inside its home, only SOUL.md goes.
        */
       "bot.remove-home": async (params) => {
         const id = botId(params["botId"]);
         await facts.retire(id);
         if (await chosenInsideHome(id, params["cwd"])) {
-          await souls.write(id, undefined);
+          await homes.write(id, undefined, "soul");
+          await homes.write(id, undefined, "user");
+          await homes.write(id, undefined, "memory");
+          await homes.write(id, undefined, "bootstrap");
           await rm(join(home(id), BOT_FACTS_FILE), { force: true });
         }
-        else await souls.remove(id);
+        else await homes.remove(id);
         names.delete(id);
         return {};
       },

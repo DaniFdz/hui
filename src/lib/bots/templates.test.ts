@@ -34,8 +34,8 @@ test("a download's name comes from its Content-Disposition; a malformed preview 
   assert.equal(downloadName(null, "x.zip"), "x.zip");
   assert.throws(() => parseBotImportPreview({ template: { format: "grok" } }), /did not come back/u);
   const lists = { skills: [], routines: [], integrations: [], disabledTools: [], disabledSkills: [], open: [], needs: [], triggers: [], dropped: [], notes: [] };
-  assert.throws(() => parseBotImportPreview({ template: { format: "future" }, bot: {}, soul: "", ...lists, memories: {} }), /format this HUI does not know/u);
-  const preview = { template: { format: "grok" }, bot: { name: "A", handle: "a" }, soul: "", ...lists, memories: { included: 0, total: 0 } };
+  assert.throws(() => parseBotImportPreview({ template: { format: "future" }, bot: {}, soul: "", memory: "", ...lists, memories: {} }), /format this HUI does not know/u);
+  const preview = { template: { format: "grok" }, bot: { name: "A", handle: "a" }, soul: "", memory: "", ...lists, memories: { included: 0, total: 0 } };
   assert.equal(parseBotImportPreview(preview), preview);
   assert.throws(() => parseBotImportPreview({ ...preview, open: undefined }), /did not come back/u, "a template's open points are part of every preview");
   const review = { id: "r1", botId: "b1", name: "A", parts: [], cleanup: [], changes: [], files: [], needs: [], leftOut: [], meta: { routines: [], triggers: [], disabledTools: [], disabledSkills: [], skills: [] } };

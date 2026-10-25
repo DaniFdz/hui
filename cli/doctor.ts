@@ -4,6 +4,7 @@
  * stopped, so none starts meanwhile. A breaking change to persisted state ships with a check here (CONTRIBUTING.md).
  */
 import { gatewayStatus as currentGatewayStatus, type GatewayStatus } from "./gateway.ts";
+import { botsCheck } from "./doctor-bots.ts";
 import { piSessionsCheck } from "./doctor-pi-sessions.ts";
 import { triggersCheck } from "./doctor-triggers.ts";
 import { withLifecycleLock } from "./state.ts";
@@ -11,7 +12,7 @@ import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
 
 export type DoctorReport = { ok: boolean; checks: DoctorResult[] };
 
-export const DOCTOR_CHECKS: readonly DoctorCheck[] = [piSessionsCheck, triggersCheck];
+export const DOCTOR_CHECKS: readonly DoctorCheck[] = [piSessionsCheck, triggersCheck, botsCheck];
 
 export async function runDoctor(options: {
   fix?: boolean;

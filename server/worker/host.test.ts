@@ -254,7 +254,7 @@ test("a bot's tool and skill lists live in its document here: made with it, read
     assert.equal(before.tools.find((tool) => tool.name === "bash")?.powerful, true);
     assert.deepEqual(before.tools.filter((tool) => GATEWAY_ONLY_TOOLS.includes(tool.name)), [], "never what stays on the gateway's machine: the terminal, the browser and watchers");
     assert.deepEqual(before.skills.filter((skill) => skill.name === "alpha"), [{ ...alpha, description: "Alpha.", source: "~/data/hui-worker/mirror/agent/skills" }]);
-    assert.deepEqual(before.alwaysOn.map((tool) => tool.name), ["write_soul", "set_profile", "request_access", "load_skill", "zoom", "date"]);
+    assert.deepEqual(before.alwaysOn.map((tool) => tool.name), ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill", "zoom", "date"]);
     assert.equal(existsSync(join(host.paths.dataDir, "bots", "bot-lists")), false, "asking made nothing");
     await assert.rejects(peer.request("bot.offer", { cwd: "~/missing" }), /No such directory on the remote/u);
     await assert.rejects(peer.request("bot.offer", {}), /A bot id is required/u);

@@ -936,6 +936,17 @@
         }
       }
     },
+    "BotBootstrapRequest": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "BotCatalog": {
       "type": "object",
       "required": [
@@ -1651,12 +1662,43 @@
         }
       }
     },
+    "BotFileName": {
+      "enum": [
+        "soul",
+        "user",
+        "memory",
+        "bootstrap"
+      ]
+    },
+    "BotFileText": {
+      "type": "object",
+      "required": [
+        "file",
+        "text"
+      ],
+      "properties": {
+        "file": {
+          "$ref": "#/$defs/BotFileName"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "BotImportPreview": {
       "type": "object",
       "required": [
         "template",
         "bot",
         "soul",
+        "memory",
         "memories",
         "skills",
         "routines",
@@ -1751,6 +1793,12 @@
           }
         },
         "soul": {
+          "type": "string"
+        },
+        "memory": {
+          "type": "string"
+        },
+        "bootstrap": {
           "type": "string"
         },
         "opener": {
@@ -2120,6 +2168,15 @@
           }
         },
         "soul": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "memory": {
+          "type": "string"
+        },
+        "bootstrap": {
           "type": "string"
         },
         "worker": {
@@ -2654,6 +2711,9 @@
           }
         },
         "soul": {
+          "type": "string"
+        },
+        "bootstrap": {
           "type": "string"
         },
         "opener": {
@@ -13145,6 +13205,7 @@
       "BotAccessRequest",
       "BotAvatar",
       "BotAvatarPatch",
+      "BotBootstrapRequest",
       "BotCatalog",
       "BotCatalogSkill",
       "BotCatalogTool",
@@ -13158,6 +13219,8 @@
       "BotFactKind",
       "BotFactPatch",
       "BotFactsResponse",
+      "BotFileName",
+      "BotFileText",
       "BotInput",
       "BotLastMessage",
       "BotMemoryResponse",
@@ -13608,6 +13671,23 @@
       },
       "response": {
         "$ref": "#/$defs/BotFactsResponse"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/files/:file",
+      "response": {
+        "$ref": "#/$defs/BotFileText"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/bots/:id/files/bootstrap",
+      "request": {
+        "$ref": "#/$defs/BotBootstrapRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BotFileText"
       }
     },
     {

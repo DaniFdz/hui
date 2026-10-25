@@ -2015,6 +2015,59 @@ The contract is [docs/api.md#bots](docs/api.md#bots).
 
 ## Decisions
 
+### A bot's prompt is four files, and only two of them travel (2026-10-25)
+
+The owner: "whenever I want to export a Bot to share with a teammate, it contains
+a lot of data that shouldn't be there", and the bot "write[s] all my preferences
+to SOUL": SOUL should be "I'm X, I help Dani do X… I should do this… and avoid
+doing this", not a diary of what it was told. OpenClaw's workspace is the model,
+minus what HUI already has.
+
+- **SOUL.md, USER.md, MEMORY.md, and an optional BOOTSTRAP.md.** SOUL.md is who
+the bot is and how it works: timeless, no dates, no operator data. USER.md is what
+it knows about the operator (their preferences, corrections, how they work).
+MEMORY.md is what it chose to keep, by topic; it is not OptChat's log. BOOTSTRAP.md
+is the operator's onboarding body, read only while SOUL.md is absent, inside HUI's
+fixed rules. Each is a prompt section (`soul`, `operator`, `memory`) read on every
+request, bounded at 20,000, 6,000, 10,000 and 6,000 characters.
+- **Only the operator's turns write them.** `write_soul`, `update_user` and
+`update_memory` replace one file whole, atomically (mode 0600), under the same
+turn-origin gate as `set_profile`: a routine, a trigger, another bot, a session or
+an import can never rewrite who the bot is or what it believes the operator
+wants. USER.md and MEMORY.md have no operator write path over the API or in the
+panel: the operator tells the bot, and reads them with `hui bot user` / `hui bot
+memory`. BOOTSTRAP.md is the operator's alone.
+- **An export carries SOUL.md and BOOTSTRAP.md, never USER.md or MEMORY.md.** The
+protection is structural, not the reviewer's judgement: what describes the
+operator cannot leave by accident. `facts.json` and OptChat stay excluded as they
+were, and the review says what it left out. A template's memories become
+MEMORY.md (reference data, labelled with its source), never the soul; USER.md is
+never seeded from a template, because it describes the previous operator.
+- **OpenClaw's other files are not copied.** IDENTITY.md is HUI's record and
+panel, AGENTS.md is HUI's own prompt plus the working directory's context files,
+BOOTSTRAP is the first conversation, TOOLS.md the Tools page, HEARTBEAT.md
+routines, and `memory/*.md` OptChat's log. A bot-level AGENTS.md would give one
+filename two owners and two scopes.
+- **The naming follows the meaning.** `MEMORY.md` is what the bot keeps, so
+OptChat's surface is the chat's **history**: `hui bot history` (the old
+`hui bot memory --zoom`/`--html` still reaches it, with a note), and docs say
+history where they said memory. The memory routes keep their paths.
+- **Old souls are split without guessing.** `hui doctor` reports a SOUL.md that
+still holds a `## What you already know` section and `--fix` moves it to
+MEMORY.md, keeping the rest (doctor runs with the gateway stopped, so it never
+starts a turn). The judgement part is the bot's, because a preference is not a
+rule: `hui bot split <bot>` sends it the three files and what belongs in each,
+and it sorts its own with its gated tools. A bot on a worker is named, not read:
+its home is there. Existing records, routes, skills, facts and OptChat are
+unchanged; no `hui doctor` migration is needed beyond this check.
+
+This supersedes the *SOUL.md only* part of [Bots write their own
+SOUL.md](#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06) and
+of [Bots import other platforms' templates](#bots-import-other-platforms-templates-and-export-their-own-2026-10-07)
+(memories go into MEMORY.md), and the *What you already know* part of [Bots are
+set up like Grok Bot](#bots-are-set-up-like-grok-bot-2026-10-06) where it says
+the soul holds preferences.
+
 ### Use cases live in one catalogue (2026-10-21)
 
 The owner wants a native iOS app with the web UI's capabilities, and a way to

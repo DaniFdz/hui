@@ -57,12 +57,13 @@ const PASSAGES = [
   { quote: "Approve only when CI is green", group: "confirm", reason: "An approval rule.", question: "Approve only on green CI?" },
 ];
 
-function harnessDeps(state: { soul: string | null; prompts: { system: string; prompt: string }[] } = { soul: SOUL, prompts: [] }, options: { model?: string | undefined; answer?: (prompt: string) => string } = {}): BotExportDeps {
+function harnessDeps(state: { soul: string | null; bootstrap?: string | null; prompts: { system: string; prompt: string }[] } = { soul: SOUL, prompts: [] }, options: { model?: string | undefined; answer?: (prompt: string) => string } = {}): BotExportDeps {
   return {
     bots: {
       get: async () => BOT,
       list: async () => [BOT, { ...BOT, id: "b2", handle: "retro", name: "Retro" }],
       soul: async () => state.soul,
+      file: async (_id: string, file: string) => file === "bootstrap" ? (state.bootstrap ?? null) : null,
     } as unknown as BotExportDeps["bots"],
     offer: async () => ({
       tools: [
@@ -105,6 +106,7 @@ test("a review cleans before the model reads, and the reviewer's changes, script
   assert.deepEqual(review.needs, [{ id: "n1", text: "The GitHub CLI signed in" }]);
   assert.deepEqual(review.leftOut, [
     "Its memory and its chat: an export never carries them.",
+    "USER.md and MEMORY.md, what it knows about you and what it keeps: they describe the operator, and never leave with an export.",
     "Skill review: .env (a hidden file or folder).",
     "Routine “Dentist”: it runs once, at a time of yours.",
     "1 turned-off tool of your extensions: a new owner's bot has its own.",
@@ -421,7 +423,7 @@ test("the profile can't hold a blank or a point to agree: an ask only it holds l
   const bot = { ...BOT, title: "Runs gh pr list for the platform team" };
   const service = new BotExportService({
     ...harnessDeps(),
-    bots: { get: async () => bot, list: async () => [bot], soul: async () => SOUL } as unknown as BotExportDeps["bots"],
+    bots: { get: async () => bot, list: async () => [bot], soul: async () => SOUL, file: async () => null } as unknown as BotExportDeps["bots"],
     completion: async (_model, request) => JSON.stringify({ changes: request.prompt.startsWith("Part: Profile")
       ? [{ quote: "the platform team", group: "ask", reason: "Their team.", label: "your team", question: "Which team?" }, { quote: "Runs gh pr list", group: "confirm", reason: "A rule.", question: "Run it?" }]
       // A script's ask, which only the profile also holds.
@@ -441,7 +443,7 @@ test("a change to the bot's whole name starts kept: the name travels unless the 
   const bot = { ...BOT, name: "Master" };
   const service = new BotExportService({
     ...harnessDeps(),
-    bots: { get: async () => bot, list: async () => [bot], soul: async () => SOUL } as unknown as BotExportDeps["bots"],
+    bots: { get: async () => bot, list: async () => [bot], soul: async () => SOUL, file: async () => null } as unknown as BotExportDeps["bots"],
     completion: async (_model, request) => JSON.stringify({ changes: request.prompt.startsWith("Part: Profile") ? [{ quote: "Master", group: "remove", reason: "The bot's name.", replacement: "" }, { quote: "PR review assistant", group: "remove", reason: "x", replacement: "helper" }] : [] }),
   });
   const review = await service.review("ada");
@@ -546,3 +548,21 @@ test("a quote of whitespace alone is no passage: it never reaches the zip's scru
   assert.doesNotMatch(build.files.find((file) => file.path === "SOUL.md")!.text, /\[removed\]\[removed\]/u);
 });
 
+
+test("BOOTSTRAP.md travels with the soul; USER.md and MEMORY.md never enter the review or the zip", async () => {
+  const state = { soul: SOUL as string | null, bootstrap: "Ask what they need, one question at a time.", prompts: [] as { system: string; prompt: string }[] };
+  const service = new BotExportService(harnessDeps(state));
+  const review = await service.review("ada");
+  const bootstrap = review.parts.find((part) => part.id === "BOOTSTRAP.md");
+  assert.ok(bootstrap, "the operator's onboarding body is a part, reviewed like the soul");
+  assert.equal(bootstrap.kind, "text");
+  assert.match(bootstrap.fields[0]!.text, /Ask what they need/u);
+  assert.equal(review.parts.some((part) => part.id === "USER.md" || part.id === "MEMORY.md"), false, "what it knows about the operator is never a part");
+  assert.match(review.leftOut.join("\n"), /USER\.md and MEMORY\.md, what it knows about you and what it keeps/u);
+
+  const zip = await service.export("ada", { review: review.id, picks: {} });
+  const files = unzip(zip.data);
+  assert.ok(files.has("SOUL.md"));
+  assert.match(files.get("BOOTSTRAP.md") ?? "", /Ask what they need/u);
+  assert.equal(files.has("USER.md") || files.has("MEMORY.md"), false);
+});

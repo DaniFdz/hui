@@ -71,9 +71,11 @@ export function formatImportPreview(preview: BotImportPreview): string {
     `Model: ${preview.model ?? "the gateway's default"}${preview.thinking ? ` · thinking ${preview.thinking}` : ""}${preview.utilityModel ? ` · utility model ${preview.utilityModel}` : ""}`,
     "",
     preview.soul
-      ? `SOUL.md (${preview.soul.length.toLocaleString("en-US")} characters${preview.memories.total ? `, with ${preview.memories.included} of ${plural(preview.memories.total, "memory", "memories")}` : ""}):\n${indent(preview.soul)}`
+      ? `SOUL.md (${preview.soul.length.toLocaleString("en-US")} characters):\n${indent(preview.soul)}`
       : "No persona: it starts with its first conversation and writes its own SOUL.md.",
   ];
+  if (preview.memory) lines.push("", `MEMORY.md (${preview.memory.length.toLocaleString("en-US")} characters, never exported${preview.memories.total > preview.memories.included ? `, with ${preview.memories.included} of ${plural(preview.memories.total, "memory", "memories")}` : ""}):\n${indent(preview.memory)}`);
+  if (preview.bootstrap) lines.push("", `BOOTSTRAP.md (${preview.bootstrap.length.toLocaleString("en-US")} characters, used while it has no SOUL.md):\n${indent(preview.bootstrap)}`);
   if (preview.opener) lines.push("", `First message (it sends this in a first turn HUI starts):\n${indent(preview.opener)}`);
   if (preview.open.length) {
     lines.push("", "Not agreed yet (it goes through these with you in its first chat, then rewrites its SOUL.md):");
