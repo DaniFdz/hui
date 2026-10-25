@@ -18,7 +18,8 @@ test("Add routine takes a name, a prompt and a cadence, refuses an empty name or
   await expect(screen.getByLabel("Repeat every")).toBeVisible();
   const units = await hui.textOf(screen.getByLabel("Interval unit"));
   for (const unit of ["minutes", "hours", "days"]) expect(units).toContain(unit);
-  const zone = (await hui.textOf(screen.getByText(/^Times are in \S+/u))).replace("Times are in ", "").replace(/\..*$/u, "");
+  const zone = await hui.zone();
+  await expect(screen.getByText(`Times are in ${zone}.`)).toBeVisible();
 
   await screen.getByRole("button", "Add routine").tap();
   await expect(screen.getByText("Name the routine.")).toBeVisible();
@@ -48,6 +49,23 @@ test("Add routine takes a name, a prompt and a cadence, refuses an empty name or
   await expect(screen.getByText(/^Mondays at 09:30 · next /u)).toBeVisible();
   expect((await tasks()).find((task) => task.name === "Weekly digest")!.schedule).
     toEqual(expect.objectContaining({ kind: "cron", expression: "30 9 * * 1", timezone: zone }));
+
+  await screen.getByPlaceholder("Inbox digest").fill("Interval digest");
+  await screen.getByPlaceholder("What should the bot do each time?").fill("Summarize what changed.");
+  await hui.flip(screen.getByText("Every", { exact: true }).first());
+  await screen.getByLabel("Repeat every").fill("2");
+  await screen.getByLabel("Interval unit").selectOption({ label: "hours" });
+  await screen.getByRole("button", "Add routine").tap();
+  await expect(screen.getByText("Interval digest", { exact: true })).toBeVisible();
+  expect((await tasks()).find((task) => task.name === "Interval digest")!.schedule).toEqual(expect.objectContaining({ kind: "every", everyMs: 7_200_000 }));
+
+  await screen.getByPlaceholder("Inbox digest").fill("One-off digest");
+  await screen.getByPlaceholder("What should the bot do each time?").fill("Summarize once.");
+  await hui.flip(screen.getByText("Once", { exact: true }).first());
+  await screen.getByLabel("Run once at").fill("2030-01-02T08:15");
+  await screen.getByRole("button", "Add routine").tap();
+  await expect(screen.getByText("One-off digest", { exact: true })).toBeVisible();
+  expect((await tasks()).find((task) => task.name === "One-off digest")!.schedule).toEqual(expect.objectContaining({ kind: "at", at: new Date(2030, 0, 2, 8, 15).toISOString() }));
 
   const refusal = await hui.intercept("POST", /\/__hui\/automation\/tasks$/u);
   await screen.getByPlaceholder("Inbox digest").fill("Second digests");
@@ -83,6 +101,11 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
   await expect(screen.getByText(/^Mondays at 09:00 · paused$/u)).toBeVisible();
   await expect.poll(async () => (await tasks()).map((task) => task.enabled)).toEqual([false]);
   await expect(overviewSwitch).toBeChecked({ checked: false });
+  await hui.flip(overviewSwitch);
+  await expect(screen.getByText(/^Mondays at 09:00 · next /u)).toBeVisible();
+  await expect(overviewSwitch).toBeChecked();
+  await hui.flip(overviewSwitch);
+  await expect(screen.getByText(/^Mondays at 09:00 · paused$/u)).toBeVisible();
 
   await screen.getByText("Weekly digest", { exact: true }).tap();
   await expect(screen.getByText(/^Mondays at 09:00 · paused$/u)).toBeVisible();
@@ -94,5 +117,5 @@ test("a routine's switch pauses and resumes it on its page and the overview, and
   await expect(screen.getByText(/^No routines yet\./u)).toBeVisible();
   await screen.getByRole("button", "Back to Routine owner").tap();
   await expect(screen.getByText(/^No routines yet\. Ask Routine owner to do something on a schedule, or add one\.$/u)).toBeVisible();
-  expect(await tasks()).toEqual([]);
+  await expect.poll(async () => await tasks()).toEqual([]);
 });

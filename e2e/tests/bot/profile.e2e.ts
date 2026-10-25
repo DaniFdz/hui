@@ -44,5 +44,5 @@ test("a bot's name and title save on Enter or on leaving the field, the @handle 
   await refusal.reject(409, "That handle is taken.");
   await expect(screen.getByText("That handle is taken.")).toBeVisible();
   await expect(name).toHaveValue("Taken name");
-  expect((await hui.api<{ bot: { name: string; handle: string } }>("GET", `/__hui/bots/${bot.id}`)).bot).toEqual(expect.objectContaining({ name: "Pathfinder", handle: "pathfinder" }));
+  await expect.poll(async () => (await hui.api<{ bot: { name: string; handle: string } }>("GET", `/__hui/bots/${bot.id}`)).bot).toEqual(expect.objectContaining({ name: "Pathfinder", handle: "pathfinder" }));
 });

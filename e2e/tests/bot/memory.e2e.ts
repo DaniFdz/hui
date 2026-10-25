@@ -18,6 +18,7 @@ test("Memory saves a fact with its kind, source and count, keeps it across a rel
   await expect(screen.getByText("0 / 40 memories")).toBeVisible();
 
   const text = "Reports go out on Fridays 7f3a.";
+  const requests = await hui.providerRequests();
   await screen.getByLabel("Kind").selectOption({ label: "Preference" });
   await screen.getByRole("textbox", "Memory").fill(text);
   await screen.getByLabel("Source (optional)").fill("our planning conversation");
@@ -30,6 +31,7 @@ test("Memory saves a fact with its kind, source and count, keeps it across a rel
   expect(listed).toContain("Manually saved · our planning conversation");
   expect(listed).toMatch(/Created \d/u);
   expect(await hui.stored(text)).not.toEqual(expect.arrayContaining([expect.stringMatching(/^artifacts\//u)]));
+  expect(await hui.providerRequests()).toBe(requests);
 
   await hui.reload();
   await openMemory(screen, hui, bot);
@@ -100,7 +102,7 @@ test("Delete memory asks, quotes the memory, keeps it on Cancel and removes it f
   await screen.getByRole("button", "Delete saved memory").tap();
   await expect(screen.getByText("0 / 40 memories")).toBeVisible();
   await expect(screen.getByText("No explicit memories yet. Save only what you want this bot to keep.")).toBeVisible();
-  expect((await hui.api<{ facts: unknown[] }>("GET", `/__hui/bots/${bot.id}/facts`)).facts).toEqual([]);
+  await expect.poll(async () => (await hui.api<{ facts: unknown[] }>("GET", `/__hui/bots/${bot.id}/facts`)).facts).toEqual([]);
 
   await hui.open(`/bots/${bot.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();

@@ -83,6 +83,8 @@ export type Hui = {
   sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   faces(): Promise<{ size: string; shape: string; ears: string; emoji: string; color: string }[]>;
+  zone(): Promise<string>;
+  providerRequests(): Promise<number>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
   pressed(within: Locator, name: string): Locator;
@@ -362,6 +364,8 @@ export const test = base.extend<{ hui: Hui }>({
           emoji: node.querySelector(".bot-avatar__glyph")?.textContent ?? "",
           color: (node.querySelector("hui-bot-face") as unknown as { color?: string } | null)?.color ?? "",
         }))),
+        zone: () => browser().evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
+        providerRequests: async () => (await readFile(join(dirname(receipt.workspace), "artifacts/provider.jsonl"), "utf8").catch(() => "")).split("\n").filter((line) => line.trim()).length,
         sessionList: async () => {
           const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);
           if (phone && await fixtures.screen.getByRole("button", "Close navigation", { visible: true }).count() === 0) {
