@@ -51,7 +51,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "SPEC.md#bot-faces-get-more-shapes-and-ears-and-bots-can-restyle-themselves-2026-10-08", "docs/api.md#soul-and-the-first-conversation"],
     surfaces: ["tool:set_profile"],
     journeys: ["bot-setup", "bots-workers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -61,7 +61,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06", "docs/api.md#soul-and-the-first-conversation"],
     surfaces: ["tool:write_soul"],
     journeys: ["bots", "bots-workers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
