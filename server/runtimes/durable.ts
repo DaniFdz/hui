@@ -25,7 +25,7 @@ import { durableContext as context, durableHost, modelCallable, type DurableHost
 import { CallEntry } from "./turn-origins.ts";
 import { skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
-import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
+import { DurableExtensions, ExtensionMessageEntry, isCustomInput, reportedSessionCost, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import { fitThinking, modelControls, piThinking } from "./model-controls.ts";
 import {
@@ -263,6 +263,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #disposed = false;
   /** `rows()`, until the history changes. */
   #rows: readonly EntryRecord[] | undefined;
+  /** The newest session cost an extension reported, recomputed with `#rows` so a snapshot never walks the history. */
+  #reportedCost: RuntimeUsage["sessionCost"];
   /** The session's PI extensions; absent when its PI setup has none. */
   #extensions: DurableExtensions | undefined;
   #extensionFailure: string | undefined;
@@ -501,7 +503,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Entries since the latest reset, oldest first: what the extensions' PI session view holds. */
   rows(): readonly EntryRecord[] {
-    this.#rows ??= this.#history.slice(this.#resetIndex()).map((row) => row.entry);
+    if (!this.#rows) {
+      const rows = this.#history.slice(this.#resetIndex()).map((row) => row.entry);
+      this.#rows = rows;
+      this.#reportedCost = reportedSessionCost(rows);
+    }
     return this.#rows;
   }
 
@@ -1266,16 +1272,19 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     };
   }
 
-  /** Context use as Durable measures it against its compaction thresholds, plus the latest run's spend. */
+  /** Context use as Durable measures it against its compaction thresholds, the latest run's spend, and any session
+   * cost an extension reported from a source Durable cannot price. */
   currentUsage(): RuntimeUsage | undefined {
     const window = this.currentModel()?.contextWindow;
     if (!window) return undefined;
     const tokens = this.#history.length ? this.#contextSize ??= this.#contextTokens(this.#history.length) : null;
+    this.rows();
     return {
       contextTokens: tokens,
       contextWindow: window,
       percent: tokens === null ? null : Math.min(100, (tokens / window) * 100),
       ...latestRunUsage(this.#visible()),
+      ...(this.#reportedCost ? { sessionCost: this.#reportedCost } : {}),
     };
   }
 

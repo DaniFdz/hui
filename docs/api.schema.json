@@ -8030,6 +8030,9 @@
               "type": "null"
             }
           ]
+        },
+        "sessionCost": {
+          "$ref": "#/$defs/SessionCostReport"
         }
       }
     },
@@ -8091,6 +8094,25 @@
       "properties": {
         "url": {
           "type": "string"
+        }
+      }
+    },
+    "SessionCostReport": {
+      "type": "object",
+      "required": [
+        "usd",
+        "source",
+        "asOf"
+      ],
+      "properties": {
+        "usd": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        },
+        "asOf": {
+          "type": "number"
         }
       }
     },
@@ -13033,6 +13055,7 @@
       "SessionBtwRequest",
       "SessionClearResponse",
       "SessionCommandsResponse",
+      "SessionCostReport",
       "SessionEvent",
       "SessionModelRequest",
       "SessionModelResponse",

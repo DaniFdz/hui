@@ -15,6 +15,7 @@ import type { AgentToolInvocation } from "../agent-tools/bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 import { SecretFiles, SecretRequests } from "../agent-tools/secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
 // Durable store) is resolved at import time, and PI finds skills in
@@ -1031,14 +1032,15 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
   const [firstId, ...otherFirst] = await identities("IDENTITY_FIRST");
   const [secondId, ...otherSecond] = await identities("IDENTITY_SECOND");
   assert.deepEqual([otherFirst, otherSecond], [[], []], "one identity per HUI session");
-  assert.match(String(firstId), /^[0-9a-f-]{36}$/u);
-  assert.match(String(secondId), /^[0-9a-f-]{36}$/u);
-  assert.notEqual(firstId, secondId, "independent sessions need independent identities");
+  assert.equal(firstId, "identity-first", "a request is identified by its HUI session, as a cost lookup expects");
+  assert.equal(secondId, "identity-second");
   assert.deepEqual([...await identities("IDENTITY_FIRST", true)], [firstId], "a summary is requested as its session");
   assert.equal(process.env["PI_CLIENT_SESSION_ID"], undefined, "the gateway environment is unchanged");
-  process.env["PI_CLIENT_SESSION_ID"] = "operator-id";
-  await turns(second, ["IDENTITY_OPERATOR two"]);
-  assert.deepEqual([...await identities("IDENTITY_OPERATOR")], ["operator-id"], "an explicit gateway value is kept, as for PI workers");
+  // An extension loaded in the gateway process writes that variable for the session it starts in. Sessions it did
+  // not start keep their own identity.
+  process.env["PI_CLIENT_SESSION_ID"] = "extension-id";
+  await turns(second, ["IDENTITY_EXTENSION two"]);
+  assert.deepEqual([...await identities("IDENTITY_EXTENSION")], ["identity-second"], "an in-process write does not retarget a session");
 });
 
 test("a worker row with the same durable:N never becomes the caller of a gateway conversation", async () => {
@@ -1146,6 +1148,28 @@ async function extensionFixture(t: TestContext, options: Parameters<typeof fixtu
   const f = await fixture(t, { ...options, extensions: { "fixture.js": fixtureExtension(events), ...options.extensions } });
   return { ...f, events, eventsDir: dir };
 }
+
+test("a session cost an extension reports reaches the session's usage and survives a reopen", async (t) => {
+  const f = await fixture(t, { extensions: { "cost.js": `
+    export default function (pi) {
+      pi.on('session_start', () => {
+        pi.appendEntry('hui.session-cost', { usd: 1.25, source: 'fixture gateway', asOf: 1792920000000 });
+        // Unreadable, and therefore skipped rather than shown as this session's cost.
+        pi.appendEntry('hui.session-cost', { usd: -1, source: 'fixture gateway', asOf: 1 });
+      });
+    }
+  ` } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "reported-cost" }, host);
+  const reported = { usd: 1.25, source: "fixture gateway", asOf: 1792920000000 };
+  assert.deepEqual(await waitFor("the reported session cost", () => session.currentUsage()?.sessionCost), reported);
+
+  const reference = session.sessionFile;
+  session.dispose();
+  const reopened = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "reported-cost" }, host);
+  assert.deepEqual(await waitFor("the reopened session's cost", () => reopened.currentUsage()?.sessionCost), reported, "the report is kept in the store, not in the extension's memory");
+  reopened.dispose();
+});
 
 test("Durable sessions load PI extensions: their tools, hooks and prompt additions reach the model", { timeout: 45_000 }, async (t) => {
   const f = await extensionFixture(t);
