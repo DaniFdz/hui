@@ -430,7 +430,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07", "docs/api.md#routines"],
     surfaces: ["route:GET /__hui/automation", "tool:routines"],
     journeys: ["bot-schedules"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
