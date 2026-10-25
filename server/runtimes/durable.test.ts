@@ -1157,6 +1157,7 @@ test("a session cost an extension reports reaches the session's usage and surviv
         // Unreadable, and therefore skipped rather than shown as this session's cost.
         pi.appendEntry('hui.session-cost', { usd: -1, source: 'fixture gateway', asOf: 1 });
       });
+      pi.on('agent_settled', () => pi.appendEntry('hui.session-cost', { usd: 0, source: 'fixture gateway', asOf: 1792920300000 }));
     }
   ` } });
   const host = f.host();
@@ -1168,6 +1169,11 @@ test("a session cost an extension reports reaches the session's usage and surviv
   session.dispose();
   const reopened = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "reported-cost" }, host);
   assert.deepEqual(await waitFor("the reopened session's cost", () => reopened.currentUsage()?.sessionCost), reported, "the report is kept in the store, not in the extension's memory");
+
+  // A reported zero is a cost: it replaces the earlier figure instead of reading as no report at all.
+  await turns(reopened, ["COST_ZERO_AFTER_TURN please"]);
+  await waitFor("the zero report", () => reopened.currentUsage()?.sessionCost?.asOf === 1792920300000);
+  assert.deepEqual(reopened.currentUsage()?.sessionCost, { usd: 0, source: "fixture gateway", asOf: 1792920300000 }, "a reported zero is a cost, not an absent one");
   reopened.dispose();
 });
 
