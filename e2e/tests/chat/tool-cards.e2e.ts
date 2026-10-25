@@ -25,6 +25,7 @@ test("a command shows a bounded preview and opens to its output, state and copy"
   await hui.prompt(session, call("CALL", "bash", { command }));
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
   await transcript.getByText("Ran 1 command").tap();
   const row = transcript.getByRole("button", `echo ${words}`.slice(0, 200));
   await expect(row).toBeVisible();
@@ -40,7 +41,9 @@ test("a command shows a bounded preview and opens to its output, state and copy"
   await message.fill("E2E_COMMAND_RUNNING");
   await send.tap();
   await hui.provider.held();
+  await hui.scrollTo(transcript, transcript.getByText("bash…"));
   await transcript.getByText("bash…").tap();
+  await hui.scrollTo(transcript, transcript.getByRole("button", /^curl --silent/u));
   await transcript.getByRole("button", /^curl --silent/u).tap();
   await expect(transcript.getByText("Running")).toBeVisible();
   await hui.provider.release();
@@ -52,8 +55,10 @@ test("a command shows a bounded preview and opens to its output, state and copy"
   await send.tap();
   await expect(transcript.getByText("Tool complete")).toBeVisible();
   await expect(idle).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
   await transcript.getByText("Ran 1 command").tap();
   await expect(transcript.getByText("failed")).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByRole("button", "false failed"));
   await transcript.getByRole("button", "false failed").tap();
   await expect(transcript.getByText("false")).toHaveCount(2);
   await expect(transcript.getByText("failed")).toBeVisible();
@@ -66,7 +71,9 @@ test("a read's output copies from its context menu", { tags: ["CHAT-068"] }, asy
   await screen.getByLabel("Message").fill("E2E_RICH");
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText("Tool complete")).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
   await transcript.getByText("Ran 1 command").tap();
+  await hui.scrollTo(transcript, transcript.getByRole("button", "Read fixture.txt"));
   await transcript.getByRole("button", "Read fixture.txt").tap();
   const content = transcript.getByText("Real SDK browser fixture", { exact: false });
   await hui.contextMenu(content);
@@ -86,16 +93,19 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await message.fill(call("HOLD", "fixture_echo", { text: "from the model" }));
   await send.tap();
   await hui.provider.held();
+  await hui.scrollTo(transcript, transcript.getByText("fixture_echo…"));
   await transcript.getByText("fixture_echo…").tap();
   await expect(transcript.getByText("Running")).toBeVisible();
   await hui.provider.release();
   await expect(idle).toBeVisible();
   await expect(transcript.getByText("fixture_echo", { visible: true })).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Completed"));
   await transcript.getByText("Completed").tap();
   await expect(transcript.getByText("Input")).toBeVisible();
   await expect(transcript.getByText(/"text": "from the model"/u)).toBeVisible();
   await expect(transcript.getByText("Output")).toBeVisible();
   await expect(transcript.getByText("Extension tool executed: from the model")).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByRole("button", "Copy output"));
   await transcript.getByRole("button", "Copy output").tap();
   await expect.poll(() => hui.copied()).toBe("Extension tool executed: from the model");
 
@@ -103,7 +113,9 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await send.tap();
   await expect(transcript.getByText(/^tool answered: /u).last()).toBeVisible();
   await expect(idle).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command").last());
   await transcript.getByText("Ran 1 command").last().tap();
+  await hui.scrollTo(transcript, transcript.getByText("Completed").last());
   await transcript.getByText("Completed").last().tap();
   await expect(transcript.getByText("No output")).toBeVisible();
 
@@ -112,8 +124,10 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await send.tap();
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
   await transcript.getByText("Ran 1 command").tap();
   await expect(transcript.getByText("fixture_echo", { visible: true })).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Failed"));
   await transcript.getByText("Failed").tap();
   await expect(transcript.getByText("Fixture echo failed on purpose.")).toBeVisible();
 });
@@ -128,8 +142,10 @@ test("a failed tool call keeps its error live and after a reload", { tags: ["CHA
 
   for (const pass of ["live", "reloaded"]) {
     if (pass === "reloaded") await hui.reload();
+    await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
     await transcript.getByText("Ran 1 command").tap();
     await expect(transcript.getByText("failed")).toBeVisible();
+    await hui.scrollTo(transcript, transcript.getByRole("button", "Read missing.txt"));
     await transcript.getByRole("button", "Read missing.txt").tap();
     await expect(transcript.getByText("Tool error")).toBeVisible();
     await expect(transcript.getByText(/ENOENT.*missing\.txt/u)).toBeVisible();

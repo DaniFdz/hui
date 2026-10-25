@@ -29,6 +29,7 @@ test("a message written mid-turn keeps its own row with its links, live and afte
     await hui.expectLinkTo(transcript, "service dashboard", "https://example.com/dashboard/checkout");
     await hui.expectLinkTo(transcript, "error logs", "https://example.com/logs?query=status%3Aerror");
     await expect(transcript.getByText("Started two helpers in the background; I'll report when they're back.")).toBeVisible();
+    await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
     await transcript.getByText("Ran 1 command").tap();
     await expect(transcript.getByRole("button", "Read fixture.txt")).toBeVisible();
   }
@@ -46,6 +47,7 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await message.fill("E2E_THINKING");
   await send.tap();
   await expect(transcript.getByText("Thought it through.")).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Reasoning"));
   await transcript.getByText("Reasoning").tap();
   await expect(transcript.getByText("Weighing the fixture.")).toBeVisible();
 
@@ -60,6 +62,7 @@ test("each stretch of activity folds under a label from what it holds and opens 
   await send.tap();
   await expect(transcript.getByText("Tool complete")).toBeVisible();
   await expect(idle).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command").last());
   await transcript.getByText("Ran 1 command").last().tap();
   await inOrder(transcript.getByText("Inspecting the fixture."), transcript.getByRole("button", "Read fixture.txt"));
 
@@ -70,6 +73,7 @@ test("each stretch of activity folds under a label from what it holds and opens 
   ]));
   await send.tap();
   await expect(idle).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 3 commands, edited 1 file"));
   await transcript.getByText("Ran 3 commands, edited 1 file").tap();
   await inOrder(transcript.getByRole("button", "Read fixture.txt").last(), transcript.getByRole("button", "echo folded"), transcript.getByText("edit", { visible: true }));
   await hui.scrollTo(transcript, transcript.getByText("Weighing the fixture."));

@@ -621,6 +621,11 @@ export const test = base.extend<{ hui: Hui }>({
         dropStreams: async () => proxy!.dropStreams(),
         url: async () => proxy!.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         scrollTo: async (within, target) => {
+          const keyboard = fixtures.screen.getByRole("keyboard");
+          if (await keyboard.count() > 0) {
+            await within.swipe({ direction: "down", momentum: "slow" });
+            await expect(keyboard).toHaveCount(0);
+          }
           const bar = within.getByLabel(/^Vertical scroll bar/u).first();
           const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
           for (const direction of ["down", "up"] as const) {

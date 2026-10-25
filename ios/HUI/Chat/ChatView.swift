@@ -6,7 +6,7 @@
 // the core's rows anchored at the bottom, activity rows
 // that open to their thinking and tool cards (`ToolCardView`), the working indicator ("Agent activity: …"), the message
 // queue and the composer (Message, the "Model: …" menu and Send message; while a run streams, Stop with an empty draft, otherwise "Steer
-// message; touch and hold to enqueue", whose hold menu offers Enqueue). A tap in the transcript puts the keyboard away.
+// message; touch and hold to enqueue", whose hold menu offers Enqueue). A tap or a scroll in the transcript puts the keyboard away.
 // While the conversation loads it says so, and a failed load offers Try again. A send reads "Sending…" until the
 // gateway takes it, and one that fails stays marked "Not sent — draft recovered." with its text back in the draft, as
 // on the web. A run that ended on an error shows the core's error card above the composer (Details, Copy error,
@@ -198,7 +198,7 @@ struct ChatView: View {
             following = nearBottom
             if following { withAnimation { position.scrollTo(edge: .bottom) } }
         }
-        .scrollDismissesKeyboard(.interactively)
+        .scrollDismissesKeyboard(.immediately)
         .simultaneousGesture(TapGesture().onEnded { composing = false })
         .accessibilityIdentifier("transcript")
     }
