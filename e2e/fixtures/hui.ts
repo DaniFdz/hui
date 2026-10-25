@@ -16,7 +16,8 @@
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
  * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
  * included, with the app's own `Origin` and `Host`; it follows `hui://open` links, reads the address the app shows
- * from its app-route marker, scrolls a container by swiping it until the target is on screen (the device reports only
+ * from its app-route marker, scrolls a container by swiping it once (which puts a screen's keyboard away, so a row it
+ * clipped can be read) and then until the target is on screen (the device reports only
  * on-screen nodes), and checks a link's address through its accessibility identifier, which the platform sets to the
  * link's URL; each test starts by deleting only the app's preferences through `defaults`, and
  * `clearState` deletes them too before the engine empties the data container, because `cfprefsd` would otherwise hand
@@ -621,11 +622,7 @@ export const test = base.extend<{ hui: Hui }>({
         dropStreams: async () => proxy!.dropStreams(),
         url: async () => proxy!.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         scrollTo: async (within, target) => {
-          const keyboard = fixtures.screen.getByRole("keyboard");
-          if (await keyboard.count() > 0) {
-            await within.swipe({ direction: "down", momentum: "slow" });
-            await expect(keyboard).toHaveCount(0);
-          }
+          await within.swipe({ direction: "down", momentum: "slow" });
           const bar = within.getByLabel(/^Vertical scroll bar/u).first();
           const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
           for (const direction of ["down", "up"] as const) {
