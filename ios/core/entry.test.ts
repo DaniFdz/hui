@@ -85,6 +85,17 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     themePalettes: () => assert.deepEqual(json(core.themePalettes({ dark: { background: "oklch(0 0 0)", foreground: "rgb(255 255 255)" } })),
       { variant: "dark", dark: { background: "#000000", foreground: "#ffffff", card: "#0f0f0f", accent: "#ffffff" } }),
     effectiveColorScheme: () => assert.equal(core.effectiveColorScheme("light", "dark"), "dark"),
+    ACCENTS: () => assert.equal(core.ACCENTS[6]?.label, "Blue"),
+    TYPEFACES: () => assert.equal(core.TYPEFACES.map((face) => face.label).slice(0, 2).join(", "), "Instrument Sans, Geist"),
+    TERMINAL_FONTS: () => assert.equal(core.TERMINAL_FONTS[0], "JetBrains Mono"),
+    NERD_FONT_SYMBOLS: () => assert.equal(core.NERD_FONT_SYMBOLS, "HUI Nerd Font Symbols"),
+    normalizeTerminalFont: () => assert.equal(core.normalizeTerminalFont("Mono; color: red"), "JetBrains Mono"),
+    typefaceFamily: () => assert.equal(core.typefaceFamily("atkinson-hyperlegible"), "Atkinson Hyperlegible Next"),
+    terminalFontFamilies: () => assert.deepEqual(json(core.terminalFontFamilies("Menlo")), ["Menlo", "HUI Nerd Font Symbols", "JetBrains Mono", "ui-monospace", "monospace"]),
+    terminalFontStack: () => assert.equal(core.terminalFontStack("Menlo"), '"Menlo", "HUI Nerd Font Symbols", "JetBrains Mono", ui-monospace, monospace'),
+    browserStatusLabel: () => assert.deepEqual(json(core.browserStatusLabel(core.normalizeBrowserStatus({ enabled: false }))), { kind: "muted", label: "Off" }),
+    browserVersionLabel: () => assert.equal(core.browserVersionLabel(core.normalizeBrowserStatus({ version: "Chrome/153", executable: { name: "Brave", path: "/usr/bin/brave" } })), "Brave · Chrome/153"),
+    normalizeBrowserStatus: () => assert.equal(core.normalizeBrowserStatus({ state: "nope" }).state, "stopped"),
   };
   assert.deepEqual(Object.keys(core).sort(), Object.keys(calls).sort());
   for (const call of Object.values(calls)) call();

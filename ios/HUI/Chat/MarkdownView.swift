@@ -46,21 +46,21 @@ struct MarkdownView: View {
     }
 
     enum Block {
-        case text(AttributedString, prefix: String, font: Font?)
+        case text(AttributedString, prefix: String, style: Font.TextStyle)
         case code(String, math: Bool)
         case rule
     }
 
     @ViewBuilder private func view(_ block: Block) -> some View {
         switch block {
-        case .text(let text, let prefix, let font):
+        case .text(let text, let prefix, let style):
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 if !prefix.isEmpty { Text(prefix).accessibilityHidden(true) }
-                Text(text).font(font).textSelection(.enabled)
+                Text(text).typeface(style, weight: style == .body || style == .headline ? nil : .bold, prose: true).textSelection(.enabled)
             }
         case .code(let code, let math):
             ScrollView(.horizontal) {
-                Text(code.trimmingCharacters(in: .newlines)).font(.system(.footnote, design: .monospaced)).textSelection(.enabled).padding(8)
+                Text(code).typeface(.footnote, mono: true).textSelection(.enabled).padding(8)
             }
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
             .contextMenu {
@@ -78,7 +78,7 @@ struct MarkdownView: View {
         var blocks: [Block] = []
         var lists: [Int?] = []
         var prefix = ""
-        var font: Font?
+        var style = Font.TextStyle.body
         var quote = 0
         for token in tokens {
             switch token.type {
@@ -97,14 +97,14 @@ struct MarkdownView: View {
                 }
             case "blockquote_open": quote += 1
             case "blockquote_close": quote -= 1
-            case "heading_open": font = token.tag == "h1" ? .title2.bold() : token.tag == "h2" ? .title3.bold() : .headline
-            case "heading_close": font = nil
+            case "heading_open": style = token.tag == "h1" ? .title2 : token.tag == "h2" ? .title3 : .headline
+            case "heading_close": style = .body
             case "inline":
                 let lead = String(repeating: "▍", count: quote) + prefix
-                blocks.append(.text(inline(token.children ?? []), prefix: lead, font: font))
+                blocks.append(.text(inline(token.children ?? []), prefix: lead, style: style))
                 prefix = ""
-            case "fence", "code_block", "hui_math_block": blocks.append(.code(token.content, math: token.type == "hui_math_block"))
-            case "html_block": blocks.append(.text(AttributedString(token.content.trimmingCharacters(in: .newlines)), prefix: "", font: nil))
+            case "fence", "code_block", "hui_math_block": blocks.append(.code(token.content.trimmingCharacters(in: .newlines), math: token.type == "hui_math_block"))
+            case "html_block": blocks.append(.text(AttributedString(token.content.trimmingCharacters(in: .newlines)), prefix: "", style: .body))
             case "hr": blocks.append(.rule)
             default: continue
             }

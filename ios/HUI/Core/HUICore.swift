@@ -56,6 +56,42 @@ actor HUICore {
         try call("effectiveColorScheme", mode, variant)
     }
 
+    func typefaces() throws -> [TypefaceFace] {
+        try decode(exports.forProperty("TYPEFACES"))
+    }
+
+    func typefaceFamily(_ id: String) throws -> String {
+        try call("typefaceFamily", id)
+    }
+
+    func accents() throws -> [AccentPreset] {
+        try decode(exports.forProperty("ACCENTS"))
+    }
+
+    func terminalFonts() throws -> [String] {
+        try decode(exports.forProperty("TERMINAL_FONTS"))
+    }
+
+    func terminalFontFamilies(_ value: String) throws -> [String] {
+        try call("terminalFontFamilies", value)
+    }
+
+    func normalizeTerminalFont(_ value: String) throws -> String {
+        try call("normalizeTerminalFont", value)
+    }
+
+    func nerdFontSymbols() throws -> String {
+        try call("NERD_FONT_SYMBOLS") as String
+    }
+
+    func normalizeBrowserStatus(_ raw: API.JSONValue) throws -> API.BrowserStatus {
+        try call("normalizeBrowserStatus", raw)
+    }
+
+    func browserStatusLabel(_ status: API.BrowserStatus?) throws -> BrowserStatusLabel {
+        try call("browserStatusLabel", status)
+    }
+
     func decodeSseFrame(_ chunk: String) throws -> SSEFrame? {
         try call("decodeSseFrame", chunk)
     }
@@ -313,6 +349,11 @@ struct SessionGlyph: Decodable, Equatable, Sendable {
     var attention: Attention?
     var busy: Bool
     var unread: Bool
+    var label: String
+}
+
+struct BrowserStatusLabel: Decodable, Equatable, Sendable {
+    var kind: String
     var label: String
 }
 

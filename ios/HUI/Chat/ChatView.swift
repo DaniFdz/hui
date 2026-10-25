@@ -60,7 +60,7 @@ struct ChatView: View {
             case .failed(let message):
                 Spacer()
                 VStack(spacing: 8) {
-                    Text("Could not load this conversation").font(.headline)
+                    Text("Could not load this conversation").typeface(.headline)
                     Text(message).foregroundStyle(.secondary)
                     Button("Try again") { model.start() }.buttonStyle(.bordered)
                 }
@@ -102,7 +102,7 @@ struct ChatView: View {
             VStack(alignment: .leading, spacing: 2) {
                 if sessions.renaming == model.id {
                     TextField("Session name", text: $name)
-                        .font(.headline)
+                        .typeface(.headline)
                         .accessibilityLabel("Session name")
                         .focused($naming)
                         .submitLabel(.done)
@@ -115,7 +115,7 @@ struct ChatView: View {
                         }
                 } else {
                     Text(title)
-                        .font(.headline)
+                        .typeface(.headline)
                         .accessibilityIdentifier("session-title")
                         .accessibilityAddTraits(.isHeader)
                 }
@@ -124,13 +124,13 @@ struct ChatView: View {
                         Text(meta)
                         Text(model.statusLabel).accessibilityLabel("Session status: \(model.statusLabel)")
                     }
-                    .font(.caption)
+                    .typeface(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel(meta + model.statusLabel)
                 }
                 if !model.connectionNote.isEmpty {
-                    Text(model.connectionNote).font(.caption).foregroundStyle(.orange)
+                    Text(model.connectionNote).typeface(.caption).foregroundStyle(.orange)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -214,6 +214,8 @@ struct ChatView: View {
                     Group {
                         if message.markdown == true {
                             MarkdownView(source: text, agent: true, core: core, copyMarkdown: message.pending == true ? nil : text)
+                        } else if user {
+                            Text(text).typeface(.body, prose: true).textSelection(.enabled)
                         } else {
                             Text(text)
                         }
@@ -231,10 +233,10 @@ struct ChatView: View {
                             }
                         }
                     if message.pending == true {
-                        Text("Sending…").font(.caption).foregroundStyle(.secondary)
+                        Text("Sending…").typeface(.caption).foregroundStyle(.secondary)
                     }
                     if message.failed == true {
-                        Text("Not sent — draft recovered.").font(.caption).foregroundStyle(.red)
+                        Text("Not sent — draft recovered.").typeface(.caption).foregroundStyle(.red)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: user ? .trailing : .leading)
@@ -258,7 +260,7 @@ struct ChatView: View {
                 }
             }
         case .compaction:
-            Text("Conversation compacted").font(.caption).foregroundStyle(.secondary)
+            Text("Conversation compacted").typeface(.caption).foregroundStyle(.secondary)
         case .call, .subagentEvent, .botCreated, .unrecognized:
             EmptyView()
         }
@@ -301,7 +303,7 @@ struct ChatView: View {
                 }
             }
         }
-        .font(.callout)
+        .typeface(.callout)
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
@@ -337,7 +339,7 @@ struct ChatView: View {
                     Image(systemName: open ? "chevron.down" : "chevron.right").accessibilityHidden(true)
                     Text(label)
                 }
-                .font(.subheadline)
+                .typeface(.subheadline)
                 .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
@@ -365,11 +367,11 @@ struct ChatView: View {
             }
             if model.reconnecting || model.stopped {
                 Text(model.reconnecting ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved.")
-                    .font(.caption)
+                    .typeface(.caption)
                     .foregroundStyle(.orange)
             }
             if let error = model.sendError {
-                Text(error).font(.caption).foregroundStyle(.red)
+                Text(error).typeface(.caption).foregroundStyle(.red)
             }
             if let runError = model.shownRunError {
                 runErrorCard(runError)
@@ -413,11 +415,11 @@ struct ChatView: View {
                 Image(systemName: "exclamationmark.triangle").accessibilityHidden(true)
             }
             if error.multiline {
-                Button("Details") { errorDetailsShown.toggle() }.font(.caption)
+                Button("Details") { errorDetailsShown.toggle() }.typeface(.caption)
                 if errorDetailsShown {
                     ScrollView {
                         Text(error.detail)
-                            .font(.caption.monospaced())
+                            .typeface(.caption, mono: true)
                             .textSelection(.enabled)
                     }
                     .frame(maxHeight: 160)
@@ -433,7 +435,7 @@ struct ChatView: View {
                 Button("Dismiss error", systemImage: "xmark") { model.dismissRunError() }
                     .labelStyle(.iconOnly)
             }
-            .font(.callout)
+            .typeface(.callout)
         }
         .foregroundStyle(.red)
         .padding(10)
@@ -463,7 +465,7 @@ struct ChatView: View {
             } else {
                 Button("Send message", systemImage: "arrow.up.circle.fill") { submit(model.streaming ? .steer : .prompt) }
                     .labelStyle(.iconOnly)
-                    .font(.title2)
+                    .typeface(.title2)
                     .accessibilityLabel(model.streaming ? "Steer message; touch and hold to enqueue" : "Send message")
                     .contextMenu {
                         if model.streaming {
@@ -479,7 +481,7 @@ struct ChatView: View {
         let name = model.currentModel?.name
         if model.models.isEmpty {
             Text(name ?? "PI default")
-                .font(.caption)
+                .typeface(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("Model: \(name ?? "PI default"). No model catalog available")
         } else {
@@ -496,7 +498,7 @@ struct ChatView: View {
                     }
                 }
             } label: {
-                Label(name ?? "Select model", systemImage: "chevron.down").font(.caption)
+                Label(name ?? "Select model", systemImage: "chevron.down").typeface(.caption)
             }
             .accessibilityLabel("Model: \(name ?? "Select model")")
             .disabled(model.streaming)

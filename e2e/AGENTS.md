@@ -59,7 +59,13 @@ the address the app shows from its `app-route` marker for `hui.url`, swipes a co
 until the target is on screen for `hui.scrollTo`, finds a link by its name inside a container and checks the
 accessibility identifier the platform sets to its URL for `hui.expectLinkTo(container, name, href)`, and
 throws "not on iOS yet" from the steps only the web engine has (hover, a refused clipboard,
-looks and the rest), so a test that needs one keeps `platforms: ['web']`. A device reports no text for a container,
+looks and the rest), so a test that needs one keeps `platforms: ['web']`. On iOS `hui.look(target)` scrolls the target on screen
+when it isn't, then reads `color` and `background` from a BMP screenshot of the target's frame (the background is the
+most frequent colour on the frame's edge, the text colour the most frequent one at least half as far from it as the
+farthest pixel) and `size` and `fonts` from the accessibility value a Text with `.typeface(…)` reports when the
+app was launched with `-HUILooks YES` (the fixture's launch passes it; size is in points, the scaled iOS default for the
+style). `weight`, `opacity`, `loaded`, `align` and `ring` throw there, and so does a Text without a typeface. `hui.pressed(within,
+name, on)` also finds a button that is not chosen. A device reports no text for a container,
 only its label, so a test reads a container's text in order with `hui.textOf(container)` (on iOS its texts and control
 labels joined) rather than `toHaveText` on the container. On iOS `hui.glyph` reads the row's session-glyph label and
 whether it is a spinner, and `hui.sessionMenu(title)` opens the open chat's toolbar menu when that session is the

@@ -129,7 +129,10 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   core's `filterSettingsPages`) and Exit Settings in the Open settings navigation sheet, as the web's phone drawer.
   `SettingsModel` reads and writes `/__hui/settings` one write at a time and loads the chosen theme's file; its
   `Themed` modifier gives every screen the theme's `#rrggbb` background, foreground, card and primary colours, and
-  `RootView` applies Color mode and Text size (as Dynamic Type sizes).
+  `RootView` applies Color mode and Text size: `Typography.swift` scales every text style's iOS default size by the chosen
+  percentage exactly, as the web scales its root font size, so text sets its style with `.typeface(.caption)` rather
+  than `.font(.caption)` (which would ignore Text size). Whether settings were saved, and on Appearance where they
+  are written, stay at the bottom of the page, as the web's sidebar footer stays in view.
 - `hui://open?path=<path>` opens what the core's `resolveNavigation` resolves the path to: a session, the Sessions
   page or a Settings page; anything else returns to the list. On the iOS 27.0 simulator `xcrun simctl openurl` opens
   the app directly, whether HUI or another app is in front; if iOS shows its "Open in “HUI”?" confirmation instead,
