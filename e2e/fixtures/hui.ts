@@ -82,7 +82,7 @@ export type Hui = {
   settingsPages(): Promise<void>;
   sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
-  faces(): Promise<{ size: string; shape: string; ears: string; emoji: string }[]>;
+  faces(): Promise<{ size: string; shape: string; ears: string; emoji: string; color: string }[]>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
   pressed(within: Locator, name: string): Locator;
@@ -360,6 +360,7 @@ export const test = base.extend<{ hui: Hui }>({
           shape: node.querySelector("hui-bot-face")?.getAttribute("shape") ?? "",
           ears: node.querySelector("hui-bot-face")?.getAttribute("ears") ?? "",
           emoji: node.querySelector(".bot-avatar__glyph")?.textContent ?? "",
+          color: (node.querySelector("hui-bot-face") as unknown as { color?: string } | null)?.color ?? "",
         }))),
         sessionList: async () => {
           const phone = await browser().evaluate(() => matchMedia("(max-width: 900px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape)").matches);

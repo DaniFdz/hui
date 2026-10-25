@@ -281,7 +281,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bot-faces-get-more-shapes-and-ears-and-bots-can-restyle-themselves-2026-10-08", "SPEC.md#bots-have-animated-faces-2026-10-06"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-faces", "bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
