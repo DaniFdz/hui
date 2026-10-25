@@ -41,7 +41,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "SPEC.md#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06", "docs/api.md#post-__huibots", "docs/api.md#soul-and-the-first-conversation"],
     surfaces: ["route:POST /__hui/bots", "row:botCreated", "nav:bot"],
     journeys: ["bot-setup", "bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -101,7 +101,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05"],
     surfaces: ["nav:bot", "route:GET /__hui/bots"],
     journeys: ["bots", "bot-faces"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -271,7 +271,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -370,7 +370,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#explicit-bot-knowledge-2026-10-18", "docs/api.md#explicit-knowledge", "docs/api.md#get-__huibotsidfacts", "docs/api.md#post-__huibotsidfacts"],
     surfaces: ["route:GET /__hui/bots/:id/facts", "route:POST /__hui/bots/:id/facts"],
     journeys: ["bot-facts"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -380,7 +380,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#explicit-bot-knowledge-2026-10-18", "docs/api.md#patch-__huibotsidfactsfactid"],
     surfaces: ["route:PATCH /__hui/bots/:id/facts/:factId"],
     journeys: ["bot-facts"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -390,7 +390,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#explicit-bot-knowledge-2026-10-18", "docs/api.md#delete-__huibotsidfactsfactid"],
     surfaces: ["route:DELETE /__hui/bots/:id/facts/:factId"],
     journeys: ["bot-facts"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -400,7 +400,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#routines", "docs/api.md#post-__huiautomationtasks"],
     surfaces: ["route:POST /__hui/automation/tasks", "route:GET /__hui/automation"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -410,7 +410,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#routines", "docs/api.md#post-__huiautomationtasksidrun"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run"],
     journeys: ["bots", "bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -420,7 +420,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#put-__huiautomationtasksid", "docs/api.md#delete-__huiautomationtasksid"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "route:DELETE /__hui/automation/tasks/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
