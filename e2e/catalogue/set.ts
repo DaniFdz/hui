@@ -48,7 +48,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huithemes", "docs/api.md#get-__huithemesfilekey"],
     surfaces: ["settings-page:appearance", "setting:theme", "route:GET /__hui/themes", "route:GET /__hui/themes/file/:key", "route:PUT /__hui/settings"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-006",

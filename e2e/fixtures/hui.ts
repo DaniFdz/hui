@@ -7,9 +7,10 @@
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
  * clipboard, the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
  * shell's drawer media, the navigation drawer; on iOS, Back), the Settings page list (the drawer on a phone, on iOS
- * its sheet), the chosen button of a group (aria-pressed; on iOS the selected trait), the app's colour scheme (on iOS
- * read from a screenshot) and the device's (on iOS set through `simctl ui` and restored after the test), the session menu (on iOS the open chat's toolbar menu,
- * else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
+ * its sheet), the app's chrome outside Settings (the web's primary navigation, on iOS the app's own screen), the
+ * chosen button of a group (aria-pressed; on iOS the selected trait), the app's colour scheme (on iOS read from a
+ * screenshot) and the device's (on iOS set through `simctl ui` and restored after the test), the session menu (on iOS
+ * the open chat's toolbar menu, else a long press on the row), status glyphs (on iOS the row's session-glyph label and whether it is a spinner), how
  * a piece of the screen looks (on iOS its colours from a screenshot and its type from the value the app's typeface
  * reports), and on the web the window's size, Back and Forward, sideways overflow, whether a tap reaches a control
  * and the command palette's chord. The web page never opens Vite's development socket, whose client reloads the page
@@ -32,7 +33,7 @@ import { connect, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, test as base, type Locator } from "e2e";
+import { expect, test as base, type Locator, type Screen } from "e2e";
 import type { Device } from "@e2e-dev/mobile";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { IOS_DEVICE, IOS_PORT } from "../../e2e.config.ts";
@@ -81,11 +82,12 @@ export type Hui = {
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
   settingsPages(): Promise<void>;
+  appChrome(): Locator;
   sessionMenu(title: string): Promise<Pick<Locator, "getByText">>;
   glyph(title: string): Promise<{ label: string; animated: boolean }>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
-  pressed(within: Locator, name: string, on?: boolean): Locator;
+  pressed(within: Screen, name: string, on?: boolean): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
@@ -398,6 +400,7 @@ export const test = base.extend<{ hui: Hui }>({
         overflowX: () => browser().evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
         pressed: (within, name, on = true) => within.getByRole("button", { name, pressed: on }),
         appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
+        appChrome: () => fixtures.screen.getByLabel("Primary navigation"),
         deviceAppearance: (scheme) => browser().emulateMedia({ colorScheme: scheme }),
         look: async (target) => {
           await target.scrollIntoView();
@@ -546,8 +549,11 @@ export const test = base.extend<{ hui: Hui }>({
         },
       };
 
+      let appArea: { x: number; y: number; width: number; height: number } | undefined;
       const screenshot = async () => {
-        const route = await fixtures.screen.getByTestId("app-route").boundingBox();
+        const marker = fixtures.screen.getByTestId("app-route");
+        if (await marker.count() > 0) appArea = await marker.boundingBox() ?? appArea;
+        const route = appArea;
         if (!route) throw new Error("screenshot: the app shows no screen");
         const shot = join(await mkdtemp(join(tmpdir(), "hui-e2e-shot-")), "screen.bmp");
         directories.push(dirname(shot));
@@ -640,6 +646,7 @@ export const test = base.extend<{ hui: Hui }>({
           if (await glyph.count() === 0) return { label: "", animated: false };
           return { label: (await glyph.textContent()) ?? "", animated: await row.getByRole("status").count() > 0 };
         },
+        appChrome: () => fixtures.screen.getByTestId("app-route"),
         settingsPages: async () => {
           if (await fixtures.screen.getByRole("button", "Close settings navigation").count() > 0) return;
           await fixtures.screen.getByRole("button", "Open settings navigation").tap();
