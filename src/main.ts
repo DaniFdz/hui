@@ -38,12 +38,14 @@ import { loadSettings } from "./lib/settings/settings-store.ts";
 import { applyTheme, loadThemes } from "./lib/theme/theme-store.ts";
 import { finishBoot, rememberBootLook, showBootFailure } from "./lib/boot-screen.ts";
 import { viewAssetsLoaded } from "./lib/view-assets.ts";
-import { returnFocusFromClosedMenu } from "./lib/web-awesome.ts";
+import { keepReopenedSubmenuVisible, returnFocusFromClosedMenu } from "./lib/web-awesome.ts";
 
 // First, so failures while the app starts are reported too.
 installUiErrorReporting();
 
 document.addEventListener("wa-after-show", returnFocusFromClosedMenu);
+const dropdownItem = customElements.get("wa-dropdown-item");
+if (dropdownItem) keepReopenedSubmenuVisible(dropdownItem.prototype);
 
 // Resolve the theme, the type stack and the color mode before the app renders,
 // so a saved appearance never paints its fallback first. Every step degrades to
