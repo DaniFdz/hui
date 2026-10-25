@@ -1997,6 +1997,8 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
         ${usage
           ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`
           : html`<p>The runtime has not reported usage for this session yet.</p>`}
+        ${usage?.sessionCost ? html`<div class="context-usage__section-label">Session cost</div>
+          <dl class="context-usage__stats"><div><dt>${usage.sessionCost.source}</dt><dd>$${usage.sessionCost.usd.toFixed(2)}</dd></div><div><dt>Checked</dt><dd>${relativeTime(usage.sessionCost.asOf)}</dd></div></dl>` : nothing}
         ${compactable ? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}
           @click=${(event: Event) => { (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open"); onCompact?.(); }}>Compact now</button>` : nothing}
       </section>

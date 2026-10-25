@@ -18,13 +18,15 @@ export type RuntimeQuestion = ({ "id": string; "method": "select"; "title": stri
 
 export type RuntimeQueue = { "steering": Array<string>; "followUp": Array<string>; "items"?: Array<QueuedMessage>; };
 
-export type RuntimeUsage = { "contextTokens": (number) | (null); "contextWindow": number; "percent": (number) | (null); "inputTokens": number; "outputTokens": number; "costUsd": (number) | (null); };
+export type RuntimeUsage = { "contextTokens": (number) | (null); "contextWindow": number; "percent": (number) | (null); "inputTokens": number; "outputTokens": number; "costUsd": (number) | (null); "sessionCost"?: SessionCostReport; };
 
 export type SessionBtwRequest = { "question": string; };
 
 export type SessionClearResponse = { "snapshot": SessionSnapshot; };
 
 export type SessionCommandsResponse = { "commands": Array<RuntimeCommand>; };
+
+export type SessionCostReport = { "usd": number; "source": string; "asOf": number; };
 
 export type SessionEvent = ({ "type": "text"; "delta": string; }) | ({ "type": "thinking"; "delta": string; }) | ({ "type": "tool_start"; "id": string; "name": string; "args"?: unknown; }) | ({ "type": "tool_update"; "id": string; "name": string; "output"?: string; "details"?: unknown; }) | ({ "type": "tool_end"; "id": string; "name": string; "output"?: string; "details"?: unknown; "failed"?: boolean; }) | ({ "type": "queue_update"; "queue": RuntimeQueue; }) | ({ "type": "question"; "question": SessionQuestion; }) | ({ "type": "notice"; "message": string; "level": ("info") | ("warning") | ("error"); "recovery"?: true; }) | ({ "type": "turn_start"; }) | ({ "type": "turn_end"; }) | ({ "type": "compaction_start"; "reason": CompactionReason; "blocking"?: false; "background"?: true; }) | ({ "type": "compaction_end"; "reason": CompactionReason; "outcome": ("done") | ("failed") | ("cancelled"); "willRetry": boolean; "message"?: string; }) | ({ "type": "settled"; "historyRefreshed"?: boolean; }) | ({ "type": "error"; "message": string; });
 

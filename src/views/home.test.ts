@@ -296,6 +296,9 @@ test("the composer exposes PI context usage beside the model", () => {
   assert.match(source, />Compact now<\/button>/);
   assert.match(source, /Context window/);
   assert.match(source, /Latest run tokens/);
+  // A cost an extension measured reaches the popover with its source and its age, beside the estimated latest run.
+  assert.match(source, /\$\{usage\?\.sessionCost \? html`<div class="context-usage__section-label">Session cost<\/div>/);
+  assert.match(source, /\$\{relativeTime\(usage\.sessionCost\.asOf\)\}/);
   assert.match(styles, /\.context-ring__dial/);
   assert.match(source, /stroke-dashoffset/);
 });

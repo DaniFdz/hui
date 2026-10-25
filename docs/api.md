@@ -677,8 +677,10 @@ workers, receive `PI_CLIENT_SESSION_ID` for provider header interpolation. An
 explicit nonblank environment value is preserved; otherwise each process gets
 a fresh UUID without changing the gateway environment or creating a transcript.
 Durable sessions run inside the gateway, so each of their model requests gets it
-from the request instead: the gateway's explicit value, otherwise a fresh UUID
-per HUI session for each gateway run.
+from the request instead: the gateway's explicit value, read once when it starts
+so an extension running in its process cannot retarget another session, and
+otherwise the HUI session ID itself. A Durable session's requests therefore keep
+one identity across gateway restarts.
 
 Resource enablement is HUI-owned rather than a PI mutation. `GET /__hui/settings`
 and `PUT /__hui/settings` include `disabledSkills`, a normalized array of
@@ -3363,6 +3365,13 @@ and tool results (PI attributes nested tool and model calls to the calling tool'
 result). Prompt-cache refreshes are PI `usage` entries outside the conversation;
 they count toward the observability totals, not this per-run figure. Missing context or
 cost remains `null`/absent rather than being estimated by HUI.
+`usage.sessionCost` is separate from that per-run figure: an extension that measured
+the whole session's cost from a source HUI cannot price reports it by appending a
+`hui.session-cost` entry with `{ usd, source, asOf }`, and the session's `usage`
+carries the newest readable report until a `/clear` resets the history. HUI shows it
+beside the estimate with its source and how long ago it was checked; it never
+replaces the per-message or per-run figures, and an unreadable entry is skipped
+rather than shown as a zero.
 `historyRefreshed` is omitted/true on that path. When PI cannot refresh history,
 the adapter emits `settled` with `historyRefreshed: false`; HUI still returns to
 the runtime's reported status but retains and snapshots the live projection so
