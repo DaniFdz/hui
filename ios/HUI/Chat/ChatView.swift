@@ -199,7 +199,6 @@ struct ChatView: View {
             if following { withAnimation { position.scrollTo(edge: .bottom) } }
         }
         .scrollDismissesKeyboard(.immediately)
-        .simultaneousGesture(TapGesture().onEnded { composing = false })
         .accessibilityIdentifier("transcript")
     }
 

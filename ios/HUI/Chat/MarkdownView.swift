@@ -60,7 +60,7 @@ struct MarkdownView: View {
             }
         case .code(let code, let math):
             ScrollView(.horizontal) {
-                Text(code).typeface(.footnote, mono: true).textSelection(.enabled).padding(8)
+                Text(code.trimmingCharacters(in: .newlines)).typeface(.footnote, mono: true).textSelection(.enabled).padding(8)
             }
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
             .contextMenu {
@@ -103,7 +103,7 @@ struct MarkdownView: View {
                 let lead = String(repeating: "▍", count: quote) + prefix
                 blocks.append(.text(inline(token.children ?? []), prefix: lead, style: style))
                 prefix = ""
-            case "fence", "code_block", "hui_math_block": blocks.append(.code(token.content.trimmingCharacters(in: .newlines), math: token.type == "hui_math_block"))
+            case "fence", "code_block", "hui_math_block": blocks.append(.code(token.content, math: token.type == "hui_math_block"))
             case "html_block": blocks.append(.text(AttributedString(token.content.trimmingCharacters(in: .newlines)), prefix: "", style: .body))
             case "hr": blocks.append(.rule)
             default: continue
