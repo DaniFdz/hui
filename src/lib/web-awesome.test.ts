@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { closeDropdownOnEscape, hasOpenWebAwesomePopup, returnFocusFromClosedMenu } from "./web-awesome.ts";
+import { closeDropdownOnEscape, hasOpenWebAwesomePopup, keepReopenedSubmenuVisible, returnFocusFromClosedMenu } from "./web-awesome.ts";
 
 test("an open shadow popup owns dismissal before the enclosing view", () => {
   for (const localName of ["wa-select", "wa-dropdown"]) {
@@ -57,5 +57,50 @@ test("Tab and arrow keys stay owned by Web Awesome", () => {
     closeDropdownOnEscape(event);
     assert.equal(popup.open, true);
     assert.deepEqual(calls, []);
+  }
+});
+
+function submenuItem(options: { open: boolean; menu?: boolean; attached?: boolean }) {
+  const calls: string[] = [];
+  const submenu = {
+    hidden: false,
+    isConnected: options.attached ?? true,
+    showPopover: () => calls.push("show popover"),
+    setAttribute: (name: string, value: string) => calls.push(`${name}=${value}`),
+  };
+  const item = {
+    submenuOpen: options.open,
+    submenuElement: submenu,
+    closest: () => ({ open: options.menu ?? true }),
+    // Web Awesome marks the submenu closed at the call, then hides it once its close animation ends.
+    closeSubmenu: async () => {
+      calls.push("close");
+      item.submenuOpen = false;
+      await Promise.resolve();
+      submenu.hidden = true;
+      calls.push("hide");
+    },
+  };
+  keepReopenedSubmenuVisible(item);
+  return { item, submenu, calls };
+}
+
+test("a submenu that reopened during its close animation is shown again instead of staying hidden", async () => {
+  const { item, submenu, calls } = submenuItem({ open: true });
+  const closing = item.closeSubmenu();
+  item.submenuOpen = true;
+  await closing;
+  assert.equal(submenu.hidden, false);
+  assert.deepEqual(calls, ["close", "hide", "show popover", "data-visible="]);
+});
+
+test("a submenu that stayed closed, whose menu closed, or that left the page stays hidden", async () => {
+  for (const [label, options] of [["still closed", { open: false }], ["menu closed", { open: true, menu: false }], ["detached", { open: true, attached: false }]] as const) {
+    const { item, submenu, calls } = submenuItem(options);
+    const closing = item.closeSubmenu();
+    item.submenuOpen = options.open;
+    await closing;
+    assert.equal(submenu.hidden, true, label);
+    assert.deepEqual(calls, ["close", "hide"], label);
   }
 });
