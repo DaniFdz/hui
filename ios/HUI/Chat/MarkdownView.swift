@@ -54,7 +54,7 @@ struct MarkdownView: View {
         case .text(let text, let prefix, let style):
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 if !prefix.isEmpty { Text(prefix).accessibilityHidden(true) }
-                Text(text).typeface(style, weight: style == .body || style == .headline ? nil : .bold).textSelection(.enabled)
+                Text(text).typeface(style, weight: style == .body || style == .headline ? nil : .bold, prose: true).textSelection(.enabled)
             }
         case .code(let code):
             ScrollView(.horizontal) {

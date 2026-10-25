@@ -195,7 +195,7 @@ struct ChatView: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     Group {
                         if user {
-                            Text(message.text ?? "").textSelection(.enabled)
+                            Text(message.text ?? "").typeface(.body, prose: true).textSelection(.enabled)
                         } else {
                             MarkdownView(source: message.text ?? "", agent: true, core: core)
                         }

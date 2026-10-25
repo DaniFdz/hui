@@ -5,7 +5,7 @@
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal/font.ts";
-import { TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts";
+import { ACCENTS, TEXT_SCALE_STOPS, TYPEFACES } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
 import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
 import { SETTINGS_COPY, SETTINGS_GROUPS, SETTINGS_PAGES, type SettingsPage } from "../lib/settings/pages.ts";
@@ -272,19 +272,6 @@ function renderThemeSection(props: SettingsProps) {
   );
 }
 
-const ACCENTS = [
-  { id: "default", label: "Theme default", value: "" },
-  { id: "claw", label: "Claw red", value: "#ff5c5c" },
-  { id: "coral", label: "Coral", value: "#ff8066" },
-  { id: "amber", label: "Amber", value: "#f5b942" },
-  { id: "mint", label: "Mint", value: "#52c99a" },
-  { id: "teal", label: "Teal", value: "#35b9b0" },
-  { id: "blue", label: "Blue", value: "#5b9cf6" },
-  { id: "violet", label: "Violet", value: "#a78bfa" },
-  { id: "pink", label: "Pink", value: "#f472b6" },
-  { id: "slate", label: "Slate gray", value: "#8795a8" },
-] as const;
-
 function renderAccentSection(props: SettingsProps) {
   const inherited = props.previews.find((preview) => preview.id === props.themeId)?.accent ?? "var(--accent)";
   const preset = ACCENTS.find((item) => item.value === props.settings.accent);
@@ -321,7 +308,7 @@ function renderAccentSection(props: SettingsProps) {
       </div>
       <div class="settings-row">
         <div class="settings-row__text"><span class="settings-row__title">Current accent</span><span class="settings-row__desc">Saved locally in HUI and applied over the active theme.</span></div>
-        <div class="settings-row__control"><span class="settings-row__value">${preset?.label ?? "Custom color"}</span></div>
+        <div class="settings-row__control"><span class="settings-row__value" data-testid="settings-current-accent">${preset?.label ?? "Custom color"}</span></div>
       </div>
     `,
   );

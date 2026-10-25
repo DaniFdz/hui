@@ -16,5 +16,8 @@ export { composerPlaceholder, queueRows } from "../../src/lib/composer/state.ts"
 export { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "../../src/lib/run-error.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";
 export { filterSettingsPages, SETTINGS_COPY } from "../../src/lib/settings/pages.ts";
+export { ACCENTS, TYPEFACES, typefaceFamily } from "../../src/lib/theme/appearance.ts";
+export { NERD_FONT_SYMBOLS, TERMINAL_FONTS, normalizeTerminalFont, terminalFontFamilies, terminalFontStack } from "../../src/lib/terminal/font.ts";
+export { browserStatusLabel, browserVersionLabel, normalizeBrowserStatus } from "../../src/lib/browser-status.ts";
 export { themePalettes } from "../../src/lib/theme/shadcn-theme.ts";
 export { effectiveColorScheme } from "../../src/lib/theme/theme.ts";

@@ -17,6 +17,12 @@ final class SettingsModel {
     private(set) var variant = "both"
     private(set) var colorScheme: ColorScheme?
     private(set) var themes: [API.ThemeRef]?
+    private(set) var faces: [TypefaceFace] = []
+    private(set) var accents: [AccentPreset] = []
+    private(set) var terminalFonts: [String] = []
+    private(set) var terminalPreview: [String] = []
+    private(set) var nerdSymbols = ""
+    private(set) var loadedFonts: [String] = []
     private(set) var palettes = ThemePalettes()
     private let core: HUICore
     private var themeFile: API.JSONValue?
@@ -26,13 +32,55 @@ final class SettingsModel {
 
     init(core: HUICore) {
         self.core = core
-        Task { if let copy = try? await core.settingsCopy() { self.copy = copy } }
+        Task { await loadCopy() }
+    }
+
+    private func loadCopy() async {
+        if let copy = try? await core.settingsCopy() { self.copy = copy }
+        var resolved: [TypefaceFace] = []
+        for face in (try? await core.typefaces()) ?? [] {
+            var face = face
+            face.family = (try? await core.typefaceFamily(face.id)) ?? face.label
+            resolved.append(face)
+        }
+        faces = resolved
+        accents = (try? await core.accents()) ?? []
+        terminalFonts = (try? await core.terminalFonts()) ?? []
+        nerdSymbols = (try? await core.nerdFontSymbols()) ?? ""
+        loadedFonts = Fonts.loaded(faces.compactMap(\.family) + (nerdSymbols.isEmpty ? [] : [nerdSymbols]))
+        await refreshTerminalPreview()
+    }
+
+    func family(_ id: String) -> String {
+        faces.first { $0.id == id }?.family ?? ""
+    }
+
+    func faceLabel(_ id: String) -> String {
+        faces.first { $0.id == id }?.label ?? id
+    }
+
+    private func refreshTerminalPreview() async {
+        terminalPreview = (try? await core.terminalFontFamilies(settings?.fontTerminal ?? "")) ?? []
+    }
+
+    func normalizeTerminalFont(_ value: String) async -> String {
+        (try? await core.normalizeTerminalFont(value)) ?? value
+    }
+
+    func accentInk(_ scheme: ColorScheme) -> Color? {
+        if let palette = palette(scheme) { return Color(hex: palette.accent) }
+        return accent
+    }
+
+    var accentName: String {
+        accents.first { $0.value == settings?.accent }?.label ?? "Custom color"
     }
 
     func load(_ client: GatewayClient) async {
         settings = try? await client.get("/__hui/settings")
         themes = (try? await client.get("/__hui/themes", as: API.ThemesResponse.self))?.themes
         await loadTheme(client)
+        await refreshTerminalPreview()
     }
 
     func choose(theme: String, _ client: GatewayClient?) async {
@@ -71,7 +119,9 @@ final class SettingsModel {
         guard var next = settings, let client else { return }
         edit(&next)
         let looksChanged = next.theme != settings?.theme || next.accent != settings?.accent || next.themeMode != settings?.themeMode
+        let terminalChanged = next.fontTerminal != settings?.fontTerminal
         settings = next
+        if terminalChanged { Task { await refreshTerminalPreview() } }
         writes += 1
         let write = writes
         if looksChanged { Task { await refreshLook() } }
@@ -81,6 +131,19 @@ final class SettingsModel {
             let saved = try? await client.send("PUT", "/__hui/settings", body: next, as: API.Settings.self)
             guard write == writes else { return }
             saveFailed = saved == nil
+        }
+    }
+
+    private var customTyping: Task<Void, Never>?
+
+    func setCustomAccent(_ typed: String, _ client: GatewayClient?) {
+        customTyping?.cancel()
+        customTyping = Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            let value = typed.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard value.count == 7, value.hasPrefix("#"), Color(hex: value) != nil else { return }
+            change(client) { $0.accent = value }
         }
     }
 

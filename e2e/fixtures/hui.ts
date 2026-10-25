@@ -581,19 +581,15 @@ export const test = base.extend<{ hui: Hui }>({
           const box = await target.boundingBox();
           if (!box) throw new Error("look: the target lays out no box");
           const shot = await screenshot();
-          const ranked = (edgeOnly: boolean) => {
-            const counts = new Map<string, number>();
-            for (let y = box.y; y < box.y + box.height; y += 1 / shot.scale) {
-              for (let x = box.x; x < box.x + box.width; x += 1 / shot.scale) {
-                if (edgeOnly && y > box.y && y + 1 / shot.scale < box.y + box.height && x > box.x && x + 1 / shot.scale < box.x + box.width) continue;
-                const key = shot.pixel(x, y).join(",");
-                counts.set(key, (counts.get(key) ?? 0) + 1);
-              }
+          const counts = new Map<string, number>();
+          for (let y = box.y; y < box.y + box.height; y += 1 / shot.scale) {
+            for (let x = box.x; x < box.x + box.width; x += 1 / shot.scale) {
+              const key = shot.pixel(x, y).join(",");
+              counts.set(key, (counts.get(key) ?? 0) + 1);
             }
-            return [...counts].sort((a, b) => b[1] - a[1]).map(([key]) => key.split(",").map(Number) as Rgb);
-          };
-          const background = ranked(true)[0]!;
-          const inside = ranked(false);
+          }
+          const inside = [...counts].sort((a, b) => b[1] - a[1]).map(([key]) => key.split(",").map(Number) as Rgb);
+          const background = inside[0]!;
           const distance = (rgb: Rgb) => Math.max(...rgb.map((channel, index) => Math.abs(channel - background[index]!)));
           const farthest = Math.max(...inside.map(distance));
           const color = inside.find((rgb) => farthest > 0 && distance(rgb) >= farthest / 2) ?? background;
@@ -608,7 +604,7 @@ export const test = base.extend<{ hui: Hui }>({
             fonts: { get: () => typed("fonts").split(",") },
             weight: { get: unread("weight") },
             opacity: { get: unread("opacity") },
-            loaded: { get: unread("loaded") },
+            loaded: { get: () => typed("loaded").split(",").filter(Boolean) },
             align: { get: unread("align") },
             ring: { get: unread("ring") },
           }) as Awaited<ReturnType<typeof webSteps.look>>;
