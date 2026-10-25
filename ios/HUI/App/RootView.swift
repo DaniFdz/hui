@@ -54,7 +54,11 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(settings.colorScheme)
-        .dynamicTypeSize(settings.dynamicTypeSize)
+        .font(.system(size: 17 * settings.textScale))
+        .environment(\.textScale, settings.textScale)
+        .environment(\.uiFont, settings.family(settings.settings?.fontUi.rawValue ?? ""))
+        .environment(\.chatFont, settings.family(settings.settings?.fontChat.rawValue ?? ""))
+        .environment(\.loadedFonts, settings.loadedFonts)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("app-route")
         .accessibilityValue(route)

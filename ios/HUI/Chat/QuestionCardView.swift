@@ -80,9 +80,9 @@ private struct CardHeader: View {
 
     var body: some View {
         HStack {
-            Text(title).font(.subheadline.bold())
+            Text(title).typeface(.subheadline, weight: .bold)
             Spacer()
-            Text(progress).font(.caption).foregroundStyle(.secondary)
+            Text(progress).typeface(.caption).foregroundStyle(.secondary)
         }
     }
 }
@@ -137,7 +137,7 @@ private struct QuestionnaireCard: View {
                         if answered { Text("✓") }
                         Text(each.header)
                     }
-                    .font(.caption)
+                    .typeface(.caption)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(index == step ? AnyShapeStyle(.tint.opacity(0.2)) : AnyShapeStyle(.quaternary), in: Capsule())
@@ -156,16 +156,16 @@ private struct QuestionnaireCard: View {
         let draft = drafts.drafts[step]
         let preview = question.options.indices.contains(previewed[step]) ? question.options[previewed[step]].preview : nil
         VStack(alignment: .leading, spacing: 6) {
-            Text(question.question).font(.body.weight(.medium)).fixedSize(horizontal: false, vertical: true)
+            Text(question.question).typeface(.body, weight: .medium).fixedSize(horizontal: false, vertical: true)
             if question.multiSelect {
-                Text("Choose all that apply.").font(.caption).foregroundStyle(.secondary)
+                Text("Choose all that apply.").typeface(.caption).foregroundStyle(.secondary)
             }
             ForEach(Array(question.options.enumerated()), id: \.offset) { index, option in
                 let selected = draft.selected.contains(option.label)
                 OptionRow(selected: selected, number: index + 1) {
                     Text(option.label).bold()
                     if !option.description.isEmpty {
-                        Text(option.description).font(.caption).foregroundStyle(.secondary)
+                        Text(option.description).typeface(.caption).foregroundStyle(.secondary)
                     }
                 }
                 .onTapGesture {
@@ -207,7 +207,7 @@ private struct OptionRow<Copy: View>: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) { copy }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            Text("\(number)").font(.caption.monospaced()).foregroundStyle(.secondary)
+            Text("\(number)").typeface(.caption, mono: true).foregroundStyle(.secondary)
         }
         .padding(8)
         .background(selected ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: 8))
@@ -225,9 +225,9 @@ private struct SecretCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             CardHeader(title: "Secret", progress: "1/1")
-            Text(secret.title).font(.body.weight(.medium))
-            Text(secret.message).font(.callout)
-            Text("Kept out of the conversation: the agent gets a temporary file, never the value.").font(.caption).foregroundStyle(.secondary)
+            Text(secret.title).typeface(.body, weight: .medium)
+            Text(secret.message).typeface(.callout)
+            Text("Kept out of the conversation: the agent gets a temporary file, never the value.").typeface(.caption).foregroundStyle(.secondary)
             SecureField("", text: $value)
                 .textFieldStyle(.roundedBorder)
                 .textContentType(.oneTimeCode)

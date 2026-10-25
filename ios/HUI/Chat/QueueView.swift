@@ -46,7 +46,7 @@ struct QueueView: View {
             } else {
                 Text(row.text).lineLimit(2)
                 Text(row.label)
-                    .font(.caption)
+                    .typeface(.caption)
                     .padding(.horizontal, 6)
                     .background(.quaternary, in: Capsule())
                 Spacer()
@@ -60,7 +60,7 @@ struct QueueView: View {
                 }
             }
         }
-        .font(.subheadline)
+        .typeface(.subheadline)
         .buttonStyle(.borderless)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {

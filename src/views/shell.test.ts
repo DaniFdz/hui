@@ -16,11 +16,24 @@ import {
   adaptedSettingsCopy,
   filterSettingsPages,
   piSettingsState,
+  renderSettingsPage,
   setSettingsDrawer,
   SETTINGS_DRAWER_DEFAULT_OPEN,
   SETTINGS_PAGES,
+  type SettingsProps,
 } from "./settings.ts";
+import { ACCENTS } from "../lib/theme/appearance.ts";
+import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
+
+function renderedText(value: unknown): string {
+  if (Array.isArray(value)) return value.map(renderedText).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + renderedText(template.values[i])).join("");
+  }
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
 
 function session(
   id: string,
@@ -514,14 +527,24 @@ test("security renders implemented settings instead of placeholders", () => {
 });
 
 test("appearance exposes OpenClaw accent presets and a custom color", () => {
-  const source = readFileSync(new URL("./settings.ts", import.meta.url), "utf8");
+  const result = renderedText(
+    renderSettingsPage({
+      page: "appearance",
+      settings: { ...DEFAULT_SETTINGS, accent: "#ff8066" },
+      previews: [],
+      variant: "dark",
+      themeId: "claw",
+    } as unknown as SettingsProps),
+  );
 
-  for (const hex of ["#ff5c5c", "#ff8066", "#f5b942", "#52c99a", "#35b9b0", "#5b9cf6", "#a78bfa", "#f472b6", "#8795a8"]) {
-    assert.match(source, new RegExp(hex));
+  for (const accent of ACCENTS) {
+    assert.match(result, new RegExp(accent.label));
+    if (accent.value) {
+      assert.match(result, new RegExp(accent.value));
+    }
   }
-  assert.match(source, /type="color" aria-label="Custom accent color"/);
-  assert.match(source, /props\.onSelectAccent\(item\.value\)/);
-  assert.match(source, /renderAccentSection\(props\)/);
+  assert.match(result, /type="color" aria-label="Custom accent color"/);
+  assert.match(result, /data-testid="settings-current-accent">Coral</);
 });
 
 test("app and settings drawers use the same narrow CSS breakpoint", () => {
