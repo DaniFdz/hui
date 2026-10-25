@@ -12,7 +12,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -22,7 +22,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -32,7 +32,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -62,7 +62,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -72,7 +72,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -82,7 +82,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Maximized is per conversation and desktop only\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
@@ -102,7 +102,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane", "shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -112,7 +112,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-work-pane"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -142,7 +142,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
