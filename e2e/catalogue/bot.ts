@@ -81,7 +81,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: ["route:GET /__hui/bots"],
     journeys: ["bots", "bot-faces"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
