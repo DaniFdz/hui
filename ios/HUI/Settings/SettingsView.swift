@@ -169,71 +169,68 @@ private struct AppearanceSections: View {
 
     var body: some View {
         if let current = settings.settings {
-            Section {
-                if let themes = settings.themes {
-                    Choices(label: "Theme", options: themes.map { ($0.id, $0.name) }, chosen: current.theme) { theme in
-                        Task { await settings.choose(theme: theme, client) }
+                Section {
+                    if let themes = settings.themes {
+                        Choices(label: "Theme", options: themes.map { ($0.id, $0.name) }, chosen: current.theme) { theme in
+                            Task { await settings.choose(theme: theme, client) }
+                        }
+                    } else {
+                        Text("No themes could be loaded; the built-in defaults are in use.").typeface(.body)
                     }
-                } else {
-                    Text("No themes could be loaded; the built-in defaults are in use.").typeface(.body)
+                } header: {
+                    Text("Theme")
                 }
-            } header: {
-                Text("Theme")
-            }
-            .listRowBackground(card)
-            Section {
-                AccentSwatches(settings: settings, client: client, inherited: settings.accentInk(scheme) ?? .accentColor)
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Current accent").typeface(.body)
-                        Text("Saved locally in HUI and applied over the active theme.").typeface(.footnote).foregroundStyle(.secondary)
+                .listRowBackground(card)
+                Section {
+                    AccentSwatches(settings: settings, client: client, inherited: settings.accentInk(scheme) ?? .accentColor)
+                    TextField("Custom accent color", text: $custom)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Custom accent color")
+                        .accessibilityValue(custom)
+                        .focused($typingCustom)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onChange(of: custom) { _, typed in settings.setCustomAccent(typed, client) }
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Current accent").typeface(.body)
+                            Text("Saved locally in HUI and applied over the active theme.").typeface(.footnote).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(settings.accentName).typeface(.body).accessibilityIdentifier("settings-current-accent")
                     }
-                    Spacer()
-                    Text(settings.accentName).typeface(.body).accessibilityIdentifier("settings-current-accent")
-                }
 
-            } header: {
-                Text("Accent")
-            } footer: {
-                Text("Choose the accent color used by buttons, highlights and focus controls.").typeface(.footnote)
-            }
-            .listRowBackground(card)
-            Section {
-                TextField("Custom accent color", text: $custom)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel("Custom accent color")
-                    .accessibilityValue(custom)
-                    .focused($typingCustom)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onChange(of: custom) { _, typed in settings.setCustomAccent(typed, client) }
-            }
-            .listRowBackground(card)
-            Section {
-                FacePickerRow(label: "Interface font", chosen: settings.faceLabel(current.fontUi.rawValue), faces: settings.faces) { id in
-                    settings.change(client) { $0.fontUi = API.Settings.FontUi(rawValue: id) }
+                } header: {
+                    Text("Accent")
+                } footer: {
+                    Text("Choose the accent color used by buttons, highlights and focus controls.").typeface(.footnote)
                 }
-                FacePickerRow(label: "Chat prose font", chosen: settings.faceLabel(current.fontChat.rawValue), faces: settings.faces) { id in
-                    settings.change(client) { $0.fontChat = API.Settings.FontChat(rawValue: id) }
+                .listRowBackground(card)
+                Section {
+                    FacePicker(label: "Interface font", chosen: settings.faceLabel(current.fontUi.rawValue), faces: settings.faces) { id in
+                        settings.change(client) { $0.fontUi = API.Settings.FontUi(rawValue: id) }
+                    }
+                    FacePicker(label: "Chat prose font", chosen: settings.faceLabel(current.fontChat.rawValue), faces: settings.faces) { id in
+                        settings.change(client) { $0.fontChat = API.Settings.FontChat(rawValue: id) }
+                    }
+                    TerminalPicker(label: "Terminal font", chosen: current.fontTerminal, fonts: settings.terminalFonts, normalize: { await settings.normalizeTerminalFont($0) }) { family in
+                        settings.change(client) { $0.fontTerminal = family }
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("HUI · A little clarity goes a long way").typeface(.body)
+                        Text("Good typography makes room for the conversation. Choose a face that feels comfortable to read.").typeface(.body, prose: true)
+                        Text("const greeting = \"Hello, world!\";").typeface(.footnote, mono: true)
+                        Text("❯ ~/project ⎇ main \u{F07C} \u{F120} git status")
+                            .typeface(.footnote, stack: settings.terminalPreview)
+                            .accessibilityLabel("Terminal font preview")
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Typography")
+                } footer: {
+                    Text("Interface restyles chrome, navigation, settings and controls; Chat prose the conversation; code keeps its monospace face.").typeface(.footnote)
                 }
-                TerminalPickerRow(label: "Terminal font", chosen: current.fontTerminal, fonts: settings.terminalFonts, normalize: { await settings.normalizeTerminalFont($0) }) { family in
-                    settings.change(client) { $0.fontTerminal = family }
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("HUI · A little clarity goes a long way").typeface(.body)
-                    Text("Good typography makes room for the conversation. Choose a face that feels comfortable to read.").typeface(.body, prose: true)
-                    Text("const greeting = \"Hello, world!\";").typeface(.footnote, mono: true)
-                    Text("❯ ~/project ⎇ main \u{F07C} \u{F120} git status")
-                        .typeface(.footnote, stack: settings.terminalPreview)
-                        .accessibilityLabel("Terminal font preview")
-                }
-                .padding(.vertical, 4)
-            } header: {
-                Text("Typography")
-            } footer: {
-                Text("Interface restyles chrome, navigation, settings and controls; Chat prose the conversation; code keeps its monospace face.").typeface(.footnote)
-            }
-            .listRowBackground(card)
+                .listRowBackground(card)
             Section {
                 Choices(label: "Color mode", options: ["system", "light", "dark"].map { (API.Settings.ThemeMode(rawValue: $0), settings.copy.modes[$0] ?? $0) }, chosen: current.themeMode) { mode in
                     settings.change(client) { $0.themeMode = mode }
@@ -246,10 +243,12 @@ private struct AppearanceSections: View {
             }
             .listRowBackground(card)
             Section {
-                Picker("Message width", selection: Binding(get: { current.chat.messageWidth }, set: { width in settings.change(client) { $0.chat.messageWidth = width } })) {
+                Picker(selection: Binding(get: { current.chat.messageWidth }, set: { width in settings.change(client) { $0.chat.messageWidth = width } })) {
                     Text("Compact").tag(API.Settings.Chat.MessageWidth.compact)
                     Text("Comfortable").tag(API.Settings.Chat.MessageWidth.comfortable)
                     Text("Wide").tag(API.Settings.Chat.MessageWidth.wide)
+                } label: {
+                    Text("Message width").typeface(.body)
                 }
                 Text("Controls the maximum width of the conversation and composer.").typeface(.footnote).foregroundStyle(.secondary)
                 Toggle("Collapse task progress", isOn: Binding(get: { current.chat.collapseTaskProgress }, set: { on in settings.change(client) { $0.chat.collapseTaskProgress = on } }))

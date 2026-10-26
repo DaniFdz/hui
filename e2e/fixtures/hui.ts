@@ -583,6 +583,15 @@ export const test = base.extend<{ hui: Hui }>({
       };
       const deviceScheme = () => execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance"], { encoding: "utf8" }).trim();
       const startScheme = web ? "" : deviceScheme();
+      const appChrome = () => fixtures.screen.getByTestId("app-route");
+      const onScreen = async (within: Locator, target: Locator) => {
+        const box = await target.count() > 0 ? await target.boundingBox() : null;
+        if (!box) return false;
+        const area = await within.count() > 0 ? await within.boundingBox() : appArea;
+        if (!area) return false;
+        const middle = box.y + box.height / 2;
+        return middle >= area.y && middle <= area.y + area.height;
+      };
       const iosSteps: Partial<typeof webSteps> = {
         pressed: (within, name, on = true) => within.getByRole("button", { name, selected: on }),
         deviceAppearance: async (scheme) => {
@@ -595,7 +604,7 @@ export const test = base.extend<{ hui: Hui }>({
           return (r + g + b) / 3 < 128 ? "dark" : "light";
         },
         look: async (target) => {
-          if (await target.count() === 0) await iosSteps.scrollTo!(fixtures.screen.getByTestId("app-route"), target);
+          if (!await onScreen(appChrome(), target)) await iosSteps.scrollTo!(appChrome(), target);
           const box = await target.boundingBox();
           if (!box) throw new Error("look: the target lays out no box");
           const shot = await screenshot();
@@ -684,11 +693,11 @@ export const test = base.extend<{ hui: Hui }>({
           const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
           for (const direction of ["down", "up"] as const) {
             for (let swipes = 0, before = "", now = await shown(); now !== before && swipes < MAX_SCROLL_SWIPES; swipes++, before = now, now = await shown()) {
-              if (await target.count() > 0) return;
+              if (await onScreen(within, target)) return;
               await within.swipe({ direction, momentum: "slow" });
             }
           }
-          await expect(target).not.toHaveCount(0);
+          await expect.poll(() => onScreen(within, target)).toBe(true);
         },
         expectLinkTo: async (within, name, href) => {
           if (!name.trim()) throw new Error("expectLinkTo: the link needs a name");

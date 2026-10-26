@@ -2,44 +2,56 @@
 import { expect, type Locator } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-const FACES = /^\s*Instrument Sans.*Geist.*DM Sans.*IBM Plex Sans.*Space Grotesk.*Atkinson Hyperlegible.*Fraunces.*Lora.*JetBrains Mono.*System/su;
+const FACES = ["Instrument Sans", "Geist", "DM Sans", "IBM Plex Sans", "Space Grotesk", "Atkinson Hyperlegible", "Fraunces", "Lora", "JetBrains Mono", "System"];
 
-test("the interface font restyles navigation, settings and controls, the chat prose font the conversation, code stays monospace, and both load and persist", { tags: ["SET-009"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the interface font restyles navigation, settings and controls, the chat prose font the conversation, code stays monospace, and both load and persist", { tags: ["SET-009"] }, async ({ screen, hui }) => {
   const face = async (target: Locator) => (await hui.look(target)).fonts[0];
   const loaded = async (target: Locator) => (await hui.look(target)).loaded;
   const caption = screen.getByText("HUI · A little clarity goes a long way");
   const prose = screen.getByText("Good typography makes room for the conversation. Choose a face that feels comfortable to read.");
   const transcript = screen.getByTestId("transcript");
+  const transcriptFace = async (text: string, exact = true) => {
+    const target = transcript.getByText(text, { exact });
+    await hui.scrollTo(transcript, target);
+    return face(target);
+  };
   const session = await hui.createSession({ title: "Typeset" });
   await hui.prompt(session, "E2E_MARKDOWN_PARITY");
 
   await hui.open("/settings/appearance");
-  for (const [picker, chosen] of [["Chat prose font", "Lora"], ["Interface font", "Geist"]] as const) {
+  for (const [picker, chosen, key] of [["Chat prose font", "Lora", "fontChat"], ["Interface font", "Geist", "fontUi"]] as const) {
+    const faces = screen.getByTestId("picker-list");
+    await hui.scrollTo(screen.getByTestId("settings-page"), screen.getByRole("button", `${picker}: Instrument Sans`));
     await screen.getByRole("button", `${picker}: Instrument Sans`).tap();
-    const faces = screen.getByLabel(picker);
-    await expect(faces).toHaveText(FACES);
+    await hui.scrollTo(screen.getByTestId("settings-page"), faces.getByText("Instrument Sans", { exact: true }));
+    for (const name of FACES) await expect(faces.getByText(name, { exact: true })).toBeVisible();
     await faces.getByText(chosen, { exact: true }).tap();
     await expect(screen.getByRole("button", `${picker}: ${chosen}`)).toBeVisible();
+    await expect(faces.getByText("Atkinson Hyperlegible", { exact: true })).toBeHidden();
+    await expect.poll(async () => (await hui.api<Record<string, string>>("GET", "/__hui/settings"))[key]).toBe(chosen.toLowerCase());
   }
   await expect.poll(() => face(caption)).toBe("Geist");
   expect(await face(prose)).toBe("Lora");
   await expect.poll(() => loaded(caption)).toContain("Geist");
   await expect.poll(() => loaded(prose)).toContain("Lora");
   expect(await face(screen.getByText("Message width", { exact: true }))).toBe("Geist");
-  expect(await face(screen.getByLabel("Settings pages").getByText("Gateway"))).toBe("Geist");
-  await expect.poll(async () => (await hui.api<{ fontUi: string; fontChat: string }>("GET", "/__hui/settings")).fontChat).toBe("lora");
+  await hui.settingsPages();
+  expect(await face(screen.getByText("Gateway"))).toBe("Geist");
+  await screen.getByRole("button", "Close settings navigation").tap();
 
   await hui.open(`/sessions/${session.id}`);
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
-  expect(await face(transcript.getByText("Final paragraph."))).toBe("Lora");
-  expect(await face(transcript.getByText("inline code"))).toBe("JetBrains Mono");
-  expect(await face(transcript.getByText("fixture code", { exact: false }))).toMatch(/Mono|monospace/u);
+  expect(await transcriptFace("Final paragraph.")).toBe("Lora");
+  expect(await transcriptFace("inline code")).toBe("JetBrains Mono");
+  expect(await transcriptFace("fixture code", false)).toMatch(/Mono|monospace/u);
   expect(await face(screen.getByLabel("Message"))).toBe("Geist");
+  await hui.sessionList();
   expect(await face(screen.getByTestId("session-row").filter({ hasText: "Typeset" }))).toBe("Geist");
+  await hui.open(`/sessions/${session.id}`);
 
   await hui.reload();
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
-  expect(await face(transcript.getByText("Final paragraph."))).toBe("Lora");
+  expect(await transcriptFace("Final paragraph.")).toBe("Lora");
   await expect.poll(() => loaded(transcript.getByText("Final paragraph."))).toContain("Lora");
   expect(await face(screen.getByLabel("Message"))).toBe("Geist");
   await hui.open("/settings/appearance");
@@ -49,17 +61,22 @@ test("the interface font restyles navigation, settings and controls, the chat pr
   expect(await face(prose)).toBe("Lora");
 });
 
-test("the terminal font lists monospace and Nerd Fonts, takes a typed local family over the bundled symbols that load to draw its icons, persists, and falls back to JetBrains Mono", { tags: ["SET-010"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("the terminal font lists monospace and Nerd Fonts, takes a typed local family over the bundled symbols that load to draw its icons, persists, and falls back to JetBrains Mono", { tags: ["SET-010"] }, async ({ screen, hui }) => {
   const preview = screen.getByLabel("Terminal font preview");
   const families = async () => (await hui.look(preview)).fonts;
   const stack = (first: string) => [first, "HUI Nerd Font Symbols", "JetBrains Mono", "ui-monospace", "monospace"];
-  const fonts = screen.getByLabel("Terminal font");
+  const fonts = screen.getByTestId("picker-list");
+  const search = screen.getByLabel("Search or type a font name");
+  const revealPicker = async (name: string) => {
+    await hui.scrollTo(screen.getByTestId("settings-page"), screen.getByRole("button", `Terminal font: ${name}`));
+  };
 
   await hui.open("/settings/appearance");
   expect(await families()).toEqual(stack("JetBrains Mono"));
+  await revealPicker("JetBrains Mono");
   await screen.getByRole("button", "Terminal font: JetBrains Mono").tap();
-  await expect(fonts).toHaveText(/JetBrains Mono.*MesloLGS NF.*MesloLGS Nerd Font Mono.*JetBrainsMono Nerd Font Mono.*FiraCode Nerd Font Mono.*Hack Nerd Font Mono.*CaskaydiaCove Nerd Font Mono.*Menlo.*Consolas/su);
-  const search = screen.getByLabel("Search or type a font name");
+  await hui.scrollTo(screen.getByTestId("settings-page"), search);
+  await expect.poll(() => hui.textOf(fonts)).toMatch(/JetBrains Mono.*MesloLGS NF.*MesloLGS Nerd Font Mono.*JetBrainsMono Nerd Font Mono.*FiraCode Nerd Font Mono.*Hack Nerd Font Mono.*CaskaydiaCove Nerd Font Mono.*Menlo.*Consolas/su);
   await search.fill('Bad"Font');
   await expect(screen.getByText("No matches", { visible: true })).toBeVisible();
   await expect(fonts.getByText("Use this local font")).toBeHidden();
@@ -69,6 +86,7 @@ test("the terminal font lists monospace and Nerd Fonts, takes a typed local fami
   await expect.poll(families).toEqual(stack("DejaVu Sans Mono"));
 
   await hui.reload();
+  await revealPicker("DejaVu Sans Mono");
   await expect(screen.getByRole("button", "Terminal font: DejaVu Sans Mono")).toBeVisible();
   expect(await families()).toEqual(stack("DejaVu Sans Mono"));
   await expect.poll(async () => (await hui.look(preview)).loaded).toContain("HUI Nerd Font Symbols");
@@ -76,6 +94,7 @@ test("the terminal font lists monospace and Nerd Fonts, takes a typed local fami
   for (const typed of ["   ", "Mono; color: red"]) {
     await hui.api("PUT", "/__hui/settings", { ...(await hui.api<Record<string, unknown>>("GET", "/__hui/settings")), fontTerminal: typed });
     await hui.reload();
+    await revealPicker("JetBrains Mono");
     await expect(screen.getByRole("button", "Terminal font: JetBrains Mono")).toBeVisible();
     expect(await families()).toEqual(stack("JetBrains Mono"));
   }
