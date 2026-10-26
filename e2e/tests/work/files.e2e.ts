@@ -2,11 +2,8 @@
  * entry (WORK-042, 050, 052, 053). */
 import { mkdir, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { expect, type Locator } from "e2e";
+import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
-
-/** A + menu entry, found by the shortcut only that kind shows. */
-const item = (screen: Pick<Locator, "getByText">, key: string) => screen.getByText(new RegExp(`(?:⌥⇧⌘|Ctrl\\+Alt\\+Shift\\+|Alt\\+Shift\\+Ctrl\\+)${key}`, "u"));
 
 test("Files in the plus menu lists the conversation's folder, folders first and without .git, expanding on demand", { tags: ["WORK-042"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -16,14 +13,11 @@ test("Files in the plus menu lists the conversation's folder, folders first and 
   const session = await hui.createSession({ title: "Browse files", cwd: repository.path });
   const navigator = screen.getByLabel("Files navigator");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await screen.getByRole("button", "Open Work view").tap();
-  await item(screen, "F").first().tap();
+  await hui.openWorkView("Files");
 
   await expect(navigator.getByRole("button", "sub")).toBeVisible();
-  const names = (await navigator.getByRole("listitem").allTextContents()).map((name) => name.trim());
+  const names = (await Promise.all((await navigator.getByRole("listitem").all()).map((row) => hui.textOf(row)))).map((name) => name.trim());
   expect(names.slice(0, 2).sort()).toEqual(["empty", "sub"]);
   expect(names.sort()).toEqual(["empty", "outside link outside this folder", "readme.md", "sub"]);
   await expect(navigator.getByText(".git")).toHaveCount(0);
@@ -48,11 +42,8 @@ test("typing in Filter files lists the matching files with their folders and emp
   const navigator = screen.getByLabel("Files navigator");
   const filter = navigator.getByLabel("Filter files");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await screen.getByRole("button", "Open Work view").tap();
-  await item(screen, "F").first().tap();
+  await hui.openWorkView("Files");
   await expect(navigator.getByRole("button", "sub")).toBeVisible();
 
   await filter.fill("keep");
@@ -79,11 +70,8 @@ test("New file and New folder create the named entry and open a new file, and a 
   const pane = screen.getByLabel("Work pane");
   const navigator = screen.getByLabel("Files navigator");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await screen.getByRole("button", "Open Work view").tap();
-  await item(screen, "F").first().tap();
+  await hui.openWorkView("Files");
   await expect(navigator.getByRole("button", "sub")).toBeVisible();
 
   await navigator.getByRole("button", "New file").tap();
@@ -120,14 +108,11 @@ test("deleting asks before it goes, says it cannot be undone and lists what goes
   const session = await hui.createSession({ title: "Delete files", cwd: repository.path });
   const navigator = screen.getByLabel("Files navigator");
 
-  await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
-  await screen.getByRole("button", "Show Work pane").tap();
-  await screen.getByRole("button", "Open Work view").tap();
-  await item(screen, "F").first().tap();
+  await hui.openWorkView("Files");
   await expect(navigator.getByRole("button", "gone.txt")).toBeVisible();
 
-  await navigator.getByRole("button", "Delete gone.txt").tap();
+  await hui.deleteEntry(navigator, "gone.txt");
   await expect(screen.getByText("Delete gone.txt?")).toBeVisible();
   await expect(screen.getByText("Deleting does not use the trash and cannot be undone. It removes:")).toBeVisible();
   await expect(screen.getByText(/The file gone\.txt/u)).toBeVisible();
@@ -135,7 +120,7 @@ test("deleting asks before it goes, says it cannot be undone and lists what goes
   await expect(navigator.getByRole("button", "gone.txt")).toBeVisible();
   expect(await repository.git("status", "--porcelain")).toContain("gone.txt");
 
-  await navigator.getByRole("button", "Delete gone.txt").tap();
+  await hui.deleteEntry(navigator, "gone.txt");
   await screen.getByRole("button", "Delete").tap();
   await expect(navigator.getByRole("button", "gone.txt")).toHaveCount(0);
   expect(await repository.git("status", "--porcelain")).not.toContain("gone.txt");
@@ -143,9 +128,9 @@ test("deleting asks before it goes, says it cannot be undone and lists what goes
   const held = await hui.intercept("PUT", /\/files\/file\?/u);
   await navigator.getByRole("button", "docs").tap();
   await navigator.getByRole("button", "inner.txt").tap();
-  await screen.getByRole("textbox").fill("edited on screen");
+  await screen.getByLabel(/Contents of .*inner\.txt/u).fill("edited on screen");
   await held.arrived();
-  await navigator.getByRole("button", "Delete docs").tap();
+  await hui.deleteEntry(navigator, "docs");
   await expect(screen.getByText("Delete docs?")).toBeVisible();
   await expect(screen.getByText(/The folder .*docs.* and everything inside it\./u)).toBeVisible();
   await expect(screen.getByText(/Unsaved edits to inner\.txt/u)).toBeVisible();
@@ -154,7 +139,7 @@ test("deleting asks before it goes, says it cannot be undone and lists what goes
   await held.deliver();
   await expect(navigator.getByRole("button", "inner.txt")).toBeVisible();
 
-  await navigator.getByRole("button", "Delete docs").tap();
+  await hui.deleteEntry(navigator, "docs");
   await screen.getByRole("button", "Delete").tap();
   await expect(navigator.getByRole("button", "docs")).toHaveCount(0);
   expect(await repository.git("status", "--porcelain")).not.toContain("docs");

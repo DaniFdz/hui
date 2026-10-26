@@ -6,7 +6,9 @@
  * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, a message's actions (on the
  * web a hover reveals its footer, on iOS its long press), switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
- * clipboard, the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
+ * clipboard, the Work pane's launcher (the web's + menu writes each shortcut on its entry and opens the pane beside the
+ * chat; on iOS the pane opens over it and names the view alone), a Files row's delete (a button on the web, the row's
+ * menu on iOS), the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
  * shell's drawer media, the navigation drawer; on iOS, Back), the Settings page list (the drawer on a phone, on iOS
  * its sheet), the app's chrome outside Settings (the web's primary navigation, on iOS the app's own screen), the
  * chosen button of a group (aria-pressed; on iOS the selected trait), the app's colour scheme (on iOS read from a
@@ -116,6 +118,12 @@ export type Hui = {
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
   messageActions(target: Locator): Promise<void>;
+  /** Shows the open conversation's Work pane and adds the view it names. The web's launcher menu writes a keyboard
+   * shortcut on each entry and opens the pane beside the chat; the phone's opens it over the chat and names the
+   * view alone. */
+  openWorkView(name: string): Promise<void>;
+  /** Asks to delete a named file or folder row of a Files navigator, which the phone keeps in the row's menu. */
+  deleteEntry(within: Locator, name: string): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
   repository(): Promise<{ path: string; git(...args: string[]): string }>;
@@ -613,6 +621,15 @@ export const test = base.extend<{ hui: Hui }>({
         },
         contextMenu: (target) => target.secondaryTap(),
         messageActions: (target) => target.hover(),
+        openWorkView: async (name) => {
+          await browser().setViewport({ width: 1440, height: 900 });
+          await fixtures.screen.getByRole("button", "Show Work pane").tap();
+          await fixtures.screen.getByRole("button", "Open Work view").tap();
+          await fixtures.screen.getByRole("menuitem").filter({ hasText: name }).tap();
+        },
+        deleteEntry: async (within, name) => {
+          await within.getByRole("button", `Delete ${name}`).tap();
+        },
         scrollTo: (_within, target) => target.scrollIntoView(),
         expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
         textOf: async (target) => (await target.textContent()) ?? "",
@@ -782,6 +799,15 @@ export const test = base.extend<{ hui: Hui }>({
         textOf: async (target) => (await target.getByText(/\S/u).allTextContents()).join(" "),
         contextMenu: (target) => target.longPress(),
         messageActions: (target) => target.longPress(),
+        openWorkView: async (name) => {
+          await fixtures.screen.getByRole("button", "Show Work pane").tap();
+          await fixtures.screen.getByRole("button", "Open Work view").tap();
+          await fixtures.screen.getByRole("button", name).tap();
+        },
+        deleteEntry: async (within, name) => {
+          await within.getByRole("button", name).longPress();
+          await fixtures.screen.getByRole("button", `Delete ${name}`).tap();
+        },
         clipboard: async ({ refuse = false } = {}) => {
           if (refuse) notOnIos("clipboard({ refuse: true })")();
           execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
