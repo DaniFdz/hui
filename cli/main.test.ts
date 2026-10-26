@@ -21,12 +21,15 @@ test("CLI parses lifecycle, UI and local update commands without accepting stray
   assert.equal(parseCli(["update", "--check", "--json"]).values.check, true);
   assert.equal(parseCli(["update", "--nightly"]).values.nightly, true);
   assert.deepEqual({ ...parseCli(["update", "--nightly", "--check", "--json"]).values }, { nightly: true, check: true, json: true });
+  assert.equal(parseCli(["update", "--force"]).values.force, true, "an update replaces a busy or unresponsive gateway on request");
+  assert.equal(parseCli(["update", "--rollback", "--force"]).values.force, true);
   assert.equal(parseCli(["gateway", "start", "--port", "0"]).values.port, "0");
   for (const args of [["gateway", "stop", "--host", "127.0.0.1"], ["gateway", "start", "--port", "-1"], ["gateway", "start", "--port", "65536"],
     ["gateway", "logs", "--lines", "0"], ["update", "--rollback", "--from", "file.tgz"], ["update", "--sha256", "bad"], ["update", "--check", "--rollback"], ["update", "--check", "--from", "file.tgz"],
-    ["update", "--nightly", "--from", "file.tgz"], ["update", "--nightly", "--rollback"], ["gateway", "restart", "--nightly"], ["ui", "extra"], ["gateway", "status", "extra"], ["typo"]]) {
+    ["update", "--nightly", "--from", "file.tgz"], ["update", "--nightly", "--rollback"], ["update", "--check", "--force"], ["gateway", "restart", "--nightly"], ["ui", "extra"], ["gateway", "status", "extra"], ["typo"]]) {
     assert.throws(() => parseCli(args), Error, args.join(" "));
   }
+  assert.match(HELP, /hui update \[--check\] \[--json\] \[--force\]/u);
 });
 
 test("CLI parses workers commands, their target and only their own flags", () => {

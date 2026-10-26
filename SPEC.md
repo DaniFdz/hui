@@ -608,7 +608,10 @@ Restart preserves registry/transcript files and Durable's in-flight work.
 
 `hui update --from <trusted local.tgz> [--sha256 <digest>]` stages a managed
 release, probes it against disposable HUI/PI state, then selects it atomically
-and restarts an idle running gateway. Failure restores the previous selection
+and restarts an idle running gateway. An update refuses an unresponsive gateway
+and one whose active sessions, terminals or mutations a restart would interrupt;
+`--force` explicitly interrupts them and replaces a gateway that cannot answer,
+ending it by signal when necessary. Failure restores the previous selection
 and gateway; `--rollback` is handled by the original installed launcher. A
 stopped gateway stays stopped. Update metadata and retained releases live under
 `$XDG_DATA_HOME/hui/updates/<installation-hash>` (default `~/.local/share`). They

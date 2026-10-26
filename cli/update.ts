@@ -38,10 +38,12 @@ export async function probeRelease(candidate: string, fallback: string): Promise
   }
 }
 
-export async function updateRelease(installation: Installation, options: { from?: string; sha256?: string; rollback?: boolean; nightly?: boolean; expectedVersion?: string }): Promise<{ version: string; sha256?: string; restarted: boolean; app?: string }> {
+export async function updateRelease(installation: Installation, options: { from?: string; sha256?: string; rollback?: boolean; nightly?: boolean; expectedVersion?: string; force?: boolean }): Promise<{ version: string; sha256?: string; restarted: boolean; app?: string }> {
   await assertUpdatable(installation.installationRoot);
   const status = await gatewayStatus();
-  if (status.status === "unresponsive" || blockingSessions(status) || status.activeTerminals) throw new Error("Update requires a stopped or healthy idle gateway. Finish active sessions and terminals first.");
+  if (!options.force && (status.status === "unresponsive" || blockingSessions(status) || status.activeTerminals)) {
+    throw new Error("Update requires a stopped or healthy idle gateway. Finish active sessions and terminals first, or use --force to interrupt them.");
+  }
   if (!options.from && !options.rollback) {
     const release = options.nightly ? await nightlyRelease() : await latestRelease();
     if (options.expectedVersion && release.version !== options.expectedVersion) throw new Error("Release changed since checking. Check for updates again before installing.");
@@ -82,7 +84,7 @@ export async function updateRelease(installation: Installation, options: { from?
   await probeRelease(candidate, installation.installationRoot);
   // Stop rechecks activity atomically at the gateway after the potentially
   // lengthy install/probe; a new turn during staging cancels activation.
-  const previousGateway = await stopGateway();
+  const previousGateway = await stopGateway(options.force);
   const pointerFile = join(directory, "current.json");
   try {
     await atomicJson(pointerFile, next);
