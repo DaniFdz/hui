@@ -10,6 +10,7 @@
 .usage-report__search input { width: 100%; padding: var(--space-3); box-sizing: border-box; }
 .usage-report__scope { color: var(--muted); font-size: var(--control-ui-text-xs); margin: 0; }
 .usage-report .daily-chart-header .settings-section__desc { margin-top: var(--space-1); }
+.usage-report .daily-chart-bars { padding-inline: var(--space-4); }
 .usage-report .daily-bar-wrapper:first-child .daily-bar-label { justify-self: start; }
 .usage-report .daily-bar-wrapper:last-child .daily-bar-label { justify-self: end; }
 .usage-report__day { border: 0; background: transparent; padding: 0; font: inherit; cursor: var(--cursor-action); color: inherit; }
