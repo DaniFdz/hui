@@ -596,6 +596,7 @@ export const test = base.extend<{ hui: Hui }>({
         pressed: (within, name, on = true) => within.getByRole("button", { name, selected: on }),
         deviceAppearance: async (scheme) => {
           execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", scheme]);
+          await expect.poll(() => fixtures.screen.getByTestId("app-route").inputValue(), { timeout: 60_000 }).not.toBe("");
         },
         appearance: async () => {
           const box = await fixtures.screen.getByTestId("app-route").boundingBox();

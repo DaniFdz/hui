@@ -4,7 +4,7 @@ import { test } from "../../fixtures/hui.ts";
 
 const FACES = ["Instrument Sans", "Geist", "DM Sans", "IBM Plex Sans", "Space Grotesk", "Atkinson Hyperlegible", "Fraunces", "Lora", "JetBrains Mono", "System"];
 
-test("the interface font restyles navigation, settings and controls, the chat prose font the conversation, code stays monospace, and both load and persist", { tags: ["SET-009"] }, async ({ screen, hui }) => {
+test("the interface font restyles navigation, settings and controls, the chat prose font the conversation, code stays monospace, and both load and persist", { tags: ["SET-009"], platforms: ["web"] }, async ({ screen, hui }) => {
   const face = async (target: Locator) => (await hui.look(target)).fonts[0];
   const loaded = async (target: Locator) => (await hui.look(target)).loaded;
   const caption = screen.getByText("HUI · A little clarity goes a long way");
