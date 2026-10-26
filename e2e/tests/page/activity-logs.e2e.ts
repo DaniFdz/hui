@@ -45,10 +45,11 @@ test("Activity lists events newest first, expands to area, level, time, session 
 
   const session = await hui.createSession({ title: "Activity restart" });
   await hui.prompt(session, "Settle this turn");
-  const settled = async () => (await hui.api<{ activity: { summary: string }[] }>("GET", "/__hui/observability")).activity.some((entry) => entry.summary === "Agent turn settled");
+  const settled = async () => (await hui.api<{ activity: { summary: string; sessionId?: string }[] }>("GET", "/__hui/observability"))
+    .activity.some((entry) => entry.summary === "Agent turn settled" && entry.sessionId === session.id);
   await expect.poll(settled, { timeout: 60_000 }).toBe(true);
   await hui.reload();
-  await expect(stream.getByText("Agent turn settled", { exact: true })).toBeVisible();
+  await expect(stream.getByText("Agent turn settled", { exact: true }).first()).toBeVisible();
 
   await hui.restartGateway();
   await hui.reload();
