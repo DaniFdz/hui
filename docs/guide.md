@@ -139,7 +139,9 @@ profile; HUI/PI storage remains shared through the existing gateway.
 
 Installation is per-user, without sudo, and downloads the platform's Electron
 runtime. Reinstallation replaces only an HUI-owned bundle, never an unrelated
-`HUI.app`. Quit the app before updating. Set `HUI_SKIP_APP_INSTALL=1` during npm
+`HUI.app`. `hui update` reinstalls the app when it runs an older release than
+HUI does, and the window you have open keeps the app it started with until you
+quit and reopen HUI. Set `HUI_SKIP_APP_INSTALL=1` during npm
 installation to opt out. Local checkout installs do not register an application.
 The bundle is locally ad-hoc signed, not Apple-notarized. It records the npm
 installation path, Node executable and PATH, never shell credentials. It depends
@@ -175,8 +177,9 @@ plays a sound, and high also bounces HUI's Dock icon until you open HUI.
 
 The first time the app opens, macOS asks whether HUI may send notifications. If
 you said no, allow them in **System Settings → Notifications → HUI**. They need
-the managed gateway and the current app, so run `hui install-app` after an
-update. Quitting HUI clears its notifications from Notification Center.
+the managed gateway and the current app: `hui update` reinstalls an app left on
+an older version, and a window that was already open needs quitting and
+reopening. Quitting HUI clears its notifications from Notification Center.
 
 ## Remote access through a reverse proxy
 
@@ -1192,7 +1195,15 @@ hui bot split ada
 each; the bot moves what it knows with `update_user` and `update_memory`, rewrites
 its soul with `write_soul`, and lists what it moved. It changes nothing else, and it
 never invents a preference. Once its message is accepted, HUI marks the bot split in
-`bots.json`, so doctor stops listing it; with `--wait`, a turn that fails or runs out of
-time leaves it unmarked, so run the command again. A bot on a worker keeps its home there, and
-doctor cannot read a worker's files offline: it lists the bot until you run the same
-command once the worker is connected.
+`bots.json`, so doctor stops listing it; with `--wait`, a turn that fails or runs out
+of time leaves it unmarked, so run the command again. A bot on a worker keeps its
+home there, and doctor cannot read a worker's files offline: it lists the bot until
+you run the same command once the worker is connected.
+
+### HUI desktop app
+
+An installed app runs the release it was installed from. `hui update` reinstalls
+it, so it stops running an older window shell that refuses the gateway's
+notifications. `hui doctor` lists one that an earlier update left behind, and
+`--fix` reinstalls it from the release HUI runs. Quit and reopen HUI afterwards:
+the window that was open keeps the app it started with.

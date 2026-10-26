@@ -86,7 +86,7 @@ still match the source.
 
 `hui doctor` is how an upgrade changes state earlier versions left behind. A
 change that leaves persisted state behind (a format, a location, a runtime
-switch) adds a check in `cli/doctor-<name>.ts` and lists it in `DOCTOR_CHECKS`
+switch) adds a check in `cli/doctor-<name>.ts` and lists it in `doctorChecks`
 (`cli/doctor.ts`):
 
 - `inspect()` only reads. It reports each affected item as `issue`, which

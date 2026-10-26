@@ -124,7 +124,7 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 | Path | Owns |
 |---|---|
 | `cli/` | The `hui` command: gateway lifecycle (`gateway*.ts`, `state.ts`), installed releases and updates (`releases.ts`, `update*.ts`, `installation.ts`), `hui doctor` (`doctor*.ts`), the `/__hui/` client of `hui bot` and `hui schedule` (`gateway-client.ts`); `doctor-bots.ts` splits an old single-file soul and names `hui bot split` |
-| `desktop/` | Electron wrapper and native notification click handling (`main.cjs`, `policy.cjs`), macOS app registration and notification capability marker (`install.mjs`) |
+| `desktop/` | Electron wrapper and native notification click handling (`main.cjs`, `policy.cjs`), macOS app registration, reinstalling it after an update and its notification capability marker (`install.mjs`) |
 | `bin/` | Entry points: `hui.mjs` (installed CLI), `hui-dev.mjs` (`npm run dev`) |
 | `scripts/` | Build, release and nightly versioning |
 | `e2e/` | Browser-tool E2E procedures (`*.browser.md`), the launcher (`visual-verification.mjs`) and the package test; `e2e/catalogue/` (every user outcome HUI supports, one file per area, with the collectors of code surfaces that `scripts/use-cases.test.ts` checks it against), `e2e/tests/` (the shared e2e suite that `e2e.config.ts` runs, with its fixture in `e2e/fixtures/hui.ts`), `e2e/fixtures/` (fake providers, CLIs and services, seeds and PI extensions the launcher and tests start), `e2e/probes/` (in-page probes and oracles a procedure loads into the running app) |
