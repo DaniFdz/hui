@@ -1,7 +1,7 @@
 /**
  * Seeds an isolated HUI configuration with eight weeks of synthetic recorded usage for the Usage page: five Durable
- * sessions (one archived, one a subagent) over two providers and three models, priced, priced at zero and unpriced,
- * with an error tool result, plus one plain PI transcript of older, read-only history.
+ * sessions (one archived, one a subagent) over three providers and three models, priced, priced at zero and unpriced,
+ * with an error tool result, plus one legacy PI transcript. All sessions reopen with the deterministic fixture model.
  * Run by `visual-verification.mjs launch --usage-fixture` before the gateway starts; requires XDG_CONFIG_HOME,
  * PI_CODING_AGENT_DIR and HUI_E2E_WORKSPACE.
  */
@@ -90,7 +90,7 @@ for (const [index, seed] of seeds.entries()) {
   const last = Math.max(...seed.turns.map(({ at }) => at));
   sessions.push({
     id: `e2e-usage-${index + 1}`, title: seed.title, group: "", cwd, tool: "durable",
-    piSessionFile: `durable:${conversation.id}`, model: seed.turns[0]!.model.join("/"),
+    piSessionFile: `durable:${conversation.id}`, model: FIXTURE.join("/"),
     createdAt, updatedAt: new Date(last).toISOString(), source: "hui",
     ...(seed.archived ? { archived: true } : {}),
     ...(seed.parent ? { parentId: `e2e-usage-${seeds.findIndex(({ title }) => title === seed.parent) + 1}` } : {}),
@@ -100,18 +100,21 @@ await host.close();
 
 const transcript = join(agentDir, "sessions", "usage-fixture.jsonl");
 await mkdir(join(agentDir, "sessions"), { recursive: true });
-const record = (timestamp: number, usage: Record<string, unknown>) => JSON.stringify({
-  type: "message", id: `fixture-${timestamp}`, timestamp: new Date(timestamp).toISOString(),
-  message: { role: "assistant", provider: "anthropic", model: "claude-haiku-5", content: text("Notes from the design review."), usage },
-});
+const history = [
+  { at: ago(60, 12), usage: used(2000, 800, 1000, 200, 1.5) },
+  { at: ago(20, 12, 5), usage: used(500, 200, 0, 0) },
+  { at: ago(1, 12), usage: used(1600, 600, 900, 0, 0.55) },
+];
 await writeFile(transcript, [
-  record(ago(60, 12, 0), used(2000, 800, 1000, 200, 1.5)),
-  record(ago(20, 12, 5), used(500, 200, 0, 0)),
-  record(ago(1, 12, 0), used(1600, 600, 900, 0, 0.55)),
+  JSON.stringify({ type: "session", version: 3, id: "00000000-0000-4000-8000-000000000006", cwd: workspace, timestamp: new Date(ago(61, 12)).toISOString() }),
+  ...history.map(({ at, usage }, index) => JSON.stringify({
+    type: "message", id: `fixture-${at}`, parentId: index === 0 ? null : `fixture-${history[index - 1]!.at}`, timestamp: new Date(at).toISOString(),
+    message: { role: "assistant", api: "anthropic-messages", provider: "anthropic", model: "claude-haiku-5", content: text("Notes from the design review."), usage, stopReason: "stop", timestamp: at },
+  })),
 ].join("\n") + "\n");
 sessions.push({
   id: "e2e-usage-6", title: "Design notes", group: "", cwd: workspace, tool: "pi", piSessionFile: transcript,
-  model: "anthropic/claude-haiku-5", createdAt: new Date(ago(61, 12)).toISOString(),
+  model: FIXTURE.join("/"), createdAt: new Date(ago(61, 12)).toISOString(),
   updatedAt: new Date(ago(1, 12)).toISOString(), source: "hui",
 });
 

@@ -11,10 +11,12 @@ node e2e/visual-verification.mjs doctor --receipt <receipt.json>
 ```
 
 This seeds timestamped Durable histories and one legacy PI transcript with
-synthetic prices, tokens, two providers, cache usage, a recorded zero, an unpriced
+synthetic prices, tokens, three providers, cache usage, a recorded zero, an unpriced
 record, a failed tool, an archived session and a child session. These are recorded
 presentation fixtures, not this conversation's spend or provider billing. The
-report does not contact a provider. Shared `PAGE-021` tests instead send real PI
+report does not contact a provider. Reopening a seeded session uses the local
+fixture model. Its recorded model names and prices stay unchanged.
+Shared `PAGE-021` tests instead send real PI
 turns through the deterministic local provider and check recorded zero prices.
 
 ## Visible journey
@@ -36,7 +38,8 @@ turns through the deterministic local provider and check recorded zero prices.
 5. Filter by title, ID and recorded model. Totals, rankings and chart must follow
    the same subset. Enter a nonmatching query, confirm **No sessions match your
    search.**, then **Clear search**. Try all **Sort sessions** options. Recorded
-   zero sorts before unknown prices. Open a conversation from its row.
+   zero sorts before unknown prices. Open a Durable session and **Design notes**
+   from their rows. Both must show recorded messages and an Idle status.
 6. Choose an empty day and confirm **No usage in this range.** Return to 30d.
    Submit a reversed range; the error must name the attempted range while the
    last successful chart retains its own dates. Fix the fields and apply them.
