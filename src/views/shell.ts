@@ -1,6 +1,6 @@
 // Shell markup adapted from OpenClaw Control UI v2026.9.5, MIT licensed.
 // HUI retains ownership of routing, session state and every callback below.
-import { html, nothing, type TemplateResult } from "lit";
+import { html, nothing, svg, type TemplateResult } from "lit";
 import { icons } from "../lib/icons.ts";
 import { icons as openclawIcons } from "../components/openclaw/icons.ts";
 import { sessionMenuShortcuts } from "../lib/session/menu-shortcuts.ts";
@@ -48,9 +48,13 @@ loadViewAssets(
 /** Sidebar destinations. Sessions are opened from the list below and New
  * Session from the header, so there is no separate Home entry. Automations,
  * Plugins and Skills live in Settings. */
+/** Local: the shared icon set is pinned to upstream geometry, so a HUI-only destination carries its own. */
+const usageIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg`<path d="M3 3v18h18" /><path d="M8 17v-4M13 17V9M18 17V6" />`}</svg>`;
+
 export const PRIMARY_NAV = [
   { id: "contributions", label: "Contributions", icon: openclawIcons.gitPullRequest },
   { id: "sessions", label: "Sessions", icon: icons.messageSquare },
+  { id: "usage", label: "Usage", icon: usageIcon },
 ] as const;
 
 /** Compact content geometry and the platform-aware browser drawer contract
@@ -868,7 +872,7 @@ export function renderSidebar(props: ShellProps) {
 
           <div class="sidebar-shell__content">
           <div class="sidebar-shell__body" id="sidebar-tabpanel" role="tabpanel" aria-labelledby="sidebar-tab-${props.bots.tab}">
-          ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation">
+          ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation" data-testid="primary-navigation">
             ${PRIMARY_NAV.map((item) => {
               const page = HUI_PAGES.find((candidate) => candidate.id === item.id);
               return page ? html`
@@ -887,20 +891,6 @@ export function renderSidebar(props: ShellProps) {
                   <span class="nav-item__text">${item.label}</span>
                 </a>${item.id === "contributions" ? kanbanNavItem(props) : nothing}` : nothing;
             })}
-            <a
-              href="/settings/appearance"
-              class="nav-item sidebar-nav__item sidebar-nav__settings"
-              aria-current="false"
-              @click=${(event: MouseEvent) => {
-                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-                event.preventDefault();
-                closeContainingDrawer(event, false, true);
-                props.onOpenSettings();
-              }}
-            >
-              <span class="nav-item__icon" aria-hidden="true">${icons.settings}</span>
-              <span class="nav-item__text">Settings</span>
-            </a>
           </nav>`}
 
           <div class=${botsTab ? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"}>
@@ -944,6 +934,23 @@ export function renderSidebar(props: ShellProps) {
           </div>
           </div>
 
+          </div>
+          <div class="sidebar-footer">
+            <a
+              href="/settings/appearance"
+              data-testid="nav-settings"
+              class="nav-item sidebar-nav__item sidebar-nav__settings"
+              aria-current="false"
+              @click=${(event: MouseEvent) => {
+                if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                closeContainingDrawer(event, false, true);
+                props.onOpenSettings();
+              }}
+            >
+              <span class="nav-item__icon" aria-hidden="true">${icons.settings}</span>
+              <span class="nav-item__text">Settings</span>
+            </a>
           </div>
         </div>
     </aside>
