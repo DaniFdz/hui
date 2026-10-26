@@ -1245,7 +1245,7 @@ export class BotService {
       throw new BotConflictError(`${sender ? `@${sender.handle}` : "This session"} already sent ${this.#messagesPerHour} bot messages in the last hour. Wait before sending more.`);
     }
     const from = sender ? `[from @${sender.handle}${hop === 1 ? "" : ` · hop ${hop}`}] ` : agentTagPrefix(caller.title, caller.id, hop);
-    const delivery = await this.#deliver(record, `${from}${message}`, undefined);
+    const delivery = await this.#deliver(record, `${from}${message}`, undefined, undefined, { requestId: randomUUID() });
     this.#sent.set(key, [...recent, now]);
     return { text: `Queued for ${target ? `@${target.handle}` : to}.`, to: target?.handle ?? to, status: delivery.status };
   }

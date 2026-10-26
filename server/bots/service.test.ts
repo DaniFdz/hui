@@ -1380,6 +1380,22 @@ test("message_bot delivers to a handle or a name, guards hops, refuses itself an
   await refusal(cy.sessionId, { to: "bob", message: "x" }, /archived bot cannot message/u);
 });
 
+test("a bot message for a busy chat waits in the runtime's own inbox, where dropping the session cannot lose it", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  const runtime: RuntimeSession = await h.chat(ada.sessionId);
+  const inbox: string[] = [];
+  runtime.followUp = async (text) => { inbox.push(text); };
+  runtime.waitForTrackedPrompt = async () => ({ summary: "ack" });
+  runtime.cancelTrackedPrompt = async () => {};
+  await h.sessions.prompt(ada.sessionId, "long operator run");
+  const agent = await plainSession(h, "Implement PR 7");
+
+  assert.deepEqual(await h.service.messageBot(agent, { to: "@ada", message: "PR 7 handoff" }), { text: "Queued for @ada.", to: "ada", status: "queued" });
+  assert.deepEqual(inbox, [`[from agent: Implement PR 7 · reply-to agent:${agent}] PR 7 handoff`], "the runtime's inbox holds it across a restart");
+  assert.deepEqual(h.sessions.snapshot(ada.sessionId).queue.items ?? [], [], "nothing waits only in HUI's in-memory queue");
+});
+
 /** A plain session (not a bot's chat) in the harness's registry, live, as the gateway's own would be. */
 async function plainSession(h: Harness, title: string, runPrompt?: string, parentId?: string): Promise<string> {
   const id = randomUUID();
