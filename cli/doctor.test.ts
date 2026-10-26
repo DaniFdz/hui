@@ -3,7 +3,8 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, test } from "vitest";
 
 // HUI's directory, the Durable store and PI's agent directory resolve at import time, and PI finds skills in
@@ -13,6 +14,9 @@ const config = join(root, "config", "hui");
 const store = join(root, "durable");
 const agentDir = join(root, "agent");
 const workspace = join(root, "workspace");
+// The desktop app check reads the installer from the running package; an empty application directory under the
+// temporary HOME gives it nothing to report.
+const installation = { installationRoot: workspace, packageRoot: dirname(dirname(fileURLToPath(import.meta.url))) };
 process.env["HOME"] = root;
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["HUI_DURABLE_DIR"] = store;
@@ -84,7 +88,9 @@ function inspector() {
 test("the report lists sessions still on PI, changes nothing, and --fix waits for the gateway to stop", async () => {
   await setup();
   const registry = await readFile(registryFile, "utf8");
-  const report = await runDoctor();
+  const report = await runDoctor({ installation });
+  assert.deepEqual(report.checks.map((check) => check.id), ["pi-sessions", "triggers", "desktop-app"]);
+  assert.equal(report.checks[2]?.summary, "no HUI desktop app is installed");
   assert.equal(report.ok, false);
   assert.equal(piCheck(report).status, "issue");
   assert.deepEqual(statuses(report), [
@@ -95,7 +101,7 @@ test("the report lists sessions still on PI, changes nothing, and --fix waits fo
   assert.match(text, /! "Interrupted run" \(interrup\): it has an interrupted run/u);
   assert.match(text, /! "Lost transcript" \(missing-\): its PI transcript is missing/u);
   assert.match(text, /hui doctor --fix moves the 2 sessions marked • to Pi Durable while the gateway is stopped/u);
-  await assert.rejects(runDoctor({ fix: true, gatewayStatus: async () => ({ status: "running" }) }), /Stop the gateway before hui doctor --fix/u);
+  await assert.rejects(runDoctor({ installation, fix: true, gatewayStatus: async () => ({ status: "running" }) }), /Stop the gateway before hui doctor --fix/u);
   assert.equal(await readFile(registryFile, "utf8"), registry, "neither the report nor a refused fix writes the registry");
   assert.equal(existsSync(store), false, "nor opens the Durable store");
 });
@@ -104,7 +110,7 @@ test("--fix moves sessions to Durable, keeps PI's transcripts and backs up the r
   await setup();
   const registry = await readFile(registryFile, "utf8");
   const transcript = await readFile(files.moves, "utf8");
-  const report = await runDoctor({ fix: true });
+  const report = await runDoctor({ installation, fix: true });
   assert.equal(report.ok, false, "the blocked sessions remain");
   assert.deepEqual(statuses(report), [
     ["moves-session", "fixed"], ["fresh-session", "fixed"], ["interrupted-session", "blocked"], ["missing-session", "blocked"],
@@ -134,18 +140,18 @@ test("--fix moves sessions to Durable, keeps PI's transcripts and backs up the r
   await host.close();
 
   // Only blocked sessions are left: nothing to change, so a running gateway is no obstacle.
-  const rerun = await runDoctor({ fix: true, gatewayStatus: async () => ({ status: "running" }) });
+  const rerun = await runDoctor({ installation, fix: true, gatewayStatus: async () => ({ status: "running" }) });
   assert.deepEqual(statuses(rerun), [["interrupted-session", "blocked"], ["missing-session", "blocked"]]);
 });
 
 test("a rerun after a fix that never reached the registry reuses the earlier copy", async () => {
   await setup();
-  await runDoctor({ fix: true });
+  await runDoctor({ installation, fix: true });
   const reference = (await readRegistry()).find((session) => session.id === "moves-session")!.piSessionFile;
   // As if the gateway had been killed between Durable's commit and the registry write.
   await writeRegistry((await readRegistry()).map((session) =>
     session.id === "moves-session" ? { ...session, tool: "pi", piSessionFile: files.moves } : session));
-  const report = await runDoctor({ fix: true });
+  const report = await runDoctor({ installation, fix: true });
   assert.match(piCheck(report).items[0]!.detail ?? "", /copied by an earlier run/u);
   assert.equal((await readRegistry()).find((session) => session.id === "moves-session")!.piSessionFile, reference);
 });
@@ -157,7 +163,7 @@ test("--fix refuses a store another gateway owns and changes nothing", async (t)
   await mkdir(store, { recursive: true });
   await writeFile(join(store, "harness.lock"), String(owner.pid));
   const registry = await readFile(registryFile, "utf8");
-  await assert.rejects(runDoctor({ fix: true }), new RegExp(`already open in another HUI gateway \\(pid ${owner.pid}\\)`, "u"));
+  await assert.rejects(runDoctor({ installation, fix: true }), new RegExp(`already open in another HUI gateway \\(pid ${owner.pid}\\)`, "u"));
   assert.equal(await readFile(registryFile, "utf8"), registry);
   assert.equal(existsSync(join(config, "backups")) ? (await readdir(join(config, "backups"))).length : 0, 0, "no backup without a change");
 });
@@ -165,10 +171,11 @@ test("--fix refuses a store another gateway owns and changes nothing", async (t)
 test("a state with every session on Durable is healthy", async () => {
   await rm(store, { recursive: true, force: true });
   await writeRegistry([record("durable-session", "Already on Durable", { tool: "durable" })]);
-  const report = await runDoctor({ fix: true, gatewayStatus: async () => ({ status: "running" }) });
+  const report = await runDoctor({ installation, fix: true, gatewayStatus: async () => ({ status: "running" }) });
   assert.deepEqual(report, { ok: true, checks: [
     { id: "pi-sessions", title: "PI sessions", status: "ok", summary: "every session runs on Pi Durable", items: [], notes: [] },
     { id: "triggers", title: "Triggers", status: "ok", summary: "nothing left of GitHub, Sessions, Webhook or Slack triggers", items: [], notes: [] },
+    { id: "desktop-app", title: "HUI desktop app", status: "ok", summary: "no HUI desktop app is installed", items: [], notes: [] },
   ] });
-  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers");
+  assert.equal(formatDoctorReport(report), "✓ PI sessions: every session runs on Pi Durable\n✓ Triggers: nothing left of GitHub, Sessions, Webhook or Slack triggers\n✓ HUI desktop app: no HUI desktop app is installed");
 });

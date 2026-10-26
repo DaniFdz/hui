@@ -3152,6 +3152,14 @@ files `bot-trigger-cursors.json`, `bot-trigger-slack.json` and `slack.json`.
 Listener triggers and records HUI can't read for another reason stay. Nothing
 is copied first.
 
+The third check reinstalls the macOS app HUI installed when the app runs a
+release other than the active one, which `hui update` now prevents and earlier
+updates left behind ([Desktop distribution](#desktop-distribution)). It reads
+the owner marker and the version the bundle carries, so an application HUI did
+not install is never reported or touched, and a bundle that records no version
+counts as older than any release. `--fix` builds the bundle again from the
+running release, then the operator quits and reopens HUI.
+
 ### HUI owns an isolated PI SDK backend, not a PI fork
 
 Sessions on the `pi` runtime (sessions created before Durable that
@@ -3358,6 +3366,19 @@ The bundle has its own name/icon, is ad-hoc signed, depends on the npm/Node
 installation, stores no credentials, and never replaces an unrelated app. It
 changes no PI/HUI persistence formats. Native macOS behavior remains a release
 verification gate until tested on-device.
+
+An update replaces the CLI and the gateway, and the app HUI installed keeps
+running the release it was installed from until it is reinstalled: an older app
+keeps its window shell and refuses the gateway's notifications, which it only
+reports in the gateway log. A successful update therefore reinstalls the app
+that launches this installation when its version differs from the release it
+just activated, from that release, and says that HUI must be quit and reopened;
+the app a window started with keeps running until then. A refresh that fails
+leaves the update installed and says to run `hui install-app`. The app is never
+created where none existed, an app HUI did not install is never touched, and one
+that launches another installation is that installation's to refresh. `hui
+doctor` reports an app an earlier update left behind and `--fix` reinstalls it
+([`hui doctor`](#hui-doctor-migrates-state-an-upgrade-leaves-behind)).
 
 ### Clickable desktop notifications
 

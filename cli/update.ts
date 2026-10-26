@@ -1,12 +1,14 @@
 /** Installs, activates and rolls back HUI releases. A candidate is staged with npm beside the installation, booted
  * against a throwaway configuration, then switched in by rewriting the release pointer and restarting the gateway;
  * a failed activation restores the previous pointer and gateway. A successful switch deletes every staged release the
- * pointer no longer names, keeping the current and previous ones. It never edits a source checkout or PI data. */
+ * pointer no longer names, keeping the current and previous ones, and reinstalls the macOS app so it no longer runs the
+ * release it replaced. It never edits a source checkout or PI data. */
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { blockingSessions, gatewayStatus, startGateway, stopGateway } from "./gateway.ts";
 import { atomicJson } from "./state.ts";
@@ -36,7 +38,7 @@ export async function probeRelease(candidate: string, fallback: string): Promise
   }
 }
 
-export async function updateRelease(installation: Installation, options: { from?: string; sha256?: string; rollback?: boolean; nightly?: boolean; expectedVersion?: string }): Promise<{ version: string; sha256?: string; restarted: boolean }> {
+export async function updateRelease(installation: Installation, options: { from?: string; sha256?: string; rollback?: boolean; nightly?: boolean; expectedVersion?: string }): Promise<{ version: string; sha256?: string; restarted: boolean; app?: string }> {
   await assertUpdatable(installation.installationRoot);
   const status = await gatewayStatus();
   if (status.status === "unresponsive" || blockingSessions(status) || status.activeTerminals) throw new Error("Update requires a stopped or healthy idle gateway. Finish active sessions and terminals first.");
@@ -94,7 +96,25 @@ export async function updateRelease(installation: Installation, options: { from?
     throw error;
   }
   await removeSupersededReleases(directory, next);
-  return { version, ...(sha256 ? { sha256 } : {}), restarted: Boolean(previousGateway) };
+  const app = await refreshApp(candidate, installation.installationRoot);
+  return { version, ...(sha256 ? { sha256 } : {}), restarted: Boolean(previousGateway), ...(app === undefined ? {} : { app }) };
+}
+
+/** The desktop app an update replaces keeps the release it was installed from, and an app older than the gateway drops
+ * its notifications. Reinstall it from the activated release and answer the version it replaced. The update itself has
+ * already succeeded, so nothing here fails it: a release from before this refresh has nothing to do, and a failed one
+ * only says to run hui install-app. */
+async function refreshApp(candidate: string, installationRoot: string): Promise<string | undefined> {
+  if (process.platform !== "darwin") return undefined;
+  try {
+    const desktop = await import(pathToFileURL(join(candidate, "desktop", "install.mjs")).href) as {
+      refreshInstalledApp?: (root: string) => Promise<string | null>;
+    };
+    return await desktop.refreshInstalledApp?.(installationRoot) ?? undefined;
+  } catch (error) {
+    console.error(`hui: could not reinstall the HUI desktop app: ${error instanceof Error ? error.message : String(error)}. Run hui install-app to retry.`);
+    return undefined;
+  }
 }
 
 async function removeSupersededReleases(directory: string, kept: ReleasePointer): Promise<void> {

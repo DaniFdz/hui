@@ -400,7 +400,7 @@ export async function main(args: string[], installation: Installation): Promise<
   if (command === "update" && values.check) { report(await (values.nightly ? checkNightly : checkRelease)(installation)); return; }
   if (command === "doctor") {
     const { formatDoctorReport, runDoctor } = await import("./doctor.ts");
-    const result = await runDoctor({ fix: values.fix === true });
+    const result = await runDoctor({ installation, fix: values.fix === true });
     console.log(values.json ? JSON.stringify(result) : formatDoctorReport(result));
     if (!result.ok) process.exitCode = 1;
     return;
@@ -449,7 +449,14 @@ export async function main(args: string[], installation: Installation): Promise<
     return;
   }
   await withLifecycleLock(async () => {
-    if (command === "update") { report(await updateRelease(installation, values)); return; }
+    if (command === "update") {
+      const result = await updateRelease(installation, values);
+      report(result);
+      if (result.app !== undefined && !values.json) {
+        console.log(`hui: reinstalled HUI.app, which was ${result.app || "without a version"}, at ${result.version}. Quit and reopen HUI to load it.`);
+      }
+      return;
+    }
     if (command === "gateway stop") { await stopGateway(values.force); report({ status: "stopped" }); return; }
     const previous = command === "gateway restart" ? await stopGateway(values.force) : undefined;
     const host = requestedBinding ?? (previous ? { host: previous.host, allowedHosts: previous.allowedHosts } : binding());
