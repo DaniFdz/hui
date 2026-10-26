@@ -8,7 +8,7 @@ const DESTINATIONS = [
   ["Contributions", "Commits and pull requests of the GitHub accounts signed in to"],
   ["Kanban", "Backlog items and where each session is in development."],
   ["Sessions", "Active sessions and defaults."],
-  ["Usage", "Token metadata aggregated from PI-owned session files."],
+  ["Usage", "Recorded tokens and PI cost estimates."],
 ] as const;
 
 test("the sidebar lists its work destinations above a Settings footer", { tags: ["SHELL-001", "smoke"], platforms: ["web"] }, async ({ screen, hui }) => {

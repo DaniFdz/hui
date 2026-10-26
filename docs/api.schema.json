@@ -11417,6 +11417,245 @@
         }
       }
     },
+    "UsageDay": {
+      "type": "object",
+      "required": [
+        "date",
+        "metrics"
+      ],
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/UsageMetrics"
+        }
+      }
+    },
+    "UsageMetrics": {
+      "type": "object",
+      "required": [
+        "inputTokens",
+        "outputTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens",
+        "totalTokens",
+        "costUsd",
+        "unpricedCalls",
+        "calls",
+        "userMessages",
+        "assistantMessages",
+        "toolResults",
+        "errors"
+      ],
+      "properties": {
+        "inputTokens": {
+          "type": "number"
+        },
+        "outputTokens": {
+          "type": "number"
+        },
+        "cacheReadTokens": {
+          "type": "number"
+        },
+        "cacheWriteTokens": {
+          "type": "number"
+        },
+        "totalTokens": {
+          "type": "number"
+        },
+        "costUsd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unpricedCalls": {
+          "type": "number"
+        },
+        "calls": {
+          "type": "number"
+        },
+        "userMessages": {
+          "type": "number"
+        },
+        "assistantMessages": {
+          "type": "number"
+        },
+        "toolResults": {
+          "type": "number"
+        },
+        "errors": {
+          "type": "number"
+        }
+      }
+    },
+    "UsageModel": {
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "metrics"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/UsageMetrics"
+        }
+      }
+    },
+    "UsageReport": {
+      "type": "object",
+      "required": [
+        "generatedAt",
+        "range",
+        "sessions",
+        "coverage"
+      ],
+      "properties": {
+        "generatedAt": {
+          "type": "string"
+        },
+        "range": {
+          "type": "object",
+          "required": [
+            "from",
+            "to",
+            "timeZone"
+          ],
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageSession"
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "required": [
+            "registeredSessions",
+            "readSessions",
+            "unavailable",
+            "undatedRecords"
+          ],
+          "properties": {
+            "registeredSessions": {
+              "type": "number"
+            },
+            "readSessions": {
+              "type": "number"
+            },
+            "unavailable": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sessionId",
+                  "reason"
+                ],
+                "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "undatedRecords": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "UsageSession": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "lastActivityAt",
+        "metrics",
+        "days",
+        "models",
+        "tools"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "parentId": {
+          "type": "string"
+        },
+        "lastActivityAt": {
+          "type": "number"
+        },
+        "metrics": {
+          "$ref": "#/$defs/UsageMetrics"
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageDay"
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageModel"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageTool"
+          }
+        }
+      }
+    },
+    "UsageTool": {
+      "type": "object",
+      "required": [
+        "name",
+        "calls",
+        "errors"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "calls": {
+          "type": "number"
+        },
+        "errors": {
+          "type": "number"
+        }
+      }
+    },
     "UsageTotals": {
       "type": "object",
       "required": [
@@ -13344,6 +13583,12 @@
       "UiErrorKind",
       "UiErrorReceipt",
       "UiErrorReport",
+      "UsageDay",
+      "UsageMetrics",
+      "UsageModel",
+      "UsageReport",
+      "UsageSession",
+      "UsageTool",
       "UsageTotals"
     ],
     "local-paths": [
@@ -14729,6 +14974,13 @@
       "path": "/__hui/update/check",
       "response": {
         "$ref": "#/$defs/UpdateSnapshot"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/usage",
+      "response": {
+        "$ref": "#/$defs/UsageReport"
       }
     },
     {

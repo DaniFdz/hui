@@ -47,6 +47,7 @@ import { BotRoutines } from "./bots/routines.ts";
 import { ROUTINES_TOOL } from "./bots/durable-routines.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
 import { aggregateUsage, readObservability, recordDiagnosticEvent } from "./observability.ts";
+import { readUsageReport } from "./usage.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { createDurableBots } from "./bots/durable-access.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
@@ -129,6 +130,7 @@ export const settingsRoutes = createSettingsRoutes({ writeSettings });
 const durableUsage = async (conversationId: number) => durableHost().conversationUsage(conversationId as never);
 export const diagnosticsRoutes = createDiagnosticsRoutes({
   observability: async () => readObservability(await readRegistry(), durableUsage),
+  usage: async (query) => readUsageReport(await readRegistry(), query),
 });
 export const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,

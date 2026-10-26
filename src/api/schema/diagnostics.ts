@@ -22,4 +22,16 @@ export type UiErrorReceipt = { "recorded": number; "dropped": number; };
 
 export type UiErrorReport = { "kind": UiErrorKind; "message": string; "count": number; "firstAt"?: string; "lastAt"?: string; "location"?: string; "page"?: string; "request"?: { "method": string; "path": string; }; };
 
+export type UsageDay = { "date": string; "metrics": UsageMetrics; };
+
+export type UsageMetrics = { "inputTokens": number; "outputTokens": number; "cacheReadTokens": number; "cacheWriteTokens": number; "totalTokens": number; "costUsd": (number) | (null); "unpricedCalls": number; "calls": number; "userMessages": number; "assistantMessages": number; "toolResults": number; "errors": number; };
+
+export type UsageModel = { "provider": string; "model": string; "metrics": UsageMetrics; };
+
+export type UsageReport = { "generatedAt": string; "range": { "from": string; "to": string; "timeZone": string; }; "sessions": Array<UsageSession>; "coverage": { "registeredSessions": number; "readSessions": number; "unavailable": Array<{ "sessionId": string; "reason": string; }>; "undatedRecords": number; }; };
+
+export type UsageSession = { "id": string; "title": string; "parentId"?: string; "lastActivityAt": number; "metrics": UsageMetrics; "days": Array<UsageDay>; "models": Array<UsageModel>; "tools": Array<UsageTool>; };
+
+export type UsageTool = { "name": string; "calls": number; "errors": number; };
+
 export type UsageTotals = { "sessions": number; "filesRead": number; "records": number; "inputTokens": number; "outputTokens": number; "cacheReadTokens": number; "cacheWriteTokens": number; "totalTokens": number; "costUsd": (number) | (null); "models": Array<{ "model": string; "tokens": number; "costUsd": number; }>; "unavailable": Array<string>; };

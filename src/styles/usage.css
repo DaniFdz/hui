@@ -1,0 +1,26 @@
+/* HUI's Usage report layout, composed with the pinned OpenClaw usage stylesheet. */
+.usage-report__controls { display: grid; gap: var(--space-4); }
+.usage-report__controls label { display: grid; gap: var(--space-1); color: var(--muted); font-size: var(--control-ui-text-xs); }
+.usage-report__presets { flex-wrap: wrap; }
+.usage-report .usage-date-range { align-items: end; }
+.usage-report__totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block: 1px solid var(--border); padding-block: var(--space-3); }
+.usage-report__totals .usage-summary-card { background: none; box-shadow: none; border: 0; min-height: 100px; }
+.usage-report__search { display: flex; align-items: end; gap: var(--space-3); }
+.usage-report__search label { flex: 1; min-width: 0; }
+.usage-report__search input { width: 100%; padding: var(--space-3); box-sizing: border-box; }
+.usage-report__scope { color: var(--muted); font-size: var(--control-ui-text-xs); margin: 0; }
+.usage-report .daily-chart-header .settings-section__desc { margin-top: var(--space-1); }
+.usage-report .daily-bar-wrapper:first-child .daily-bar-label { justify-self: start; }
+.usage-report .daily-bar-wrapper:last-child .daily-bar-label { justify-self: end; }
+.usage-report__day { border: 0; background: transparent; padding: 0; font: inherit; cursor: var(--cursor-action); color: inherit; }
+.usage-report__unpriced { border: 2px dashed var(--warn); background: var(--warn-subtle); }
+.usage-report__rank-name { min-width: 0; overflow-wrap: anywhere; }
+.usage-report__session-values { display: grid; gap: var(--space-1); text-align: right; flex-shrink: 0; }
+.usage-report .session-bar-meta { white-space: normal; overflow-wrap: anywhere; }
+.usage-report .session-bar-title { white-space: normal; }
+.usage-report .callout .btn { margin-inline-start: var(--space-3); }
+@container (max-width: 600px) {
+  .usage-report__totals { grid-template-columns: minmax(0, 1fr); }
+  .usage-report__totals .usage-summary-card { min-height: 0; padding: var(--space-3); }
+  .usage-report__search { flex-wrap: wrap; }
+}
