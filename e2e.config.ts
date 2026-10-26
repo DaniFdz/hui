@@ -25,6 +25,7 @@ export default {
   timeout: 180_000,
   workers: 1,
   assertionTimeout: 15_000,
+  actionTimeout: 60_000,
   reporters: ["list", "junit", "markdown"],
   targets: [
     {
