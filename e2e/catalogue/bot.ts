@@ -676,11 +676,11 @@ const cases: UseCase[] = [
   {
     id: "BOT-068",
     title: "Keep a bot's identity, the operator's preferences and its knowledge apart",
-    behaviour: "SOUL.md holds who the bot is and how it works, USER.md what it knows about the operator, MEMORY.md what it chose to keep; the bot writes each with its own tool only in the operator's turns, and no other turn can. Its export carries SOUL.md and the operator's BOOTSTRAP.md, never USER.md or MEMORY.md, and an import's memories become MEMORY.md, shown in its preview. hui doctor moves an old 'What you already know' section to MEMORY.md and names hui bot split, which asks the bot to sort the rest itself.",
-    spec: ["SPEC.md#a-bots-prompt-is-four-files-and-only-two-of-them-travel-2026-10-25", "docs/api.md#prompt-files", "docs/api.md#get-__huibotsidfilesfile", "docs/api.md#put-__huibotsidfilesbootstrap"],
-    surfaces: ["tool:update_user", "tool:update_memory", "route:GET /__hui/bots/:id/files/:file", "route:PUT /__hui/bots/:id/files/bootstrap"],
+    behaviour: "A bot's prompt is four files: SOUL.md, USER.md, MEMORY.md and an optional BOOTSTRAP.md. Its export lists SOUL.md and its BOOTSTRAP.md under \"Files as they will be saved\", never USER.md or MEMORY.md, which Stays behind names as the operator's. An import's memories become MEMORY.md, shown in its preview as reference data that never leaves with an export.",
+    spec: ["SPEC.md#a-bots-prompt-is-four-files-and-only-two-of-them-travel-2026-10-25", "docs/api.md#prompt-files"],
+    surfaces: ["tool:update_user", "tool:update_memory"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
 ];
