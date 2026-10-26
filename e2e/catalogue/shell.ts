@@ -12,7 +12,7 @@ const cases: UseCase[] = [
   {
     id: "SHELL-001",
     title: "Open Home",
-    behaviour: "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Settings in that order, with no Home entry, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs.",
+    behaviour: "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
@@ -22,7 +22,7 @@ const cases: UseCase[] = [
   {
     id: "SHELL-002",
     title: "Go to a destination from the sidebar",
-    behaviour: "Selecting Contributions, Kanban or Sessions opens `/contributions`, `/kanban` or `/sessions` with that page's heading, and the selected item has `aria-current=\"page\"`. Settings opens the Settings page last shown (Appearance at first). Reloading keeps each route.",
+    behaviour: "Selecting Contributions, Kanban, Sessions or Usage opens `/contributions`, `/kanban`, `/sessions` or `/usage` with that page's heading, and the selected item has `aria-current=\"page\"`. Settings opens the Settings page last shown (Appearance at first). Reloading keeps each route.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page", "nav:kanban", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
