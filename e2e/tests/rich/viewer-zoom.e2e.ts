@@ -38,10 +38,18 @@ test("The viewer zooms around the pointer, pans by drag, toggles by double-click
 
   const idea = stage.getByText("Idea");
   const anchored = await centre(idea);
+  const middle = await centre(stage);
+  expect(Math.hypot(anchored.x - middle.x, anchored.y - middle.y)).toBeGreaterThan(20);
   await hui.wheel(idea, -120);
   await expect.poll(zoom).toBeGreaterThan(fit);
   await expect.poll(async () => Math.hypot((await centre(idea)).x - anchored.x, (await centre(idea)).y - anchored.y)).toBeLessThan(3);
   await level.tap();
+  await expect.poll(zoom).toBe(fit);
+
+  const model = stage.getByText("Useful model");
+  await model.doubleTap();
+  await expect.poll(zoom).toBeGreaterThan(fit);
+  await model.doubleTap();
   await expect.poll(zoom).toBe(fit);
 
   const dragFrom = await centre(idea);
@@ -51,13 +59,7 @@ test("The viewer zooms around the pointer, pans by drag, toggles by double-click
   expect(Math.hypot(dragTo.x - dragFrom.x, dragTo.y - dragFrom.y)).toBeGreaterThan(20);
   await expect.poll(zoom).toBe(fit);
   await level.tap();
-  await expect.poll(zoom).toBe(fit);
-
-  const model = stage.getByText("Useful model");
-  await model.doubleTap();
-  await expect.poll(zoom).toBeGreaterThan(fit);
-  await model.doubleTap();
-  await expect.poll(zoom).toBe(fit);
+  await expect.poll(async () => Math.hypot((await centre(idea)).x - dragFrom.x, (await centre(idea)).y - dragFrom.y)).toBeLessThan(3);
 
   const pinched = await centre(model);
   await hui.pinch(model, { from: 100, to: 200 });

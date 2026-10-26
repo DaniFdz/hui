@@ -19,6 +19,7 @@ test("A Slack permalink alone in the latest message becomes a Slack message or c
   await expect(channel.getByText("Slack channel", { exact: true })).toBeVisible();
   await expect(channel.getByText("acme · C01234567")).toBeVisible();
   await hui.expectLinkTo(channel, "Open in Slack", CHANNEL);
+  await expect.poll(() => hui.textOf(channel)).toBe("Slack channel acme · C01234567 Open in Slack");
   await hui.reload();
   await expect(screen.getByTestId("transcript").getByLabel("Slack channel")).toHaveCount(1);
 
@@ -31,6 +32,7 @@ test("A Slack permalink alone in the latest message becomes a Slack message or c
   await expect(message.getByText("Slack message", { exact: true })).toBeVisible();
   await expect(message.getByText("acme · C01234567")).toBeVisible();
   await hui.expectLinkTo(message, "Open in Slack", MESSAGE);
+  await expect.poll(() => hui.textOf(message)).toBe("Slack message acme · C01234567 Open in Slack");
   await expect(transcript.getByLabel("Slack channel")).toHaveCount(0);
   await hui.expectLinkTo(transcript, CHANNEL, CHANNEL);
   await hui.expectLinkTo(transcript, "Open the channel", CHANNEL);
