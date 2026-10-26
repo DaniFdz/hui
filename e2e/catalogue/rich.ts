@@ -159,8 +159,8 @@ const cases: UseCase[] = [
     behaviour: "A canonical Slack message or channel permalink alone in a user or assistant message shows a **Slack message** or **Slack channel** card with the workspace and channel taken from the link and an **Open in Slack** link to the original, without any request to Slack or private content. The cards are back after a reload; labeled, mixed-prose, http or non-canonical Slack links stay ordinary.",
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#rich-markdown-embeds"],
     surfaces: [],
-    journeys: ["slack-links"],
-    web: "backlog",
+    journeys: [],
+    web: "required",
     ios: "backlog",
   },
   {

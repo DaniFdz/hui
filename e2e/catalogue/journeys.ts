@@ -82,7 +82,6 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "shell-navigation": { kind: "automate" },
   "sidebar-toolbar": { kind: "automate" },
   "skill-disable": { kind: "automate" },
-  "slack-links": { kind: "automate" },
   "slash-commands": { kind: "automate" },
   "subagent-delivery": { kind: "automate" },
   "subagent-steering": { kind: "automate" },
