@@ -4,22 +4,28 @@
  * stopped, so none starts meanwhile. A breaking change to persisted state ships with a check here (CONTRIBUTING.md).
  */
 import { gatewayStatus as currentGatewayStatus, type GatewayStatus } from "./gateway.ts";
+import { appCheck } from "./doctor-app.ts";
 import { piSessionsCheck } from "./doctor-pi-sessions.ts";
 import { triggersCheck } from "./doctor-triggers.ts";
 import { withLifecycleLock } from "./state.ts";
+import type { Installation } from "./installation.ts";
 import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
 
 export type DoctorReport = { ok: boolean; checks: DoctorResult[] };
 
-export const DOCTOR_CHECKS: readonly DoctorCheck[] = [piSessionsCheck, triggersCheck];
+/** Every check, in report order. The app check needs the installation: `--fix` reinstalls the app from it. */
+export function doctorChecks(installation: Installation): readonly DoctorCheck[] {
+  return [piSessionsCheck, triggersCheck, appCheck(installation)];
+}
 
 export async function runDoctor(options: {
+  installation: Installation;
   fix?: boolean;
   checks?: readonly DoctorCheck[];
   gatewayStatus?: () => Promise<GatewayStatus>;
   lock?: <T>(operation: () => Promise<T>) => Promise<T>;
-} = {}): Promise<DoctorReport> {
-  const checks = options.checks ?? DOCTOR_CHECKS;
+}): Promise<DoctorReport> {
+  const checks = options.checks ?? doctorChecks(options.installation);
   let results: DoctorResult[] = [];
   for (const check of checks) results.push(await check.inspect());
   const fixable = checks.filter((check, index) => check.fix && results[index]!.items.some((item) => item.status === "issue"));
