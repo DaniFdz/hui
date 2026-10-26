@@ -504,6 +504,44 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 
 ---
 
+## Usage reporting
+
+Usage follows OpenClaw's reporting layout with HUI's recorded data:
+
+- Reporting range offers Today, 7d, 30d, 90d, 1y and All, inclusive start/end
+  dates, and Local or UTC calendar days. It opens on 30d. Changing the range
+  reloads the report; a failed read keeps the previous report and its range
+  visible with Retry. Refresh never clears a successful report while loading.
+- The report covers the current recorded histories of local sessions, including
+  archived sessions and subagents. Shared history inherited by forks counts once,
+  not once per copy. Dates come from recorded message timestamps, never session
+  update times. Remote, unreadable and undated history is identified as a gap.
+  The page always explains that background summarization, abandoned history and
+  provider billing are outside this report. Diagnostics and bot lifetime spend
+  retain their separate ledger-based totals.
+- A summary shows tokens, recorded PI cost estimates and sessions. Missing or
+  invalid prices show Unpriced, a recorded numeric zero remains $0.00, and a mix
+  of priced and unpriced calls labels cost as partial. HUI never adds external
+  session cost reports to PI estimates or presents either as a provider bill.
+- Daily usage switches between tokens and recorded cost. Token bars can show the
+  input, output, cache-read and cache-write shares. Empty calendar days remain
+  visible; a day with usage but no price is unpriced rather than free. Selecting
+  a day narrows the report to that date. All-time ranges longer than one year
+  group their chart by month. A token-type bar and legend show the same period.
+- Overview cards show recorded messages, tool results, errors, average tokens per
+  usage record and cache hit rate. Ranked model, provider and tool lists use the
+  same period. Unknown model/provider labels stay unknown rather than being
+  guessed from the session's current model.
+- A plain-text search narrows sessions by title, identifier or recorded model and
+  updates all displayed summaries and charts. Sessions sort by recent activity,
+  tokens or cost, with unknown prices last. At most 50 rows draw initially;
+  Show more reveals the next page. Each row can open its conversation.
+- Loading, no matching data, partial data and read failures are explicit. Controls
+  work with the keyboard and fit phone widths. No provider credentials, prompts,
+  message bodies, tool arguments or tool output enter the usage response.
+
+---
+
 # Part 2 — Session ownership
 
 **HUI owns the sessions.** The OpenClaw shape is a

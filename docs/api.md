@@ -3703,6 +3703,52 @@ message content. `costUsd` is `null` when PI did not record cost; HUI does not
 estimate it. Each `models` entry carries its tokens and the cost reported for that model
 (0 without one). Oversized or unreadable transcripts are reported as partial data.
 
+### `GET /__hui/usage`
+
+Returns `UsageReport`, the Usage page's date-ranged report over the current
+histories of registered local sessions, including archived sessions and subagents.
+This is separate from the lifetime ledger totals in `GET /__hui/observability`
+and bot usage. Background summarization, abandoned history, remote-worker data
+and provider billing are not included.
+
+Query parameters:
+
+- `from` and `to` are inclusive `YYYY-MM-DD` calendar days, given together,
+  with at most 366 days in one custom range. Omit both for all recorded history.
+- `timeZone` is an IANA time zone, such as `Europe/Paris`, or `UTC`, the default.
+  Calendar bucketing uses that zone, including daylight-saving changes.
+- Malformed, impossible or reversed dates and unknown time zones return 400.
+
+The response carries `generatedAt`, the effective `range`, `sessions` and
+`coverage`. Each session has its identity and title, the latest included activity
+stamp, `metrics`, dated buckets, recorded model/provider breakdowns and tool
+result counts. All-time ranges report the earliest included day through today
+or the latest recorded day when a clock was ahead. Empty drafts have no row.
+The browser combines rows for search and rankings; no transcript content is sent.
+
+`UsageMetrics` includes input, output, cache-read, cache-write and total tokens;
+usage-record, user-message, assistant-message, tool-result and error counts;
+`costUsd`; and `unpricedCalls`. Recorded total tokens take precedence over summing
+subtypes. Reasoning and one-hour cache-write subsets are not added again.
+`calls` counts usage records, not user messages. Cost is a recorded PI estimate,
+not an invoice: `costUsd: null` means no valid price was recorded, a numeric zero
+is retained, and `unpricedCalls > 0` labels any known sum as partial. External
+session-cost reports are never added to these PI values.
+
+Durable history is read in pages without changing the store. Inherited entries
+retain their global IDs and count once across registered sessions, attributed
+to their registered source conversation when available. Otherwise the oldest
+claiming session receives them, including retained history after a rewind.
+Legacy PI files are read only from registry references, bounded at 32 MB and
+counted once per path. Models and providers come from records, never from the
+session's current selection. Unrecorded labels are `Unknown`.
+
+`coverage` lists the number of registered sessions and readable local histories,
+individual unavailable histories with their reasons, and `undatedRecords` excluded
+because no valid recorded timestamp was available. Missing data never becomes
+an inferred free call. Prompts, message bodies, tool arguments, tool output,
+credentials and provider requests are excluded.
+
 ### `GET /__hui/diagnostics/export`
 
 Returns the same bounded observability snapshot with a JSON attachment header.
