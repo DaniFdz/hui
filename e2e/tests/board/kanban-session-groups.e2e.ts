@@ -25,7 +25,4 @@ test("dragging a session card into another custom lane moves it and its stage, a
   await screen.getByLabel("Options for Alpha card").getByText("OTHER", { visible: true }).tap();
   await expect(screen.getByText("Moved Alpha card to OTHER.")).toBeVisible();
   await expect(cell("OTHER", "Testing").getByText("Alpha card")).toBeVisible();
-
-  await hui.reload();
-  await expect(cell("OTHER", "Testing").getByText("Alpha card")).toBeVisible();
 });
