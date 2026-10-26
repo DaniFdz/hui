@@ -595,7 +595,7 @@ const cases: UseCase[] = [
     behaviour: "Row checkboxes, Select all shown sessions and Select archived (N) select sessions, and Delete… asks to confirm deleting them and their subagents while their transcripts stay. With \"Also remove their worktrees\", HUI also removes clean HUI-created worktrees that only those sessions used and names any it kept. The toast reports how many sessions and worktrees were removed and any failure.",
     spec: ["SPEC.md#behaviour", "SPEC.md#worktrees", "docs/api.md#delete-__huisessionsid"],
     surfaces: ["page:sessions", "route:DELETE /__hui/sessions/:id", "route:GET /__hui/worktrees", "route:POST /__hui/worktrees/remove"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
