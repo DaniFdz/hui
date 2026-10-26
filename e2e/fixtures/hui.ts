@@ -76,7 +76,7 @@ export type Hui = {
   forward(): Promise<void>;
   overflowsSideways(): Promise<boolean>;
   reachable(target: Locator): Promise<boolean>;
-  clipboard(options?: { refuse?: boolean }): Promise<void>;
+  clipboard(options?: { refuse?: boolean; legacyCopy?: boolean }): Promise<void>;
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
   type(text: string): Promise<void>;
@@ -342,7 +342,7 @@ export const test = base.extend<{ hui: Hui }>({
 
       const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
         url: () => browser().url(),
-        clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
+        clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
           const page = window as unknown as { huiCopied: string };
           page.huiCopied = "";
           navigator.clipboard.writeText = async (text) => {
@@ -354,8 +354,8 @@ export const test = base.extend<{ hui: Hui }>({
             const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
             page.huiCopied = blobs.map((blob) => blob.type).join(",");
           };
-          if (refused) document.execCommand = () => false;
-        }, refuse),
+          if (refused) document.execCommand = () => legacy;
+        }, { refused: refuse, legacy: legacyCopy }),
         copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
         keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
         type: (text) => browser().keyboard.type(text),
