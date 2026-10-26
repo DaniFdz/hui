@@ -3,7 +3,9 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 const refused = "Use /update or /update --check, without attachments. This command is handled by HUI, not the model.";
-const developmentServer = "This is the development server. Update the source checkout through Git; installed HUI packages can update from GitHub Releases.";
+const installable = JSON.stringify({ currentVersion: "0.1.5",
+  check: { currentVersion: "0.1.5", canInstall: true, message: "A new HUI release is ready to install.", status: "available",
+    latest: { version: "99.0.0", tag: "v99.0.0", url: "https://example.com/hui/v99.0.0" } }, job: null });
 
 test("/upd offers /update in the New Session composer, and sending it creates the HUI update session in OTHER with /update kept and opens the dialog without reaching the model", { tags: ["SHELL-035"], platforms: ["web"] }, async ({ screen, hui }) => {
   const directory = screen.getByLabel("Project directory");
@@ -31,6 +33,10 @@ test("/upd offers /update in the New Session composer, and sending it creates th
   await screen.getByRole("button", "Close").tap();
   await expect(screen.getByText("Update HUI", { exact: true })).toBeHidden();
   await expect(screen.getByLabel("Message")).toHaveValue("/update");
+
+  await screen.getByLabel("Message").fill("/upd");
+  await expect(commands.getByText("/update", { exact: true })).toBeVisible();
+  await expect(commands.getByText("Check for HUI updates and install the latest release")).toBeVisible();
 });
 
 test("/update --check opens the dialog with what the check found, says it only checks and offers no install", { tags: ["SHELL-036"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -38,11 +44,17 @@ test("/update --check opens the dialog with what the check found, says it only c
   const before = await hui.providerRequests();
 
   await hui.open(`/sessions/${session.id}`);
+  const load = await hui.intercept("GET", /\/__hui\/update$/u);
+  const checked = await hui.intercept("POST", /\/__hui\/update\/check$/u);
   await screen.getByLabel("Message").fill("/update --check");
   await screen.getByRole("button", "Send message").tap();
+  await load.answer(installable);
+  await checked.answer(installable);
 
   await expect(screen.getByText("Update HUI", { exact: true })).toBeVisible();
-  await expect(screen.getByText(developmentServer)).toBeVisible();
+  await expect(screen.getByText("Installed version 0.1.5")).toBeVisible();
+  await expect(screen.getByText(/^Latest stable: 99\.0\.0$/u)).toBeVisible();
+  await expect(screen.getByText("A new HUI release is ready to install.")).toBeVisible();
   await expect(screen.getByText("Check only. Run /update to install an available release.")).toBeVisible();
   await expect(screen.getByRole("button", /^Update to /u)).toHaveCount(0);
   expect(await hui.providerRequests()).toBe(before);

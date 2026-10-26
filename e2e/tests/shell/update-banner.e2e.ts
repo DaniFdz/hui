@@ -62,13 +62,19 @@ test("Review update opens the HUI update session and the dialog on the latest re
 
   await expect(screen.getByText("Update HUI", { exact: true })).toBeVisible();
   await expect(screen.getByText("Installed version 0.1.5")).toBeVisible();
-  await expect(screen.getByText(/^Latest stable: /u)).toBeVisible();
+  await expect(screen.getByText(/^Latest stable: 99\.0\.0$/u)).toBeVisible();
   await expect(screen.getByRole("button", "Update to 99.0.0")).toBeVisible();
+  await expect(screen.getByTestId("session-row").filter({ hasText: "HUI update" })).toHaveCount(1);
+  const listed = await hui.api<{ groups: { label: string; sessions: { id: string; title: string; group: string }[] }[] }>("GET", "/__hui/sessions");
+  const updateSession = listed.groups.find((group) => group.label === "ungrouped")?.sessions.filter((session) => session.title === "HUI update");
+  expect(updateSession?.map((session) => session.group)).toEqual([""]);
+  expect(new URL(await hui.url()).pathname).toBe(`/sessions/${updateSession?.[0]?.id}`);
   expect(await hui.providerRequests()).toBe(before);
 
   await screen.getByRole("button", "Close").tap();
   await expect(screen.getByText("Update HUI", { exact: true })).toBeHidden();
   await expect(review).toBeFocused();
+  await expect(screen.getByLabel("Message", { visible: true })).toHaveValue("/update");
   expect(await hui.newSessionDraft()).toBe("A draft that Review update must keep");
 });
 
