@@ -264,7 +264,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES],
     surfaces: [],
     journeys: ["update-notice"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -274,7 +274,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES, "docs/api.md#get-__huiupdate", "docs/api.md#post-__huiupdatecheck"],
     surfaces: ["route:GET /__hui/update", "route:POST /__hui/update/check", "route:POST /__hui/sessions"],
     journeys: ["update-notice"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -284,7 +284,7 @@ const cases: UseCase[] = [
     spec: [UPDATES, KEYBOARD],
     surfaces: [],
     journeys: ["update-notice"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: ESCAPE_ONLY, decision: KEYBOARD },
   },
   {
