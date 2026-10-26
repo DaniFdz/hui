@@ -846,6 +846,10 @@ test("continue after a failed answer restates the request the run was handling",
   );
   const stored = (await readRegistry()).find((session) => session.id === "continue-failed");
   assert.equal(stored?.runPrompt, "Use pup");
+  // Settle the resumed run so the marker it wrote cannot reach another test file: a registry record left
+  // mid-run is one a later gateway would try to recover by booting a real runtime for it.
+  started[0]!.emit({ type: "settled" });
+  await waitForStored(manager, "continue-failed", "the run marker to be cleared", (record) => !record?.runStartedAt);
   manager.disposeAll();
 });
 
