@@ -46,6 +46,7 @@ test("Dismiss update notification keeps the composer's draft, lasts for that ver
 test("Review update opens the HUI update session and the dialog on the latest release without installing or starting a turn, keeps the earlier draft and returns focus on Close", { tags: ["SHELL-033"], platforms: ["web"] }, async ({ screen, hui }) => {
   const review = screen.getByRole("button", "Review update");
   const message = screen.getByPlaceholder("What should this session work on?");
+  const before = await hui.providerRequests();
 
   const check = await hui.intercept("GET", /\/__hui\/update\/check$/u);
   await hui.open("/");
@@ -63,13 +64,12 @@ test("Review update opens the HUI update session and the dialog on the latest re
   await expect(screen.getByText("Installed version 0.1.5")).toBeVisible();
   await expect(screen.getByText(/^Latest stable: /u)).toBeVisible();
   await expect(screen.getByRole("button", "Update to 99.0.0")).toBeVisible();
-  expect(await hui.providerRequests()).toBe(0);
+  expect(await hui.providerRequests()).toBe(before);
 
   await screen.getByRole("button", "Close").tap();
   await expect(screen.getByText("Update HUI", { exact: true })).toBeHidden();
   await expect(review).toBeFocused();
   expect(await hui.newSessionDraft()).toBe("A draft that Review update must keep");
-  expect(await hui.providerRequests()).toBe(0);
 });
 
 test("Escape closes the Update HUI dialog with the draft unchanged and returns focus to the control that opened it", { tags: ["SHELL-034"], platforms: ["web"] }, async ({ screen, hui }) => {

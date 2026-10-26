@@ -9,6 +9,7 @@ test("/upd offers /update in the New Session composer, and sending it creates th
   const directory = screen.getByLabel("Project directory");
   const message = screen.getByPlaceholder("What should this session work on?");
   const commands = screen.getByLabel("Commands and paths");
+  const before = await hui.providerRequests();
 
   await hui.open("/");
   await message.fill("/upd");
@@ -25,7 +26,7 @@ test("/upd offers /update in the New Session composer, and sending it creates th
   const listed = await hui.api<{ groups: { label: string; sessions: { title: string; group: string }[] }[] }>("GET", "/__hui/sessions");
   const ungrouped = listed.groups.find((group) => group.label === "ungrouped");
   expect(ungrouped?.sessions.filter((session) => session.title === "HUI update").map((session) => session.group)).toEqual([""]);
-  expect(await hui.providerRequests()).toBe(0);
+  expect(await hui.providerRequests()).toBe(before);
 
   await screen.getByRole("button", "Close").tap();
   await expect(screen.getByText("Update HUI", { exact: true })).toBeHidden();
@@ -34,6 +35,7 @@ test("/upd offers /update in the New Session composer, and sending it creates th
 
 test("/update --check opens the dialog with what the check found, says it only checks and offers no install", { tags: ["SHELL-036"], platforms: ["web"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "Check for updates" });
+  const before = await hui.providerRequests();
 
   await hui.open(`/sessions/${session.id}`);
   await screen.getByLabel("Message").fill("/update --check");
@@ -43,7 +45,7 @@ test("/update --check opens the dialog with what the check found, says it only c
   await expect(screen.getByText(developmentServer)).toBeVisible();
   await expect(screen.getByText("Check only. Run /update to install an available release.")).toBeVisible();
   await expect(screen.getByRole("button", /^Update to /u)).toHaveCount(0);
-  expect(await hui.providerRequests()).toBe(0);
+  expect(await hui.providerRequests()).toBe(before);
   await screen.getByRole("button", "Close").tap();
   await expect(screen.getByLabel("Message", { visible: true })).toHaveValue("/update --check");
 });
@@ -52,13 +54,14 @@ test("an argument or an attachment on /update is refused with the error toast, a
   const session = await hui.createSession({ title: "Refuse the update" });
   const message = screen.getByLabel("Message");
   const transcript = screen.getByTestId("transcript");
+  const before = await hui.providerRequests();
 
   await hui.open(`/sessions/${session.id}`);
   await message.fill("/update now");
   await screen.getByRole("button", "Send message").tap();
   await expect(screen.getByText(refused)).toBeVisible();
   await expect(transcript.getByText("/update now")).toBeHidden();
-  expect(await hui.providerRequests()).toBe(0);
+  expect(await hui.providerRequests()).toBe(before);
 
   await screen.getByRole("button", "Dismiss notification").tap();
   await expect(screen.getByText(refused)).toBeHidden();
@@ -70,5 +73,5 @@ test("an argument or an attachment on /update is refused with the error toast, a
   await expect(screen.getByText(refused)).toBeVisible();
   await expect(screen.getByLabel("Attached files").getByText("notes.txt")).toBeVisible();
   await expect(message).toHaveValue("/update");
-  expect(await hui.providerRequests()).toBe(0);
+  expect(await hui.providerRequests()).toBe(before);
 });
