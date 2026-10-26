@@ -577,7 +577,7 @@ const cases: UseCase[] = [
     behaviour: "The Sessions page shows the Live count, Loaded runtimes with how many are working, Total memory, Heaviest runtime and Average startup, and each row shows Active or Cold, its memory and its startup time (\"Measuring…\" while starting). Refresh reads them again.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
