@@ -206,7 +206,7 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, ...SECRETS, "docs/api.md#suggested-tasks"],
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests", "task-suggestions"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
