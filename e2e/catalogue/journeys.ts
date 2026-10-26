@@ -45,7 +45,6 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "kanban": { kind: "automate" },
   "local-path-autocomplete": { kind: "automate" },
   "markdown-formatting": { kind: "automate" },
-  "markdown-tables": { kind: "automate" },
   "media-viewer": { kind: "automate" },
   "message-metadata": { kind: "automate" },
   "model-routing": { kind: "automate" },
