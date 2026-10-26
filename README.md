@@ -231,6 +231,7 @@ hui update
 hui update --nightly          # the latest validated main commit
 hui update --from /path/to/hui-next.tgz --sha256 <expected-sha256>
 hui update --rollback
+hui update --force            # replace a busy or unresponsive gateway
 ```
 
 `--nightly` installs the build CI publishes for each `main` commit, from the
@@ -241,7 +242,9 @@ From the chat, `/update` opens the update flow in a dedicated **HUI update**
 session under **OTHER**. The command stays in the composer and is never sent to
 the model, so a failed update can be inspected and retried. Updates are
 verified before activation, only run against an idle gateway, and keep the
-previous release available for rollback. Nix installations update through Nix
+previous release available for rollback. `--force` installs anyway, interrupting
+active sessions and terminals and replacing a gateway that cannot answer, so a
+wedged gateway never needs `pkill`. Nix installations update through Nix
 instead.
 
 After an update, run `hui doctor`. It reports state the new version needs
