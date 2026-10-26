@@ -12,6 +12,11 @@ struct SettingsModelTests {
         #expect(Color(hex: "oklch(0.2 0 0)") == nil)
     }
 
+    @Test func bundledSymbolsFaceLoads() async throws {
+        let symbols = try await HUICore.bundled().nerdFontSymbols()
+        #expect(Fonts.loaded([symbols]) == [symbols])
+    }
+
     @Test func themePalettesComeFromTheCore() async throws {
         let core = try HUICore.bundled()
         let file = API.JSONValue.object(["dark": .object(["background": .string("oklch(0 0 0)"), "foreground": .string("hsl(0 0% 100%)")])])

@@ -14,39 +14,42 @@ const contrast = (a: number[], b: number[]) => {
   return (light + 0.05) / (dark + 0.05);
 };
 
-test("an accent recolours the highlights over any theme, Current accent names it, and Theme default restores the theme's own", { tags: ["SET-007"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("an accent recolours the highlights over any theme, Current accent names it, and Theme default restores the theme's own", { tags: ["SET-007"] }, async ({ screen, hui }) => {
   const accents = screen.getByLabel("Accent color");
-  const swatch = (name: string, pressed = true) => accents.getByRole("button", { name, pressed });
+  const swatch = (name: string, pressed = true) => hui.pressed(accents, name, pressed);
   const title = screen.getByTestId("settings-page-title");
-  const highlight = screen.getByLabel("Text size").getByRole("button", { name: "Default 100%", pressed: true });
+  const top = () => hui.open("/settings/appearance");
 
   await hui.deviceAppearance("dark");
   await hui.open("/settings/appearance");
   await expect(swatch("Theme default")).toBeVisible();
-  await expect(screen.getByText("Theme default", { exact: true })).toBeVisible();
+  await expect(screen.getByTestId("settings-current-accent")).toHaveText("Theme default");
 
   await accents.getByRole("button", "Blue").tap();
   await expect(swatch("Blue")).toBeVisible();
   await expect(swatch("Theme default", false)).toBeVisible();
-  await expect(screen.getByText("Blue", { exact: true })).toBeVisible();
+  await expect(screen.getByTestId("settings-current-accent")).toHaveText("Blue");
   await expect.poll(async () => (await hui.look(title)).color).toEqual([91, 156, 246]);
-  expect((await hui.look(highlight)).background).toEqual([91, 156, 246]);
+  expect((await hui.look(swatch("Blue"))).background).toEqual([91, 156, 246]);
 
+  await top();
   await screen.getByRole("button", "Miami").tap();
-  await expect(screen.getByRole("button", { name: "Miami", pressed: true })).toBeVisible();
+  await expect(hui.pressed(screen, "Miami")).toBeVisible();
   await expect.poll(async () => (await hui.look(title)).background).toEqual([20, 15, 30]);
   await expect(swatch("Blue")).toBeVisible();
   expect((await hui.look(title)).color).toEqual([91, 156, 246]);
-  expect((await hui.look(highlight)).background).toEqual([91, 156, 246]);
+  expect((await hui.look(swatch("Blue"))).background).toEqual([91, 156, 246]);
 
+  await top();
   await screen.getByLabel("Custom accent color").fill("#2dd4bf");
-  await expect(screen.getByText("Custom color", { exact: true })).toBeVisible();
+  await expect(screen.getByTestId("settings-current-accent")).toHaveText("Custom color");
+
+  await top();
   await expect(swatch("Blue", false)).toBeVisible();
   await expect.poll(async () => (await hui.look(title)).color).toEqual([45, 212, 191]);
-
   await accents.getByRole("button", "Theme default").tap();
   await expect(swatch("Theme default")).toBeVisible();
-  await expect(screen.getByText("Theme default", { exact: true })).toBeVisible();
+  await expect(screen.getByTestId("settings-current-accent")).toHaveText("Theme default");
   await expect.poll(async () => (await hui.look(title)).color).toEqual([244, 114, 182]);
 
   await hui.reload();
@@ -54,7 +57,7 @@ test("an accent recolours the highlights over any theme, Current accent names it
   expect((await hui.look(title)).color).toEqual([244, 114, 182]);
 });
 
-test("an accent too faint for the page or its cards is darkened or lightened just until it reads, and kept as chosen where it reads", { tags: ["SET-007"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("an accent too faint for the page or its cards is darkened or lightened just until it reads, and kept as chosen where it reads", { tags: ["SET-007"] }, async ({ screen, hui }) => {
   const title = screen.getByTestId("settings-page-title");
   const accents = screen.getByLabel("Accent color");
   const amber = [245, 185, 66];

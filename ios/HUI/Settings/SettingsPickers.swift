@@ -2,7 +2,8 @@
 // core's face catalogue (TYPEFACES, its labels and each face's family drawn in that face), Terminal font opens the
 // core's TERMINAL_FONTS with the search field that offers a typed family as "Use this local font", and the accent
 // swatches offer the core's ACCENTS with the colour picker's hex field beside them. Each row reads as the web's control
-// does, "<label>: <chosen>", and the chosen face of a list carries the selected trait, as the web's aria-pressed does.
+// does, "<label>: <chosen>", the open list keeps the web's aria-pressed as the selected trait, and every row is one
+// button named by the text it shows, so a tap on that text reaches the row itself.
 import SwiftUI
 
 struct AccentSwatches: View {
@@ -36,7 +37,7 @@ struct AccentSwatches: View {
     }
 }
 
-struct FacePickerRow: View {
+struct FacePicker: View {
     let label: String
     let chosen: String
     let faces: [TypefaceFace]
@@ -44,45 +45,47 @@ struct FacePickerRow: View {
     @State private var open = false
 
     var body: some View {
-        Button { open = true } label: {
-            HStack {
-                Text(label).typeface(.body)
-                Spacer()
-                Text(chosen).typeface(.body).foregroundStyle(.secondary)
-                Image(systemName: "chevron.up.chevron.down")
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label): \(chosen)")
-        .accessibilityAddTraits(.isButton)
-        .sheet(isPresented: $open) {
-            NavigationStack {
-                List(faces, id: \.id) { face in
-                    Button {
-                        open = false
-                        pick(face.id)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(face.label).typeface(.body)
-                            Text(face.note).typeface(.footnote).foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                    }
-                    .accessibilityAddTraits(face.label == chosen ? .isSelected : [])
+        VStack(alignment: .leading, spacing: 8) {
+            Button { open.toggle() } label: {
+                HStack {
+                    Text(label).typeface(.body)
+                    Spacer()
+                    Text(chosen).typeface(.body).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.up.chevron.down")
                 }
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel("\(label): \(chosen)")
+            if open {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(faces, id: \.id) { face in
+                        Button {
+                            open = false
+                            pick(face.id)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(face.label).typeface(.body)
+                                Text(face.note).typeface(.footnote).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel(face.label)
+                        .accessibilityHint(face.note)
+                        .accessibilityAddTraits(face.label == chosen ? .isSelected : [])
+                    }
+                }
+                .padding(.leading)
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(label)
-                .navigationTitle(label)
-                .navigationBarTitleDisplayMode(.inline)
+                .accessibilityIdentifier("picker-list")
             }
         }
+        .buttonStyle(.borderless)
     }
 }
 
-struct TerminalPickerRow: View {
+struct TerminalPicker: View {
     let label: String
     let chosen: String
     let fonts: [String]
@@ -97,23 +100,21 @@ struct TerminalPickerRow: View {
     }
 
     var body: some View {
-        Button { open = true } label: {
-            HStack {
-                Text(label).typeface(.body)
-                Spacer()
-                Text(chosen).typeface(.body).foregroundStyle(.secondary)
-                Image(systemName: "chevron.up.chevron.down")
+        VStack(alignment: .leading, spacing: 8) {
+            Button { open.toggle() } label: {
+                HStack {
+                    Text(label).typeface(.body)
+                    Spacer()
+                    Text(chosen).typeface(.body).foregroundStyle(.secondary)
+                    Image(systemName: "chevron.up.chevron.down")
+                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label): \(chosen)")
-        .accessibilityAddTraits(.isButton)
-        .sheet(isPresented: $open) {
-            NavigationStack {
-                List {
+            .accessibilityLabel("\(label): \(chosen)")
+            if open {
+                VStack(alignment: .leading, spacing: 10) {
                     TextField("Search or type a font name", text: $query)
+                        .textFieldStyle(.roundedBorder)
                         .accessibilityLabel("Search or type a font name")
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -138,18 +139,21 @@ struct TerminalPickerRow: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                         }
+                        .accessibilityLabel("Use this local font")
+                        .accessibilityValue(local)
                     }
                     if matches.isEmpty, local.isEmpty { Text("No matches").typeface(.body).foregroundStyle(.secondary) }
                 }
+                .padding(.leading)
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel(label)
-                .navigationTitle(label)
-                .navigationBarTitleDisplayMode(.inline)
+                .accessibilityIdentifier("picker-list")
                 .task(id: query) {
                     let normalized = await normalize(query)
                     local = normalized == query && !query.isEmpty ? query : ""
                 }
             }
         }
+        .buttonStyle(.borderless)
     }
 }
