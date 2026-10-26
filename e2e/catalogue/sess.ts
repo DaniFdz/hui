@@ -635,7 +635,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#delete-__huisessionsid"],
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
