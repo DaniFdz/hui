@@ -3,7 +3,9 @@
  * models this gateway resolves, its memories into MEMORY.md (never into SOUL.md), and a template that came back from the
  * browser checked again before anything is created from it. Pure: the service passes what the gateway knows.
  */
-import { BOT_FILE_LIMITS, BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape, splitKnownSection, storedTagging } from "../../bots-format.ts";
+import MarkdownIt from "markdown-it";
+
+import { BOT_FILE_LIMITS, BOT_LIMITS, BOT_THINKING_LEVELS, isBotFaceEars, isBotFaceShape, storedTagging } from "../../bots-format.ts";
 import { BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateFormat, type BotTemplateIntegration } from "./formats.ts";
 import type { AutomationSchedule } from "../../automation.ts";
 import { gptLiveVoice } from "../../calls-format.ts";
@@ -81,6 +83,24 @@ export function resolveModel(hint: string, models: readonly ModelInfo[]): string
 }
 
 /* ── the soul, and what it keeps ───────────────────────────────────── */
+
+const commonmark = new MarkdownIt("commonmark", { maxNesting: 100 });
+
+/** An old single-file persona's "What you already know" section (a HUI export or a bot from before the split): the persona without it,
+ * and the section's body, which MEMORY.md keeps. The importer and `hui doctor` both use it, so they agree on the heading. */
+export function splitKnownSection(persona: string): { soul: string; known: string } {
+  const match = /^##\s+What you already know\s*$/mu.exec(persona);
+  if (!match) return { soul: persona.trim(), known: "" };
+  const from = match.index + match[0].length;
+  const after = persona.slice(from);
+  const lines = [0, ...Array.from(persona.matchAll(/\r\n?|\n/gu), (newline) => newline.index + newline[0].length)];
+  const top = commonmark.parse(persona, {}).find((token) => token.type === "heading_open" && token.markup === "#" && token.level === 0 && lines[token.map![0]]! >= from);
+  const end = Math.min(/^##\s+/mu.exec(after)?.index ?? after.length, top ? lines[top.map![0]]! - from : after.length);
+  return {
+    soul: `${persona.slice(0, match.index)}${after.slice(end)}`.trim(),
+    known: after.slice(0, end).trim(),
+  };
+}
 
 /**
  * SOUL.md for an imported bot: its persona, cut to fit. It is only who the bot is and how it works: what the source bot

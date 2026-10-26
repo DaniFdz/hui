@@ -156,23 +156,6 @@ export const BOT_MEMORY_FILE = "MEMORY.md";
 /** The operator's onboarding body, read while SOUL.md does not exist. Exported: it is the bot's ritual, not personal data. */
 export const BOT_BOOTSTRAP_FILE = "BOOTSTRAP.md";
 
-/** An old single-file persona's "What you already know" section (a HUI export or a bot from before the split): the persona without it,
- * and the section's body, which MEMORY.md keeps. The importer and `hui doctor` both use it, so they agree on the heading. */
-export const KNOWN_HEADING = "## What you already know";
-
-export function splitKnownSection(persona: string): { soul: string; known: string } {
-  const match = /^##\s+What you already know\s*$/mu.exec(persona);
-  if (!match) return { soul: persona.trim(), known: "" };
-  const start = match.index;
-  const after = persona.slice(start + match[0].length);
-  const next = /^##\s+/mu.exec(after);
-  const end = next ? start + match[0].length + next.index : persona.length;
-  return {
-    soul: `${persona.slice(0, start)}${persona.slice(end)}`.trim(),
-    known: after.slice(0, next ? next.index : undefined).trim(),
-  };
-}
-
 /** The prompt files of a bot's home, by the name the API and CLI use (`/__hui/bots/:id/files/:file`). */
 export const BOT_FILES = ["soul", "user", "memory", "bootstrap"] as const;
 export type BotFile = (typeof BOT_FILES)[number];

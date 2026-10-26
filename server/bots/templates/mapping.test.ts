@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { BOT_LIMITS, splitKnownSection } from "../../bots-format.ts";
+import { BOT_LIMITS } from "../../bots-format.ts";
 import { TemplateFormatError } from "./common.ts";
-import { composeMemory, composeSoul, matchIntegration, normalizeTemplate, resolveModel } from "./mapping.ts";
+import { composeMemory, composeSoul, matchIntegration, normalizeTemplate, resolveModel, splitKnownSection } from "./mapping.ts";
 import { readSchedule } from "./schedule.ts";
 
 const ZONE = "Europe/Madrid";
@@ -79,6 +79,28 @@ test("SOUL.md is the persona only; what the source bot knew goes to MEMORY.md, w
   // An old persona's section is split out, never kept in the soul.
   const old = "You are Nova.\n\n## What you already know\n\n- Madrid\n\n## How I work\n\nBriefly.";
   assert.deepEqual(splitKnownSection(old), { soul: "You are Nova.\n\n## How I work\n\nBriefly.", known: "- Madrid" });
+  assert.deepEqual(
+    splitKnownSection("You are Nova.\n\n## What you already know\n\n### Deploy\n\n```sh\n# build first\nnpm run build\n```\n\n# Slack\n\nAnswer in threads."),
+    { soul: "You are Nova.\n\n# Slack\n\nAnswer in threads.", known: "### Deploy\n\n```sh\n# build first\nnpm run build\n```" },
+    "the section ends at the next # or ## heading, never at a # comment in its code",
+  );
+  assert.deepEqual(
+    splitKnownSection("P.\n\n## What you already know\n\n```\n    ```\n```js\n# c\n```\n\n<!--\n# old notes\n-->\n\n> # quoted\n\n# Slack"),
+    { soul: "P.\n\n# Slack", known: "```\n    ```\n```js\n# c\n```\n\n<!--\n# old notes\n-->\n\n> # quoted" },
+    "a # line in code, in an HTML block or in a quote does not start a section",
+  );
+  assert.deepEqual(
+    splitKnownSection("P.\n\n## What you already know\n\n```\nfoo\n\n## How I work\n\nB"),
+    { soul: "P.\n\n## How I work\n\nB", known: "```\nfoo" },
+    "a fence that never closes still ends at the next ## heading",
+  );
+  assert.deepEqual(
+    splitKnownSection("P.\n\n## What you already know\n\nTeam notes\n==========\n\n- Madrid\n\n## How I work\n\nB"),
+    { soul: "P.\n\n## How I work\n\nB", known: "Team notes\n==========\n\n- Madrid" },
+    "an underlined heading in the section stays in it, as before",
+  );
+  const nested = Array.from({ length: 12 }, (_, depth) => `${"  ".repeat(depth)}- x`).join("\n");
+  assert.equal(splitKnownSection(`P.\n\n## What you already know\n\n${nested}\n\n# Slack`).soul, "P.\n\n# Slack", "a deeply nested list does not hide the next # heading");
   assert.deepEqual(composeSoul(old), { soul: "You are Nova.\n\n## How I work\n\nBriefly.", cut: false });
 });
 

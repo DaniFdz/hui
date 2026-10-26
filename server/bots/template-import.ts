@@ -18,7 +18,7 @@
  * refuse). Its skills are on, like every skill of a bot: they are text the operator read in the preview, they widen no
  * tool, and each can be turned off on the Tools & skills page. The export side is `export.ts`.
  */
-import { BOT_FILE_LIMITS, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, splitKnownSection, type BotAvatar } from "../bots-format.ts";
+import { BOT_FILE_LIMITS, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar } from "../bots-format.ts";
 import type { BotTemplateTrigger } from "./export-format.ts";
 import {
   BOT_SKILL_TEXT_FILE, BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, botOpenerKickoffText, botTemplateKickoffText, notAgreedSection,
@@ -34,7 +34,7 @@ import { CLAUDE_CODE_TOOLS } from "./templates/claude-code.ts";
 import { isRecord, oneLine, skillFileText, skillName, TemplateFormatError, type ImportFile } from "./templates/common.ts";
 import { readFileTemplates, readFolderTemplates, readTextTemplates, type TemplateChoice } from "./templates/detect.ts";
 import { parseGrokBotPage, grokBotUrl } from "./templates/grok.ts";
-import { composeMemory, composeSoul, matchIntegration, normalizeTemplate, resolveModel, type ModelInfo } from "./templates/mapping.ts";
+import { composeMemory, composeSoul, matchIntegration, normalizeTemplate, resolveModel, splitKnownSection, type ModelInfo } from "./templates/mapping.ts";
 import { readSchedule } from "./templates/schedule.ts";
 import { safeRelativePath } from "./templates/zip.ts";
 

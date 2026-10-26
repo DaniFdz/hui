@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm, access } from "node:fs/promise
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "vitest";
+import { HOME_READ_BYTES } from "../server/bots/durable.ts";
 import { createBotsCheck } from "./doctor-bots.ts";
 
 const dirs: string[] = [];
@@ -55,6 +56,16 @@ test("--fix moves the section to MEMORY.md, keeps the persona, appends to what i
   const again = await check.fix();
   assert.equal(again.status, "ok", "nothing left to move");
   assert.deepEqual(again.items, []);
+});
+
+test("--fix keeps the rest of a SOUL.md whole, however much longer than a home read it is", async () => {
+  const notes = `## Notes\n\n${"x".repeat(HOME_READ_BYTES)}\n\nThe last line.`;
+  const { check, homes } = await fixture([{ id: "ada", handle: "ada" }], { ada: `I am Ada.\n\n## What you already know\n\n- Madrid\n\n${notes}` });
+  assert.ok(check.fix);
+  await check.fix();
+  const expected = `I am Ada.\n\n${notes}\n`;
+  const soul = await readFile(join(homes, "ada", "SOUL.md"), "utf8");
+  assert.ok(soul === expected, `SOUL.md kept ${soul.length} of ${expected.length} characters`);
 });
 
 test("a soul that was only memories leaves the bot in its first conversation again", async () => {

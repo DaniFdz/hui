@@ -11,9 +11,10 @@
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { BOT_FILE_LIMITS, BOT_FILE_NAMES, splitKnownSection } from "../server/bots-format.ts";
+import { BOT_FILE_LIMITS, BOT_FILE_NAMES } from "../server/bots-format.ts";
 import { BOTS_DIR, BOTS_FILE } from "../server/bots/bots.ts";
 import { readHomeFile, writeHomeFile } from "../server/bots/durable.ts";
+import { splitKnownSection } from "../server/bots/templates/mapping.ts";
 import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
 
 type StoredBot = { id: string; handle: string; name: string; worker?: string };
@@ -105,11 +106,9 @@ export function createBotsCheck(options: BotsDoctorOptions = {}): DoctorCheck {
       const bot = bots.find((each) => each.id === item.id);
       if (!bot) continue;
       try {
-        const home = await readHome(bot, dir);
-        if (home.soul === undefined) continue;
-        const { soul, known } = splitKnownSection(home.soul);
         const soulFile = join(dir, bot.id, BOT_FILE_NAMES.soul);
         const memoryFile = join(dir, bot.id, BOT_FILE_NAMES.memory);
+        const { soul, known } = splitKnownSection(await readFile(soulFile, "utf8"));
         const memory = await readHomeFile(memoryFile);
         // Checked before anything is written: a failed move leaves the bot as it was.
         const next = [memory, known].map((part) => part?.trim()).filter(Boolean).join("\n\n");
