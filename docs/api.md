@@ -3772,7 +3772,17 @@ Query parameters:
   with at most 366 days in one custom range. Omit both for all recorded history.
 - `timeZone` is an IANA time zone, such as `Europe/Paris`, or `UTC`, the default.
   Calendar bucketing uses that zone, including daylight-saving changes.
+- `refresh=1` reads every history again instead of answering from the scan the
+  gateway already holds.
 - Malformed, impossible or reversed dates and unknown time zones return 400.
+
+The gateway reads every registered history once per time zone and answers any
+range from that scan, so changing the range, the zone or the filters does not
+read the conversations again. A scan is reused while the registry records no
+newer activity; the first request after a session changes, and every
+`refresh=1` request, reads the histories again. A scan in progress is shared by
+concurrent requests. Changes newer than the registry's latest `updatedAt` are
+not seen until the next scan or a forced refresh.
 
 The response carries `generatedAt`, the effective `range`, `sessions` and
 `coverage`. Each session has its identity and title, the latest included activity

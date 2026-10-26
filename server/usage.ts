@@ -65,13 +65,20 @@ type UsageEvent = {
   isError?: boolean;
 };
 
-type Accumulator = {
-  session: SessionRecord;
+type DayBucket = {
   metrics: UsageMetrics;
-  days: Map<string, UsageMetrics>;
+  lastActivityAt: number;
   models: Map<string, UsageModel>;
   tools: Map<string, UsageTool>;
-  lastActivityAt: number;
+};
+
+/** One pass over every registered history, bucketed by day and independent of the range a request asks for. */
+export type UsageScan = {
+  sessions: Map<string, { session: SessionRecord; days: Map<string, DayBucket> }>;
+  registeredSessions: number;
+  undatedRecords: number;
+  unavailable: { sessionId: string; reason: string }[];
+  readSessions: number;
 };
 
 function count(value: unknown): number | undefined {
@@ -111,11 +118,23 @@ function readUsage(raw: unknown): Usage | undefined {
   };
 }
 
-function emptyMetrics(): UsageMetrics {
-  return {
+function emptyMetrics(): UsageMetrics {  return {
     inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0,
     costUsd: null, unpricedCalls: 0, calls: 0, userMessages: 0, assistantMessages: 0, toolResults: 0, errors: 0,
   };
+}
+
+function sumOf(rows: readonly UsageMetrics[]): UsageMetrics {
+  const total = emptyMetrics();
+  for (const row of rows) addMetrics(total, row);
+  return total;
+}
+
+function addMetrics(target: UsageMetrics, row: UsageMetrics): void {
+  for (const key of ["inputTokens", "outputTokens", "cacheReadTokens", "cacheWriteTokens", "totalTokens", "unpricedCalls", "calls", "userMessages", "assistantMessages", "toolResults", "errors"] as const) {
+    target[key] += row[key];
+  }
+  if (row.costUsd !== null) target.costUsd = (target.costUsd ?? 0) + row.costUsd;
 }
 
 function addEvent(target: UsageMetrics, event: UsageEvent): void {
@@ -221,51 +240,36 @@ function durableScan(): StoredEntryScan {
   };
 }
 
-export async function readUsageReport(sessions: readonly SessionRecord[], query: UsageQuery): Promise<UsageReport> {
-  const now = Date.now();
+export async function scanUsage(sessions: readonly SessionRecord[], timeZone: string): Promise<UsageScan> {
   const scan = durableScan();
-  const dayOf = dayReader(query.timeZone);
-  const today = dayOf(now);
-  const inRange = (day: string): boolean => query.kind === "all" || (day >= query.from && day <= query.to);
+  const dayOf = dayReader(timeZone);
+  const found: UsageScan = { sessions: new Map(), registeredSessions: sessions.length, undatedRecords: 0, unavailable: [], readSessions: 0 };
 
-  const accumulators = new Map<string, Accumulator>();
-  const accumulatorFor = (session: SessionRecord): Accumulator => {
-    let accumulator = accumulators.get(session.id);
-    if (!accumulator) {
-      accumulators.set(session.id, accumulator = {
-        session, metrics: emptyMetrics(), days: new Map(), models: new Map(), tools: new Map(), lastActivityAt: 0,
-      });
-    }
-    return accumulator;
-  };
-
-  let undatedRecords = 0;
   const accept = (session: SessionRecord, event: UsageEvent): void => {
     if (event.time === undefined) {
-      undatedRecords += 1;
+      found.undatedRecords += 1;
       return;
     }
     const day = dayOf(event.time);
-    if (!inRange(day)) return;
-    const accumulator = accumulatorFor(session);
-    addEvent(accumulator.metrics, event);
-    let dayMetrics = accumulator.days.get(day);
-    if (!dayMetrics) accumulator.days.set(day, dayMetrics = emptyMetrics());
-    addEvent(dayMetrics, event);
+    let sessionUsage = found.sessions.get(session.id);
+    if (!sessionUsage) found.sessions.set(session.id, sessionUsage = { session, days: new Map() });
+    let bucket = sessionUsage.days.get(day);
+    if (!bucket) sessionUsage.days.set(day, bucket = { metrics: emptyMetrics(), lastActivityAt: 0, models: new Map(), tools: new Map() });
+    addEvent(bucket.metrics, event);
+    bucket.lastActivityAt = Math.max(bucket.lastActivityAt, event.time);
     const eventLabel = event.label;
     if (event.usage && eventLabel) {
       const key = `${eventLabel.provider}\u0000${eventLabel.model}`;
-      let bucket = accumulator.models.get(key);
-      if (!bucket) accumulator.models.set(key, bucket = { provider: eventLabel.provider, model: eventLabel.model, metrics: emptyMetrics() });
-      addEvent(bucket.metrics, event);
+      let model = bucket.models.get(key);
+      if (!model) bucket.models.set(key, model = { provider: eventLabel.provider, model: eventLabel.model, metrics: emptyMetrics() });
+      addEvent(model.metrics, event);
     }
     if (event.tool) {
-      const bucket = accumulator.tools.get(event.tool) ?? { name: event.tool, calls: 0, errors: 0 };
-      accumulator.tools.set(event.tool, bucket);
-      bucket.calls += 1;
-      if (event.isError) bucket.errors += 1;
+      const tool = bucket.tools.get(event.tool) ?? { name: event.tool, calls: 0, errors: 0 };
+      bucket.tools.set(event.tool, tool);
+      tool.calls += 1;
+      if (event.isError) tool.errors += 1;
     }
-    accumulator.lastActivityAt = Math.max(accumulator.lastActivityAt, event.time);
   };
 
   const ordered = sessions.toSorted((left, right) => left.createdAt.localeCompare(right.createdAt));
@@ -278,13 +282,11 @@ export async function readUsageReport(sessions: readonly SessionRecord[], query:
 
   const claimedEntries = new Set<number>();
   const readPaths = new Set<string>();
-  const unavailable: { sessionId: string; reason: string }[] = [];
-  let readSessions = 0;
 
   for (const session of ordered) {
     const reference = session.piSessionFile;
     if (session.worker) {
-      unavailable.push({ sessionId: session.id, reason: "The transcript lives on a remote worker and is not read here." });
+      found.unavailable.push({ sessionId: session.id, reason: "The transcript lives on a remote worker and is not read here." });
       continue;
     }
     if (!reference) continue;
@@ -302,9 +304,9 @@ export async function readUsageReport(sessions: readonly SessionRecord[], query:
             if (event) accept(owner, event);
           }
         }
-        readSessions += 1;
+        found.readSessions += 1;
       } catch {
-        unavailable.push({ sessionId: session.id, reason: "The local conversation could not be read." });
+        found.unavailable.push({ sessionId: session.id, reason: "The local conversation could not be read." });
       }
       continue;
     }
@@ -314,15 +316,15 @@ export async function readUsageReport(sessions: readonly SessionRecord[], query:
     try {
       const info = await stat(reference);
       if (!info.isFile() || info.size > MAX_TRANSCRIPT_BYTES) {
-        unavailable.push({ sessionId: session.id, reason: "The transcript is too large or unavailable." });
+        found.unavailable.push({ sessionId: session.id, reason: "The transcript is too large or unavailable." });
         continue;
       }
       const source = await readFile(reference, "utf8");
       if (Buffer.byteLength(source) > MAX_TRANSCRIPT_BYTES) {
-        unavailable.push({ sessionId: session.id, reason: "The transcript is too large or unavailable." });
+        found.unavailable.push({ sessionId: session.id, reason: "The transcript is too large or unavailable." });
         continue;
       }
-      readSessions += 1;
+      found.readSessions += 1;
       let malformed = false;
       let lines = 0;
       for (const line of source.split("\n")) {
@@ -340,13 +342,55 @@ export async function readUsageReport(sessions: readonly SessionRecord[], query:
         const event = legacyEvent(record as Record<string, unknown>);
         if (event) accept(session, event);
       }
-      if (malformed) unavailable.push({ sessionId: session.id, reason: "Some transcript records could not be read." });
+      if (malformed) found.unavailable.push({ sessionId: session.id, reason: "Some transcript records could not be read." });
     } catch {
-      unavailable.push({ sessionId: session.id, reason: "The transcript is unavailable." });
+      found.unavailable.push({ sessionId: session.id, reason: "The transcript is unavailable." });
     }
   }
 
-  const recordedDays = [...accumulators.values()].flatMap((accumulator) => [...accumulator.days.keys()]);
+  return found;
+}
+
+export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
+  const now = Date.now();
+  const today = dayReader(query.timeZone)(now);
+  const inRange = (day: string): boolean => query.kind === "all" || (day >= query.from && day <= query.to);
+  const sessions: UsageSession[] = [];
+  const recordedDays: string[] = [];
+
+  for (const { session, days } of scan.sessions.values()) {
+    const kept = [...days.entries()].filter(([day]) => inRange(day)).toSorted(([left], [right]) => left.localeCompare(right));
+    if (!kept.length) continue;
+    const metrics = emptyMetrics();
+    const models = new Map<string, UsageModel>();
+    const tools = new Map<string, UsageTool>();
+    let lastActivityAt = 0;
+    for (const [date, bucket] of kept) {
+      recordedDays.push(date);
+      addMetrics(metrics, bucket.metrics);
+      lastActivityAt = Math.max(lastActivityAt, bucket.lastActivityAt);
+      for (const [key, row] of bucket.models) {
+        const previous = models.get(key);
+        models.set(key, { ...row, metrics: sumOf(previous ? [previous.metrics, row.metrics] : [row.metrics]) });
+      }
+      for (const row of bucket.tools.values()) {
+        const previous = tools.get(row.name);
+        tools.set(row.name, { name: row.name, calls: (previous?.calls ?? 0) + row.calls, errors: (previous?.errors ?? 0) + row.errors });
+      }
+    }
+    sessions.push({
+      id: session.id,
+      title: session.title,
+      ...(session.parentId ? { parentId: session.parentId } : {}),
+      lastActivityAt,
+      metrics,
+      days: kept.map(([date, bucket]): UsageDay => ({ date, metrics: bucket.metrics })),
+      models: [...models.values()].toSorted((left, right) => right.metrics.totalTokens - left.metrics.totalTokens
+        || left.provider.localeCompare(right.provider) || left.model.localeCompare(right.model)),
+      tools: [...tools.values()].toSorted((left, right) => right.calls - left.calls || left.name.localeCompare(right.name)),
+    });
+  }
+
   const latest = recordedDays.reduce((last, day) => (day > last ? day : last), today);
   const from = query.kind === "custom" ? query.from : recordedDays.length ? recordedDays.reduce((first, day) => (day < first ? day : first)) : today;
   const to = query.kind === "custom" ? query.to : latest;
@@ -354,26 +398,56 @@ export async function readUsageReport(sessions: readonly SessionRecord[], query:
   return {
     generatedAt: new Date(now).toISOString(),
     range: { from, to, timeZone: query.timeZone },
-    sessions: [...accumulators.values()]
-      .map((accumulator): UsageSession => ({
-        id: accumulator.session.id,
-        title: accumulator.session.title,
-        ...(accumulator.session.parentId ? { parentId: accumulator.session.parentId } : {}),
-        lastActivityAt: accumulator.lastActivityAt,
-        metrics: accumulator.metrics,
-        days: [...accumulator.days.entries()]
-          .map(([date, metrics]): UsageDay => ({ date, metrics }))
-          .toSorted((left, right) => left.date.localeCompare(right.date)),
-        models: [...accumulator.models.values()].toSorted((left, right) => right.metrics.totalTokens - left.metrics.totalTokens
-          || left.provider.localeCompare(right.provider) || left.model.localeCompare(right.model)),
-        tools: [...accumulator.tools.values()].toSorted((left, right) => right.calls - left.calls || left.name.localeCompare(right.name)),
-      }))
-      .toSorted((left, right) => right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)),
+    sessions: sessions.toSorted((left, right) => right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)),
     coverage: {
-      registeredSessions: sessions.length,
-      readSessions,
-      unavailable: unavailable.toSorted((left, right) => left.sessionId.localeCompare(right.sessionId)),
-      undatedRecords,
+      registeredSessions: scan.registeredSessions,
+      readSessions: scan.readSessions,
+      unavailable: scan.unavailable.toSorted((left, right) => left.sessionId.localeCompare(right.sessionId)),
+      undatedRecords: scan.undatedRecords,
     },
   };
+}
+
+/** What a scan covers: the registered histories and the newest activity among them. */
+function coverageStamp(sessions: readonly SessionRecord[]): string {
+  let latest = "";
+  for (const session of sessions) if (session.updatedAt > latest) latest = session.updatedAt;
+  return `${sessions.length}:${latest}`;
+}
+
+/**
+ * Keeps one scan of every history per time zone and answers any range from it.
+ * A scan is reused until the registry records newer activity, so changing the
+ * range, the zone or the filters costs a slice instead of another read of every
+ * conversation. `refresh` always reads them again.
+ */
+export class UsageReports {
+  #scans = new Map<string, { scan: UsageScan; stamp: string }>();
+  #pending = new Map<string, Promise<UsageScan>>();
+  #registry: () => Promise<readonly SessionRecord[]>;
+  #read: (sessions: readonly SessionRecord[], timeZone: string) => Promise<UsageScan>;
+
+  constructor(registry: () => Promise<readonly SessionRecord[]>, read = scanUsage) {
+    this.#registry = registry;
+    this.#read = read;
+  }
+
+  async get(query: UsageQuery, refresh = false): Promise<UsageReport> {
+    const sessions = await this.#registry();
+    const stamp = coverageStamp(sessions);
+    const cached = this.#scans.get(query.timeZone);
+    if (cached && cached.stamp === stamp && !refresh) return sliceUsage(cached.scan, query);
+    return sliceUsage(await this.#rescan(query.timeZone, sessions, stamp), query);
+  }
+
+  #rescan(timeZone: string, sessions: readonly SessionRecord[], stamp: string): Promise<UsageScan> {
+    const pending = this.#pending.get(timeZone);
+    if (pending) return pending;
+    const scan = this.#read(sessions, timeZone).then((found) => {
+      this.#scans.set(timeZone, { scan: found, stamp });
+      return found;
+    }).finally(() => this.#pending.delete(timeZone));
+    this.#pending.set(timeZone, scan);
+    return scan;
+  }
 }

@@ -125,7 +125,7 @@ test("Usage searches its sessions by title, id or model, sorts them and reads th
 
   await filter.fill("alpha");
   await expect(sessions.getByRole("button")).toHaveCount(1);
-  await expect(totals).toContainText(/sessions\s*1\b/iu);
+  await expect(totals).toContainText(/\b1\s*sessions/iu);
   await expect(clear).toBeVisible();
   await filter.fill("nothing recorded matches this");
   await expect(screen.getByText("No sessions match your search.")).toBeVisible();

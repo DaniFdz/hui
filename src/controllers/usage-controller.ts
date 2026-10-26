@@ -26,7 +26,7 @@ export class UsageController {
   #request = 0;
   #target: UsageQuery | undefined;
   #host: Pick<ReactiveControllerHost, "requestUpdate">;
-  #read: (query: UsageQuery) => Promise<UsageReport>;
+  #read: (query: UsageQuery, refresh?: boolean) => Promise<UsageReport>;
 
   constructor(host: Pick<ReactiveControllerHost, "requestUpdate">, read = loadUsageReport) {
     this.#host = host;
@@ -45,14 +45,14 @@ export class UsageController {
     this.to = to;
   }
 
-  async load(query: UsageQuery = this.#target ?? { from: this.from, to: this.to, timeZone: this.timeZone }) {
+  async load(query: UsageQuery = this.#target ?? { from: this.from, to: this.to, timeZone: this.timeZone }, options: { refresh?: boolean } = {}) {
     const request = ++this.#request;
     this.#target = query;
     this.loading = true;
     this.error = "";
     this.#host.requestUpdate();
     try {
-      const report = await this.#read(query);
+      const report = await this.#read(query, options.refresh === true);
       if (request !== this.#request) return;
       this.report = report;
       this.from = report.range.from;
@@ -72,6 +72,9 @@ export class UsageController {
     if (this.preset !== "custom" && this.preset !== "all") this.#presetDates();
     void this.load(this.preset === "all" ? { timeZone: this.timeZone } : { from: this.from, to: this.to, timeZone: this.timeZone });
   }
+
+  /** Refresh reads every history again instead of the gateway's recent scan. */
+  refresh() { void this.load(undefined, { refresh: true }); }
 
   selectPreset(preset: Exclude<Preset, "custom">) { this.preset = preset; this.#reload(); }
   setZone(zone: "local" | "utc") { this.zone = zone; this.#reload(); }

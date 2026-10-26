@@ -29,7 +29,9 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
 
 const { durableContext, durableHost } = await import("./runtimes/durable-host.ts");
-const { readUsageReport, usageQuery } = await import("./usage.ts");
+const { scanUsage, sliceUsage, usageQuery } = await import("./usage.ts");
+
+const readUsageReport = async (sessions: readonly SessionRecord[], query: ReturnType<typeof usageQuery>) => sliceUsage(await scanUsage(sessions, query.timeZone), query);
 
 const host = durableHost();
 host.configureDurableBots(null);
@@ -190,4 +192,40 @@ test("the range rejects dates it cannot mean and time zones it does not know", (
     [{ from: "2026-01-01", to: "2026-01-02", timeZone: "Mars/Olympus" }, "an unknown zone"],
   ];
   for (const [params, why] of refused) assert.throws(query(params), /./u, why);
+});
+test("one scan answers every range, and a forced refresh or newer activity reads the histories again", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const conversation = await harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, priced(10, 5, 20, 0.5)) as never] });
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, priced(10, 5, 20, 0.25)) as never] });
+    return id;
+  }, durableContext);
+  const sessions = [record("cached", `durable:${conversation}`, new Date(T1).toISOString())];
+  let reads = 0;
+  let activity = new Date(T1).toISOString();
+  const reports = new UsageReports(async () => sessions.map((session) => ({ ...session, updatedAt: activity })), async (given, timeZone) => {
+    reads += 1;
+    return (await import("./usage.ts")).scanUsage(given, timeZone);
+  });
+
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  const first = await reports.get(june);
+  assert.equal(reads, 1);
+  assert.equal(first.sessions[0]?.metrics.calls, 2);
+
+  const juneFirst = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-01", timeZone: "UTC" }));
+  const [narrow, concurrent] = await Promise.all([reports.get(juneFirst), reports.get(june)]);
+  assert.equal(reads, 1, "a range and its neighbours come from the scan already held");
+  assert.equal(narrow.sessions[0]?.metrics.calls, 1);
+  assert.equal(concurrent.sessions[0]?.metrics.calls, 2);
+
+  await reports.get(june, true);
+  assert.equal(reads, 2, "refresh reads every history again");
+
+  activity = new Date(T2).toISOString();
+  const [afterActivity, shared] = await Promise.all([reports.get(june), reports.get(juneFirst)]);
+  assert.equal(reads, 3, "newer registry activity reads once, even for two requests at once");
+  assert.equal(afterActivity.range.to, "2026-06-02");
+  assert.equal(shared.sessions[0]?.metrics.calls, 1);
 });
