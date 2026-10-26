@@ -568,7 +568,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions", "nav:session"],
     journeys: ["session-registry", "session-tree-lifecycle"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -577,7 +577,7 @@ const cases: UseCase[] = [
     behaviour: "The Sessions page shows the Live count, Loaded runtimes with how many are working, Total memory, Heaviest runtime and Average startup, and each row shows Active or Cold, its memory and its startup time (\"Measuring…\" while starting). Refresh reads them again.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -586,7 +586,7 @@ const cases: UseCase[] = [
     behaviour: "Search transcripts takes two or more characters and lists the matching sessions newest first, with their title, an Archived chip, the number of matching messages and a snippet; selecting one opens it. No hit reads \"No transcript mentions “<query>”.\", a worker that could not be searched is named with its reason, and a failed search shows an error.",
     spec: ["docs/api.md#get-__huisessionssearch"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions/search"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -595,7 +595,7 @@ const cases: UseCase[] = [
     behaviour: "Row checkboxes, Select all shown sessions and Select archived (N) select sessions, and Delete… asks to confirm deleting them and their subagents while their transcripts stay. With \"Also remove their worktrees\", HUI also removes clean HUI-created worktrees that only those sessions used and names any it kept. The toast reports how many sessions and worktrees were removed and any failure.",
     spec: ["SPEC.md#behaviour", "SPEC.md#worktrees", "docs/api.md#delete-__huisessionsid"],
     surfaces: ["page:sessions", "route:DELETE /__hui/sessions/:id", "route:GET /__hui/worktrees", "route:POST /__hui/worktrees/remove"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -635,7 +635,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#delete-__huisessionsid"],
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
