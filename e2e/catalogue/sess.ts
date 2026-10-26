@@ -654,7 +654,7 @@ const cases: UseCase[] = [
     behaviour: "A session marked unread, by a background run that settled or by hand, is still unread after the gateway restarts.",
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -664,7 +664,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -683,7 +683,7 @@ const cases: UseCase[] = [
     behaviour: "With Group by Project, dropping a session row on a project group changes nothing: project groups follow the session's directory, so only custom groups accept a drop.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
