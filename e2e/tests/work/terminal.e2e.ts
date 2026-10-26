@@ -2,7 +2,7 @@
  * the agent's tool reaching the same shells, ending one, the narrow key bar and scrolling back (WORK-024, 025, 026, 027,
  * 029, 032, 033). Gespenst paints into a canvas, so the shell's own output is read from the gateway's replay of the
  * terminal the pane is connected to. */
-import { expect, type Locator } from "e2e";
+import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
 type Terminal = { id: string; title: string; status: "running" | "exited"; exitCode?: number };
@@ -28,11 +28,22 @@ const reported = async (hui: Hui, session: string, id: string, pattern: RegExp) 
   return Number(pattern.exec(await replay(hui, session, id))![1]);
 };
 
-/** Taps a terminal and types a command and Enter into its shell, the way the operator does. */
-const run = async (hui: Hui, terminal: Locator, command: string) => {
-  await terminal.tap();
+/** The emulator's own input. A terminal takes the keyboard only once it exists, and tapping it on the phone layout
+ * mounts the pane again when the tap brings its panel up, so the emulator that had the keyboard is gone by the time
+ * a command is typed. */
+const keyboard = (screen: Screen) => screen.getByRole("textbox", "Terminal input", { visible: true });
+
+/** Taps a terminal, waits for its emulator to hold the keyboard, then types a command and Enter, the way the operator
+ * does. */
+const run = async (hui: Hui, screen: Screen, command: string) => {
+  await screen.getByLabel("Shared terminal input", { visible: true }).tap();
+  await expect(keyboard(screen)).toBeFocused();
   await hui.type(`${command}\n`);
 };
+
+/** Sets a shell variable and prints it. A shell's line editor wraps the echo of a long command at the terminal's
+ * width, so what a tab holds is proved by its output, which always starts on a line of its own. */
+const assign = (name: string, value: string) => `${name}=${value}; printf 'SET %s\\n' "$${name}"`;
 
 test("Open terminal in the chat header shows the conversation's terminal in the Work pane", { tags: ["WORK-024"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
@@ -71,7 +82,6 @@ test("typing a command into the terminal runs it in a real shell and its output,
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Run a command", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
-  const terminal = screen.getByLabel("Shared terminal input", { visible: true });
 
   await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
@@ -80,7 +90,7 @@ test("typing a command into the terminal runs it in a real shell and its output,
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
 
-  await run(hui, terminal, "printf '\\e[31mRED\\e[0m plain\\n'");
+  await run(hui, screen, "printf '\\e[31mRED\\e[0m plain\\n'");
   await expect.poll(() => replay(hui, session.id, id)).toContain("\u001b[31mRED");
   const printed = await replay(hui, session.id, id);
   expect(printed).toContain("\u001b[31mRED\u001b[0m plain");
@@ -96,7 +106,6 @@ test("New terminal adds a second tab with its own shell, and each tab keeps its 
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Two terminals", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
-  const terminal = screen.getByLabel("Shared terminal input", { visible: true });
 
   await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
@@ -104,8 +113,8 @@ test("New terminal adds a second tab with its own shell, and each tab keeps its 
   await expect(pane.getByRole("tab", "Terminal 1")).toHaveAttribute("aria-selected", "true");
   const first = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, first.id);
-  await run(hui, terminal, "export MARK=first-shell");
-  await expect.poll(() => replay(hui, session.id, first.id)).toContain("first-shell");
+  await run(hui, screen, assign("MARK", "first-shell"));
+  await expect.poll(() => replay(hui, session.id, first.id)).toContain("SET first-shell");
 
   await screen.getByRole("button", "Open Work view").tap();
   await item(screen, "T").first().tap();
@@ -116,14 +125,14 @@ test("New terminal adds a second tab with its own shell, and each tab keeps its 
   expect(second.title).toBe("Terminal 2");
   await ready(hui, session.id, second.id);
 
-  await run(hui, terminal, "export MARK=second-shell");
-  await expect.poll(() => replay(hui, session.id, second.id)).toContain("second-shell");
+  await run(hui, screen, assign("MARK", "second-shell"));
+  await expect.poll(() => replay(hui, session.id, second.id)).toContain("SET second-shell");
   expect(await replay(hui, session.id, first.id)).not.toContain("second-shell");
 
-  await run(hui, terminal, "printf 'MARK is %s\\n' \"$MARK\"");
+  await run(hui, screen, "printf 'MARK is %s\\n' \"$MARK\"");
   await expect.poll(() => replay(hui, session.id, second.id)).toContain("MARK is second-shell");
   await pane.getByRole("tab", "Terminal 1").tap();
-  await run(hui, terminal, "printf 'MARK is %s\\n' \"$MARK\"");
+  await run(hui, screen, "printf 'MARK is %s\\n' \"$MARK\"");
   await expect.poll(() => replay(hui, session.id, first.id)).toContain("MARK is first-shell");
   expect(await replay(hui, session.id, second.id)).not.toContain("MARK is first-shell");
 });
@@ -132,7 +141,6 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Share a terminal", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
-  const terminal = screen.getByLabel("Shared terminal input", { visible: true });
 
   await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
@@ -140,8 +148,8 @@ test("the agent's terminal tool lists, reads and types into the shells the opera
   await expect(pane.getByText("Shared · Connected")).toBeVisible();
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
-  await run(hui, terminal, "shared_from_user=hello-from-operator");
-  await expect.poll(() => replay(hui, session.id, id)).toContain("hello-from-operator");
+  await run(hui, screen, assign("shared_from_user", "hello-from-operator"));
+  await expect.poll(() => replay(hui, session.id, id)).toContain("SET hello-from-operator");
 
   await hui.prompt(session, "E2E_SHARED_TERMINAL");
   await expect(screen.getByText("I sent the command to your shared terminal.", { exact: false })).toBeVisible();
@@ -165,7 +173,6 @@ test("End terminal stops its shell and closes its tab while the other terminals 
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "End a terminal", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
-  const terminal = screen.getByLabel("Shared terminal input", { visible: true });
 
   await hui.wideScreen();
   await hui.open(`/sessions/${session.id}`);
@@ -181,7 +188,7 @@ test("End terminal stops its shell and closes its tab while the other terminals 
   const second = opened.find(({ title }) => title === "Terminal 2")!;
 
   await pane.getByRole("tab", "Terminal 1").tap();
-  await run(hui, terminal, "sleep 600 & echo CHILD=$! SHELL=$$");
+  await run(hui, screen, "sleep 600 & echo CHILD=$! SHELL=$$");
   const child = await reported(hui, session.id, first.id, /CHILD=(\d+) SHELL=\d+/u);
   const shell = await reported(hui, session.id, first.id, /CHILD=\d+ SHELL=(\d+)/u);
   expect(alive(shell)).toBe(true);
@@ -198,10 +205,10 @@ test("End terminal stops its shell and closes its tab while the other terminals 
   await expect.poll(() => alive(shell)).toBe(false);
   await expect.poll(() => alive(child)).toBe(false);
 
-  await run(hui, terminal, "echo SELF=$$");
+  await run(hui, screen, "echo SELF=$$");
   const self = await reported(hui, session.id, second.id, /SELF=(\d+)/u);
   expect(alive(self)).toBe(true);
-  await run(hui, terminal, "exit 3");
+  await run(hui, screen, "exit 3");
   await expect(pane.getByText("Shared · Exited · 3")).toBeVisible();
   await expect(pane.getByRole("tab", "Terminal 2")).toBeVisible();
   expect((await terminals(hui, session.id))[0]?.status).toBe("exited");
@@ -212,7 +219,6 @@ test("End terminal stops its shell and closes its tab while the other terminals 
 test("below 1100px the key bar interrupts a running program, locks Ctrl on a double tap and recalls the last command", { tags: ["WORK-032"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Key bar", cwd: repository.path });
-  const terminal = screen.getByLabel("Shared terminal input", { visible: true });
 
   await hui.phoneScreen();
   await hui.open(`/sessions/${session.id}`);
@@ -225,20 +231,19 @@ test("below 1100px the key bar interrupts a running program, locks Ctrl on a dou
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
 
-  await run(hui, terminal, "echo RECALL_MARK");
-  await expect.poll(() => replay(hui, session.id, id)).toContain("RECALL_MARK");
-  const before = (await replay(hui, session.id, id)).split("RECALL_MARK").length - 1;
+  await run(hui, screen, "HITS=${HITS:-0}; HITS=$((HITS + 1)); printf 'HIT-%s\\n' \"$HITS\"");
+  await expect.poll(() => replay(hui, session.id, id)).toContain("HIT-1");
   await key("Up arrow").tap();
   await hui.type("\n");
-  await expect.poll(async () => (await replay(hui, session.id, id)).split("RECALL_MARK").length - 1).toBeGreaterThan(before + 1);
+  await expect.poll(() => replay(hui, session.id, id)).toContain("HIT-2");
 
-  await run(hui, terminal, "sleep 60");
-  await expect.poll(() => replay(hui, session.id, id)).toContain("sleep 60");
+  await run(hui, screen, "printf 'RUNNING %s\\n' \"$$\"; sleep 60");
+  await expect.poll(() => replay(hui, session.id, id)).toMatch(/RUNNING \d+/u);
   await key("Control for next keystroke").tap();
   await expect(key("Control for next keystroke")).toHaveAttribute("aria-pressed", "true");
   await hui.type("c");
   await expect.poll(() => replay(hui, session.id, id)).toContain("^C");
-  await run(hui, terminal, "echo AFTER");
+  await run(hui, screen, "echo AFTER");
   await expect.poll(() => replay(hui, session.id, id)).toContain("AFTER");
 
   await key("Control for next keystroke").doubleTap();
@@ -258,11 +263,11 @@ test("a scrolled-back terminal keeps its place while output arrives, and Jump to
   const { id } = (await terminals(hui, session.id))[0]!;
   await ready(hui, session.id, id);
 
-  await run(hui, terminal, "for i in $(seq 1 200); do echo LINE$i; done");
+  await run(hui, screen, "for i in $(seq 1 200); do echo LINE$i; done");
   await expect.poll(() => replay(hui, session.id, id)).toContain("LINE200");
   await expect(jump).toHaveAttribute("aria-hidden", "true");
 
-  await run(hui, terminal, "for i in $(seq 1 40); do echo LATE$i; sleep 0.2; done");
+  await run(hui, screen, "for i in $(seq 1 40); do echo LATE$i; sleep 0.2; done");
   await hui.wheel(terminal, -2_000);
   await expect(jump).toHaveAttribute("aria-hidden", "false");
   await expect.poll(() => replay(hui, session.id, id)).toContain("LATE40");
@@ -270,7 +275,7 @@ test("a scrolled-back terminal keeps its place while output arrives, and Jump to
 
   await jump.tap();
   await expect(jump).toHaveAttribute("aria-hidden", "true");
-  await run(hui, terminal, "echo TAIL");
+  await run(hui, screen, "echo TAIL");
   await expect.poll(() => replay(hui, session.id, id)).toContain("TAIL");
   await expect(jump).toHaveAttribute("aria-hidden", "true");
 });
