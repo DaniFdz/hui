@@ -80,3 +80,25 @@ test("a screen asking for the list while a poller runs gets what it already hold
   assert.equal(reads, 2);
   assert.deepEqual(afterStop.groups, next);
 });
+
+test("a change since the list was built is read again before it is answered", async () => {
+  let reads = 0;
+  let changed = false;
+  let next: Group[] = [{ label: "work", sessions: [{ id: "a", title: "A" }] }];
+  const hub = createSessionListHub<Session>(async () => {
+    reads += 1;
+    return next;
+  }, 60_000, () => changed);
+
+  const stop = hub.subscribe(() => {});
+  await hub.snapshot();
+  assert.equal(reads, 1);
+
+  // A session was just created: the poller has not seen it yet, the screen must.
+  changed = true;
+  next = [{ label: "work", sessions: [{ id: "a", title: "A" }, { id: "b", title: "B" }] }];
+  const answered = await hub.snapshot();
+  assert.equal(reads, 2);
+  assert.deepEqual(answered.groups.flatMap((group) => group.sessions.map(({ id }) => id)), ["a", "b"]);
+  stop();
+});

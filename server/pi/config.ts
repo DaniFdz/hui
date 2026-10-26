@@ -81,7 +81,11 @@ export function createModelCatalogReader(
   };
   const read = async (): Promise<CatalogResult> => {
     if (!cached) return discover();
-    if (cached.expiresAt <= Date.now()) void discover().catch(() => {});
+    if (cached.expiresAt <= Date.now()) {
+      // A caller asking again wants the failure retried, not shown once more.
+      if (cached.result.error) return discover();
+      void discover().catch(() => {});
+    }
     return cached.result;
   };
   return Object.assign(read, { invalidate: () => { revision++; cached = undefined; } });

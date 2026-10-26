@@ -26,7 +26,13 @@ function diffSessionList<S extends { id: string }>(
   return { ...(layoutChanged ? { groups: layout } : {}), upserts };
 }
 
-export function createSessionListHub<S extends { id: string }>(load: () => Promise<Groups<S>>, intervalMs = 1_000) {
+export function createSessionListHub<S extends { id: string }>(
+  load: () => Promise<Groups<S>>,
+  intervalMs = 1_000,
+  /** True when the list this hub holds no longer matches what `load` would
+   * return, so a request may not be answered from memory. */
+  stale: () => boolean = () => false,
+) {
   // Clock-seeded so revisions keep rising across gateway restarts.
   let current = { revision: Date.now(), groups: [] as Groups<S> };
   let loaded = false;
@@ -60,11 +66,13 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
   }
 
   /** The list the running poller already holds, so a screen asking for it does
-   * not wait behind a recompute of a large registry. */
+   * not wait for a second read of a large registry. Anything that changed the
+   * list since it was built still forces a fresh one. */
   async function snapshot(): Promise<{ revision: number; groups: Groups<S> }> {
     if (!timer) return refresh();
-    await reading.catch(() => {});
-    return loaded ? queue.then(() => current) : refresh();
+    // A read already on its way answers this one too.
+    await queue;
+    return loaded && !stale() ? current : refresh();
   }
 
   return {
