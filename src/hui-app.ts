@@ -81,6 +81,7 @@ import {
 } from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
+import { DashboardController } from "./controllers/dashboard-controller.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
@@ -115,7 +116,7 @@ import { isPiSurface, renderPiSurface } from "./views/pi-surfaces.ts";
 import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
-import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
+import { HUI_PAGES, availablePages, isPageAvailable, type HuiPage } from "./lib/pages.ts";
 import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
@@ -261,6 +262,7 @@ export class HuiApp extends HuiElement {
   private groupCheckoutDirectory = "";
   private readonly launcher = new LaunchController(this);
   private readonly automation = new AutomationController(this);
+  private readonly dashboard = new DashboardController(this);
   private readonly control = new SettingsController(this, {
     piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary),
     copyFailed: (message) => {
@@ -814,6 +816,11 @@ export class HuiApp extends HuiElement {
   }
 
   private applyNavigation(target: NavigationTarget) {
+    if (target.kind === "page" && !isPageAvailable(target.page, this.control.settings.labs)) {
+      this.navigate({ kind: "home" }, true);
+      return;
+    }
+    if (target.kind !== "page" || target.page.id !== "dashboard") this.dashboard.stop();
     if (target.kind === "settings") {
       this.settingsPage = target.page;
       this.settingsOpen = true;
@@ -875,6 +882,7 @@ export class HuiApp extends HuiElement {
       this.view = "surface";
       if (isPiSurface(target.page)) this.control.loadControlSurfaceData();
       if (isObservabilitySurface(target.page) || isOwnedSurface(target.page)) this.loadOperationalData();
+      if (target.page.id === "dashboard") this.dashboard.start();
       if (target.page.id === "cron" || target.page.id === "tasks") {
         this.automation.load();
         this.automation.startPolling();
@@ -978,7 +986,7 @@ export class HuiApp extends HuiElement {
       open: this.commandPaletteOpen,
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
-      pages: HUI_PAGES,
+      pages: availablePages(this.control.settings.labs),
       groups: this.listedGroups,
       bots: this.bots.list,
       onQuery: (query) => {
@@ -2811,6 +2819,17 @@ export class HuiApp extends HuiElement {
         onRefresh: () => void this.refreshSessions(),
         ...this.sessions.sessionsPageProps(),
       }),
+      dashboard: () => ({
+        groups: this.listedGroups,
+        sessionsLoading: this.sessions.loading,
+        sessionsError: this.sessions.error,
+        metrics: this.dashboard.metrics,
+        history: this.dashboard.history,
+        metricsError: this.dashboard.error,
+        now: Date.now(),
+        onRetry: this.dashboard.refresh,
+        onOpenSession: this.selectSession,
+      }),
       onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),
       onOpenSession: (id) => this.navigate({ kind: "session", id }),
     };
@@ -2850,6 +2869,7 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
+      pages: availablePages(this.control.settings.labs),
       selectedSessionId: this.view === "bot" ? "" : this.conversation.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),

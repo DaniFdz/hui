@@ -45,5 +45,15 @@ test("Labs holds the presentation flags and no Bots switch, and a switch saves i
   const saved: Array<Partial<Settings>> = [];
   const [, change] = handlers(labs(normalizeSettings({ labs: { detailedDebug: true } }), (patch) => saved.push(patch)));
   change!({ currentTarget: { checked: true } });
-  assert.deepEqual(saved, [{ labs: { denseObservability: true, detailedDebug: true } }]);
+  assert.deepEqual(saved, [{ labs: { denseObservability: true, detailedDebug: true, dashboard: false } }]);
+});
+
+test("Labs → Dashboard turns the Dashboard page on and saves it with the other flags", () => {
+  const page = text(labs(DEFAULT_SETTINGS));
+  assert.match(page, /Dashboard/u);
+  assert.match(page, /CPU, GPU, memory, disk and network, to spot bottlenecks\./u);
+  const saved: Array<Partial<Settings>> = [];
+  const changes = handlers(labs(DEFAULT_SETTINGS, (patch) => saved.push(patch)));
+  changes[5]!({ currentTarget: { checked: true } });
+  assert.deepEqual(saved, [{ labs: { denseObservability: false, detailedDebug: false, dashboard: true } }]);
 });
