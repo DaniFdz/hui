@@ -103,6 +103,7 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "terminal-font": { kind: "automate" },
   "update": { kind: "external", reason: "Installs a released package and restarts the gateway." },
   "update-notice": { kind: "automate" },
+  "usage": { kind: "visual", reason: "Judges the report's charts, legends and rankings with seeded usage the shared suite's real turns cannot produce; the behaviour is automated in e2e/tests/page/usage.e2e.ts." },
   "visual-parity-2026-09-24": { kind: "visual", reason: "A dated visual parity report, not behaviour." },
   "vscode-view": { kind: "external", reason: "Needs a real openvscode-server; automated once CI points HUI_OPENVSCODE_SERVER_MIRROR at a local copy." },
   "watchers": { kind: "automate" },

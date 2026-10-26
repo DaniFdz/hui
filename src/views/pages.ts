@@ -22,6 +22,7 @@ export const PAGE_RENDERERS = {
   cron: (props) => renderAutomationSurface(props.automation(), "Automations"),
   tasks: (props) => renderAutomationSurface(props.automation(), "Tasks"),
   sessions: (props) => renderSessionsPage(props.sessions()),
+  usage: (props) => html`<hui-usage-page .onOpenSession=${props.onOpenSession}></hui-usage-page>`,
   contributions: (props) => html`<hui-contributions-page .onOpenSettings=${props.onOpenSettings}
     .onOpenSession=${props.onOpenSession}></hui-contributions-page>`,
 } satisfies Partial<Record<HuiPageId, (props: DedicatedPageProps) => TemplateResult>>;

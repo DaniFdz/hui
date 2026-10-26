@@ -86,11 +86,11 @@ const cases: UseCase[] = [
   },
   {
     id: "PAGE-021",
-    title: "See token usage and cost",
-    behaviour: "Usage shows Total tokens with how many PI transcripts were read, Input with cache-read, Output with cache-write and Cost, which reads *Unavailable* when PI recorded none. Models lists tokens per stored model label, or *No token metadata is available yet.*, and unreadable transcripts add a warning that totals are partial.",
-    spec: ["SPEC.md#behaviour", "docs/api.md#get-__huiobservability"],
-    surfaces: ["page:usage", "route:GET /__hui/observability"],
-    web: "backlog",
+    title: "See recorded token usage and PI cost estimates",
+    behaviour: "Usage opens on **30d** and shows *Total tokens*, *PI cost estimate* and *Sessions* for the sessions whose turns recorded usage. **Today**, **7d**, **30d**, **90d**, **1y** and **All** reload it, **From** and **To** with **Apply range** narrow it to chosen days, and **Time zone** picks *Local* or *UTC*. **Tokens** and **Cost** switch what the chart measures; **Total** and **By type** switch it between one bar per day and the input, output, cache-read and cache-write shares, and a day's bar narrows the report to that date. *Filter sessions* narrows the rows by title, id or model and shows *No sessions match your search.* until **Clear search**; *Sort sessions* orders them *Recent*, *Tokens* or *Cost*; **Refresh** reads the report again; a session's title opens its conversation. A range with nothing recorded reads *No usage in this range.*, and a recorded numeric zero reads $0.00 where a missing price reads Unpriced.",
+    spec: ["SPEC.md#usage-reporting", "docs/api.md#get-__huiusage"],
+    surfaces: ["page:usage", "route:GET /__hui/usage"],
+    web: "required",
     ios: "backlog",
   },
   {

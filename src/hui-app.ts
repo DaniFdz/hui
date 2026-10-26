@@ -86,6 +86,7 @@ import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
 import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import "./components/contributions.ts";
+import "./components/usage.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { dedicatedPageRenderer, type DedicatedPageProps } from "./views/pages.ts";
 import { renderKanbanPage } from "./views/kanban.ts";

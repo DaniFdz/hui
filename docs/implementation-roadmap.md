@@ -510,8 +510,12 @@ branch/worktree transaction; deletion and garbage collection remain absent.
 
 - Activity, Logs and Debug use HUI gateway/session/runtime events retained in
   memory for the current gateway process.
-- Usage aggregates numeric PI session metadata; unavailable cost remains
-  explicitly unavailable and is never estimated.
+- Usage has a date-ranged report over current local conversation histories,
+  separate from diagnostics and bot lifetime totals. It has token/cost charts,
+  search, rankings and session navigation. Recorded PI prices are labelled as
+  estimates; missing prices stay unpriced, numeric zero stays zero, and shared
+  fork history counts once. See [Usage reporting](../SPEC.md#usage-reporting)
+  and the [Browser journey](../e2e/usage.browser.md).
 - Diagnostic exports exclude prompts, transcript content, tool payloads,
   credentials and secret-shaped values.
 - Warnings and errors keep their reported cause as a redacted, bounded
