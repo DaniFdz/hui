@@ -239,7 +239,8 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
   return null;
 };
 
-/** Touch events a browser sends; a canvas reads them where it never sees a synthetic pointer. */const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
+/** Touch events a browser sends; a canvas reads them where it never sees a synthetic pointer. */
+const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
   const target = document.elementFromPoint(x, y);
   if (!target) throw new Error(`touch: nothing is at ${x}, ${y}`);
   const at = (clientY: number) => new Touch({ identifier: 1, target, clientX: x, clientY, screenX: x, screenY: clientY });
@@ -395,7 +396,8 @@ export const test = base.extend<{ hui: Hui }>({
           navigator.clipboard.write = async (items) => {
             if (refused) throw new DOMException("Clipboard write refused", "NotAllowedError");
             const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
-            page.huiCopied = blobs.map((blob) => blob.type).join(",");
+            const sizes = await Promise.all(blobs.map(async (blob) => blob.type === "image/png" ? createImageBitmap(blob).then((bitmap) => ` ${bitmap.width}x${bitmap.height}`, () => "") : ""));
+            page.huiCopied = blobs.map((blob, index) => `${blob.type}${sizes[index]}`).join(",");
           };
           if (refused) document.execCommand = () => legacy;
         }, { refused: refuse, legacy: legacyCopy }),

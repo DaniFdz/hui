@@ -27,7 +27,10 @@ test("Copy image puts the drawing's PNG on the clipboard and reports Image copie
   await hui.open(`/sessions/${session.id}`);
   await copy(await viewer(screen));
   await expect(screen.getByText("Image copied")).toBeVisible();
-  await expect.poll(() => hui.copied()).toBe("image/png");
+  await expect.poll(() => hui.copied()).toMatch(/^image\/png \d+x\d+$/u);
+  const [, width, height] = /^image\/png (\d+)x(\d+)$/u.exec(await hui.copied())!;
+  expect(Number(width)).toBeGreaterThan(100);
+  expect(Number(height)).toBeGreaterThan(100);
 
   await hui.clipboard({ refuse: true, legacyCopy: true });
   await hui.reload();

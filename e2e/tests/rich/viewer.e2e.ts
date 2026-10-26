@@ -155,7 +155,7 @@ test("In the viewer + and - zoom, 0 fits, 1 shows actual size, arrows pan, Ctrl+
   await key("c");
   await hui.keyboard.up("Control");
   await expect(viewer.getByText("Image copied")).toBeVisible();
-  await expect.poll(() => hui.copied()).toBe("image/png");
+  await expect.poll(() => hui.copied()).toMatch(/^image\/png \d+x\d+$/u);
 
   await key("Escape");
   await expect(viewer).toBeHidden();
