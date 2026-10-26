@@ -326,18 +326,26 @@ const server = createServer(async (request, response) => {
       : "Hi, I'm new here. What would you like me to look after for you?");
     return finish(response);
   }
-  // A bot saving its own SOUL.md with its write_soul tool.
+  // A bot saving its own SOUL.md with its write_soul tool: the default soul, or the text after E2E_WRITE_SOUL:.
+  const soul = /E2E_WRITE_SOUL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
   if (source.includes("E2E_WRITE_SOUL")) {
-    toolUse(response, "tool-e2e-write-soul", "write_soul", { soul: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n" });
+    toolUse(response, "tool-e2e-write-soul", "write_soul", { soul: soul ? Buffer.from(soul, "base64url").toString("utf8") : "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n" });
     return finish(response, "tool_use");
   }
+  // A rewrite says what it changed, read from the soul the request now holds.
   if (latestToolResult?.id === "tool-e2e-write-soul") {
-    text(response, "I wrote my SOUL.md. To change it, just tell me.");
+    text(response, flattenedText(body.system).includes("E2E_SOUL_V2")
+      ? "I rewrote my SOUL.md: from now on I answer in one line."
+      : "I wrote my SOUL.md. To change it, just tell me.");
     return finish(response);
   }
-  // A bot naming itself with set_profile, as the operator said.
+  // A bot naming itself with set_profile, as the operator said: its default name and title, or the JSON after
+  // E2E_SET_PROFILE: for a later rename that changes its look too.
+  const profile = /E2E_SET_PROFILE:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
   if (source.includes("E2E_SET_PROFILE")) {
-    toolUse(response, "tool-e2e-set-profile", "set_profile", { name: "Echo", title: "Fixture tester" });
+    toolUse(response, "tool-e2e-set-profile", "set_profile", profile
+      ? JSON.parse(Buffer.from(profile, "base64url").toString("utf8"))
+      : { name: "Echo", title: "Fixture tester" });
     return finish(response, "tool_use");
   }
   if (latestToolResult?.id === "tool-e2e-set-profile") {

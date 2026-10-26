@@ -13,6 +13,26 @@
 			</array>
 		</dict>
 	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>atkinson-hyperlegible-next-italic.ttf</string>
+		<string>atkinson-hyperlegible-next.ttf</string>
+		<string>dm-sans-italic.ttf</string>
+		<string>dm-sans.ttf</string>
+		<string>fraunces-italic.ttf</string>
+		<string>fraunces.ttf</string>
+		<string>geist.ttf</string>
+		<string>hui-nerd-font-symbols.ttf</string>
+		<string>ibm-plex-sans-italic.ttf</string>
+		<string>ibm-plex-sans.ttf</string>
+		<string>instrument-sans-italic.ttf</string>
+		<string>instrument-sans.ttf</string>
+		<string>jetbrains-mono-italic.ttf</string>
+		<string>jetbrains-mono.ttf</string>
+		<string>lora-italic.ttf</string>
+		<string>lora.ttf</string>
+		<string>space-grotesk.ttf</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

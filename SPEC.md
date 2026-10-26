@@ -2041,6 +2041,18 @@ layout HUI shows from 1100px, such as collapsing the sidebar. The iPhone app
 ships its code, uses the system clipboard, has no tabs, has no older version and
 is always narrow, so these are web-only use cases.
 
+### The iPhone app follows the phone's text size (2026-10-26)
+
+The web's Appearance page offers five Text size stops that scale every text size
+in the interface together, and SET-011 proves that. The iPhone app does not
+offer the option: the owner decided it should draw at the phone's own text size
+instead. "I'm okay with using the default font size from iphone, I wouldn't add
+that option there." So Text size stays a web-only use case, the app has no Text
+size control, and every style it draws scales with the phone's text size setting
+through iOS's own type scaling. An app that read `~/.config/hui/settings.json`'s
+`textScale` on the phone would apply a setting the phone's user cannot see or
+change there.
+
 ### On a touch screen, a tap opens a preview (2026-10-21)
 
 Some previews open only on hover: the card of a pull request mark or of a pull

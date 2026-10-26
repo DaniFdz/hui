@@ -39,7 +39,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisettings", "docs/api.md#put-__huisettings"],
     surfaces: ["route:GET /__hui/settings", "route:PUT /__hui/settings"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-005",
@@ -48,7 +48,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huithemes", "docs/api.md#get-__huithemesfilekey"],
     surfaces: ["settings-page:appearance", "setting:theme", "route:GET /__hui/themes", "route:GET /__hui/themes/file/:key", "route:PUT /__hui/settings"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-006",
@@ -131,7 +131,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:textScale"],
     web: "required",
-    ios: "backlog",
+    ios: { excluded: "The iPhone app draws at the phone's own text size and has no in-app Text size option.", decision: "SPEC.md#the-iphone-app-follows-the-phones-text-size-2026-10-26" },
   },
   {
     id: "SET-012",
@@ -463,7 +463,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:models.primary", "setting:models.fallback", "setting:models.utility", "route:PUT /__hui/settings"],
     journeys: ["model-routing"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-046",
@@ -734,7 +734,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huiobservability"],
     surfaces: ["settings-page:diagnostics", "route:GET /__hui/observability"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-075",

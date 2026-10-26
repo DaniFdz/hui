@@ -20,24 +20,24 @@ struct ToolCardView: View {
     var body: some View {
         if let read = item.read {
             card(label: "Read \(read.target)", badge: failed && !expanded, title: Text("Read ").bold() + Text(read.target)) {
-                Text(read.detail).font(.caption).foregroundStyle(.secondary)
+                Text(read.detail).typeface(.caption).foregroundStyle(.secondary)
                 if !read.output.isEmpty {
-                    if failed { Text("Tool error").font(.caption.bold()) }
+                    if failed { Text("Tool error").typeface(.caption, weight: .bold) }
                     code(read.output).copyable(item.output ?? "")
                 }
-                Text(outcome).font(.caption)
+                Text(outcome).typeface(.caption)
             }
         } else if let command = item.command {
             card(label: failed && !expanded ? "\(command.preview) failed" : command.preview, badge: failed && !expanded,
-                 title: Text("$ ").foregroundStyle(.secondary) + Text(command.preview).font(.system(.footnote, design: .monospaced))) {
+                 title: Text("$ ").foregroundStyle(.secondary) + Text(command.preview).font(.system(size: 13, design: .monospaced))) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("$").font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary).accessibilityHidden(true)
+                    Text("$").typeface(.caption, mono: true).foregroundStyle(.secondary).accessibilityHidden(true)
                     code(command.command)
                 }
                 if let output = item.output, !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     code(output).copyable(output)
                 }
-                Text(outcome).font(.caption)
+                Text(outcome).typeface(.caption)
             }
         } else if let codemode = item.codemode {
             codemodeCard(codemode)
@@ -55,7 +55,7 @@ struct ToolCardView: View {
         return card(label: ["codemode", codemode.summary, badge, time].compactMap(\.self).joined(separator: " "), badge: false, title: title) {
             section("Script") { code(codemode.code) }.copyable(codemode.code)
             if !codemode.calls.isEmpty {
-                Text("Calls · \(codemode.calls.count)").font(.caption.bold())
+                Text("Calls · \(codemode.calls.count)").typeface(.caption, weight: .bold)
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(codemode.calls.indices, id: \.self) { index in
                         let call = codemode.calls[index]
@@ -63,12 +63,12 @@ struct ToolCardView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
                                 Text(glyph).accessibilityLabel(status)
-                                Text(call.name).font(.caption.bold())
-                                Text(call.args).font(.system(.caption, design: .monospaced)).lineLimit(1)
+                                Text(call.name).typeface(.caption, weight: .bold)
+                                Text(call.args).typeface(.caption, mono: true).lineLimit(1)
                                 Spacer()
-                                if !call.duration.isEmpty { Text(call.duration).font(.caption).foregroundStyle(.secondary) }
+                                if !call.duration.isEmpty { Text(call.duration).typeface(.caption).foregroundStyle(.secondary) }
                             }
-                            if let error = call.error { Text(error).font(.caption).foregroundStyle(.red) }
+                            if let error = call.error { Text(error).typeface(.caption).foregroundStyle(.red) }
                         }
                     }
                 }
@@ -79,20 +79,20 @@ struct ToolCardView: View {
                 section("Output") {
                     if let errorAt {
                         (Text(codemode.output[..<errorAt.lowerBound]) + Text(codemode.output[errorAt.lowerBound...]).foregroundStyle(.red))
-                            .font(.system(.caption, design: .monospaced))
+                            .typeface(.caption, mono: true)
                     } else {
                         code(codemode.output)
                     }
                     if let path = codemode.fullOutputPath {
                         HStack(alignment: .firstTextBaseline) {
-                            Text("Full output:").font(.caption.bold())
-                            Text(path).font(.caption)
+                            Text("Full output:").typeface(.caption, weight: .bold)
+                            Text(path).typeface(.caption)
                         }
                     }
                 }
                 .copyable(item.output ?? "")
             }
-            Text(codemode.outcome).font(.caption)
+            Text(codemode.outcome).typeface(.caption)
         }
     }
 
@@ -111,14 +111,14 @@ struct ToolCardView: View {
             if expanded {
                 VStack(alignment: .leading, spacing: 6) {
                     if let input = item.input {
-                        Text("Input").font(.caption.bold())
+                        Text("Input").typeface(.caption, weight: .bold)
                         code(input)
                     }
                     if let output = item.output {
                         HStack {
-                            Text("Output").font(.caption.bold())
+                            Text("Output").typeface(.caption, weight: .bold)
                             Spacer()
-                            Button("Copy output") { UIPasteboard.general.string = output }.font(.caption)
+                            Button("Copy output") { UIPasteboard.general.string = output }.typeface(.caption)
                         }
                         code(output.isEmpty ? "No output" : output)
                     }
@@ -142,7 +142,7 @@ struct ToolCardView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(label)
-                if badge { Text("failed").font(.caption).foregroundStyle(.red) }
+                if badge { Text("failed").typeface(.caption).foregroundStyle(.red) }
             }
             if expanded {
                 VStack(alignment: .leading, spacing: 6) { content() }
@@ -154,7 +154,7 @@ struct ToolCardView: View {
 
     private func section(_ name: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(name).font(.caption.bold()).accessibilityLabel("").accessibilityHidden(true)
+            Text(name).typeface(.caption, weight: .bold).accessibilityLabel("").accessibilityHidden(true)
             content()
         }
         .accessibilityElement(children: .contain)
@@ -162,7 +162,7 @@ struct ToolCardView: View {
     }
 
     private func code(_ text: String) -> some View {
-        Text(text).font(.system(.caption, design: .monospaced))
+        Text(text).typeface(.caption, mono: true)
     }
 }
 
