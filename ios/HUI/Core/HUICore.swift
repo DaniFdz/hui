@@ -200,8 +200,24 @@ actor HUICore {
         var applePlatform = true
     }
 
+    func replyDraft(_ draft: String, quoting text: String) throws -> String {
+        try call("replyDraft", draft, text)
+    }
+
     func continueAfterErrorPrompt() throws -> String {
         try decode(exports.objectForKeyedSubscript("CONTINUE_AFTER_ERROR_PROMPT"))
+    }
+
+    func composerCommands(_ commands: [API.RuntimeCommand], bot: Bool) throws -> [ComposerCommand] {
+        try call("composerCommands", commands, true, bot)
+    }
+
+    func slashMenu(_ catalog: [ComposerCommand], text: String) throws -> [SlashOption] {
+        try call("slashMenu", catalog, text) as [SlashOption]? ?? []
+    }
+
+    func composerSendAction(_ text: String, context: SendContext) throws -> SendAction {
+        try call("composerSendAction", text, context)
     }
 
     func queueRows(_ queue: API.RuntimeQueue) throws -> [QueueRow] {

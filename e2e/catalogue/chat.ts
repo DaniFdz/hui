@@ -299,7 +299,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["chat-composer", "message-metadata", "clipboard-fallback"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-031",
@@ -319,7 +319,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["message-metadata"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "CHAT-033",

@@ -48,6 +48,9 @@ final class ConversationModel {
     private(set) var continuing = false
     private(set) var runError: RunErrorNotice?
     private(set) var question: API.SessionQuestion?
+    private(set) var commands: [ComposerCommand] = []
+    private(set) var commanding = false
+    var note: Note?
     private var dismissedRunError: String?
     private var modelsRequested = false
 
@@ -96,10 +99,15 @@ final class ConversationModel {
     func send(_ text: String, mode: SendMode = .prompt) async -> Bool {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return true }
+        guard !commanding else { return false }
         let current = generation
         let pending = "user-\(UUID().uuidString)"
         let prompt = mode == .prompt
         sendError = nil
+        let context = SendContext(bot: session?.bot != nil, steering: !prompt, busy: streaming || session?.status != .idle)
+        if let action = try? await core.composerSendAction(text, context: context), ![.prompt, .compact, .side].contains(action.kind) {
+            return await run(action, current)
+        }
         do {
             guard current == generation else { return false }
             if prompt { show(try await core.transcript(handle, pending: pending, text: text)) }
@@ -124,6 +132,42 @@ final class ConversationModel {
             sendError = error.localizedDescription
             return false
         }
+    }
+
+    struct Note: Equatable {
+        var text: String
+        var error = false
+    }
+
+    private func run(_ action: SendAction, _ current: Int) async -> Bool {
+        if action.kind == .refuse {
+            note = Note(text: action.note ?? "", error: true)
+            return false
+        }
+        note = nil
+        commanding = true
+        defer { commanding = false }
+        do {
+            if action.kind == .clear {
+                let answer: API.SessionClearResponse = try await client.post(path("clear"))
+                try await apply(answer.snapshot, current)
+            } else {
+                let _: API.JSONValue = try await client.post(path("reload"))
+                await loadCommands()
+            }
+            guard current == generation else { return true }
+            note = Note(text: action.kind == .clear ? "Session context cleared." : "Reloaded extensions, skills, prompts and context files.")
+            return true
+        } catch {
+            if current == generation { note = Note(text: error.localizedDescription, error: true) }
+            return false
+        }
+    }
+
+    func loadCommands() async {
+        guard let answer: API.SessionCommandsResponse = try? await client.get(path("commands")),
+              let catalog = try? await core.composerCommands(answer.commands, bot: session?.bot != nil) else { return }
+        commands = catalog
     }
 
     /// Edits, removes, moves or steers a queued follow-up; true when the gateway took the change.
@@ -330,7 +374,10 @@ final class ConversationModel {
         statusLabel = label
         if [.idle, .running, .waiting].contains(status), !modelsRequested {
             modelsRequested = true
-            Task { await loadModels() }
+            Task {
+                await loadModels()
+                await loadCommands()
+            }
         }
         streaming = Self.streaming(status)
         if !streaming { stopping = false }

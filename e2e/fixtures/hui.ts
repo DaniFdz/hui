@@ -3,7 +3,8 @@
  * state and port), setup and cleanup through its API, the deterministic provider's address and barriers, gateway
  * requests a test holds, rejects, answers or delivers while dropping the answer, disposable Git repositories, cleanup
  * of the backlog tasks a test created, searches of the gateway's state and secret directories, and every step whose
- * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, switches (a Web Awesome
+ * gesture or reading differs per platform: taps, holds, drags held mid-way, context menus, a message's actions (on the
+ * web a hover reveals its footer, on iOS its long press), switches (a Web Awesome
  * switch draws its track over its input, so the web taps the point), attachments, sideways scrolling, downloads, the
  * clipboard, the phone screen's size (on iOS the app's own), the session list (on the web's drawer layout, the
  * shell's drawer media, the navigation drawer; on iOS, Back), the Settings page list (the drawer on a phone, on iOS
@@ -17,7 +18,8 @@
  * when the gateway restarts, which no installed gateway does. On iOS it relaunches the app pointed at a proxy in front
  * of the gateway, which holds the requests a test intercepts and passes everything else through, WebSocket upgrades
  * included, with the app's own `Origin` and `Host`; it follows `hui://open` links, reads the address the app shows
- * from its app-route marker, scrolls a container by swiping it until the target is on screen (the device reports only
+ * from its app-route marker, scrolls a container by swiping it once (which puts a screen's keyboard away, so a row it
+ * clipped can be read) and then until the target is on screen (the device reports only
  * on-screen nodes), and checks a link's address through its accessibility identifier, which the platform sets to the
  * link's URL; each test starts by deleting only the app's preferences through `defaults`, and
  * `clearState` deletes them too before the engine empties the data container, because `cfprefsd` would otherwise hand
@@ -113,6 +115,7 @@ export type Hui = {
   scrollTo(within: Locator, target: Locator): Promise<void>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
+  messageActions(target: Locator): Promise<void>;
   flip(target: Locator): Promise<void>;
   intercept(method: string, path: RegExp): Promise<Intercepted>;
   repository(): Promise<{ path: string; git(...args: string[]): string }>;
@@ -609,6 +612,7 @@ export const test = base.extend<{ hui: Hui }>({
           await browser().evaluate(fingerDrag, { dx, dy });
         },
         contextMenu: (target) => target.secondaryTap(),
+        messageActions: (target) => target.hover(),
         scrollTo: (_within, target) => target.scrollIntoView(),
         expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
         textOf: async (target) => (await target.textContent()) ?? "",
@@ -777,6 +781,7 @@ export const test = base.extend<{ hui: Hui }>({
         },
         textOf: async (target) => (await target.getByText(/\S/u).allTextContents()).join(" "),
         contextMenu: (target) => target.longPress(),
+        messageActions: (target) => target.longPress(),
         clipboard: async ({ refuse = false } = {}) => {
           if (refuse) notOnIos("clipboard({ refuse: true })")();
           execFileSync("xcrun", ["simctl", "pbcopy", IOS_DEVICE], { input: "" });
@@ -786,6 +791,7 @@ export const test = base.extend<{ hui: Hui }>({
         dropStreams: async () => proxy!.dropStreams(),
         url: async () => proxy!.url + await fixtures.screen.getByTestId("app-route").inputValue(),
         scrollTo: async (within, target) => {
+          await within.swipe({ direction: "down", momentum: "slow" });
           const bar = within.getByLabel(/^Vertical scroll bar/u).first();
           const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
           for (const direction of ["down", "up"] as const) {

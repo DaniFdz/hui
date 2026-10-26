@@ -1,12 +1,14 @@
 /**
  * The chat's rows as the iOS core hands them to the app, in one call per change: `projectChatTranscript`'s rows with
  * each activity row's labels, its question summary (`questionnaireSummary`) and each tool's card presentation and
- * printed input attached, and a `key` on every row
+ * printed input attached, each message's shown text (a bot's or session's without HUI's header) and whether it renders
+ * as Markdown (the agent's and those senders', not the operator's, a routine's or a trigger's), each message row's footer (the text Reply and Copy use, without a sender's header, and the
+ * Copy button's label, as the web's footer reads them), and a `key` on every row
  * and item that stays unique when tool call ids repeat across turns (the id, plus how many earlier rows or items
  * shared it).
  */
 import type { TranscriptItem } from "../api/sessions.ts";
-import { activityLabel, projectChatTranscript, questionnaireSummary, type ChatActivity, type ChatMessage, type ChatProjectionRow } from "./chat-projection.ts";
+import { activityLabel, attributedMessage, projectChatTranscript, questionnaireSummary, type ChatActivity, type ChatProjectionRow } from "./chat-projection.ts";
 import { codemodeOutcome, codemodeSummary, codemodeToolPresentation, commandToolPresentation, formatCallDuration, printable, readToolOutput, readToolPresentation } from "./tool-cards.ts";
 
 function toolCards(item: ChatActivity) {
@@ -28,9 +30,18 @@ function toolCards(item: ChatActivity) {
 
 type Keyed<T> = T & { key: string };
 type ActivityRow = Extract<ChatProjectionRow, { kind: "activity" }>;
+type MessagesRow = Extract<ChatProjectionRow, { kind: "messages" }>;
+
+function messagesRow(row: MessagesRow, key: (base: string) => string) {
+  const markdown = row.role === "assistant" || !!row.sender && row.sender.kind !== "routine" && row.sender.kind !== "trigger";
+  const messages = row.messages.map((message) => ({ ...message, key: key(`message:${message.id}`), shown: row.sender ? attributedMessage(message.text)?.body ?? message.text : message.text, markdown }));
+  const last = messages.at(-1);
+  const footer = last && !last.pending && last.shown ? { text: last.shown, copyLabel: row.sender ? "Copy message" : row.role === "assistant" ? "Copy response" : "Copy prompt" } : null;
+  return { ...row, messages, footer };
+}
 type ChatRow =
   | Keyed<Exclude<ChatProjectionRow, { kind: "messages" | "activity" }>>
-  | Keyed<Omit<Extract<ChatProjectionRow, { kind: "messages" }>, "messages"> & { messages: Keyed<ChatMessage>[] }>
+  | Keyed<ReturnType<typeof messagesRow>>
   | Keyed<Omit<ActivityRow, "items"> & { label: string; liveLabel: string; answers: ReturnType<typeof questionnaireSummary> | null; items: Keyed<ChatActivity & ReturnType<typeof toolCards>>[] }>;
 
 export function chatRows(items: readonly TranscriptItem[]): ChatRow[] {
@@ -42,7 +53,7 @@ export function chatRows(items: readonly TranscriptItem[]): ChatRow[] {
   };
   return projectChatTranscript(items).map((row): ChatRow => {
     const rowKey = key(`${row.kind}:${row.id}`);
-    if (row.kind === "messages") return { ...row, key: rowKey, messages: row.messages.map((message) => ({ ...message, key: key(`message:${message.id}`) })) };
+    if (row.kind === "messages") return { ...messagesRow(row, key), key: rowKey };
     if (row.kind !== "activity") return { ...row, key: rowKey };
     return {
       ...row,
