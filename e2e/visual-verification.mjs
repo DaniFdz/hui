@@ -382,14 +382,15 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     }
     if (demo) {
       serverEnv.HUI_DEMO_STAGE = join(repo, "e2e", "demo", "stage.html");
-      // Terminals open a plain zsh with a short prompt, not the operator's own shell setup.
-      serverEnv.ZDOTDIR = join(dir, "zdotdir");
-      await mkdir(serverEnv.ZDOTDIR, { recursive: true });
-      await writeFile(join(serverEnv.ZDOTDIR, ".zshrc"), "PROMPT='%F{blue}%1~%f %F{magenta}❯%f '\nunsetopt PROMPT_SP\nHISTFILE=/dev/null\n");
-      if (existsSync("/bin/zsh")) serverEnv.SHELL = "/bin/zsh";
       execFileSync(process.execPath, [join(repo, "e2e", "demo", "seed.ts")], { cwd: repo, stdio: ["ignore", "ignore", "inherit"],
         env: { ...env, HUI_E2E_WORKSPACE: workspace, HUI_FAKE_GH_DIR: join(dir, "gh"), ...(process.env.HUI_DEMO_CACHE ? { HUI_DEMO_CACHE: process.env.HUI_DEMO_CACHE } : {}) } });
     }
+    // A terminal opens a plain zsh with a short prompt, not the operator's own shell setup: sourcing that one costs
+    // seconds, reads the keychain and loads every toolchain, and a test waiting for a shell's prompt waits for all of it.
+    serverEnv.ZDOTDIR = join(dir, "zdotdir");
+    await mkdir(serverEnv.ZDOTDIR, { recursive: true });
+    await writeFile(join(serverEnv.ZDOTDIR, ".zshrc"), "PROMPT='%F{blue}%1~%f %F{magenta}❯%f '\nunsetopt PROMPT_SP\nHISTFILE=/dev/null\n");
+    if (existsSync("/bin/zsh")) serverEnv.SHELL = "/bin/zsh";
     if (process.argv.includes("--activity-fixture")) {
       // Two weeks of synthetic Durable sessions for Contributions → Calendar.
       execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "activity-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
