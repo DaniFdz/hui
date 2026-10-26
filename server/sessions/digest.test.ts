@@ -3,9 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import type { TranscriptEntry } from "../runtimes/types.ts";
 import { interruptedRunOriginal, interruptedRunPrompt, INTERRUPTED_RUN_PROMPT } from "./interrupted-run.ts";
-import { operatorText, sessionDigest } from "./digest.ts";
+import { CONTINUE_AFTER_ERROR_PROMPT, lastOperatorRequest, operatorText, sessionDigest } from "./digest.ts";
 import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
-import { CONTINUE_AFTER_ERROR_PROMPT } from "./digest.ts";
 
 const user = (text: string): TranscriptEntry => ({ kind: "message", role: "user", text });
 const assistant = (text: string): TranscriptEntry => ({ kind: "message", role: "assistant", text });
@@ -24,6 +23,20 @@ test("HUI control prompts are not operator intent", () => {
   assert.equal(operatorText(interruptedRunPrompt(CONTINUE_PROMPT)), undefined);
   assert.equal(operatorText(interruptedRunPrompt("Add retries")), "Add retries");
   assert.equal(operatorText("  Add retries  "), "Add retries");
+});
+
+test("the last operator request skips HUI's own turns and failed answers", () => {
+  const entries: TranscriptEntry[] = [
+    user("Add retries"),
+    assistant("Adding them"),
+    user(interruptedRunPrompt(CONTINUE_PROMPT)),
+    user(SUBAGENT_COMPLETION_MARKER + "\nchild finished"),
+    { kind: "error", message: "API key auth failed for provider ai-gw-logical" },
+  ];
+  assert.equal(lastOperatorRequest(entries), "Add retries");
+  assert.equal(lastOperatorRequest([user("Ship it"), user("Then tell me when CI is green")]), "Then tell me when CI is green");
+  assert.equal(lastOperatorRequest([user(CONTINUE_PROMPT), { kind: "error", message: "boom" }]), undefined);
+  assert.equal(lastOperatorRequest([]), undefined);
 });
 
 test("the digest keeps the goal of a long session that a tail slice would drop", () => {
