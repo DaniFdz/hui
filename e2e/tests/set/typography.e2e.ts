@@ -20,7 +20,7 @@ test("the interface font restyles navigation, settings and controls, the chat pr
 
   await hui.open("/settings/appearance");
   for (const [picker, chosen, key] of [["Chat prose font", "Lora", "fontChat"], ["Interface font", "Geist", "fontUi"]] as const) {
-    const faces = screen.getByTestId("picker-list");
+    const faces = screen.getByTestId("picker-list", { visible: true });
     await hui.scrollTo(screen.getByTestId("settings-page"), screen.getByRole("button", `${picker}: Instrument Sans`));
     await screen.getByRole("button", `${picker}: Instrument Sans`).tap();
     await hui.scrollTo(screen.getByTestId("settings-page"), faces.getByText("Instrument Sans", { exact: true }));
@@ -35,10 +35,6 @@ test("the interface font restyles navigation, settings and controls, the chat pr
   await expect.poll(() => loaded(caption)).toContain("Geist");
   await expect.poll(() => loaded(prose)).toContain("Lora");
   expect(await face(screen.getByText("Message width", { exact: true }))).toBe("Geist");
-  await hui.settingsPages();
-  expect(await face(screen.getByText("Gateway"))).toBe("Geist");
-  await screen.getByRole("button", "Close settings navigation").tap();
-
   await hui.open(`/sessions/${session.id}`);
   await expect(transcript.getByText("Final paragraph.")).toBeVisible();
   expect(await transcriptFace("Final paragraph.")).toBe("Lora");
@@ -59,13 +55,15 @@ test("the interface font restyles navigation, settings and controls, the chat pr
   await expect(screen.getByRole("button", "Chat prose font: Lora")).toBeVisible();
   expect(await face(caption)).toBe("Geist");
   expect(await face(prose)).toBe("Lora");
+  await hui.settingsPages();
+  expect(await face(screen.getByText("Gateway"))).toBe("Geist");
 });
 
 test("the terminal font lists monospace and Nerd Fonts, takes a typed local family over the bundled symbols that load to draw its icons, persists, and falls back to JetBrains Mono", { tags: ["SET-010"] }, async ({ screen, hui }) => {
   const preview = screen.getByLabel("Terminal font preview");
   const families = async () => (await hui.look(preview)).fonts;
   const stack = (first: string) => [first, "HUI Nerd Font Symbols", "JetBrains Mono", "ui-monospace", "monospace"];
-  const fonts = screen.getByTestId("picker-list");
+  const fonts = screen.getByTestId("picker-list", { visible: true });
   const search = screen.getByLabel("Search or type a font name");
   const revealPicker = async (name: string) => {
     await hui.scrollTo(screen.getByTestId("settings-page"), screen.getByRole("button", `Terminal font: ${name}`));
