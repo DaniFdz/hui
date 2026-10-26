@@ -664,7 +664,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
