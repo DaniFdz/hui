@@ -1,7 +1,8 @@
 // One Files view in the Work pane: the navigator (the conversation folder's tree, expanded on demand, a filter, New file
 // and New folder) above the open file's draft, as the web's Files view lays them side by side. A row's menu asks to
 // delete it, which opens the confirmation the web shows, listing what goes. Words come from `FilesModel`'s copy, which
-// the core holds for both platforms; the dialog sheets read their live state from the model so a refusal stays on
+// the core holds for both platforms. The create and delete dialogs are cards over the view rather than sheets, because
+// a sheet inside the pane's own sheet replaces it; each card reads its live state from the model, so a refusal stays on
 // screen with its reason.
 import SwiftUI
 
@@ -10,18 +11,23 @@ struct FilesView: View {
     let core: HUICore
 
     var body: some View {
-        VStack(spacing: 0) {
-            navigator
-            if model.selected != nil {
-                Divider()
-                editor
-                    .frame(maxHeight: .infinity)
+        ZStack {
+            VStack(spacing: 0) {
+                navigator
+                if model.selected != nil {
+                    Divider()
+                    editor
+                        .frame(maxHeight: .infinity)
+                }
+            }
+            if let dialog = model.createDialog {
+                FilesCreateCard(model: model, dialog: dialog)
+            }
+            if let dialog = model.deleteDialog {
+                FilesDeleteCard(model: model, dialog: dialog)
             }
         }
         .task { await model.load() }
-        .sheet(item: $model.deleteDialog) { dialog in
-            FilesDeleteSheet(model: model, dialog: dialog)
-        }
     }
 
     private var copy: FilesCopy? { model.copy }
@@ -39,14 +45,11 @@ struct FilesView: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").accessibilityHidden(true).foregroundStyle(.secondary)
-                TextField(copy?.filter ?? "", text: Binding(get: { model.filter }, set: { model.filterChanged($0) }))
-                    .accessibilityLabel(copy?.filter ?? "")
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-            }
-            .padding(6)
+            TextField(copy?.filter ?? "", text: Binding(get: { model.filter }, set: { model.filterChanged($0) }))
+                .accessibilityLabel(copy?.filter ?? "")
+                .textFieldStyle(.roundedBorder)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
             List {
                 ForEach(model.rows) { item in
@@ -63,9 +66,6 @@ struct FilesView: View {
         .padding(.top, 8)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(copy?.navigator ?? "")
-        .sheet(item: $model.createDialog) { dialog in
-            FilesCreateSheet(model: model, dialog: dialog)
-        }
     }
 
     private var editor: some View {
@@ -102,7 +102,6 @@ struct FilesView: View {
                 .padding(.leading, CGFloat(depth) * 16)
         case .entry(let entry, let depth):
             HStack(spacing: 8) {
-                Image(systemName: glyph(entry)).accessibilityHidden(true).foregroundStyle(.secondary)
                 switch entry.kind {
                 case .directory:
                     Button { Task { await model.toggle(entry) } } label: {
@@ -120,7 +119,11 @@ struct FilesView: View {
                         .typeface(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if model.filtering, !FilesModel.parent(of: entry.path).isEmpty {
+                    Text(FilesModel.parent(of: entry.path)).typeface(.caption).foregroundStyle(.secondary)
+                }
             }
+            .accessibilityElement(children: .contain)
             .padding(.leading, CGFloat(depth) * 16)
             .contextMenu {
                 Button(model.deleteLabels[entry.path] ?? "") { Task { await model.askDelete(entry) } }
@@ -135,55 +138,76 @@ struct FilesView: View {
     }
 }
 
-private struct FilesCreateSheet: View {
+private struct FilesDialogCard<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).typeface(.headline)
+            content
+        }
+        .padding()
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(.background, in: RoundedRectangle(cornerRadius: 14))
+        .shadow(radius: 12)
+        .padding()
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct FilesCreateCard: View {
     let model: FilesModel
     let dialog: FilesModel.CreateDialog
 
     var body: some View {
         let copy = model.copy
         let live = model.createDialog ?? dialog
-        NavigationStack {
-            Form {
-                Text(live.title).typeface(.headline)
-                Text(live.destination)
-                TextField(copy?.name ?? "", text: Binding(get: { model.createDialog?.name ?? "" }, set: { model.createName($0) }))
-                    .accessibilityLabel(copy?.name ?? "")
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                if !live.error.isEmpty {
-                    Text(live.error).foregroundStyle(.red)
-                }
+        FilesDialogCard(title: live.title) {
+            Text(live.destination)
+            TextField(copy?.name ?? "", text: Binding(get: { model.createDialog?.name ?? "" }, set: { model.createName($0) }))
+                .textFieldStyle(.roundedBorder)
+                .accessibilityLabel(copy?.name ?? "")
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if !live.error.isEmpty {
+                Text(live.error).foregroundStyle(.red)
+            }
+            HStack(spacing: 8) {
                 Button(live.busy ? "Creating…" : live.createLabel) {
                     Task { await model.submitCreate(dialog: live) }
                 }
+                .buttonStyle(.borderedProminent)
                 .disabled(live.busy)
                 Button(copy?.cancel ?? "") { model.createDialog = nil }
+                    .buttonStyle(.bordered)
             }
         }
     }
 }
 
-private struct FilesDeleteSheet: View {
+private struct FilesDeleteCard: View {
     let model: FilesModel
     let dialog: FilesModel.DeleteDialog
 
     var body: some View {
         let copy = model.copy
         let live = model.deleteDialog ?? dialog
-        NavigationStack {
-            Form {
-                Text(live.title).typeface(.headline)
-                Text(copy?.irreversible ?? "")
-                ForEach(live.risks, id: \.self) { risk in
-                    Text(risk)
-                }
-                if !live.error.isEmpty {
-                    Text(live.error).foregroundStyle(.red)
-                }
+        FilesDialogCard(title: live.title) {
+            Text(copy?.irreversible ?? "")
+            ForEach(live.risks, id: \.self) { risk in
+                Text(risk)
+            }
+            if !live.error.isEmpty {
+                Text(live.error).foregroundStyle(.red)
+            }
+            HStack(spacing: 8) {
                 Button(copy?.delete ?? "", role: .destructive) {
                     Task { await model.confirmDelete(dialog: live) }
                 }
+                .buttonStyle(.borderedProminent)
                 Button(copy?.cancel ?? "") { model.deleteDialog = nil }
+                    .buttonStyle(.bordered)
             }
         }
     }

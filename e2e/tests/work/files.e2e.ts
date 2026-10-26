@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Files in the plus menu lists the conversation's folder, folders first and without .git, expanding on demand", { tags: ["WORK-042"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Files in the plus menu lists the conversation's folder, folders first and without .git, expanding on demand", { tags: ["WORK-042"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   await writeFile(join(repository.path, "readme.md"), "# Notes\n");
   await mkdir(join(repository.path, "empty"));
@@ -32,7 +32,7 @@ test("Files in the plus menu lists the conversation's folder, folders first and 
   await expect(navigator.getByRole("button", "outside")).toHaveCount(0);
 });
 
-test("typing in Filter files lists the matching files with their folders and emptying it restores the tree", { tags: ["WORK-050"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("typing in Filter files lists the matching files with their folders and emptying it restores the tree", { tags: ["WORK-050"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   await writeFile(join(repository.path, "readme.md"), "# Notes\n");
   await writeFile(join(repository.path, "a-note.md"), "# Another\n");
@@ -64,7 +64,7 @@ test("typing in Filter files lists the matching files with their folders and emp
   await expect(navigator.getByRole("button", /keep\.txt/u)).toHaveCount(0);
 });
 
-test("New file and New folder create the named entry and open a new file, and a name already taken keeps the dialog with its reason", { tags: ["WORK-052"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("New file and New folder create the named entry and open a new file, and a name already taken keeps the dialog with its reason", { tags: ["WORK-052"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   const session = await hui.createSession({ title: "Create files", cwd: repository.path });
   const pane = screen.getByLabel("Work pane");
@@ -100,7 +100,7 @@ test("New file and New folder create the named entry and open a new file, and a 
   expect(await readdir(join(repository.path, "sub"))).toContain("docs");
 });
 
-test("deleting asks before it goes, says it cannot be undone and lists what goes, and Delete removes it from disk and the tree", { tags: ["WORK-053"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("deleting asks before it goes, says it cannot be undone and lists what goes, and Delete removes it from disk and the tree", { tags: ["WORK-053"] }, async ({ screen, hui }) => {
   const repository = await hui.repository();
   await writeFile(join(repository.path, "gone.txt"), "bye\n");
   await mkdir(join(repository.path, "docs"));

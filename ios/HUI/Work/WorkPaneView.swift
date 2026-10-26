@@ -14,12 +14,24 @@ struct WorkPaneView: View {
     @State private var active: UUID?
     @State private var paneLabel = ""
     @State private var openViewLabel = ""
+    @State private var choosing = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
-            if let model = views.first(where: { $0.id == active }) {
+            if choosing, let copy {
+                VStack(spacing: 8) {
+                    Button(copy.view) {
+                        choosing = false
+                        open()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button(copy.cancel) { choosing = false }
+                        .buttonStyle(.bordered)
+                }
+                .frame(maxHeight: .infinity)
+            } else if let model = views.first(where: { $0.id == active }) {
                 FilesView(model: model, core: core)
             } else {
                 Text("Open a view beside this conversation.")
@@ -51,12 +63,14 @@ struct WorkPaneView: View {
             } else {
                 Spacer()
             }
-            Menu {
-                Button(openViewLabel) { open() }
-            } label: {
-                Image(systemName: "plus")
+            if !openViewLabel.isEmpty {
+                Button {
+                    choosing.toggle()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel(openViewLabel)
             }
-            .accessibilityLabel(openViewLabel)
         }
         .padding(.horizontal)
         .padding(.vertical, 8)

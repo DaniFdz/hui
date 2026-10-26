@@ -801,12 +801,12 @@ export const test = base.extend<{ hui: Hui }>({
         messageActions: (target) => target.longPress(),
         openWorkView: async (name) => {
           await fixtures.screen.getByRole("button", "Show Work pane").tap();
-          await fixtures.screen.getByRole("button", "Open Work view").tap();
-          await fixtures.screen.getByRole("button", name).tap();
+          await fixtures.screen.getByLabel("Open Work view").tap();
+          await fixtures.screen.getByText(name, { exact: true, visible: true }).tap();
         },
         deleteEntry: async (within, name) => {
           await within.getByRole("button", name).longPress();
-          await fixtures.screen.getByRole("button", `Delete ${name}`).tap();
+          await fixtures.screen.getByText(`Delete ${name}`, { exact: true, visible: true }).tap();
         },
         clipboard: async ({ refuse = false } = {}) => {
           if (refuse) notOnIos("clipboard({ refuse: true })")();

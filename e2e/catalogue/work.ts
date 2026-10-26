@@ -416,7 +416,7 @@ const cases: UseCase[] = [
     surfaces: ["work-view:files", "route:GET /__hui/sessions/:id/files", "route:GET /__hui/sessions/:id/files/list"],
     journeys: ["files-view", "work-pane"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "WORK-043",
@@ -496,7 +496,7 @@ const cases: UseCase[] = [
     surfaces: ["route:GET /__hui/sessions/:id/files/search"],
     journeys: ["files-view"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "WORK-051",
@@ -516,7 +516,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/files/entry"],
     journeys: ["files-view"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "WORK-053",
@@ -526,7 +526,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id/files/entry"],
     journeys: ["files-view"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "WORK-054",
