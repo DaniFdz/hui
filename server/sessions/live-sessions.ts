@@ -15,6 +15,7 @@
 import { remoteRuntime } from "../runtimes/remote.ts";
 import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
+import { lastOperatorRequest } from "./digest.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../api/task-suggestions.ts";
 import type { Watcher } from "../api/watchers.ts";
@@ -690,16 +691,23 @@ export class LiveSessions {
     await this.#save(live, { updatedAt: new Date().toISOString() }).catch(() => {});
   }
 
+  /** Resumes a run HUI recorded but never saw end, or one whose last answer failed. A failed answer stays out of the
+   * model's context, so it needs the request it was handling restated rather than a nudge at a conversation that
+   * looks finished. */
   async continueInterrupted(id: string, automatic = false): Promise<void> {
     const live = this.#ready(id);
-    if (!live.record.runStartedAt) {
+    let original: string | undefined;
+    if (live.record.runStartedAt) {
+      original = live.record.runPrompt?.trim() || undefined;
+      if (!automatic && live.record.runRecoveryAttempts !== undefined) {
+        await this.#save(live, { runRecoveryAttempts: undefined });
+      }
+    } else if (live.transcript.findLast((entry) => entry.kind !== "compaction")?.kind === "error") {
+      original = lastOperatorRequest(live.transcript);
+    } else {
       throw new Error("That session has no interrupted run to continue.");
     }
-    const original = live.record.runPrompt?.trim();
     const message = interruptedRunPrompt(original);
-    if (!automatic && live.record.runRecoveryAttempts !== undefined) {
-      await this.#save(live, { runRecoveryAttempts: undefined });
-    }
     await this.prompt(id, message, undefined, original || message);
   }
 

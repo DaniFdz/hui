@@ -72,7 +72,7 @@ import {
   sessionDraftKey,
   writeComposerDraft,
 } from "./lib/composer/drafts.ts";
-import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts";
+import { latestRunError } from "./lib/run-error.ts";
 import {
   emptySessionPresentation,
   isSelectedSession,
@@ -1490,7 +1490,7 @@ export class HuiApp extends HuiElement {
 
   private continueAfterError = () => {
     if (!this.currentRunError()) return;
-    this.composer.send(CONTINUE_AFTER_ERROR_PROMPT);
+    this.composer.continueStoppedRun();
   };
 
   private forked = async (forked: SessionView) => {

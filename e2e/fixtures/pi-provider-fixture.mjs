@@ -22,6 +22,8 @@ const replayWaiters = new Set();
 const replayReadyWaiters = new Set();
 /** Responses held so far, and who waits for a count of them: a resent request held again is told apart by count. */
 let heldCount = 0;
+/** Sessions E2E_FAIL_ONCE already failed, so a journey can watch its own retry answer. */
+const failedOnce = new Set();
 const heldCountWaiters = new Set();
 const signalReplayReady = () => {
   for (const ready of replayReadyWaiters) ready();
@@ -220,6 +222,7 @@ const server = createServer(async (request, response) => {
   await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }) })}\n`, "utf8");
   const source = flattenedText(withoutView(body.messages?.at(-1)));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));
+  const naming = source.includes("Generate a concise session title") || source.includes("Name this coding-agent session");
 
   // OptChat's compactor: one short kind-tagged line per step, naming the step's first marker. A message holding
   // E2E_HOLD_MEMORY waits for POST /control/release-replay; E2E_OVERSIZE_MEMORY gets one line over the limit first.
@@ -239,6 +242,13 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
+  // E2E_FAIL_ONCE fails the first run of each session that mentions it, so a journey can watch a recovered run
+  // finish. It is an expired key rather than E2E_ERROR's retryable 500, because the run has to fail, not be retried.
+  const failKey = clientSessionId ?? source;
+  if (!naming && source.includes("E2E_FAIL_ONCE") && !failedOnce.has(failKey)) {
+    failedOnce.add(failKey);
+    return json(response, 401, { type: "error", error: { type: "authentication_error", message: "fixture provider: the API key expired" } });
+  }
 
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   messageStart(response);
@@ -456,7 +466,6 @@ const server = createServer(async (request, response) => {
   // committed sandbox probe; E2E_WIDGET_SYNTAX first sends a script with a
   // syntax error, then the fixed counter once HUI rejects it. Session-naming
   // requests quote the prompt and are left to their own branches below.
-  const naming = source.includes("Generate a concise session title") || source.includes("Name this coding-agent session");
   if (!naming && source.includes("E2E_WIDGET_PROBE")) {
     toolUse(response, "tool-e2e-widget", "show_widget", { title: "Sandbox probe", widget_code: await readFile(new URL("./widget-probe.html", import.meta.url), "utf8") });
     return finish(response, "tool_use");
