@@ -1,6 +1,6 @@
 /**
- * Browser entry point. It loads the global stylesheets and the pinned Web Awesome components, starts UI error
- * reporting and applies the saved theme before anything paints, and only then loads the app shell.
+ * Browser entry point. It loads the global stylesheets and the pinned Web Awesome components with their submenu close
+ * fix, starts UI error reporting and applies the saved theme before anything paints, and only then loads the app shell.
  */
 import "@awesome.me/webawesome/dist/styles/themes/default.css";
 import "./styles/tokens.css";
@@ -38,9 +38,13 @@ import { loadSettings } from "./lib/settings/settings-store.ts";
 import { applyTheme, loadThemes } from "./lib/theme/theme-store.ts";
 import { finishBoot, rememberBootLook, showBootFailure } from "./lib/boot-screen.ts";
 import { viewAssetsLoaded } from "./lib/view-assets.ts";
+import { keepReopenedSubmenuVisible } from "./lib/web-awesome.ts";
 
 // First, so failures while the app starts are reported too.
 installUiErrorReporting();
+
+const dropdownItem = customElements.get("wa-dropdown-item");
+if (dropdownItem) keepReopenedSubmenuVisible(dropdownItem.prototype);
 
 // Resolve the theme, the type stack and the color mode before the app renders,
 // so a saved appearance never paints its fallback first. Every step degrades to
