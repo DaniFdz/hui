@@ -20,16 +20,16 @@
 .dashboard-session__status:is([data-status="error"], [data-status="disconnected"]) { color: var(--danger); }
 .dashboard-session__meta { grid-column: 1 / -1; color: var(--muted); font-size: var(--control-ui-text-xs); }
 .dashboard-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
-.dashboard-metric { display: grid; gap: var(--space-2); align-content: start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); color: var(--info); }
+.dashboard-metric { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); color: var(--info); }
 .dashboard-metric--high { border-color: var(--danger); color: var(--danger); }
-.dashboard-metric__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.dashboard-metric__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
 .dashboard-metric__title { color: var(--muted); font-size: var(--control-ui-text-xs); }
-.dashboard-metric__value { color: var(--text-strong); font-size: 1.25em; font-variant-numeric: tabular-nums; }
+.dashboard-metric__value { color: var(--text-strong); font-size: 1.25em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dashboard-metric--high .dashboard-metric__value { color: var(--danger); }
 .dashboard-metric__bar { height: 6px; border-radius: var(--radius-full); background: var(--border); overflow: hidden; }
 .dashboard-metric__bar span { display: block; height: 100%; background: currentColor; }
 .dashboard-metric__detail { color: var(--muted); overflow-wrap: anywhere; }
-.dashboard-metric__spark { width: 100%; height: 32px; }
+.dashboard-metric__spark { width: 100%; height: 32px; margin-block-start: auto; }
 .dashboard-metric__spark polyline { fill: none; stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .dashboard-metric__unavailable { margin: 0; color: var(--muted); }
 .dashboard-callout .btn { margin-inline-start: var(--space-3); }
