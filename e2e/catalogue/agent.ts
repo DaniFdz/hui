@@ -344,7 +344,7 @@ const cases: UseCase[] = [
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -354,7 +354,7 @@ const cases: UseCase[] = [
     spec: [...WATCHERS, "docs/api.md#get-__huisessionsidwatcherswidlog"],
     surfaces: ["tool:watcher", "route:GET /__hui/sessions/:id/watchers/:wid/log"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -364,7 +364,7 @@ const cases: UseCase[] = [
     spec: [...WATCHERS, "docs/api.md#post-__huisessionsidwatcherswidstop"],
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/stop"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -374,7 +374,7 @@ const cases: UseCase[] = [
     spec: [...WATCHERS, "docs/api.md#post-__huisessionsidwatcherswidrestart"],
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/restart"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -384,7 +384,7 @@ const cases: UseCase[] = [
     spec: [...WATCHERS, "docs/api.md#delete-__huisessionsidwatcherswid"],
     surfaces: ["route:DELETE /__hui/sessions/:id/watchers/:wid"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -413,7 +413,7 @@ const cases: UseCase[] = [
     behaviour: "A watcher that outlived a gateway restart reappears in its conversation with its real state, and one whose processes are gone without an exit status, as after a reboot, shows Dead with The process is gone and recorded no exit status, for example after a restart.",
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -423,7 +423,7 @@ const cases: UseCase[] = [
     spec: WATCHERS,
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
