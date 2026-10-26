@@ -12,9 +12,11 @@ node e2e/visual-verification.mjs doctor --receipt <receipt.json>
 
 This seeds timestamped Durable histories and one legacy PI transcript with
 synthetic prices, tokens, three providers, cache usage, a recorded zero, an unpriced
-record, a failed tool, an archived session and a child session. These are recorded
-presentation fixtures, not this conversation's spend or provider billing. The
-report does not contact a provider. Reopening a seeded session uses the local
+record, a failed tool, an archived session, a child session and one compaction
+whose summarization the store records in its spend ledger rather than an entry.
+These are
+recorded presentation fixtures, not this conversation's spend or provider
+billing. The report does not contact a provider. Reopening a seeded session uses the local
 fixture model. Its recorded model names and prices stay unchanged.
 Shared `PAGE-021` tests instead send real PI
 turns through the deterministic local provider and check recorded zero prices.
@@ -24,7 +26,9 @@ turns through the deterministic local provider and check recorded zero prices.
 1. Open `/usage`. Confirm **30d**, inclusive **From**/**To**, **Time zone** set
    to Local, the scope note, token/PI estimate/session summaries, a daily chart,
    the overview, rankings and session rows. Partial pricing must identify unpriced
-   records, not make them free.
+   records, not make them free. The line for spend outside the entries gives its
+   tokens and recorded cost and says it covers all recorded time; neither the
+   summaries nor the chart may include it.
 2. Choose **Today**, **7d**, **90d**, **1y** and **All**. Check the chart's displayed
    range after each response. All includes older data. Empty days remain visible;
    ranges over one year group by month and retain empty months.

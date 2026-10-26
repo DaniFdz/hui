@@ -7,9 +7,12 @@
  * HUI already views; a fork inherits its source's entries under the same entry
  * IDs, so an ID counts once globally and is attributed to the registered
  * conversation that owns it. Legacy PI transcripts are read from the file the
- * registry names, bounded and only for their own path. Nothing is persisted:
- * this scope is the current histories, not background compaction, abandoned
- * branches or provider billing, which stay outside the report.
+ * registry names, bounded and only for their own path. Durable's ledger also
+ * records compaction summaries, tool-side model calls and imported history
+ * outside the entries. That remainder is reported beside the dated totals,
+ * without inventing dates. A ledger and its entry boundary are read together
+ * so a concurrent reply cannot inflate the remainder. Nothing is persisted,
+ * and provider billing stays outside this report.
  *
  * One scan is range-independent: it buckets every recorded day, so any range,
  * zone or filter is answered by slicing it. The gateway keeps that scan per
@@ -18,7 +21,7 @@
  */
 import { readFile, stat } from "node:fs/promises";
 
-import { CompactionEntry, type ConversationId } from "@earendil-works/pi-durable";
+import { CompactionEntry, type ConversationId, type EntryId } from "@earendil-works/pi-durable";
 import type { UsageDay, UsageMetrics, UsageModel, UsageReport, UsageSession, UsageTool } from "./api/diagnostics.ts";
 import { durableContext, durableHost } from "./runtimes/durable-host.ts";
 import { durableConversationId } from "./runtimes/durable.ts";
@@ -57,6 +60,8 @@ type StoredEntry = {
 
 type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: number | null };
 
+type Spend = { totalTokens: number; cost: number };
+
 type UsageLabel = { provider: string; model: string };
 
 type UsageEvent = {
@@ -82,6 +87,8 @@ export type UsageScan = {
   marks: Map<number, number>;
   /** Entry IDs already counted anywhere, so history a fork inherits counts once. */
   claimed: Set<number>;
+  recordedSpend: Map<number, Spend>;
+  unplacedSpend: UsageReport["unplacedSpend"];
   registeredSessions: number;
   undatedRecords: number;
   unavailable: { sessionId: string; reason: string }[];
@@ -233,14 +240,40 @@ function dayReader(timeZone: string): (time: number) => string {
   };
 }
 
-function durableScan(): (conversationId: number, after: number | undefined) => AsyncIterable<StoredEntry> {
-  return async function* (conversationId, after) {
+function spendOf(buckets: readonly (Record<string, Record<string, unknown>> | undefined)[]): Spend {
+  let totalTokens = 0;
+  let cost = 0;
+  for (const bucket of buckets) {
+    for (const entry of Object.values(bucket ?? {})) {
+      totalTokens += count(entry["totalTokens"]) ?? 0;
+      const parts = typeof entry["cost"] === "object" && entry["cost"] !== null ? entry["cost"] as Record<string, unknown> : undefined;
+      cost += parts ? count(parts["total"]) ?? 0 : 0;
+    }
+  }
+  return { totalTokens, cost };
+}
+
+function entrySpend(entry: StoredEntry): Spend {
+  let totalTokens = 0;
+  let cost = 0;
+  for (const message of entry.model ?? []) {
+    const usage = readUsage(message.usage);
+    if (!usage) continue;
+    totalTokens += usage.totalTokens;
+    cost += usage.cost ?? 0;
+  }
+  return { totalTokens, cost };
+}
+
+function durableScan(): (conversationId: number, lastEntryId: EntryId | null, after: number | undefined) => AsyncIterable<StoredEntry> {
+  return async function* (conversationId, lastEntryId, after) {
+    if (lastEntryId === null) return;
     const harness = await durableHost().open();
     const conversation = await harness.conversation(conversationId as ConversationId, durableContext);
     if (!conversation) throw new Error("That conversation is not in this gateway's Durable store.");
     let cursor;
     do {
-      const page = await conversation.entries(after === undefined ? {} : { minEntryId: after as never }, PAGE, cursor, durableContext);
+      const page = await conversation.entries({ maxEntryId: lastEntryId, ...(after === undefined ? {} : { minEntryId: after as EntryId }) }, PAGE, cursor, durableContext);
       yield* page.items;
       cursor = page.next;
       await yieldToEventLoop();
@@ -253,6 +286,7 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
   const dayOf = dayReader(timeZone);
   const found: UsageScan = {
     sessions: new Map(), marks: new Map(previous?.marks ?? []), claimed: previous?.claimed ?? new Set(),
+    recordedSpend: new Map(previous?.recordedSpend), unplacedSpend: { totalTokens: 0, costUsd: 0 },
     registeredSessions: sessions.length, undatedRecords: 0, unavailable: [], readSessions: 0,
   };
   /** Sessions whose buckets in this pass replace the cached ones instead of adding to them. */
@@ -294,6 +328,8 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
   }
 
   const readPaths = new Set<string>();
+  const ledgers = new Map<number, Spend>();
+  const readConversations = new Set<number>();
 
   for (const session of ordered) {
     const reference = session.piSessionFile;
@@ -305,15 +341,26 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
 
     const conversationId = durableConversationId(reference);
     if (conversationId !== undefined) {
+      if (readConversations.has(conversationId)) continue;
+      readConversations.add(conversationId);
       const after = previous?.marks.get(conversationId);
       const counted = new Set<number>();
       let highest = after;
       try {
-        for await (const entry of scan(conversationId, after === undefined ? undefined : after + 1)) {
+        await durableHost().open();
+        const ledger = await durableHost().conversationUsage(conversationId as ConversationId);
+        if (!ledger) throw new Error("The local spend ledger is unavailable.");
+        for await (const entry of scan(conversationId, ledger.lastEntryId, after === undefined ? undefined : after + 1)) {
           if (after !== undefined && entry.id <= after) continue;
           if (found.claimed.has(entry.id) || counted.has(entry.id)) continue;
           counted.add(entry.id);
           highest = Math.max(highest ?? 0, entry.id);
+          const spend = entrySpend(entry);
+          const already = found.recordedSpend.get(entry.conversationId);
+          found.recordedSpend.set(entry.conversationId, {
+            totalTokens: (already?.totalTokens ?? 0) + spend.totalTokens,
+            cost: (already?.cost ?? 0) + spend.cost,
+          });
           const owner = owners.get(entry.conversationId) ?? session;
           for (const message of entry.model ?? []) {
             if (entry.kind === CompactionEntry.kind && message.role === "user") continue;
@@ -324,8 +371,9 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
         for (const id of counted) found.claimed.add(id);
         if (highest !== undefined) found.marks.set(conversationId, highest);
         found.readSessions += 1;
+        ledgers.set(conversationId, spendOf([ledger.models, ledger.tools]));
       } catch {
-        found.unavailable.push({ sessionId: session.id, reason: "The local conversation could not be read." });
+        found.unavailable.push({ sessionId: session.id, reason: "The local conversation or its spend ledger could not be read." });
       }
       continue;
     }
@@ -368,6 +416,12 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
     }
   }
 
+  for (const [conversationId, ledger] of ledgers) {
+    const entries = found.recordedSpend.get(conversationId);
+    found.unplacedSpend.totalTokens += Math.max(0, ledger.totalTokens - (entries?.totalTokens ?? 0));
+    found.unplacedSpend.costUsd += Math.max(0, ledger.cost - (entries?.cost ?? 0));
+  }
+
   if (!previous) return found;
   mergeScan(previous, found, replaced);
   return previous;
@@ -396,6 +450,8 @@ function mergeScan(target: UsageScan, delta: UsageScan, replaced: ReadonlySet<st
   }
   target.marks = delta.marks;
   target.claimed = delta.claimed;
+  target.recordedSpend = delta.recordedSpend;
+  target.unplacedSpend = delta.unplacedSpend;
   target.registeredSessions = delta.registeredSessions;
   target.undatedRecords += delta.undatedRecords;
   target.unavailable = delta.unavailable;
@@ -450,6 +506,7 @@ export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
     generatedAt: new Date(now).toISOString(),
     range: { from, to, timeZone: query.timeZone },
     sessions: sessions.toSorted((left, right) => right.lastActivityAt - left.lastActivityAt || left.id.localeCompare(right.id)),
+    unplacedSpend: scan.unplacedSpend,
     coverage: {
       registeredSessions: scan.registeredSessions,
       readSessions: scan.readSessions,

@@ -3808,8 +3808,8 @@ estimate it. Each `models` entry carries its tokens and the cost reported for th
 Returns `UsageReport`, the Usage page's date-ranged report over the current
 histories of registered local sessions, including archived sessions and subagents.
 This is separate from the lifetime ledger totals in `GET /__hui/observability`
-and bot usage. Background summarization, abandoned history, remote-worker data
-and provider billing are not included.
+and bot usage. Abandoned history, remote-worker data and provider billing are
+not included.
 
 Query parameters:
 
@@ -3849,11 +3849,20 @@ session-cost reports are never added to these PI values.
 
 Durable history is read in pages without changing the store. Inherited entries
 retain their global IDs and count once across registered sessions, attributed
-to their registered source conversation when available. Otherwise the oldest
+to their registered source conversation when available. Otherwise the newest
 claiming session receives them, including retained history after a rewind.
 Legacy PI files are read only from registry references, bounded at 32 MB and
 counted once per path. Models and providers come from records, never from the
 session's current selection. Unrecorded labels are `Unknown`.
+
+`unplacedSpend` reports `totalTokens` and `costUsd` that the Durable store
+records for a conversation outside its entries: compaction summarization, model
+calls made from inside a tool, and, for an imported PI session, history its
+entries do not carry. The ledger keeps no date for it, so it is never added to
+the range totals, `days` or rankings, and a narrower range does not change it.
+Legacy PI compaction records do carry usage, so those already count inside the
+dated entries. A conversation whose ledger reports less than the entries it
+wrote contributes zero rather than a negative amount.
 
 `coverage` lists the number of registered sessions and readable local histories,
 individual unavailable histories with their reasons, and `undatedRecords` excluded

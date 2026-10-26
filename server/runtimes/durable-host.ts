@@ -111,6 +111,8 @@ const CLIENT_SESSION_ENV = "PI_CLIENT_SESSION_ID";
 /** pi-ai model calls whose third argument is the request options. */
 const REQUEST_CALLS = new Set<PropertyKey>(["stream", "streamSimple", "complete", "completeSimple", "streamDeferred", "fetchDeferred", "cancelDeferred"]);
 type ProviderResponse = { status: number; headers: Record<string, string> };
+/** One conversation's `pi.usage` ledger, as `conversationUsage` copies it out. */
+type ConversationSpend = { models?: Record<string, Record<string, unknown>>; tools?: Record<string, Record<string, unknown>> };
 type RequestCallbacks = {
   onPayload?: (payload: unknown, model: unknown) => unknown;
   onResponse?: (response: ProviderResponse, model: unknown) => void | Promise<void>;
@@ -680,12 +682,12 @@ export class DurableHost implements ExtensionHost {
     if (caller) this.#callers.set(target, caller);
   }
 
-  /** Spend Durable recorded for one conversation, per model; undefined when
-   * this process does not own the store. */
-  async conversationUsage(conversationId: ConversationId): Promise<{ models?: Record<string, Record<string, unknown>> } | undefined> {
+  /** Spend Durable recorded for one conversation, per model and per tool;
+   * undefined when this process does not own the store. */
+  async conversationUsage(conversationId: ConversationId): Promise<ConversationSpend | undefined> {
     const harness = this.#harness;
     if (!harness) return undefined;
-    return harness.commit(async (tx) => JSON.parse(JSON.stringify(await tx.doc(UsageDoc, conversationId))) as { models?: Record<string, Record<string, unknown>> }, durableContext);
+    return harness.commit(async (tx) => JSON.parse(JSON.stringify(await tx.doc(UsageDoc, conversationId))) as ConversationSpend, durableContext);
   }
 
   /** Closing records no outcome: running work resumes when the store reopens.

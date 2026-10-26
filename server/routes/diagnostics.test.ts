@@ -13,6 +13,7 @@ const report: UsageReport = {
   range: { from: "2026-06-01", to: "2026-06-30", timeZone: "Europe/Madrid" },
   sessions: [],
   coverage: { registeredSessions: 0, readSessions: 0, unavailable: [], undatedRecords: 0 },
+  unplacedSpend: { totalTokens: 0, costUsd: 0 },
 };
 
 function fixture() {

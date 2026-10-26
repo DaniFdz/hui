@@ -9,7 +9,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
-import { AssistantEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
+import { AssistantEntry, CompactionEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
 import { UsageReport } from "./api/diagnostics.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 import { expectSchema } from "./test-support/api-schema.ts";
@@ -29,6 +29,9 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
 
 const { durableContext, durableHost } = await import("./runtimes/durable-host.ts");
+const { recordUsage } = await import(new URL("./harness/usage.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
+  recordUsage(tx: unknown, conversationId: unknown, bucket: "models" | "tools", key: string, usage: unknown): Promise<void>;
+};
 const { scanUsage, sliceUsage, usageQuery } = await import("./usage.ts");
 
 const readUsageReport = async (sessions: readonly SessionRecord[], query: ReturnType<typeof usageQuery>) => sliceUsage(await scanUsage(sessions, query.timeZone), query);
@@ -175,6 +178,73 @@ test("legacy transcripts report unpriced calls, undated records and gaps without
   ], "a tool's spend is not guessed into a model");
   assert.equal(legacy.models.reduce((total, model) => total + model.metrics.totalTokens, 0), 9, "model totals never add the tool's spend twice");
   assert.doesNotMatch(JSON.stringify(report), /SECRET_PROMPT_MARKER/u, "no prompt, body, argument or output reaches the report");
+});
+
+test("compaction spend the store keeps outside entries is reported once, beside the range", async () => {
+  const answerUsage = priced(10, 5, 20, 0.5);
+  const toolUsage = priced(2, 0, 2, 0.1);
+  const undatedUsage = priced(6, 0, 6, 0.3);
+  const forkUsage = priced(3, 1, 4, 0.2);
+  const summaryUsage = priced(1000, 100, 1100, 3);
+  const { source, fork, quiet } = await (async () => {
+    const source = await harness.commit(async (tx) => {
+      const source = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+      await tx.appendEntry(source, { kind: UserEntry.kind, model: [user(T1, "first") as never] });
+      const answer = (await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T1, answerUsage) as never] })).id;
+      await tx.appendEntry(source, { kind: ToolResultEntry.kind, model: [{ role: "toolResult", toolCallId: "c1", toolName: "read", content: [], timestamp: T2, usage: toolUsage } as never] });
+      await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [{ ...assistant(T2, undatedUsage), timestamp: undefined } as never] });
+      await recordUsage(tx, source, "models", "fixture/model-a", answerUsage);
+      await recordUsage(tx, source, "models", "fixture/model-a", undatedUsage);
+      await recordUsage(tx, source, "tools", "read", toolUsage);
+      return { source, answer };
+    }, durableContext);
+    const fork = await harness.commit(async (tx) => {
+      const fork = (await tx.forkConversation(source.source, source.answer, { ownership: { kind: "ownerless" } })).id;
+      await tx.appendEntry(fork, { kind: AssistantEntry.kind, model: [assistant(T2, forkUsage) as never] });
+      await recordUsage(tx, fork, "models", "fixture/model-a", forkUsage);
+      return fork;
+    }, durableContext);
+    const quiet = await harness.commit(async (tx) => {
+      const quiet = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+      await tx.appendEntry(quiet, { kind: AssistantEntry.kind, model: [assistant(T3, priced(4, 0, 4, 0.2)) as never] });
+      return quiet;
+    }, durableContext);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await harness.commit(async (tx) => {
+        await tx.appendEntry(source.source, { kind: CompactionEntry.kind, data: { reason: "manual" }, model: [user(T2, "Summary of the work so far") as never] });
+        await recordUsage(tx, source.source, "models", "fixture/model-a", summaryUsage);
+      }, durableContext);
+    }
+    return { source: source.source, fork, quiet };
+  })();
+
+  const sessions = [
+    record("fork", `durable:${fork}`, "2026-01-01T00:00:00.000Z", { parentId: "source" }),
+    record("source", `durable:${source}`, "2026-01-02T00:00:00.000Z"),
+    record("quiet", `durable:${quiet}`, "2026-01-03T00:00:00.000Z"),
+  ];
+  const report = await readUsageReport(sessions, usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-30", timeZone: "UTC" })));
+
+  expectSchema(UsageReport, report);
+  const owned = report.sessions.find((each) => each.id === "source")!;
+  assert.deepEqual(
+    { totalTokens: owned.metrics.totalTokens, costUsd: owned.metrics.costUsd },
+    { totalTokens: 22, costUsd: 0.6 },
+    "the ranged totals still hold only dated entries, even with the fork registered first and an undated entry in the source",
+  );
+  assert.deepEqual(
+    { totalTokens: report.sessions.find((each) => each.id === "fork")!.metrics.totalTokens, undated: report.coverage.undatedRecords },
+    { totalTokens: 4, undated: 1 },
+    "the fork keeps its own entry, and the undated entry is a stated gap rather than a 1970 day",
+  );
+  assert.equal(report.unplacedSpend.totalTokens, 2200,
+    "both summarization calls count once each, and the undated entry is subtracted too");
+  assert(Math.abs(report.unplacedSpend.costUsd - 6) < 1e-9, `cost ${report.unplacedSpend.costUsd}`);
+  assert(report.unplacedSpend.costUsd < 6.001, "a ledger smaller than its entries never goes negative, so nothing is added back");
+
+  const oneDay = await readUsageReport(sessions, usageQuery(new URLSearchParams({ from: "2026-06-03", to: "2026-06-03", timeZone: "UTC" })));
+  assert.deepEqual(oneDay.unplacedSpend, report.unplacedSpend, "undated spend is not hidden or double counted by a narrower range");
+  assert.deepEqual(oneDay.sessions.map((each) => each.id), [], "a range with no entry activity is empty, yet the undated spend still shows");
 });
 
 test("the range rejects dates it cannot mean and time zones it does not know", () => {
