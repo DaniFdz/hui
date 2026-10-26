@@ -294,7 +294,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES],
     surfaces: ["command:update", "route:GET /__hui/update", "route:POST /__hui/update/check", "route:POST /__hui/sessions"],
     journeys: ["update"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -304,7 +304,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES],
     surfaces: ["command:update", "route:POST /__hui/update/check"],
     journeys: ["update"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -314,7 +314,7 @@ const cases: UseCase[] = [
     spec: [UPDATES],
     surfaces: ["command:update"],
     journeys: ["update"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
