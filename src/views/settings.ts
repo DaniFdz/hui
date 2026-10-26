@@ -721,15 +721,19 @@ function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { val
               <span class="settings-row__desc">${route.model}${route.thinking ? ` · ${route.thinking}` : ""}</span>
             </div>
             <div class="settings-row__control subagent-route-fields">
-              <input class="settings-input subagent-route-fields__name" name="routeName" aria-label=${`Route name: ${route.name}`}
-                maxlength="40" spellcheck="false" autocomplete="off" .value=${route.name}
-                @change=${(event: Event) => rename(at, (event.target as HTMLInputElement).value)} />
-              <input class="settings-input" name="routeDescription" aria-label=${`Description of ${route.name}`}
-                maxlength="200" placeholder="What this route is for, in one line" .value=${route.description}
-                @change=${(event: Event) => replace(at, { description: (event.target as HTMLInputElement).value })} />
-              ${renderSettingsPicker("Model", route.model, models, (value) => replace(at, { model: value }))}
-              ${renderSettingsPicker("Thinking", route.thinking ?? "", thinking, (value) => replace(at, { thinking: value ? value as SubagentThinking : undefined }))}
-              <button type="button" class="btn btn--sm btn--ghost" @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>
+              <div class="subagent-route-fields__line">
+                <input class="settings-input subagent-route-fields__name" name="routeName" aria-label=${`Route name: ${route.name}`}
+                  maxlength="40" spellcheck="false" autocomplete="off" .value=${route.name}
+                  @change=${(event: Event) => rename(at, (event.target as HTMLInputElement).value)} />
+                <input class="settings-input" name="routeDescription" aria-label=${`Description of ${route.name}`}
+                  maxlength="200" placeholder="What this route is for, in one line" .value=${route.description}
+                  @change=${(event: Event) => replace(at, { description: (event.target as HTMLInputElement).value })} />
+              </div>
+              <div class="subagent-route-fields__line">
+                ${renderSettingsPicker("Model", route.model, models, (value) => replace(at, { model: value }))}
+                ${renderSettingsPicker("Thinking", route.thinking ?? "", thinking, (value) => replace(at, { thinking: value ? value as SubagentThinking : undefined }))}
+                <button type="button" class="btn btn--sm btn--ghost" @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>
+              </div>
             </div>
           </div>`)
         : renderRow("No routes yet", "Agents keep choosing models by id until you add one.", html`<span class="settings-row__value">—</span>`)}
