@@ -683,7 +683,7 @@ const cases: UseCase[] = [
     behaviour: "With Group by Project, dropping a session row on a project group changes nothing: project groups follow the session's directory, so only custom groups accept a drop.",
     spec: ["SPEC.md#behaviour"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
