@@ -6066,6 +6066,167 @@
         "vale"
       ]
     },
+    "HostMetrics": {
+      "type": "object",
+      "required": [
+        "sampledAt",
+        "host",
+        "cpu",
+        "memory",
+        "disk",
+        "network",
+        "gpu",
+        "gateway"
+      ],
+      "properties": {
+        "sampledAt": {
+          "type": "string"
+        },
+        "host": {
+          "type": "object",
+          "required": [
+            "platform",
+            "cores"
+          ],
+          "properties": {
+            "platform": {
+              "type": "string"
+            },
+            "cores": {
+              "type": "number"
+            }
+          }
+        },
+        "cpu": {
+          "type": "object",
+          "required": [
+            "percent",
+            "load"
+          ],
+          "properties": {
+            "percent": {
+              "type": "number"
+            },
+            "load": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "required": [
+            "totalBytes",
+            "usedBytes"
+          ],
+          "properties": {
+            "totalBytes": {
+              "type": "number"
+            },
+            "usedBytes": {
+              "type": "number"
+            },
+            "swapUsedBytes": {
+              "type": "number"
+            }
+          }
+        },
+        "disk": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "totalBytes",
+                "usedBytes"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "totalBytes": {
+                  "type": "number"
+                },
+                "usedBytes": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "network": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "rxBytesPerSecond",
+                "txBytesPerSecond"
+              ],
+              "properties": {
+                "rxBytesPerSecond": {
+                  "type": "number"
+                },
+                "txBytesPerSecond": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gpu": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "percent"
+              ],
+              "properties": {
+                "percent": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gateway": {
+          "type": "object",
+          "required": [
+            "cpuPercent",
+            "rssBytes"
+          ],
+          "properties": {
+            "cpuPercent": {
+              "type": "number"
+            },
+            "rssBytes": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "HostMetricsError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
     "JiraConnection": {
       "type": "object",
       "required": [
@@ -10080,13 +10241,17 @@
           "type": "object",
           "required": [
             "denseObservability",
-            "detailedDebug"
+            "detailedDebug",
+            "dashboard"
           ],
           "properties": {
             "denseObservability": {
               "type": "boolean"
             },
             "detailedDebug": {
+              "type": "boolean"
+            },
+            "dashboard": {
               "type": "boolean"
             }
           }
@@ -13220,6 +13385,10 @@
       "PowerState",
       "PowerStatus"
     ],
+    "host": [
+      "HostMetrics",
+      "HostMetricsError"
+    ],
     "github": [
       "ActivityBlock",
       "ActivitySession",
@@ -14265,6 +14434,13 @@
       "path": "/__hui/health",
       "response": {
         "$ref": "#/$defs/GatewayHealth"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/host-metrics",
+      "response": {
+        "$ref": "#/$defs/HostMetrics"
       }
     },
     {

@@ -54,6 +54,7 @@ import {
   diffRoutes,
   fileRoutes,
   githubRoutes,
+  hostMetricsRoutes,
   jiraRoutes,
   localPathRoutes,
   managedBrowser,
@@ -367,6 +368,7 @@ async function handleRequest(
   if (answered(response, path, await providerRoutes.handle(routed))) return;
 
   if (answered(response, path, await powerRoutes.handle(routed))) return;
+  if (answered(response, path, await hostMetricsRoutes.handle(routed))) return;
   if (answered(response, path, await handleApiSchemaRoute(routed))) return;
 
   if (answered(response, path, await diagnosticsRoutes.handle(routed, response))) return;
