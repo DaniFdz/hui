@@ -114,6 +114,8 @@ export class SettingsController implements ReactiveController {
   };
 
   loadPreviews(): void {
+    // Every visit to the picker would otherwise read every theme file again.
+    if (this.previews.length) return;
     void loadThemePreviews().then((previews) => {
       this.previews = previews;
       this.#changed();

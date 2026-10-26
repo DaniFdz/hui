@@ -2831,8 +2831,10 @@ List everything in the registry, grouped.
 ```
 
 The gateway keeps this list in memory and shares it with every connected
-screen; `revision` increases whenever it changes. The group mutation routes
-return the same shape. `GET /__hui/sessions/events` pushes the same list as
+screen; `revision` increases whenever it changes. A screen asking while another
+one is connected gets that in-memory list as it stands rather than a second
+recompute of the registry, so it can be up to a poll behind. The group mutation
+routes return the same shape. `GET /__hui/sessions/events` pushes the same list as
 changes, so clients discard any full list older than the revision they hold.
 
 Groups follow the registry's catalog order, which the user controls, with

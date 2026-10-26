@@ -59,8 +59,17 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
     void refresh().catch(() => {}).finally(() => { ticking = false; });
   }
 
+  /** The list the running poller already holds, so a screen asking for it does
+   * not wait behind a recompute of a large registry. */
+  async function snapshot(): Promise<{ revision: number; groups: Groups<S> }> {
+    if (!timer) return refresh();
+    await reading.catch(() => {});
+    return loaded ? queue.then(() => current) : refresh();
+  }
+
   return {
     refresh,
+    snapshot,
     subscribe(listener: (update: SessionListUpdate<S>) => void, heldRevision?: number): () => void {
       let joined = false;
       const relay = (update: SessionListUpdate<S>) => { if (joined) listener(update); };

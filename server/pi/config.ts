@@ -44,7 +44,9 @@ type CatalogProbeSession = {
 type CatalogResult = { catalog: readonly CatalogEntry[]; error?: string };
 
 /** Coalesce concurrent dashboard reads and cache both success and failure. A
- * broken provider must not let repeated refreshes accumulate PI processes. */
+ * broken provider must not let repeated refreshes accumulate PI processes.
+ * Probing starts a whole PI runtime, so a stale catalog is served while the
+ * replacement is discovered in the background: only the first read waits. */
 export function createModelCatalogReader(
   probe: () => Promise<CatalogProbeSession>,
   ttlMs = 30_000,
@@ -52,8 +54,7 @@ export function createModelCatalogReader(
   let cached: { expiresAt: number; result: CatalogResult } | undefined;
   let pending: Promise<CatalogResult> | undefined;
   let revision = 0;
-  const read = async (): Promise<CatalogResult> => {
-    if (cached && cached.expiresAt > Date.now()) return cached.result;
+  const discover = (): Promise<CatalogResult> => {
     if (pending) return pending;
     pending = (async () => {
       for (;;) {
@@ -77,6 +78,11 @@ export function createModelCatalogReader(
       }
     })().finally(() => { pending = undefined; });
     return pending;
+  };
+  const read = async (): Promise<CatalogResult> => {
+    if (!cached) return discover();
+    if (cached.expiresAt <= Date.now()) void discover().catch(() => {});
+    return cached.result;
   };
   return Object.assign(read, { invalidate: () => { revision++; cached = undefined; } });
 }
