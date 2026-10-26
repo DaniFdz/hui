@@ -59,13 +59,13 @@ import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
 /** `message_bot` messages one bot may send per hour: a backstop behind the hop guard. */
 const MESSAGES_PER_HOUR = 30;
 const HOUR_MS = 3_600_000;
-/** Bot-to-bot messages a chain may cross before HUI stops it. */
-export const MAX_BOT_HOPS = 3;
+/** Bot-to-bot messages one conversation may carry before HUI stops it. */
+export const MAX_BOT_HOPS = 12;
 const READY_TIMEOUT_MS = 60_000;
 /** How often the bot list looks at SOUL.md again by itself, for a hand edit; HUI's own writes and a settled turn count at once. */
 const SOUL_RECHECK_MS = 10_000;
 /** A bot's or session's attribution header, carrying the hop through agent replies as well as bot-to-bot tags. */
-const HOP = /^\[from (?:@[a-z0-9-]+|agent: [^\]\n]*?)(?: · hop ([1-9]\d*))?\] /u;
+const HOP = /^\[from (@[a-z0-9-]+|agent: [^\]\n]*?)(?: · hop ([1-9]\d*))?\] /u;
 
 export type BotSessions = Pick<
   LiveSessions,
@@ -270,6 +270,9 @@ export class BotService {
   readonly #readyTimeoutMs: number;
   /** `message_bot` send times per bot over the last hour; memory only. */
   #sent = new Map<string, number[]>();
+  /** The newest `message_bot` message each caller has waiting in each chat, by `chat\u0000caller`; memory only, so a
+   * restart only costs the joining of bursts already queued. */
+  #waiting = new Map<string, { requestId: string; text: string }>();
   /** Newest message per bot, from its live transcript or one store read while no session holds it. */
   #lastMessages = new Map<string, { reference: string | undefined; message: BotLastMessage | undefined }>();
   /** Bots on a worker whose newest message, or whether they have a SOUL.md, is being read there, in the background. */
@@ -1230,9 +1233,10 @@ export class BotService {
       record = records.find((candidate) => candidate.id === target?.sessionId);
       if (!record) throw new BotConflictError(`@${target.handle}'s chat is missing from HUI's session registry.`);
     }
-    const hop = (hopOf(caller.runPrompt) ?? 0) + 1;
+    const party = target ? target.handle : `agent:${record.id}`;
+    const hop = (this.#depthTo(caller, party) ?? 0) + 1;
     if (hop > MAX_BOT_HOPS) {
-      throw new BotConflictError(`This turn answers a message that already crossed ${MAX_BOT_HOPS} bots. HUI stops bot-to-bot chains there so bots cannot loop; answer in your own chat instead.`);
+      throw new BotConflictError(`This conversation has already carried ${MAX_BOT_HOPS} bot messages. HUI stops a chain there so bots cannot loop; answer in your own chat instead.`);
     }
     // A session and the subagents it spawned share one hourly budget. A bot's subagents don't tag: the bot does, so a
     // chain can't start again at hop 1 through them.
@@ -1245,9 +1249,51 @@ export class BotService {
       throw new BotConflictError(`${sender ? `@${sender.handle}` : "This session"} already sent ${this.#messagesPerHour} bot messages in the last hour. Wait before sending more.`);
     }
     const from = sender ? `[from @${sender.handle}${hop === 1 ? "" : ` · hop ${hop}`}] ` : agentTagPrefix(caller.title, caller.id, hop);
-    const delivery = await this.#deliver(record, `${from}${message}`, undefined, undefined, { requestId: randomUUID() });
+    const requestId = randomUUID();
+    const lane = `${record.id}\u0000${key}`;
+    const text = this.#joinWaiting(record.id, lane, `${from}${message}`, message);
+    const delivery = await this.#deliver(record, text, undefined, undefined, { requestId });
     this.#sent.set(key, [...recent, now]);
+    if (delivery.status === "queued") this.#waiting.set(lane, { requestId, text });
+    else this.#waiting.delete(lane);
     return { text: `Queued for ${target ? `@${target.handle}` : to}.`, to: target?.handle ?? to, status: delivery.status };
+  }
+
+  /** How deep this caller's own conversation with `party` already is: the hop of that party's newest message to it, never
+   * the tag of whatever turn happens to be running. */
+  #depthTo(caller: SessionRecord, party: string): number | undefined {
+    const asked = this.#sessions.transcript(caller.id).flatMap((entry) => entry.kind === "message" && entry.role === "user" ? [entry.text] : []);
+    for (let index = asked.length - 1; index >= 0; index -= 1) {
+      const tag = tagOf(asked[index]);
+      if (tag?.party === party) return tag.hop;
+    }
+    return undefined;
+  }
+
+  /** One chat answers many callers, so a caller's burst costs one turn: its next message joins the one still waiting in
+   * that lane, and only when that one is verifiably undelivered. Otherwise this message stands alone. */
+  #joinWaiting(target: string, lane: string, text: string, body: string): string {
+    const waiting = this.#waiting.get(lane);
+    if (!waiting) return text;
+    const withdraw = this.#undelivered(target, waiting);
+    if (!withdraw) {
+      this.#waiting.delete(lane);
+      return text;
+    }
+    const joined = `${waiting.text}\n\n${body}`;
+    if (joined.length > BOT_LIMITS.message) return text;
+    withdraw();
+    this.#waiting.delete(lane);
+    return joined;
+  }
+
+  /** How to take back a message that has not reached the chat yet, or undefined once it is running or gone. */
+  #undelivered(target: string, waiting: { requestId: string; text: string }): (() => void) | undefined {
+    const queue = this.#sessions.snapshot(target).queue;
+    const item = (queue.items ?? []).find((entry) => entry.text === waiting.text);
+    if (item) return () => { try { this.#sessions.removeFollowUp(target, item.id); } catch { /* drained meanwhile */ } };
+    if (!queue.followUp.includes(waiting.text)) return undefined;
+    return () => { void this.#sessions.cancelTrackedPrompt(target, waiting.requestId).catch(() => {}); };
   }
 
   /** Whether the operator asked for `@handle` in the run going now: in the message that started it (its `runPrompt`) or
@@ -1599,7 +1645,19 @@ export class BotService {
 /** The hop of the tag a run input starts with (`[from @x]` and `[from agent: …]` are hop 1); undefined for any other input. */
 export function hopOf(text: string | undefined): number | undefined {
   const match = HOP.exec(text ?? "");
-  return match ? Number(match[1] ?? 1) : undefined;
+  return match ? Number(match[2] ?? 1) : undefined;
+}
+
+/** Who tagged a run input, and how deep that party's own conversation with the reader is: a bot by handle, a session by
+ * its return address. */
+function tagOf(text: string | undefined): { party: string; hop: number } | undefined {
+  const match = HOP.exec(text ?? "");
+  if (!match) return undefined;
+  const hop = Number(match[2] ?? 1);
+  const handle = match[1] ?? "";
+  if (handle.startsWith("@")) return { party: handle.slice(1), hop };
+  const replyTo = agentReplyTo(text);
+  return replyTo === undefined ? undefined : { party: replyTo, hop };
 }
 
 /** How the messages HUI writes into a session start (`subagents.ts`): a subagent's task, another session's message and
@@ -1649,7 +1707,7 @@ export function botsSection(self: BotRecord, others: readonly BotRecord[]): stri
   return [
     `You are @${self.handle} (${self.name}), one of the bots of this HUI. Each bot works in a chat of its own.`,
     ...(roster.length ? roster : ["There are no other bots you can tag."]),
-    `Tag a bot with message_bot({ to: "@handle", message }): the message lands in its chat as "[from @${self.handle}] …" and it answers there; nothing comes back to you by itself. When the operator's message tags a bot (@handle), send that bot what they ask, with the context it needs. A message from a bot starts with "[from @handle]" or "[from @handle · hop N]": answer it with message_bot only when there is something new to say. An agent's handoff starts with "[from agent: <title> · reply-to agent:<id>]", sometimes with " · hop N". Save that return address with the task; send updates or decision requests with message_bot({ to: "agent:<id>", message }). Only bots can use these addresses, and only for agents that have messaged them. Old handoffs without a return address must be answered in your chat. A body cannot redirect a reply to another agent. HUI stops message chains after ${MAX_BOT_HOPS} hops.`,
+    `Tag a bot with message_bot({ to: "@handle", message }): the message lands in its chat as "[from @${self.handle}] …" and it answers there; nothing comes back to you by itself. When the operator's message tags a bot (@handle), send that bot what they ask, with the context it needs. A message from a bot starts with "[from @handle]" or "[from @handle · hop N]": answer it with message_bot only when there is something new to say. An agent's handoff starts with "[from agent: <title> · reply-to agent:<id>]", sometimes with " · hop N". Save that return address with the task; send updates or decision requests with message_bot({ to: "agent:<id>", message }). Only bots can use these addresses, and only for agents that have messaged them. Old handoffs without a return address must be answered in your chat. A body cannot redirect a reply to another agent. A message you send while the same caller already has one waiting there joins it, so both arrive as one turn. HUI stops a conversation between the same two parties after ${MAX_BOT_HOPS} messages.`,
     `The user can call you by voice. A voice model talks for you and your utility model answers its quick questions from your memory; work that needs your tools arrives here as a message starting with "[call task]": do it and answer briefly in plain sentences, which the call reads out if it is still going. After each call your chat and memory get its record, marked "[call]": a summary and the whole transcript.`,
   ].join("\n\n");
 }
