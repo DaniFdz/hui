@@ -894,7 +894,8 @@ export class BotService {
    * instructions are cleared, then the field leaves bots.json. In that order, so
    * a restart in between finishes the rest; a bot that fails stays as it was
    * and is tried again at the next start. Nothing starts a turn: a bot without
-   * either has its first conversation at its next turn.
+   * either has its first conversation at its next turn. A bot without a SOUL.md
+   * is then marked split, since it writes its first one with the three files.
    */
   async migrate(): Promise<{ souls: number; cleared: number }> {
     // Bots on workers came with SOUL.md: their homes are made there at creation, and none ever had instructions here.
@@ -921,6 +922,15 @@ export class BotService {
       } catch (error) {
         this.#report("warning", "bot_soul_migration_failed", `@${bot.handle}'s instructions could not become its SOUL.md yet; HUI tries again at its next start`, error);
       }
+    }
+    const legacy = await this.#registry.legacyInstructions();
+    const unwritten: string[] = [];
+    for (const bot of bots) {
+      if (!bot.split && !legacy.has(bot.id) && !await this.#deps.files.exists(bot.id, "soul").catch(() => true)) unwritten.push(bot.id);
+    }
+    if (unwritten.length) {
+      await this.#registry.update((current) => ({ bots: current.map((each) => unwritten.includes(each.id) ? { ...each, split: true } : each), result: undefined }))
+        .catch((error: unknown) => this.#report("warning", "bot_split_mark_failed", "Bots without a SOUL.md could not be marked split yet; HUI tries again at its next start", error));
     }
     return result;
   }

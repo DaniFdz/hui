@@ -1180,7 +1180,8 @@ because the rest needs judgement: a preference is not a rule. Until each listed 
 is split, the check fails and `hui doctor` exits with status 1. A bot counts as split
 once `hui bot split` has asked it, even one you split by hand before: its files can't
 show it, since `--fix` writes MEMORY.md itself. A bot created now is split from the
-start, and an archived one is never listed.
+start, and so is one without a SOUL.md once the gateway starts, since its first soul
+follows the three files. An archived bot is never asked to split.
 
 ```sh
 hui gateway start
@@ -1191,6 +1192,7 @@ hui bot split ada
 each; the bot moves what it knows with `update_user` and `update_memory`, rewrites
 its soul with `write_soul`, and lists what it moved. It changes nothing else, and it
 never invents a preference. Once its message is accepted, HUI marks the bot split in
-`bots.json`, so doctor stops listing it. A bot on a worker keeps its home there, and
+`bots.json`, so doctor stops listing it; with `--wait`, a turn that fails or runs out of
+time leaves it unmarked, so run the command again. A bot on a worker keeps its home there, and
 doctor cannot read a worker's files offline: it lists the bot until you run the same
 command once the worker is connected.

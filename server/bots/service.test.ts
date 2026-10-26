@@ -976,6 +976,38 @@ test("a bot created now is marked split; a patch marks one from before the split
   assert.equal((await h.registry.list()).find((each) => each.id === ada.id)?.split, true);
 });
 
+test("at the gateway's start a bot from before the split without a SOUL.md is marked split, and one with an old soul is not", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  await h.service.create({ soul: SOUL, name: "Bob" });
+  const cy = await h.service.create({ soul: SOUL, name: "Cy" });
+  const file = join(h.dir, "bots.json");
+  const stored = JSON.parse(await readFile(file, "utf8")) as { bots: Array<Record<string, unknown>> };
+  const old = stored.bots.map(({ split: _split, ...each }) => each["id"] === cy.id ? { ...each, instructions: "You are Cy." } : each);
+  await writeFile(file, JSON.stringify({ ...stored, bots: old }));
+  await rm(join(h.botsDir, ada.id, "SOUL.md"));
+  await rm(join(h.botsDir, cy.id), { recursive: true });
+  await writeFile(join(h.botsDir, cy.id), "");
+  await h.service.migrate();
+  assert.deepEqual(
+    (await h.registry.list()).map((each) => [each.handle, each.split]),
+    [["ada", true], ["bob", undefined], ["cy", undefined]],
+    "Ada writes her first soul with the three files; Cy's old instructions still wait to become its soul",
+  );
+});
+
+test("a split marker that cannot be written is its own warning, and the start-up migration still answers", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  const file = join(h.dir, "bots.json");
+  const stored = JSON.parse(await readFile(file, "utf8")) as { bots: Array<Record<string, unknown>> };
+  await writeFile(file, JSON.stringify({ ...stored, bots: stored.bots.map(({ split: _split, ...each }) => each) }));
+  await rm(join(h.botsDir, ada.id, "SOUL.md"));
+  h.registry.update = (() => Promise.reject(new Error("disk full"))) as typeof h.registry.update;
+  assert.deepEqual(await h.service.migrate(), { souls: 0, cleared: 0 });
+  assert.equal(h.reports.filter((event) => event.action === "bot_split_mark_failed").length, 1);
+});
+
 test("bots from before SOUL.md get their instructions as SOUL.md once, then their conversation's instructions cleared, then the field dropped", async (t) => {
   const h = await harness(t);
   const chosen = join(h.dir, "workspace");

@@ -5,10 +5,11 @@
  *
  * The check reads each local bot's home. A recognized memory section is an issue that `--fix` moves to MEMORY.md; the
  * rest of a single-file soul needs judgement (a preference is not a rule), so the check names the command that asks the
- * bot to sort it itself, `hui bot split`, and fails until bots.json marks the bot `split` (every bot created since, and
- * each one `hui bot split` asked): a USER.md or MEMORY.md proves nothing, since `--fix` writes MEMORY.md itself. A bot
- * on a worker keeps its home there, and doctor runs offline: it names the command until the bot is marked and leaves the
- * files to that host. An archived bot is never asked, since it takes no messages.
+ * bot to sort it itself, `hui bot split`, and fails until bots.json marks the bot `split` (every bot created since, each
+ * one the gateway found without a SOUL.md at its start, and each one `hui bot split` asked): a USER.md or MEMORY.md
+ * proves nothing, since `--fix` writes MEMORY.md itself. A bot on a worker keeps its home there, and doctor runs offline:
+ * it names the command until the bot is marked and leaves the files to that host. An archived bot is never asked, since
+ * it takes no messages.
  */
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
