@@ -16,12 +16,13 @@ const event = (id: number, area: string, action: string, summary: string, rest: 
 test("Activity lists events newest first, expands to area, level, time, session and detail, says when it has none and forgets them after a gateway restart", { tags: ["PAGE-016"], platforms: ["web"] }, async ({ screen, hui }) => {
   const stream = screen.getByLabel("activity");
   const newer = event(2, "session", "settled", "Agent turn settled", { detail: "The newer event" });
-  const older = event(1, "runtime", "tool_start", "Tool started: read", { detailed: true, level: "warning", sessionId: "abcdefgh-1234", detail: "The older event" });
+  const older = event(1, "runtime", "tool_start", "Tool started: read", { timestamp: "unreadable", level: "warning", sessionId: "abcdefgh-1234", detail: "The older event" });
+  const oldest = event(0, "automation", "run", "Scheduled run started");
   const first = await hui.intercept("GET", /\/__hui\/observability$/u);
 
   await hui.open("/activity");
   await first.arrived();
-  await first.answer(snapshot([newer, older], []));
+  await first.answer(snapshot([newer, older, oldest], []));
   await expect(stream.getByText("Agent turn settled", { exact: true })).toBeVisible();
   expect((await stream.getByText("Agent turn settled", { exact: true }).boundingBox())!.y)
     .toBeLessThan((await stream.getByText("Tool started: read", { exact: true }).boundingBox())!.y);
@@ -33,6 +34,8 @@ test("Activity lists events newest first, expands to area, level, time, session 
   await expect(stream.getByText("Session abcdefgh-1234", { exact: true })).toBeVisible();
   await expect(stream.getByText("The older event", { exact: true })).toBeVisible();
   await expect(stream.getByText("The newer event", { exact: true })).toBeHidden();
+  await expect(stream.getByText("Scheduled run started", { exact: true })).toBeVisible();
+  await expect(stream.getByText("Unknown", { exact: true })).toBeVisible();
 
   const empty = await hui.intercept("GET", /\/__hui\/observability$/u);
   await hui.reload();

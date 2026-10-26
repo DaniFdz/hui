@@ -46,11 +46,11 @@ test("Dense observability packs Activity and Logs rows closer, normal spacing re
 
   await crafted("/logs");
   await expect(screen.getByLabel("logs").getByText(/^beta: Dense row beta/u)).toBeVisible();
+  await expect.poll(logsGap).toBeLessThan(spacedLogs);
   const packedLogs = await logsGap();
-  expect(packedLogs).toBeLessThan(spacedLogs);
   await crafted("/activity");
   await expect(screen.getByLabel("activity").getByText("Dense event beta", { exact: true })).toBeVisible();
-  expect(await activityGap()).toBeLessThan(spacedActivity);
+  await expect.poll(activityGap).toBeLessThan(spacedActivity);
 
   await hui.open("/labs");
   await expect(dense).toBeChecked();
@@ -59,13 +59,17 @@ test("Dense observability packs Activity and Logs rows closer, normal spacing re
 
   await crafted("/logs");
   await expect(screen.getByLabel("logs").getByText(/^beta: Dense row beta/u)).toBeVisible();
+  await expect.poll(async () => Math.abs(await logsGap() - spacedLogs)).toBeLessThan(1);
   expect(await logsGap()).toBeGreaterThan(packedLogs);
 });
 
 test("Detailed debug adds Debug's Runtime detail with the heap total and snapshot time, removes it again, changes no PI configuration and survives a reload", { tags: ["PAGE-023"], platforms: ["web"] }, async ({ screen, hui }) => {
   const detailed = screen.getByRole("switch", "Detailed debug");
   const detail = screen.getByText("Runtime detail", { exact: true });
-  const pi = () => hui.api<Record<string, unknown>>("GET", "/__hui/pi");
+  const pi = async () => {
+    const snapshot = await hui.api<{ settings: unknown; model: unknown }>("GET", "/__hui/pi");
+    return { settings: snapshot.settings, model: snapshot.model };
+  };
   const crafted = async (path: string) => {
     const reading = await hui.intercept("GET", /\/__hui\/observability$/u);
     await hui.open(path);

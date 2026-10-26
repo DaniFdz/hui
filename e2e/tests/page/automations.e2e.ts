@@ -32,12 +32,13 @@ const snapshot = { scheduler: { enabled: true, activeRuns: 2, nextWakeAt: "2026-
 test("Automations reads while loading, shows the Scheduler and the empty wording with nothing stored, and Tasks shows the in-flight count with its table and run history", { tags: ["PAGE-002"], platforms: ["web"] }, async ({ screen, hui }) => {
   const title = screen.getByTestId("page-title");
   const reading = screen.getByText(/^\s*Reading automation state…\s*$/u);
+  const empty = { scheduler: { enabled: true, activeRuns: 0, nextWakeAt: null }, tasks: [], runs: [] };
   const first = await hui.intercept("GET", /\/__hui\/automation$/u);
 
   await hui.open("/cron");
   await first.arrived();
   await expect(reading).toBeVisible();
-  await first.deliver();
+  await first.answer(JSON.stringify(empty));
   await expect(title).toHaveText("Automations");
   await expect(screen.getByText("Scheduler", { exact: true })).toBeVisible();
   await expect(screen.getByText("Next wake", { exact: true })).toBeVisible();
@@ -47,7 +48,10 @@ test("Automations reads while loading, shows the Scheduler and the empty wording
   await expect(screen.getByText("No runs recorded yet.", { exact: true })).toBeVisible();
   await expect(screen.getByText("No runs", { exact: true })).toBeVisible();
 
+  const emptyAgain = await hui.intercept("GET", /\/__hui\/automation$/u);
   await hui.open("/tasks");
+  await emptyAgain.arrived();
+  await emptyAgain.answer(JSON.stringify(empty));
   await expect(title).toHaveText("Tasks");
   await expect(screen.getByText("No tasks configured.", { exact: true })).toBeVisible();
 
