@@ -448,6 +448,7 @@ export class BotService {
           ...(input.voice ? { voice: input.voice } : {}),
           ...(input.hidden ? { hidden: true } : {}),
           ...mirrored(access ?? NOTHING_OFF),
+          split: true,
           sessionId: session.id,
           createdAt: now,
           updatedAt: now,
@@ -1323,7 +1324,7 @@ export class BotService {
     // A worker's bot: what the worker last reported, never a request to it.
     const memory = reference ? await Promise.resolve().then(() => this.#ports(bot).memory.status(reference)).catch(() => undefined) : undefined;
     const lastMessage = await this.#lastMessage(bot, record);
-    const { worker, ...stored } = bot;
+    const { worker, split: _split, ...stored } = bot;
     const soul = await this.#hasSoul(bot, record);
     return {
       ...stored,
@@ -1868,6 +1869,7 @@ function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updat
     if (patch.hidden) next.hidden = true;
     else delete next.hidden;
   }
+  if (patch.split) next.split = true;
   return next;
 }
 

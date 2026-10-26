@@ -144,6 +144,7 @@ export const BotPatch = Type.Object({
   ...BotInputFields,
   avatar: Type.Optional(Type.Union([BotAvatarPatch, Type.Null()])),
   voice: Type.Optional(Type.Union([BotVoicePatch, Type.Null()])),
+  split: Type.Optional(Type.Literal(true)),
 }, { $id: "BotPatch" });
 export type BotPatch = Static<typeof BotPatch>;
 

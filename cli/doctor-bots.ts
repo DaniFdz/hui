@@ -5,8 +5,10 @@
  *
  * The check reads each local bot's home. A recognized memory section is an issue that `--fix` moves to MEMORY.md; the
  * rest of a single-file soul needs judgement (a preference is not a rule), so the check names the command that asks the
- * bot to sort it itself: `hui bot split`. A bot on a worker keeps its home there, and doctor runs offline: it names the
- * command and leaves the files to that host.
+ * bot to sort it itself, `hui bot split`, and fails until bots.json marks the bot `split` (every bot created since, and
+ * each one `hui bot split` asked): a USER.md or MEMORY.md proves nothing, since `--fix` writes MEMORY.md itself. A bot
+ * on a worker keeps its home there, and doctor runs offline: it names the command until the bot is marked and leaves the
+ * files to that host. An archived bot is never asked, since it takes no messages.
  */
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -17,9 +19,7 @@ import { readHomeFile, writeHomeFile } from "../server/bots/durable.ts";
 import { splitKnownSection } from "../server/bots/templates/mapping.ts";
 import type { DoctorCheck, DoctorItem, DoctorResult } from "./doctor-types.ts";
 
-type StoredBot = { id: string; handle: string; name: string; worker?: string };
-
-type BotHome = { bot: StoredBot; soul: string | undefined; user: string | undefined; memory: string | undefined };
+type StoredBot = { id: string; handle: string; name: string; worker?: string; archived?: true; split?: true };
 
 export type BotsDoctorOptions = {
   /** `bots.json`: the registry the gateway writes. */
@@ -41,24 +41,19 @@ async function readBots(file: string): Promise<{ bots: StoredBot[]; problem?: st
     const parsed = JSON.parse(source) as { bots?: unknown };
     const bots = (Array.isArray(parsed.bots) ? parsed.bots : []).flatMap((raw): StoredBot[] => {
       if (typeof raw !== "object" || raw === null) return [];
-      const { id, handle, name, worker } = raw as Record<string, unknown>;
+      const { id, handle, name, worker, archived, split } = raw as Record<string, unknown>;
       if (typeof id !== "string" || typeof handle !== "string" || typeof name !== "string") return [];
-      return [{ id, handle, name, ...(typeof worker === "string" && worker ? { worker } : {}) }];
+      return [{
+        id, handle, name,
+        ...(typeof worker === "string" && worker ? { worker } : {}),
+        ...(archived === true ? { archived: true as const } : {}),
+        ...(split === true ? { split: true as const } : {}),
+      }];
     });
     return { bots };
   } catch {
     return { bots: [], problem: "bots.json is not valid JSON: fix or move it, then run hui doctor again." };
   }
-}
-
-async function readHome(bot: StoredBot, dir: string): Promise<BotHome> {
-  const home = (file: keyof typeof BOT_FILE_NAMES) => join(dir, bot.id, BOT_FILE_NAMES[file]);
-  return {
-    bot,
-    soul: await readHomeFile(home("soul")),
-    user: await readHomeFile(home("user")),
-    memory: await readHomeFile(home("memory")),
-  };
 }
 
 export function createBotsCheck(options: BotsDoctorOptions = {}): DoctorCheck {
@@ -68,31 +63,35 @@ export function createBotsCheck(options: BotsDoctorOptions = {}): DoctorCheck {
   async function inspect(): Promise<DoctorResult> {
     const { bots, problem } = await readBots(file);
     if (problem) {
-      return { id: "bots", title: "Bot files", status: "ok", summary: "bots.json could not be read", items: [], notes: [problem] };
+      return { id: "bots", title: "Bot files", status: "issue", summary: "bots.json could not be read", items: [], notes: [problem] };
     }
     const items: DoctorItem[] = [];
     for (const bot of bots) {
+      const exempt = bot.split || bot.archived;
       if (bot.worker) {
-        items.push({ id: bot.id, label: `@${bot.handle}`, status: "blocked", detail: `its home is on ${bot.worker}: run hui bot split ${bot.handle} once it is connected, so it sorts its own files` });
+        if (!exempt) items.push({ id: bot.id, label: `@${bot.handle}`, status: "blocked", detail: `its home is on ${bot.worker}: run hui bot split ${bot.handle} once it is connected, so it sorts its own files` });
         continue;
       }
-      const home = await readHome(bot, dir);
+      const soul = await readHomeFile(join(dir, bot.id, BOT_FILE_NAMES.soul));
       // A bot still in its first conversation has nothing to split yet.
-      if (home.soul === undefined) continue;
-      if (splitKnownSection(home.soul).known) {
+      if (soul === undefined) continue;
+      if (splitKnownSection(soul).known) {
         items.push({ id: bot.id, label: `@${bot.handle}`, status: "issue", detail: `SOUL.md still holds a "What you already know" section: --fix moves it to MEMORY.md` });
-      } else if (home.user === undefined && home.memory === undefined) {
-        items.push({ id: bot.id, label: `@${bot.handle}`, status: "blocked", detail: `one SOUL.md: run hui bot split ${bot.handle} to have it sort its own files` });
+      } else if (!exempt) {
+        items.push({ id: bot.id, label: `@${bot.handle}`, status: "blocked", detail: `its SOUL.md is from before the split: run hui bot split ${bot.handle} to have it sort its own files` });
       }
     }
     const issues = items.filter((item) => item.status === "issue").length;
+    const splits = items.length - issues;
+    const count = (bots: number, verb: string) => `${bots} bot${bots === 1 ? "" : "s"} ${verb}${bots === 1 ? "s" : ""}`;
     return {
       id: "bots",
       title: "Bot files",
-      status: issues ? "issue" : "ok",
-      summary: issues
-        ? `${issues} bot${issues === 1 ? "" : "s"} keep${issues === 1 ? "s" : ""} an old single-file SOUL.md`
-        : "No bot keeps a memory section in its SOUL.md",
+      status: items.length ? "issue" : "ok",
+      summary: [
+        ...(issues ? [`${count(issues, "keep")} a memory section in SOUL.md`] : []),
+        ...(splits ? [`${count(splits, "need")} hui bot split`] : []),
+      ].join("; ") || "No bot keeps a memory section in SOUL.md or needs hui bot split",
       items,
       notes: ["A bot's split needs judgement: hui bot split <bot> sends it the three files, what belongs in each, and asks it to sort its own."],
     };
@@ -127,12 +126,11 @@ export function createBotsCheck(options: BotsDoctorOptions = {}): DoctorCheck {
     const after = await inspect();
     if (!done.length) return after;
     const failed = done.some((item) => item.status === "failed");
-    const remaining = after.items.filter((item) => !done.some((fixed) => fixed.id === item.id));
     return {
       ...after,
-      status: failed ? "issue" : "fixed",
+      status: after.status === "issue" ? "issue" : "fixed",
       summary: failed ? "Something could not be moved: see the failed items" : after.summary,
-      items: [...done, ...remaining],
+      items: [...done, ...after.items.filter((item) => item.status === "blocked" || !done.some((each) => each.id === item.id))],
       notes: [...after.notes, ...(done.some((item) => item.status === "fixed") ? ["Start the gateway, then run hui bot split <bot> for each bot listed, so each sorts what is left itself."] : [])],
     };
   }

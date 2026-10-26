@@ -101,6 +101,10 @@ test("input is validated at the boundary: limits, formats, unknown fields and on
 
 test("a patch carries only what changes and may clear optional text and avatar keys", () => {
   assert.throws(() => normalizeBotPatch({}), /Nothing to change/u);
+  assert.deepEqual(normalizeBotPatch({ split: true }), { split: true });
+  assert.throws(() => normalizeBotPatch({ split: false }), /split can only be true/u, "a split bot stays split");
+  assert.throws(() => normalizeBotInput({ name: "Ada", split: true }), /split from the start/u);
+  assert.equal(parseBotRecord({ ...bot("b1", "ada"), split: true })?.split, true, "bots.json keeps the marker");
   assert.deepEqual(normalizeBotPatch({ title: "", memoryModel: "", memoryThinking: "" }), { title: "", memoryModel: "", memoryThinking: "" });
   assert.throws(() => normalizeBotPatch({ soul: "x" }), /PUT \/__hui\/bots\/:id\/soul/u, "SOUL.md has its own route");
   assert.throws(() => normalizeBotPatch({ instructions: "" }), /no instructions any more/u);

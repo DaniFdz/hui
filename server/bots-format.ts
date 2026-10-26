@@ -131,6 +131,9 @@ export type BotRecord = {
   hidden?: boolean;
   /** Archived bots keep their chat and memory; their routines are disabled. */
   archived?: boolean;
+  /** Its prompt is SOUL.md, USER.md and MEMORY.md: it was created with them, or `hui bot split` asked it to sort an
+   * older single-file soul. Absent on records from before, which `hui doctor` lists until they are split. */
+  split?: true;
   /**
    * Tools and skills the operator turned off in its chat; absent: none. Everything else a session in its directory
    * gets is on, tools and skills that appear later included. A mirror: the chat's `hui.bot` document holds the lists,

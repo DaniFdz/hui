@@ -12,7 +12,7 @@ afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-async function fixture(bots: { id: string; handle: string; worker?: string }[], souls: Record<string, string> = {}) {
+async function fixture(bots: { id: string; handle: string; worker?: string; split?: true; archived?: true }[], souls: Record<string, string> = {}) {
   const root = await mkdtemp(join(tmpdir(), "hui-doctor-bots-"));
   dirs.push(root);
   const file = join(root, "bots.json");
@@ -44,7 +44,7 @@ test("a soul with an old memory section is an issue; a single-file soul and a wo
 });
 
 test("--fix moves the section to MEMORY.md, keeps the persona, appends to what it already keeps, and is idempotent", async () => {
-  const { check, homes } = await fixture([{ id: "ada", handle: "ada" }], { ada: "I am Ada.\n\n## What you already know\n\n- Madrid\n\n## How I work\n\nBriefly." });
+  const { check, homes } = await fixture([{ id: "ada", handle: "ada", split: true }], { ada: "I am Ada.\n\n## What you already know\n\n- Madrid\n\n## How I work\n\nBriefly." });
   await writeFile(join(homes, "ada", "MEMORY.md"), "# MEMORY.md\n\n- HUI");
   assert.ok(check.fix);
   const fixed = await check.fix();
@@ -56,6 +56,32 @@ test("--fix moves the section to MEMORY.md, keeps the persona, appends to what i
   const again = await check.fix();
   assert.equal(again.status, "ok", "nothing left to move");
   assert.deepEqual(again.items, []);
+});
+
+test("a bot bots.json marks split is never asked again, on a worker too, and an archived bot is never asked", async () => {
+  const { check } = await fixture(
+    [{ id: "ada", handle: "ada", split: true }, { id: "bob", handle: "bob", archived: true }, { id: "cee", handle: "cee", worker: "w-1", split: true }, { id: "dee", handle: "dee", worker: "w-1", archived: true }],
+    { ada: "I am Ada.", bob: "I am Bob." },
+  );
+  const result = await check.inspect();
+  assert.deepEqual([result.status, result.items], ["ok", []]);
+});
+
+test("a bots.json that cannot be read fails the check", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hui-doctor-bots-"));
+  dirs.push(root);
+  await writeFile(join(root, "bots.json"), "{");
+  const result = await createBotsCheck({ file: join(root, "bots.json"), dir: join(root, "bots") }).inspect();
+  assert.deepEqual([result.status, result.summary], ["issue", "bots.json could not be read"]);
+});
+
+test("a bot that still needs hui bot split fails the check, also once --fix has moved every memory section", async () => {
+  const { check } = await fixture([{ id: "ada", handle: "ada" }, { id: "bob", handle: "bob" }], { ada: "I am Ada.\n\n## What you already know\n\n- Madrid", bob: "I am Bob, brief." });
+  assert.ok(check.fix);
+  const fixed = await check.fix();
+  assert.deepEqual([fixed.status, fixed.items.map((item) => [item.id, item.status])], ["issue", [["ada", "fixed"], ["ada", "blocked"], ["bob", "blocked"]]], "the MEMORY.md --fix wrote is no split");
+  const after = await check.inspect();
+  assert.deepEqual([after.status, after.summary], ["issue", "2 bots need hui bot split"]);
 });
 
 test("--fix keeps the rest of a SOUL.md whole, however much longer than a home read it is", async () => {

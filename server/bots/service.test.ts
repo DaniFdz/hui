@@ -963,6 +963,19 @@ test("the bot list reads SOUL.md again only after a settled turn, HUI's own writ
   assert.equal((await h.service.get(bot.id)).soul, false);
 });
 
+test("a bot created now is marked split; a patch marks one from before the split", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  assert.equal((await h.registry.list()).find((each) => each.id === ada.id)?.split, true, "its prompt is the three files from the start");
+  assert.equal("split" in ada, false, "the view does not carry it");
+  const file = join(h.dir, "bots.json");
+  const stored = JSON.parse(await readFile(file, "utf8")) as { bots: Array<Record<string, unknown>> };
+  await writeFile(file, JSON.stringify({ ...stored, bots: stored.bots.map(({ split: _split, ...each }) => each) }));
+  assert.equal((await h.registry.list()).find((each) => each.id === ada.id)?.split, undefined, "as a HUI from before the split left it");
+  await h.service.update(ada.id, { split: true });
+  assert.equal((await h.registry.list()).find((each) => each.id === ada.id)?.split, true);
+});
+
 test("bots from before SOUL.md get their instructions as SOUL.md once, then their conversation's instructions cleared, then the field dropped", async (t) => {
   const h = await harness(t);
   const chosen = join(h.dir, "workspace");

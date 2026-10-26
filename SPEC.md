@@ -2096,8 +2096,11 @@ MEMORY.md, keeping the rest (doctor runs with the gateway stopped, so it never
 starts a turn). The judgement part is the bot's, because a preference is not a
 rule: `hui bot split <bot>` sends it the three files and what belongs in each,
 and it sorts its own with its gated tools. A bot on a worker is named, not read:
-its home is there. Existing records, routes, skills, facts and OptChat are
-unchanged; no `hui doctor` migration is needed beyond this check.
+its home is there. `bots.json` marks a bot `split` when it is created and once
+`hui bot split` has asked it, so the check fails only while a bot with an older
+soul has not been asked; an archived bot is never asked. Records gain only that
+marker; routes, skills, facts and OptChat are unchanged, and no `hui doctor`
+migration is needed beyond this check.
 
 This supersedes the *SOUL.md only* part of [Bots write their own
 SOUL.md](#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06) and

@@ -1119,7 +1119,7 @@ request expires after 15 minutes.
 
 `hui doctor` reports state that an upgraded HUI needs changed, and
 `hui doctor --fix` changes it. The report only reads, so it is safe while the
-gateway runs. It exits 0 when nothing is left to change and 1 otherwise;
+gateway runs. It exits 0 when nothing is left for `--fix` or for you to do, and 1 otherwise;
 `--json` prints the same report for scripts.
 
 ```sh
@@ -1175,8 +1175,12 @@ know*. It now has SOUL.md (who it is), USER.md (what it knows about you), MEMORY
 (what it keeps) and an optional BOOTSTRAP.md. `hui doctor` lists every bot whose
 SOUL.md still holds a memory section; `--fix` moves that section into MEMORY.md and
 keeps the rest as its persona (a soul that was only memories goes, so the bot has
-its first conversation again). It also lists each bot that has not been split yet,
-because the rest needs judgement: a preference is not a rule.
+its first conversation again). It also lists each bot with an older single-file soul,
+because the rest needs judgement: a preference is not a rule. Until each listed bot
+is split, the check fails and `hui doctor` exits with status 1. A bot counts as split
+once `hui bot split` has asked it, even one you split by hand before: its files can't
+show it, since `--fix` writes MEMORY.md itself. A bot created now is split from the
+start, and an archived one is never listed.
 
 ```sh
 hui gateway start
@@ -1186,5 +1190,7 @@ hui bot split ada
 `hui bot split` sends the bot a message naming the three files and what belongs in
 each; the bot moves what it knows with `update_user` and `update_memory`, rewrites
 its soul with `write_soul`, and lists what it moved. It changes nothing else, and it
-never invents a preference. A bot on a worker keeps its home there: run the same
-command once the worker is connected (doctor cannot read a worker's files offline).
+never invents a preference. Once its message is accepted, HUI marks the bot split in
+`bots.json`, so doctor stops listing it. A bot on a worker keeps its home there, and
+doctor cannot read a worker's files offline: it lists the bot until you run the same
+command once the worker is connected.

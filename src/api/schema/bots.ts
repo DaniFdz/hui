@@ -55,7 +55,7 @@ export type BotMessageRequest = { "text"?: string; "attachments"?: Array<unknown
 
 export type BotMessageResult = (BotDelivery) | (BotReply);
 
-export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); };
+export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); "split"?: true; };
 
 export type BotQuestion = { "id": string; "method": "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire"; "title": string; "message"?: string; "options"?: Array<string>; "placeholder"?: string; "prefill"?: string; };
 

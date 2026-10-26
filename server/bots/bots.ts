@@ -179,6 +179,7 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
     ...(voice ? { voice } : {}),
     ...(raw["hidden"] === true ? { hidden: true } : {}),
     ...(raw["archived"] === true ? { archived: true } : {}),
+    ...(raw["split"] === true ? { split: true } : {}),
     ...(disabledTools.length ? { disabledTools } : {}),
     ...(disabledSkills.length ? { disabledSkills } : {}),
     sessionId, createdAt, updatedAt,
@@ -354,7 +355,7 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 
 const INPUT_KEYS = new Set([
   "name", "handle", "title", "description", "tagging", "soul", "user", "memory", "bootstrap", "cwd", "worker", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice",
-  "hidden", "disabledTools", "disabledSkills",
+  "hidden", "disabledTools", "disabledSkills", "split",
 ]);
 const LABELS: Record<string, string> = {
   name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", soul: "SOUL.md",
@@ -536,6 +537,7 @@ function cwdField(raw: unknown): string {
  * service. */
 export function normalizeBotInput(value: unknown): BotInput & { name: string } {
   const input = body(value, "A bot");
+  if ("split" in input) throw new BotInputError("A new bot is split from the start: split is only for a change.");
   // Without a name the bot is "New Bot" until its first conversation names it (set_profile). Where it runs is chosen
   // here, once; a patch refuses it.
   const { soul: rawSoul, worker: rawWorker, user: rawUser, memory: rawMemory, bootstrap: rawBootstrap, ...fields } = "name" in input ? input : { ...input, name: NEW_BOT_NAME };
@@ -609,6 +611,10 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   // Whole lists: [] turns everything back on.
   if ("disabledTools" in input) patch.disabledTools = toolsField(input["disabledTools"]);
   if ("disabledSkills" in input) patch.disabledSkills = skillsField(input["disabledSkills"]);
+  if ("split" in input) {
+    if (input["split"] !== true) throw new BotInputError("split can only be true: a bot that was asked to sort its files stays split.");
+    patch.split = true;
+  }
   return patch;
 }
 

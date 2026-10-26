@@ -2452,6 +2452,10 @@
               "type": "null"
             }
           ]
+        },
+        "split": {
+          "type": "boolean",
+          "const": true
         }
       }
     },

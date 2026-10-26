@@ -541,6 +541,11 @@ test("history prints the status and view, zooms a line and saves the browse page
   assert.match(String(sent?.body?.["text"]), /^\[HUI bot split\] HUI now keeps your prompt in three files/u);
   assert.match(String(sent?.body?.["text"]), /update_user/u);
   assert.match(String(sent?.body?.["text"]), /write_soul/u);
+  assert.deepEqual(gateway.calls.at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { split: true } }, "then marks it split, so hui doctor stops listing it");
+  gateway.replies.push({ status: "failed", error: "the model is down" });
+  const before = gateway.calls.length;
+  assert.equal(await botCommand(gateway.base, "split", ["ada"], { wait: true }, terminal().io), 1);
+  assert.equal(gateway.calls.slice(before).some((call) => call.method === "PATCH"), false, "a split whose turn failed stays unmarked");
 });
 
 test("routines are the bot's Automation tasks: list, add on a schedule, run and remove by name", async (t) => {

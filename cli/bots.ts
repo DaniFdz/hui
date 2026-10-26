@@ -367,7 +367,9 @@ export function splitMessage(): string {
 
 /** `hui bot split`: tells the bot to move its old SOUL.md into SOUL.md, USER.md and MEMORY.md. */
 async function split(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
-  return send(base, bot, splitMessage(), flags, io);
+  const code = await send(base, bot, splitMessage(), flags, io);
+  if (code !== 1) await request(base, `/__hui/bots/${encodeURIComponent(bot.id)}`, { method: "PATCH", body: { split: true } });
+  return code;
 }
 
 type ChatEntry = { kind: string; role?: string; text?: string; id?: string; name?: string };
