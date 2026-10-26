@@ -594,8 +594,15 @@ the session switches back to its own model; utility is a
 cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 
 ```json
-{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna" } }
+{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
 ```
+
+The same block carries `routes`: the named models a `sessions_spawn` call can pass
+as `route`. An entry is `{ name, description, model, thinking? }`; a name must be
+one word of letters, digits, `_`, `.` or `-`, and a route without a usable name or
+canonical model is dropped, a repeated name keeps the first, and an unknown
+`thinking` level falls back to the route having none. Only `name` and
+`description` are shown to a session; its model id stays in HUI.
 
 It also includes `calls: { voice }` (Settings → Models → Calls, HUI-18): the GPT-Live
 voice of a bot without one of its own ([GPT-Live calls](#gpt-live-calls)).
@@ -936,7 +943,7 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking and a bounded run timeout; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids |
+| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking and a bounded run timeout; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming close matches or the configured route names (an unavailable or empty catalog does not block); returns immediately with task and child session ids |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |

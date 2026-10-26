@@ -45,7 +45,7 @@ import type {
 import { RuntimeOutputError, RuntimeUnreachableError } from "./runtimes/types.ts";
 import { recordDiagnosticEvent } from "./observability.ts";
 import { readHuiSettings } from "./hui-settings.ts";
-import type { Settings } from "../src/lib/settings.ts";
+import type { Settings, SubagentRoute } from "../src/lib/settings.ts";
 
 export type SessionStatus = "idle" | "running" | "waiting" | "starting" | "error" | "reconnecting" | "disconnected";
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
@@ -659,6 +659,11 @@ export class LiveSessions {
       throw this.#unavailable(live);
     }
     return live.runtime.listModels ? await live.runtime.listModels() : [];
+  }
+
+  /** The operator's named subagent routes, read fresh so a route added in Settings works without a restart. */
+  async subagentRoutes(): Promise<readonly SubagentRoute[]> {
+    return (await this.#readSettings()).models.routes;
   }
 
   async commands(id: string): Promise<readonly RuntimeCommand[]> {

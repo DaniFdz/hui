@@ -16,7 +16,7 @@ import {
 } from "./sessions.ts";
 import type { TranscriptEntry } from "./runtimes/types.ts";
 import { formatSubagentCompletionEvent, SUBAGENT_COMPLETION_MARKER, type SubagentCompletionItem } from "../src/lib/subagent-completion.ts";
-
+import { SUBAGENT_THINKING_LEVELS, type SubagentRoute } from "../src/lib/settings.ts";
 const MAX_ACTIVE_SUBAGENTS = 8;
 const READY_TIMEOUT_MS = 30_000;
 const DELIVERY_RETRY_MS = 5_000;
@@ -26,7 +26,7 @@ const OVERSIZED_HISTORY_ENTRY: TranscriptEntry = {
   message: "A transcript entry was omitted because it exceeds the session history limit.",
 };
 const ACTIVE_STATUSES = new Set<SubagentStatus>(["starting", "running"]);
-const THINKING_LEVELS = new Set(["off", "minimal", "low", "medium", "high", "xhigh"]);
+const THINKING_LEVELS = new Set<string>(SUBAGENT_THINKING_LEVELS);
 
 type SessionAccess = Pick<
   LiveSessions,
@@ -36,6 +36,7 @@ type SessionAccess = Pick<
   | "ensure"
   | "followUp"
   | "models"
+  | "subagentRoutes"
   | "notifySnapshot"
   | "prompt"
   | "release"
@@ -247,15 +248,22 @@ export class SubagentService {
     const task = text(params, "task", 20_000)!;
     const label = text(params, "label", 120, true);
     const model = text(params, "model", 200, true);
+    const route = text(params, "route", 40, true);
     const thinking = text(params, "thinking", 16, true);
     const runTimeoutSeconds = integer(params, "runTimeoutSeconds", 0, 0, 3_600);
+    if (route && model) {
+      throw new AgentToolInputError("Pass route or model, not both: a route already names a model.");
+    }
     if (model && !/^[^/\s]+\/\S+$/.test(model)) {
       throw new AgentToolInputError("model must use provider/id format.");
     }
     if (thinking && !THINKING_LEVELS.has(thinking)) {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
-    if (model) await this.#assertModelAvailable(callerId, model);
+    const picked = route ? await this.#resolveRoute(route) : undefined;
+    const childModel = picked?.model ?? model;
+    const childThinking = thinking ?? picked?.thinking;
+    if (childModel) await this.#assertModelAvailable(callerId, childModel);
     const taskId = this.uuid();
     const sessionId = this.uuid();
     const now = this.now().toISOString();
@@ -280,8 +288,8 @@ export class SubagentService {
         // A remote session's children run on the same worker.
         ...(caller.worker ? { worker: caller.worker } : {}),
         tool: caller.tool,
-        model: model ?? caller.model,
-        thinking: thinking ?? caller.thinking,
+        model: childModel ?? caller.model,
+        thinking: childThinking ?? caller.thinking,
         parentId: caller.id,
         subagent: {
           taskId,
@@ -326,6 +334,20 @@ export class SubagentService {
       childSessionKey: sessionId,
       label: child!.title,
     };
+  }
+
+  /** A route name resolves to what the child runs on. Only names reach the model, so an unknown one lists the
+   * configured names instead of suggesting a model id. */
+  async #resolveRoute(name: string): Promise<SubagentRoute> {
+    const routes = await this.sessions.subagentRoutes().catch(() => []);
+    const match = routes.find((entry) => entry.name === name);
+    if (match) return match;
+    if (!routes.length) {
+      throw new AgentToolInputError(
+        `Unknown route: ${name}. No subagent routes are configured yet; add one in HUI's Settings → Models → Subagent routes.`,
+      );
+    }
+    throw new AgentToolInputError(`Unknown route: ${name}. Configured routes are ${routes.map((entry) => entry.name).join(", ")}.`);
   }
 
   /** Reject an unknown model before a child exists, so the caller can retry in

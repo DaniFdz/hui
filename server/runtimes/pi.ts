@@ -1383,6 +1383,7 @@ async function startPi(options: {
   const env = {
     ...piEnvironment(), ...agentToolEnv, PI_CODING_AGENT_DIR: agentDir,
     HUI_DISABLED_SKILLS: JSON.stringify(disabledSkills),
+    HUI_MODEL_ROUTES: JSON.stringify((huiSettings?.models.routes ?? []).map(({ name, description }) => ({ name, description }))),
     ...(hostLaunch ? { HUI_WORKER_BROKER: "1", HUI_WORKER_FALLBACK_AUTH: hostLaunch.fallbackAuth, HUI_PROVIDERS_DIR: PROVIDERS_DIR, HUI_WORKER_SECRETS: JSON.stringify(secretEnv()) } : {}),
   };
   // The launch travels in the environment, not argv: endpoint security agents

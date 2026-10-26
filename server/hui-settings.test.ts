@@ -23,6 +23,7 @@ test("missing HUI settings use defaults", async () => {
     primary: "",
     fallback: "",
     utility: "",
+    routes: [],
   });
 });
 
@@ -40,5 +41,26 @@ test("normalizes HUI-owned model routes", async () => {
     primary: "openai/gpt-5.6-luna",
     fallback: "anthropic/claude-haiku-4-5",
     utility: "",
+    routes: [],
   });
+});
+
+test("keeps the routes a spawn can name and drops the ones it cannot", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "hui-settings-"));
+  const path = join(directory, "settings.json");
+  await writeFile(path, JSON.stringify({
+    models: {
+      routes: [
+        { name: "fast", description: "Cheap and quick.", model: "openai/gpt-5.6-luna", thinking: "low" },
+        { name: "deep", model: "anthropic/claude-opus-5-5", thinking: "max" },
+        { name: "fast", description: "A repeated name.", model: "openai/gpt-5.6-luna" },
+        { name: "no model", description: "Cannot be spawned by name.", model: "openai/gpt-5.6-luna" },
+        { name: "broken", model: "claude-opus-5-5" },
+      ],
+    },
+  }));
+  assert.deepEqual((await readHuiSettingsAt(path)).models.routes, [
+    { name: "fast", description: "Cheap and quick.", model: "openai/gpt-5.6-luna", thinking: "low" },
+    { name: "deep", description: "", model: "anthropic/claude-opus-5-5" },
+  ]);
 });

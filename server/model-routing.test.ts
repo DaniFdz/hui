@@ -96,7 +96,7 @@ test("session naming degrades without a utility model or a usable answer", async
 });
 
 test("btw uses bounded reference context and the utility model", async () => {
-  const settings = { ...DEFAULT_SETTINGS, models: { primary: "strong/main", fallback: "", utility: "fast/tiny" } };
+  const settings = { ...DEFAULT_SETTINGS, models: { primary: "strong/main", fallback: "", utility: "fast/tiny", routes: [] } };
   let prompt = "";
   const result = await answerSideQuestion({
     cwd: "/tmp",
@@ -166,7 +166,7 @@ test("worktree name suggestion uses the utility model with bounded task context"
 });
 
 test("a side question without any configured model asks for a utility model", async () => {
-  const settings = { ...DEFAULT_SETTINGS, models: { primary: "", fallback: "", utility: "" } };
+  const settings = { ...DEFAULT_SETTINGS, models: { primary: "", fallback: "", utility: "", routes: [] } };
   await assert.rejects(answerSideQuestion({ cwd: "/tmp", question: "why", transcript: [], settings,
     run: async () => { throw new Error("no model must not reach PI"); } }), /Choose a utility model/);
 });

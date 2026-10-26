@@ -11,10 +11,10 @@
  */
 import { DefaultResourceLoader, type BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import { defineExtension, section, type ConversationId, type PromptInput } from "@earendil-works/pi-durable";
-import type { Settings } from "../../src/lib/settings.ts";
+import type { Settings, SubagentRoute } from "../../src/lib/settings.ts";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../bundled-skills.ts";
 import { createPolicySettingsManager } from "./resource-policy.ts";
-import { HUI_DEFAULT_PROMPT } from "./hui-prompt.ts";
+import { HUI_DEFAULT_PROMPT, routeGuidelines } from "./hui-prompt.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import { BOT_TOOL_CONTRIBUTIONS, type BotSkillRef } from "./durable-bots.ts";
@@ -22,7 +22,7 @@ import { BOT_ACCESS_CONTRIBUTIONS, botSkills, botSkillsPrompt, LOAD_SKILL_TOOL }
 import { BOT_ROUTINES_CONTRIBUTION, ROUTINES_TOOL } from "./durable-bot-routines.ts";
 import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
-export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins">;
+export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins" | "models">;
 
 /** What a conversation's PI extensions add: their tools' snippets, and the prompt `before_agent_start` gave the run. */
 export type PromptExtras = { readonly contributions: Record<string, Contribution>; readonly run?: RunPrompt };
@@ -54,19 +54,24 @@ const SECTION_KEYS = [
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
 /** Same text as the PI worker's `huiPromptExtension`. */
-export function huiToolSections(selectedTools: readonly string[], contributions: Record<string, Contribution>): Record<string, string> {
+export function huiToolSections(
+  selectedTools: readonly string[],
+  contributions: Record<string, Contribution>,
+  routes: readonly Pick<SubagentRoute, "name" | "description">[] = [],
+): Record<string, string> {
   const activeTools = selectedTools.map((name) => {
     const snippet = contributions[name]?.snippet;
     return `- ${name}${snippet ? `: ${snippet}` : ""}`;
   }).join("\n");
   const guidelines = [...new Set(selectedTools.flatMap((name) => contributions[name]?.guidelines ?? []))]
     .map((line) => `- ${line}`).join("\n");
+  const guidance = [guidelines, routeGuidelines(routes)].filter(Boolean).join("\n\n");
   return {
     hui_presentation: HUI_PRESENTATION_PROMPT,
     hui_tools: activeTools
       ? `Active callable tools for this turn (PI provides their full schemas separately):\n${activeTools}`
       : "No callable tools are active for this turn.",
-    ...(guidelines ? { hui_tool_guidelines: guidelines } : {}),
+    ...(guidance ? { hui_tool_guidelines: guidance } : {}),
   };
 }
 
@@ -180,7 +185,7 @@ export class DurablePrompt {
       ...(custom ? { customPrompt: custom } : {}),
       selectedTools: [...selectedTools], toolSnippets, toolGuidelines,
       ...(append ? { appendSystemPrompt: append } : {}),
-      sections: { ...huiToolSections(selectedTools, contributions), ...(own ? { skills: own } : {}) },
+      sections: { ...huiToolSections(selectedTools, contributions, (await this.#readSettings()).models.routes), ...(own ? { skills: own } : {}) },
       cwd,
       contextFiles: loader.getAgentsFiles().agentsFiles,
       skills: own ? [] : skills,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test, vi } from "vitest";
 
 import { LiveSessions, type SessionStreamMessage } from "./live-sessions.ts";
+import { DEFAULT_SETTINGS, type SubagentRoute } from "../src/lib/settings.ts";
 import type { SessionRecord } from "./sessions.ts";
 import { SubagentService } from "./subagents.ts";
 import { workers, type RemoteSessionSink } from "./workers.ts";
@@ -136,7 +137,7 @@ class CoordinatedSession implements RuntimeSession {
 
 function harness(
   initial: SessionRecord[],
-  options: { manualSessionId?: string; ids?: string[] } = {},
+  options: { manualSessionId?: string; ids?: string[]; routes?: readonly SubagentRoute[] } = {},
 ) {
   let records = [...initial];
   const sessions = new Map<string, CoordinatedSession>();
@@ -160,7 +161,10 @@ function harness(
     records = [...mutate(records)];
     return records;
   };
-  const manager = new LiveSessions(runtime, update);
+  const manager = new LiveSessions(runtime, update, async () => ({
+    ...DEFAULT_SETTINGS,
+    models: { ...DEFAULT_SETTINGS.models, routes: options.routes ?? [] },
+  }));
   const ids = [...(options.ids ?? ["task-1", "child-1"])];
   const service = new SubagentService(
     manager,
@@ -262,6 +266,52 @@ test("spawn rejects a model missing from the caller's catalog before creating a 
   assert.equal(state.records().filter((item) => item.parentId === parent.id).length, 1);
   assert.equal((await spawn("gateway/anthropic/claude-opus") as { status: string }).status, "accepted");
 
+  state.service.dispose();
+  state.manager.disposeAll();
+});
+
+test("spawn resolves a route to its model and thinking", async () => {
+  const parent = record("parent", { model: "gateway/parent", thinking: "medium" });
+  const state = harness([parent], {
+    routes: [
+      { name: "fast", description: "Quick lookups.", model: "gateway/cheap", thinking: "low" },
+      { name: "deep", description: "Hard work.", model: "gateway/opus" },
+    ],
+  });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  const spawn = (params: Record<string, unknown>) => state.service.handle(parent.id, "sessions_spawn", { task: "Work", ...params });
+
+  await spawn({ route: "fast" });
+  await spawn({ route: "deep" });
+  await spawn({ route: "fast", thinking: "xhigh" });
+  await spawn({});
+  const children = state.records().filter((item) => item.parentId === parent.id);
+  assert.deepEqual(children.map((child) => [child.model, child.thinking]), [
+    ["gateway/cheap", "low"],
+    ["gateway/opus", "medium"],
+    ["gateway/cheap", "xhigh"],
+    ["gateway/parent", "medium"],
+  ]);
+
+  await assert.rejects(() => spawn({ route: "largest" }), /Unknown route: largest\. Configured routes are fast, deep\./);
+  await assert.rejects(() => spawn({ route: "fast", model: "gateway/cheap" }), /Pass route or model, not both/);
+
+  state.service.dispose();
+  state.manager.disposeAll();
+});
+
+test("a route name with no configured routes points at the setting", async () => {
+  const parent = record("parent");
+  const state = harness([parent]);
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  await assert.rejects(
+    () => state.service.handle(parent.id, "sessions_spawn", { task: "Work", route: "fast" }),
+    /No subagent routes are configured yet/,
+  );
   state.service.dispose();
   state.manager.disposeAll();
 });

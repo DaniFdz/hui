@@ -7,7 +7,7 @@ import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal-font.ts";
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme.ts";
-import { botsEnabled, type Settings } from "../lib/settings.ts";
+import { botsEnabled, routeNameIsValid, SUBAGENT_THINKING_LEVELS, type Settings, type SubagentRoute, type SubagentThinking } from "../lib/settings.ts";
 import type { PowerState, PowerStatus } from "../../shared/power.ts";
 import type { ThemePreview } from "../lib/theme-store.ts";
 import type { ThemeSwatches } from "../lib/shadcn-theme.ts";
@@ -689,6 +689,59 @@ function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
+/** Settings → Models → Subagent routes: named models an agent picks by name, so no model id ever reaches it. */
+function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { value: string; label: string }[]): TemplateResult {
+  const routes = props.settings.models.routes;
+  const models = modelOptions.filter((option) => option.value);
+  const save = (next: readonly SubagentRoute[]): void => props.onChangeModels({ ...props.settings.models, routes: next });
+  const replace = (at: number, patch: Partial<SubagentRoute>): void => {
+    save(routes.map((route, index) => index === at ? { ...route, ...patch } : route));
+  };
+  const rename = (at: number, raw: string): void => {
+    const name = raw.trim();
+    if (!routeNameIsValid(name) || routes.some((route, index) => index !== at && route.name === name)) return;
+    replace(at, { name });
+  };
+  const add = (): void => {
+    const taken = new Set(routes.map((route) => route.name));
+    let name = "route";
+    for (let suffix = 2; taken.has(name); suffix += 1) name = `route-${suffix}`;
+    save([...routes, { name, description: "", model: models[0]!.value }]);
+  };
+  const thinking = [{ value: "", label: "Own choice" }, ...SUBAGENT_THINKING_LEVELS.map((level) => ({ value: level, label: level }))];
+  return renderSection(
+    "Subagent routes",
+    "Named models an agent can pick for a subagent. It passes the name to `sessions_spawn` as `route` and never sees the model id.",
+    html`
+      ${routes.length
+        ? routes.map((route, at) => html`
+          <div class="settings-row settings-row--stacked">
+            <div class="settings-row__text">
+              <span class="settings-row__title">${route.name}</span>
+              <span class="settings-row__desc">${route.model}${route.thinking ? ` · ${route.thinking}` : ""}</span>
+            </div>
+            <div class="settings-row__control subagent-route-fields">
+              <input class="settings-input subagent-route-fields__name" name="routeName" aria-label=${`Route name: ${route.name}`}
+                maxlength="40" spellcheck="false" autocomplete="off" .value=${route.name}
+                @change=${(event: Event) => rename(at, (event.target as HTMLInputElement).value)} />
+              <input class="settings-input" name="routeDescription" aria-label=${`Description of ${route.name}`}
+                maxlength="200" placeholder="What this route is for, in one line" .value=${route.description}
+                @change=${(event: Event) => replace(at, { description: (event.target as HTMLInputElement).value })} />
+              ${renderSettingsPicker("Model", route.model, models, (value) => replace(at, { model: value }))}
+              ${renderSettingsPicker("Thinking", route.thinking ?? "", thinking, (value) => replace(at, { thinking: value ? value as SubagentThinking : undefined }))}
+              <button type="button" class="btn btn--sm btn--ghost" @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>
+            </div>
+          </div>`)
+        : renderRow("No routes yet", "Agents keep choosing models by id until you add one.", html`<span class="settings-row__value">—</span>`)}
+      ${renderRow(
+        "Add a route",
+        models.length ? "Starts on your primary model, if you have one. Edit it after adding." : "Connect a provider first: a route needs a model.",
+        html`<button type="button" class="btn btn--sm" ?disabled=${!models.length} @click=${add}>Add route</button>`,
+      )}
+    `,
+  );
+}
+
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
   if (!pi) {
@@ -699,7 +752,7 @@ function renderModelsPage(props: SettingsProps) {
     { value: "", label: "Use PI default" },
     ...model.catalog.map((entry) => ({ value: `${entry.provider}/${entry.id}`, label: entry.name })),
   ];
-  const routePicker = (label: string, key: keyof Settings["models"]) =>
+  const routePicker = (label: string, key: "primary" | "fallback" | "utility") =>
     renderSettingsPicker(label, props.settings.models[key], modelOptions, (value) => {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
@@ -733,6 +786,7 @@ function renderModelsPage(props: SettingsProps) {
         )}
       `,
     )}
+    ${renderSubagentRoutes(props, modelOptions)}
     ${renderCallsSection(props)}
     ${renderSection(
       "PI defaults",

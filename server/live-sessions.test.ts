@@ -776,7 +776,7 @@ test("a primary failure before output retries once on the configured fallback", 
   const runtime = factory(started);
   const manager = new LiveSessions(runtime, undefined, async () => ({
     ...DEFAULT_SETTINGS,
-    models: { primary: "openai/gpt", fallback: "anthropic/sonnet", utility: "openai/tiny" },
+    models: { primary: "openai/gpt", fallback: "anthropic/sonnet", utility: "openai/tiny", routes: [] },
   }));
   manager.ensure(recordFor("fallback"));
   await waitForBoot(manager, "fallback");

@@ -50,6 +50,8 @@ export type Settings = {
     primary: string;
     fallback: string;
     utility: string;
+    /** Named routes a subagent spawn picks by name (Settings → Models → Subagent routes). */
+    routes: readonly SubagentRoute[];
   };
   /** Settings → Models → Calls: calls with bots talk through GPT-Live over the ChatGPT login saved in Settings → Models.
    * `voice` is the GPT-Live voice of a bot that has none of its own. */
@@ -67,6 +69,21 @@ export type Settings = {
      * turning it on brings them back as they were, without a restart. */
     bots: boolean;
   };
+};
+
+/** The reasoning levels a route may pin; the same six a spawn accepts. */
+export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export type SubagentThinking = (typeof SUBAGENT_THINKING_LEVELS)[number];
+
+/** One named model route for subagents. An agent passes `name` to `sessions_spawn`, and only the name and
+ * `description` reach it: the model id stays in HUI so a spawn can never invent one. */
+export type SubagentRoute = {
+  name: string;
+  description: string;
+  /** `provider/id`, resolved against PI's catalog. */
+  model: string;
+  /** Applied unless the spawn asks for another level. */
+  thinking?: SubagentThinking;
 };
 
 export type BrowserSettings = {
@@ -119,7 +136,7 @@ export const DEFAULT_SETTINGS: Settings = {
   codemode: { enabled: true },
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
-  models: { primary: "", fallback: "", utility: "" },
+  models: { primary: "", fallback: "", utility: "", routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
@@ -214,7 +231,35 @@ function normalizeModels(value: unknown): Settings["models"] {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
+    routes: normalizeSubagentRoutes(source["routes"]),
   };
+}
+
+/** A route name is what an agent types as `route`, so it stays one word without blanks. */
+export function routeNameIsValid(name: string): boolean {
+  return name.length <= 40 && /^[\p{L}\p{N}_.-]+$/u.test(name);
+}
+
+/** A route without a name or a usable model cannot be spawned by name, so it is dropped; a repeated name keeps
+ * the first, and an unknown reasoning level falls back to the route having none. */
+function normalizeSubagentRoutes(value: unknown): readonly SubagentRoute[] {
+  if (!Array.isArray(value)) return [];
+  const routes = new Map<string, SubagentRoute>();
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const name = boundedText(item["name"], "", 40);
+    const model = normalizeModelRef(item["model"]);
+    const thinking = SUBAGENT_THINKING_LEVELS.find((level) => level === item["thinking"]);
+    if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
+    routes.set(name, {
+      name,
+      description: boundedText(item["description"], "", 200),
+      model,
+      ...(thinking ? { thinking } : {}),
+    });
+    if (routes.size >= 50) break;
+  }
+  return [...routes.values()];
 }
 
 function normalizeDisabledPlugins(value: unknown): Settings["disabledPlugins"] {

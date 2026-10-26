@@ -111,7 +111,12 @@ Every question also offers a free-text answer the card adds itself, and the user
     parameters: Type.Object({
       task: Type.String({ minLength: 1, maxLength: 20_000 }),
       label: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
-      model: Type.Optional(Type.String({ minLength: 3, maxLength: 200 })),
+      route: Type.Optional(Type.String({
+        minLength: 1,
+        maxLength: 40,
+        description: "Name of a model route from the operator's settings, when the prompt lists any. The route already names the provider and model.",
+      })),
+      model: Type.Optional(Type.String({ minLength: 3, maxLength: 200, description: "A raw `provider/id` model, only when the prompt names none and no route fits." })),
       thinking: Type.Optional(Type.Union([
         Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"),
         Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"),
