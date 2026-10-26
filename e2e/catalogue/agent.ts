@@ -246,7 +246,7 @@ const cases: UseCase[] = [
     spec: [...SUBAGENTS, "docs/api.md#subagent-completion-events"],
     surfaces: ["row:subagentEvent"],
     journeys: ["subagent-steering", "subagent-delivery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
