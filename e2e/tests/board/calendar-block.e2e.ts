@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
-const WHEN = /^\w{3}, \w{3} \d{1,2} · \d{1,2}:\d{2}(?: [AP]M)? – \d{1,2}:\d{2}(?: [AP]M)? · \S+ of activity$/u;
+const WHEN = /^\w{3}, \w{3} \d{1,2} · \d{1,2}:\d{2}(?: [AP]M)? – \d{1,2}:\d{2}(?: [AP]M)? · .+ of activity$/u;
 const DURATION = /^(?:<1m|\d+m|\d+h \d{2}m)$/u;
 
 const work = async (hui: Hui, text: string) => {
@@ -27,8 +27,11 @@ test("a block's card names its day, start and end, activity and total this week,
   const block = screen.getByRole("button", /of activity$/u);
   const when = screen.getByText("of activity", { exact: false });
   const sessions = screen.getByLabel("Sessions in this block");
+  const project = screen.getByText(basename(hui.workspace), { exact: true });
+  await expect(project).toHaveCount(2);
   await block.tap();
   await expect(when).toHaveText(WHEN);
+  await expect(project).toHaveCount(3);
   await expect(screen.getByText(/^(?:<1m|\d+m|\d+h \d{2}m) this week$/u)).toBeVisible();
   await expect(sessions.getByRole("listitem").filter({ hasText: "Calendar block card" })).toBeVisible();
   await expect(sessions.getByText(first)).toBeVisible();
@@ -46,7 +49,7 @@ test("a block's card names its day, start and end, activity and total this week,
   await screen.getByRole("button", "Session", { exact: true }).tap();
   await block.tap();
   await expect(when).toHaveText(WHEN);
-  await expect(screen.getByText(basename(hui.workspace), { exact: true })).toBeVisible();
+  await expect(project).toBeVisible();
   await expect(screen.getByText("Alpha", { exact: true })).toBeVisible();
   const found = (await model())!;
   const name = found.slice(found.lastIndexOf("/") + 1);
@@ -61,11 +64,9 @@ test("Escape closes an open block card and returns focus to its block", { tags: 
   await hui.open("/contributions");
   await screen.getByRole("button", "Calendar").tap();
   const block = screen.getByRole("button", /of activity$/u);
+  const sessions = screen.getByLabel("Sessions in this block");
   await block.tap();
-  await expect(screen.getByLabel("Sessions in this block")).toBeVisible();
-
-  await hui.keyboard.down("Escape");
-  await hui.keyboard.up("Escape");
-  await expect(screen.getByLabel("Sessions in this block")).toBeHidden();
+  await sessions.getByRole("button", "Calendar block card", { exact: false }).press("Escape");
+  await expect(sessions).toBeHidden();
   await expect(block).toBeFocused();
 });

@@ -5,11 +5,13 @@ import { test } from "../../fixtures/hui.ts";
 
 test("Group by switches the calendar between project, group and session, joins each unit's sessions, keeps the total and survives a reload", { tags: ["BOARD-055"], platforms: ["web"] }, async ({ screen, hui }) => {
   const repo = await hui.repository();
+  const worktree = join(repo.path, "checkout");
+  repo.git("worktree", "add", worktree, "release/1.0");
   const sessions = [
     await hui.createSession({ title: "Grouping alpha", group: "Alpha" }),
     await hui.createSession({ title: "Grouping alpha again", group: "Alpha" }),
     await hui.createSession({ title: "Grouping repository", cwd: repo.path }),
-    await hui.createSession({ title: "Grouping subdirectory", cwd: join(repo.path, "sub") }),
+    await hui.createSession({ title: "Grouping worktree", cwd: worktree }),
   ];
   for (const session of sessions) await hui.prompt(session, "Record work for the grouping.");
   await hui.open("/contributions");
@@ -37,7 +39,7 @@ test("Group by switches the calendar between project, group and session, joins e
 
   await screen.getByRole("button", "Session", { exact: true }).tap();
   const perSession = screen.getByLabel("Time per session");
-  for (const title of ["Grouping alpha", "Grouping alpha again", "Grouping repository", "Grouping subdirectory"]) {
+  for (const title of ["Grouping alpha", "Grouping alpha again", "Grouping repository", "Grouping worktree"]) {
     await expect(perSession.getByText(title, { exact: true })).toBeVisible();
   }
   await expect(blocks).toHaveCount(4);

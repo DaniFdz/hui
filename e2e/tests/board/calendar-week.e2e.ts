@@ -29,6 +29,13 @@ test("Previous week, This week and Next week move the calendar but never past th
   await expect(thisWeek).toBeDisabled();
   await expect(next).toBeDisabled();
 
+  await previous.tap();
+  await expect(screen.getByText("No HUI session activity this week.")).toBeVisible();
+  await thisWeek.tap();
+  await expect(projects.getByText(project)).toBeVisible();
+  await expect(thisWeek).toBeDisabled();
+  await expect(next).toBeDisabled();
+
   const reread = await hui.intercept("GET", /\/__hui\/session-activity/u);
   await screen.getByRole("button", "Refresh").tap();
   await reread.arrived();

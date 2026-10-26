@@ -22,8 +22,10 @@ test("while a period loads date navigation is disabled, a failed read keeps the 
   await failing.arrived();
   await expect(screen.getByRole("button", "Refresh")).toBeDisabled();
   await failing.reject(503, "The activity store is restarting.");
-  await expect(screen.getByText("The activity store is restarting.")).toBeVisible();
+  const error = screen.getByText("The activity store is restarting.");
+  await expect(error).toBeVisible();
   await expect(block).toBeVisible();
+  expect((await error.boundingBox())!.y).toBeLessThan((await block.boundingBox())!.y);
   await expect(thisWeek).toBeDisabled();
   await expect(screen.getByRole("button", "Retry")).toBeHidden();
 
