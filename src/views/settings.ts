@@ -1077,7 +1077,7 @@ export function renderSettingsPage(props: SettingsProps) {
         </div>
       </header>
       <div class="settings-workspace"><div class="settings-workspace__body">
-        <div class="settings-page ${["plugins", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}">
+        <div class="settings-page ${["plugins", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}" data-testid="settings-page">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
             : props.page === "skills"

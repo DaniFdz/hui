@@ -54,8 +54,6 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(settings.colorScheme)
-        .font(.system(size: 17 * settings.textScale))
-        .environment(\.textScale, settings.textScale)
         .environment(\.uiFont, settings.family(settings.settings?.fontUi.rawValue ?? ""))
         .environment(\.chatFont, settings.family(settings.settings?.fontChat.rawValue ?? ""))
         .environment(\.loadedFonts, settings.loadedFonts)
