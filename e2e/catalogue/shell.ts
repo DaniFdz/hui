@@ -16,7 +16,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -26,7 +26,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:page", "nav:kanban", "nav:settings"],
     journeys: ["shell-navigation", "visual-parity-2026-09-24"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

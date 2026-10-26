@@ -1,8 +1,6 @@
 {
   "backlog": {
     "web": [
-      "SHELL-001",
-      "SHELL-002",
       "SHELL-003",
       "SHELL-004",
       "SHELL-005",
@@ -1132,7 +1130,6 @@
     "Back to chat",
     "Background watchers",
     "Board options",
-    "Bots",
     "Branch suggestions",
     "Browser executable",
     "CRLF",
@@ -1152,7 +1149,6 @@
     "Close settings navigation",
     "Close side chat",
     "Close the bot panel",
-    "Collapse sidebar",
     "Color",
     "Commands and paths",
     "Comparison",
@@ -1268,7 +1264,6 @@
     "Session name",
     "Session state",
     "Session workspace",
-    "Sessions",
     "Sessions in this block",
     "Settings pages",
     "Shape",

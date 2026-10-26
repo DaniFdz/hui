@@ -872,7 +872,7 @@ export function renderSidebar(props: ShellProps) {
 
           <div class="sidebar-shell__content">
           <div class="sidebar-shell__body" id="sidebar-tabpanel" role="tabpanel" aria-labelledby="sidebar-tab-${props.bots.tab}">
-          ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation">
+          ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation" data-testid="primary-navigation">
             ${PRIMARY_NAV.map((item) => {
               const page = HUI_PAGES.find((candidate) => candidate.id === item.id);
               return page ? html`
@@ -938,6 +938,7 @@ export function renderSidebar(props: ShellProps) {
           <div class="sidebar-footer">
             <a
               href="/settings/appearance"
+              data-testid="nav-settings"
               class="nav-item sidebar-nav__item sidebar-nav__settings"
               aria-current="false"
               @click=${(event: MouseEvent) => {

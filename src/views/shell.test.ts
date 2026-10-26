@@ -101,6 +101,20 @@ test("the primary sidebar lists work destinations above a Settings footer", () =
   assert.match(source.slice(footer), /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>/u);
 });
 
+test("each destination marks itself current, and Settings never does", () => {
+  const rendered = markup(renderSidebar({
+    view: "surface", activePage: { id: "usage" }, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
+    collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "", importFailed: false, search: "",
+    sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "",
+    sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+  const current = (path: string) => new RegExp(`href=\\${path}\\b[\\s\\S]{0,160}?aria-current=page`, "u");
+  assert.match(rendered, current("/usage"));
+  assert.doesNotMatch(rendered, current("/sessions"));
+  assert.doesNotMatch(rendered, current("/settings/appearance"));
+});
+
 test("Settings stays available while the Bots list is showing", () => {
   assert.match(sidebar(1), /sidebar-nav__settings[\s\S]*>Settings</u);
   assert.match(sidebar(1, "", "bots"), /sidebar-nav__settings[\s\S]*>Settings</u);
