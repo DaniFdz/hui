@@ -39,7 +39,8 @@ test("Dashboard lists a running session, opens it, and shows the host's metrics"
 
   const session = await hui.createSession({ title: "Dashboard running" });
   await hui.open("/dashboard");
-  await expect(screen.getByTestId("dashboard-status-counts")).toContainText("Idle");
+  await expect(screen.getByTestId("dashboard-summary")).toContainText("Idle");
+  await expect(screen.getByLabel("Sessions by stage")).toContainText("Investigation");
   await expect(screen.getByText("Every session is idle.")).toBeVisible();
 
   await hui.open(`/sessions/${session.id}`);
