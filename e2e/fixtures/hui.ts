@@ -249,13 +249,16 @@ const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
 const trackSockets = () => {
   const sockets = new Set<WebSocket>();
   (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets = sockets;
-  window.WebSocket = class extends WebSocket {
-    constructor(url: string | URL, protocols?: string | string[]) {
-      super(protocols === "vite-hmr" ? "ws://127.0.0.1:1/" : url, protocols);
-      sockets.add(this);
-      this.addEventListener("close", () => sockets.delete(this));
-    }
-  };
+  const Native = window.WebSocket;
+  // Vite's development client opens its socket anyway, and any address that refuses it makes Chromium log a failed
+  // connection on every page, so the client gets a socket that never connects and never reports.
+  window.WebSocket = Object.setPrototypeOf(function (url: string | URL, protocols?: string | string[]) {
+    if (protocols === "vite-hmr") return Object.assign(new EventTarget(), { readyState: 0, send() {}, close() {} }) as unknown as WebSocket;
+    const socket = new Native(url, protocols);
+    sockets.add(socket);
+    socket.addEventListener("close", () => sockets.delete(socket));
+    return socket;
+  }, Native) as unknown as typeof WebSocket;
 };
 
 export const test = base.extend<{ hui: Hui }>({
