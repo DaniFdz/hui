@@ -568,7 +568,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions", "nav:session"],
     journeys: ["session-registry", "session-tree-lifecycle"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
