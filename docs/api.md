@@ -815,8 +815,11 @@ nothing private and starts nothing until it is asked.
 - Disk is the volume holding HUI's config directory (`statfs`); used is what is
   not available to HUI (total minus available blocks). `null` when it can't be
   read.
-- Network sums every non-loopback interface: one `<Link#…>` row each in
+- Network sums the physical interfaces: one `<Link#…>` row each in
   `netstat -ib` on macOS, `/proc/net/dev` on Linux; `null` elsewhere.
+  Loopback, tunnels and bridges (`utun`, `bridge`, `awdl`, `llw` on macOS;
+  `veth`, `docker`, `br-`, `virbr` on Linux) are left out, since their traffic
+  also crosses a physical interface.
 - GPU is the busiest accelerator: `ioreg -r -d 1 -c IOAccelerator`'s
   "Device Utilization %" on macOS (no administrator rights needed on Apple
   Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise.

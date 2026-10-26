@@ -262,7 +262,7 @@ export class HuiApp extends HuiElement {
   private groupCheckoutDirectory = "";
   private readonly launcher = new LaunchController(this);
   private readonly automation = new AutomationController(this);
-  private readonly dashboard = new DashboardController(this);
+  private readonly dashboard = new DashboardController(this, () => this.view === "surface" && this.activePage?.id === "dashboard" && !this.settingsOpen);
   private readonly control = new SettingsController(this, {
     piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary),
     copyFailed: (message) => {
@@ -820,7 +820,6 @@ export class HuiApp extends HuiElement {
       this.navigate({ kind: "home" }, true);
       return;
     }
-    if (target.kind !== "page" || target.page.id !== "dashboard") this.dashboard.stop();
     if (target.kind === "settings") {
       this.settingsPage = target.page;
       this.settingsOpen = true;

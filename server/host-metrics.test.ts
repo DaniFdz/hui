@@ -20,6 +20,8 @@ gif0*      1280  <Link#2>                             0     0          0        
 en0        1500  <Link#11>   aa:bb:cc:dd:ee:ff   900000     0  1000000000   500000     0   200000000     0
 en0        1500  fe80::1c2:3 fe80:b::1c2:3       900000     -  1000000000   500000     -   200000000     -
 utun3      1380  <Link#19>                           10     0       5000       20     0        7000     0
+bridge0    1500  <Link#20>   aa:bb:cc:dd:ee:00       10     0       5000       20     0        7000     0
+en1        1500  <Link#12>   aa:bb:cc:dd:ee:01       10     0       5000       20     0        7000     0
 `;
 
 const PROC_NET_DEV = `Inter-|   Receive                                                |  Transmit
@@ -27,6 +29,8 @@ const PROC_NET_DEV = `Inter-|   Receive                                         
     lo: 9999999   100    0    0    0     0          0         0  9999999   100    0    0    0     0       0          0
   eth0: 4000000  3000    0    0    0     0          0         0  1500000  2000    0    0    0     0       0          0
  wlan0:    1000    10    0    0    0     0          0         0      500     5    0    0    0     0       0          0
+docker0:   8000    10    0    0    0     0          0         0     8000     5    0    0    0     0       0          0
+vethab12:  8000    10    0    0    0     0          0         0     8000     5    0    0    0     0       0          0
 `;
 
 const VM_STAT = `Mach Virtual Memory Statistics: (page size of 16384 bytes)
@@ -39,12 +43,12 @@ Pages purgeable:                               73675.
 Pages occupied by compressor:                 100000.
 `;
 
-test("netstat sums each interface's link row once, leaving loopback out", () => {
+test("netstat sums each physical interface's link row once, leaving loopback, tunnels and bridges out", () => {
   assert.deepEqual(parseNetstat(NETSTAT), { rx: 1_000_005_000, tx: 200_007_000 });
   assert.equal(parseNetstat("Name Mtu Network Address\n"), null);
 });
 
-test("/proc/net/dev sums receive and transmit bytes, leaving loopback out", () => {
+test("/proc/net/dev sums receive and transmit bytes, leaving loopback and container interfaces out", () => {
   assert.deepEqual(parseProcNetDev(PROC_NET_DEV), { rx: 4_001_000, tx: 1_500_500 });
   assert.equal(parseProcNetDev("Inter-| Receive\n"), null);
 });

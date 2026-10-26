@@ -1,6 +1,7 @@
 /**
- * Owns the Dashboard page's host metrics: the poll that runs while the page shows and the document is visible, the
- * last read or its error, and the recent samples the sparklines draw. The session counts come from the session list
+ * Owns the Dashboard page's host metrics: the poll that runs while the page shows and the document is visible (it
+ * stops itself once the page is gone, however the app left it), the last read or its error, and the recent samples
+ * the sparklines draw. The session counts come from the session list
  * the app already holds.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
@@ -15,12 +16,14 @@ export class DashboardController implements ReactiveController {
   history: readonly HostMetrics[] = [];
   error = "";
   readonly #host: Pick<ReactiveControllerHost, "requestUpdate">;
+  readonly #shown: () => boolean;
   readonly #load: () => Promise<HostMetrics>;
   #timer: ReturnType<typeof setInterval> | undefined;
   #pending: Promise<void> | undefined;
 
-  constructor(host: Pick<ReactiveControllerHost, "requestUpdate" | "addController">, load = loadHostMetrics) {
+  constructor(host: Pick<ReactiveControllerHost, "requestUpdate" | "addController">, shown: () => boolean, load = loadHostMetrics) {
     this.#host = host;
+    this.#shown = shown;
     this.#load = load;
     host.addController(this);
   }
@@ -32,7 +35,10 @@ export class DashboardController implements ReactiveController {
   start(): void {
     if (this.#timer !== undefined) return;
     this.refresh();
-    this.#timer = setInterval(() => { if (!document.hidden) this.refresh(); }, DASHBOARD_POLL_MS);
+    this.#timer = setInterval(() => {
+      if (!this.#shown()) this.stop();
+      else if (!document.hidden) this.refresh();
+    }, DASHBOARD_POLL_MS);
   }
 
   stop(): void {

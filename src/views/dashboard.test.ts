@@ -89,9 +89,9 @@ test("the sessions section counts statuses and stages and lists what is not idle
   assert.deepEqual([...active.matchAll(/Session (\w)/gu)].map((match) => match[1]), ["b", "d", "f", "a"]);
   assert.doesNotMatch(active, /Session [ce]/u);
   assert.match(active, /Session b[\s\S]*Needs input[\s\S]*Testing · Workspace One · updated 5m ago/u);
-  assert.match(active, /Session d<span class="dashboard-session__kind">Subagent/u);
+  assert.match(active, /Session d<\/span><span class="dashboard-session__kind">Subagent/u);
   assert.match(active, /href=\/sessions\/a/u);
-  assert.doesNotMatch(active, /Session a<span class="dashboard-session__kind">/u, "a top-level session has no Subagent mark");
+  assert.doesNotMatch(active, /Session a<\/span><span class="dashboard-session__kind">/u, "a top-level session has no Subagent mark");
 });
 
 test("every idle session reads as such, and the list waits for the first session read", () => {

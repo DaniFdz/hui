@@ -18,6 +18,8 @@ const MIN_INTERVAL_MS = 2_000;
 const STALE_BASELINE_MS = 30_000;
 const FIRST_GAP_MS = 250;
 const COMMAND_TIMEOUT_MS = 2_000;
+const VIRTUAL_DARWIN = /^(lo|utun|bridge|awdl|llw)/u;
+const VIRTUAL_LINUX = /^(lo|veth|docker|br-|virbr)/u;
 
 export type RawSample = {
   at: number;
@@ -32,12 +34,12 @@ export type RawSample = {
 };
 
 /** `netstat -ib` lists each interface once with a `<Link#N>` network, and its Address column can be empty, so the
- * counters are read from the row's end. */
+ * counters are read from the row's end. Tunnels and bridges repeat traffic a physical interface already counts. */
 export function parseNetstat(text: string): { rx: number; tx: number } | null {
   let rx = 0, tx = 0, found = false;
   for (const line of text.split("\n")) {
     const fields = line.trim().split(/\s+/u);
-    if (!fields[2]?.startsWith("<Link#") || fields[0]?.startsWith("lo")) continue;
+    if (!fields[2]?.startsWith("<Link#") || VIRTUAL_DARWIN.test(fields[0] ?? "")) continue;
     const ibytes = Number(fields.at(-5)), obytes = Number(fields.at(-2));
     if (!Number.isFinite(ibytes) || !Number.isFinite(obytes)) continue;
     rx += ibytes;
@@ -51,7 +53,7 @@ export function parseProcNetDev(text: string): { rx: number; tx: number } | null
   let rx = 0, tx = 0, found = false;
   for (const line of text.split("\n")) {
     const [name, counters] = line.split(":");
-    if (counters === undefined || name?.trim() === "lo") continue;
+    if (counters === undefined || VIRTUAL_LINUX.test(name?.trim() ?? "")) continue;
     const fields = counters.trim().split(/\s+/u).map(Number);
     if (!Number.isFinite(fields[0]) || !Number.isFinite(fields[8])) continue;
     rx += fields[0]!;

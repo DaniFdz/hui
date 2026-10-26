@@ -78,7 +78,7 @@ function hostCards(metrics: HostMetrics, history: readonly HostMetrics[]) {
     card("network", "Network", network && {
       value: `↓ ${rate(network.rxBytesPerSecond)} ↑ ${rate(network.txBytesPerSecond)}`,
       series: series((sample) => sample.network && sample.network.rxBytesPerSecond + sample.network.txBytesPerSecond),
-      detail: "All interfaces but loopback",
+      detail: "Physical interfaces",
     }),
     card("gateway", "Gateway process", {
       value: percentLabel(gateway.cpuPercent), series: series((sample) => sample.gateway.cpuPercent),
@@ -109,7 +109,7 @@ function sessionRow(session: SessionView, props: DashboardProps) {
     event.preventDefault();
     props.onOpenSession(session);
   }}>
-    <span class="dashboard-session__title">${session.title}${subagent ? html`<span class="dashboard-session__kind">Subagent</span>` : nothing}</span>
+    <span class="dashboard-session__title"><span class="dashboard-session__name">${session.title}</span>${subagent ? html`<span class="dashboard-session__kind">Subagent</span>` : nothing}</span>
     <span class="dashboard-session__status" data-status=${session.status}>${DASHBOARD_STATUS_LABELS[session.status]}</span>
     <span class="dashboard-session__meta">${[
       isSessionStage(session.stage) ? SESSION_STAGE_LABELS[session.stage] : "",

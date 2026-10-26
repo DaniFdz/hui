@@ -19,8 +19,9 @@ function sample(sampledAt: string): HostMetrics {
 function setup() {
   const reads: Array<{ resolve: (value: HostMetrics) => void; reject: (error: Error) => void }> = [];
   const host = { updates: 0, requestUpdate() { this.updates += 1; }, addController() {} };
-  const controller = new DashboardController(host, () => new Promise((resolve, reject) => reads.push({ resolve, reject })));
-  return { controller, host, reads };
+  const page = { shown: true };
+  const controller = new DashboardController(host, () => page.shown, () => new Promise((resolve, reject) => reads.push({ resolve, reject })));
+  return { controller, host, reads, page };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -73,7 +74,7 @@ test("the poll reads every five seconds while the document is visible, and stops
   vi.useFakeTimers();
   const document = { hidden: false };
   vi.stubGlobal("document", document);
-  const { controller, reads } = setup();
+  const { controller, reads, page } = setup();
   controller.start();
   controller.start();
   assert.equal(reads.length, 1, "opening the page reads at once");
@@ -88,9 +89,16 @@ test("the poll reads every five seconds while the document is visible, and stops
   await vi.advanceTimersByTimeAsync(DASHBOARD_POLL_MS);
   assert.equal(reads.length, 3);
   reads[2]!.resolve(sample("t2"));
+  page.shown = false;
+  await vi.advanceTimersByTimeAsync(DASHBOARD_POLL_MS * 3);
+  assert.equal(reads.length, 3, "a page the app left by any path is not polled");
+  page.shown = true;
+  controller.start();
+  assert.equal(reads.length, 4, "the poll stopped itself, so opening the page again starts it");
+  reads[3]!.resolve(sample("t3"));
   controller.stop();
   await vi.advanceTimersByTimeAsync(DASHBOARD_POLL_MS * 3);
-  assert.equal(reads.length, 3, "a page that closed is not polled");
+  assert.equal(reads.length, 4, "a stopped poll reads nothing");
 });
 
 test("the sparklines keep the last sixty samples", async () => {

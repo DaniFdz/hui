@@ -1,7 +1,6 @@
 /* The Dashboard page: session counts, the sessions not idle and the host metric cards. */
-.dashboard-page { container-type: inline-size; }
-.dashboard-counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--space-2); margin-block-end: var(--space-3); }
-.dashboard-count { display: grid; gap: var(--space-1); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); }
+.dashboard-counts { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--space-2); margin-block-end: var(--space-3); }
+.dashboard-count { display: grid; gap: var(--space-1); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); }
 .dashboard-count strong { font-size: 1.5em; font-variant-numeric: tabular-nums; }
 .dashboard-count span { color: var(--muted); font-size: var(--control-ui-text-xs); }
 .dashboard-count--zero strong { color: var(--muted); }
@@ -13,14 +12,15 @@
 .dashboard-session { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-1) var(--space-3); padding: var(--space-3); color: inherit; text-decoration: none; border-block-end: 1px solid var(--border); }
 .dashboard-sessions li:last-child .dashboard-session { border-block-end: 0; }
 .dashboard-session:hover { background: var(--bg-hover); }
-.dashboard-session__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-.dashboard-session__kind { margin-inline-start: var(--space-2); padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-full); color: var(--muted); font-size: var(--control-ui-text-xs); font-weight: 400; }
+.dashboard-session__title { display: flex; align-items: center; min-width: 0; font-weight: 600; }
+.dashboard-session__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dashboard-session__kind { flex-shrink: 0; margin-inline-start: var(--space-2); padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-full); color: var(--muted); font-size: var(--control-ui-text-xs); font-weight: 400; }
 .dashboard-session__status { font-size: var(--control-ui-text-xs); color: var(--ok); }
 .dashboard-session__status:is([data-status="waiting"], [data-status="reconnecting"]) { color: var(--warn); }
 .dashboard-session__status:is([data-status="error"], [data-status="disconnected"]) { color: var(--danger); }
 .dashboard-session__meta { grid-column: 1 / -1; color: var(--muted); font-size: var(--control-ui-text-xs); }
 .dashboard-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
-.dashboard-metric { display: grid; gap: var(--space-2); align-content: start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); color: var(--accent); }
+.dashboard-metric { display: grid; gap: var(--space-2); align-content: start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); color: var(--info); }
 .dashboard-metric--high { border-color: var(--danger); color: var(--danger); }
 .dashboard-metric__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
 .dashboard-metric__title { color: var(--muted); font-size: var(--control-ui-text-xs); }
