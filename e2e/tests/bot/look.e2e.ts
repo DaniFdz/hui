@@ -7,7 +7,7 @@ const EARS = ["No ears", "Cat ears", "Bear ears", "Bunny ears", "Antenna", "Spro
 const COLORS = ["Blue", "Yellow", "Magenta", "Mint", "Coral", "Lilac"];
 
 test("Look offers thirteen shapes, ears and a colour, each saves at once and the roster, header and empty-chat faces follow, and an emoji replaces the face until Face clears it", { tags: ["BOT-028"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const bot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Facemaker", soul: "# Who I am\nA terse fixture bot.\n" })).bot;
+  const bot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Facemaker", soul: "# Who I am\nA terse fixture bot.\n", avatar: { shape: "blob", color: "#3a7bfa" } })).bot;
   const stored = async () => (await hui.api<{ bot: { avatar?: { shape?: string; ears?: string; color?: string; emoji?: string } } }>("GET", `/__hui/bots/${bot.id}`)).bot.avatar ?? {};
   const rosterFace = async () => (await hui.faces()).find((face) => face.size === "sm")!;
   const choose = async (name: string) => {
