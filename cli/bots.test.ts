@@ -50,8 +50,11 @@ async function fakeGateway(t: TestContext) {
     view("id-ada", "ada", { title: "Researcher", routines: 1, soul: true, memory: { messages: 2, built: 3, pending: 0, viewBytes: 300, viewLines: 2, usage: { calls: 1, input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0 } } }),
     view("id-bob", "bob"), view("id-old", "old", { archived: true }),
   ];
-  /** SOUL.md per bot id, as the soul route reads and writes it. */
+  /** SOUL.md per bot id, as the soul route reads and writes it, and the bot's other home files by `id/file`. */
   const souls = new Map<string, string>([["id-ada", "# Who I am\nAda, a researcher."]]);
+  const fileTexts = new Map<string, string>([["id-ada/user", "Prefers brief answers."], ["id-ada/memory", "# MEMORY.md\n\n## Projects\n\nHUI."], ["id-ada/bootstrap", "Ask what they need."]]);
+  /** Home files whose reads fail, as a disconnected worker's do. */
+  const unreadable = new Set<string>();
   const tasks: AutomationTask[] = [{
     id: "task-1", name: "Morning", description: "", sessionId: "s-ada", prompt: "check", schedule: { kind: "every", everyMs: 86_400_000 },
     enabled: true, timeoutSeconds: 900, createdAt: "", updatedAt: "", nextRunAt: "2026-10-06T07:00:00.000Z",
@@ -112,6 +115,18 @@ async function fakeGateway(t: TestContext) {
         return reply(200, { status: { messages: 12, built: 11, pending: 1, viewBytes: 4096, viewLines: 9, waiting: true, usage }, view: "<chat>\n0+8|user: plans\n</chat>" });
       }
       if (action === "memory/zoom") return reply(200, { text: `${url.searchParams.get("id")}+0|user: the plan` });
+      if (action?.startsWith("files/")) {
+        const file = action.slice("files/".length);
+        const key = `${bot.id}/${file}`;
+        if (request.method === "GET") return unreadable.has(key) ? reply(503, { error: "The worker is not connected." }) : reply(200, { file, text: fileTexts.get(key) ?? null });
+        if (request.method === "PUT" && file === "bootstrap") {
+          const text = String(body?.["text"] ?? "").trim();
+          if (text) fileTexts.set(key, text);
+          else fileTexts.delete(key);
+          return reply(200, { file, text: text || null });
+        }
+        return reply(400, { error: "Only BOOTSTRAP.md can be replaced here." });
+      }
       if (action === "catalog") return reply(200, catalogFor(bot));
       if (action === "soul" && request.method === "GET") return reply(200, { soul: souls.get(bot.id) ?? null });
       if (action === "soul" && request.method === "PUT") {
@@ -157,7 +172,7 @@ async function fakeGateway(t: TestContext) {
   });
   const address = server.address() as { port: number };
   return {
-    base: `http://127.0.0.1:${address.port}/`, bots, tasks, calls, replies, unseenPrompts, souls,
+    base: `http://127.0.0.1:${address.port}/`, bots, tasks, calls, replies, unseenPrompts, souls, unreadable,
     /** Resolves once the CLI holds the `session` or `bots` stream open. */
     connected: (key: string) => streams.has(key) ? Promise.resolve() : new Promise<void>((resolve) => waiting.set(key, resolve)),
     push: (key: string, event: string, data: unknown) => { streams.get(key)!.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); },
@@ -256,12 +271,13 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 
   const shown = terminal();
   await botCommand(gateway.base, "show", ["ada"], {}, shown.io);
-  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nutility model: default \(Settings' utility model, else its model\)\nlanguage: auto\nroutines: 1\n/u);
-  assert.match(shown.out, /\nsoul: SOUL\.md \(hui bot soul ada\)\n$/u);
+  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nhistory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nutility model: default \(Settings' utility model, else its model\)\nlanguage: auto\nroutines: 1\n/u);
+  assert.match(shown.out, /\nsoul: SOUL\.md \(hui bot soul ada\)\nuser: USER\.md, 22 characters \(hui bot user ada\)\nmemory: MEMORY\.md, 30 characters \(hui bot memory ada\)\n$/u);
   const unread = terminal();
+  gateway.unreadable.add("id-bob/memory");
   await botCommand(gateway.base, "show", ["bob"], {}, unread.io);
-  assert.match(unread.out, /\nmemory: unavailable\n/u, "a memory the gateway cannot read");
-  assert.match(unread.out, /\nsoul: none yet: it writes SOUL\.md in its first conversation\n$/u);
+  assert.match(unread.out, /\nhistory: unavailable\n/u, "a history the gateway cannot read");
+  assert.match(unread.out, /\nsoul: none yet: it writes SOUL\.md in its first conversation\nuser: none yet: it writes one when you tell it what to keep\nmemory: unavailable\n$/u, "a file the gateway cannot read leaves the rest of show");
 
   await writeFile(join(dir, "soul.md"), "# Who I am\nNova, kind.\n");
   const added = terminal();
@@ -329,10 +345,10 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 test("list marks a bot on a worker and show names the worker and its folder there", () => {
   const rover = view("id-rover", "rover", { cwd: "/home/remote/.local/share/hui-worker/bots/id-rover", worker: { id: "w-1", name: "devbox" } });
   assert.equal(formatBots([rover, view("id-ada", "ada")]), "@rover  Rover  idle · on devbox  0 routines  id-rover\n@ada  Ada  idle  0 routines  id-ada");
-  const shown = formatBot(rover);
+  const shown = formatBot(rover, {});
   assert.match(shown, /\nstatus: idle\nworker: devbox \(w-1\)\nlook: /u);
   assert.match(shown, /\ncwd: devbox:\/home\/remote\/\.local\/share\/hui-worker\/bots\/id-rover\n/u);
-  assert.doesNotMatch(formatBot(view("id-ada", "ada")), /worker:/u, "a bot here names no worker");
+  assert.doesNotMatch(formatBot(view("id-ada", "ada"), {}), /worker:/u, "a bot here names no worker");
 });
 
 test("show names the look: the face's shape and color, or the emoji, and what the bot's id picked", () => {
@@ -481,22 +497,58 @@ test("send reads - from stdin and exits 0 when answered, 1 on failure or timeout
   assert.deepEqual(gateway.calls.at(-1)?.body, { text: "go", wait: true }, "without --timeout the gateway's default applies");
 });
 
-test("memory prints the status and view, zooms a line and saves the browse page", async (t) => {
+test("history prints the status and view, zooms a line and saves the browse page; memory is MEMORY.md", async (t) => {
   const gateway = await fakeGateway(t);
   const dir = await mkdtemp(join(tmpdir(), "hui-cli-memory-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));
   const term = terminal();
-  await botCommand(gateway.base, "memory", ["ada"], {}, term.io);
+  await botCommand(gateway.base, "history", ["ada"], {}, term.io);
   assert.equal(term.out, "12 messages · 11 summaries built · 1 pending · view 4 KB in 9 lines · summarizing · compactor 3 calls, 6200 tokens in, 400 out, $0.0123\n<chat>\n0+8|user: plans\n</chat>\n");
   const zoom = terminal();
-  await botCommand(gateway.base, "memory", ["ada"], { zoom: "16+4" }, zoom.io);
+  await botCommand(gateway.base, "history", ["ada"], { zoom: "16+4" }, zoom.io);
   assert.equal(gateway.calls.at(-1)?.path, "/__hui/bots/id-ada/memory/zoom?id=16&n=4");
   assert.equal(zoom.out, "16+0|user: the plan\n");
   const html = terminal();
   html.io.cwd = dir;
-  await botCommand(gateway.base, "memory", ["ada"], { html: "memory.html" }, html.io);
+  await botCommand(gateway.base, "history", ["ada"], { html: "memory.html" }, html.io);
   assert.equal(await readFile(join(dir, "memory.html"), "utf8"), "<!doctype html><title>memory</title>");
   assert.equal(html.out, `Wrote @ada's memory to ${join(dir, "memory.html")}.\n`);
+
+  // `memory` and `user` read the files the bot keeps; the old zoom flags still reach the history.
+  const memory = terminal();
+  await botCommand(gateway.base, "memory", ["ada"], {}, memory.io);
+  assert.equal(memory.out, "# MEMORY.md\n\n## Projects\n\nHUI.\n");
+  const user = terminal();
+  await botCommand(gateway.base, "user", ["ada"], {}, user.io);
+  assert.equal(user.out, "Prefers brief answers.\n");
+  const none = terminal();
+  await botCommand(gateway.base, "memory", ["bob"], {}, none.io);
+  assert.match(none.out, /@bob has no MEMORY\.md yet/u);
+  const moved = terminal();
+  await botCommand(gateway.base, "memory", ["ada"], { zoom: "1+1" }, moved.io);
+  assert.match(moved.err, /hui bot history/u);
+  assert.equal(gateway.calls.at(-1)?.path, "/__hui/bots/id-ada/memory/zoom?id=1&n=1");
+  const bootstrap = terminal();
+  await botCommand(gateway.base, "bootstrap", ["ada"], {}, bootstrap.io);
+  assert.equal(bootstrap.out, "Ask what they need.\n");
+  const source = join(dir, "bootstrap.md");
+  await writeFile(source, "Ask their name first.\n");
+  const replaced = terminal();
+  await botCommand(gateway.base, "bootstrap", ["ada"], { file: source }, replaced.io);
+  assert.match(replaced.out, /Replaced @ada's BOOTSTRAP\.md \(\d+ characters\); its first conversation follows it while it has no SOUL\.md\./u);
+  // The split message names the three files and the tools that write them; the bot does the moving.
+  const split = terminal();
+  await botCommand(gateway.base, "split", ["ada"], {}, split.io);
+  assert.equal(split.out, "Sent to @ada.\n");
+  const sent = gateway.calls.findLast((call) => call.path === "/__hui/bots/id-ada/messages");
+  assert.match(String(sent?.body?.["text"]), /^\[HUI bot split\] HUI now keeps your prompt in three files/u);
+  assert.match(String(sent?.body?.["text"]), /update_user/u);
+  assert.match(String(sent?.body?.["text"]), /write_soul/u);
+  assert.deepEqual(gateway.calls.at(-1), { method: "PATCH", path: "/__hui/bots/id-ada", body: { split: true } }, "then marks it split, so hui doctor stops listing it");
+  gateway.replies.push({ status: "failed", error: "the model is down" });
+  const before = gateway.calls.length;
+  assert.equal(await botCommand(gateway.base, "split", ["ada"], { wait: true }, terminal().io), 1);
+  assert.equal(gateway.calls.slice(before).some((call) => call.method === "PATCH"), false, "a split whose turn failed stays unmarked");
 });
 
 test("routines are the bot's Automation tasks: list, add on a schedule, run and remove by name", async (t) => {
@@ -730,11 +782,11 @@ test("chat ends cleanly when stdin closes, and reports a runtime that exits", as
 
 test("show names a bot's language, auto when it has none", () => {
   const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
-  assert.match(formatBot(base), /\nlanguage: auto\n/u);
-  const spanish = formatBot({ ...base, voice: { language: "es" } });
+  assert.match(formatBot(base, {}), /\nlanguage: auto\n/u);
+  const spanish = formatBot({ ...base, voice: { language: "es" } }, {});
   assert.match(spanish, /\nlanguage: es \(Spanish\)\n/u);
   assert.doesNotMatch(spanish, /\nvoice:/u, "no VoiceStudio voice line");
-  assert.match(formatBot({ ...base, voice: { language: "haw" } }), /\nlanguage: haw \(Hawaiian\)\n/u);
+  assert.match(formatBot({ ...base, voice: { language: "haw" } }, {}), /\nlanguage: haw \(Hawaiian\)\n/u);
 });
 
 
@@ -747,8 +799,8 @@ test("--call-voice sets the bot's GPT-Live voice, \"\" goes back to Settings' de
   await botCommand(gateway.base, "add", [], { name: "Lola", "call-voice": "sol" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", voice: { live: "sol" } });
   const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
-  assert.match(formatBot({ ...base, voice: { language: "es", live: "juniper" } }), /\nlanguage: es \(Spanish\)\ncall voice: Juniper\nroutines: /u);
-  assert.doesNotMatch(formatBot(base), /call voice:/u, "without one it follows Settings");
+  assert.match(formatBot({ ...base, voice: { language: "es", live: "juniper" } }, {}), /\nlanguage: es \(Spanish\)\ncall voice: Juniper\nroutines: /u);
+  assert.doesNotMatch(formatBot(base, {}), /call voice:/u, "without one it follows Settings");
 });
 
 test("--description says what a bot does and when to tag it, --tagging who may, and show says both", async (t) => {
@@ -758,6 +810,6 @@ test("--description says what a bot does and when to tag it, --tagging who may, 
   await botCommand(gateway.base, "add", [], { name: "Lola", tagging: "nobody" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", tagging: "nobody" });
   const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
-  assert.match(formatBot({ ...base, description: "Finds sources.", tagging: "mention" }), /\ndescription: Finds sources\.\ntagging: only when your message tags it\n/u);
-  assert.match(formatBot(base), /\ntagging: anyone, when a task fits its description\n/u);
+  assert.match(formatBot({ ...base, description: "Finds sources.", tagging: "mention" }, {}), /\ndescription: Finds sources\.\ntagging: only when your message tags it\n/u);
+  assert.match(formatBot(base, {}), /\ntagging: anyone, when a task fits its description\n/u);
 });

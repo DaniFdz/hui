@@ -22,6 +22,8 @@
  *   GET    /__hui/bots/:id/usage             { usage }: what its chat and the subagents under it cost, per model
  *   GET    /__hui/bots/:id/soul              { soul } (SOUL.md's text, null while the bot has none)
  *   PUT    /__hui/bots/:id/soul              { soul } replaces SOUL.md atomically; "" removes it (the first conversation again)
+ *   GET    /__hui/bots/:id/files/:file       { file, text }: SOUL.md, USER.md, MEMORY.md or BOOTSTRAP.md (null while absent)
+ *   PUT    /__hui/bots/:id/files/bootstrap   { text } replaces the operator's onboarding body; "" removes it
  *
  * `GET /__hui/bots/events` streams the list and is served by `hui.ts`.
  */
@@ -32,8 +34,8 @@ import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineErro
 import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import type { RouteSchema } from "../api/index.ts";
 import {
-  BotCatalog, BotDeleted, BotFactsResponse, BotMemoryResponse, BotMemoryZoom, BotMessageResult, BotResponse, BotSoul, BotsResponse, BotUsageResponse,
-  routeSchemas as botRouteSchemas,
+  BotCatalog, BotDeleted, BotFactsResponse, BotFileText, BotMemoryResponse, BotMemoryZoom, BotMessageResult, BotResponse, BotSoul, BotsResponse, BotUsageResponse,
+  routeSchemas as botRouteSchemas, type BotFileName,
 } from "../api/bots.ts";
 import { SessionBusyError } from "../sessions/live-sessions.ts";
 import type { PromptAttachment } from "../runtimes/types.ts";
@@ -45,7 +47,7 @@ export const BOTS_EVENTS_ROUTE = "/__hui/bots/events";
 /** The memory page, which a link opens: `hui.ts` also accepts a same-origin page load there (docs/api.md#bots). */
 export const BOT_MEMORY_PAGE = /^\/__hui\/bots\/[A-Za-z0-9_-]{1,100}\/memory\/html$/u;
 const FACTS_ROUTE = /^\/__hui\/bots\/([A-Za-z0-9_-]{1,100})\/facts(?:\/([A-Za-z0-9_-]{1,100}))?$/u;
-const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul|catalog|usage))?)?$/u;
+const ROUTE = /^\/__hui\/bots(?:\/([A-Za-z0-9_-]{1,100})(?:\/(restore|messages|stop|memory|memory\/zoom|memory\/html|soul|catalog|usage|files)(?:\/(soul|user|memory|bootstrap))?)?)?$/u;
 /** SOUL.md reaches 20,000 characters, up to four bytes each, and JSON may escape them. */
 const BOT_BODY_BYTES = 256 * 1024;
 /** Messages may carry attachments, like prompts. */
@@ -133,7 +135,7 @@ export function createBotRoutes(deps: Deps) {
       }
     }
     if (!match) return undefined;
-    const [, id, action] = match;
+    const [, id, action, file] = match;
     const { method } = request;
     const notAllowed = { status: 405, body: { error: "method not allowed" } };
     try {
@@ -173,6 +175,21 @@ export function createBotRoutes(deps: Deps) {
         if (unknown.length) throw new BotInputError(`Unknown soul field: ${unknown.join(", ")}.`);
         if (!("soul" in body)) throw new BotInputError("soul is required: SOUL.md's text, or \"\" to remove it.");
         return reply(BotSoul, { soul: await service.setSoul(id, (body as { soul: unknown }).soul) });
+      }
+      if (action === "files") {
+        if (method === "GET") {
+          if (!file) throw new BotInputError("Name a file: soul, user, memory or bootstrap.");
+          return reply(BotFileText, { file: file as BotFileName, text: await service.file(id, file as BotFileName) });
+        }
+        if (method !== "PUT") return notAllowed;
+        // Only the operator's own files may be replaced over the API; the bot writes USER.md and MEMORY.md itself.
+        if (file !== "bootstrap") throw new BotInputError("Only BOOTSTRAP.md can be replaced here: USER.md and MEMORY.md are the bot's, and SOUL.md keeps PUT …/soul.");
+        const body = await json(request, BOT_BODY_BYTES);
+        if (typeof body !== "object" || body === null || Array.isArray(body)) throw new BotInputError("The bootstrap must be an object: { text }.");
+        const unknown = Object.keys(body).filter((key) => key !== "text");
+        if (unknown.length) throw new BotInputError(`Unknown bootstrap field: ${unknown.join(", ")}.`);
+        if (!("text" in body)) throw new BotInputError("text is required: BOOTSTRAP.md's body, or \"\" to remove it.");
+        return reply(BotFileText, { file: "bootstrap", text: await service.setBootstrap(id, (body as { text: unknown }).text) });
       }
       if (action === "restore" || action === "stop" || action === "messages") {
         if (method !== "POST") return notAllowed;

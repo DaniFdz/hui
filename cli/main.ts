@@ -48,6 +48,11 @@ export const HELP = `Usage:
   hui bot import <file|folder|url|-> [--worker <name|id>] [--agent <name>] [--yes] [--json]
   hui bot export <bot> [--out <file>] [--review <id> --set <change>=<group>...] [--add <group>:<passage>[ => <becomes>]...] [--yes] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
+  hui bot user <bot> [--json]
+  hui bot memory <bot> [--json]
+  hui bot history <bot> [--zoom <id+n>] [--html <file>] [--json]
+  hui bot bootstrap <bot> [--file <path|->] [--json]
+  hui bot split <bot> [--wait] [--timeout <seconds>] [--json]
   hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot remove <bot> [--json]
@@ -56,7 +61,6 @@ export const HELP = `Usage:
   hui bot chat <bot>
   hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
   hui bot stop <bot> [--json]
-  hui bot memory <bot> [--zoom <id+n>] [--html <file>] [--json]
   hui bot routine list <bot> [--json]
   hui bot routine add <bot> --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr>
               [--timezone <tz>]) [--json]
@@ -235,10 +239,11 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
     "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
-    "bot soul": ["file", "json"], "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
+    "bot soul": ["file", "json"], "bot user": ["json"], "bot memory": ["json"], "bot history": ["zoom", "html", "json"], "bot bootstrap": ["file", "json"], "bot split": ["wait", "timeout", "json"],
+    "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
     "bot import": ["worker", "agent", "yes", "json"], "bot export": ["out", "review", "set", "add", "yes", "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
-    "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
+    "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
     "bot trigger list": ["json"], "bot trigger remove": ["json"], "bot trigger test": ["json"],
     "bot trigger add": ["name", "prompt", "match", "cooldown", "pr-links", "allow-bots", "allow-external", "json"],
@@ -309,10 +314,10 @@ function checkScheduleCommand(command: string, operands: readonly string[], valu
 const BOT_FIELDS = ["name", "title", "description", "tagging", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "ears", "color", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
-  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
+  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot user": ["bot"], "bot memory": ["bot"], "bot history": ["bot"], "bot bootstrap": ["bot"], "bot split": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
   "bot import": ["source"], "bot export": ["bot"],
   "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
-  "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
+  "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"],
   "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
   "bot trigger list": ["bot"], "bot trigger add": ["bot"], "bot trigger remove": ["bot", "trigger"], "bot trigger test": ["bot", "trigger"],
 };

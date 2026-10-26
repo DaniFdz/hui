@@ -5,6 +5,7 @@
  */
 import { gatewayStatus as currentGatewayStatus, type GatewayStatus } from "./gateway.ts";
 import { appCheck } from "./doctor-app.ts";
+import { botsCheck } from "./doctor-bots.ts";
 import { piSessionsCheck } from "./doctor-pi-sessions.ts";
 import { triggersCheck } from "./doctor-triggers.ts";
 import { withLifecycleLock } from "./state.ts";
@@ -15,7 +16,7 @@ export type DoctorReport = { ok: boolean; checks: DoctorResult[] };
 
 /** Every check, in report order. The app check needs the installation: `--fix` reinstalls the app from it. */
 export function doctorChecks(installation: Installation): readonly DoctorCheck[] {
-  return [piSessionsCheck, triggersCheck, appCheck(installation)];
+  return [piSessionsCheck, triggersCheck, botsCheck, appCheck(installation)];
 }
 
 export async function runDoctor(options: {

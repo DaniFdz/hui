@@ -24,7 +24,7 @@ const { BotRegistry, BotConflictError, BotInputError, BotNotFoundError, BotWorke
 const { BotService, botsSection, hopOf, MAX_BOT_HOPS, resolveAccess, sessionBotsSection } = await import("./service.ts");
 const { BotMemoryUnavailableError } = await import("./memory.ts");
 const { AUTOMATION_SUSPENDED } = await import("../automation.ts");
-const { localBotSouls } = await import("./souls.ts");
+const { localBotFiles } = await import("./home.ts");
 type SessionRecord = import("../sessions/sessions.ts").SessionRecord;
 type BotConversationInput = import("./service.ts").BotConversationInput;
 type BotOffer = import("./service.ts").BotOffer;
@@ -231,8 +231,9 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     configured: [] as Array<[string, string, unknown]>,
     directories: [] as string[],
     forgotten: [] as string[],
-    /** SOUL.md on the worker, by bot id. */
+    /** SOUL.md on the worker, by bot id, and each bot's other home files (`user`, `memory`, `bootstrap`). */
     soulFiles: new Map<string, string>(),
+    fileTexts: new Map<string, Map<string, string>>(),
     soulReads: [] as string[],
     homesRemoved: [] as string[],
     /** What deleting a bot left for the worker: done at once while online, queued otherwise. */
@@ -297,16 +298,39 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
       writeCallRecord: async (reference, record) => { reachable(); remote.records.push([id, reference, record]); },
       forget: async (reference) => { reachable(); remote.forgotten.push(reference); },
     }),
-    souls: () => ({
+    files: () => ({
       prepare: async () => { reachable(); },
-      read: async (botId) => { reachable(); remote.soulReads.push(botId); return remote.soulFiles.get(botId); },
-      exists: async (botId) => { reachable(); remote.soulReads.push(botId); return remote.soulFiles.has(botId); },
-      write: async (botId, soul) => { reachable(); if (soul) remote.soulFiles.set(botId, soul); else remote.soulFiles.delete(botId); },
-      remove: async (botId) => { reachable(); remote.soulFiles.delete(botId); remote.homesRemoved.push(botId); },
+      read: async (botId, file = "soul") => {
+        reachable();
+        remote.soulReads.push(botId);
+        return file === "soul" ? remote.soulFiles.get(botId) : remote.fileTexts.get(botId)?.get(file);
+      },
+      exists: async (botId, file = "soul") => (await (async () => {
+        reachable();
+        remote.soulReads.push(botId);
+        return file === "soul" ? remote.soulFiles.has(botId) : remote.fileTexts.get(botId)?.has(file) === true;
+      })()),
+      write: async (botId, text, file = "soul") => {
+        reachable();
+        if (file === "soul") {
+          if (text) remote.soulFiles.set(botId, text);
+          else remote.soulFiles.delete(botId);
+          return;
+        }
+        const files = remote.fileTexts.get(botId) ?? new Map<string, string>();
+        if (text) files.set(file, text);
+        else files.delete(file);
+        if (files.size) remote.fileTexts.set(botId, files);
+        else remote.fileTexts.delete(botId);
+      },
+      remove: async (botId) => { reachable(); remote.soulFiles.delete(botId); remote.fileTexts.delete(botId); remote.homesRemoved.push(botId); },
     }),
     cleanUp: async (id, bot) => {
       remote.cleanups.push({ worker: id, ...bot, queued: !remote.online });
-      if (remote.online) remote.soulFiles.delete(bot.botId);
+      if (remote.online) {
+        remote.soulFiles.delete(bot.botId);
+        remote.fileTexts.delete(bot.botId);
+      }
       return remote.online ? "done" : "queued";
     },
     memory: () => ({
@@ -326,7 +350,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     skillPath: (_id, path) => remote.online && path.startsWith("/skills/") ? `/home/remote/.local/share/hui-worker/mirror/agent${path}` : undefined,
     onAccessRecorded: (listener) => { remote.granted.add(listener); return () => remote.granted.delete(listener); },
   };
-  const souls = localBotSouls(botsDir);
+  const souls = localBotFiles(botsDir);
   /** What the service reported, as the gateway's diagnostics get it. */
   const reports: Array<{ level: string; action: string; summary: string; detail?: string }> = [];
   /** `exists` calls, to see the bot list's cache at work. */
@@ -365,7 +389,7 @@ async function harness(t: TestContext, options: { messagesPerHour?: number; memo
     conversations,
     memory,
     workers,
-    souls: { ...souls, exists: async (botId) => { soulChecks.push(botId); return souls.exists(botId); } },
+    files: { ...souls, exists: async (botId) => { soulChecks.push(botId); return souls.exists(botId); } },
     routines: {
       tasks: async () => tasks,
       disable: async (task) => {
@@ -469,6 +493,39 @@ test("creating a bot makes its home with SOUL.md, its conversation with memory, 
   assert.deepEqual(await (await import("node:fs/promises")).readdir(cwd), [], "never in the directory the operator chose");
   await assert.rejects(h.service.create({ soul: SOUL, name: "Lost", cwd: join(h.dir, "missing") }), /No such directory/u);
   assert.deepEqual((await h.service.list()).map((bot) => bot.handle), ["ada-lovelace", "ada-lovelace-2", "placed"]);
+});
+
+test("a bot's home files: USER.md, MEMORY.md and BOOTSTRAP.md are written at creation, read by name, and only the bootstrap is the operator's", async (t) => {
+  const h = await harness(t);
+  const view = await h.service.create({
+    name: "Ada", soul: SOUL, user: "Prefers brief answers.", memory: "# MEMORY.md\n\n## Projects\n\nHUI.", bootstrap: "Ask what they need.",
+  });
+  const home = join(h.botsDir, view.id);
+  assert.equal(await readFile(join(home, "USER.md"), "utf8"), "Prefers brief answers.\n");
+  assert.equal((await stat(join(home, "USER.md"))).mode & 0o777, 0o600);
+  assert.equal(await readFile(join(home, "MEMORY.md"), "utf8"), "# MEMORY.md\n\n## Projects\n\nHUI.\n");
+  assert.equal(await readFile(join(home, "BOOTSTRAP.md"), "utf8"), "Ask what they need.\n");
+  assert.equal(await h.service.file(view.id, "user"), "Prefers brief answers.");
+  assert.equal(await h.service.file(view.id, "memory"), "# MEMORY.md\n\n## Projects\n\nHUI.");
+  assert.equal(await h.service.file(view.id, "bootstrap"), "Ask what they need.");
+  assert.equal(await h.service.file(view.id, "soul"), SOUL);
+  assert.equal((await h.service.get(view.id)).soul, true);
+
+  // Only the operator's onboarding has a write path: USER.md and MEMORY.md are the bot's, when the operator tells it.
+  assert.equal(await h.service.setBootstrap(view.id, "  Greet them, then ask.  "), "Greet them, then ask.");
+  assert.equal(await h.service.file(view.id, "bootstrap"), "Greet them, then ask.");
+  assert.equal(await h.service.setBootstrap(view.id, ""), null);
+  assert.equal(await h.service.file(view.id, "bootstrap"), null);
+  await h.service.archive(view.id);
+  await assert.rejects(h.service.setBootstrap(view.id, "later"), BotConflictError);
+
+  for (const [body, pattern] of [
+    [{ user: "x".repeat(6_001) }, /USER\.md must be at most 6000 characters/u],
+    [{ memory: "x".repeat(10_001) }, /MEMORY\.md must be at most 10000 characters/u],
+    [{ bootstrap: "x".repeat(6_001) }, /BOOTSTRAP\.md must be at most 6000 characters/u],
+  ] as const) {
+    await assert.rejects(h.service.create({ name: "Too Much", soul: SOUL, ...body }), pattern);
+  }
 });
 
 test("a create that fails part-way leaves no half bot behind", async (t) => {
@@ -904,6 +961,51 @@ test("the bot list reads SOUL.md again only after a settled turn, HUI's own writ
   await rm(join(h.botsDir, bot.id, "SOUL.md"));
   h.advance(10_000);
   assert.equal((await h.service.get(bot.id)).soul, false);
+});
+
+test("a bot created now is marked split; a patch marks one from before the split", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  assert.equal((await h.registry.list()).find((each) => each.id === ada.id)?.split, true, "its prompt is the three files from the start");
+  assert.equal("split" in ada, false, "the view does not carry it");
+  const file = join(h.dir, "bots.json");
+  const stored = JSON.parse(await readFile(file, "utf8")) as { bots: Array<Record<string, unknown>> };
+  await writeFile(file, JSON.stringify({ ...stored, bots: stored.bots.map(({ split: _split, ...each }) => each) }));
+  assert.equal((await h.registry.list()).find((each) => each.id === ada.id)?.split, undefined, "as a HUI from before the split left it");
+  await h.service.update(ada.id, { split: true });
+  assert.equal((await h.registry.list()).find((each) => each.id === ada.id)?.split, true);
+});
+
+test("at the gateway's start a bot from before the split without a SOUL.md is marked split, and one with an old soul is not", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  await h.service.create({ soul: SOUL, name: "Bob" });
+  const cy = await h.service.create({ soul: SOUL, name: "Cy" });
+  const file = join(h.dir, "bots.json");
+  const stored = JSON.parse(await readFile(file, "utf8")) as { bots: Array<Record<string, unknown>> };
+  const old = stored.bots.map(({ split: _split, ...each }) => each["id"] === cy.id ? { ...each, instructions: "You are Cy." } : each);
+  await writeFile(file, JSON.stringify({ ...stored, bots: old }));
+  await rm(join(h.botsDir, ada.id, "SOUL.md"));
+  await rm(join(h.botsDir, cy.id), { recursive: true });
+  await writeFile(join(h.botsDir, cy.id), "");
+  await h.service.migrate();
+  assert.deepEqual(
+    (await h.registry.list()).map((each) => [each.handle, each.split]),
+    [["ada", true], ["bob", undefined], ["cy", undefined]],
+    "Ada writes her first soul with the three files; Cy's old instructions still wait to become its soul",
+  );
+});
+
+test("a split marker that cannot be written is its own warning, and the start-up migration still answers", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  const file = join(h.dir, "bots.json");
+  const stored = JSON.parse(await readFile(file, "utf8")) as { bots: Array<Record<string, unknown>> };
+  await writeFile(file, JSON.stringify({ ...stored, bots: stored.bots.map(({ split: _split, ...each }) => each) }));
+  await rm(join(h.botsDir, ada.id, "SOUL.md"));
+  h.registry.update = (() => Promise.reject(new Error("disk full"))) as typeof h.registry.update;
+  assert.deepEqual(await h.service.migrate(), { souls: 0, cleared: 0 });
+  assert.equal(h.reports.filter((event) => event.action === "bot_split_mark_failed").length, 1);
 });
 
 test("bots from before SOUL.md get their instructions as SOUL.md once, then their conversation's instructions cleared, then the field dropped", async (t) => {
@@ -1801,12 +1903,12 @@ test("a grant made on a worker reaches the roster, for a bot that runs there onl
 
 test("a bot created on a worker gets its conversation, memory and folder there, and its chat is a session on that worker", async (t) => {
   const h = await harness(t);
-  const view = await h.service.create({ name: "Rover", worker: "devbox", soul: "# Who I am\nRover.", model: "fixture/one", memoryModel: "fixture/cheap" });
+  const view = await h.service.create({ name: "Rover", worker: "devbox", soul: "# Who I am\nRover.", user: "Prefers brief answers.", memory: "## Projects", bootstrap: "Ask what they need.", model: "fixture/one", memoryModel: "fixture/cheap" });
   assert.deepEqual(view.worker, { id: "w-1", name: "devbox" }, "named as session views name it");
   assert.equal(view.cwd, `/home/remote/.local/share/hui-worker/bots/${view.id}`, "its home, which the worker made");
   assert.equal(view.soul, true, "known from the create: the list does not wait for the worker to say");
   // Its home, SOUL.md and conversation in one operation there.
-  assert.deepEqual(h.remote.created, [{ worker: "w-1", input: { botId: view.id, model: "fixture/one", soul: "# Who I am\nRover.", memory: { name: "Rover", model: "fixture/cheap" } } }]);
+  assert.deepEqual(h.remote.created, [{ worker: "w-1", input: { botId: view.id, model: "fixture/one", files: { soul: "# Who I am\nRover.", user: "Prefers brief answers.", memory: "## Projects", bootstrap: "Ask what they need." }, memory: { name: "Rover", model: "fixture/cheap" } } }]);
   assert.deepEqual(h.conversations.created, [], "nothing in this gateway's store");
   assert.equal(existsSync(join(h.botsDir, view.id)), false, "no home folder, and so no SOUL.md, on this machine");
   assert.deepEqual(h.created, [{

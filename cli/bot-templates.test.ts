@@ -21,7 +21,9 @@ function preview(extra: Partial<BotImportPreview> = {}): BotImportPreview {
     template: { format: "openclaw", name: "Nova", soul: "You are Nova.", memories: [], skills: [], routines: [], integrations: [], dropped: [], notes: [] },
     bot: { name: "Nova", handle: "nova", emoji: "🦊" },
     soul: "You are Nova.\n\n## What you already know\n\n- Madrid",
+    memory: "# MEMORY.md\n\nBrought over from OpenClaw workspace.\n\n- **Home:** Madrid",
     opener: "Hi! Where shall we start?",
+    bootstrap: "Ask them what they need.",
     memories: { included: 1, total: 2 },
     skills: [{ name: "weather-2", original: "weather", description: "Forecasts", content: "Use wttr.in." }],
     routines: [{ name: "Heartbeat", prompt: "Check the build.", schedule: { kind: "every", everyMs: 1_800_000 }, scheduleText: "whenever", guessed: true }],
@@ -87,7 +89,9 @@ async function fakeGateway(t: TestContext, replies: Record<string, (call: Call) 
 test("the preview prints every imported text in full and says what maps, what is off and what was left out", () => {
   const text = formatImportPreview(preview());
   assert.match(text, /^Import 🦊 Nova \(@nova\) from OpenClaw workspace\./u);
-  assert.match(text, /SOUL\.md \(\d+ characters, with 1 of 2 memories\):\n  You are Nova\.\n\n  ## What you already know/u);
+  assert.match(text, /SOUL\.md \(\d+ characters\):\n  You are Nova\./u);
+  assert.match(text, /MEMORY\.md \(\d+ characters, never exported, with 1 of 2 memories\):\n  # MEMORY\.md\n\n  Brought over from OpenClaw workspace\./u);
+  assert.match(text, /BOOTSTRAP\.md \(\d+ characters, used while it has no SOUL\.md\):\n  Ask them what they need\./u);
   assert.match(text, /First message \(it sends this in a first turn HUI starts\):\n  Hi! Where shall we start\?/u);
   assert.match(text, /  weather-2 \(from weather\): Forecasts\n    Use wttr\.in\./u);
   assert.match(text, /Routines, created disabled:\n  Heartbeat · every 30m \(assumed from "whenever": check it\)\n    Check the build\./u);

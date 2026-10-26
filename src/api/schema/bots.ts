@@ -7,6 +7,8 @@ export type BotAvatar = { "emoji"?: string; "color"?: string; "shape"?: BotFaceS
 
 export type BotAvatarPatch = { "emoji"?: string; "color"?: string; "shape"?: (BotFaceShape) | (""); "ears"?: (BotFaceEars) | (""); };
 
+export type BotBootstrapRequest = { "text": string; };
+
 export type BotCatalog = { "tools": Array<BotCatalogTool>; "skills": Array<BotCatalogSkill>; "alwaysOn": Array<{ "name": string; "description": string; }>; "disabledTools": Array<string>; "disabledSkills": Array<BotSkillRef>; "live": boolean; "request"?: BotAccessRequest; };
 
 export type BotCatalogSkill = { "name": string; "path": string; "description": string; "source": string; "enabled": boolean; };
@@ -33,7 +35,11 @@ export type BotFactPatch = { "kind"?: BotFactKind; "text"?: string; "pinned"?: b
 
 export type BotFactsResponse = { "facts": Array<BotFact>; };
 
-export type BotInput = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "soul"?: string; "worker"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; };
+export type BotFileName = "soul" | "user" | "memory" | "bootstrap";
+
+export type BotFileText = { "file": BotFileName; "text": (string) | (null); };
+
+export type BotInput = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "soul"?: string; "user"?: string; "memory"?: string; "bootstrap"?: string; "worker"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; };
 
 export type BotLastMessage = { "role": ("user") | ("assistant"); "text": string; "at": string; };
 
@@ -49,7 +55,7 @@ export type BotMessageRequest = { "text"?: string; "attachments"?: Array<unknown
 
 export type BotMessageResult = (BotDelivery) | (BotReply);
 
-export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); };
+export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); "split"?: true; };
 
 export type BotQuestion = { "id": string; "method": "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire"; "title": string; "message"?: string; "options"?: Array<string>; "placeholder"?: string; "prefill"?: string; };
 
