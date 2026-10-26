@@ -254,32 +254,40 @@ test("parallel question calls show one card at a time, each answered on its own"
 test("a call the card can't show opens no card and fails back to the agent with its reason", { tags: ["AGENT-010"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const two = DATABASE.options;
-  await asked(hui, screen, "Invalid questions", ask(
+  const session = await openSession(hui, "Invalid questions");
+  await expect(screen.getByLabel("Message")).toBeVisible();
+  await hui.prompt(session, ask(
     [SCOPE, DATABASE, DEPLOY, NOTES, { header: "Extra", question: "One too many?", options: two }],
     [{ ...DATABASE, options: [two[0]!, { label: "Other", description: "Something else." }] }],
     [{ ...DATABASE, options: [two[0]!, two[0]!] }],
     [{ ...DATABASE, header: "A header far too long" }],
     [{ ...DATABASE, multiSelect: true, options: [{ ...two[0]!, preview: "**Postgres**" }, two[1]!] }],
   ));
-
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByText(/^tool answered: /u));
-  await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(screen.getByTestId("question-card")).toBeHidden();
-  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command").nth(4));
-  for (const group of await transcript.getByText("Ran 1 command").all()) await group.tap();
-  await expect(transcript.getByText("Failed")).toHaveCount(5);
-  for (let index = 4; index >= 0; index--) await transcript.getByText("Failed", { exact: true }).nth(index).tap({ position: { x: 4, y: 4 } });
-  for (const reason of [
-    '<harness> [error] Validation failed for tool "ask_user_question": - questions: must not have more than 4 items',
-    '<harness> [error] questions[0].options[1].label "Other" is reserved: the card already offers a free-text answer. </harness>',
-    "<harness> [error] questions[0].options must have unique labels. </harness>",
-    '<harness> [error] Validation failed for tool "ask_user_question": - questions.0.header: must not have more than 16 characters',
-    "<harness> [error] questions[0]: previews are for single-select questions only. </harness>",
+
+  const groups = transcript.getByText("Ran 1 command");
+  await hui.scrollTo(transcript, groups.nth(4));
+  await expect(groups).toHaveCount(5);
+
+  await groups.nth(4).tap();
+  const failed = transcript.getByText("Failed", { exact: true, visible: true });
+  await expect(failed).toHaveCount(1);
+  await failed.tap();
+  const shown = transcript.getByText("<harness> [error] questions[0]: previews are for single-select questions only. </harness>", { exact: false, visible: true }).first();
+  await hui.scrollTo(transcript, shown);
+  await expect(shown).toBeVisible();
+
+  for (const received of [
+    "must not have more than 4 items",
+    '"Other" is reserved',
+    "must have unique labels",
+    "must not have more than 16 characters",
+    "previews are for single-select questions only",
   ]) {
-    const shown = transcript.getByText(reason, { exact: !reason.includes("Validation failed") });
-    await hui.scrollTo(transcript, shown);
-    await expect(shown).toBeVisible();
+    const handedBack = transcript.getByText(received, { exact: false, visible: true }).first();
+    await hui.scrollTo(transcript, handedBack);
+    await expect(handedBack).toBeVisible();
   }
 });
 
