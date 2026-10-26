@@ -127,7 +127,10 @@ Normal stop returns 409 while turns, questions, follow-ups or HTTP mutations are
 active; worker sessions that are `reconnecting` or `disconnected` run on their
 worker and count only for the follow-ups HUI holds for them. Forced stop explicitly interrupts work. CLI lifecycle operations are
 serialized, refuse unauthenticated live PIDs and wait for the old process to
-exit before replacement. `gateway.log` is private and receives the gateway's
+exit before replacement. A gateway that cannot answer its control listener, or
+that does not finish shutting down, ends only when `--force` is given **and** its
+process command line names this installation's `build/cli/gateway-run.js`;
+otherwise the CLI refuses to signal a recorded PID and says so. `gateway.log` is private and receives the gateway's
 stderr, including one line per Logs entry (see `GET /__hui/observability`); the
 CLI reads a bounded tail.
 Restart does not migrate or delete HUI registries, settings or PI transcripts.
