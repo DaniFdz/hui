@@ -654,7 +654,7 @@ const cases: UseCase[] = [
     behaviour: "A session marked unread, by a background run that settled or by hand, is still unread after the gateway restarts.",
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
