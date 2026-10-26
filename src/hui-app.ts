@@ -557,7 +557,6 @@ export class HuiApp extends HuiElement {
       this.loadLaunchPreferences();
       // The home page shows the launch form too, without a page navigation.
       this.launcher.loadWorkers();
-      this.control.loadPreviews();
     }
   }
 
@@ -818,6 +817,7 @@ export class HuiApp extends HuiElement {
       this.settingsPage = target.page;
       this.settingsOpen = true;
       this.loadSettingsData();
+      if (target.page === "appearance") this.control.loadPreviews();
       if (target.page === "diagnostics") this.loadOperationalData();
       if (target.page === "worktrees") this.sessions.openWorktrees();
       if (target.page === "automation") this.automation.startPolling();

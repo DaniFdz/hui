@@ -1,13 +1,15 @@
 /**
  * Memory readings for runtime processes: the resident size of each runtime root plus all of its descendants,
- * from one `ps` call cached for a few seconds. Best effort and POSIX-only; Windows and failed reads report
+ * from one `ps` call cached for a while. Best effort and POSIX-only; Windows and failed reads report
  * nothing.
  */
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const CACHE_MS = 2_500;
+/** Answering costs a whole-process `ps` scan on the event loop, and a runtime's
+ * memory only drifts. */
+const CACHE_MS = 15_000;
 
 type ProcessRow = { pid: number; parentPid: number; rssBytes: number };
 let cached: { key: string; at: number; value: Map<number, number> } | undefined;

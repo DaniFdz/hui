@@ -208,6 +208,17 @@
   background: transparent;
 }
 
+/* Settings closes the sidebar for both lists, so it stays put while the Agents
+   navigation and the session list above it scroll. */
+.app-shell .sidebar-footer {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  padding-top: 6px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+}
+
 /* The sidebar's top row: the collapse toggle, its only header control, then the
    Agents | Bots tabs while the Bots tab is on (bots.css). */
 .app-shell .sidebar-brand {

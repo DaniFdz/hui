@@ -39,9 +39,16 @@ export const RuntimeCommand = Type.Object({
 }, { $id: "RuntimeCommand" });
 export type RuntimeCommand = Static<typeof RuntimeCommand>;
 
+/** A cost an extension reported for the whole session, from a source the runtime cannot see itself. */
+export const SessionCostReport = Type.Object({
+  usd: Type.Number(), source: Type.String(), asOf: Type.Number(),
+}, { $id: "SessionCostReport" });
+export type SessionCostReport = Static<typeof SessionCostReport>;
+
 export const RuntimeUsage = Type.Object({
   contextTokens: Type.Union([Type.Number(), Type.Null()]), contextWindow: Type.Number(), percent: Type.Union([Type.Number(), Type.Null()]),
   inputTokens: Type.Number(), outputTokens: Type.Number(), costUsd: Type.Union([Type.Number(), Type.Null()]),
+  sessionCost: Type.Optional(SessionCostReport),
 }, { $id: "RuntimeUsage" });
 export type RuntimeUsage = Static<typeof RuntimeUsage>;
 

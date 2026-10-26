@@ -258,8 +258,11 @@ export class DurableHost implements ExtensionHost {
   #requestIdentities = new WeakMap<AbortSignal, string>();
   /** Each attributed request's HUI session, for its PI extensions' provider callbacks. */
   #requestSessions = new WeakMap<AbortSignal, string>();
-  /** One identity per HUI session for this gateway run, as one PI worker each would have. */
+  /** One fallback identity per conversation, for a request whose HUI session no hook attributed. */
   #clientSessions = new Map<string, string>();
+  /** The gateway's own provider identity, read once: an in-process extension that writes the variable cannot
+   * retarget another session's requests mid-run. Unset, each request is identified by its HUI session. */
+  #gatewayClientSession = process.env[CLIENT_SESSION_ENV]?.trim() || undefined;
   /** For a request no hook attributed, such as a summary resumed after a restart. */
   #unattributedClientSession = randomUUID();
   /** Attributes generation and compaction requests to their conversation's HUI session. */
@@ -623,7 +626,7 @@ export class DurableHost implements ExtensionHost {
       this.#callers.set(conversationId, caller);
       this.#requestSessions.set(signal, caller);
     }
-    this.#requestIdentities.set(signal, this.#clientSession(caller ?? `conversation:${conversationId}`));
+    this.#requestIdentities.set(signal, caller ?? this.#clientSession(`conversation:${conversationId}`));
     return undefined;
   }
 
@@ -655,12 +658,11 @@ export class DurableHost implements ExtensionHost {
     return id;
   }
 
-  /** A nonblank gateway value is kept, as for PI workers; otherwise the
-   * request's HUI session identity. The gateway environment never changes. */
+  /** A nonblank gateway value is kept, as for PI workers; otherwise the request's HUI session identity. The gateway
+   * environment never changes, and neither does the value a request started with. */
   #requestEnv(options: RequestOptions): Record<string, string> {
-    if (process.env[CLIENT_SESSION_ENV]?.trim()) return {};
     const attributed = options?.signal ? this.#requestIdentities.get(options.signal) : undefined;
-    return { [CLIENT_SESSION_ENV]: attributed ?? this.#unattributedClientSession };
+    return { [CLIENT_SESSION_ENV]: this.#gatewayClientSession ?? attributed ?? this.#unattributedClientSession };
   }
 
   /** Re-read HUI and PI provider configuration for the next model request. */

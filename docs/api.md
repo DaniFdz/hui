@@ -127,7 +127,10 @@ Normal stop returns 409 while turns, questions, follow-ups or HTTP mutations are
 active; worker sessions that are `reconnecting` or `disconnected` run on their
 worker and count only for the follow-ups HUI holds for them. Forced stop explicitly interrupts work. CLI lifecycle operations are
 serialized, refuse unauthenticated live PIDs and wait for the old process to
-exit before replacement. `gateway.log` is private and receives the gateway's
+exit before replacement. A gateway that cannot answer its control listener, or
+that does not finish shutting down, ends only when `--force` is given **and** its
+process command line names this installation's `build/cli/gateway-run.js`;
+otherwise the CLI refuses to signal a recorded PID and says so. `gateway.log` is private and receives the gateway's
 stderr, including one line per Logs entry (see `GET /__hui/observability`); the
 CLI reads a bounded tail.
 Restart does not migrate or delete HUI registries, settings or PI transcripts.
@@ -677,8 +680,10 @@ workers, receive `PI_CLIENT_SESSION_ID` for provider header interpolation. An
 explicit nonblank environment value is preserved; otherwise each process gets
 a fresh UUID without changing the gateway environment or creating a transcript.
 Durable sessions run inside the gateway, so each of their model requests gets it
-from the request instead: the gateway's explicit value, otherwise a fresh UUID
-per HUI session for each gateway run.
+from the request instead: the gateway's explicit value, read once when it starts
+so an extension running in its process cannot retarget another session, and
+otherwise the HUI session ID itself. A Durable session's requests therefore keep
+one identity across gateway restarts.
 
 Resource enablement is HUI-owned rather than a PI mutation. `GET /__hui/settings`
 and `PUT /__hui/settings` include `disabledSkills`, a normalized array of
@@ -2874,9 +2879,13 @@ List everything in the registry, grouped.
 ```
 
 The gateway keeps this list in memory and shares it with every connected
-screen; `revision` increases whenever it changes. The group mutation routes
-return the same shape. `GET /__hui/sessions/events` pushes the same list as
-changes, so clients discard any full list older than the revision they hold.
+screen; `revision` increases whenever it changes. A screen asking while another
+one is connected gets that in-memory list rather than a second recompute of the
+registry, so its status and live details can be up to a poll old; a registry
+change since that list was built (a session created, archived or regrouped) is
+read again before it answers. The group mutation routes return the same shape.
+`GET /__hui/sessions/events` pushes the same list as changes, so clients discard
+any full list older than the revision they hold.
 
 Groups follow the registry's catalog order, which the user controls, with
 `ungrouped` last. New groups are appended; renames keep their position. Within each group pinned sessions come first, then
@@ -3411,6 +3420,13 @@ and tool results (PI attributes nested tool and model calls to the calling tool'
 result). Prompt-cache refreshes are PI `usage` entries outside the conversation;
 they count toward the observability totals, not this per-run figure. Missing context or
 cost remains `null`/absent rather than being estimated by HUI.
+`usage.sessionCost` is separate from that per-run figure: an extension that measured
+the whole session's cost from a source HUI cannot price reports it by appending a
+`hui.session-cost` entry with `{ usd, source, asOf }`, and the session's `usage`
+carries the newest readable report until a `/clear` resets the history. HUI shows it
+beside the estimate with its source and how long ago it was checked; it never
+replaces the per-message or per-run figures, and an unreadable entry is skipped
+rather than shown as a zero.
 `historyRefreshed` is omitted/true on that path. When PI cannot refresh history,
 the adapter emits `settled` with `historyRefreshed: false`; HUI still returns to
 the runtime's reported status but retains and snapshots the live projection so

@@ -87,14 +87,38 @@ function controlledMedia(initialMatches = true) {
   };
 }
 
-test("the primary sidebar lists work destinations and ends with Settings", () => {
-  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["contributions", "sessions"]);
+test("the primary sidebar lists work destinations above a Settings footer", () => {
+  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["contributions", "sessions", "usage"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);
   // Kanban is a HUI route rendered directly below Contributions.
   assert.match(nav, /item\.id === "contributions" \? kanbanNavItem\(props\)/u);
-  assert.match(nav, /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>\s*<\/a>\s*$/u);
+  // Settings is not a destination in that tab panel: it closes the sidebar below both lists.
+  assert.doesNotMatch(nav, /sidebar-nav__settings/u);
+  const footer = source.indexOf('class="sidebar-footer"');
+  assert.ok(footer > source.indexOf('class="sidebar-shell__content"'), "the footer follows the scrolling content");
+  assert.match(source.slice(footer), /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>/u);
+});
+
+test("each destination marks itself current, and Settings never does", () => {
+  const rendered = markup(renderSidebar({
+    view: "surface", activePage: { id: "usage" }, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
+    collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "", importFailed: false, search: "",
+    sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "",
+    sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+  const current = (path: string) => new RegExp(`href=\\${path}\\b[\\s\\S]{0,160}?aria-current=page`, "u");
+  assert.match(rendered, current("/usage"));
+  assert.doesNotMatch(rendered, current("/sessions"));
+  assert.doesNotMatch(rendered, current("/settings/appearance"));
+});
+
+test("Settings stays available while the Bots list is showing", () => {
+  assert.match(sidebar(1), /sidebar-nav__settings[\s\S]*>Settings</u);
+  assert.match(sidebar(1, "", "bots"), /sidebar-nav__settings[\s\S]*>Settings</u);
+  assert.doesNotMatch(sidebar(1, "", "bots"), /Primary navigation/u, "the Agents navigation stays out of the Bots list");
 });
 
 test("settings navigation contains only the fourteen accepted regions", () => {
@@ -735,7 +759,7 @@ function markup(value: unknown): string {
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
-function sidebar(count: number, open = ""): string {
+function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents"): string {
   const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
   if (open) sessions.push(session(open, "Open", "Work"));
   const data = {
@@ -744,7 +768,7 @@ function sidebar(count: number, open = ""): string {
     importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
     groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
     groupDropTarget: undefined, groupReorderPending: false,
-    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+    bots: { tab, search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
   };
   return markup(renderSidebar(data as unknown as Parameters<typeof renderSidebar>[0]));
 }

@@ -50,6 +50,28 @@ export function isCustomInput(message: unknown): boolean {
 /** State an extension stored with `pi.appendEntry`: kept in the store, never sent to the model. */
 export const ExtensionStateEntry = defineEntry<{ customType: string; data?: JsonValue }>("hui.pi-entry");
 
+/** The entry an extension reports the whole session's cost under, for a source the runtime cannot price itself. */
+const SESSION_COST_ENTRY = "hui.session-cost";
+
+/** The newest session cost an extension reported, skipping entries it cannot read. */
+export function reportedSessionCost(rows: readonly EntryRecord[]): RuntimeUsage["sessionCost"] {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const entry = rows[index];
+    if (!entry || !ExtensionStateEntry.is(entry) || entry.data.customType !== SESSION_COST_ENTRY) continue;
+    const report = costReport(entry.data.data);
+    if (report) return report;
+  }
+  return undefined;
+}
+
+function costReport(value: JsonValue | undefined): RuntimeUsage["sessionCost"] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const { usd, source, asOf } = value as Record<string, JsonValue | undefined>;
+  if (typeof usd !== "number" || !Number.isFinite(usd) || usd < 0) return undefined;
+  if (typeof source !== "string" || !source.trim() || typeof asOf !== "number" || !Number.isFinite(asOf)) return undefined;
+  return { usd, source: source.trim().slice(0, 80), asOf };
+}
+
 export type Contribution = { readonly snippet: string; readonly guidelines: readonly string[] };
 /** What `before_agent_start` made of the system prompt for one run. */
 export type RunPrompt = { readonly forced?: string; readonly options?: NormalizedBuildSystemPromptOptions };

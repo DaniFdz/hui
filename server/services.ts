@@ -560,7 +560,7 @@ function sessionJiraIssues(record: SessionRecord, transcript: readonly Transcrip
   return refs.map((ref) => jiraStatuses.view(ref, origin && new URL(ref.url).origin === origin ? fetch : undefined));
 }
 
-export const sessionList = createSessionListHub(listSessionViews);
+export const sessionList = createSessionListHub(listSessionViews, 1_000, sessionViews.listSessionViewsStale);
 export const sessionRoutes = createSessionRoutes({
   sessionList,
   lifecycle: { createSession, startWorktreeSession, deleteSession, updateSession },
