@@ -10,6 +10,11 @@
  * registry names, bounded and only for their own path. Nothing is persisted:
  * this scope is the current histories, not background compaction, abandoned
  * branches or provider billing, which stay outside the report.
+ *
+ * One scan is range-independent: it buckets every recorded day, so any range,
+ * zone or filter is answered by slicing it. The gateway keeps that scan per
+ * time zone and, once the registry records newer activity, reads only the
+ * entries appended since it read the conversation last.
  */
 import { readFile, stat } from "node:fs/promises";
 
@@ -50,8 +55,6 @@ type StoredEntry = {
   readonly model?: readonly StoredMessage[];
 };
 
-type StoredEntryScan = (conversationId: number) => AsyncIterable<StoredEntry>;
-
 type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: number | null };
 
 type UsageLabel = { provider: string; model: string };
@@ -75,6 +78,10 @@ type DayBucket = {
 /** One pass over every registered history, bucketed by day and independent of the range a request asks for. */
 export type UsageScan = {
   sessions: Map<string, { session: SessionRecord; days: Map<string, DayBucket> }>;
+  /** Highest entry ID already counted per conversation, so a later pass reads only newer entries. */
+  marks: Map<number, number>;
+  /** Entry IDs already counted anywhere, so history a fork inherits counts once. */
+  claimed: Set<number>;
   registeredSessions: number;
   undatedRecords: number;
   unavailable: { sessionId: string; reason: string }[];
@@ -118,7 +125,8 @@ function readUsage(raw: unknown): Usage | undefined {
   };
 }
 
-function emptyMetrics(): UsageMetrics {  return {
+function emptyMetrics(): UsageMetrics {
+  return {
     inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0,
     costUsd: null, unpricedCalls: 0, calls: 0, userMessages: 0, assistantMessages: 0, toolResults: 0, errors: 0,
   };
@@ -225,14 +233,14 @@ function dayReader(timeZone: string): (time: number) => string {
   };
 }
 
-function durableScan(): StoredEntryScan {
-  return async function* (conversationId) {
+function durableScan(): (conversationId: number, after: number | undefined) => AsyncIterable<StoredEntry> {
+  return async function* (conversationId, after) {
     const harness = await durableHost().open();
     const conversation = await harness.conversation(conversationId as ConversationId, durableContext);
     if (!conversation) throw new Error("That conversation is not in this gateway's Durable store.");
     let cursor;
     do {
-      const page = await conversation.entries({}, PAGE, cursor, durableContext);
+      const page = await conversation.entries(after === undefined ? {} : { minEntryId: after as never }, PAGE, cursor, durableContext);
       yield* page.items;
       cursor = page.next;
       await yieldToEventLoop();
@@ -240,10 +248,15 @@ function durableScan(): StoredEntryScan {
   };
 }
 
-export async function scanUsage(sessions: readonly SessionRecord[], timeZone: string): Promise<UsageScan> {
+export async function scanUsage(sessions: readonly SessionRecord[], timeZone: string, previous?: UsageScan): Promise<UsageScan> {
   const scan = durableScan();
   const dayOf = dayReader(timeZone);
-  const found: UsageScan = { sessions: new Map(), registeredSessions: sessions.length, undatedRecords: 0, unavailable: [], readSessions: 0 };
+  const found: UsageScan = {
+    sessions: new Map(), marks: new Map(previous?.marks ?? []), claimed: previous?.claimed ?? new Set(),
+    registeredSessions: sessions.length, undatedRecords: 0, unavailable: [], readSessions: 0,
+  };
+  /** Sessions whose buckets in this pass replace the cached ones instead of adding to them. */
+  const replaced = new Set<string>();
 
   const accept = (session: SessionRecord, event: UsageEvent): void => {
     if (event.time === undefined) {
@@ -280,7 +293,6 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
     if (conversationId !== undefined) owners.set(conversationId, session);
   }
 
-  const claimedEntries = new Set<number>();
   const readPaths = new Set<string>();
 
   for (const session of ordered) {
@@ -293,10 +305,15 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
 
     const conversationId = durableConversationId(reference);
     if (conversationId !== undefined) {
+      const after = previous?.marks.get(conversationId);
+      const counted = new Set<number>();
+      let highest = after;
       try {
-        for await (const entry of scan(conversationId)) {
-          if (claimedEntries.has(entry.id)) continue;
-          claimedEntries.add(entry.id);
+        for await (const entry of scan(conversationId, after === undefined ? undefined : after + 1)) {
+          if (after !== undefined && entry.id <= after) continue;
+          if (found.claimed.has(entry.id) || counted.has(entry.id)) continue;
+          counted.add(entry.id);
+          highest = Math.max(highest ?? 0, entry.id);
           const owner = owners.get(entry.conversationId) ?? session;
           for (const message of entry.model ?? []) {
             if (entry.kind === CompactionEntry.kind && message.role === "user") continue;
@@ -304,6 +321,8 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
             if (event) accept(owner, event);
           }
         }
+        for (const id of counted) found.claimed.add(id);
+        if (highest !== undefined) found.marks.set(conversationId, highest);
         found.readSessions += 1;
       } catch {
         found.unavailable.push({ sessionId: session.id, reason: "The local conversation could not be read." });
@@ -313,6 +332,7 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
 
     if (readPaths.has(reference)) continue;
     readPaths.add(reference);
+    replaced.add(session.id);
     try {
       const info = await stat(reference);
       if (!info.isFile() || info.size > MAX_TRANSCRIPT_BYTES) {
@@ -348,7 +368,38 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
     }
   }
 
-  return found;
+  if (!previous) return found;
+  mergeScan(previous, found, replaced);
+  return previous;
+}
+
+/** Adds a later pass into the scan held in memory, which no other code mutates while this runs. */
+function mergeScan(target: UsageScan, delta: UsageScan, replaced: ReadonlySet<string>): void {
+  for (const [id, incoming] of delta.sessions) {
+    const held = target.sessions.get(id);
+    const sessionUsage = { session: held?.session ?? incoming.session, days: replaced.has(id) ? new Map() : new Map(held?.days) };
+    target.sessions.set(id, sessionUsage);
+    for (const [date, added] of incoming.days) {
+      let bucket = sessionUsage.days.get(date);
+      if (!bucket) sessionUsage.days.set(date, bucket = { metrics: emptyMetrics(), lastActivityAt: 0, models: new Map(), tools: new Map() });
+      addMetrics(bucket.metrics, added.metrics);
+      bucket.lastActivityAt = Math.max(bucket.lastActivityAt, added.lastActivityAt);
+      for (const [key, model] of added.models) {
+        const held = bucket.models.get(key);
+        bucket.models.set(key, held ? { ...held, metrics: sumOf([held.metrics, model.metrics]) } : model);
+      }
+      for (const tool of added.tools.values()) {
+        const held = bucket.tools.get(tool.name);
+        bucket.tools.set(tool.name, held ? { ...held, calls: held.calls + tool.calls, errors: held.errors + tool.errors } : tool);
+      }
+    }
+  }
+  target.marks = delta.marks;
+  target.claimed = delta.claimed;
+  target.registeredSessions = delta.registeredSessions;
+  target.undatedRecords += delta.undatedRecords;
+  target.unavailable = delta.unavailable;
+  target.readSessions = delta.readSessions;
 }
 
 export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
@@ -422,10 +473,10 @@ function coverageStamp(sessions: readonly SessionRecord[]): string {
  * conversation. `refresh` always reads them again.
  */
 export class UsageReports {
-  #scans = new Map<string, { scan: UsageScan; stamp: string }>();
+  #scans = new Map<string, { scan: UsageScan; stamp: string; sessions: string }>();
   #pending = new Map<string, Promise<UsageScan>>();
   #registry: () => Promise<readonly SessionRecord[]>;
-  #read: (sessions: readonly SessionRecord[], timeZone: string) => Promise<UsageScan>;
+  #read: (sessions: readonly SessionRecord[], timeZone: string, previous?: UsageScan) => Promise<UsageScan>;
 
   constructor(registry: () => Promise<readonly SessionRecord[]>, read = scanUsage) {
     this.#registry = registry;
@@ -435,16 +486,18 @@ export class UsageReports {
   async get(query: UsageQuery, refresh = false): Promise<UsageReport> {
     const sessions = await this.#registry();
     const stamp = coverageStamp(sessions);
+    const members = sessions.map((session) => session.id).toSorted().join("\n");
     const cached = this.#scans.get(query.timeZone);
     if (cached && cached.stamp === stamp && !refresh) return sliceUsage(cached.scan, query);
-    return sliceUsage(await this.#rescan(query.timeZone, sessions, stamp), query);
+    const previous = refresh || cached?.sessions !== members ? undefined : cached.scan;
+    return sliceUsage(await this.#rescan(query.timeZone, sessions, stamp, members, previous), query);
   }
 
-  #rescan(timeZone: string, sessions: readonly SessionRecord[], stamp: string): Promise<UsageScan> {
+  #rescan(timeZone: string, sessions: readonly SessionRecord[], stamp: string, members: string, previous: UsageScan | undefined): Promise<UsageScan> {
     const pending = this.#pending.get(timeZone);
     if (pending) return pending;
-    const scan = this.#read(sessions, timeZone).then((found) => {
-      this.#scans.set(timeZone, { scan: found, stamp });
+    const scan = this.#read(sessions, timeZone, previous).then((found) => {
+      this.#scans.set(timeZone, { scan: found, stamp, sessions: members });
       return found;
     }).finally(() => this.#pending.delete(timeZone));
     this.#pending.set(timeZone, scan);

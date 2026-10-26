@@ -229,3 +229,59 @@ test("one scan answers every range, and a forced refresh or newer activity reads
   assert.equal(afterActivity.range.to, "2026-06-02");
   assert.equal(shared.sessions[0]?.metrics.calls, 1);
 });
+
+test("a session that leaves the registry stops being reported", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const seed = (title: string) => harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, priced(4, 2, 6, 0.1), "stop") as never] });
+    return record(title, `durable:${id}`, new Date(T1).toISOString());
+  }, durableContext);
+  const kept = await seed("kept");
+  const dropped = await seed("dropped");
+  let records: SessionRecord[] = [kept, dropped];
+  const reports = new UsageReports(async () => records);
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+
+  await reports.get(june);
+  records = [kept];
+  assert.deepEqual((await reports.get(june)).sessions.map(({ id }) => id), ["kept"]);
+});
+
+test("a later pass reads only newer entries and a fork made afterwards still counts its history once", async () => {
+  const { scanUsage, sliceUsage } = await import("./usage.ts");
+  const { source, answer } = await harness.commit(async (tx) => {
+    const source = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    const answer = (await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T1, priced(10, 5, 20, 0.5)) as never] })).id;
+    return { source, answer };
+  }, durableContext);
+  const sessions = [record("incremental", `durable:${source}`, new Date(T1).toISOString())];
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  const calls = (scan: Awaited<ReturnType<typeof scanUsage>>, id = "incremental") => sliceUsage(scan, june).sessions.find((each) => each.id === id)?.metrics.calls;
+
+  const first = await scanUsage(sessions, "UTC");
+  assert.equal(calls(first), 1);
+
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T2, priced(10, 5, 20, 0.25)) as never] });
+  }, durableContext);
+  const second = await scanUsage(sessions, "UTC", first);
+  assert.equal(calls(second), 2, "the new entry joins the one already counted");
+  assert.equal(sliceUsage(second, june).sessions[0]?.metrics.costUsd, 0.75);
+
+  const fork = await harness.commit(async (tx) => {
+    const id = (await tx.forkConversation(source, answer, { ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, priced(7, 3, 10, 0.25)) as never] });
+    return id;
+  }, durableContext);
+  const withFork = [sessions[0]!, record("forked", `durable:${fork}`, new Date(T2).toISOString(), { parentId: "incremental" })];
+  const third = await scanUsage(withFork, "UTC", second);
+  const callsOf = (id: string) => sliceUsage(third, june).sessions.find((each) => each.id === id)?.metrics.calls;
+  assert.equal(callsOf("forked"), 1, "the fork counts only the entry it added, not its inherited history");
+  assert.equal(callsOf("incremental"), 2);
+  assert.equal(sliceUsage(third, june).sessions.reduce((sum, each) => sum + (each.metrics.calls ?? 0), 0), 3);
+
+  const again = await scanUsage(withFork, "UTC", third);
+  assert.equal(calls(again), 2, "a pass with nothing new changes nothing");
+  assert.equal(calls(again, "forked"), 1);
+});
