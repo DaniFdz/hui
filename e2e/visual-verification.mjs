@@ -284,9 +284,12 @@ export async function launch(expectedBranch) {
     // A real model's window. Durable compacts in the background from 32,768 tokens below
     // `contextWindow - reserveTokens`; a 32k window put that under zero, and with the small kept window
     // below every launcher session on Durable would compact by itself after a few turns.
+    const fixtureModel = (id, name) => ({ id, name, reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } });
     await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hui-e2e": {
       baseUrl: receipt.providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
-      models: [{ id: "fixture", name: demo ? "Demo model" : "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }],
+      // A second model on the same provider lets a journey see which model a
+      // subagent route resolved to (e2e/subagent-routes.browser.md).
+      models: [fixtureModel("fixture", demo ? "Demo model" : "HUI SDK Fixture"), fixtureModel("fixture-deep", "HUI Route Fixture")],
     } } }));
     // A small kept window lets /compact and /fixture-compact summarize a few short turns.
     await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture", defaultThinkingLevel: "high", compaction: { keepRecentTokens: 400 } }));

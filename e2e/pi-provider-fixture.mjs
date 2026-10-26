@@ -562,6 +562,15 @@ const server = createServer(async (request, response) => {
     text(response, "Slow verifier result: all checks passed.");
     return finish(response);
   }
+  if (latestToolResult?.id === "tool-e2e-route-typo") {
+    text(response, "The deep route started a subagent; the typo route was refused.");
+    return finish(response);
+  }
+  if (source.includes("E2E_SUBAGENTS_ROUTE")) {
+    toolUse(response, "tool-e2e-route-spawn", "sessions_spawn", { task: "E2E_SUBAGENT_CHILD routed", label: "Routed worker", route: "deep" }, 0);
+    toolUse(response, "tool-e2e-route-typo", "sessions_spawn", { task: "E2E_SUBAGENT_CHILD typo", label: "Typo route", route: "no-such-route" }, 1);
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_SUBAGENTS_START")) {
     toolUse(response, "tool-e2e-subagent-spawn", "sessions_spawn", {
       task: "E2E_SUBAGENT_CHILD",
