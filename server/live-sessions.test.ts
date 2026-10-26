@@ -743,8 +743,7 @@ test("only work a restart would lose blocks an ordinary gateway stop", async () 
   pi.disposeAll();
 });
 
-test("manual continuation remains available after automatic recovery is exhausted", async () => {
-  const started: FakeSession[] = [];
+test("manual continuation remains available after automatic recovery is exhausted", async () => {  const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
   manager.ensure({
     ...recordFor("continue-interrupted"),
@@ -825,6 +824,42 @@ test("a run end names the message that started its run, through recoveries and s
   runtime.emit({ type: "settled" });
   await waitFor("the failed run to end", () => ends.length === 5);
   assert.deepEqual(ends[4], { id: "origins", failed: true, prompt: "fails after the stop" }, "the stopped run sent nothing, and an error the history drops still fails the run");
+  manager.disposeAll();
+});
+
+test("continue after a failed answer restates the request the run was handling", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("continue-failed"));
+  await waitForBoot(manager, "continue-failed");
+  started[0]!.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "message", role: "assistant", text: "Searching the pipelines" },
+    { kind: "error", message: "API key auth failed for provider ai-gw-logical" },
+  ];
+  started[0]!.emit({ type: "history" });
+
+  await manager.continueInterrupted("continue-failed");
+  assert.equal(
+    started[0]!.prompts.at(-1),
+    "The previous run was interrupted while handling this request:\n\nUse pup\n\nReview the latest transcript and workspace state, finish the unfinished task, and avoid repeating work that is already complete.",
+  );
+  const stored = (await readRegistry()).find((session) => session.id === "continue-failed");
+  assert.equal(stored?.runPrompt, "Use pup");
+  // Settle the resumed run so the marker it wrote cannot reach another test file: a registry record left
+  // mid-run is one a later gateway would try to recover by booting a real runtime for it.
+  started[0]!.emit({ type: "settled" });
+  await waitForStored(manager, "continue-failed", "the run marker to be cleared", (record) => !record?.runStartedAt);
+  manager.disposeAll();
+});
+
+test("continue refuses a session with neither a lost run nor a failed answer", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("continue-plain"));
+  await waitForBoot(manager, "continue-plain");
+  await assert.rejects(() => manager.continueInterrupted("continue-plain"), /no interrupted run to continue/u);
+  assert.deepEqual(started[0]!.prompts, []);
   manager.disposeAll();
 });
 

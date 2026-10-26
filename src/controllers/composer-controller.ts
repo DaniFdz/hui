@@ -705,9 +705,11 @@ export class ComposerController {
       });
   };
 
-  #continueInterrupted = () => {
+  /** Resumes a session whose run HUI recorded but never saw end, or whose last answer failed. Both callers gate it on
+   * the state that offers it: the interrupted banner and the run-error notice. */
+  continueStoppedRun = () => {
     const session = this.#conversation.selected;
-    if (!session?.interrupted || this.sending || this.#conversation.opening || this.#conversation.connection !== "live") return;
+    if (!session || this.sending || this.#conversation.opening || this.#conversation.connection !== "live") return;
     this.#deps.showNote("", "info");
     this.sending = true;
     this.#host.requestUpdate();
@@ -875,7 +877,7 @@ export class ComposerController {
       sideChat: this.sideChat,
       onCloseSideChat: () => this.closeSideChat(),
       onSendPrompt: this.send,
-      onContinueInterrupted: this.#continueInterrupted,
+      onContinueInterrupted: this.continueStoppedRun,
       onAbort: this.abort,
       onRewind: this.#rewindToMessage,
       onFork: this.#forkFromMessage,

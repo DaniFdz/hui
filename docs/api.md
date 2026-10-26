@@ -3489,12 +3489,16 @@ server closes normally; a session deleted before the upgrade closes with code
 
 ### `POST /__hui/sessions/:id/continue`
 
-Available as a fallback after automatic recovery is exhausted and the view still
-reports `"interrupted": true`. HUI starts a new prompt containing the journaled request
-plus an instruction to inspect current transcript/workspace state, finish the
-task and avoid repeating completed work. A marker without a journal (for
-forward compatibility) receives the same generic continuation instruction.
-The route responds `{ "ok": true }`; starting or busy sessions return 409.
+The error notice's **Continue** and the interrupted banner's **Continue run**.
+Resumes a session as one new prompt and returns `{ "ok": true }` once the run has
+entered. With HUI's run marker (a run the gateway or machine lost) the prompt
+carries the journaled request plus an instruction to inspect current
+transcript/workspace state, finish the task and avoid repeating completed work; a
+marker without a journal receives the same generic instruction. With no marker
+but a failed answer as the last transcript row, HUI restates the operator's most
+recent request the same way, because a failed answer stays out of the model's
+context and a bare nudge leaves it nothing to resume. Any other session returns
+400. Running, queued or waiting sessions return 409.
 
 ### `GET /__hui/sessions/:id/models`
 
@@ -3574,7 +3578,8 @@ cannot fork (PI) returns 400. A bot's chat answers 409
 
 ### `POST /__hui/sessions/:id/resume`
 
-Continues from the active leaf with PI's native prompt-free continuation
+The header's **Continue without a prompt**. Continues from the active leaf with
+PI's native prompt-free continuation
 primitive and returns `{ "ok": true }` once the run has entered. No synthetic
 user message is appended. The tail is the last message of the model context,
 not the raw leaf, so the context edits PI appends while retrying, the model or
@@ -3588,7 +3593,8 @@ rewind. When the tail is a normally
 completed assistant response, HUI instead sends one explicit continuation
 prompt ("Continue from where you left off…") as a normal user turn. Running, queued or waiting sessions return 409.
 A runtime without prompt-free continuation, such as Pi Durable, returns 400 with
-the reason.
+the reason; the error notice and the interrupted banner resume it through
+`POST /__hui/sessions/:id/continue`.
 
 ### Subagent completion events
 
