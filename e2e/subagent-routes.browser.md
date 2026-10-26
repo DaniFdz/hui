@@ -42,12 +42,14 @@ twice in one turn: `route: "deep"` (accepted) and `route: "no-such-route"`
    reads **Model: HUI SDK Fixture**, so the route resolved to its model and the
    pinned level, and the spawn never named either.
 6. The parent's own prompt, read through `GET /__hui/sessions/<id>/tools`,
-   carries a route block that opens with *Model routes for `sessions_spawn`* and then
-   lists one line per route: `- fast: Cheap and quick: lookups, summaries, simple
-   edits.` and `- deep: no description`.
-7. 1440×900 keeps the route rows on one line each; at 390×844 the fields wrap
-   inside the row with no horizontal overflow, and the child session's model and
-   thinking still fit.
+   carries a route block that opens with *Model routes for `sessions_spawn`* and
+   then lists one line per route: `- fast: Cheap and quick: lookups, summaries,
+   simple edits.` and `- deep: Slow and careful: hard debugging and design
+   work.`
+7. 1440×900 gives each route two lines: its name and description, then its
+   model, thinking and Remove. At 390×844 each field takes its own line with no
+   horizontal overflow, and the child session's model and thinking still fit
+   beside the composer.
 
 ## Limitations
 
