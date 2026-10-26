@@ -18,8 +18,10 @@ These are
 recorded presentation fixtures, not this conversation's spend or provider
 billing. The report does not contact a provider. Reopening a seeded session uses the local
 fixture model. Its recorded model names and prices stay unchanged.
-Shared `PAGE-021` tests instead send real PI
-turns through the deterministic local provider and check recorded zero prices.
+Shared `PAGE-021` tests instead send real PI turns and run `/compact` through
+the deterministic local provider. They check recorded zero prices, unchanged
+dated totals after compaction, and the separate amount in an empty range or
+with no matching sessions.
 
 ## Visible journey
 
@@ -28,10 +30,12 @@ turns through the deterministic local provider and check recorded zero prices.
    the overview, rankings and session rows. Partial pricing must identify unpriced
    records, not make them free. The line for spend outside the entries gives its
    tokens and recorded cost and says it covers all recorded time; neither the
-   summaries nor the chart may include it.
+   summaries nor the chart may include it. A cost with no recorded tokens must
+   still show. Ledger read failures must produce a partial-coverage warning.
 2. Choose **Today**, **7d**, **90d**, **1y** and **All**. Check the chart's displayed
    range after each response. All includes older data. Empty days remain visible;
-   ranges over one year group by month and retain empty months.
+   ranges over one year group by month and retain empty months. The amount
+   outside the entries stays unchanged when the range changes.
 3. Edit **From** without applying it, then choose the current preset again. Its
    dates must replace the draft. Apply a custom range, switch **Time zone** between
    UTC and Local, and check that the returned range names the chosen calendar.
@@ -42,7 +46,8 @@ turns through the deterministic local provider and check recorded zero prices.
 5. Filter by title, ID and recorded model. Totals, rankings and chart must follow
    the same subset. Enter a nonmatching query, confirm **No sessions match your
    search.**, then **Clear search**. Try all **Sort sessions** options. Recorded
-   zero sorts before unknown prices. Open a Durable session and **Design notes**
+   zero sorts before unknown prices. The amount outside the entries remains
+   unchanged by the session search. Open a Durable session and **Design notes**
    from their rows. Both must show recorded messages and an Idle status.
 6. Choose an empty day and confirm **No usage in this range.** Return to 30d.
    Submit a reversed range; the error must name the attempted range while the

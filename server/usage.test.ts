@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, test } from "vitest";
+import { afterAll, test, vi } from "vitest";
 import { AssistantEntry, CompactionEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
 import { UsageReport } from "./api/diagnostics.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
@@ -158,7 +158,7 @@ test("legacy transcripts report unpriced calls, undated records and gaps without
   assert.equal(report.coverage.readSessions, 1, "the duplicate path, the draft and the lost conversation are not read again");
   assert.deepEqual(report.coverage.unavailable, [
     { sessionId: "legacy", reason: "Some transcript records could not be read." },
-    { sessionId: "lost", reason: "The local conversation could not be read." },
+    { sessionId: "lost", reason: "The local conversation or its spend ledger could not be read." },
     { sessionId: "remote", reason: "The transcript lives on a remote worker and is not read here." },
   ]);
   assert.equal(report.coverage.undatedRecords, 2, "a record with no time, or one no calendar can hold, is a gap and never 1970 or the session's update");
@@ -222,11 +222,13 @@ test("compaction spend the store keeps outside entries is reported once, beside 
     record("fork", `durable:${fork}`, "2026-01-01T00:00:00.000Z", { parentId: "source" }),
     record("source", `durable:${source}`, "2026-01-02T00:00:00.000Z"),
     record("quiet", `durable:${quiet}`, "2026-01-03T00:00:00.000Z"),
+    record("source-copy", `durable:${source}`, "2026-01-04T00:00:00.000Z"),
   ];
   const report = await readUsageReport(sessions, usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-30", timeZone: "UTC" })));
 
   expectSchema(UsageReport, report);
-  const owned = report.sessions.find((each) => each.id === "source")!;
+  assert.equal(report.coverage.readSessions, 3, "duplicate conversation references are read once");
+  const owned = report.sessions.find((each) => each.id === "source-copy")!;
   assert.deepEqual(
     { totalTokens: owned.metrics.totalTokens, costUsd: owned.metrics.costUsd },
     { totalTokens: 22, costUsd: 0.6 },
@@ -245,6 +247,48 @@ test("compaction spend the store keeps outside entries is reported once, beside 
   const oneDay = await readUsageReport(sessions, usageQuery(new URLSearchParams({ from: "2026-06-03", to: "2026-06-03", timeZone: "UTC" })));
   assert.deepEqual(oneDay.unplacedSpend, report.unplacedSpend, "undated spend is not hidden or double counted by a narrower range");
   assert.deepEqual(oneDay.sessions.map((each) => each.id), [], "a range with no entry activity is empty, yet the undated spend still shows");
+});
+
+test("a ledger snapshot excludes concurrent replies, retains cost-only spend and reports failed reads", async () => {
+  const initial = priced(10, 0, 10, 0.5);
+  const later = priced(100, 0, 100, 1);
+  const conversationId = await harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, initial) as never] });
+    await recordUsage(tx, id, "models", "fixture/model-a", initial);
+    await recordUsage(tx, id, "tools", "nested-model", priced(0, 0, 0, 0.25));
+    return id;
+  }, durableContext);
+  const sessions = [record("active", `durable:${conversationId}`, "2026-01-01T00:00:00.000Z")];
+  const query = usageQuery(new URLSearchParams({ timeZone: "UTC" }));
+  const read = host.conversationUsage.bind(host);
+  const concurrent = vi.spyOn(host, "conversationUsage").mockImplementation(async (id) => {
+    const snapshot = await read(id);
+    await harness.commit(async (tx) => {
+      await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, later) as never] });
+      await recordUsage(tx, id, "models", "fixture/model-a", later);
+    }, durableContext);
+    return snapshot;
+  });
+  try {
+    const report = await readUsageReport(sessions, query);
+    assert.equal(report.sessions[0]?.metrics.totalTokens, 10, "a reply arriving after the snapshot waits for the next report");
+    assert.deepEqual(report.unplacedSpend, { totalTokens: 0, costUsd: 0.25 }, "cost need not have a token counter");
+    expectSchema(UsageReport, report);
+  } finally {
+    concurrent.mockRestore();
+  }
+  const failed = vi.spyOn(host, "conversationUsage").mockRejectedValueOnce(new Error("interrupted ledger read"));
+  try {
+    const report = await readUsageReport(sessions, query);
+    assert.deepEqual(report.coverage.unavailable, [{ sessionId: "active", reason: "The local conversation or its spend ledger could not be read." }]);
+    assert.equal(report.coverage.readSessions, 0, "a failed snapshot never implies a fully read conversation");
+  } finally {
+    failed.mockRestore();
+  }
+  const refreshed = await readUsageReport(sessions, query);
+  assert.equal(refreshed.sessions[0]?.metrics.totalTokens, 110, "the next report includes the concurrent reply");
+  assert.deepEqual(refreshed.unplacedSpend, { totalTokens: 0, costUsd: 0.25 }, "ordinary reply spend never leaks into the remainder");
 });
 
 test("the range rejects dates it cannot mean and time zones it does not know", () => {

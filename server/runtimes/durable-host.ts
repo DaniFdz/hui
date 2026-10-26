@@ -14,7 +14,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
-import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type DocumentReader, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration } from "@earendil-works/pi-durable";
+import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type DocumentReader, type EntryId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
@@ -112,7 +112,7 @@ const CLIENT_SESSION_ENV = "PI_CLIENT_SESSION_ID";
 const REQUEST_CALLS = new Set<PropertyKey>(["stream", "streamSimple", "complete", "completeSimple", "streamDeferred", "fetchDeferred", "cancelDeferred"]);
 type ProviderResponse = { status: number; headers: Record<string, string> };
 /** One conversation's `pi.usage` ledger, as `conversationUsage` copies it out. */
-type ConversationSpend = { models?: Record<string, Record<string, unknown>>; tools?: Record<string, Record<string, unknown>> };
+type ConversationSpend = { models?: Record<string, Record<string, unknown>>; tools?: Record<string, Record<string, unknown>>; lastEntryId: EntryId | null };
 type RequestCallbacks = {
   onPayload?: (payload: unknown, model: unknown) => unknown;
   onResponse?: (response: ProviderResponse, model: unknown) => void | Promise<void>;
@@ -687,7 +687,10 @@ export class DurableHost implements ExtensionHost {
   async conversationUsage(conversationId: ConversationId): Promise<ConversationSpend | undefined> {
     const harness = this.#harness;
     if (!harness) return undefined;
-    return harness.commit(async (tx) => JSON.parse(JSON.stringify(await tx.doc(UsageDoc, conversationId))) as ConversationSpend, durableContext);
+    return harness.commit(async (tx) => {
+      const lastEntryId = (await tx.scanEntries({ conversationId, order: "descending" }, 1)).items[0]?.id ?? null;
+      return JSON.parse(JSON.stringify({ ...await tx.doc(UsageDoc, conversationId), lastEntryId })) as ConversationSpend;
+    }, durableContext);
   }
 
   /** Closing records no outcome: running work resumes when the store reopens.
