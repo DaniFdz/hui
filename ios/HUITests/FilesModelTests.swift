@@ -72,12 +72,11 @@ struct FilesModelTests {
         #expect(dialog.destination == "In sub")
         #expect(dialog.createLabel == "Create folder")
 
-        let docs = try #require(model.rows.compactMap { row -> API.FileEntry? in if case .entry(let entry, _) = row { entry } else { nil } }.first { $0.name == "docs" })
-        await model.askDelete(docs)
+        await model.askDelete(sub)
         let confirmation = try #require(model.deleteDialog)
-        #expect(confirmation.title == "Delete docs?")
+        #expect(confirmation.title == "Delete sub?")
         #expect(confirmation.risks == [
-            "The folder docs and everything inside it.",
+            "The folder sub and everything inside it.",
             "Unsaved edits to keep.txt.",
             "The open file sub/keep.txt closes.",
         ])
