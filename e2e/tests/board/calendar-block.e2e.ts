@@ -16,8 +16,11 @@ test("a block's card names its day, start and end, activity and total this week,
   const first = "Show the block card's first message.";
   const session = await work(hui, first);
   const week = 7 * 24 * 3600 * 1000;
-  const activity = await hui.api<{ sessions: { id: string; blocks: { model?: string }[] }[] }>("GET", `/__hui/session-activity?from=${Date.now() - week}&to=${Date.now() + week}`);
-  const model = activity.sessions.find(({ id }) => id === session.id)!.blocks.at(-1)!.model!;
+  const model = async () => {
+    const activity = await hui.api<{ sessions: { id: string; blocks: { model?: string }[] }[] }>("GET", `/__hui/session-activity?from=${Date.now() - week}&to=${Date.now() + week}`);
+    return activity.sessions.find(({ id }) => id === session.id)?.blocks.at(-1)?.model;
+  };
+  await expect.poll(model, { timeout: 30_000 }).toBeTruthy();
   await hui.open("/contributions");
   await screen.getByRole("button", "Calendar").tap();
 
@@ -45,7 +48,9 @@ test("a block's card names its day, start and end, activity and total this week,
   await expect(when).toHaveText(WHEN);
   await expect(screen.getByText(basename(hui.workspace), { exact: true })).toBeVisible();
   await expect(screen.getByText("Alpha", { exact: true })).toBeVisible();
-  await expect(screen.getByText(model.slice(model.lastIndexOf("/") + 1), { exact: true })).toBeVisible();
+  const found = (await model())!;
+  const name = found.slice(found.lastIndexOf("/") + 1);
+  await expect(screen.getByText(name, { exact: true })).toBeVisible();
   await expect(screen.getByText(first, { exact: false })).toBeVisible();
   await screen.getByRole("button", "Open session").tap();
   expect(new URL(await hui.url()).pathname).toBe(`/sessions/${session.id}`);

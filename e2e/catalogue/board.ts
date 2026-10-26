@@ -441,7 +441,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#session-activity"],
     surfaces: [],
     journeys: ["session-calendar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -491,7 +491,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#get-__huisession-activity"],
     surfaces: ["route:GET /__hui/session-activity"],
     journeys: ["session-calendar"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
