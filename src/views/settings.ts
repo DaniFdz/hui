@@ -716,10 +716,6 @@ function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { val
       ${routes.length
         ? routes.map((route, at) => html`
           <div class="settings-row settings-row--stacked">
-            <div class="settings-row__text">
-              <span class="settings-row__title">${route.name}</span>
-              <span class="settings-row__desc">${route.model}${route.thinking ? ` · ${route.thinking}` : ""}</span>
-            </div>
             <div class="settings-row__control subagent-route-fields">
               <div class="subagent-route-fields__line">
                 <input class="settings-input subagent-route-fields__name" name="routeName" aria-label=${`Route name: ${route.name}`}
