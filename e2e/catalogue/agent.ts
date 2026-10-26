@@ -512,7 +512,7 @@ const cases: UseCase[] = [
     behaviour: "A progress_card call shows a card above the composer: folded, the current step and done/total; open, Task progress with N of M, the agent's Markdown notes and each step marked pending, in progress or done. It starts open unless every step is done or Collapse task progress is on, an empty call removes it, the raw call never shows as activity, and it returns after a reload.",
     spec: ["docs/api.md#task-progress"],
     surfaces: ["tool:progress_card", "setting:chat.collapseTaskProgress"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
