@@ -1,10 +1,11 @@
 // The web's Settings shell as its phone layout shows it: the open page under its title, and Open settings navigation
 // bringing up the page list as a sheet, with Search settings (the core's filterSettingsPages), the pages in their
-// groups, whether settings were saved and Exit Settings; whether they were saved also stays at the bottom of every page. Appearance is a Form with the web's Theme, Color mode, Text size and
-// Chat preferences; Models and Diagnostics are in SettingsPages.swift; the other pages show their web introduction until
-// their controls are built.
-// The words the web's Settings shell shares (page introductions, the empty search, the Color mode and Text size
-// names) come from the core's SETTINGS_COPY.
+// groups, whether settings were saved and Exit Settings; whether they were saved also stays at the bottom of every page.
+// Appearance is a Form with the web's Theme, Color mode, Accent, the faces and the chat preferences; Models and
+// Diagnostics are in SettingsPages.swift; the other pages show their web introduction until their controls are built.
+// Text size is web only: the app draws its type at the phone's own text size (SPEC.md#the-iphone-app-follows-the-phones-text-size-2026-10-26).
+// The words the web's Settings shell shares (page introductions, the empty search and the Color mode names) come from
+// the core's SETTINGS_COPY.
 import SwiftUI
 
 struct SettingsView: View {
@@ -18,7 +19,6 @@ struct SettingsView: View {
     @State private var pages: [SettingsPageEntry] = []
     @Environment(\.themeCard) private var card
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.textScale) private var textScale
 
     var body: some View {
         Form {
@@ -38,6 +38,7 @@ struct SettingsView: View {
             default: EmptyView()
             }
         }
+        .accessibilityIdentifier("settings-page")
         .safeAreaInset(edge: .bottom) {
             VStack(alignment: .leading, spacing: 4) {
                 SaveIndicator(failed: settings.saveFailed)
@@ -242,16 +243,6 @@ private struct AppearanceSections: View {
                 Text("Color mode")
             } footer: {
                 Text(settings.variant == "both" ? "Follows your system setting unless you pick one." : "This theme only carries a \(settings.variant) variant, so the mode follows the theme.").typeface(.footnote)
-            }
-            .listRowBackground(card)
-            Section {
-                Choices(label: "Text size", options: [90, 100, 110, 125, 140].map { (API.Settings.TextScale(rawValue: Double($0)), "\(settings.copy.scales[String($0)] ?? "") \($0)%") }, chosen: current.textScale) { scale in
-                    settings.change(client) { $0.textScale = scale }
-                }
-            } header: {
-                Text("Text size")
-            } footer: {
-                Text("Scales every text size in the interface together. Using default: 100%.").typeface(.footnote)
             }
             .listRowBackground(card)
             Section {

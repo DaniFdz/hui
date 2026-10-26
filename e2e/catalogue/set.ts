@@ -131,7 +131,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:textScale"],
     web: "required",
-    ios: "backlog",
+    ios: { excluded: "The iPhone app draws at the phone's own text size and has no in-app Text size option.", decision: "SPEC.md#the-iphone-app-follows-the-phones-text-size-2026-10-26" },
   },
   {
     id: "SET-012",

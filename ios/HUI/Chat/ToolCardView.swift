@@ -10,7 +10,6 @@ import UIKit
 struct ToolCardView: View {
     let item: TranscriptItem
     @Binding var expanded: Bool
-    @Environment(\.textScale) private var textScale
 
     private static let callStatus = ["running": ("…", "Running"), "ok": ("✓", "Done"), "error": ("✗", "Failed"), "cancelled": ("⊘", "Cancelled")]
 
@@ -30,7 +29,7 @@ struct ToolCardView: View {
             }
         } else if let command = item.command {
             card(label: failed && !expanded ? "\(command.preview) failed" : command.preview, badge: failed && !expanded,
-                 title: Text("$ ").foregroundStyle(.secondary) + Text(command.preview).font(.system(size: 13 * textScale, design: .monospaced))) {
+                 title: Text("$ ").foregroundStyle(.secondary) + Text(command.preview).font(.system(size: 13, design: .monospaced))) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text("$").typeface(.caption, mono: true).foregroundStyle(.secondary).accessibilityHidden(true)
                     code(command.command)

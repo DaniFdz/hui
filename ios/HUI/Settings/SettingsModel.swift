@@ -150,10 +150,6 @@ final class SettingsModel {
     var accent: Color? {
         settings.flatMap { Color(hex: $0.accent) }
     }
-
-    var textScale: Double {
-        (settings?.textScale.rawValue ?? 100) / 100
-    }
 }
 
 struct ThemePalettes: Decodable, Equatable, Sendable {
