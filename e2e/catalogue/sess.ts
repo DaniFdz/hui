@@ -586,7 +586,7 @@ const cases: UseCase[] = [
     behaviour: "Search transcripts takes two or more characters and lists the matching sessions newest first, with their title, an Archived chip, the number of matching messages and a snippet; selecting one opens it. No hit reads \"No transcript mentions “<query>”.\", a worker that could not be searched is named with its reason, and a failed search shows an error.",
     spec: ["docs/api.md#get-__huisessionssearch"],
     surfaces: ["page:sessions", "route:GET /__hui/sessions/search"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
