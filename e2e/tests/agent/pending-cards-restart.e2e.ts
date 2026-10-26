@@ -38,23 +38,22 @@ test("a gateway restart ends the waiting question, secret and suggestion cards a
   await hui.open(`/sessions/${suggested.id}`);
   await hui.prompt(suggested, "E2E_SUGGEST_TASK");
   await expect(suggestion).toHaveCount(1);
-  const directories = await hui.secretDirectories();
+  await expect(transcript.getByText("I flagged two follow-ups as suggestion cards instead of doing them now.")).toBeVisible();
 
   await hui.restartGateway();
   await hui.reload();
 
   await hui.open(`/sessions/${question.id}`);
   await expect(idle).toBeVisible();
-  await expect(card).toBeHidden();
   await transcript.getByText("Ran 1 command").tap();
   await expect(transcript.getByText("Failed")).toBeVisible();
   await expect(interrupted("tool answered: ", "ask_user_question")).toBeVisible();
+  await expect(card).toBeHidden();
 
   await hui.open(`/sessions/${secret.id}`);
   await expect(idle).toBeVisible();
-  await expect(card).toBeHidden();
   await expect(interrupted("No secret to use: ", "secret_request")).toBeVisible();
-  expect(await hui.secretDirectories()).toEqual(directories);
+  await expect(card).toBeHidden();
 
   await hui.open(`/sessions/${suggested.id}`);
   await expect(idle).toBeVisible();

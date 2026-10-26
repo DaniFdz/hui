@@ -5,7 +5,7 @@ import { test } from "../../fixtures/hui.ts";
 const progress = (input: unknown) => `E2E_CALL:${Buffer.from(JSON.stringify({ name: "progress_card", input })).toString("base64url")}`;
 
 const PARTIAL = progress({
-  markdown: "**Shipping the slice** · three steps",
+  markdown: "**Shipping the slice** · three steps, see [the plan](https://example.com/plan)",
   plan: [
     { step: "Read the fixture", status: "completed" },
     { step: "Verify the presentation", status: "in_progress" },
@@ -39,6 +39,7 @@ test("a progress_card call shows the agent's plan, its latest call, its removal 
   await expect(steps).toBeVisible();
   await expect(card.getByText("1 of 3", { visible: true })).toBeVisible();
   await expect(card.getByText("Shipping the slice", { exact: false })).toBeVisible();
+  await hui.expectLinkTo(card, "the plan", "https://example.com/plan");
   await expect(step("Read the fixture")).toHaveAttribute("data-status", "completed");
   await expect(step("Verify the presentation")).toHaveAttribute("data-status", "in_progress");
   await expect(step("Report the result")).toHaveAttribute("data-status", "pending");
