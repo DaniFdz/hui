@@ -81,7 +81,7 @@ actor HUICore {
     }
 
     func nerdFontSymbols() throws -> String {
-        try call("NERD_FONT_SYMBOLS") as String
+        try decode(exports.forProperty("NERD_FONT_SYMBOLS"))
     }
 
     func normalizeBrowserStatus(_ raw: API.JSONValue) throws -> API.BrowserStatus {

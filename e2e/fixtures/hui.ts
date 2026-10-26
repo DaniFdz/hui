@@ -46,7 +46,7 @@ const MAX_SCROLL_SWIPES = 20;
 type Receipt = { url: string; providerUrl: string; workspace: string; serverPid: number; runnerPid: number };
 type Rgb = [number, number, number];
 type SessionList = { groups: { label: string; sessions: ListedSession[] }[] };
-type ListedSession = { id: string; title: string; status: string; parentId?: string; subagent?: { status: string; completionDelivery?: string } };
+type ListedSession = { id: string; title: string; status: string; parentId?: string; runtime?: { active: true }; subagent?: { status: string; completionDelivery?: string } };
 type GatewayRequest = { incoming: IncomingMessage; body: Buffer; response: ServerResponse };
 type Intercepted = {
   arrived(): Promise<void>;
@@ -78,9 +78,10 @@ export type Hui = {
   forward(): Promise<void>;
   overflowsSideways(): Promise<boolean>;
   reachable(target: Locator): Promise<boolean>;
-  clipboard(options?: { refuse?: boolean }): Promise<void>;
+  clipboard(options?: { refuse?: boolean; legacyCopy?: boolean }): Promise<void>;
   copied(): Promise<string>;
   keyboard: { down(key: string): Promise<void>; up(key: string): Promise<void> };
+  type(text: string): Promise<void>;
   peek(target: Locator): Promise<void>;
   sessionList(): Promise<void>;
   settingsPages(): Promise<void>;
@@ -103,7 +104,14 @@ export type Hui = {
   textOf(target: Locator): Promise<string>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
+  /** A real touch gesture on a target: a tap, or a drag of `drag` pixels down the screen. */
+  touch(target: Locator, gesture?: { drag?: number }): Promise<void>;
+  /** Two fingers pinching around a target's centre, going from `from` to `to` pixels apart and lifting the second, which leaves the first down for `fingerDrag`. */
+  pinch(target: Locator, { from, to }: { from: number; to: number }): Promise<void>;
+  /** Drags the finger a `pinch` left down by `dx` and `dy` pixels and lifts it. */
+  fingerDrag({ dx, dy }: { dx: number; dy: number }): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
+  wheel(target: Locator, deltaY: number): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
@@ -234,16 +242,75 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
   return null;
 };
 
+/** Touch events a browser sends; a canvas reads them where it never sees a synthetic pointer. */const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
+  const target = document.elementFromPoint(x, y);
+  if (!target) throw new Error(`touch: nothing is at ${x}, ${y}`);
+  const at = (clientY: number) => new Touch({ identifier: 1, target, clientX: x, clientY, screenX: x, screenY: clientY });
+  const fire = (type: string, moving: Touch[], ended: Touch[]) => target.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true, composed: true, touches: moving, changedTouches: ended, targetTouches: moving }));
+  fire("touchstart", [at(y)], [at(y)]);
+  for (let moved = 0; Math.abs(moved) < Math.abs(drag);) {
+    moved = Math.sign(drag) * Math.min(Math.abs(moved) + 40, Math.abs(drag));
+    fire("touchmove", [at(y + moved)], [at(y + moved)]);
+  }
+  // The finger settles where it stopped, so the drag ends without the momentum a flick would leave.
+  if (drag) fire("touchmove", [at(y + drag)], [at(y + drag)]);
+  fire("touchend", [], [at(y + drag)]);
+  return null;
+};
+
+/**
+ * Pointer events for a two-finger touch gesture, which a browser only sends for real fingers: a synthetic pointer has
+ * no active pointer to capture, so the element that would capture it under a real finger accepts it here too.
+ */
+const pinch = ({ x, y, from, to }: { x: number; y: number; from: number; to: number }) => {
+  const target = document.elementFromPoint(x, y);
+  if (!target) throw new Error(`pinch: nothing is at ${x}, ${y}`);
+  const capture = Element.prototype.setPointerCapture;
+  Element.prototype.setPointerCapture = function () {};
+  const fire = (type: string, pointerId: number, clientX: number, isPrimary = false) => target.dispatchEvent(
+    new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerId, pointerType: "touch", isPrimary, clientX, clientY: y }));
+  fire("pointerdown", 1, x - from / 2, true);
+  fire("pointerdown", 2, x + from / 2);
+  for (let step = 1; step <= 8; step += 1) {
+    const gap = from + ((to - from) * step) / 8;
+    fire("pointermove", 1, x - gap / 2);
+    fire("pointermove", 2, x + gap / 2);
+  }
+  fire("pointerup", 2, x + to / 2);
+  Element.prototype.setPointerCapture = capture;
+  (window as unknown as { huiFinger?: { x: number; y: number } }).huiFinger = { x: x - to / 2, y };
+  return null;
+};
+
+const fingerDrag = ({ dx, dy }: { dx: number; dy: number }) => {
+  const held = (window as unknown as { huiFinger?: { x: number; y: number } }).huiFinger;
+  if (!held) throw new Error("fingerDrag: no pinch left a finger down");
+  const target = document.elementFromPoint(held.x, held.y);
+  if (!target) throw new Error(`fingerDrag: nothing is at ${held.x}, ${held.y}`);
+  const capture = Element.prototype.setPointerCapture;
+  Element.prototype.setPointerCapture = function () {};
+  const fire = (type: string, clientX: number, clientY: number) => target.dispatchEvent(
+    new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: "touch", isPrimary: true, clientX, clientY }));
+  for (let step = 1; step <= 8; step += 1) fire("pointermove", held.x + (dx * step) / 8, held.y + (dy * step) / 8);
+  fire("pointerup", held.x + dx, held.y + dy);
+  Element.prototype.setPointerCapture = capture;
+  delete (window as unknown as { huiFinger?: unknown }).huiFinger;
+  return null;
+};
+
 const trackSockets = () => {
   const sockets = new Set<WebSocket>();
   (window as unknown as { huiSockets: Set<WebSocket> }).huiSockets = sockets;
-  window.WebSocket = class extends WebSocket {
-    constructor(url: string | URL, protocols?: string | string[]) {
-      super(protocols === "vite-hmr" ? "ws://127.0.0.1:1/" : url, protocols);
-      sockets.add(this);
-      this.addEventListener("close", () => sockets.delete(this));
-    }
-  };
+  const Native = window.WebSocket;
+  // Vite's development client opens its socket anyway, and any address that refuses it makes Chromium log a failed
+  // connection on every page, so the client gets a socket that never connects and never reports.
+  window.WebSocket = Object.setPrototypeOf(function (url: string | URL, protocols?: string | string[]) {
+    if (protocols === "vite-hmr") return Object.assign(new EventTarget(), { readyState: 0, send() {}, close() {} }) as unknown as WebSocket;
+    const socket = new Native(url, protocols);
+    sockets.add(socket);
+    socket.addEventListener("close", () => sockets.delete(socket));
+    return socket;
+  }, Native) as unknown as typeof WebSocket;
 };
 
 export const test = base.extend<{ hui: Hui }>({
@@ -276,7 +343,14 @@ export const test = base.extend<{ hui: Hui }>({
     const backlogTaskIds = async () => (await api<{ items: { id: string; kind: string }[] }>("GET", "/__hui/backlog")).items
       .filter((item) => item.kind === "local").map((item) => item.id);
     const prompt = async (session: { id: string }, text: string) => {
-      await expect.poll(async () => (await sessions()).find(({ id }) => id === session.id)?.status, { timeout: 30_000 }).toBe("idle");
+      const state = async () => (await sessions()).find(({ id }) => id === session.id);
+      // A stored row reports idle before its runtime exists, and a prompt then is refused as still starting, so the
+      // fixture opens the chat as the operator does and waits for the runtime the prompt needs.
+      if ((await state())?.runtime?.active !== true) await api("POST", `/__hui/sessions/${session.id}/open`);
+      await expect.poll(async () => {
+        const found = await state();
+        return found?.runtime?.active === true && found.status === "idle";
+      }, { timeout: 30_000 }).toBe(true);
       await api("POST", `/__hui/sessions/${session.id}/prompt`, { text });
     };
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
@@ -314,7 +388,7 @@ export const test = base.extend<{ hui: Hui }>({
 
       const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
         url: () => browser().url(),
-        clipboard: ({ refuse = false } = {}) => browser().addInitScript((refused: boolean) => {
+        clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
           const page = window as unknown as { huiCopied: string };
           page.huiCopied = "";
           navigator.clipboard.writeText = async (text) => {
@@ -326,10 +400,11 @@ export const test = base.extend<{ hui: Hui }>({
             const blobs = await Promise.all(items.flatMap((item) => item.types.map((type) => item.getType(type))));
             page.huiCopied = blobs.map((blob) => blob.type).join(",");
           };
-          if (refused) document.execCommand = () => false;
-        }, refuse),
+          if (refused) document.execCommand = () => legacy;
+        }, { refused: refuse, legacy: legacyCopy }),
         copied: () => browser().evaluate(() => (window as unknown as { huiCopied?: string }).huiCopied ?? ""),
         keyboard: { down: (key) => browser().keyboard.down(key), up: (key) => browser().keyboard.up(key) },
+        type: (text) => browser().keyboard.type(text),
         phoneScreen: async (orientation = "portrait") => {
           const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
           await browser().setViewport(phone);
@@ -521,6 +596,19 @@ export const test = base.extend<{ hui: Hui }>({
           await browser().evaluate(touch, { ...point, type: "pointerdown" });
           await browser().evaluate(touch, { ...point, type: "pointerup" });
         },
+        touch: async (target, { drag = 0 } = {}) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("touch: the target is not on screen");
+          await browser().evaluate(swipe, { x: box.x + box.width / 2, y: box.y + box.height / 2, drag });
+        },
+        pinch: async (target, { from, to }) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("pinch: the target is not on screen");
+          await browser().evaluate(pinch, { x: box.x + box.width / 2, y: box.y + box.height / 2, from, to });
+        },
+        fingerDrag: async ({ dx, dy }) => {
+          await browser().evaluate(fingerDrag, { dx, dy });
+        },
         contextMenu: (target) => target.secondaryTap(),
         messageActions: (target) => target.hover(),
         scrollTo: (_within, target) => target.scrollIntoView(),
@@ -531,6 +619,12 @@ export const test = base.extend<{ hui: Hui }>({
           if (!box) throw new Error("scrollSideways: the target is not on screen");
           await browser().mouse.move(box.x + Math.min(24, box.width / 2), box.y + box.height / 2);
           await browser().mouse.wheel(240, 0);
+        },
+        wheel: async (target, deltaY) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("wheel: the target is not on screen");
+          await browser().mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await browser().mouse.wheel(0, deltaY);
         },
         stored: async (text) => {
           const root = dirname(receipt.workspace);
@@ -587,10 +681,20 @@ export const test = base.extend<{ hui: Hui }>({
       };
       const deviceScheme = () => execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance"], { encoding: "utf8" }).trim();
       const startScheme = web ? "" : deviceScheme();
+      const appChrome = () => fixtures.screen.getByTestId("app-route");
+      const onScreen = async (within: Locator, target: Locator) => {
+        const box = await target.count() > 0 ? await target.boundingBox() : null;
+        if (!box) return false;
+        const area = await within.count() > 0 ? await within.boundingBox() : appArea;
+        if (!area) return false;
+        const middle = box.y + box.height / 2;
+        return middle >= area.y && middle <= area.y + area.height;
+      };
       const iosSteps: Partial<typeof webSteps> = {
         pressed: (within, name, on = true) => within.getByRole("button", { name, selected: on }),
         deviceAppearance: async (scheme) => {
           execFileSync("xcrun", ["simctl", "ui", IOS_DEVICE, "appearance", scheme]);
+          await expect.poll(() => fixtures.screen.getByTestId("app-route").inputValue(), { timeout: 60_000 }).not.toBe("");
         },
         appearance: async () => {
           const box = await fixtures.screen.getByTestId("app-route").boundingBox();
@@ -599,7 +703,7 @@ export const test = base.extend<{ hui: Hui }>({
           return (r + g + b) / 3 < 128 ? "dark" : "light";
         },
         look: async (target) => {
-          if (await target.count() === 0) await iosSteps.scrollTo!(fixtures.screen.getByTestId("app-route"), target);
+          if (!await onScreen(appChrome(), target)) await iosSteps.scrollTo!(appChrome(), target);
           const box = await target.boundingBox();
           if (!box) throw new Error("look: the target lays out no box");
           const shot = await screenshot();
@@ -690,11 +794,11 @@ export const test = base.extend<{ hui: Hui }>({
           const shown = async () => [...await within.getByText(/\S/u).allTextContents(), await bar.count() > 0 ? await bar.inputValue() : ""].join("\n");
           for (const direction of ["down", "up"] as const) {
             for (let swipes = 0, before = "", now = await shown(); now !== before && swipes < MAX_SCROLL_SWIPES; swipes++, before = now, now = await shown()) {
-              if (await target.count() > 0) return;
+              if (await onScreen(within, target)) return;
               await within.swipe({ direction, momentum: "slow" });
             }
           }
-          await expect(target).not.toHaveCount(0);
+          await expect.poll(() => onScreen(within, target)).toBe(true);
         },
         expectLinkTo: async (within, name, href) => {
           if (!name.trim()) throw new Error("expectLinkTo: the link needs a name");

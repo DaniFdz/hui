@@ -66,7 +66,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#hui-owned-presentation-state"],
     surfaces: ["setting:accent"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-076",
@@ -122,7 +122,7 @@ const cases: UseCase[] = [
     surfaces: ["setting:fontTerminal"],
     journeys: ["terminal-font"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SET-011",

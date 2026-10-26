@@ -156,7 +156,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, "docs/api.md#gateway-lifecycle-boundary"],
     surfaces: [],
     journeys: ["remote-loading"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The boot screen shows while the page's code downloads; the iOS app ships its code.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
@@ -166,7 +166,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: [],
     journeys: ["remote-loading"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The boot screen shows while the page's code downloads; the iOS app ships its code.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
@@ -264,7 +264,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES],
     surfaces: [],
     journeys: ["update-notice"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -274,7 +274,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES, "docs/api.md#get-__huiupdate", "docs/api.md#post-__huiupdatecheck"],
     surfaces: ["route:GET /__hui/update", "route:POST /__hui/update/check", "route:POST /__hui/sessions"],
     journeys: ["update-notice"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -284,7 +284,7 @@ const cases: UseCase[] = [
     spec: [UPDATES, KEYBOARD],
     surfaces: [],
     journeys: ["update-notice"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: ESCAPE_ONLY, decision: KEYBOARD },
   },
   {
@@ -294,7 +294,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES],
     surfaces: ["command:update", "route:GET /__hui/update", "route:POST /__hui/update/check", "route:POST /__hui/sessions"],
     journeys: ["update"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -304,7 +304,7 @@ const cases: UseCase[] = [
     spec: [GATEWAY, UPDATES],
     surfaces: ["command:update", "route:POST /__hui/update/check"],
     journeys: ["update"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -314,7 +314,7 @@ const cases: UseCase[] = [
     spec: [UPDATES],
     surfaces: ["command:update"],
     journeys: ["update"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
