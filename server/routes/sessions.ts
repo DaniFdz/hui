@@ -119,7 +119,7 @@ export function sessionMutationErrorStatus(error: unknown): 400 | 500 {
 }
 
 export function createSessionRoutes(deps: {
-  sessionList: { refresh(): Promise<SessionList> };
+  sessionList: { refresh(): Promise<SessionList>; snapshot(): Promise<SessionList> };
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "createSession" | "startWorktreeSession" | "deleteSession" | "updateSession">;
   views: Pick<ReturnType<typeof createSessionViews>, "toView">;
   bots: Pick<BotService, "botForSession">;
@@ -184,7 +184,7 @@ export function createSessionRoutes(deps: {
 
     if (path === SESSIONS_ROUTE) {
       if (method === "GET") {
-        return reply(SessionList, await sessionList.refresh());
+        return reply(SessionList, await sessionList.snapshot());
       }
       if (method === "POST") {
         let body: Record<string, unknown>;

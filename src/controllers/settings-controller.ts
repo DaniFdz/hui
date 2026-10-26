@@ -52,6 +52,7 @@ export class SettingsController implements ReactiveController {
   previews: readonly ThemePreview[] = [];
   themeImportNote = "";
   themeImportFailed = false;
+  #previewsLoad: Promise<unknown> | undefined;
   /** `undefined` until the backend answers, so an empty list never reads as "none". */
   pi: PiSnapshot | undefined;
   piLoading = false;
@@ -113,8 +114,13 @@ export class SettingsController implements ReactiveController {
     void this.save(patch);
   };
 
+  /** Reads every theme file once: a second visit to the picker, or one made
+   * while the first read is still running, reuses it. */
   loadPreviews(): void {
-    void loadThemePreviews().then((previews) => {
+    if (this.previews.length) return;
+    const pending = this.#previewsLoad ??= loadThemePreviews().then((previews) => {
+      if (this.#previewsLoad !== pending) return;
+      this.#previewsLoad = undefined;
       this.previews = previews;
       this.#changed();
     });
@@ -152,6 +158,7 @@ export class SettingsController implements ReactiveController {
     this.#changed();
     void importTheme(url)
       .then(async (id) => {
+        this.#previewsLoad = undefined;
         this.previews = await loadThemePreviews();
         this.themeImportNote = `Imported ${id}.`;
         this.themeImportFailed = false;

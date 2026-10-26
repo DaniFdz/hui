@@ -258,3 +258,25 @@ test("model catalog invalidation during discovery re-probes instead of publishin
   assert.equal((await read()).catalog[0]?.contextWindow, 32000);
   assert.equal(starts, 2);
 });
+
+test("an expired catalog is served at once and replaced in the background", async () => {
+  let starts = 0;
+  let release!: () => void;
+  const read = createModelCatalogReader(async () => {
+    const id = String(++starts);
+    const gate = new Promise<void>((resolve) => { if (id === "1") release = resolve; else resolve(); });
+    return {
+      async listModels() { await gate; return [{ provider: "test", id, name: id }]; },
+      dispose() {},
+    };
+  }, 0);
+
+  const first = read();
+  release();
+  assert.deepEqual(await first, { catalog: [{ provider: "test", id: "1", name: "1" }] });
+  // Expired: the caller gets the cached catalog without waiting on the probe.
+  assert.deepEqual(await read(), { catalog: [{ provider: "test", id: "1", name: "1" }] });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(starts, 2);
+  assert.deepEqual(await read(), { catalog: [{ provider: "test", id: "2", name: "2" }] });
+});

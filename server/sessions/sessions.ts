@@ -331,6 +331,14 @@ export async function readSessionRegistry(): Promise<{
   return { sessions: registry.sessions, groups: registry.groups };
 }
 
+/** How many times this gateway has written the registry. A shared list is only
+ * worth reusing while nothing has changed it. */
+let writes = 0;
+
+export function sessionRegistryWrites(): number {
+  return writes;
+}
+
 /**
  * Writes through a temporary file and renames, so a crash mid-write cannot leave
  * a truncated registry behind.
@@ -343,6 +351,7 @@ async function writeRegistryState(registry: Registry): Promise<void> {
     const temporary = `${REGISTRY_FILE}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`;
     await writeFile(temporary, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
     await rename(temporary, REGISTRY_FILE);
+    writes += 1;
   } catch (error) {
     throw new SessionRegistryError("HUI's session registry could not be written.", {
       cause: error,
