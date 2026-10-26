@@ -190,7 +190,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#rich-markdown-embeds"],
     surfaces: [],
     journeys: ["media-viewer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

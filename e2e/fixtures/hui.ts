@@ -104,6 +104,10 @@ export type Hui = {
   touchTap(target: Locator): Promise<void>;
   /** A real touch gesture on a target: a tap, or a drag of `drag` pixels down the screen. */
   touch(target: Locator, gesture?: { drag?: number }): Promise<void>;
+  /** Two fingers pinching around a target's centre, going from `from` to `to` pixels apart and lifting the second, which leaves the first down for `fingerDrag`. */
+  pinch(target: Locator, { from, to }: { from: number; to: number }): Promise<void>;
+  /** Drags the finger a `pinch` left down by `dx` and `dy` pixels and lifts it. */
+  fingerDrag({ dx, dy }: { dx: number; dy: number }): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
   wheel(target: Locator, deltaY: number): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
@@ -235,8 +239,7 @@ const touch = ({ x, y, type }: { x: number; y: number; type: "pointerdown" | "po
   return null;
 };
 
-/** Touch events a browser sends; a canvas reads them where it never sees a synthetic pointer. */
-const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
+/** Touch events a browser sends; a canvas reads them where it never sees a synthetic pointer. */const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
   const target = document.elementFromPoint(x, y);
   if (!target) throw new Error(`touch: nothing is at ${x}, ${y}`);
   const at = (clientY: number) => new Touch({ identifier: 1, target, clientX: x, clientY, screenX: x, screenY: clientY });
@@ -249,6 +252,46 @@ const swipe = ({ x, y, drag }: { x: number; y: number; drag: number }) => {
   // The finger settles where it stopped, so the drag ends without the momentum a flick would leave.
   if (drag) fire("touchmove", [at(y + drag)], [at(y + drag)]);
   fire("touchend", [], [at(y + drag)]);
+  return null;
+};
+
+/**
+ * Pointer events for a two-finger touch gesture, which a browser only sends for real fingers: a synthetic pointer has
+ * no active pointer to capture, so the element that would capture it under a real finger accepts it here too.
+ */
+const pinch = ({ x, y, from, to }: { x: number; y: number; from: number; to: number }) => {
+  const target = document.elementFromPoint(x, y);
+  if (!target) throw new Error(`pinch: nothing is at ${x}, ${y}`);
+  const capture = Element.prototype.setPointerCapture;
+  Element.prototype.setPointerCapture = function () {};
+  const fire = (type: string, pointerId: number, clientX: number, isPrimary = false) => target.dispatchEvent(
+    new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerId, pointerType: "touch", isPrimary, clientX, clientY: y }));
+  fire("pointerdown", 1, x - from / 2, true);
+  fire("pointerdown", 2, x + from / 2);
+  for (let step = 1; step <= 8; step += 1) {
+    const gap = from + ((to - from) * step) / 8;
+    fire("pointermove", 1, x - gap / 2);
+    fire("pointermove", 2, x + gap / 2);
+  }
+  fire("pointerup", 2, x + to / 2);
+  Element.prototype.setPointerCapture = capture;
+  (window as unknown as { huiFinger?: { x: number; y: number } }).huiFinger = { x: x - to / 2, y };
+  return null;
+};
+
+const fingerDrag = ({ dx, dy }: { dx: number; dy: number }) => {
+  const held = (window as unknown as { huiFinger?: { x: number; y: number } }).huiFinger;
+  if (!held) throw new Error("fingerDrag: no pinch left a finger down");
+  const target = document.elementFromPoint(held.x, held.y);
+  if (!target) throw new Error(`fingerDrag: nothing is at ${held.x}, ${held.y}`);
+  const capture = Element.prototype.setPointerCapture;
+  Element.prototype.setPointerCapture = function () {};
+  const fire = (type: string, clientX: number, clientY: number) => target.dispatchEvent(
+    new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: "touch", isPrimary: true, clientX, clientY }));
+  for (let step = 1; step <= 8; step += 1) fire("pointermove", held.x + (dx * step) / 8, held.y + (dy * step) / 8);
+  fire("pointerup", held.x + dx, held.y + dy);
+  Element.prototype.setPointerCapture = capture;
+  delete (window as unknown as { huiFinger?: unknown }).huiFinger;
   return null;
 };
 
@@ -554,6 +597,14 @@ export const test = base.extend<{ hui: Hui }>({
           const box = await target.boundingBox();
           if (!box) throw new Error("touch: the target is not on screen");
           await browser().evaluate(swipe, { x: box.x + box.width / 2, y: box.y + box.height / 2, drag });
+        },
+        pinch: async (target, { from, to }) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("pinch: the target is not on screen");
+          await browser().evaluate(pinch, { x: box.x + box.width / 2, y: box.y + box.height / 2, from, to });
+        },
+        fingerDrag: async ({ dx, dy }) => {
+          await browser().evaluate(fingerDrag, { dx, dy });
         },
         contextMenu: (target) => target.secondaryTap(),
         scrollTo: (_within, target) => target.scrollIntoView(),
