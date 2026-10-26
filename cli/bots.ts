@@ -139,8 +139,9 @@ export async function botCommand(base: string, action: string, operands: readonl
   const path = `/__hui/bots/${encodeURIComponent(bot.id)}`;
   switch (action) {
     case "show": {
-      const { bot: view } = await request<{ bot: BotView }>(base, path);
-      print(view, formatBot(view));
+      const homeText = (file: "user" | "memory") => flags.json ? undefined : request<BotFileText>(base, `${path}/files/${file}`).then((result) => result.text, () => undefined);
+      const [{ bot: view }, user, memory] = await Promise.all([request<{ bot: BotView }>(base, path), homeText("user"), homeText("memory")]);
+      print(view, formatBot(view, { user, memory }));
       return 0;
     }
     case "edit": {
@@ -317,7 +318,7 @@ async function history(base: string, bot: BotView, flags: BotFlags, io: BotIO): 
     return 0;
   }
   const result = await request<{ status: NonNullable<BotView["memory"]>; view: string }>(base, path);
-  io.out(`${flags.json ? JSON.stringify(result) : `${formatMemory(result.status)}\n${result.view}`}\n`);
+  io.out(`${flags.json ? JSON.stringify(result) : `${formatHistory(result.status)}\n${result.view}`}\n`);
   return 0;
 }
 
@@ -741,7 +742,7 @@ export function formatSkills(bot: BotView, catalog: BotCatalog): string {
 }
 
 /** One line: the log, the tree, the view, and what the compactor spent since the gateway opened the memory. */
-function formatMemory(status: NonNullable<BotView["memory"]>): string {
+function formatHistory(status: NonNullable<BotView["memory"]>): string {
   const size = status.viewBytes < 1024 ? `${status.viewBytes} B` : `${Math.round(status.viewBytes / 1024)} KB`;
   const { usage } = status;
   return [
@@ -781,14 +782,17 @@ function formatLanguage(value: string | undefined): string {
   return code ? `${code} (${voiceLanguageName(code)})` : "auto";
 }
 
-export function formatBot(bot: BotView): string {
+export function formatBot(bot: BotView, files: { user?: string | null; memory?: string | null }): string {
+  const homeFile = (name: string, command: string, text: string | null | undefined) => text === undefined
+    ? "unavailable"
+    : text === null ? "none yet: it writes one when you tell it what to keep" : `${name}, ${plural(text.length, "character")} (hui bot ${command} ${bot.handle})`;
   return [
     `${bot.avatar?.emoji ? `${bot.avatar.emoji} ` : ""}@${bot.handle} · ${bot.name}${bot.title ? ` (${bot.title})` : ""}${bot.archived ? " · archived" : ""}`,
     `status: ${bot.status}${bot.unread ? " · unread" : ""}`,
     ...(bot.worker ? [`worker: ${bot.worker.name} (${bot.worker.id})`] : []),
     `look: ${formatLook(bot)}`,
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
-    `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}`,
+    `history: ${bot.memory ? formatHistory(bot.memory) : "unavailable"}`,
     `utility model: ${bot.memoryModel ?? "default (Settings' utility model, else its model)"}`,
     `language: ${formatLanguage(bot.voice?.language)}`,
     ...(bot.voice?.live ? [`call voice: ${gptLiveVoiceLabel(bot.voice.live)}`] : []),
@@ -800,5 +804,7 @@ export function formatBot(bot: BotView): string {
     ...(bot.description ? [`description: ${bot.description}`] : []),
     `tagging: ${TAGGING_TEXT[bot.tagging ?? "anyone"]}`,
     `soul: ${bot.soul ? `SOUL.md (hui bot soul ${bot.handle})` : "none yet: it writes SOUL.md in its first conversation"}`,
+    `user: ${homeFile("USER.md", "user", files.user)}`,
+    `memory: ${homeFile("MEMORY.md", "memory", files.memory)}`,
   ].join("\n");
 }

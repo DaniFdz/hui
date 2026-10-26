@@ -53,6 +53,8 @@ async function fakeGateway(t: TestContext) {
   /** SOUL.md per bot id, as the soul route reads and writes it, and the bot's other home files by `id/file`. */
   const souls = new Map<string, string>([["id-ada", "# Who I am\nAda, a researcher."]]);
   const fileTexts = new Map<string, string>([["id-ada/user", "Prefers brief answers."], ["id-ada/memory", "# MEMORY.md\n\n## Projects\n\nHUI."], ["id-ada/bootstrap", "Ask what they need."]]);
+  /** Home files whose reads fail, as a disconnected worker's do. */
+  const unreadable = new Set<string>();
   const tasks: AutomationTask[] = [{
     id: "task-1", name: "Morning", description: "", sessionId: "s-ada", prompt: "check", schedule: { kind: "every", everyMs: 86_400_000 },
     enabled: true, timeoutSeconds: 900, createdAt: "", updatedAt: "", nextRunAt: "2026-10-06T07:00:00.000Z",
@@ -116,7 +118,7 @@ async function fakeGateway(t: TestContext) {
       if (action?.startsWith("files/")) {
         const file = action.slice("files/".length);
         const key = `${bot.id}/${file}`;
-        if (request.method === "GET") return reply(200, { file, text: fileTexts.get(key) ?? null });
+        if (request.method === "GET") return unreadable.has(key) ? reply(503, { error: "The worker is not connected." }) : reply(200, { file, text: fileTexts.get(key) ?? null });
         if (request.method === "PUT" && file === "bootstrap") {
           const text = String(body?.["text"] ?? "").trim();
           if (text) fileTexts.set(key, text);
@@ -170,7 +172,7 @@ async function fakeGateway(t: TestContext) {
   });
   const address = server.address() as { port: number };
   return {
-    base: `http://127.0.0.1:${address.port}/`, bots, tasks, calls, replies, unseenPrompts, souls,
+    base: `http://127.0.0.1:${address.port}/`, bots, tasks, calls, replies, unseenPrompts, souls, unreadable,
     /** Resolves once the CLI holds the `session` or `bots` stream open. */
     connected: (key: string) => streams.has(key) ? Promise.resolve() : new Promise<void>((resolve) => waiting.set(key, resolve)),
     push: (key: string, event: string, data: unknown) => { streams.get(key)!.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); },
@@ -269,12 +271,13 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 
   const shown = terminal();
   await botCommand(gateway.base, "show", ["ada"], {}, shown.io);
-  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nmemory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nutility model: default \(Settings' utility model, else its model\)\nlanguage: auto\nroutines: 1\n/u);
-  assert.match(shown.out, /\nsoul: SOUL\.md \(hui bot soul ada\)\n$/u);
+  assert.match(shown.out, /^@ada · Ada \(Researcher\)\nstatus: idle\nlook: face · Cookie \(from its id\) · Yellow \(from its id\)\nmodel: default\nhistory: 2 messages · 3 summaries built · 0 pending · view 300 B in 2 lines · compactor 1 call, 1 token in, 1 out\nutility model: default \(Settings' utility model, else its model\)\nlanguage: auto\nroutines: 1\n/u);
+  assert.match(shown.out, /\nsoul: SOUL\.md \(hui bot soul ada\)\nuser: USER\.md, 22 characters \(hui bot user ada\)\nmemory: MEMORY\.md, 30 characters \(hui bot memory ada\)\n$/u);
   const unread = terminal();
+  gateway.unreadable.add("id-bob/memory");
   await botCommand(gateway.base, "show", ["bob"], {}, unread.io);
-  assert.match(unread.out, /\nmemory: unavailable\n/u, "a memory the gateway cannot read");
-  assert.match(unread.out, /\nsoul: none yet: it writes SOUL\.md in its first conversation\n$/u);
+  assert.match(unread.out, /\nhistory: unavailable\n/u, "a history the gateway cannot read");
+  assert.match(unread.out, /\nsoul: none yet: it writes SOUL\.md in its first conversation\nuser: none yet: it writes one when you tell it what to keep\nmemory: unavailable\n$/u, "a file the gateway cannot read leaves the rest of show");
 
   await writeFile(join(dir, "soul.md"), "# Who I am\nNova, kind.\n");
   const added = terminal();
@@ -342,10 +345,10 @@ test("list, show, add, edit, remove, restore and stop talk to the bot routes and
 test("list marks a bot on a worker and show names the worker and its folder there", () => {
   const rover = view("id-rover", "rover", { cwd: "/home/remote/.local/share/hui-worker/bots/id-rover", worker: { id: "w-1", name: "devbox" } });
   assert.equal(formatBots([rover, view("id-ada", "ada")]), "@rover  Rover  idle · on devbox  0 routines  id-rover\n@ada  Ada  idle  0 routines  id-ada");
-  const shown = formatBot(rover);
+  const shown = formatBot(rover, {});
   assert.match(shown, /\nstatus: idle\nworker: devbox \(w-1\)\nlook: /u);
   assert.match(shown, /\ncwd: devbox:\/home\/remote\/\.local\/share\/hui-worker\/bots\/id-rover\n/u);
-  assert.doesNotMatch(formatBot(view("id-ada", "ada")), /worker:/u, "a bot here names no worker");
+  assert.doesNotMatch(formatBot(view("id-ada", "ada"), {}), /worker:/u, "a bot here names no worker");
 });
 
 test("show names the look: the face's shape and color, or the emoji, and what the bot's id picked", () => {
@@ -779,11 +782,11 @@ test("chat ends cleanly when stdin closes, and reports a runtime that exits", as
 
 test("show names a bot's language, auto when it has none", () => {
   const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
-  assert.match(formatBot(base), /\nlanguage: auto\n/u);
-  const spanish = formatBot({ ...base, voice: { language: "es" } });
+  assert.match(formatBot(base, {}), /\nlanguage: auto\n/u);
+  const spanish = formatBot({ ...base, voice: { language: "es" } }, {});
   assert.match(spanish, /\nlanguage: es \(Spanish\)\n/u);
   assert.doesNotMatch(spanish, /\nvoice:/u, "no VoiceStudio voice line");
-  assert.match(formatBot({ ...base, voice: { language: "haw" } }), /\nlanguage: haw \(Hawaiian\)\n/u);
+  assert.match(formatBot({ ...base, voice: { language: "haw" } }, {}), /\nlanguage: haw \(Hawaiian\)\n/u);
 });
 
 
@@ -796,8 +799,8 @@ test("--call-voice sets the bot's GPT-Live voice, \"\" goes back to Settings' de
   await botCommand(gateway.base, "add", [], { name: "Lola", "call-voice": "sol" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", voice: { live: "sol" } });
   const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
-  assert.match(formatBot({ ...base, voice: { language: "es", live: "juniper" } }), /\nlanguage: es \(Spanish\)\ncall voice: Juniper\nroutines: /u);
-  assert.doesNotMatch(formatBot(base), /call voice:/u, "without one it follows Settings");
+  assert.match(formatBot({ ...base, voice: { language: "es", live: "juniper" } }, {}), /\nlanguage: es \(Spanish\)\ncall voice: Juniper\nroutines: /u);
+  assert.doesNotMatch(formatBot(base, {}), /call voice:/u, "without one it follows Settings");
 });
 
 test("--description says what a bot does and when to tag it, --tagging who may, and show says both", async (t) => {
@@ -807,6 +810,6 @@ test("--description says what a bot does and when to tag it, --tagging who may, 
   await botCommand(gateway.base, "add", [], { name: "Lola", tagging: "nobody" }, terminal().io);
   assert.deepEqual(gateway.calls.at(-1)?.body, { name: "Lola", tagging: "nobody" });
   const base: BotView = { id: "id-vox", handle: "vox", name: "Vox", cwd: "/tmp", sessionId: "s", createdAt: "2026-10-05T10:00:00.000Z", updatedAt: "2026-10-05T10:00:00.000Z", status: "idle", soul: false, unread: false, routines: 0 };
-  assert.match(formatBot({ ...base, description: "Finds sources.", tagging: "mention" }), /\ndescription: Finds sources\.\ntagging: only when your message tags it\n/u);
-  assert.match(formatBot(base), /\ntagging: anyone, when a task fits its description\n/u);
+  assert.match(formatBot({ ...base, description: "Finds sources.", tagging: "mention" }, {}), /\ndescription: Finds sources\.\ntagging: only when your message tags it\n/u);
+  assert.match(formatBot(base, {}), /\ntagging: anyone, when a task fits its description\n/u);
 });
