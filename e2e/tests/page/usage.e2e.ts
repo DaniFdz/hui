@@ -99,7 +99,7 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
 test("Usage searches its sessions by title, id or model, sorts them and reads them again", { tags: ["PAGE-021"], platforms: ["web"] }, async ({ screen, hui }) => {
   const sessions = screen.getByTestId("usage-sessions");
   const totals = screen.getByTestId("usage-totals");
-  const filter = screen.getByPlaceholder("Title, ID or model");
+  const filter = screen.getByLabel("Filter sessions");
   const clear = screen.getByRole("button", "Clear search");
   const sort = screen.getByLabel("Sort sessions");
   const titles = async () => (await sessions.getByRole("button").allTextContents())
