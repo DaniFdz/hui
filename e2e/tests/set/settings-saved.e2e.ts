@@ -3,23 +3,22 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 test("the footer and Appearance say a change was saved, and a failed write applies now but is forgotten after a reload", { tags: ["SET-004"] }, async ({ screen, hui }) => {
-  const sizes = screen.getByLabel("Text size");
-  const chosen = (name: string) => hui.pressed(sizes, name);
+  const chosen = (name: string) => hui.pressed(screen, name);
   const saved = screen.getByText("Settings saved locally");
   const notSaved = screen.getByText("Settings not saved");
-  const probe = screen.getByText("Controls the maximum width of the conversation and composer.");
 
+  await hui.deviceAppearance("light");
   await hui.open("/settings/appearance");
-  await sizes.getByRole("button", "Large 110%").tap();
-  await expect(chosen("Large 110%")).toBeVisible();
-  await expect.poll(async () => (await hui.api<{ textScale: number }>("GET", "/__hui/settings")).textScale).toBe(110);
+  await hui.scrollTo(screen.getByTestId("settings-page"), screen.getByText("Follows your system setting unless you pick one."));
+  await screen.getByRole("button", "Dark").tap();
+  await expect(chosen("Dark")).toBeVisible();
+  await expect.poll(async () => (await hui.api<{ themeMode: string }>("GET", "/__hui/settings")).themeMode).toBe("dark");
   await expect(saved).toBeVisible();
   await expect(screen.getByText("Saved to ~/.config/hui/settings.json")).toBeVisible();
   const ok = await hui.look(saved);
-  const large = (await hui.look(probe)).size;
 
   const write = await hui.intercept("PUT", /\/__hui\/settings$/u);
-  await sizes.getByRole("button", "XL 125%").tap();
+  await screen.getByRole("button", "Light").tap();
   await write.reject(500, "disk full");
   await expect(notSaved).toBeVisible();
   await expect(saved).toBeHidden();
@@ -27,15 +26,12 @@ test("the footer and Appearance say a change was saved, and a failed write appli
   const [r, g, b] = (await hui.look(notSaved)).color;
   expect(r - Math.max(g, b)).toBeGreaterThan(80);
   expect((await hui.look(notSaved)).color).not.toEqual(ok.color);
-  await expect(chosen("XL 125%")).toBeVisible();
-  expect((await hui.look(probe)).size).toBeCloseTo((large * 125) / 110, 0);
+  await expect(chosen("Light")).toBeVisible();
+  await expect.poll(() => hui.appearance()).toBe("light");
 
   await hui.reload();
-  await expect(chosen("Large 110%")).toBeVisible();
-  expect((await hui.look(probe)).size).toBeCloseTo(large, 1);
-  await expect(saved).toBeVisible();
-
-  await sizes.getByRole("button", "Default 100%").tap();
-  await expect.poll(async () => (await hui.api<{ textScale: number }>("GET", "/__hui/settings")).textScale).toBe(100);
+  await hui.scrollTo(screen.getByTestId("settings-page"), screen.getByRole("button", "Dark"));
+  await expect(chosen("Dark")).toBeVisible();
+  await expect.poll(() => hui.appearance()).toBe("dark");
   await expect(saved).toBeVisible();
 });
