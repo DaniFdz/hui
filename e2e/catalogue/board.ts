@@ -71,7 +71,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#session-stages"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -141,7 +141,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -241,7 +241,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -271,7 +271,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidstart"],
     surfaces: ["route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
