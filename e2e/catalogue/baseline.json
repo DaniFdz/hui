@@ -415,7 +415,6 @@
       "SESS-013",
       "SESS-014",
       "SESS-015",
-      "SESS-019",
       "SESS-021",
       "SESS-023",
       "SESS-024",
@@ -440,12 +439,9 @@
       "SESS-059",
       "SESS-060",
       "SESS-061",
-      "SESS-062",
       "SESS-063",
       "SESS-064",
-      "SESS-065",
       "SESS-066",
-      "SESS-067",
       "SESS-068",
       "SESS-069",
       "SESS-070",
@@ -863,7 +859,8 @@
       "CALL-023",
       "CALL-026",
       "CALL-027",
-      "CALL-028"
+      "CALL-028",
+      "SESS-019"
     ]
   },
   "unexercisedLabels": [

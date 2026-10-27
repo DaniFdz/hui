@@ -606,7 +606,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["session-lifecycle"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-063",
@@ -636,7 +636,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-066",
@@ -655,7 +655,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-068",

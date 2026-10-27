@@ -192,8 +192,8 @@ actor HUICore {
         try call("navigationPath", ["kind": "session", "id": id])
     }
 
-    func sidebarSessionGroups(_ groups: [API.SessionGroup], options: SidebarOptions? = nil) throws -> [SidebarGroup] {
-        try call("sidebarSessionGroups", groups, "", options ?? sidebarOptions(stored: nil))
+    func sidebarSessionGroups(_ groups: [API.SessionGroup], search: String = "", options: SidebarOptions? = nil) throws -> [SidebarGroup] {
+        try call("sidebarSessionGroups", groups, search, options ?? sidebarOptions(stored: nil))
     }
 
     func sidebarOptions(stored json: String?) throws -> SidebarOptions {
