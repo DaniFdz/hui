@@ -176,7 +176,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: [],
     journeys: ["remote-loading"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The boot screen shows while the page's code downloads; the iOS app ships its code.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {
@@ -186,7 +186,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, "docs/api.md#post-__huisessionsidopen"],
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -225,7 +225,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["chat-notifications"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
