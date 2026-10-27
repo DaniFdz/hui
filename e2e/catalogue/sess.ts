@@ -606,7 +606,7 @@ const cases: UseCase[] = [
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["session-lifecycle"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-063",

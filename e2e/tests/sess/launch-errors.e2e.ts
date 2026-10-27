@@ -1,25 +1,24 @@
 /** A session that cannot start explains why right below the composer and keeps its draft, and PI's rejection of a first prompt shows in the chat (SESS-002, SESS-062). */
-import { expect, type Screen } from "e2e";
+import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 type Listed = { groups: { sessions: { title: string }[] }[] };
 
-const placement = async (screen: Screen, detail: string) => {
-  const composer = (await screen.getByTestId("new-session-composer").boundingBox())!;
-  const alert = (await screen.getByTestId("launch-feedback").boundingBox())!;
-  const heading = (await screen.getByText("Could not start session").boundingBox())!;
-  const text = (await screen.getByText(detail).boundingBox())!;
-  const gap = alert.y - (composer.y + composer.height);
-  return {
-    directlyBelow: gap >= 0 && gap <= 16,
-    sameEdges: Math.abs(alert.x - composer.x) < 1 && Math.abs(alert.x + alert.width - composer.x - composer.width) < 1,
-    detailInside: text.x >= alert.x && text.x + text.width <= alert.x + alert.width,
-    pathWraps: text.height >= heading.height * 2.5,
-  };
-};
-const placed = { directlyBelow: true, sameEdges: true, detailInside: true, pathWraps: true };
-
 test("starting in a missing directory explains why, keeps the draft and starts once corrected", { tags: ["SESS-002"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const placement = async (detail: string) => {
+    const composer = (await screen.getByTestId("new-session-composer").boundingBox())!;
+    const alert = (await screen.getByTestId("launch-feedback").boundingBox())!;
+    const heading = (await screen.getByText("Could not start session").boundingBox())!;
+    const text = (await screen.getByText(detail).boundingBox())!;
+    const gap = alert.y - (composer.y + composer.height);
+    return {
+      directlyBelow: gap >= 0 && gap <= 16,
+      sameEdges: Math.abs(alert.x - composer.x) < 1 && Math.abs(alert.x + alert.width - composer.x - composer.width) < 1,
+      detailInside: text.x >= alert.x && text.x + text.width <= alert.x + alert.width,
+      pathWraps: text.height >= heading.height * 2.5,
+    };
+  };
+  const placed = { directlyBelow: true, sameEdges: true, detailInside: true, pathWraps: true };
   const titles = async () => (await hui.api<Listed>("GET", "/__hui/sessions")).groups.flatMap(({ sessions }) => sessions.map(({ title }) => title));
   const before = await titles();
   const missing = `${hui.workspace}/${"missing_project_folder_".repeat(9)}`;
@@ -39,9 +38,9 @@ test("starting in a missing directory explains why, keeps the draft and starts o
   expect(await titles()).toEqual(before);
   await expect(message).toHaveValue("Ping the project");
   await expect(message).toBeEnabled();
-  await expect.poll(() => placement(screen, detail)).toEqual(placed);
+  await expect.poll(() => placement(detail)).toEqual(placed);
   await hui.phoneScreen();
-  await expect.poll(() => placement(screen, detail)).toEqual(placed);
+  await expect.poll(() => placement(detail)).toEqual(placed);
 
   await directory.fill(hui.workspace);
   await start.tap();
@@ -51,7 +50,7 @@ test("starting in a missing directory explains why, keeps the draft and starts o
   expect(await titles()).toHaveLength(before.length + 1);
 });
 
-test("PI's rejection of a new session's first prompt shows in the chat and the session returns to Idle", { tags: ["SESS-062"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("PI's rejection of a new session's first prompt shows in the chat and the session returns to Idle", { tags: ["SESS-062"] }, async ({ screen, hui }) => {
   const session = await hui.createSession({ title: "No credential", model: "anthropic/claude-sonnet-4-5" });
 
   await hui.open(`/sessions/${session.id}`);
