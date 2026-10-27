@@ -40,6 +40,8 @@ struct ChatView: View {
     @FocusState private var naming: Bool
     @State private var name = ""
     @State private var slashOptions: [SlashOption] = []
+    @State private var workPaneShown = false
+    @State private var workPaneLabel = ""
 
     init(id: String, client: GatewayClient, core: HUICore, sessions: SessionsModel) {
         self.core = core
@@ -81,13 +83,29 @@ struct ChatView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let session = sessions.session(model.id) ?? model.session {
-                Menu {
-                    SessionMenu(session: session, sessions: sessions, client: client, markdown: model.markdown)
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    workPaneShown = true
                 } label: {
-                    Label("Actions for \(session.title)", systemImage: "ellipsis.circle")
+                    Image(systemName: "sidebar.trailing")
+                }
+                .accessibilityLabel(workPaneLabel)
+            }
+            if let session = sessions.session(model.id) ?? model.session {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        SessionMenu(session: session, sessions: sessions, client: client, markdown: model.markdown)
+                    } label: {
+                        Label("Actions for \(session.title)", systemImage: "ellipsis.circle")
+                    }
                 }
             }
+        }
+        .sheet(isPresented: $workPaneShown) {
+            WorkPaneView(sessionId: model.id, client: client, core: core)
+        }
+        .task {
+            if workPaneLabel.isEmpty { workPaneLabel = (try? await core.workPaneShow()) ?? "" }
         }
         .task { model.start() }
         .task(id: group) {

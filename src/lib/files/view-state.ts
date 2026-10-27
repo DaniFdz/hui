@@ -7,6 +7,8 @@
  * and, optionally, a line. A request survives until the view takes it, so it works whether the view is mounted,
  * hidden behind another tab or not created yet.
  */
+import { filesTabTitle } from "./copy.ts";
+
 export type MarkdownDisplayMode = "source" | "rendered";
 
 export type FilesViewState = {
@@ -115,6 +117,5 @@ export function onFilesViewReveal(viewId: string, listener: () => void): () => v
 
 /** The Work pane tab caption: the selected file's name, or "Files". */
 export function filesViewTitle(viewId: string): string {
-  const selected = readFilesViewState(viewId).selected;
-  return selected ? selected.slice(selected.lastIndexOf("/") + 1) : "Files";
+  return filesTabTitle(readFilesViewState(viewId).selected);
 }
