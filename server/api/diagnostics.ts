@@ -70,6 +70,7 @@ export const UsageReport = Type.Object({
     registeredSessions: Type.Number(), readSessions: Type.Number(),
     unavailable: Type.Array(Type.Object({ sessionId: Type.String(), reason: Type.String() })), undatedRecords: Type.Number(),
   }),
+  unplacedSpend: Type.Object({ totalTokens: Type.Number(), costUsd: Type.Number() }),
 }, { $id: "UsageReport" });
 export type UsageReport = Static<typeof UsageReport>;
 

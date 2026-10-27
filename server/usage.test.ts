@@ -8,8 +8,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, test } from "vitest";
-import { AssistantEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
+import { afterAll, test, vi } from "vitest";
+import { AssistantEntry, CompactionEntry, ToolResultEntry, UserEntry } from "@earendil-works/pi-durable";
 import { UsageReport } from "./api/diagnostics.ts";
 import type { SessionRecord } from "./sessions/sessions.ts";
 import { expectSchema } from "./test-support/api-schema.ts";
@@ -29,6 +29,9 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
 
 const { durableContext, durableHost } = await import("./runtimes/durable-host.ts");
+const { recordUsage } = await import(new URL("./harness/usage.js", import.meta.resolve("@earendil-works/pi-durable")).href) as {
+  recordUsage(tx: unknown, conversationId: unknown, bucket: "models" | "tools", key: string, usage: unknown): Promise<void>;
+};
 const { scanUsage, sliceUsage, usageQuery } = await import("./usage.ts");
 
 const readUsageReport = async (sessions: readonly SessionRecord[], query: ReturnType<typeof usageQuery>) => sliceUsage(await scanUsage(sessions, query.timeZone), query);
@@ -155,7 +158,7 @@ test("legacy transcripts report unpriced calls, undated records and gaps without
   assert.equal(report.coverage.readSessions, 1, "the duplicate path, the draft and the lost conversation are not read again");
   assert.deepEqual(report.coverage.unavailable, [
     { sessionId: "legacy", reason: "Some transcript records could not be read." },
-    { sessionId: "lost", reason: "The local conversation could not be read." },
+    { sessionId: "lost", reason: "The local conversation or its spend ledger could not be read." },
     { sessionId: "remote", reason: "The transcript lives on a remote worker and is not read here." },
   ]);
   assert.equal(report.coverage.undatedRecords, 2, "a record with no time, or one no calendar can hold, is a gap and never 1970 or the session's update");
@@ -175,6 +178,117 @@ test("legacy transcripts report unpriced calls, undated records and gaps without
   ], "a tool's spend is not guessed into a model");
   assert.equal(legacy.models.reduce((total, model) => total + model.metrics.totalTokens, 0), 9, "model totals never add the tool's spend twice");
   assert.doesNotMatch(JSON.stringify(report), /SECRET_PROMPT_MARKER/u, "no prompt, body, argument or output reaches the report");
+});
+
+test("compaction spend the store keeps outside entries is reported once, beside the range", async () => {
+  const answerUsage = priced(10, 5, 20, 0.5);
+  const toolUsage = priced(2, 0, 2, 0.1);
+  const undatedUsage = priced(6, 0, 6, 0.3);
+  const forkUsage = priced(3, 1, 4, 0.2);
+  const summaryUsage = priced(1000, 100, 1100, 3);
+  const { source, fork, quiet } = await (async () => {
+    const source = await harness.commit(async (tx) => {
+      const source = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+      await tx.appendEntry(source, { kind: UserEntry.kind, model: [user(T1, "first") as never] });
+      const answer = (await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T1, answerUsage) as never] })).id;
+      await tx.appendEntry(source, { kind: ToolResultEntry.kind, model: [{ role: "toolResult", toolCallId: "c1", toolName: "read", content: [], timestamp: T2, usage: toolUsage } as never] });
+      await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [{ ...assistant(T2, undatedUsage), timestamp: undefined } as never] });
+      await recordUsage(tx, source, "models", "fixture/model-a", answerUsage);
+      await recordUsage(tx, source, "models", "fixture/model-a", undatedUsage);
+      await recordUsage(tx, source, "tools", "read", toolUsage);
+      return { source, answer };
+    }, durableContext);
+    const fork = await harness.commit(async (tx) => {
+      const fork = (await tx.forkConversation(source.source, source.answer, { ownership: { kind: "ownerless" } })).id;
+      await tx.appendEntry(fork, { kind: AssistantEntry.kind, model: [assistant(T2, forkUsage) as never] });
+      await recordUsage(tx, fork, "models", "fixture/model-a", forkUsage);
+      return fork;
+    }, durableContext);
+    const quiet = await harness.commit(async (tx) => {
+      const quiet = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+      await tx.appendEntry(quiet, { kind: AssistantEntry.kind, model: [assistant(T3, priced(4, 0, 4, 0.2)) as never] });
+      return quiet;
+    }, durableContext);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await harness.commit(async (tx) => {
+        await tx.appendEntry(source.source, { kind: CompactionEntry.kind, data: { reason: "manual" }, model: [user(T2, "Summary of the work so far") as never] });
+        await recordUsage(tx, source.source, "models", "fixture/model-a", summaryUsage);
+      }, durableContext);
+    }
+    return { source: source.source, fork, quiet };
+  })();
+
+  const sessions = [
+    record("fork", `durable:${fork}`, "2026-01-01T00:00:00.000Z", { parentId: "source" }),
+    record("source", `durable:${source}`, "2026-01-02T00:00:00.000Z"),
+    record("quiet", `durable:${quiet}`, "2026-01-03T00:00:00.000Z"),
+    record("source-copy", `durable:${source}`, "2026-01-04T00:00:00.000Z"),
+  ];
+  const report = await readUsageReport(sessions, usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-30", timeZone: "UTC" })));
+
+  expectSchema(UsageReport, report);
+  assert.equal(report.coverage.readSessions, 3, "duplicate conversation references are read once");
+  const owned = report.sessions.find((each) => each.id === "source-copy")!;
+  assert.deepEqual(
+    { totalTokens: owned.metrics.totalTokens, costUsd: owned.metrics.costUsd },
+    { totalTokens: 22, costUsd: 0.6 },
+    "the ranged totals still hold only dated entries, even with the fork registered first and an undated entry in the source",
+  );
+  assert.deepEqual(
+    { totalTokens: report.sessions.find((each) => each.id === "fork")!.metrics.totalTokens, undated: report.coverage.undatedRecords },
+    { totalTokens: 4, undated: 1 },
+    "the fork keeps its own entry, and the undated entry is a stated gap rather than a 1970 day",
+  );
+  assert.equal(report.unplacedSpend.totalTokens, 2200,
+    "both summarization calls count once each, and the undated entry is subtracted too");
+  assert(Math.abs(report.unplacedSpend.costUsd - 6) < 1e-9, `cost ${report.unplacedSpend.costUsd}`);
+  assert(report.unplacedSpend.costUsd < 6.001, "a ledger smaller than its entries never goes negative, so nothing is added back");
+
+  const oneDay = await readUsageReport(sessions, usageQuery(new URLSearchParams({ from: "2026-06-03", to: "2026-06-03", timeZone: "UTC" })));
+  assert.deepEqual(oneDay.unplacedSpend, report.unplacedSpend, "undated spend is not hidden or double counted by a narrower range");
+  assert.deepEqual(oneDay.sessions.map((each) => each.id), [], "a range with no entry activity is empty, yet the undated spend still shows");
+});
+
+test("a ledger snapshot excludes concurrent replies, retains cost-only spend and reports failed reads", async () => {
+  const initial = priced(10, 0, 10, 0.5);
+  const later = priced(100, 0, 100, 1);
+  const conversationId = await harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, initial) as never] });
+    await recordUsage(tx, id, "models", "fixture/model-a", initial);
+    await recordUsage(tx, id, "tools", "nested-model", priced(0, 0, 0, 0.25));
+    return id;
+  }, durableContext);
+  const sessions = [record("active", `durable:${conversationId}`, "2026-01-01T00:00:00.000Z")];
+  const query = usageQuery(new URLSearchParams({ timeZone: "UTC" }));
+  const read = host.conversationUsage.bind(host);
+  const concurrent = vi.spyOn(host, "conversationUsage").mockImplementation(async (id) => {
+    const snapshot = await read(id);
+    await harness.commit(async (tx) => {
+      await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, later) as never] });
+      await recordUsage(tx, id, "models", "fixture/model-a", later);
+    }, durableContext);
+    return snapshot;
+  });
+  try {
+    const report = await readUsageReport(sessions, query);
+    assert.equal(report.sessions[0]?.metrics.totalTokens, 10, "a reply arriving after the snapshot waits for the next report");
+    assert.deepEqual(report.unplacedSpend, { totalTokens: 0, costUsd: 0.25 }, "cost need not have a token counter");
+    expectSchema(UsageReport, report);
+  } finally {
+    concurrent.mockRestore();
+  }
+  const failed = vi.spyOn(host, "conversationUsage").mockRejectedValueOnce(new Error("interrupted ledger read"));
+  try {
+    const report = await readUsageReport(sessions, query);
+    assert.deepEqual(report.coverage.unavailable, [{ sessionId: "active", reason: "The local conversation or its spend ledger could not be read." }]);
+    assert.equal(report.coverage.readSessions, 0, "a failed snapshot never implies a fully read conversation");
+  } finally {
+    failed.mockRestore();
+  }
+  const refreshed = await readUsageReport(sessions, query);
+  assert.equal(refreshed.sessions[0]?.metrics.totalTokens, 110, "the next report includes the concurrent reply");
+  assert.deepEqual(refreshed.unplacedSpend, { totalTokens: 0, costUsd: 0.25 }, "ordinary reply spend never leaks into the remainder");
 });
 
 test("the range rejects dates it cannot mean and time zones it does not know", () => {
@@ -250,9 +364,14 @@ test("a session that leaves the registry stops being reported", async () => {
 
 test("a later pass reads only newer entries and a fork made afterwards still counts its history once", async () => {
   const { scanUsage, sliceUsage } = await import("./usage.ts");
+  const initial = priced(10, 5, 20, 0.5);
+  const later = priced(10, 5, 20, 0.25);
+  const inherited = priced(7, 3, 10, 0.25);
   const { source, answer } = await harness.commit(async (tx) => {
     const source = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
-    const answer = (await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T1, priced(10, 5, 20, 0.5)) as never] })).id;
+    const answer = (await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T1, initial) as never] })).id;
+    await recordUsage(tx, source, "models", "fixture/model-a", initial);
+    await recordUsage(tx, source, "tools", "nested-model", priced(0, 0, 0, 0.25));
     return { source, answer };
   }, durableContext);
   const sessions = [record("incremental", `durable:${source}`, new Date(T1).toISOString())];
@@ -261,17 +380,21 @@ test("a later pass reads only newer entries and a fork made afterwards still cou
 
   const first = await scanUsage(sessions, "UTC");
   assert.equal(calls(first), 1);
+  assert.deepEqual(sliceUsage(first, june).unplacedSpend, { totalTokens: 0, costUsd: 0.25 });
 
   await harness.commit(async (tx) => {
-    await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T2, priced(10, 5, 20, 0.25)) as never] });
+    await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T2, later) as never] });
+    await recordUsage(tx, source, "models", "fixture/model-a", later);
   }, durableContext);
   const second = await scanUsage(sessions, "UTC", first);
   assert.equal(calls(second), 2, "the new entry joins the one already counted");
   assert.equal(sliceUsage(second, june).sessions[0]?.metrics.costUsd, 0.75);
+  assert.deepEqual(sliceUsage(second, june).unplacedSpend, { totalTokens: 0, costUsd: 0.25 }, "a later scan subtracts previously counted entry spend too");
 
   const fork = await harness.commit(async (tx) => {
     const id = (await tx.forkConversation(source, answer, { ownership: { kind: "ownerless" } })).id;
-    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, priced(7, 3, 10, 0.25)) as never] });
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, inherited) as never] });
+    await recordUsage(tx, id, "models", "fixture/model-a", inherited);
     return id;
   }, durableContext);
   const withFork = [sessions[0]!, record("forked", `durable:${fork}`, new Date(T2).toISOString(), { parentId: "incremental" })];
@@ -284,4 +407,13 @@ test("a later pass reads only newer entries and a fork made afterwards still cou
   const again = await scanUsage(withFork, "UTC", third);
   assert.equal(calls(again), 2, "a pass with nothing new changes nothing");
   assert.equal(calls(again, "forked"), 1);
+  assert.deepEqual(sliceUsage(again, june).unplacedSpend, { totalTokens: 0, costUsd: 0.25 }, "a fork and an unchanged scan never add inherited spend again");
+
+  await harness.commit(async (tx) => {
+    await recordUsage(tx, source, "models", "fixture/model-a", priced(100, 0, 100, 0.5));
+  }, durableContext);
+  const summarized = await scanUsage(withFork, "UTC", again);
+  assert.deepEqual(sliceUsage(summarized, june).unplacedSpend, { totalTokens: 100, costUsd: 0.75 }, "ledger-only spend updates even without a newer entry");
+  assert.equal(calls(summarized), 2, "ledger-only spend stays out of the dated totals");
+  assert.deepEqual((await readUsageReport(withFork, june)).unplacedSpend, sliceUsage(summarized, june).unplacedSpend, "a full read and an incremental read agree");
 });

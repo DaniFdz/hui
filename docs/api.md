@@ -3818,8 +3818,9 @@ estimate it. Each `models` entry carries its tokens and the cost reported for th
 Returns `UsageReport`, the Usage page's date-ranged report over the current
 histories of registered local sessions, including archived sessions and subagents.
 This is separate from the lifetime ledger totals in `GET /__hui/observability`
-and bot usage. Background summarization, abandoned history, remote-worker data
-and provider billing are not included.
+and bot usage. Remote-worker data and provider billing are not included. Imported
+PI history absent from the current entries can appear in the separate
+`unplacedSpend` amount, never in the dated Durable totals.
 
 Query parameters:
 
@@ -3838,11 +3839,12 @@ scan is reused as it is. When it does, only the entries appended since that
 scan are read, and entries already counted stay counted, so a fork made
 afterwards does not add its inherited history again. `refresh=1`, and the first
 read after the gateway starts, read every history. A scan in progress is shared
-by concurrent requests. Activity the registry does not record is not seen until
-the next scan or a forced refresh.
+by concurrent requests. Compaction completion updates that activity even when no dated entry was added.
+Activity the registry does not record is not seen until the next scan or a forced
+refresh.
 
-The response carries `generatedAt`, the effective `range`, `sessions` and
-`coverage`. Each session has its identity and title, the latest included activity
+The response carries `generatedAt`, the effective `range`, `sessions`,
+`coverage` and `unplacedSpend`. Each session has its identity and title, the latest included activity
 stamp, `metrics`, dated buckets, recorded model/provider breakdowns and tool
 result counts. All-time ranges report the earliest included day through today
 or the latest recorded day when a clock was ahead. Empty drafts have no row.
@@ -3857,13 +3859,26 @@ not an invoice: `costUsd: null` means no valid price was recorded, a numeric zer
 is retained, and `unpricedCalls > 0` labels any known sum as partial. External
 session-cost reports are never added to these PI values.
 
-Durable history is read in pages without changing the store. Inherited entries
+Durable history is read in pages without changing the store. Each conversation's
+ledger and latest entry ID are read together, and its scan stops at that ID so
+a concurrent reply cannot inflate the spend outside the entries. Inherited entries
 retain their global IDs and count once across registered sessions, attributed
-to their registered source conversation when available. Otherwise the oldest
+to their registered source conversation when available. Otherwise the newest
 claiming session receives them, including retained history after a rewind.
 Legacy PI files are read only from registry references, bounded at 32 MB and
 counted once per path. Models and providers come from records, never from the
 session's current selection. Unrecorded labels are `Unknown`.
+
+`unplacedSpend` reports `totalTokens` and `costUsd` that the Durable store
+records for a conversation outside its entries: compaction summarization, model
+calls made from inside a tool, and, for an imported PI session, history its
+entries do not carry. The ledger keeps no date for it, so it is never added to
+the range totals, `days` or rankings, and a narrower range does not change it.
+Legacy PI compaction records do carry usage, so those already count inside the
+dated entries. A conversation whose ledger reports less than the entries it
+wrote contributes zero rather than a negative amount. Cost-only amounts are
+retained. A failed ledger read identifies the conversation in
+`coverage.unavailable` instead of implying that its spend is zero.
 
 `coverage` lists the number of registered sessions and readable local histories,
 individual unavailable histories with their reasons, and `undatedRecords` excluded

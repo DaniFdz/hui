@@ -3,7 +3,7 @@ import { test } from "vitest";
 import type { UsageReport } from "../api/schema/diagnostics.ts";
 import { UsageController } from "./usage-controller.ts";
 
-const report = (from: string): UsageReport => ({ generatedAt: "2026-10-01T00:00:00Z", range: { from, to: from, timeZone: "UTC" }, sessions: [], coverage: { registeredSessions: 0, readSessions: 0, unavailable: [], undatedRecords: 0 } });
+const report = (from: string): UsageReport => ({ generatedAt: "2026-10-01T00:00:00Z", range: { from, to: from, timeZone: "UTC" }, sessions: [], coverage: { registeredSessions: 0, readSessions: 0, unavailable: [], undatedRecords: 0 }, unplacedSpend: { totalTokens: 0, costUsd: 0 } });
 
 function pending() {
   let resolve: (report: UsageReport) => void = () => { throw new Error("Not initialized"); };

@@ -9,6 +9,7 @@ const session = (id: string, model: string, usage: UsageMetrics): UsageSession =
 const report: UsageReport = {
   generatedAt: "2026-10-01T00:00:00Z", range: { from: "2026-10-01", to: "2026-10-03", timeZone: "UTC" },
   coverage: { registeredSessions: 3, readSessions: 3, unavailable: [], undatedRecords: 0 },
+  unplacedSpend: { totalTokens: 0, costUsd: 0 },
   sessions: [session("free", "swift", metrics(10, 0)), session("unknown", "swift", metrics(30, null)), session("paid", "large", metrics(20, 0.5))],
 };
 
