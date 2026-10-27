@@ -1,6 +1,7 @@
 // A basic Markdown renderer for chat messages, drawn from the tokens the core's markdown-it parser returns
 // (src/lib/markdown/parser.ts), so both clients read Markdown alike: paragraphs, headings, list items (a task list's
-// checkboxes as ☐ and ☑), quotes, code blocks and rules as views, inline text as one AttributedString (bold, italic, strikethrough, code, links). Raw HTML
+// checkboxes as ☐ and ☑), quotes, a details block that folds its body behind its summary, code blocks and rules as
+// views, inline text as one AttributedString (bold, italic, strikethrough, code, links). Raw HTML
 // shows as text, as the web escapes it, and a link the parser hides (an unsafe scheme) stays plain text. While a streamed
 // reply only grows, the last answer's tokens stay drawn until the core answers for the new text; a source replaced by a
 // different one shows as plain text until then, and so does a source the core fails to parse. Given the message's
@@ -31,9 +32,7 @@ struct MarkdownView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let parsed, source.hasPrefix(parsed.source) {
-                ForEach(Array(Self.blocks(parsed.tokens).enumerated()), id: \.offset) { _, block in
-                    view(block)
-                }
+                MarkdownBlocks(blocks: Self.blocks(parsed.tokens), copyMarkdown: copyMarkdown)
             } else {
                 Text(source)
             }
@@ -48,30 +47,8 @@ struct MarkdownView: View {
     enum Block {
         case text(AttributedString, prefix: String, style: Font.TextStyle)
         case code(String, math: Bool)
+        case details(AttributedString, [Block], open: Bool)
         case rule
-    }
-
-    @ViewBuilder private func view(_ block: Block) -> some View {
-        switch block {
-        case .text(let text, let prefix, let style):
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                if !prefix.isEmpty { Text(prefix).accessibilityHidden(true) }
-                Text(text).typeface(style, weight: style == .body || style == .headline ? nil : .bold, prose: true).textSelection(.enabled)
-            }
-        case .code(let code, let math):
-            ScrollView(.horizontal) {
-                Text(code.trimmingCharacters(in: .newlines)).typeface(.footnote, mono: true).textSelection(.enabled).padding(8)
-            }
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
-            .contextMenu {
-                if let copyMarkdown {
-                    if !math { Button("Copy code") { UIPasteboard.general.string = code } }
-                    Button("Copy as markdown") { UIPasteboard.general.string = copyMarkdown }
-                }
-            }
-        case .rule:
-            Divider()
-        }
     }
 
     static func blocks(_ tokens: [MarkdownToken]) -> [Block] {
@@ -80,8 +57,34 @@ struct MarkdownView: View {
         var prefix = ""
         var style = Font.TextStyle.body
         var quote = 0
-        for token in tokens {
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            index += 1
             switch token.type {
+            case "details_open":
+                var summary = AttributedString()
+                var inner: [MarkdownToken] = []
+                var depth = 1
+                while index < tokens.count {
+                    let each = tokens[index]
+                    index += 1
+                    if each.type == "details_open" { depth += 1 }
+                    else if each.type == "details_close" {
+                        depth -= 1
+                        if depth == 0 { break }
+                    } else if each.type == "summary_open" {
+                        while index < tokens.count {
+                            let piece = tokens[index]
+                            index += 1
+                            if piece.type == "inline" { summary = inline(piece.children ?? []) }
+                            else if piece.type == "summary_close" { break }
+                        }
+                        continue
+                    }
+                    inner.append(each)
+                }
+                blocks.append(.details(summary, Self.blocks(inner), open: token.attribute("open") != nil))
             case "bullet_list_open": lists.append(nil)
             case "ordered_list_open": lists.append(0)
             case "bullet_list_close", "ordered_list_close": lists.removeLast()
@@ -147,5 +150,77 @@ struct MarkdownView: View {
             result += piece
         }
         return result
+    }
+}
+
+struct MarkdownBlocks: View {
+    let blocks: [MarkdownView.Block]
+    let copyMarkdown: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                view(block)
+            }
+        }
+    }
+
+    @ViewBuilder private func view(_ block: MarkdownView.Block) -> some View {
+        switch block {
+        case .details(let summary, let body, let open):
+            DetailsBlock(summary: summary, blocks: body, initiallyOpen: open, copyMarkdown: copyMarkdown)
+        case .text(let text, let prefix, let style):
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if !prefix.isEmpty { Text(prefix).accessibilityHidden(true) }
+                Text(text).typeface(style, weight: style == .body || style == .headline ? nil : .bold, prose: true).textSelection(.enabled)
+            }
+        case .code(let code, let math):
+            ScrollView(.horizontal) {
+                Text(code.trimmingCharacters(in: .newlines)).typeface(.footnote, mono: true).textSelection(.enabled).padding(8)
+            }
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
+            .contextMenu {
+                if let copyMarkdown {
+                    if !math { Button("Copy code") { UIPasteboard.general.string = code } }
+                    Button("Copy as markdown") { UIPasteboard.general.string = copyMarkdown }
+                }
+            }
+        case .rule:
+            Divider()
+        }
+    }
+}
+
+private struct DetailsBlock: View {
+    let summary: AttributedString
+    let blocks: [MarkdownView.Block]
+    let copyMarkdown: String?
+    @State private var open: Bool
+    @State private var taps = 0
+
+    init(summary: AttributedString, blocks: [MarkdownView.Block], initiallyOpen: Bool, copyMarkdown: String?) {
+        self.summary = summary
+        self.blocks = blocks
+        self.copyMarkdown = copyMarkdown
+        _open = State(initialValue: initiallyOpen)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                taps += 1
+                open.toggle()
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: open ? "chevron.down" : "chevron.right").imageScale(.small).accessibilityLabel("debug taps \(taps) open \(open)")
+                    Text(summary).typeface(.body, weight: .semibold)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if open {
+                MarkdownBlocks(blocks: blocks, copyMarkdown: copyMarkdown)
+            }
+        }
     }
 }

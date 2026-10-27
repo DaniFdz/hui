@@ -33,7 +33,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["markdown-formatting"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "RICH-004",
