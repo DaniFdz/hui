@@ -1,8 +1,9 @@
 /**
  * What the Dashboard page reads from the session list the app already holds: the top-level sessions in flight counted
- * by status and Kanban stage, the ones waiting for the operator, the other ones that are not idle grouped by status,
- * and each one's subagents, each list under the key the page expands it by. A finished session (idle in Done) is only
- * counted; archived sessions and subagents are not sessions here.
+ * by status and Kanban stage, the ones waiting for the operator (those that are not running, starting or reconnecting,
+ * so nothing moves until the operator does), the ones still in flight grouped by status, and each one's subagents, each
+ * list under the key the page expands it by. A finished session (idle in Done) is only counted; archived sessions and
+ * subagents are not sessions here.
  */
 import type { SessionGroup, SessionStage, SessionStatus, SessionView } from "../api/schema/sessions.ts";
 import { isSessionStage } from "./kanban.ts";
@@ -22,12 +23,8 @@ export const DASHBOARD_STATUS_LABELS: Readonly<Record<SessionStatus, string>> = 
 export const DASHBOARD_ROWS = 3;
 export const NEEDS_YOU_LIST = "needs-you";
 
-const ACTIVE_GROUPS: readonly { key: string; label: string; statuses: readonly SessionStatus[] }[] = [
-  { key: "errors", label: "Errors", statuses: ["error", "disconnected"] },
-  { key: "reconnecting", label: "Reconnecting", statuses: ["reconnecting"] },
-  { key: "running", label: "Running", statuses: ["running"] },
-  { key: "starting", label: "Starting", statuses: ["starting"] },
-];
+const AWAITING_STATUSES: readonly SessionStatus[] = ["waiting", "error", "disconnected", "idle"];
+
 
 type SubagentCount = { total: number; active: number };
 
@@ -36,8 +33,8 @@ export type SessionSummary = {
   finished: number;
   statuses: Record<SessionStatus, number>;
   stages: Record<SessionStage, number>;
-  waiting: SessionView[];
-  groups: { key: string; label: string; mixed: boolean; sessions: SessionView[] }[];
+  needsYou: SessionView[];
+  groups: { key: string; label: string; sessions: SessionView[] }[];
   subagents: ReadonlyMap<string, SubagentCount>;
 };
 
@@ -66,15 +63,15 @@ export function summarizeSessions(groups: readonly SessionGroup[]): SessionSumma
     }
   }
   shown.sort(newestFirst);
-  const inStatuses = (list: readonly SessionStatus[]) => shown.filter((session) => list.includes(session.status));
   return {
     total: shown.length,
     finished,
     statuses,
     stages,
-    waiting: inStatuses(["waiting"]),
-    groups: ACTIVE_GROUPS
-      .map(({ key, label, statuses: list }) => ({ key, label, mixed: list.length > 1, sessions: inStatuses(list) }))
+    needsYou: shown.filter((session) => AWAITING_STATUSES.includes(session.status)),
+    groups: DASHBOARD_STATUSES
+      .filter((status) => !AWAITING_STATUSES.includes(status))
+      .map((status) => ({ key: status, label: DASHBOARD_STATUS_LABELS[status], sessions: shown.filter((session) => session.status === status) }))
       .filter((group) => group.sessions.length),
     subagents,
   };

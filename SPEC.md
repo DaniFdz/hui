@@ -2214,6 +2214,27 @@ owner asked to "limit the sessions we show to maybe 3 in the list".
   new sessions included. It folds again when it is down to three rows or fewer
   and when the operator leaves the page.
 
+### Needs you counts every session that stopped (2026-10-27)
+
+The Dashboard read *Nothing needs you* in green while six sessions sat idle in
+Testing with their pull requests open. The owner answered "Is not true that
+nothing needs me".
+
+- **A session that stopped needs the operator.** *Needs you* is every
+  top-level session that is not running, starting or reconnecting, unless it is
+  finished: *Needs input*, *Error*, *Disconnected*, and an idle session in any
+  stage but Done. The summary reads *4 need you* in the warning color, and the
+  list is newest first.
+- **Each row says why it waits**: its status chip (*Needs input* in the warning
+  color, *Error* or *Disconnected* in the danger one, *Idle* plain) next to its
+  stage, worker, subagent and pull request chips.
+- **An error or a disconnect is listed once**, under *Needs you*: they always
+  stop the session, so the separate *Errors* group is gone. The status bar, the
+  legend and the stage pipeline still count every status.
+- **With nothing waiting** it keeps *Nothing needs you*, which now only happens
+  when every session is running, starting or reconnecting; the page no longer
+  says *Every session is idle.*
+
 ### Use cases live in one catalogue (2026-10-21)
 
 The owner wants a native iOS app with the web UI's capabilities, and a way to
