@@ -129,6 +129,86 @@ test("a recorded PID that is not the started process is dead, not running", asyn
   assert.equal(watcher.exitCode, undefined);
 });
 
+test("a live PID the kernel gave to another process is dead, not running", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-watchers-reused-pid-"));
+  const file = join(dir, "watchers.json");
+  const logDir = join(dir, "logs");
+  await mkdir(logDir, { recursive: true });
+  // This test's own process holds the recorded PID and its age fits the record,
+  // which is all the old age match needed; only its command line tells HUI it is
+  // not the shell HUI started.
+  await writeFile(file, JSON.stringify({ version: 1, watchers: [{
+    id: "reused", sessionId: "alpha", cwd: dir, purpose: "Ended, PID reused", target: "", outcome: "", command: "sleep 30",
+    logPath: join(logDir, "reused.log"), pid: process.pid, startedAt: new Date().toISOString(),
+  }] }));
+  const service = new WatcherService({ file, logDir, settleMs: 0 });
+  t.onTestFinished(async () => { service.dispose(); await rm(dir, { recursive: true, force: true }); });
+  await service.initialize();
+  assert.equal(service.list("alpha")[0]?.state, "dead");
+  assert.equal((await service.stop("alpha", "reused")).state, "dead");
+});
+
+test("a liveness check that cannot answer reads dead, not running", async (t) => {
+  const { service } = await fixture(t, { launch: () => 424_242, ownsProcess: async () => undefined, signalGroup: () => {}, settleMs: 0 });
+  const watcher = await service.start("alpha", { purpose: "Unprovable", command: "sleep 30" });
+  assert.equal(watcher.state, "dead");
+  // With nothing proven gone, a restart would run the command a second time.
+  await assert.rejects(service.restart("alpha", watcher.id), /cannot prove/u);
+});
+
+test("a stop ends the processes of a watcher whose liveness HUI could not prove", async (t) => {
+  const { service } = await fixture(t, { ownsProcess: async () => undefined, settleMs: 0 });
+  const watcher = await service.start("alpha", { purpose: "Unprovable but alive", command: "sleep 30" });
+  const pid = watcher.pid!;
+  assert.equal(watcher.state, "dead");
+  assert.equal((await service.stop("alpha", watcher.id)).state, "stopped");
+  await waitFor(() => !processGroupAlive(pid));
+});
+
+test("an unanswered liveness check does not run a keep-running watcher's command twice", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-watchers-unproven-"));
+  const file = join(dir, "watchers.json");
+  const logDir = join(dir, "logs");
+  await mkdir(logDir, { recursive: true });
+  await writeFile(file, JSON.stringify({ version: 1, watchers: [{
+    id: "listener", sessionId: "alpha", cwd: dir, purpose: "Listener", target: "", outcome: "", command: "sleep 30",
+    logPath: join(logDir, "listener.log"), pid: 111_111, startedAt: new Date(Date.now() - 60_000).toISOString(), keepRunning: true,
+  }] }));
+  const launched: string[] = [];
+  const service = new WatcherService({
+    file, logDir, pollMs: 10, settleMs: 0,
+    launch: (script) => { launched.push(script); return 222_222; },
+    ownsProcess: async () => undefined,
+    signalGroup: () => {},
+  });
+  t.onTestFinished(async () => { service.dispose(); await rm(dir, { recursive: true, force: true }); });
+  await service.initialize();
+  assert.equal(service.list("alpha")[0]?.state, "dead");
+  // Several polls later nothing has started a second copy of the command.
+  await delay(200);
+  assert.deepEqual(launched, []);
+});
+
+test("initialize tells each session about its watchers once the registry is read", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "hui-watchers-loaded-"));
+  const file = join(dir, "watchers.json");
+  const logDir = join(dir, "logs");
+  await mkdir(logDir, { recursive: true });
+  const record = (id: string, sessionId: string) => ({
+    id, sessionId, cwd: dir, purpose: id, target: "", outcome: "", command: "sleep 30",
+    logPath: join(logDir, `${id}.log`), pid: 111_111, startedAt: new Date(Date.now() - 60_000).toISOString(),
+  });
+  await writeFile(file, JSON.stringify({ version: 1, watchers: [record("one", "alpha"), record("two", "beta"), record("three", "alpha")] }));
+  const changes: string[] = [];
+  const service = new WatcherService({
+    file, logDir, onChange: (id) => changes.push(id), settleMs: 0,
+    ownsProcess: async () => false, signalGroup: () => {},
+  });
+  t.onTestFinished(async () => { service.dispose(); await rm(dir, { recursive: true, force: true }); });
+  await service.initialize();
+  assert.deepEqual(changes.toSorted(), ["alpha", "beta"]);
+});
+
 test("stop kills the whole process group and reports stopped", async (t) => {
   const { service } = await fixture(t);
   const watcher = await service.start("alpha", { purpose: "Long wait", command: "sleep 30" });

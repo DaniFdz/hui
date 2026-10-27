@@ -5,12 +5,14 @@
  * HUI starts it in its own process group, in the conversation's directory,
  * appends its output to a log and has the wrapper write the exit status beside
  * the log, so the watcher outlives the gateway while HUI can still report
- * running, done, failed, stopped or dead. State is derived on every refresh: a
- * recorded PID only counts as running when it is the same process HUI started
- * (a reboot reuses PIDs), or, once that shell was killed (`pkill -f` matches
- * the script's path), while a process that started with it still runs in its
- * process group. A watcher started with `keepRunning` that HUI finds dead
- * starts again. */
+ * running, done, failed, stopped or dead. State is derived on every refresh and
+ * running is only ever claimed on proof: the recorded PID counts while it is
+ * still HUI's own shell for this watcher (its command line names the script HUI
+ * wrote, so a PID the kernel gave to something else reads dead), or, once that
+ * shell was killed (`pkill -f` matches the script's path), while a process that
+ * started with it still runs in its process group. A check that cannot answer
+ * reads dead too: a watcher whose work is unsure is not reported as running. A
+ * watcher started with `keepRunning` starts again once its death is proven. */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
@@ -100,9 +102,9 @@ export type WatcherServiceOptions = {
   launch?: (scriptPath: string, cwd: string, logPath: string) => number;
   /** Test seam: signal a watcher's process group, tolerating a dead one. */
   signalGroup?: (pid: number, signal: NodeJS.Signals) => void;
-  /** Test seam: is the recorded PID still the process that started then?
+  /** Test seam: is the recorded PID still the shell HUI started for `script`?
    * `undefined` means the check could not answer. */
-  ownsProcess?: (pid: number, startedAtMs: number) => Promise<boolean | undefined>;
+  ownsProcess?: (pid: number, startedAtMs: number, script: string) => Promise<boolean | undefined>;
 };
 
 const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -153,7 +155,7 @@ async function readTail(path: string, maxBytes: number): Promise<{ text: string;
 }
 
 /** `ps` reports how long a process has been alive (`etime`), which tells a
- * watcher apart from an unrelated process that inherited its PID. */
+ * process that started with the watcher's shell apart from an unrelated one. */
 function etimeSeconds(text: string): number | undefined {
   const match = /^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/u.exec(text.trim());
   if (!match) return undefined;
@@ -161,12 +163,15 @@ function etimeSeconds(text: string): number | undefined {
   return Number(days) * 86_400 + Number(hours) * 3_600 + Number(minutes) * 60 + Number(seconds);
 }
 
-async function ownsProcess(pid: number, startedAtMs: number): Promise<boolean | undefined> {
+async function ownsProcess(pid: number, startedAtMs: number, script: string): Promise<boolean | undefined> {
   const startedWith = (age: number | undefined) => age !== undefined && Math.abs(age - (Date.now() - startedAtMs) / 1_000) <= OWN_TOLERANCE_SECONDS;
   try {
     if (signalAlive(pid)) {
-      const age = etimeSeconds((await execFileAsync("ps", ["-o", "etime=", "-p", String(pid)], { timeout: 5_000 })).stdout);
-      return age === undefined ? undefined : startedWith(age);
+      // HUI wrote the script this watcher runs, so its path in the command line
+      // is proof of identity; an age match would also fit a process the kernel
+      // gave the same PID after a restart.
+      const { stdout } = await execFileAsync("ps", ["-ww", "-o", "command=", "-p", String(pid)], { timeout: 5_000 });
+      return stdout.includes(script);
     }
     // The shell is gone; what started with it may still run in its group.
     if (!signalGroupAlive(pid)) return false;
@@ -263,7 +268,7 @@ export class WatcherService {
   readonly #settleMs: number;
   readonly #launch: (scriptPath: string, cwd: string, logPath: string) => number;
   readonly #signalGroup: (pid: number, signal: NodeJS.Signals) => void;
-  readonly #ownsProcess: (pid: number, startedAtMs: number) => Promise<boolean | undefined>;
+  readonly #ownsProcess: (pid: number, startedAtMs: number, script: string) => Promise<boolean | undefined>;
   #records = new Map<string, WatcherRecord>();
   #views = new Map<string, Watcher>();
   /** One mutation chain per watcher, so a card and an agent cannot stop,
@@ -302,6 +307,9 @@ export class WatcherService {
     this.#started = true;
     this.#timer = setInterval(() => void this.#poll(), this.#pollMs);
     this.#timer.unref?.();
+    // A session opened while the registry was still loading saw a snapshot
+    // without its watchers; it gets one now that they are read.
+    for (const sessionId of new Set(records.map((record) => record.sessionId))) this.#onChange(sessionId);
   }
 
   /** Watchers of one conversation, newest first. */
@@ -402,7 +410,9 @@ export class WatcherService {
       this.#bump(id);
       const current = await this.#refresh(record);
       this.#views.set(id, current);
-      if (current.state !== "running") return current;
+      // A stop ends whatever is left unless HUI can prove nothing of the watcher
+      // survives, and a check it could not answer does not prove that.
+      if ((await this.#owns(record)) === false) return current;
       await this.#terminate(record);
       // A stop that raced the command's own exit keeps that outcome; a shell
       // that lived long enough to record the signal's status (143, 137) did not.
@@ -425,6 +435,10 @@ export class WatcherService {
       if (current.state === "running") {
         throw new WatcherConflictError("Stop the watcher before restarting it.");
       }
+      // A process HUI cannot rule out may still be running the recorded command.
+      if ((await this.#owns(record)) !== false) {
+        throw new WatcherConflictError("HUI cannot prove this watcher's process is gone. Stop it before restarting it.");
+      }
       await this.#relaunch(record);
       this.#onChange(sessionId);
       return this.#view(id);
@@ -437,6 +451,9 @@ export class WatcherService {
       if (this.#records.get(record.id) !== record) return;
       this.#bump(record.id);
       if ((await this.#refresh(record)).state !== "dead") return;
+      // An unanswered check is not proof that the old processes are gone; a
+      // second copy would run the command twice.
+      if ((await this.#owns(record)) !== false) return;
       if (!(await stat(record.cwd).catch(() => undefined))?.isDirectory()) return;
       await this.#relaunch(record);
       await appendFile(record.logPath, `[HUI] Started again at ${record.startedAt}: its processes were gone with no exit status.\n`, { mode: 0o600 });
@@ -566,7 +583,7 @@ export class WatcherService {
   /** SIGTERM the whole process group, then SIGKILL it if anything survives. */
   async #terminate(record: WatcherRecord): Promise<void> {
     // Never signal a PID that is not the process HUI started.
-    if (await this.#ownsProcess(record.pid, Date.parse(record.startedAt)) === false) return;
+    if (await this.#owns(record) === false) return;
     this.#signalGroup(record.pid, "SIGTERM");
     const deadline = this.#now() + STOP_GRACE_MS;
     while (this.#now() < deadline && signalGroupAlive(record.pid)) await delay(STOP_POLL_MS);
@@ -585,13 +602,10 @@ export class WatcherService {
       state = exit.code === 0 ? "done" : "failed";
       endedAt = exit.at;
     } else {
-      const owns = await this.#ownsProcess(record.pid, Date.parse(record.startedAt));
-      // The wrapper writes the exit record just after the command; a process
-      // that is already gone this soon may not have written it yet.
+      // Only a proven process counts, or one HUI itself just launched: a check
+      // that could not answer is not evidence that the work goes on.
       const settling = this.#now() - Date.parse(record.startedAt) < this.#settleMs;
-      // An unanswered ownership check keeps the previous claim rather than
-      // reporting a live watcher dead.
-      state = owns === false && !settling ? "dead" : "running";
+      state = (await this.#owns(record)) === true || settling ? "running" : "dead";
     }
     return {
       id: record.id,
@@ -608,6 +622,11 @@ export class WatcherService {
       lastLine,
       ...(record.keepRunning ? { keepRunning: true as const } : {}),
     };
+  }
+
+  /** Whether the recorded PID is still the shell HUI started for this watcher. */
+  #owns(record: WatcherRecord): Promise<boolean | undefined> {
+    return this.#ownsProcess(record.pid, Date.parse(record.startedAt), this.#scriptPath(record.id));
   }
 
   async #readExit(id: string): Promise<{ code: number; at: string } | undefined> {
