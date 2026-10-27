@@ -539,6 +539,9 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
 - Loading, no matching data, partial data and read failures are explicit. Controls
   work with the keyboard and fit phone widths. No provider credentials, prompts,
   message bodies, tool arguments or tool output enter the usage response.
+- The gateway reads every history once and answers range, zone and filter changes
+  from that scan, so those interactions stay responsive on a large session list.
+  Refresh, and the first read after recorded activity changes, reads them again.
 
 ---
 

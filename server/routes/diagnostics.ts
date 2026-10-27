@@ -21,7 +21,7 @@ export const USAGE_ROUTE = "/__hui/usage";
 
 export function createDiagnosticsRoutes(deps: {
   observability(): Promise<ObservabilitySnapshot>;
-  usage(query: UsageQuery): Promise<UsageReport>;
+  usage(query: UsageQuery, refresh?: boolean): Promise<UsageReport>;
 }) {
   async function handle(request: RouteRequest, response: ServerResponse): Promise<JsonResult | undefined> {
     const { method, path } = request;
@@ -50,7 +50,7 @@ export function createDiagnosticsRoutes(deps: {
     if (path === USAGE_ROUTE) {
       if (method !== "GET") return reply(DiagnosticsError, { error: "method not allowed" }, 405);
       try {
-        return reply(UsageReport, await deps.usage(usageQuery(request.query)));
+        return reply(UsageReport, await deps.usage(usageQuery(request.query), request.query.get("refresh") === "1"));
       } catch (error) {
         if (!(error instanceof UsageQueryError)) throw error;
         return reply(DiagnosticsError, { error: error.message }, 400);

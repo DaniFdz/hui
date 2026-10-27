@@ -23,6 +23,10 @@ function summary(title: string, value: string, description: string) {
   return html`<article class="stat usage-summary-card"><span class="usage-summary-title">${title}</span><strong class="usage-summary-value">${value}</strong><small class="usage-summary-sub">${description}</small></article>`;
 }
 
+function metric(value: string, name: string, detail: string) {
+  return html`<div class="usage-metric"><strong class="usage-metric__value">${value}</strong><span class="usage-metric__name">${name}</span><small class="usage-summary-sub">${detail}</small></div>`;
+}
+
 export class HuiUsagePage extends LitElement {
   onOpenSession?: (id: string) => void;
   #usage = new UsageController(this);
@@ -88,20 +92,21 @@ export class HuiUsagePage extends LitElement {
     const report = state.report;
     const overview = report ? usageOverview(report, state.query, state.sort) : undefined;
     const totals = overview?.totals;
-    return html`<header class="content-header content-header--settings"><div><div class="page-title">Usage</div><div class="page-subtitle">Recorded tokens and PI cost estimates.</div></div><div class="page-header-actions"><button class="btn" type="button" @click=${() => void state.load()}>${icons.refresh}<span>${state.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>
+    return html`<header class="content-header content-header--settings"><div><div class="page-title">Usage</div><div class="page-subtitle">Recorded tokens and PI cost estimates.</div></div><div class="page-header-actions"><button class="btn" type="button" @click=${() => state.refresh()}>${icons.refresh}<span>${state.loading ? "Refreshing…" : "Refresh"}</span></button></div></header>
     <main class="settings-page settings-page--wide usage-page usage-report" data-testid="usage-report" aria-busy=${state.loading}>
       <section class="settings-section"><h2 class="settings-section__heading">Reporting range</h2><div class="settings-group usage-panel usage-report__controls">
-        <div class="usage-controls"><div class="settings-segmented usage-report__presets" role="group" aria-label="Range presets">${PRESETS.map(([preset, label]) => html`<button type="button" class="settings-segmented__btn ${state.preset === preset ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.preset === preset} @click=${() => state.selectPreset(preset)}>${label}</button>`)}</div>
+        <div class="usage-controls"><div class="settings-segmented usage-presets" role="group" aria-label="Range presets">${PRESETS.map(([preset, label]) => html`<button type="button" class="settings-segmented__btn ${state.preset === preset ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.preset === preset} @click=${() => state.selectPreset(preset)}>${label}</button>`)}</div>
           <form class="usage-date-range" @submit=${(event: SubmitEvent) => { event.preventDefault(); state.applyRange(); }}>
-            <label>From<input class="usage-date-input" type="date" required .value=${live(state.from)} @input=${(event: Event) => { state.from = (event.currentTarget as HTMLInputElement).value; }}></label>
-            <label>To<input class="usage-date-input" type="date" required .value=${live(state.to)} @input=${(event: Event) => { state.to = (event.currentTarget as HTMLInputElement).value; }}></label>
+            <input class="usage-date-input" type="date" required aria-label="From" .value=${live(state.from)} @input=${(event: Event) => { state.from = (event.currentTarget as HTMLInputElement).value; }}>
+            <span class="usage-separator" aria-hidden="true">to</span>
+            <input class="usage-date-input" type="date" required aria-label="To" .value=${live(state.to)} @input=${(event: Event) => { state.to = (event.currentTarget as HTMLInputElement).value; }}>
             <button class="btn btn--sm" type="submit">Apply range</button>
           </form>
-          <label>Time zone<select class="usage-select" .value=${state.zone} @change=${(event: Event) => state.setZone((event.currentTarget as HTMLSelectElement).value === "utc" ? "utc" : "local")}><option value="local">Local</option><option value="utc">UTC</option></select></label>
+          <select class="usage-select" aria-label="Time zone" .value=${state.zone} @change=${(event: Event) => state.setZone((event.currentTarget as HTMLSelectElement).value === "utc" ? "utc" : "local")}><option value="local">Local</option><option value="utc">UTC</option></select>
           <div class="settings-segmented" role="group" aria-label="Chart metric">${(["tokens", "cost"] as const).map((metric) => html`<button class="settings-segmented__btn ${state.metric === metric ? "settings-segmented__btn--active" : ""}" type="button" aria-pressed=${state.metric === metric} @click=${() => { state.metric = metric; this.requestUpdate(); }}>${metric === "tokens" ? "Tokens" : "Cost"}</button>`)}</div>
         </div>
-        ${report && overview && totals ? html`<div class="usage-report__totals" data-testid="usage-totals">${summary("Total tokens", compact(totals.totalTokens), count(totals.calls, "usage record"))}${summary("PI cost estimate", cost(totals), totals.unpricedCalls ? `${count(totals.unpricedCalls, "unpriced record")}${totals.costUsd === null ? "" : " · partial estimate"}` : "Recorded prices, not a provider bill")}${summary("Sessions", number(overview.sessions.length), `${number(report.coverage.readSessions)} local ${report.coverage.readSessions === 1 ? "history" : "histories"} read · ${count(report.coverage.registeredSessions, "registered session")}`)}</div>` : nothing}
-        <div class="usage-report__search"><label>Filter sessions<input class="usage-query-input" type="search" placeholder="Title, ID or model" .value=${state.query} @input=${(event: Event) => state.search((event.currentTarget as HTMLInputElement).value)}></label>${state.query ? html`<button class="btn btn--sm" type="button" @click=${() => state.search("")}>Clear search</button>` : nothing}</div>
+        ${report && overview && totals ? html`<div class="usage-report__totals" data-testid="usage-totals">${metric(compact(totals.totalTokens), "Total tokens", count(totals.calls, "usage record"))}${metric(cost(totals), "PI cost estimate", totals.unpricedCalls ? `${count(totals.unpricedCalls, "unpriced record")}${totals.costUsd === null ? "" : " · partial estimate"}` : "Recorded prices, not a provider bill")}${metric(number(overview.sessions.length), "Sessions", `${number(report.coverage.readSessions)} local ${report.coverage.readSessions === 1 ? "history" : "histories"} read · ${count(report.coverage.registeredSessions, "registered session")}`)}</div>` : nothing}
+        <div class="usage-query-bar"><input class="usage-query-input" type="search" placeholder="Title, ID or model" aria-label="Filter sessions" .value=${state.query} @input=${(event: Event) => state.search((event.currentTarget as HTMLInputElement).value)}>${state.query ? html`<button class="btn btn--sm" type="button" @click=${() => state.search("")}>Clear search</button>` : html`<span class="usage-query-hint">${report ? `${count(report.sessions.length, "session")} in range` : ""}</span>`}</div>
       </div></section>
       <p class="usage-report__scope">Current local conversation histories only. Background summarization, abandoned history, remote workers and provider billing are not included. Shared fork history counts once.</p>
       ${state.error ? html`<div class="callout danger" role="alert">${state.error}<button class="btn btn--sm" type="button" @click=${() => { this.querySelector<HTMLButtonElement>(".page-header-actions button")?.focus(); void state.load(); }}>Retry</button></div>` : nothing}

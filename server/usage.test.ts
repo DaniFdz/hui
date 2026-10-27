@@ -29,7 +29,9 @@ await writeFile(join(agentDir, "models.json"), JSON.stringify({ providers: { "hu
 await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProvider: "hui-e2e", defaultModel: "fixture" }));
 
 const { durableContext, durableHost } = await import("./runtimes/durable-host.ts");
-const { readUsageReport, usageQuery } = await import("./usage.ts");
+const { scanUsage, sliceUsage, usageQuery } = await import("./usage.ts");
+
+const readUsageReport = async (sessions: readonly SessionRecord[], query: ReturnType<typeof usageQuery>) => sliceUsage(await scanUsage(sessions, query.timeZone), query);
 
 const host = durableHost();
 host.configureDurableBots(null);
@@ -190,4 +192,96 @@ test("the range rejects dates it cannot mean and time zones it does not know", (
     [{ from: "2026-01-01", to: "2026-01-02", timeZone: "Mars/Olympus" }, "an unknown zone"],
   ];
   for (const [params, why] of refused) assert.throws(query(params), /./u, why);
+});
+test("one scan answers every range, and a forced refresh or newer activity reads the histories again", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const conversation = await harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, priced(10, 5, 20, 0.5)) as never] });
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, priced(10, 5, 20, 0.25)) as never] });
+    return id;
+  }, durableContext);
+  const sessions = [record("cached", `durable:${conversation}`, new Date(T1).toISOString())];
+  let reads = 0;
+  let activity = new Date(T1).toISOString();
+  const reports = new UsageReports(async () => sessions.map((session) => ({ ...session, updatedAt: activity })), async (given, timeZone) => {
+    reads += 1;
+    return (await import("./usage.ts")).scanUsage(given, timeZone);
+  });
+
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  const first = await reports.get(june);
+  assert.equal(reads, 1);
+  assert.equal(first.sessions[0]?.metrics.calls, 2);
+
+  const juneFirst = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-01", timeZone: "UTC" }));
+  const [narrow, concurrent] = await Promise.all([reports.get(juneFirst), reports.get(june)]);
+  assert.equal(reads, 1, "a range and its neighbours come from the scan already held");
+  assert.equal(narrow.sessions[0]?.metrics.calls, 1);
+  assert.equal(concurrent.sessions[0]?.metrics.calls, 2);
+
+  await reports.get(june, true);
+  assert.equal(reads, 2, "refresh reads every history again");
+
+  activity = new Date(T2).toISOString();
+  const [afterActivity, shared] = await Promise.all([reports.get(june), reports.get(juneFirst)]);
+  assert.equal(reads, 3, "newer registry activity reads once, even for two requests at once");
+  assert.equal(afterActivity.range.to, "2026-06-02");
+  assert.equal(shared.sessions[0]?.metrics.calls, 1);
+});
+
+test("a session that leaves the registry stops being reported", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const seed = (title: string) => harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, priced(4, 2, 6, 0.1), "stop") as never] });
+    return record(title, `durable:${id}`, new Date(T1).toISOString());
+  }, durableContext);
+  const kept = await seed("kept");
+  const dropped = await seed("dropped");
+  let records: SessionRecord[] = [kept, dropped];
+  const reports = new UsageReports(async () => records);
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+
+  await reports.get(june);
+  records = [kept];
+  assert.deepEqual((await reports.get(june)).sessions.map(({ id }) => id), ["kept"]);
+});
+
+test("a later pass reads only newer entries and a fork made afterwards still counts its history once", async () => {
+  const { scanUsage, sliceUsage } = await import("./usage.ts");
+  const { source, answer } = await harness.commit(async (tx) => {
+    const source = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    const answer = (await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T1, priced(10, 5, 20, 0.5)) as never] })).id;
+    return { source, answer };
+  }, durableContext);
+  const sessions = [record("incremental", `durable:${source}`, new Date(T1).toISOString())];
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  const calls = (scan: Awaited<ReturnType<typeof scanUsage>>, id = "incremental") => sliceUsage(scan, june).sessions.find((each) => each.id === id)?.metrics.calls;
+
+  const first = await scanUsage(sessions, "UTC");
+  assert.equal(calls(first), 1);
+
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T2, priced(10, 5, 20, 0.25)) as never] });
+  }, durableContext);
+  const second = await scanUsage(sessions, "UTC", first);
+  assert.equal(calls(second), 2, "the new entry joins the one already counted");
+  assert.equal(sliceUsage(second, june).sessions[0]?.metrics.costUsd, 0.75);
+
+  const fork = await harness.commit(async (tx) => {
+    const id = (await tx.forkConversation(source, answer, { ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, priced(7, 3, 10, 0.25)) as never] });
+    return id;
+  }, durableContext);
+  const withFork = [sessions[0]!, record("forked", `durable:${fork}`, new Date(T2).toISOString(), { parentId: "incremental" })];
+  const third = await scanUsage(withFork, "UTC", second);
+  const callsOf = (id: string) => sliceUsage(third, june).sessions.find((each) => each.id === id)?.metrics.calls;
+  assert.equal(callsOf("forked"), 1, "the fork counts only the entry it added, not its inherited history");
+  assert.equal(callsOf("incremental"), 2);
+  assert.equal(sliceUsage(third, june).sessions.reduce((sum, each) => sum + (each.metrics.calls ?? 0), 0), 3);
+
+  const again = await scanUsage(withFork, "UTC", third);
+  assert.equal(calls(again), 2, "a pass with nothing new changes nothing");
+  assert.equal(calls(again, "forked"), 1);
 });
