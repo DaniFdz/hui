@@ -454,7 +454,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["slash-commands", "command-references"],
-    web: "backlog",
+    web: "required",
     ios: keyboardOnly("tapping a menu entry (CHAT-045)"),
   },
   {
