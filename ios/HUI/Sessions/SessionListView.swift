@@ -1,5 +1,6 @@
-// The session list, grouped as the web sidebar groups it, with the web's Search sessions field above the groups and a
-// toolbar Search that focuses it; each group header is a button that hides and shows its rows. Each row reads as the
+// The session list, grouped as the web sidebar groups it, with the web's Search sessions field above the list, where
+// the web keeps it in the sidebar's header rather than in the scrolling list, and a toolbar Search that focuses it;
+// each group header is a button that hides and shows its rows. Each row reads as the
 // web's sidebar row does and leads with the core's status glyph (attention, the busy spinner or the unread dot) and,
 // when neither attention nor the spinner shows, the session's icon. Its toolbar holds the web sidebar's
 // Filter & sort menu, with the same choices, the Sessions page, Settings and New group. A parent row has the web's Expand or
@@ -16,11 +17,56 @@ struct SessionListView: View {
 
     var body: some View {
         @Bindable var sessions = sessions
-        return List {
+        return VStack(spacing: 0) {
             TextField("Search sessions", text: $sessions.search)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .textFieldStyle(.roundedBorder)
                 .focused($searching)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+            list
+        }
+        .navigationTitle("Sessions")
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if let options = sessions.options {
+                    Menu {
+                        choices("Group by", \.groupBy, options, [("custom", "Custom groups"), ("project", "Project"), ("none", "None")]).pickerStyle(.palette).menuActionDismissBehavior(.enabled)
+                        choices("Sort by", \.sortBy, options, [("created", "Created"), ("updated", "Last updated"), ("title", "Name"), ("stage", "Stage")]).pickerStyle(.palette).menuActionDismissBehavior(.enabled)
+                        choices("Hide empty groups", \.hideEmpty, options, [("filtering", "When filtering"), ("always", "Always"), ("never", "Never")]).pickerStyle(.palette).menuActionDismissBehavior(.enabled)
+                        choices("Status", \.status, options, [("all", "All"), ("running", "Running"), ("starting", "Starting"), ("waiting", "Waiting"), ("idle", "Idle"), ("error", "Error"), ("reconnecting", "Reconnecting"), ("disconnected", "Disconnected")]).pickerStyle(.inline)
+                    } label: {
+                        Label("Filter & sort", systemImage: "line.3.horizontal.decrease.circle")
+                    }
+                }
+                Button("Search sessions", systemImage: "magnifyingglass") { searching = true }
+                NavigationLink(value: Screen.sessionsPage) {
+                    Label("Sessions", systemImage: "tablecells")
+                }
+                NavigationLink(value: Screen.settings("appearance")) {
+                    Label("Settings", systemImage: "gearshape")
+                }
+                Button("New group", systemImage: "folder.badge.plus") {
+                    groupName = ""
+                    naming = true
+                }
+            }
+        }
+        .alert("New group", isPresented: $naming) {
+            TextField("Group name", text: $groupName).accessibilityLabel("Group name")
+            Button("Create group") {
+                guard let client else { return }
+                let name = groupName
+                Task { await sessions.createGroup(name, client: client) }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var list: some View {
+        @Bindable var sessions = sessions
+        return List {
             if let notice {
                 Text(notice).typeface(.footnote).foregroundStyle(.secondary)
             }
@@ -85,41 +131,6 @@ struct SessionListView: View {
             } else if !sessions.loaded {
                 ProgressView()
             }
-        }
-        .navigationTitle("Sessions")
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if let options = sessions.options {
-                    Menu {
-                        choices("Group by", \.groupBy, options, [("custom", "Custom groups"), ("project", "Project"), ("none", "None")]).pickerStyle(.palette).menuActionDismissBehavior(.enabled)
-                        choices("Sort by", \.sortBy, options, [("created", "Created"), ("updated", "Last updated"), ("title", "Name"), ("stage", "Stage")]).pickerStyle(.palette).menuActionDismissBehavior(.enabled)
-                        choices("Hide empty groups", \.hideEmpty, options, [("filtering", "When filtering"), ("always", "Always"), ("never", "Never")]).pickerStyle(.palette).menuActionDismissBehavior(.enabled)
-                        choices("Status", \.status, options, [("all", "All"), ("running", "Running"), ("starting", "Starting"), ("waiting", "Waiting"), ("idle", "Idle"), ("error", "Error"), ("reconnecting", "Reconnecting"), ("disconnected", "Disconnected")]).pickerStyle(.inline)
-                    } label: {
-                        Label("Filter & sort", systemImage: "line.3.horizontal.decrease.circle")
-                    }
-                }
-                Button("Search sessions", systemImage: "magnifyingglass") { searching = true }
-                NavigationLink(value: Screen.sessionsPage) {
-                    Label("Sessions", systemImage: "tablecells")
-                }
-                NavigationLink(value: Screen.settings("appearance")) {
-                    Label("Settings", systemImage: "gearshape")
-                }
-                Button("New group", systemImage: "folder.badge.plus") {
-                    groupName = ""
-                    naming = true
-                }
-            }
-        }
-        .alert("New group", isPresented: $naming) {
-            TextField("Group name", text: $groupName).accessibilityLabel("Group name")
-            Button("Create group") {
-                guard let client else { return }
-                let name = groupName
-                Task { await sessions.createGroup(name, client: client) }
-            }
-            Button("Cancel", role: .cancel) {}
         }
     }
 
