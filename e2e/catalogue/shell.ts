@@ -186,7 +186,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR, "docs/api.md#post-__huisessionsidopen"],
     surfaces: ["route:POST /__hui/sessions/:id/open"],
     journeys: ["remote-loading"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
