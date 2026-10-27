@@ -246,6 +246,8 @@ const server = createServer(async (request, response) => {
   if (source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
     return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 213462 tokens > 200000 maximum" } });
   }
+  // E2E_PRIMARY_ERROR fails only the primary fixture model, so the run falls back to another model that answers it.
+  if (source.includes("E2E_PRIMARY_ERROR") && body.model === "fixture") return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
 
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
