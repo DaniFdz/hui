@@ -3829,8 +3829,9 @@ scan is reused as it is. When it does, only the entries appended since that
 scan are read, and entries already counted stay counted, so a fork made
 afterwards does not add its inherited history again. `refresh=1`, and the first
 read after the gateway starts, read every history. A scan in progress is shared
-by concurrent requests. Activity the registry does not record is not seen until
-the next scan or a forced refresh.
+by concurrent requests. Compaction completion updates that activity even when no dated entry was added.
+Activity the registry does not record is not seen until the next scan or a forced
+refresh.
 
 The response carries `generatedAt`, the effective `range`, `sessions`,
 `coverage` and `unplacedSpend`. Each session has its identity and title, the latest included activity

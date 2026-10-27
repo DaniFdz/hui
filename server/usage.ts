@@ -345,6 +345,7 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
       readConversations.add(conversationId);
       const after = previous?.marks.get(conversationId);
       const counted = new Set<number>();
+      const spent = new Map<number, Spend>();
       let highest = after;
       try {
         await durableHost().open();
@@ -356,8 +357,8 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
           counted.add(entry.id);
           highest = Math.max(highest ?? 0, entry.id);
           const spend = entrySpend(entry);
-          const already = found.recordedSpend.get(entry.conversationId);
-          found.recordedSpend.set(entry.conversationId, {
+          const already = spent.get(entry.conversationId);
+          spent.set(entry.conversationId, {
             totalTokens: (already?.totalTokens ?? 0) + spend.totalTokens,
             cost: (already?.cost ?? 0) + spend.cost,
           });
@@ -367,6 +368,10 @@ export async function scanUsage(sessions: readonly SessionRecord[], timeZone: st
             const event = messageEvent(message);
             if (event) accept(owner, event);
           }
+        }
+        for (const [owner, spend] of spent) {
+          const already = found.recordedSpend.get(owner);
+          found.recordedSpend.set(owner, { totalTokens: (already?.totalTokens ?? 0) + spend.totalTokens, cost: (already?.cost ?? 0) + spend.cost });
         }
         for (const id of counted) found.claimed.add(id);
         if (highest !== undefined) found.marks.set(conversationId, highest);

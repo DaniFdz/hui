@@ -53,8 +53,11 @@ with no matching sessions.
    Submit a reversed range; the error must name the attempted range while the
    last successful chart retains its own dates. Fix the fields and apply them.
    **Refresh** must keep successful data on screen while reading again.
-7. Inspect 1440×900 and 390×844, including controls and lower session rows. Repeat
-   a chart/filter interaction at phone width. Check keyboard focus, horizontal
+7. Inspect 1440×900, 1024×900 and 390×844, including controls and lower session
+   rows. The controls must align within each wrapped row. The top metrics must
+   align with the search field's left edge and keep space between their columns,
+   including **Unavailable** beside zero sessions in an empty range. Repeat a
+   chart/filter interaction at phone width. Check keyboard focus, horizontal
    overflow and Browser console errors. Resize is not native-touch proof.
 
 ## Evidence
