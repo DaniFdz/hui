@@ -484,7 +484,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
