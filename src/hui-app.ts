@@ -262,7 +262,7 @@ export class HuiApp extends HuiElement {
   private groupCheckoutDirectory = "";
   private readonly launcher = new LaunchController(this);
   private readonly automation = new AutomationController(this);
-  private readonly dashboard = new DashboardController(this, () => this.view === "surface" && this.activePage?.id === "dashboard" && !this.settingsOpen);
+  private readonly dashboard = new DashboardController(this, () => this.view === "surface" && this.activePage?.id === "dashboard" && !this.settingsOpen, () => this.listedGroups);
   private readonly control = new SettingsController(this, {
     piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary),
     copyFailed: (message) => {
@@ -2825,8 +2825,10 @@ export class HuiApp extends HuiElement {
         metrics: this.dashboard.metrics,
         history: this.dashboard.history,
         metricsError: this.dashboard.error,
+        expandedLists: this.dashboard.expandedLists,
         now: Date.now(),
         onRetry: this.dashboard.refresh,
+        onToggleList: this.dashboard.toggleList,
         onOpenSession: this.selectSession,
       }),
       onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),

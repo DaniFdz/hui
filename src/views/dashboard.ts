@@ -1,14 +1,14 @@
 /**
  * The Dashboard page (Labs → Dashboard): a summary of the sessions in flight by status with a count of the finished
  * ones, their Kanban stages, the sessions waiting for the operator, the other sessions that are not idle grouped by
- * status with their subagents, and a card per host metric with its value,
- * a bar and a sparkline of the samples the browser kept. A metric that reads above 85% is marked; one the host can't report
+ * status with their subagents (three rows per list until its Show all button opens it), and a card per host metric
+ * with its value, a bar and a sparkline of the samples the browser kept. A metric that reads above 85% is marked; one the host can't report
  * says so. A value too long for its card wraps between its parts, and the disk path keeps its end on one line.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import type { HostMetrics } from "../api/schema/host.ts";
 import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
-import { DASHBOARD_STATUSES, DASHBOARD_STATUS_LABELS, summarizeSessions, type SessionSummary } from "../lib/dashboard.ts";
+import { DASHBOARD_ROWS, DASHBOARD_STATUSES, DASHBOARD_STATUS_LABELS, NEEDS_YOU_LIST, summarizeSessions, type SessionSummary } from "../lib/dashboard.ts";
 import { SESSION_STAGES, SESSION_STAGE_LABELS, isSessionStage } from "../lib/kanban.ts";
 import { relativeTime } from "../lib/message-metadata.ts";
 import { navigationPath } from "../lib/navigation.ts";
@@ -27,8 +27,10 @@ export type DashboardProps = {
   metrics: HostMetrics | undefined;
   history: readonly HostMetrics[];
   metricsError: string;
+  expandedLists: ReadonlySet<string>;
   now: number;
   onRetry: () => void;
+  onToggleList: (key: string) => void;
   onOpenSession: (session: SessionView) => void;
 };
 
@@ -152,20 +154,26 @@ function stagePipeline(summary: SessionSummary) {
 function sessionsSection(props: DashboardProps) {
   const summary = summarizeSessions(props.groups);
   const empty = !props.groups.length;
-  const rows = (sessions: readonly SessionView[], showStatus: boolean) => sessions.map((session) => sessionRow(session, summary, showStatus, props));
+  const list = (key: string, sessions: readonly SessionView[], showStatus: boolean, className: string) => {
+    const id = `dashboard-list-${key}`;
+    const expanded = props.expandedLists.has(key);
+    const shown = expanded ? sessions : sessions.slice(0, DASHBOARD_ROWS);
+    return html`<ul id=${id} class=${className}>${shown.map((session) => sessionRow(session, summary, showStatus, props))}</ul>
+      ${sessions.length > DASHBOARD_ROWS ? html`<button class="dashboard-more" type="button" aria-controls=${id} aria-expanded=${String(expanded)} @click=${() => props.onToggleList(key)}>${expanded ? "Show fewer" : `Show all ${sessions.length}`}</button>` : nothing}`;
+  };
   return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Sessions</h2><p class="settings-section__desc">A session idle in Done counts as finished and is not listed. Subagents show on their parent; archived sessions are left out.</p></div></header>
     ${props.sessionsError ? html`<div class="callout danger" role="alert">${props.sessionsError}</div>` : nothing}
     ${empty && props.sessionsLoading ? html`<div role="status">Reading sessions…</div>` : html`
       ${summaryCard(summary)}
       ${summary.waiting.length ? html`<div class="dashboard-needs-you" data-testid="dashboard-needs-you">
         <h3 class="dashboard-subheading">Needs you <span class="dashboard-subheading__count">${summary.waiting.length}</span></h3>
-        <ul class="dashboard-sessions">${rows(summary.waiting, false)}</ul>
+        ${list(NEEDS_YOU_LIST, summary.waiting, false, "dashboard-sessions")}
       </div>` : nothing}
       ${stagePipeline(summary)}
       ${summary.groups.length
         ? html`<div class="dashboard-groups" data-testid="dashboard-active-sessions">${summary.groups.map((group) => html`
           <h3 class="dashboard-subheading">${group.label} <span class="dashboard-subheading__count">${group.sessions.length}</span></h3>
-          <ul class="settings-group dashboard-sessions">${rows(group.sessions, group.mixed)}</ul>`)}</div>`
+          ${list(group.key, group.sessions, group.mixed, "settings-group dashboard-sessions")}`)}</div>`
         : summary.waiting.length || summary.finished && !summary.total ? nothing : html`<p class="dashboard-empty">${summary.total ? "Every session is idle." : "No sessions yet."}</p>`}`}
   </section>`;
 }

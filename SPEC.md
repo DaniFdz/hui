@@ -2200,6 +2200,19 @@ This supersedes the *Sessions come from the list* part of [Dashboard page
 behind Labs → Dashboard](#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23)
 where it counts every session and marks a child as a *Subagent*.
 
+### Dashboard lists show three rows each (2026-10-27)
+
+With 200 sessions in flight the Dashboard was about 13,000 pixels tall. The
+owner asked to "limit the sessions we show to maybe 3 in the list".
+
+- **Each list shows its first three rows**, newest first: *Needs you* and each
+  status group. A longer one ends in **Show all 12**, which opens that list in
+  place; open, it ends in **Show fewer**. Each list opens on its own. The
+  headings, the summary and the pipeline still count every session.
+- **An open list stays open** across a metrics read and a session list refresh,
+  new sessions included. It folds again when it is down to three rows or fewer
+  and when the operator leaves the page.
+
 ### Use cases live in one catalogue (2026-10-21)
 
 The owner wants a native iOS app with the web UI's capabilities, and a way to

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test, vi } from "vitest";
 import type { HostMetrics } from "../api/schema/host.ts";
+import type { SessionGroup, SessionView } from "../api/schema/sessions.ts";
 import { DASHBOARD_HISTORY, DASHBOARD_POLL_MS, DashboardController } from "./dashboard-controller.ts";
 
 function sample(sampledAt: string): HostMetrics {
@@ -19,8 +20,8 @@ function sample(sampledAt: string): HostMetrics {
 function setup() {
   const reads: Array<{ resolve: (value: HostMetrics) => void; reject: (error: Error) => void }> = [];
   const host = { updates: 0, requestUpdate() { this.updates += 1; }, addController() {} };
-  const page = { shown: true };
-  const controller = new DashboardController(host, () => page.shown, () => new Promise((resolve, reject) => reads.push({ resolve, reject })));
+  const page = { shown: true, groups: [] as readonly SessionGroup[] };
+  const controller = new DashboardController(host, () => page.shown, () => page.groups, () => new Promise((resolve, reject) => reads.push({ resolve, reject })));
   return { controller, host, reads, page };
 }
 
@@ -110,4 +111,44 @@ test("the sparklines keep the last sixty samples", async () => {
   }
   assert.equal(controller.history.length, DASHBOARD_HISTORY);
   assert.equal(controller.history[0]?.sampledAt, "t5");
+});
+
+function running(count: number, status: SessionView["status"] = "running"): SessionView[] {
+  return Array.from({ length: count }, (_, index) => ({
+    id: `${status}${index}`, title: `${status} ${index}`, group: "", cwd: "/w", displayCwd: "/w", tool: "pi", status,
+    stage: "investigation", stageOrigin: "default", createdAt: "2026-10-23T10:00:00Z", updatedAt: "2026-10-23T10:00:00Z",
+  }));
+}
+
+test("each session list opens on its own and stays open until the page is left or the list has three rows or fewer", async () => {
+  const { controller, host, reads, page } = setup();
+  const list = (...sessions: SessionView[][]) => { page.groups = [{ label: "", sessions: sessions.flat() }]; controller.hostUpdate(); };
+  list(running(5), running(5, "waiting"), running(5, "error"));
+  controller.toggleList("running");
+  controller.toggleList("needs-you");
+  assert.deepEqual([...controller.expandedLists], ["running", "needs-you"], "Needs you opens apart from the status lists");
+  assert.equal(host.updates, 2);
+  controller.toggleList("needs-you");
+  assert.deepEqual([...controller.expandedLists], ["running"]);
+
+  controller.refresh();
+  reads[0]!.resolve(sample("t1"));
+  await settle();
+  controller.hostUpdate();
+  assert.deepEqual([...controller.expandedLists], ["running"], "a metrics poll keeps it open");
+  list(running(5), running(5, "waiting"), running(5, "error"));
+  assert.deepEqual([...controller.expandedLists], ["running"], "a refresh with the same rows keeps it open");
+  list(running(6), running(5, "error"));
+  assert.deepEqual([...controller.expandedLists], ["running"], "a new session keeps it open");
+  list(running(3), running(5, "error"));
+  assert.deepEqual([...controller.expandedLists], [], "three rows have nothing to fold");
+  list(running(5), running(5, "error"));
+  assert.deepEqual([...controller.expandedLists], [], "a list that grows again starts folded");
+
+  controller.toggleList("errors");
+  page.shown = false;
+  controller.hostUpdate();
+  page.shown = true;
+  controller.hostUpdate();
+  assert.deepEqual([...controller.expandedLists], [], "the page opens again with every list folded");
 });

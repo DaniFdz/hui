@@ -43,8 +43,8 @@ function metrics(overrides: Partial<HostMetrics> = {}): HostMetrics {
 
 function page(overrides: Partial<DashboardProps> = {}): string {
   return text(renderDashboard({
-    groups: [], sessionsLoading: false, sessionsError: "", metrics: undefined, history: [], metricsError: "", now: NOW,
-    onRetry: () => {}, onOpenSession: () => {},
+    groups: [], sessionsLoading: false, sessionsError: "", metrics: undefined, history: [], metricsError: "", expandedLists: new Set(), now: NOW,
+    onRetry: () => {}, onOpenSession: () => {}, onToggleList: () => {},
     ...overrides,
   }));
 }
@@ -129,6 +129,44 @@ test("waiting sessions come first under Needs you, then the rest of what is not 
   assert.match(quiet, />1 subagent</u, "no running count when every subagent is idle");
   assert.match(active, /href=\/sessions\/run/u);
   assert.doesNotMatch(markup, /Session idle</u);
+});
+
+test("each list shows three rows and a button that shows all of them, and every count stays a total", () => {
+  const many = (prefix: string, status: SessionView["status"], count: number) =>
+    Array.from({ length: count }, (_, index) => session(`${prefix}${index}`, { status, updatedAt: `2026-10-23T11:5${9 - index}:00Z` }));
+  const groups = [{ label: "", sessions: [...many("w", "waiting", 4), ...many("r", "running", 5), ...many("e", "error", 5), ...many("s", "starting", 3)] }];
+  const names = (markup: string) => [...markup.matchAll(/__name" title=[^>]*>Session (\w+)</gu)].map((match) => match[1]);
+  const button = (markup: string) => markup.match(/<button class="dashboard-more"[^>]*>[^<]*/u)?.[0];
+  const sections = (markup: string) => Object.fromEntries(["Errors", "Running", "Starting"].map((label) => {
+    const active = part(markup, "active-sessions");
+    const start = active.indexOf(`>${label} <`);
+    const end = active.indexOf("<h3", start);
+    return [label, active.slice(start, end < 0 ? undefined : end)];
+  }));
+
+  const collapsed = page({ groups });
+  assert.match(part(collapsed, "summary"), /17 sessions/u);
+  assert.match(part(collapsed, "needs-you"), /Needs you <span class="dashboard-subheading__count">4/u);
+  assert.deepEqual(names(part(collapsed, "needs-you")), ["w0", "w1", "w2"]);
+  assert.equal(button(part(collapsed, "needs-you")), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-needs-you aria-expanded=false @click=>Show all 4`);
+  assert.match(part(collapsed, "needs-you"), /<ul id=dashboard-list-needs-you /u);
+  const closed = sections(collapsed);
+  assert.match(closed.Running!, /^>Running <span class="dashboard-subheading__count">5/u, "a heading counts every row, not the shown ones");
+  assert.deepEqual(names(closed.Running!), ["r0", "r1", "r2"]);
+  assert.equal(button(closed.Running!), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-running aria-expanded=false @click=>Show all 5`);
+  assert.match(closed.Running!, /<ul id=dashboard-list-running /u);
+  assert.deepEqual(names(closed.Starting!), ["s0", "s1", "s2"]);
+  assert.equal(button(closed.Starting!), undefined, "a list of three has nothing to show");
+
+  const expanded = page({ groups, expandedLists: new Set(["running"]) });
+  const open = sections(expanded);
+  assert.deepEqual(names(open.Running!), ["r0", "r1", "r2", "r3", "r4"]);
+  assert.equal(button(open.Running!), `<button class="dashboard-more" type="button" aria-controls=dashboard-list-running aria-expanded=true @click=>Show fewer`);
+  assert.deepEqual(names(open.Errors!), ["e0", "e1", "e2"], "opening one list leaves the others folded");
+  assert.match(button(open.Errors!)!, /aria-expanded=false @click=>Show all 5/u);
+  assert.deepEqual(names(part(expanded, "needs-you")), ["w0", "w1", "w2"]);
+  assert.match(part(expanded, "summary"), /17 sessions/u);
+  assert.match(open.Running!, /^>Running <span class="dashboard-subheading__count">5/u);
 });
 
 test("every idle session reads as such, and the list waits for the first session read", () => {

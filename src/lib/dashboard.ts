@@ -1,8 +1,8 @@
 /**
  * What the Dashboard page reads from the session list the app already holds: the top-level sessions in flight counted
  * by status and Kanban stage, the ones waiting for the operator, the other ones that are not idle grouped by status,
- * and each one's subagents. A finished session (idle in Done) is only counted; archived sessions and subagents are
- * not sessions here.
+ * and each one's subagents, each list under the key the page expands it by. A finished session (idle in Done) is only
+ * counted; archived sessions and subagents are not sessions here.
  */
 import type { SessionGroup, SessionStage, SessionStatus, SessionView } from "../api/schema/sessions.ts";
 import { isSessionStage } from "./kanban.ts";
@@ -19,11 +19,14 @@ export const DASHBOARD_STATUS_LABELS: Readonly<Record<SessionStatus, string>> = 
   idle: "Idle",
 };
 
-const ACTIVE_GROUPS: readonly { label: string; statuses: readonly SessionStatus[] }[] = [
-  { label: "Errors", statuses: ["error", "disconnected"] },
-  { label: "Reconnecting", statuses: ["reconnecting"] },
-  { label: "Running", statuses: ["running"] },
-  { label: "Starting", statuses: ["starting"] },
+export const DASHBOARD_ROWS = 3;
+export const NEEDS_YOU_LIST = "needs-you";
+
+const ACTIVE_GROUPS: readonly { key: string; label: string; statuses: readonly SessionStatus[] }[] = [
+  { key: "errors", label: "Errors", statuses: ["error", "disconnected"] },
+  { key: "reconnecting", label: "Reconnecting", statuses: ["reconnecting"] },
+  { key: "running", label: "Running", statuses: ["running"] },
+  { key: "starting", label: "Starting", statuses: ["starting"] },
 ];
 
 type SubagentCount = { total: number; active: number };
@@ -34,7 +37,7 @@ export type SessionSummary = {
   statuses: Record<SessionStatus, number>;
   stages: Record<SessionStage, number>;
   waiting: SessionView[];
-  groups: { label: string; mixed: boolean; sessions: SessionView[] }[];
+  groups: { key: string; label: string; mixed: boolean; sessions: SessionView[] }[];
   subagents: ReadonlyMap<string, SubagentCount>;
 };
 
@@ -71,7 +74,7 @@ export function summarizeSessions(groups: readonly SessionGroup[]): SessionSumma
     stages,
     waiting: inStatuses(["waiting"]),
     groups: ACTIVE_GROUPS
-      .map(({ label, statuses: list }) => ({ label, mixed: list.length > 1, sessions: inStatuses(list) }))
+      .map(({ key, label, statuses: list }) => ({ key, label, mixed: list.length > 1, sessions: inStatuses(list) }))
       .filter((group) => group.sessions.length),
     subagents,
   };
