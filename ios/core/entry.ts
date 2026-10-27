@@ -18,6 +18,8 @@ export { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "../../src/lib/run-e
 export { replyDraft } from "../../src/lib/message-metadata.ts";
 export { markdownTokens } from "../../src/lib/markdown/parser.ts";
 export { filterSettingsPages, SETTINGS_COPY } from "../../src/lib/settings/pages.ts";
+export { WORK_PANE_LABEL, WORK_PANE_OPEN_VIEW, WORK_PANE_SHOW } from "../../src/lib/work-pane.ts";
+export { FILES_COPY, filesBytes, filesCreateIn, filesCreatedLabel, filesDeleteLabel, filesDeleteRisks, filesDeleteTitle, filesEditorLabel, filesNoMatch, filesTabTitle } from "../../src/lib/files/copy.ts";
 export { ACCENTS, TYPEFACES, typefaceFamily } from "../../src/lib/theme/appearance.ts";
 export { NERD_FONT_SYMBOLS, TERMINAL_FONTS, normalizeTerminalFont, terminalFontFamilies, terminalFontStack } from "../../src/lib/terminal/font.ts";
 export { browserStatusLabel, browserVersionLabel, normalizeBrowserStatus } from "../../src/lib/browser-status.ts";
