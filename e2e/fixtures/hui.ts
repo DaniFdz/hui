@@ -107,6 +107,8 @@ export type Hui = {
   hold(target: Locator, until: Locator): Promise<void>;
   textOf(target: Locator): Promise<string>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
+  /** Drags the pointer from a target's centre by a pixel offset, holding it there for `whileOver` before letting go. */
+  dragBy(target: Locator, offset: { dx: number; dy: number }, whileOver: () => Promise<void>): Promise<void>;
   touchTap(target: Locator): Promise<void>;
   /** A real touch gesture on a target: a tap, or a drag of `drag` pixels down the screen. */
   touch(target: Locator, gesture?: { drag?: number }): Promise<void>;
@@ -610,6 +612,16 @@ export const test = base.extend<{ hui: Hui }>({
           await browser().mouse.move(from.x, from.y);
           await browser().mouse.down();
           await browser().mouse.move(to.x, to.y);
+          await whileOver();
+          await browser().mouse.up();
+        },
+        dragBy: async (target, { dx, dy }, whileOver) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("dragBy: the target is not on screen");
+          const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+          await browser().mouse.move(from.x, from.y);
+          await browser().mouse.down();
+          await browser().mouse.move(from.x + dx, from.y + dy);
           await whileOver();
           await browser().mouse.up();
         },

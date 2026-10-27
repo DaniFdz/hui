@@ -81,3 +81,30 @@ test("the arrow keys resize a split pane by 2% and with Shift by 5%, and Home an
   await step("End");
   await expect(divider).toHaveAttribute("aria-valuenow", "85");
 });
+
+test("dragging the divider changes the panes' share, down to the minimum pane size, and the sizes survive a reload", { tags: ["SESS-051"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const divider = screen.getByTestId("pane-divider");
+  const panes = screen.getByTestId("session-pane");
+  const width = async (index: number) => Math.round((await panes.nth(index).boundingBox())!.width);
+  await hui.wideScreen();
+  const first = await hui.createSession({ title: "Dragged left" });
+  await hui.createSession({ title: "Dragged right" });
+  await hui.open(`/sessions/${first.id}`);
+  await screen.getByRole("button", "Open split view").tap();
+  await expect(divider).toHaveAttribute("aria-valuenow", "50");
+
+  const share = async () => Number(await divider.getAttribute("aria-valuenow"));
+  const before = await width(0);
+  await hui.dragBy(divider, { dx: 120, dy: 0 }, async () => expect.poll(() => width(0)).toBeGreaterThan(before));
+  await expect.poll(share).toBeGreaterThan(50);
+  await expect.poll(async () => (await width(0)) - (await width(1))).toBeGreaterThan(0);
+
+  const minimum = (await divider.getAttribute("aria-valuemin"))!;
+  await hui.dragBy(divider, { dx: -2000, dy: 0 }, async () => expect(divider).toHaveAttribute("aria-valuenow", minimum));
+  await expect(divider).toHaveAttribute("aria-valuenow", minimum);
+  await expect.poll(async () => width(0)).toBe(320);
+
+  await hui.reload();
+  await expect(divider).toHaveAttribute("aria-valuenow", minimum);
+  await expect.poll(async () => width(0)).toBe(320);
+});

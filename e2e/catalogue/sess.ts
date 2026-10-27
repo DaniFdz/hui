@@ -498,7 +498,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-split-layout"],
     surfaces: [],
     journeys: ["session-multiplexing", "pane-reposition"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Below 1100px only the active pane is visible\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
