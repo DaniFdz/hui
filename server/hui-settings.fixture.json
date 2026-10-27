@@ -7313,7 +7313,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
