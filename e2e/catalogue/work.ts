@@ -162,7 +162,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:togglePane"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: chord("Showing or hiding the Work pane with Ctrl+Alt+Shift+P"),
   },
   {
@@ -172,7 +172,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:maximizePane"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Maximized is per conversation and desktop only\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
@@ -182,7 +182,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:terminal"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening a terminal with Ctrl+Alt+Shift+T"),
   },
   {
@@ -192,7 +192,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:browser"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening the browser view with Ctrl+Alt+Shift+B"),
   },
   {
@@ -202,7 +202,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:files"],
     journeys: ["work-pane", "files-view"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening a Files view with Ctrl+Alt+Shift+F"),
   },
   {
@@ -222,7 +222,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:diff"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening a Diff view with Ctrl+Alt+Shift+D"),
   },
   {
@@ -475,7 +475,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -505,7 +505,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape to clear the filter is a keyboard key; an iPhone has no keyboard to press it.", decision: KEYBOARD },
   },
   {
@@ -657,7 +657,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -677,7 +677,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
