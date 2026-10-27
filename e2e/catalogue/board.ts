@@ -271,7 +271,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban", "docs/api.md#post-__huibacklogitemsidstart"],
     surfaces: ["route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
