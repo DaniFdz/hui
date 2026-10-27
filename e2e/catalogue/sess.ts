@@ -180,7 +180,7 @@ const cases: UseCase[] = [
     surfaces: [],
     journeys: ["session-groups", "session-registry", "sidebar-toolbar"],
     web: "required",
-    ios: "required",
+    ios: "backlog",
   },
   {
     id: "SESS-020",

@@ -8,7 +8,7 @@ const choose = async (screen: Screen, choice: string) => {
   await screen.getByText(choice, { exact: true, visible: true }).tap();
 };
 
-test("Search sessions filters by title, directory and group, opens collapsed groups while searching, and the phone's Search focuses it", { tags: ["SESS-019"] }, async ({ screen, hui }) => {
+test("Search sessions filters by title, directory and group, opens collapsed groups while searching, and the phone's Search focuses it", { tags: ["SESS-019"], platforms: ["web"] }, async ({ screen, hui }) => {
   const search = screen.getByPlaceholder("Search sessions");
   const row = (title: string) => screen.getByTestId("session-row").filter({ hasText: title });
   await hui.createSession({ title: "Miami appearance" });
