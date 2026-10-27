@@ -22,6 +22,12 @@ const TypefaceId = Type.Union([
   Type.Literal("jetbrains-mono"), Type.Literal("system"),
 ]);
 
+/** The reasoning levels a subagent route may pin: the same six a spawn accepts. */
+const SubagentThinking = Type.Union([
+  Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"), Type.Literal("medium"), Type.Literal("high"),
+  Type.Literal("xhigh"),
+]);
+
 export const Settings = Type.Object({
   theme: Type.String(),
   themeMode: Type.Union([Type.Literal("system"), Type.Literal("light"), Type.Literal("dark")]),
@@ -36,7 +42,13 @@ export const Settings = Type.Object({
   browser: BrowserSettings, codemode: Type.Object({ enabled: Type.Boolean() }), questions: Type.Object({ timeoutMinutes: Type.Number() }),
   vscode: VscodeSettings, power: Type.Object({ keepAwake: Type.Boolean() }),
   notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
-  models: Type.Object({ primary: Type.String(), fallback: Type.String(), utility: Type.String() }),
+  models: Type.Object({
+    primary: Type.String(), fallback: Type.String(), utility: Type.String(),
+    routes: Type.Immutable(Type.Array(Type.Object({
+      name: Type.String(), description: Type.String(), model: Type.String(),
+      thinking: Type.Optional(SubagentThinking),
+    }))),
+  }),
   calls: Type.Object({ voice: Type.Union([
     Type.Literal("cove"), Type.Literal("arbor"), Type.Literal("breeze"), Type.Literal("ember"), Type.Literal("juniper"),
     Type.Literal("maple"), Type.Literal("sol"), Type.Literal("spruce"), Type.Literal("vale"),

@@ -54,6 +54,12 @@ type OriginalSettings = {
     primary: string;
     fallback: string;
     utility: string;
+    routes: readonly {
+      name: string;
+      description: string;
+      model: string;
+      thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+    }[];
   };
 
   calls: { voice: GptLiveVoice };

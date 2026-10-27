@@ -223,6 +223,14 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
+**Subagent routes** sit under the same page. A route is a name you choose, a
+one-line description and a model, and may pin a reasoning level. An agent that
+spawns a subagent passes the name to `sessions_spawn`, never a model id: the
+prompt lists your names and descriptions, so it can only pick from that list. A
+spawn without a route inherits its parent's model and reasoning level, and a
+spawn's own `thinking` overrides the route's. Routes apply to new subagents as
+soon as you save them, and the next turn of a running session lists them.
+
 The composer's **Effort** slider offers the reasoning levels the session's model
 has, up to **Maximum** (PI's `max` level) where the model supports it, then
 **Ultra**, as in OpenClaw: the model's highest level plus an instruction to plan

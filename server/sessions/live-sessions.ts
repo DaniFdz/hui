@@ -742,6 +742,11 @@ export class LiveSessions {
     return live.runtime.listModels ? await live.runtime.listModels() : [];
   }
 
+  /** The operator's named subagent routes, read fresh so a route added in Settings works without a restart. */
+  async subagentRoutes(): Promise<Settings["models"]["routes"]> {
+    return (await this.#readSettings()).models.routes;
+  }
+
   async commands(id: string): Promise<readonly RuntimeCommand[]> {
     const live = this.#live.get(id);
     if (!live?.runtime) throw this.#unavailable(live);

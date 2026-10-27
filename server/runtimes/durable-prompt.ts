@@ -15,12 +15,12 @@ import { defineExtension, section, type ConversationId, type PromptInput } from 
 import type { Settings } from "../hui-settings.ts";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../pi/bundled-skills.ts";
 import { createPolicySettingsManager } from "./resource-policy.ts";
-import { HUI_DEFAULT_PROMPT } from "./hui-prompt.ts";
+import { HUI_DEFAULT_PROMPT, routeGuidelines, type RouteLine } from "./hui-prompt.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
-export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins" | "notifications">;
+export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins" | "notifications" | "models">;
 
 /** The skills of a bot's chat: the ones it has of a directory's, and its own `skills` section when it loads them with
  * `load_skill`. */
@@ -56,19 +56,24 @@ const SECTION_KEYS = [
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
 /** Same text as the PI worker's `huiPromptExtension`. */
-export function huiToolSections(selectedTools: readonly string[], contributions: Record<string, Contribution>): Record<string, string> {
+export function huiToolSections(
+  selectedTools: readonly string[],
+  contributions: Record<string, Contribution>,
+  routes: readonly RouteLine[] = [],
+): Record<string, string> {
   const activeTools = selectedTools.map((name) => {
     const snippet = contributions[name]?.snippet;
     return `- ${name}${snippet ? `: ${snippet}` : ""}`;
   }).join("\n");
   const guidelines = [...new Set(selectedTools.flatMap((name) => contributions[name]?.guidelines ?? []))]
     .map((line) => `- ${line}`).join("\n");
+  const guidance = [guidelines, routeGuidelines(routes)].filter(Boolean).join("\n\n");
   return {
     hui_presentation: HUI_PRESENTATION_PROMPT,
     hui_tools: activeTools
       ? `Active callable tools for this turn (PI provides their full schemas separately):\n${activeTools}`
       : "No callable tools are active for this turn.",
-    ...(guidelines ? { hui_tool_guidelines: guidelines } : {}),
+    ...(guidance ? { hui_tool_guidelines: guidance } : {}),
   };
 }
 
@@ -202,7 +207,7 @@ export class DurablePrompt {
       selectedTools: [...selectedTools], toolSnippets, toolGuidelines,
       ...(append ? { appendSystemPrompt: append } : {}),
       sections: {
-        ...huiToolSections(selectedTools, contributions), ...(own ? { skills: own } : {}),
+        ...huiToolSections(selectedTools, contributions, (await this.#readSettings()).models.routes), ...(own ? { skills: own } : {}),
         ...(ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
       },
       cwd,

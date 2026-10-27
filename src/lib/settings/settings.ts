@@ -13,6 +13,11 @@ export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreferenc
 
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
 
+/** The reasoning levels a subagent route may pin; the same six a spawn accepts. */
+export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+export type SubagentThinking = NonNullable<Settings["models"]["routes"][number]["thinking"]>;
+export type SubagentRoute = Settings["models"]["routes"][number];
+
 export const DEFAULT_BRANCH_PREFIX = "feature/";
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
 export const DEFAULT_VSCODE_SETTINGS: VscodeSettings = { enabled: false, executable: "", provider: "auto", licenseAcceptedAt: "" };
@@ -42,7 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "" },
+  models: { primary: "", fallback: "", utility: "", routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
@@ -144,7 +149,35 @@ function normalizeModels(value: unknown): Settings["models"] {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
+    routes: normalizeSubagentRoutes(source["routes"]),
   };
+}
+
+/** A route name is what an agent types as `route`, so it stays one word without blanks. */
+export function routeNameIsValid(name: string): boolean {
+  return name.length <= 40 && /^[\p{L}\p{N}_.-]+$/u.test(name);
+}
+
+/** A route without a name or a usable model cannot be spawned by name, so it is dropped; a repeated name keeps
+ * the first, and an unknown reasoning level falls back to the route having none. */
+function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
+  if (!Array.isArray(value)) return [];
+  const routes = new Map<string, SubagentRoute>();
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const name = boundedText(item["name"], "", 40);
+    const model = normalizeModelRef(item["model"]);
+    const thinking = SUBAGENT_THINKING_LEVELS.find((level) => level === item["thinking"]);
+    if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
+    routes.set(name, {
+      name,
+      description: boundedText(item["description"], "", 200),
+      model,
+      ...(thinking ? { thinking } : {}),
+    });
+    if (routes.size >= 50) break;
+  }
+  return [...routes.values()];
 }
 
 function normalizeDisabledPlugins(value: unknown): Settings["disabledPlugins"] {
