@@ -655,7 +655,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-068",
