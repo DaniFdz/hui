@@ -67,7 +67,7 @@ export function huiToolSections(
   }).join("\n");
   const guidelines = [...new Set(selectedTools.flatMap((name) => contributions[name]?.guidelines ?? []))]
     .map((line) => `- ${line}`).join("\n");
-  const guidance = [guidelines, routeGuidelines(routes)].filter(Boolean).join("\n\n");
+  const guidance = [guidelines, routeGuidelines(selectedTools.includes("sessions_spawn") ? routes : [])].filter(Boolean).join("\n\n");
   return {
     hui_presentation: HUI_PRESENTATION_PROMPT,
     hui_tools: activeTools

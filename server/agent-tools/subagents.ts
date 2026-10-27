@@ -293,7 +293,7 @@ export class SubagentService {
     const picked = route ? await this.#resolveRoute(route) : undefined;
     const childModel = picked?.model ?? model;
     const childThinking = thinking ?? picked?.thinking;
-    if (childModel) await this.#assertModelAvailable(callerId, childModel);
+    if (childModel) await this.#assertModelAvailable(callerId, childModel, route);
     const taskId = this.uuid();
     const sessionId = this.uuid();
     const now = this.now().toISOString();
@@ -399,10 +399,8 @@ export class SubagentService {
     }
   }
 
-  /** A route name resolves to what the child runs on. Only names reach the model, so an unknown one lists the
-   * configured names instead of suggesting a model id. */
   async #resolveRoute(name: string): Promise<Settings["models"]["routes"][number]> {
-    const routes = await this.sessions.subagentRoutes().catch(() => []);
+    const routes = await this.sessions.subagentRoutes();
     const match = routes.find((entry) => entry.name === name);
     if (match) return match;
     if (!routes.length) {
@@ -415,10 +413,11 @@ export class SubagentService {
 
   /** Reject an unknown model before a child exists, so the caller can retry in
    * the same turn. An unavailable or empty catalog is not a reason to block. */
-  async #assertModelAvailable(callerId: string, model: string): Promise<void> {
+  async #assertModelAvailable(callerId: string, model: string, route?: string): Promise<void> {
     const catalog = await this.sessions.models(callerId).catch(() => []);
     const names = catalog.map((entry) => `${entry.provider}/${entry.id}`);
     if (!names.length || names.includes(model)) return;
+    if (route) throw new AgentToolInputError(`Route ${route} names an unavailable model; update it in HUI's Settings → Models → Subagent routes.`);
     const id = model.slice(model.lastIndexOf("/") + 1);
     const similar = names.filter((name) => name.endsWith(`/${id}`)).slice(0, 5);
     throw new AgentToolInputError(similar.length

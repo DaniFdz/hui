@@ -7,7 +7,8 @@ import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal/font.ts";
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
-import { QUESTION_TIMEOUTS, routeNameIsValid, SUBAGENT_THINKING_LEVELS, type Settings } from "../lib/settings/settings.ts";
+import { QUESTION_TIMEOUTS, routeNameIsValid, type Settings } from "../lib/settings/settings.ts";
+import { PI_THINKING_LEVELS } from "../lib/thinking.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
@@ -709,7 +710,6 @@ function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
-/** Settings → Models → Subagent routes: named models an agent picks by name, so no model id ever reaches it. */
 function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { value: string; label: string }[]): TemplateResult {
   const routes = props.settings.models.routes;
   const models = modelOptions.filter((option) => option.value);
@@ -717,21 +717,30 @@ function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { val
   const replace = (at: number, patch: Partial<Settings["models"]["routes"][number]>): void => {
     save(routes.map((route, index) => index === at ? { ...route, ...patch } : route));
   };
-  const rename = (at: number, raw: string): void => {
-    const name = raw.trim();
-    if (!routeNameIsValid(name) || routes.some((route, index) => index !== at && route.name === name)) return;
+  const rename = (at: number, input: HTMLInputElement): void => {
+    const name = input.value.trim();
+    const error = !routeNameIsValid(name) ? "Use 1 to 40 letters, digits, underscores, dots or hyphens."
+      : routes.some((route, index) => index !== at && route.name === name) ? "That route name is already in use." : "";
+    input.setCustomValidity(error);
+    if (error) {
+      input.value = routes[at]?.name ?? "";
+      input.reportValidity();
+      return;
+    }
     replace(at, { name });
   };
   const add = (): void => {
+    const model = models.find((option) => option.value === props.settings.models.primary) ?? models[0];
+    if (!model || routes.length >= 50) return;
     const taken = new Set(routes.map((route) => route.name));
     let name = "route";
     for (let suffix = 2; taken.has(name); suffix += 1) name = `route-${suffix}`;
-    save([...routes, { name, description: "", model: models[0]!.value }]);
+    save([...routes, { name, description: "", model: model.value }]);
   };
-  const thinking = [{ value: "", label: "Own choice" }, ...SUBAGENT_THINKING_LEVELS.map((level) => ({ value: level, label: level }))];
+  const thinking = [{ value: "", label: "Inherit parent" }, ...PI_THINKING_LEVELS.map((level) => ({ value: level, label: level }))];
   return renderSection(
     "Subagent routes",
-    "Named models an agent can pick for a subagent. It passes the name to `sessions_spawn` as `route` and never sees the model id.",
+    "Named models for subagents. An agent passes a name to `sessions_spawn` as `route`; the prompt lists your names and descriptions.",
     html`
       ${routes.length
         ? routes.map((route, at) => html`
@@ -740,15 +749,16 @@ function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { val
               <div class="subagent-route-fields__line">
                 <input class="settings-input subagent-route-fields__name" name="routeName" aria-label=${`Route name: ${route.name}`}
                   maxlength="40" spellcheck="false" autocomplete="off" .value=${route.name}
-                  @change=${(event: Event) => rename(at, (event.target as HTMLInputElement).value)} />
+                  @input=${(event: Event) => (event.target as HTMLInputElement).setCustomValidity("")}
+                  @change=${(event: Event) => rename(at, event.target as HTMLInputElement)} />
                 <input class="settings-input" name="routeDescription" aria-label=${`Description of ${route.name}`}
                   maxlength="200" placeholder="What this route is for, in one line" .value=${route.description}
                   @change=${(event: Event) => replace(at, { description: (event.target as HTMLInputElement).value })} />
               </div>
               <div class="subagent-route-fields__line">
-                ${renderSettingsPicker("Model", route.model, models, (value) => replace(at, { model: value }))}
-                ${renderSettingsPicker("Thinking", route.thinking ?? "", thinking, (value) => replace(at, { thinking: value ? value as NonNullable<typeof route.thinking> : undefined }))}
-                <button type="button" class="btn btn--sm btn--ghost" @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>
+                ${renderSettingsPicker(`Model for ${route.name}`, route.model, models, (value) => replace(at, { model: value }))}
+                ${renderSettingsPicker(`Thinking for ${route.name}`, route.thinking ?? "", thinking, (value) => replace(at, { thinking: PI_THINKING_LEVELS.find((level) => level === value) }))}
+                <button type="button" class="btn btn--sm btn--ghost" aria-label=${`Remove route ${route.name}`} @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>
               </div>
             </div>
           </div>`)
@@ -756,7 +766,7 @@ function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { val
       ${renderRow(
         "Add a route",
         models.length ? "Starts on your primary model, if you have one. Edit it after adding." : "Connect a provider first: a route needs a model.",
-        html`<button type="button" class="btn btn--sm" ?disabled=${!models.length} @click=${add}>Add route</button>`,
+        html`<button type="button" class="btn btn--sm" ?disabled=${!models.length || routes.length >= 50} @click=${add}>Add route</button>`,
       )}
     `,
   );

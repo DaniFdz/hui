@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 
 import { modelRoutesFrom, routeGuidelines } from "./hui-prompt.ts";
+import { huiToolSections } from "./durable-prompt.ts";
 
-test("writes no route block when the operator configured none", () => {
+test("writes no route block without routes or the spawn tool", () => {
   assert.equal(routeGuidelines([]), "");
+  const routes = [{ name: "fast", description: "Quick work." }];
+  assert.match(huiToolSections(["sessions_spawn"], {}, routes)["hui_tool_guidelines"]!, /fast: Quick work/);
+  assert.equal(huiToolSections(["read"], {}, routes)["hui_tool_guidelines"], undefined);
 });
 
 test("gives the agent route names and descriptions and never a model id", () => {

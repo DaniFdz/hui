@@ -225,11 +225,15 @@ are with bots only.
 
 **Subagent routes** sit under the same page. A route is a name you choose, a
 one-line description and a model, and may pin a reasoning level. An agent that
-spawns a subagent passes the name to `sessions_spawn`, never a model id: the
-prompt lists your names and descriptions, so it can only pick from that list. A
-spawn without a route inherits its parent's model and reasoning level, and a
-spawn's own `thinking` overrides the route's. Routes apply to new subagents as
-soon as you save them, and the next turn of a running session lists them.
+spawns a subagent can pass the name to `sessions_spawn` instead of a model id.
+The prompt lists your names and descriptions. Raw model ids remain supported;
+routes do not restrict which models the tool can use. A spawn without a route or
+model inherits its parent's model and reasoning level. Its own `thinking`
+overrides the route's level. Routes apply to new subagents as soon as you save
+them. Local Durable sessions refresh the list in their prompt on the next turn.
+Remote Durable sessions list changes after their next settings sync; older PI
+SDK workers refresh that list when they relaunch. Routes offer PI reasoning
+levels through Maximum, not HUI's Ultra delegation mode.
 
 The composer's **Effort** slider offers the reasoning levels the session's model
 has, up to **Maximum** (PI's `max` level) where the model supports it, then

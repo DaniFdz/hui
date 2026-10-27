@@ -16,10 +16,8 @@ You have full local access, not blanket authorization: avoid destructive or exte
 Use web-compatible extension interactions. Do not assume a terminal UI is visible to the user.
 Do not claim an action succeeded without its result. Ask for missing decisions when they materially affect the outcome.`;
 
-/** A route as an agent reads it: a name and one line, never the model id. */
 export type RouteLine = Pick<Settings["models"]["routes"][number], "name" | "description">;
 
-/** The operator's named model routes, as the worker's `HUI_MODEL_ROUTES` env carries them. */
 export function modelRoutesFrom(raw: string | undefined): readonly RouteLine[] {
   if (!raw) return [];
   try {
@@ -27,17 +25,14 @@ export function modelRoutesFrom(raw: string | undefined): readonly RouteLine[] {
     if (!Array.isArray(parsed)) return [];
     return parsed.flatMap((entry: unknown) => {
       if (typeof entry !== "object" || entry === null) return [];
-      const { name, description } = entry as { name?: unknown; description?: unknown };
-      if (typeof name !== "string" || !name.trim()) return [];
-      return [{ name: name.trim(), description: typeof description === "string" ? description : "" }];
+      if (!("name" in entry) || typeof entry.name !== "string" || !entry.name.trim()) return [];
+      return [{ name: entry.name.trim(), description: "description" in entry && typeof entry.description === "string" ? entry.description : "" }];
     });
   } catch {
     return [];
   }
 }
 
-/** The route list an agent reads before it spawns a subagent. Names and one-line descriptions only: the model id
- * stays in HUI, so nothing here can be guessed into a call. */
 export function routeGuidelines(routes: readonly RouteLine[]): string {
   if (!routes.length) return "";
   return [
@@ -61,6 +56,6 @@ export const huiPromptExtension: ExtensionFactory = (pi) => {
       : "No callable tools are active for this turn.";
     options.sections["hui_tool_guidelines"] = [[...new Set(options.selectedTools.flatMap(
       (name) => options.toolGuidelines[name] ?? [],
-    ))].map((line) => `- ${line}`).join("\n"), routeGuidelines(routes)].filter(Boolean).join("\n\n");
+    ))].map((line) => `- ${line}`).join("\n"), routeGuidelines(options.selectedTools.includes("sessions_spawn") ? routes : [])].filter(Boolean).join("\n\n");
   });
 };

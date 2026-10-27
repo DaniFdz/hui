@@ -47,9 +47,17 @@ twice in one turn: `route: "deep"` (accepted) and `route: "no-such-route"`
    simple edits.` and `- deep: Slow and careful: hard debugging and design
    work.`
 7. 1440×900 gives each route two lines: its name and description, then its
-   model, thinking and Remove. At 390×844 each field takes its own line with no
-   horizontal overflow, and the child session's model and thinking still fit
-   beside the composer.
+   model, thinking and Remove. At 390×844 the name and description share the
+   first line, the model and thinking controls stack below it, and Remove stays
+   right-aligned. The child session's model and thinking fit beside the composer.
+
+## Shared web tests
+
+`npm run e2e -- e2e/tests/set/subagent-routes.e2e.ts` covers SET-078 and SET-079:
+route CRUD, invalid and duplicate names, optional thinking, reload persistence,
+the routed child's model and thinking, the unchanged parent, and unknown-route
+or route-plus-model refusal before a child exists. Both cases are required on
+the web; iOS remains backlog.
 
 ## Limitations
 

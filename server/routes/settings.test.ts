@@ -58,7 +58,7 @@ type OriginalSettings = {
       name: string;
       description: string;
       model: string;
-      thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+      thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | undefined;
     }[];
   };
 

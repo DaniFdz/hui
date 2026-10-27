@@ -10183,6 +10183,10 @@
                       {
                         "type": "string",
                         "const": "xhigh"
+                      },
+                      {
+                        "type": "string",
+                        "const": "max"
                       }
                     ]
                   }

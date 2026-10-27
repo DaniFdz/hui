@@ -213,9 +213,7 @@ hui-session-multiplexer {
 .settings-list-filter__input { width: 100%; }
 .settings-list-filter__empty { margin: 8px 0 0; }
 .settings-list-filter__empty:empty { margin: 0; }
-/* Settings → Models → Subagent routes: one editable route per row, its name and
-   description on one line and its model, thinking and Remove on the next. The
-   reference sheet loads after this file, so the row prefix wins the cascade. */
+/* The reference sheet loads later, so the row prefix wins the cascade. */
 .settings-row--stacked > .subagent-route-fields {
   flex-direction: column;
   align-items: stretch;
@@ -244,7 +242,6 @@ hui-session-multiplexer {
   flex: 0 0 auto;
   margin-left: auto;
 }
-/* On a phone each field takes its own line; Remove stays right-aligned. */
 @media (max-width: 640px) {
   .settings-row--stacked > .subagent-route-fields .subagent-route-fields__line > .settings-select {
     flex: 1 1 100%;

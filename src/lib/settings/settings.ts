@@ -7,16 +7,12 @@ import { DEFAULT_GPT_LIVE_VOICE, gptLiveVoice } from "../voice/calls.ts";
 import { normalizeAppearance, DEFAULT_APPEARANCE } from "../theme/appearance.ts";
 import { DEFAULT_TERMINAL_FONT, normalizeTerminalFont } from "../terminal/font.ts";
 import { normalizeThemeMode } from "../theme/theme.ts";
+import { PI_THINKING_LEVELS } from "../thinking.ts";
 import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../../api/schema/settings.ts";
 
 export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "../../api/schema/settings.ts";
 
 export const QUESTION_TIMEOUTS = [0, 5, 10, 15, 30, 60] as const;
-
-/** The reasoning levels a subagent route may pin; the same six a spawn accepts. */
-export const SUBAGENT_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
-export type SubagentThinking = NonNullable<Settings["models"]["routes"][number]["thinking"]>;
-export type SubagentRoute = Settings["models"]["routes"][number];
 
 export const DEFAULT_BRANCH_PREFIX = "feature/";
 export const DEFAULT_BROWSER_SETTINGS: BrowserSettings = { enabled: true, headless: true, executablePath: "" };
@@ -153,25 +149,22 @@ function normalizeModels(value: unknown): Settings["models"] {
   };
 }
 
-/** A route name is what an agent types as `route`, so it stays one word without blanks. */
 export function routeNameIsValid(name: string): boolean {
   return name.length <= 40 && /^[\p{L}\p{N}_.-]+$/u.test(name);
 }
 
-/** A route without a name or a usable model cannot be spawned by name, so it is dropped; a repeated name keeps
- * the first, and an unknown reasoning level falls back to the route having none. */
 function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
   if (!Array.isArray(value)) return [];
-  const routes = new Map<string, SubagentRoute>();
+  const routes = new Map<string, Settings["models"]["routes"][number]>();
   for (const item of value) {
     if (!isRecord(item)) continue;
-    const name = boundedText(item["name"], "", 40);
+    const name = typeof item["name"] === "string" ? item["name"].trim() : "";
     const model = normalizeModelRef(item["model"]);
-    const thinking = SUBAGENT_THINKING_LEVELS.find((level) => level === item["thinking"]);
+    const thinking = PI_THINKING_LEVELS.find((level) => level === item["thinking"]);
     if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
     routes.set(name, {
       name,
-      description: boundedText(item["description"], "", 200),
+      description: boundedText(item["description"], "", 200).replace(/\s+/gu, " ").trim(),
       model,
       ...(thinking ? { thinking } : {}),
     });

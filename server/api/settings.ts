@@ -1,5 +1,6 @@
 /** Public HUI settings payloads, including browser and VS Code preferences. */
 import { Type, type Static } from "typebox";
+import { ThinkingLevel } from "./sessions.ts";
 
 export const VscodeProviderPreference = Type.Union([
   Type.Literal("auto"), Type.Literal("configured"), Type.Literal("desktop"), Type.Literal("managed"), Type.Literal("path"),
@@ -22,12 +23,6 @@ const TypefaceId = Type.Union([
   Type.Literal("jetbrains-mono"), Type.Literal("system"),
 ]);
 
-/** The reasoning levels a subagent route may pin: the same six a spawn accepts. */
-const SubagentThinking = Type.Union([
-  Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"), Type.Literal("medium"), Type.Literal("high"),
-  Type.Literal("xhigh"),
-]);
-
 export const Settings = Type.Object({
   theme: Type.String(),
   themeMode: Type.Union([Type.Literal("system"), Type.Literal("light"), Type.Literal("dark")]),
@@ -46,7 +41,7 @@ export const Settings = Type.Object({
     primary: Type.String(), fallback: Type.String(), utility: Type.String(),
     routes: Type.Immutable(Type.Array(Type.Object({
       name: Type.String(), description: Type.String(), model: Type.String(),
-      thinking: Type.Optional(SubagentThinking),
+      thinking: Type.Optional(Type.Exclude(ThinkingLevel, Type.Literal("ultra"))),
     }))),
   }),
   calls: Type.Object({ voice: Type.Union([

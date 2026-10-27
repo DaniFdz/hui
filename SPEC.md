@@ -1346,21 +1346,23 @@ ordinary descendants may be active in one tree.
 A spawn picks the child's model in one of three ways: a **route** name from the
 operator's configured routes, a raw `provider/id`, or neither, which inherits the
 caller's model and reasoning level. A route carries a name, a one-line
-description and a model, and may pin a reasoning level; the spawn's own
-`thinking` overrides it. Only route names and their descriptions ever reach the
-model, and the prompt lists them, so a spawn cannot invent a model id outside the
-operator's list. Route and model together are refused, because the route already
+description and a model, and may pin a PI reasoning level through `max`; the
+spawn's own `thinking` overrides it. HUI's Ultra delegation mode is not a route
+reasoning level. The route block in the prompt lists names and descriptions, not model ids.
+Routes are shortcuts, not an allowlist: the tool still accepts a raw `model`. Route and model together are refused, because the route already
 names one. An unknown route is refused before any child exists, naming the
 configured routes or pointing at Settings → Models → Subagent routes when there
-are none, and a route whose model is missing from the caller's catalog is refused
-like any other unknown model. HUI resolves the route before it writes the child's
+are none. A route whose model is missing from the caller's catalog is refused
+with a message naming the route and pointing at its setting. HUI resolves the route before it writes the child's
 record, so the record always holds a real `provider/id`.
 
 Routes are read from HUI settings at spawn time, so a route added in Settings
-works in a running session, and the prompt of the next turn lists it. A worker
-host reads the synced copy of those settings, and the PI SDK worker session, whose
-prompt PI builds itself, receives the same names and descriptions in
-`HUI_MODEL_ROUTES`.
+works in a running session. Local Durable sessions refresh the prompt's route
+list on the next turn. A remote Durable session reads the worker's synced copy
+and lists changes after its next settings sync. The older PI SDK
+worker receives a launch-time snapshot of the names and descriptions in
+`HUI_MODEL_ROUTES`; relaunching that worker refreshes its prompt list. Neither
+route resolution nor this setting changes when a child starts or reports back.
 
 **Swarm.** Modeled on OpenClaw's Swarm, a spawn with `collect: true` creates a
 collected child: its result is for the parent to collect with `agents_wait`,

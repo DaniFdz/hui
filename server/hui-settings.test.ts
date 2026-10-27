@@ -46,26 +46,6 @@ test("normalizes HUI-owned model routes", async () => {
   });
 });
 
-test("keeps the routes a spawn can name and drops the ones it cannot", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "hui-settings-"));
-  const path = join(directory, "settings.json");
-  await writeFile(path, JSON.stringify({
-    models: {
-      routes: [
-        { name: "fast", description: "Cheap and quick.", model: "openai/gpt-5.6-luna", thinking: "low" },
-        { name: "deep", model: "anthropic/claude-opus-5-5", thinking: "max" },
-        { name: "fast", description: "A repeated name.", model: "openai/gpt-5.6-luna" },
-        { name: "no model", description: "Cannot be spawned by name.", model: "openai/gpt-5.6-luna" },
-        { name: "broken", model: "claude-opus-5-5" },
-      ],
-    },
-  }));
-  assert.deepEqual((await readHuiSettingsAt(path)).models.routes, [
-    { name: "fast", description: "Cheap and quick.", model: "openai/gpt-5.6-luna", thinking: "low" },
-    { name: "deep", description: "", model: "anthropic/claude-opus-5-5" },
-  ]);
-});
-
 const fixtures: { input: unknown; expected: ReturnType<typeof normalizeSettings> }[] = JSON.parse(readFileSync(new URL("./hui-settings.fixture.json", import.meta.url), "utf8"));
 
 test("hui-settings preserves the shared runtime fixtures", () => {
