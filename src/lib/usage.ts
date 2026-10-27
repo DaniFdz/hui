@@ -1,4 +1,4 @@
-/** Combines usage-report rows for the page's session search, rankings and calendar chart. */
+/** Combines usage-report rows for the page's session search, rankings, calendar chart and PI cost windows. */
 import type { UsageDay, UsageMetrics, UsageModel, UsageReport, UsageTool } from "../api/schema/diagnostics.ts";
 
 export type UsageSort = "recent" | "tokens" | "cost";
@@ -90,6 +90,23 @@ export function usageChartDays(days: readonly UsageDay[], from: string, to: stri
   };
 }
 
+export function usageWindows(days: readonly UsageDay[], from: string, to: string) {
+  const end = Date.parse(`${to}T00:00:00Z`);
+  const length = Math.round((end - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
+  if (!days.length || length <= 1) return [];
+  const week = new Date(end - 6 * 86_400_000).toISOString().slice(0, 10);
+  return [
+    { label: "Selected range", from, to, days: length },
+    ...(length > 7 ? [{ label: "Final 7 days", from: week, to, days: 7 }] : []),
+    { label: "Final day", from: to, to, days: 1 },
+  ].map((window) => ({ ...window, metrics: sumUsage(days.filter(({ date }) => date >= window.from && date <= window.to).map(({ metrics }) => metrics)) }));
+}
+
 export function usageCost(value: Pick<UsageMetrics, "costUsd" | "unpricedCalls">): string {
   return value.costUsd === null ? "Unpriced" : `${value.unpricedCalls ? "≥ " : ""}${usd.format(value.costUsd)}`;
+}
+
+export function usageCostPer(value: UsageMetrics, count: number): string {
+  if (!count || value.calls === 0 && value.costUsd === null) return "Unavailable";
+  return usageCost({ ...value, costUsd: value.costUsd === null ? null : value.costUsd / count });
 }

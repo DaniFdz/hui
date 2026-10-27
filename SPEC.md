@@ -539,9 +539,20 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   narrows the report to its period, drawn as one bar per day up to 32 days, per
   week up to 32 weeks, and per month beyond. A token-type bar and legend show the
   same range.
+- PI cost windows compare the selected range with its final seven calendar days
+  and its final calendar day. Every window ends on the selected end date and
+  shows its dates, tokens and daily PI cost estimate, including empty days in
+  the average. Windows that repeat the selected range are omitted; a single-day
+  or empty report needs no separate windows. Missing prices stay unpriced,
+  missing usage stays unavailable and partial estimates keep their label.
 - Overview cards show recorded messages, tool results, errors, average tokens per
-  usage record and cache hit rate. Ranked model, provider and tool lists use the
-  same period. Unknown model/provider labels stay unknown rather than being
+  usage record, cache hit rate, PI cost per message and error rate. Cost per
+  message divides the recorded estimate by user plus assistant messages and
+  retains partial pricing. Error rate divides recorded model and tool failures
+  by assistant messages plus tool results. A missing denominator is unavailable.
+  Ranked model, provider and tool lists use the same period; model and provider
+  percentages are shares of priced PI cost, omitted when that total is zero or
+  unavailable. Unknown model/provider labels stay unknown rather than being
   guessed from the session's current model.
 - A plain-text search narrows sessions by title, identifier or recorded model and
   updates all displayed summaries and charts. Sessions sort by recent activity,

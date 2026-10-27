@@ -1,9 +1,9 @@
 /** The Usage page: reporting controls and charts over recorded local conversation histories, never provider billing. */
 import { LitElement, html, nothing } from "lit";
 import { live } from "lit/directives/live.js";
-import type { UsageMetrics, UsageReport } from "../api/schema/diagnostics.ts";
+import type { UsageDay, UsageMetrics, UsageReport } from "../api/schema/diagnostics.ts";
 import { UsageController } from "../controllers/usage-controller.ts";
-import { usageChartDays, usageCost, usageOverview, type UsageSort } from "../lib/usage.ts";
+import { usageChartDays, usageCost, usageCostPer, usageOverview, usageWindows, type UsageSort } from "../lib/usage.ts";
 import { icons } from "../lib/icons.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
@@ -12,7 +12,9 @@ loadViewAssets(() => import("../styles/usage.css"));
 const number = new Intl.NumberFormat().format;
 const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format;
 const count = (value: number, noun: string) => `${number(value)} ${noun}${value === 1 ? "" : "s"}`;
-const cost = (value: UsageMetrics) => value.calls === 0 && value.costUsd === null ? "Unavailable" : usageCost(value);
+const cost = (value: UsageMetrics) => usageCostPer(value, 1);
+const share = (value: UsageMetrics, totals: UsageMetrics) => value.costUsd === null || !totals.costUsd ? "" : ` · ${(value.costUsd / totals.costUsd * 100).toFixed(1)}% of priced cost`;
+const rate = (part: number, whole: number) => whole ? `${(part / whole * 100).toFixed(2)}%` : "Unavailable";
 const TYPES = [["outputTokens", "Output", "accent"], ["inputTokens", "Input", "ok"], ["cacheWriteTokens", "Cache write", "warn"], ["cacheReadTokens", "Cache read", "info"]] as const;
 const PRESETS = [["today", "Today"], ["7d", "7d"], ["30d", "30d"], ["90d", "90d"], ["1y", "1y"], ["all", "All"]] as const;
 const dayLabel = new Intl.DateTimeFormat(undefined, { timeZone: "UTC", month: "short", day: "numeric" });
@@ -57,8 +59,9 @@ export class HuiUsagePage extends LitElement {
     const value = (metrics: UsageMetrics) => state.metric === "cost" ? metrics.costUsd ?? 0 : metrics.totalTokens;
     const max = Math.max(0, ...days.days.map(({ metrics }) => value(metrics)));
     return html`<section class="settings-group usage-panel daily-chart-compact" data-testid="usage-chart">
-      <div class="daily-chart-header"><div><h2 class="settings-section__heading">${CHART_SCOPE[days.bucket]} ${state.metric === "cost" ? "cost estimates" : "token usage"}</h2><p class="settings-section__desc">${state.report?.range.from} to ${state.report?.range.to} · ${state.report?.range.timeZone}</p></div>
+      <div class="daily-chart-header">
         ${state.metric === "tokens" ? html`<div class="settings-segmented" role="group" aria-label="Token breakdown">${(["total", "types"] as const).map((mode) => html`<button type="button" class="settings-segmented__btn ${state.chart === mode ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.chart === mode} @click=${() => { state.chart = mode; this.requestUpdate(); }}>${mode === "total" ? "Total" : "By type"}</button>`)}</div>` : html`<span class="usage-summary-sub">PI estimates · unpriced calls excluded</span>`}
+        <div class="usage-report__chart-heading"><h2 class="settings-section__heading">${CHART_SCOPE[days.bucket]} ${state.metric === "cost" ? "cost estimates" : "token usage"}</h2><p class="settings-section__desc">${state.report?.range.from} to ${state.report?.range.to} · ${state.report?.range.timeZone}</p></div>
       </div>
       <div class="daily-chart-plot"><div class="daily-chart-scale"><span>${state.metric === "cost" ? usageCost({ costUsd: max, unpricedCalls: 0 }) : compact(max)}</span><span>0</span></div><div class="daily-chart-bars">
         ${days.days.map(({ date, end, metrics }, index) => {
@@ -79,13 +82,27 @@ export class HuiUsagePage extends LitElement {
     </section>`;
   }
 
+  #windows(days: readonly UsageDay[], from: string, to: string) {
+    const windows = usageWindows(days, from, to);
+    if (!windows.length) return nothing;
+    return html`<section class="cost-window-analysis" data-testid="usage-windows">
+      <div class="cost-window-header"><div><h2 class="settings-section__heading">PI cost windows</h2><p class="settings-section__desc">Calendar windows ending ${to}.</p></div></div>
+      <div class="cost-window-grid">${windows.map((window, index) => html`<article class="cost-window-card ${index === 0 ? "cost-window-card--range" : ""}">
+        <span class="cost-window-card__label">${window.label}</span><strong class="cost-window-card__value">${cost(window.metrics)}</strong>
+        <span class="cost-window-card__meta">${window.from === window.to ? window.to : `${window.from} to ${window.to}`}</span>
+        <small class="cost-window-card__meta">${compact(window.metrics.totalTokens)} tokens · ${window.metrics.calls ? `${usageCostPer(window.metrics, window.days)} per day` : "No usage records"}</small>
+      </article>`)}</div>
+    </section>`;
+  }
+
   #rankings(overview: ReturnType<typeof usageOverview>) {
+    const detail = (metrics: UsageMetrics) => `${compact(metrics.totalTokens)} tokens${share(metrics, overview.totals)}`;
     const rankings = [
-      { title: "Top models", rows: overview.models.map((row) => ({ label: `${row.provider}/${row.model}`, detail: `${compact(row.metrics.totalTokens)} tokens`, value: cost(row.metrics) })) },
-      { title: "Top providers", rows: overview.providers.map((row) => ({ label: row.provider, detail: `${compact(row.metrics.totalTokens)} tokens`, value: cost(row.metrics) })) },
+      { title: "Top models", rows: overview.models.map((row) => ({ label: `${row.provider}/${row.model}`, detail: detail(row.metrics), value: cost(row.metrics) })) },
+      { title: "Top providers", rows: overview.providers.map((row) => ({ label: row.provider, detail: detail(row.metrics), value: cost(row.metrics) })) },
       { title: "Top tools", rows: overview.tools.map((row) => ({ label: row.name, detail: count(row.errors, "error"), value: count(row.calls, "result") })) },
     ];
-    return html`<section class="usage-insights-grid">${rankings.map(({ title, rows }) => html`<article class="usage-insight-card"><h2 class="usage-insight-title">${title}</h2><div class="usage-list">${rows.slice(0, 5).map((row) => html`<div class="usage-list-item"><div class="usage-report__rank-name">${row.label}<div class="usage-list-sub">${row.detail}</div></div><span class="usage-list-value">${row.value}</span></div>`)}${rows.length === 0 ? html`<p class="usage-summary-sub">No recorded data.</p>` : nothing}</div></article>`)}</section>`;
+    return html`<section class="usage-insights-grid" data-testid="usage-rankings">${rankings.map(({ title, rows }) => html`<article class="usage-insight-card"><h2 class="usage-insight-title">${title}</h2><div class="usage-list">${rows.slice(0, 5).map((row) => html`<div class="usage-list-item"><div class="usage-report__rank-name">${row.label}<div class="usage-list-sub">${row.detail}</div></div><span class="usage-list-value">${row.value}</span></div>`)}${rows.length === 0 ? html`<p class="usage-summary-sub">No recorded data.</p>` : nothing}</div></article>`)}</section>`;
   }
 
   override render() {
@@ -121,9 +138,12 @@ export class HuiUsagePage extends LitElement {
       ${report && (report.coverage.unavailable.length || report.coverage.undatedRecords) ? html`<div class="callout warning">Totals are partial. ${number(report.coverage.unavailable.length)} histories unavailable; ${number(report.coverage.undatedRecords)} records without valid dates were excluded.</div>` : nothing}
       ${report && totals && overview ? html`
         ${overview.sessions.length ? this.#chart(usageChartDays(overview.days, report.range.from, report.range.to), totals) : html`<div class="settings-group usage-panel usage-empty-state"><strong class="usage-empty-state__title">${state.query ? "No sessions match your search." : "No usage in this range."}</strong><p class="usage-summary-sub">${state.query ? "Try a title, session ID or model name." : "Choose another range or start a conversation."}</p></div>`}
-        <section class="settings-section"><h2 class="settings-section__heading">Usage overview</h2><div class="usage-summary-grid">
+        ${this.#windows(overview.days, report.range.from, report.range.to)}
+        <section class="settings-section" data-testid="usage-overview"><h2 class="settings-section__heading">Usage overview</h2><div class="usage-summary-grid">
           ${summary("Messages", number(totals.userMessages + totals.assistantMessages), `${number(totals.userMessages)} user · ${number(totals.assistantMessages)} assistant`)}
           ${summary("Tool results", number(totals.toolResults), `${count(overview.tools.length, "tool")} recorded`)}
+          ${summary("PI cost / message", usageCostPer(totals, totals.userMessages + totals.assistantMessages), `Across ${count(totals.userMessages + totals.assistantMessages, "message")}`)}
+          ${summary("Error rate", rate(totals.errors, totals.assistantMessages + totals.toolResults), `${count(totals.errors, "recorded failure")} · ${count(totals.assistantMessages, "response")} · ${count(totals.toolResults, "tool result")}`)}
           ${summary("Avg tokens / record", totals.calls ? compact(totals.totalTokens / totals.calls) : "Unavailable", "Across recorded usage metadata")}
           ${summary("Cache hit rate", totals.inputTokens + totals.cacheReadTokens + totals.cacheWriteTokens ? `${(totals.cacheReadTokens / (totals.inputTokens + totals.cacheReadTokens + totals.cacheWriteTokens) * 100).toFixed(1)}%` : "Unavailable", `${compact(totals.cacheReadTokens)} cache-read tokens`)}
           ${summary("Errors", number(totals.errors), "Recorded model and tool failures")}
