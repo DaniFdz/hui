@@ -141,7 +141,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: [],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
