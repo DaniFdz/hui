@@ -23,10 +23,11 @@ test("a failed start keeps the dialog open with the error and the item in the ba
   await expect(backlog).toBeVisible();
 
   await backlog.tap();
-  await expect(screen.getByText(/Failed start task” →/u)).toBeVisible();
+  const subtitle = screen.getByText(/Failed start task” →/u);
+  await expect(subtitle).toBeVisible();
   await expect(screen.getByText("Not a Git repository; the session works in this folder as it is.")).toBeVisible();
   const start = await hui.intercept("POST", /\/__hui\/backlog\/items\/[^/]+\/start$/u);
-  await screen.getByText(/Failed start task” →/u).tap();
+  await subtitle.tap();
   await screen.getByRole("button", "Start session", { visible: true }).tap();
   await start.arrived();
   await expect(screen.getByText("Starting the session…")).toBeVisible();

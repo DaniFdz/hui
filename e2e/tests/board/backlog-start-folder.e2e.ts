@@ -14,7 +14,7 @@ test("a folder outside Git ends the form with Not a Git repository and Start ses
 
   await hui.open("/kanban");
   await screen.getByLabel("Kanban board").getByRole("button", "Folder switch task, local task. Start a session").tap();
-  const folder = screen.getByLabel("Folder or repository").first();
+  const folder = screen.getByPlaceholder("~/");
   const start = screen.getByRole("button", "Start session", { visible: true });
   const suffix = screen.getByText("Branch suffix");
   const branch = screen.getByRole("button", "Branch: main");
