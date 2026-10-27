@@ -176,7 +176,7 @@ const cases: UseCase[] = [
     spec: [BEHAVIOUR],
     surfaces: [],
     journeys: ["remote-loading"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The boot screen shows while the page's code downloads; the iOS app ships its code.", decision: "SPEC.md#browser-and-wide-layout-mechanics-stay-on-the-web-2026-10-21" },
   },
   {

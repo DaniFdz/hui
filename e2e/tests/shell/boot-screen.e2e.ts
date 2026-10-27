@@ -1,4 +1,4 @@
-/** The boot screen covers the page while HUI's code downloads: its name and loading bar on HUI's dark or light background for the system preference, the slow-connection line with Reload only after six seconds, and nothing left once the app has drawn; a chosen theme and accent make the next load paint it in their colours (SHELL-020, SHELL-021). */
+/** The boot screen covers the page while HUI's code downloads: its name and loading bar on HUI's dark or light background for the system preference, the slow-connection line with Reload only after six seconds, and nothing left once the app has drawn; a chosen theme and accent make the next load paint it in their colours (SHELL-020, SHELL-021); code that fails to download swaps the bar for the connection message and a Reload that loads the page again (SHELL-022). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -65,4 +65,23 @@ test("a chosen theme and accent paint the boot screen of the next load in their 
   await code.deliver();
   await expect.poll(async () => (await hui.look(title)).background).toEqual(MIAMI_BACKGROUND);
   await expect(reload).toBeHidden();
+});
+
+test("code that never downloads swaps the loading bar for the connection message and Reload loads the page again", { tags: ["SHELL-022"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const bar = screen.getByRole("progressbar", "Loading HUI");
+  const failure = screen.getByText("HUI could not load over this connection.", { exact: true });
+  const reload = screen.getByRole("button", "Reload");
+
+  const code = await hui.intercept("GET", /\/src\/hui-app\.ts/u);
+  await hui.open("/");
+  await code.arrived();
+  await expect(bar).toBeVisible();
+  await code.reject(500, "the module did not arrive");
+  await expect(failure).toBeVisible();
+  await expect(bar).toBeHidden();
+  await expect(reload).toBeVisible();
+
+  await reload.tap();
+  await expect(hui.appChrome()).toBeVisible();
+  await expect(failure).toHaveCount(0);
 });
