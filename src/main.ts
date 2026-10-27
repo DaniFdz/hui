@@ -37,6 +37,7 @@ import { applyThemeMode } from "./lib/theme/theme.ts";
 import { loadSettings } from "./lib/settings/settings-store.ts";
 import { applyTheme, loadThemes } from "./lib/theme/theme-store.ts";
 import { finishBoot, rememberBootLook, showBootFailure } from "./lib/boot-screen.ts";
+import { installCodeBlockInteractions } from "./lib/markdown/blocks.ts";
 import { viewAssetsLoaded } from "./lib/view-assets.ts";
 
 // First, so failures while the app starts are reported too.
@@ -54,6 +55,8 @@ async function resolveAppearance(): Promise<void> {
 // A theme changed in Settings is remembered once the page is left.
 addEventListener("pagehide", () => rememberBootLook());
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") rememberBootLook(); });
+
+installCodeBlockInteractions();
 
 // The app's code downloads meanwhile: over a slow link it is the longest wait,
 // and nothing about it depends on the appearance. index.html's boot screen

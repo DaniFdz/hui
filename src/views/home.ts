@@ -52,7 +52,7 @@ import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
 import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
-import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown/blocks.ts";
+import { markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
@@ -828,30 +828,6 @@ function renderMessageAttachment(attachment: string | { name: string; kind?: str
 function printable(value: unknown): string {
   if (typeof value === "string") return value;
   try { return JSON.stringify(value, null, 2); } catch { return String(value); }
-}
-
-const codeCopyAttempts = new WeakMap<HTMLElement, symbol>();
-
-async function copyCodeBlock(event: Event, props: HomeProps) {
-  if (!(event.target instanceof Element)) return;
-  handleCodeBlockDisclosure(event.target);
-  const button = event.target.closest<HTMLElement>("[data-copy-code]");
-  if (!button) return;
-  const content = button.closest(".code-block-wrapper")?.querySelector("code")?.textContent ?? "";
-  const code = content.endsWith("\n") ? content.slice(0, -1) : content;
-  const attempt = Symbol();
-  codeCopyAttempts.set(button, attempt);
-  const copied = await props.onCopy(code, `code-${code.slice(0, 40)}`);
-  if (!button.isConnected || codeCopyAttempts.get(button) !== attempt) return;
-  button.classList.toggle("copied", copied);
-  button.classList.toggle("copy-failed", !copied);
-  button.setAttribute("aria-label", copied ? "Copied" : "Copy failed");
-  window.setTimeout(() => {
-    if (!button.isConnected || codeCopyAttempts.get(button) !== attempt) return;
-    button.classList.remove("copied", "copy-failed");
-    button.setAttribute("aria-label", "Copy code");
-    codeCopyAttempts.delete(button);
-  }, copied ? 1500 : 2000);
 }
 
 /** One hover/focus/dismiss contract for every transcript footer action. */
@@ -2268,7 +2244,7 @@ function renderQuestion(props: HomeProps) {
   if (!question) return nothing;
   if (question.method === "questionnaire") {
     // Its previews' code blocks copy and wrap as the transcript's do.
-    return html`<div class="agent-chat__question-dock" aria-live="polite" @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
+    return html`<div class="agent-chat__question-dock" aria-live="polite">
       <hui-questionnaire-card .prompt=${question} .onAnswer=${props.onAnswerQuestion} .idPrefix=${sessionControlId(props, "questionnaire")}></hui-questionnaire-card>
     </div>`;
   }
@@ -2557,8 +2533,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                 <div class="chat-main__conversation">
                   ${props.taskSuggestions?.suggestions.length ? html`<div class="chat-gutter-stack">${renderTaskSuggestionCard(props.taskSuggestions)}</div>` : nothing}
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
-                    @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
-                    @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
+                    @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
                     <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>
