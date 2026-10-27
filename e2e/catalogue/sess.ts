@@ -636,7 +636,7 @@ const cases: UseCase[] = [
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["session-tree-lifecycle"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "SESS-066",
