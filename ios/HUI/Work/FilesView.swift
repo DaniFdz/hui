@@ -102,9 +102,6 @@ struct FilesView: View {
                 .padding(.leading, CGFloat(depth) * 16)
         case .entry(let entry, let depth):
             HStack(spacing: 8) {
-                Image(systemName: glyph(entry))
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
                 switch entry.kind {
                 case .directory:
                     Button { Task { await model.toggle(entry) } } label: {
