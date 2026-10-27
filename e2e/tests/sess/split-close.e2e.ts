@@ -30,7 +30,7 @@ test("closing the pane of a streaming session leaves it running and the other at
   await hui.sessionList();
   await expect(screen.getByLabel(/^Streaming pane, status running/u)).toBeVisible();
   await panes.nth(0).getByTestId("session-title").tap();
-  await expect(panes.nth(0).getByLabel("Session status: Idle")).toBeVisible();
+  await expect(panes.nth(0)).toHaveAttribute("aria-current", "true");
 
   await (await hui.sessionMenu("Streaming pane")).getByText("Open in split pane", { visible: true }).tap();
   await expect(panes).toHaveCount(3);
