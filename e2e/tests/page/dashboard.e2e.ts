@@ -41,7 +41,9 @@ test("Dashboard lists a running session, opens it, and shows the host's metrics"
   await hui.open("/dashboard");
   await expect(screen.getByTestId("dashboard-summary")).toContainText("Idle");
   await expect(screen.getByLabel("Sessions by stage")).toContainText("Investigation");
-  await expect(screen.getByText("Every session is idle.")).toBeVisible();
+  const needsYou = screen.getByTestId("dashboard-needs-you");
+  await expect(needsYou.getByText("Dashboard running")).toBeVisible();
+  await expect(screen.getByTestId("dashboard-summary")).toContainText("1 needs you");
 
   await hui.open(`/sessions/${session.id}`);
   await screen.getByLabel("Message").fill("E2E_REPLAY");
@@ -51,7 +53,7 @@ test("Dashboard lists a running session, opens it, and shows the host's metrics"
   await expect(active.getByText("Dashboard running")).toBeVisible();
   await expect(active).toContainText("Running");
   await expect(active).toContainText("Investigation");
-  await expect(screen.getByText("Every session is idle.")).toBeHidden();
+  await expect(needsYou).toBeHidden();
 
   const metrics = screen.getByTestId("dashboard-metrics");
   await expect(metrics).toBeVisible();
