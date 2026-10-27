@@ -18,6 +18,7 @@ const PRESETS = [["today", "Today"], ["7d", "7d"], ["30d", "30d"], ["90d", "90d"
 const dayLabel = new Intl.DateTimeFormat(undefined, { timeZone: "UTC", month: "short", day: "numeric" });
 const monthLabel = new Intl.DateTimeFormat(undefined, { timeZone: "UTC", month: "short", year: "numeric" });
 const labelDate = (date: string) => (date.length === 7 ? monthLabel : dayLabel).format(new Date(`${date.length === 7 ? `${date}-01` : date}T12:00:00Z`));
+const CHART_SCOPE = { day: "Daily", week: "Weekly", month: "Monthly" } as const;
 
 function summary(title: string, value: string, description: string) {
   return html`<article class="stat usage-summary-card"><span class="usage-summary-title">${title}</span><strong class="usage-summary-value">${value}</strong><small class="usage-summary-sub">${description}</small></article>`;
@@ -55,18 +56,17 @@ export class HuiUsagePage extends LitElement {
     const value = (metrics: UsageMetrics) => state.metric === "cost" ? metrics.costUsd ?? 0 : metrics.totalTokens;
     const max = Math.max(0, ...days.days.map(({ metrics }) => value(metrics)));
     return html`<section class="settings-group usage-panel daily-chart-compact" data-testid="usage-chart">
-      <div class="daily-chart-header"><div><h2 class="settings-section__heading">${days.monthly ? "Monthly" : "Daily"} ${state.metric === "cost" ? "cost estimates" : "token usage"}</h2><p class="settings-section__desc">${state.report?.range.from} to ${state.report?.range.to} · ${state.report?.range.timeZone}</p></div>
+      <div class="daily-chart-header"><div><h2 class="settings-section__heading">${CHART_SCOPE[days.bucket]} ${state.metric === "cost" ? "cost estimates" : "token usage"}</h2><p class="settings-section__desc">${state.report?.range.from} to ${state.report?.range.to} · ${state.report?.range.timeZone}</p></div>
         ${state.metric === "tokens" ? html`<div class="settings-segmented" role="group" aria-label="Token breakdown">${(["total", "types"] as const).map((mode) => html`<button type="button" class="settings-segmented__btn ${state.chart === mode ? "settings-segmented__btn--active" : ""}" aria-pressed=${state.chart === mode} @click=${() => { state.chart = mode; this.requestUpdate(); }}>${mode === "total" ? "Total" : "By type"}</button>`)}</div>` : html`<span class="usage-summary-sub">PI estimates · unpriced calls excluded</span>`}
       </div>
       <div class="daily-chart-plot"><div class="daily-chart-scale"><span>${state.metric === "cost" ? usageCost({ costUsd: max, unpricedCalls: 0 }) : compact(max)}</span><span>0</span></div><div class="daily-chart-bars">
-        ${days.days.map(({ date, metrics }, index) => {
+        ${days.days.map(({ date, end, metrics }, index) => {
           const unpriced = state.metric === "cost" && metrics.unpricedCalls > 0;
           const byType = state.metric === "tokens" && state.chart === "types" && TYPES.some(([key]) => metrics[key] > 0);
-          const description = `${labelDate(date)}: ${number(metrics.totalTokens)} tokens · ${metrics.calls ? cost(metrics) : "No recorded usage"}${metrics.unpricedCalls ? ` · ${count(metrics.unpricedCalls, "unpriced record")}` : ""}`;
+          const shown = days.bucket === "day" ? labelDate(date) : `${labelDate(date)} to ${labelDate(end)}`;
+          const description = `${shown}: ${number(metrics.totalTokens)} tokens · ${metrics.calls ? cost(metrics) : "No recorded usage"}${metrics.unpricedCalls ? ` · ${count(metrics.unpricedCalls, "unpriced record")}` : ""}`;
           return html`<button type="button" class="daily-bar-wrapper usage-report__day" title=${description} aria-label=${description} tabindex=${index === Math.min(this.#chartFocus, days.days.length - 1) ? 0 : -1} @keydown=${(event: KeyboardEvent) => this.#chartKey(event, index, days.days.length)} @click=${() => {
-            const from = date.length === 7 ? `${date}-01` : date;
-            const to = date.length === 7 ? new Date(Date.UTC(Number(date.slice(0, 4)), Number(date.slice(5, 7)), 0)).toISOString().slice(0, 10) : date;
-            state.applyRange(from, to);
+            state.applyRange(days.bucket === "month" ? `${date}-01` : date, end);
             this.querySelector<HTMLButtonElement>(".usage-date-range button")?.focus();
           }}><span class="daily-bar ${byType ? "daily-bar--stacked" : ""} ${unpriced ? "usage-report__unpriced" : ""}" style=${`height: ${max ? value(metrics) / max * 200 : 0}px; opacity: ${metrics.calls || metrics.totalTokens ? 1 : 0.25}`}>
               ${byType ? this.#segments(metrics) : nothing}</span>

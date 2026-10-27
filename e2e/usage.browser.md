@@ -26,7 +26,7 @@ with no matching sessions.
 ## Visible journey
 
 1. Open `/usage`. Confirm **30d**, inclusive **From**/**To**, **Time zone** set
-   to Local, the scope note, token/PI estimate/session summaries, a daily chart,
+   to Local, the scope note, token/PI estimate/session summaries, a usage chart,
    the overview, rankings and session rows. Partial pricing must identify unpriced
    records, not make them free. The line for spend outside the entries gives its
    tokens and recorded cost and says it covers all recorded time; neither the

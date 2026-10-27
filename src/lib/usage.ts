@@ -46,24 +46,49 @@ export function usageOverview(report: UsageReport, query: string, sort: UsageSor
   };
 }
 
-export function usageChartDays(days: readonly UsageDay[], from: string, to: string): { monthly: boolean; days: UsageDay[] } {
+const DAY_MS = 86_400_000;
+const CHART_DAYS = 42;
+const CHART_YEAR = 366;
+
+type UsageChartBucket = { date: string; end: string; metrics: UsageMetrics };
+
+export function usageChartDays(days: readonly UsageDay[], from: string, to: string): { bucket: "day" | "week" | "month"; days: UsageChartBucket[] } {
   const start = Date.parse(`${from}T00:00:00Z`);
   const end = Date.parse(`${to}T00:00:00Z`);
-  const monthly = (end - start) / 86_400_000 >= 366;
-  const grouped = new Map<string, UsageMetrics[]>();
+  const count = Math.round((end - start) / DAY_MS) + 1;
+  const bucket = count >= CHART_YEAR ? "month" : count > CHART_DAYS ? "week" : "day";
+  const bounds: { start: number; end: number }[] = [];
+  if (bucket === "month") {
+    for (let year = Number(from.slice(0, 4)), month = Number(from.slice(5, 7)) - 1; ;) {
+      const first = Date.UTC(year, month, 1);
+      if (first > end) break;
+      bounds.push({ start: first, end: Date.UTC(year, month + 1, 1) - DAY_MS });
+      if (++month === 12) { month = 0; year += 1; }
+    }
+  } else if (bucket === "week") {
+    for (let last = end; last >= start; last -= 7 * DAY_MS) bounds.push({ start: Math.max(start, last - 6 * DAY_MS), end: last });
+    bounds.reverse();
+  } else {
+    for (let at = start; at <= end; at += DAY_MS) bounds.push({ start: at, end: at });
+  }
+  const recorded = new Map<number, UsageMetrics>();
   for (const row of days) {
-    const key = monthly ? row.date.slice(0, 7) : row.date;
-    grouped.set(key, [...(grouped.get(key) ?? []), row.metrics]);
+    const at = Date.parse(`${row.date}T00:00:00Z`);
+    const held = recorded.get(at);
+    recorded.set(at, held ? sumUsage([held, row.metrics]) : row.metrics);
   }
-  const result: UsageDay[] = [];
-  const cursor = new Date(monthly ? `${from.slice(0, 7)}-01T00:00:00Z` : start);
-  while (cursor.valueOf() <= end) {
-    const date = cursor.toISOString().slice(0, monthly ? 7 : 10);
-    result.push({ date, metrics: sumUsage(grouped.get(date) ?? []) });
-    if (monthly) cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-    else cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return { monthly, days: result };
+  return {
+    bucket,
+    days: bounds.map(({ start: first, end: last }) => {
+      const parts: UsageMetrics[] = [];
+      for (let at = first; at <= last; at += DAY_MS) {
+        const held = recorded.get(at);
+        if (held) parts.push(held);
+      }
+      const date = new Date(first).toISOString().slice(0, 10);
+      return { date: bucket === "month" ? date.slice(0, 7) : date, end: new Date(last).toISOString().slice(0, 10), metrics: sumUsage(parts) };
+    }),
+  };
 }
 
 export function usageCost(value: Pick<UsageMetrics, "costUsd" | "unpricedCalls">): string {
