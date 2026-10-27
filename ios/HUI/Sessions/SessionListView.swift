@@ -11,9 +11,15 @@ struct SessionListView: View {
     let notice: String?
     @State private var naming = false
     @State private var groupName = ""
+    @FocusState private var searching: Bool
 
     var body: some View {
-        List {
+        @Bindable var sessions = sessions
+        return List {
+            TextField("Search sessions", text: $sessions.search)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($searching)
             if let notice {
                 Text(notice).typeface(.footnote).foregroundStyle(.secondary)
             }
@@ -21,7 +27,7 @@ struct SessionListView: View {
                 Text(error).typeface(.footnote).foregroundStyle(.red)
             }
             ForEach(sessions.groups) { group in
-                Section(group.label) {
+                Section {
                     ForEach(group.rows) { row in
                         HStack {
                             HStack {
@@ -54,6 +60,17 @@ struct SessionListView: View {
                             if let client, let session = sessions.session(row.id) { SessionMenu(session: session, sessions: sessions, client: client) }
                         }
                     }
+                } header: {
+                    Button { sessions.toggleGroup(group.id) } label: {
+                        HStack {
+                            Text(group.label)
+                            Image(systemName: sessions.collapsedGroups.contains(group.id) ? "chevron.right" : "chevron.down")
+                                .accessibilityHidden(true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -81,6 +98,7 @@ struct SessionListView: View {
                         Label("Filter & sort", systemImage: "line.3.horizontal.decrease.circle")
                     }
                 }
+                Button("Search sessions", systemImage: "magnifyingglass") { searching = true }
                 NavigationLink(value: Screen.sessionsPage) {
                     Label("Sessions", systemImage: "tablecells")
                 }

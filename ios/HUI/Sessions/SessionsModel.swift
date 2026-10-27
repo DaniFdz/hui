@@ -59,10 +59,23 @@ final class SessionsModel {
     var selected = "" {
         didSet { if selected != oldValue { reproject() } }
     }
+    var search = "" {
+        didSet { if search != oldValue { reproject() } }
+    }
+    private(set) var collapsedGroups: Set<String> = []
     private var toggled: Set<String> = []
 
+    private var query: String {
+        search.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var filtering: Bool {
-        options.map { $0.status != "all" } ?? false
+        !query.isEmpty || (options.map { $0.status != "all" } ?? false)
+    }
+
+    func toggleGroup(_ key: String) {
+        collapsedGroups.formSymmetricDifference([key])
+        reproject()
     }
 
     private static let optionsKey = "hui.sidebar-session-options"
@@ -344,8 +357,12 @@ final class SessionsModel {
         }
         do {
             var projected: [Group] = []
-            for group in try await core.sidebarSessionGroups(input, options: options) {
+            for group in try await core.sidebarSessionGroups(input, search: query, options: options) {
                 var rows: [Row] = []
+                if query.isEmpty && collapsedGroups.contains(group.key) {
+                    projected.append(Group(id: group.key, label: try await core.sessionGroupLabel(group.label), rows: []))
+                    continue
+                }
                 for tree in try await core.sessionTree(group.sessions, selected: selected, toggled: toggled) {
                     let session = tree.session
                     rows.append(Row(id: session.id, title: session.title, accessibleName: try await core.sessionAccessibleName(session), glyph: try await core.sessionGlyph(session),
