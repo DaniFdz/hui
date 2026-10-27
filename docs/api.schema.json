@@ -11748,7 +11748,8 @@
         "generatedAt",
         "range",
         "sessions",
-        "coverage"
+        "coverage",
+        "unplacedSpend"
       ],
       "properties": {
         "generatedAt": {
@@ -11813,6 +11814,21 @@
               }
             },
             "undatedRecords": {
+              "type": "number"
+            }
+          }
+        },
+        "unplacedSpend": {
+          "type": "object",
+          "required": [
+            "totalTokens",
+            "costUsd"
+          ],
+          "properties": {
+            "totalTokens": {
+              "type": "number"
+            },
+            "costUsd": {
               "type": "number"
             }
           }

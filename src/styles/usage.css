@@ -5,6 +5,7 @@
 .usage-metric__value { color: var(--text-strong); font-size: 26px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .usage-metric__name { color: var(--muted); font-size: var(--control-ui-text-xs); }
 .usage-query-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); }
+.usage-report__notes { display: grid; gap: var(--space-1); }
 .usage-report__scope { color: var(--muted); font-size: var(--control-ui-text-xs); margin: 0; }
 .usage-report .daily-chart-header .settings-section__desc { margin-top: var(--space-1); }
 .usage-report .daily-chart-bars { padding-inline: var(--space-4); }

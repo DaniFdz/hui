@@ -1483,6 +1483,9 @@ export class LiveSessions {
     } else if (event.type === "compaction_end") {
       const alongside = this.#compactingAlongside(live);
       recordDiagnosticEvent({ area: "session", level: event.outcome === "failed" ? "warning" : "info", action: "compaction_end", summary: `Compaction ${event.outcome} (${event.reason})`, ...(event.message ? { detail: event.message } : {}), sessionId: live.record.id });
+      void this.#save(live, { updatedAt: new Date().toISOString() }).catch((error) => {
+        recordDiagnosticEvent({ area: "session", level: "warning", action: "compaction_activity_failed", summary: "Could not save compaction activity", detail: failureDetail(error), sessionId: live.record.id });
+      });
       live.compaction = event.outcome === "done" ? undefined : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
       this.#setStatus(live, this.#reported(live));
       // One that ran beside the conversation (Durable's) ends without a settle:

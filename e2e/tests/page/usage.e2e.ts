@@ -24,6 +24,12 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   const chart = screen.getByTestId("usage-chart");
 
   await richTurn(screen, hui, "Usage coverage");
+  for (const text of ["USAGE_BEFORE_COMPACTION", `USAGE_KEPT ${"kept ".repeat(400)}`]) {
+    await screen.getByLabel("Message").fill(text);
+    await screen.getByRole("button", "Send message").tap();
+    await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+    await expect(screen.getByTestId("transcript").getByText(text, { exact: true })).toBeVisible();
+  }
   await hui.open("/usage");
   await expect(screen.getByTestId("usage-report")).toBeVisible();
 
@@ -36,9 +42,26 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   await expect(chart.getByRole("button", /: [1-9][\d,]* tokens · \$0\.00$/u)).toBeVisible();
   await expect(screen.getByText("hui-e2e/fixture", { exact: false })).toBeVisible();
 
+  const beforeCompaction = await totals.allTextContents();
   await expect(sessions.getByRole("button", /Usage coverage/u)).toBeVisible();
   await sessions.getByRole("button", /Usage coverage/u).tap();
   await expect(screen.getByTestId("transcript").getByText("Tool complete")).toBeVisible();
+  await screen.getByLabel("Message").fill("/compact");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(screen.getByText(/Context compacted/u)).toBeVisible();
+  await hui.open("/usage");
+  const outsideEntries = screen.getByTestId("usage-unplaced");
+  await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
+  await expect.poll(() => totals.allTextContents()).toEqual(beforeCompaction);
+  await screen.getByRole("button", /No recorded usage/u).first().tap();
+  await expect(screen.getByText("No usage in this range.")).toBeVisible();
+  await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
+  await screen.getByRole("button", "All").tap();
+  await expect(sessions.getByRole("button", /Usage coverage/u)).toBeVisible();
+  await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
+  await screen.getByPlaceholder("Title, ID or model").fill("no matching session");
+  await expect(screen.getByText("No sessions match your search.")).toBeVisible();
+  await expect(outsideEntries).toContainText("2 tokens, $0.00, for all recorded time");
 });
 
 test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"], platforms: ["web"] }, async ({ screen, hui }) => {

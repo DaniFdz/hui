@@ -516,9 +516,19 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   archived sessions and subagents. Shared history inherited by forks counts once,
   not once per copy. Dates come from recorded message timestamps, never session
   update times. Remote, unreadable and undated history is identified as a gap.
-  The page always explains that background summarization, abandoned history and
-  provider billing are outside this report. Diagnostics and bot lifetime spend
-  retain their separate ledger-based totals.
+  The page always explains that remote workers and provider billing are
+  outside this report. Diagnostics and bot lifetime spend retain their separate
+  ledger-based totals.
+- Durable also records spend outside the entries: compaction summarization, model
+  calls made from inside a tool, and imported history its entries do not carry.
+  When any is recorded, the page states its tokens and recorded cost beside the
+  range, labelled as all recorded time because the store keeps no date for it.
+  It stays visible for a cost-only amount, an empty range or a session search.
+  A failed ledger read marks coverage as partial rather than implying zero.
+  The ledger and its history boundary are read together so a concurrent reply
+  cannot be mistaken for spend outside the entries.
+  It is never folded into the ranged totals or the chart. Legacy PI compaction
+  records do carry usage and count on their own day.
 - A summary shows tokens, recorded PI cost estimates and sessions. Missing or
   invalid prices show Unpriced, a recorded numeric zero remains $0.00, and a mix
   of priced and unpriced calls labels cost as partial. HUI never adds external
@@ -542,6 +552,8 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
 - The gateway reads every history once and answers range, zone and filter changes
   from that scan, so those interactions stay responsive on a large session list.
   Refresh, and the first read after recorded activity changes, reads them again.
+  A compaction ending updates that activity, so its spend appears on the next
+  read without a manual refresh.
 
 ---
 

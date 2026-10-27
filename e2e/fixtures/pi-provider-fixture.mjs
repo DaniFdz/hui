@@ -253,6 +253,12 @@ const server = createServer(async (request, response) => {
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   messageStart(response);
 
+  if (flattenedText(body.system).includes("context summarization assistant")) {
+    if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
+    text(response, "FIXTURE_SUMMARY");
+    return finish(response);
+  }
+
   // A bot export's reviewer (Settings' utility model): a change for each fixture passage the part holds, and a need for a
   // part that runs gh.
   if (flattenedText(body.system).includes("You check a HUI bot before its owner shares it")) {
@@ -789,14 +795,6 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
-  // PI's compaction summarizer; a distinct reply shows where the summary lands.
-  // E2E_SLOW_COMPACT in the conversation holds it until POST
-  // /control/release-replay, so a check can watch, queue into or cancel it.
-  if (flattenedText(body.system).includes("context summarization assistant")) {
-    if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
-    text(response, "FIXTURE_SUMMARY");
-    return finish(response);
-  }
   // Attachment requests reach this branch. The request log is the proof that
   // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
   text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.");

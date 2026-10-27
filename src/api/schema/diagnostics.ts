@@ -28,7 +28,7 @@ export type UsageMetrics = { "inputTokens": number; "outputTokens": number; "cac
 
 export type UsageModel = { "provider": string; "model": string; "metrics": UsageMetrics; };
 
-export type UsageReport = { "generatedAt": string; "range": { "from": string; "to": string; "timeZone": string; }; "sessions": Array<UsageSession>; "coverage": { "registeredSessions": number; "readSessions": number; "unavailable": Array<{ "sessionId": string; "reason": string; }>; "undatedRecords": number; }; };
+export type UsageReport = { "generatedAt": string; "range": { "from": string; "to": string; "timeZone": string; }; "sessions": Array<UsageSession>; "coverage": { "registeredSessions": number; "readSessions": number; "unavailable": Array<{ "sessionId": string; "reason": string; }>; "undatedRecords": number; }; "unplacedSpend": { "totalTokens": number; "costUsd": number; }; };
 
 export type UsageSession = { "id": string; "title": string; "parentId"?: string; "lastActivityAt": number; "metrics": UsageMetrics; "days": Array<UsageDay>; "models": Array<UsageModel>; "tools": Array<UsageTool>; };
 

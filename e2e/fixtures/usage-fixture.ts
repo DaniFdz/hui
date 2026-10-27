@@ -1,13 +1,14 @@
 /**
  * Seeds an isolated HUI configuration with eight weeks of synthetic recorded usage for the Usage page: five Durable
  * sessions (one archived, one a subagent) over three providers and three models, priced, priced at zero and unpriced,
- * with an error tool result, plus one legacy PI transcript. All sessions reopen with the deterministic fixture model.
+ * with an error tool result and one compaction whose summarization is recorded only in the spend ledger, plus one
+ * legacy PI transcript. All sessions reopen with the deterministic fixture model.
  * Run by `visual-verification.mjs launch --usage-fixture` before the gateway starts; requires XDG_CONFIG_HOME,
  * PI_CODING_AGENT_DIR and HUI_E2E_WORKSPACE.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { AssistantEntry, ToolResultEntry, UsageDoc, UserEntry } from "@earendil-works/pi-durable";
+import { AssistantEntry, CompactionEntry, ToolResultEntry, UsageDoc, UserEntry } from "@earendil-works/pi-durable";
 import { DurableHost, durableContext } from "../../server/runtimes/durable-host.ts";
 import { CONFIG_DIR } from "../../server/paths.ts";
 
@@ -85,6 +86,18 @@ for (const [index, seed] of seeds.entries()) {
       spend.models[`${provider}/${model}`] = spend.models[`${provider}/${model}`] === undefined
         ? used(turn.input, turn.output, turn.cacheRead, turn.cacheWrite, turn.cost) as never
         : sumSpend(spend.models[`${provider}/${model}`] as never, turn) as never;
+    }
+    if (seed.title === "Retry-safe checkout") {
+      const summarized = seed.turns.at(-1)!;
+      const [provider, model] = OPUS;
+      const key = `${provider}/${model}`;
+      await tx.appendEntry(id, { kind: CompactionEntry.kind, data: { reason: "manual" }, model: [{
+        role: "user", content: text("Summary: the charge endpoint is idempotent; the retry test still fails."), timestamp: summarized.at,
+      }] } as never);
+      const spend = await tx.doc(UsageDoc, id);
+      spend.models[key] = sumSpend(spend.models[key] as never, {
+        at: summarized.at, model: OPUS, input: 7_200, output: 1_200, cacheRead: 0, cacheWrite: 0, cost: 0.26, said: "summary",
+      }) as never;
     }
   } }, durableContext);
   const last = Math.max(...seed.turns.map(({ at }) => at));
