@@ -42,3 +42,6 @@ export const AUTOMATION_FILE = join(CONFIG_DIR, "automation.json");
  * per watcher under the watchers directory. */
 export const WATCHERS_FILE = join(CONFIG_DIR, "watchers.json");
 export const WATCHER_LOG_DIR = join(CONFIG_DIR, "watchers");
+
+/** How many images each model takes per request, as its provider's rejections taught the image limits. */
+export const IMAGE_CAPS_FILE = join(CONFIG_DIR, "image-caps.json");
