@@ -34,10 +34,11 @@ struct GatewayClient: Sendable {
         try await send("POST", path, body: body)
     }
 
-    func send<Response: Decodable>(_ method: String, _ path: String, body: some Encodable = [String: String](), as _: Response.Type = Response.self) async throws -> Response {
+    func send<Response: Decodable>(_ method: String, _ path: String, body: some Encodable = [String: String](), headers: [String: String] = [:], as _: Response.Type = Response.self) async throws -> Response {
         var request = try request(path)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "content-type")
+        for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
         request.httpBody = try JSONEncoder().encode(body)
         let (data, response) = try await reach(timeout: Self.responseTimeout) { try await URLSession.shared.data(for: request) }
         try Self.check(response, path: path, body: data)

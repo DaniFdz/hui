@@ -48,6 +48,58 @@ actor HUICore {
         try decode(exports.forProperty("SETTINGS_COPY"))
     }
 
+    func workPaneLabel() throws -> String {
+        try decode(exports.forProperty("WORK_PANE_LABEL"))
+    }
+
+    func workPaneShow() throws -> String {
+        try decode(exports.forProperty("WORK_PANE_SHOW"))
+    }
+
+    func workPaneOpenView() throws -> String {
+        try decode(exports.forProperty("WORK_PANE_OPEN_VIEW"))
+    }
+
+    func filesCopy() throws -> FilesCopy {
+        try decode(exports.forProperty("FILES_COPY"))
+    }
+
+    func filesTabTitle(_ selected: String) throws -> String {
+        try call("filesTabTitle", selected)
+    }
+
+    func filesEditorLabel(_ path: String) throws -> String {
+        try call("filesEditorLabel", path)
+    }
+
+    func filesNoMatch(_ query: String) throws -> String {
+        try call("filesNoMatch", query)
+    }
+
+    func filesCreatedLabel(_ kind: String) throws -> String {
+        try call("filesCreatedLabel", kind)
+    }
+
+    func filesBytes(_ size: Double) throws -> String {
+        try call("filesBytes", size)
+    }
+
+    func filesCreateIn(_ folder: String, _ root: String) throws -> String {
+        try call("filesCreateIn", folder, root)
+    }
+
+    func filesDeleteLabel(_ name: String) throws -> String {
+        try call("filesDeleteLabel", name)
+    }
+
+    func filesDeleteTitle(_ name: String) throws -> String {
+        try call("filesDeleteTitle", name)
+    }
+
+    func filesDeleteRisks(_ risk: FilesDeleteRiskInput) throws -> [String] {
+        try call("filesDeleteRisks", risk)
+    }
+
     func themePalettes(_ file: API.JSONValue, accent: String) throws -> ThemePalettes? {
         try call("themePalettes", file, accent)
     }
@@ -298,6 +350,26 @@ actor HUICore {
         }
         return result
     }
+}
+
+struct FilesCopy: Decodable, Equatable, Sendable {
+    var view: String
+    var navigator: String
+    var filter: String
+    var workingDirectory: String
+    var emptyFolder: String
+    var emptyRoot: String
+    var loading: String
+    var loadingFolder: String
+    var linkOutside: String
+    var notRegularFile: String
+    var newFile: String
+    var newFolder: String
+    var name: String
+    var cancel: String
+    var delete: String
+    var irreversible: String
+    var truncated: String
 }
 
 struct ChatProjection: Equatable, Sendable {

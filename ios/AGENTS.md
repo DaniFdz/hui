@@ -125,6 +125,16 @@ web's pure logic through a small JavaScriptCore core. The plan is `docs/native-i
   view, since its content grows below the screen there, and a send follows again by scrolling to the bottom edge (`ScrollPosition`; scrolling to the last lazy row's id can land
   short of it). A plain button
   whose label has a `Spacer` needs `.contentShape(Rectangle())`, or a tap at its centre misses it.
+- The Work pane (`Work/`) opens over an open chat from its "Show Work pane" button: the open views are the segments of
+  one control captioned as the web captions its tabs, the plus button is the web's "Open Work view" launcher, and
+  Files is its only view so far. A Files view lists the conversation folder a directory at a time, expands a folder on
+  demand, filters through the search route, creates a file or folder in the open file's folder and deletes what a row's
+  menu names, behind the web's confirmation, which also says which unsaved edits and open file go with the entry. The
+  open text file is a draft that saves itself a moment after typing stops. Every word comes from the core: the static
+  ones from `FILES_COPY` (`src/lib/files/copy.ts`), the built ones from its functions, and the pane's names from
+  `WORK_PANE_LABEL`, `WORK_PANE_SHOW` and `WORK_PANE_OPEN_VIEW`. The pane carries "Work pane" and the navigator "Files
+  navigator" as their labels. A shared test reads a row's text with `hui.textOf` and asks to delete through
+  `hui.deleteEntry`, because a phone row keeps Delete in its menu where the web's row has a button.
 - Settings (`Settings/`) shows each page as a `Form` under its web title, with the page list, Search settings (the
   core's `filterSettingsPages`) and Exit Settings in the Open settings navigation sheet, as the web's phone drawer.
   `SettingsModel` reads and writes `/__hui/settings` one write at a time and loads the chosen theme's file; its

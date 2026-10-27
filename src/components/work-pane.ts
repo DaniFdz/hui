@@ -14,7 +14,8 @@ import { ariaShortcut, formatShortcut } from "../lib/shortcut-binding.ts";
 import { requestOpenSettings, settingsHref } from "../lib/open-settings.ts";
 import {
   clampWorkPaneWidth, closingLastWorkView, sessionWorkPane, workPaneFits, workViewKey, workViewKind, workViewKinds,
-  workPaneMaximized, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_MIN_WIDTH, WORK_PANE_TOGGLE_SHORTCUT,
+  workPaneMaximized, WORK_PANE_LABEL, WORK_PANE_MAXIMIZE_SHORTCUT, WORK_PANE_MIN_WIDTH, WORK_PANE_OPEN_VIEW, WORK_PANE_SHOW,
+  WORK_PANE_TOGGLE_SHORTCUT,
   type WorkPaneStore, type WorkViewKind, type WorkViewRef, type WorkViewResource, type WorkViewSettingsLink,
 } from "../lib/work-pane.ts";
 
@@ -328,7 +329,7 @@ export class WorkPane extends HuiElement {
 
   private renderLauncherMenu() {
     return html`<wa-dropdown class="work-pane__launcher" placement="bottom-end" @wa-show=${this.loadReopenable} @wa-select=${this.selectMenu}>
-      <button slot="trigger" type="button" class="btn btn--ghost btn--icon work-pane__icon-btn" aria-label="Open Work view" data-hui-tooltip="Open Work view">${plusIcon}</button>
+      <button slot="trigger" type="button" class="btn btn--ghost btn--icon work-pane__icon-btn" aria-label=${WORK_PANE_OPEN_VIEW} data-hui-tooltip="Open Work view">${plusIcon}</button>
       ${workViewKinds().map((kind) => {
         const reason = kind.unavailable?.(this.sessionId);
         return html`<wa-dropdown-item value=${`launch:${kind.kind}`} class="session-menu__item work-pane__menu-item" ?disabled=${Boolean(reason) || this.launching === kind.kind}>
@@ -387,7 +388,7 @@ export class WorkPane extends HuiElement {
   private renderRail(views: ViewEntry[], active: string | undefined) {
     const shortcut = formatShortcut(WORK_PANE_TOGGLE_SHORTCUT);
     return html`<div class="work-pane__rail">
-      <button type="button" class="btn btn--ghost btn--icon work-pane__icon-btn work-pane__expand" aria-label="Show Work pane" aria-expanded="false"
+      <button type="button" class="btn btn--ghost btn--icon work-pane__icon-btn work-pane__expand" aria-label=${WORK_PANE_SHOW} aria-expanded="false"
         aria-keyshortcuts=${ariaShortcut(WORK_PANE_TOGGLE_SHORTCUT)} data-hui-tooltip=${`Show Work pane (${shortcut})`}
         @click=${() => this.toggle(true)}>${panelOpenIcon}</button>
       ${views.map((view) => {
@@ -461,7 +462,7 @@ export class WorkPane extends HuiElement {
     for (const id of this.mountOrder.keys()) if (!live.has(id)) this.mountOrder.delete(id);
     sessions.sort((a, b) => this.order(a) - this.order(b));
     return html`<aside class="work-pane ${shown ? "work-pane--open" : "work-pane--collapsed"} ${this.narrow ? "work-pane--narrow" : ""} ${this.resizing ? "work-pane--resizing" : ""} ${maximized ? "work-pane--maximized" : ""}"
-      style=${!this.narrow && shown && !maximized ? `width:${width}px` : ""} aria-label="Work pane" @keydown=${this.keydown}>
+      style=${!this.narrow && shown && !maximized ? `width:${width}px` : ""} aria-label=${WORK_PANE_LABEL} @keydown=${this.keydown}>
       ${!this.narrow && shown && !maximized ? html`<div class="work-pane__resizer" role="separator" aria-orientation="vertical" aria-label="Resize Work pane" tabindex="0"
         aria-valuenow=${width} aria-valuemin=${WORK_PANE_MIN_WIDTH} aria-valuemax=${clampWorkPaneWidth(Number.POSITIVE_INFINITY, this.available || undefined, this.chatColumns)}
         @pointerdown=${this.resizeStart} @pointermove=${this.resizeMove} @pointerup=${this.resizeEnd} @pointercancel=${this.resizeEnd} @lostpointercapture=${this.resizeEnd}
