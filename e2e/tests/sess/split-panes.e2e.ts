@@ -1,4 +1,4 @@
-/** Split panes side by side: opening them from the header, a row menu and the pane menus, and their layout surviving a reload (SESS-047). */
+/** Split panes side by side: opening them from the header, a row menu and the pane menus, their layout and sizes surviving a reload (SESS-047), and resizing them from a focused divider (SESS-052). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
