@@ -558,7 +558,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisessionsevents", "docs/api.md#post-__huisessionsidconnect"],
     surfaces: ["route:POST /__hui/sessions/:id/connect", "route:GET /__hui/sessions/events"],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
