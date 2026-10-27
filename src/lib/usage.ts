@@ -47,8 +47,7 @@ export function usageOverview(report: UsageReport, query: string, sort: UsageSor
 }
 
 const DAY_MS = 86_400_000;
-const CHART_DAYS = 42;
-const CHART_YEAR = 366;
+const CHART_BARS = 32;
 
 type UsageChartBucket = { date: string; end: string; metrics: UsageMetrics };
 
@@ -56,7 +55,7 @@ export function usageChartDays(days: readonly UsageDay[], from: string, to: stri
   const start = Date.parse(`${from}T00:00:00Z`);
   const end = Date.parse(`${to}T00:00:00Z`);
   const count = Math.round((end - start) / DAY_MS) + 1;
-  const bucket = count >= CHART_YEAR ? "month" : count > CHART_DAYS ? "week" : "day";
+  const bucket = count <= CHART_BARS ? "day" : Math.ceil(count / 7) <= CHART_BARS ? "week" : "month";
   const bounds: { start: number; end: number }[] = [];
   if (bucket === "month") {
     for (let year = Number(from.slice(0, 4)), month = Number(from.slice(5, 7)) - 1; ;) {

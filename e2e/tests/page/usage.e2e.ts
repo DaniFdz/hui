@@ -84,6 +84,7 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
   for (const [preset, days] of [["Today", 1], ["7d", 7], ["90d", 90], ["1y", 366], ["All", 1]] as const) await chooseRange(preset, days);
   await chooseRange("1y", 366);
   await expect(chart).toContainText("Monthly token usage", { ignoreCase: true });
+  await expect(chart.getByRole("button", /^[A-Z][a-z]{2} \d{4}: /u).first()).toBeVisible();
   await chooseRange("90d", 90);
   await expect(chart).toContainText("Weekly token usage", { ignoreCase: true });
   await chart.getByRole("button", / to [A-Z][a-z]{2} \d{1,2}: [\d,]+ tokens · /u).last().tap();

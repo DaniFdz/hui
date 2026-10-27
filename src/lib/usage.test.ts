@@ -60,8 +60,9 @@ test("the chart keeps empty days and leap days, groups wide ranges by week and l
   assert.deepEqual(monthly.days.filter(({ metrics }) => metrics.calls).map(({ date, metrics }) => [date, metrics.totalTokens, metrics.costUsd]), [["2024-02", 7, null], ["2025-01", 9, 0]]);
   assert.deepEqual(monthly.days.at(-1), { date: "2025-03", end: "2025-03-31", metrics: sumUsage([]) });
 
-  assert.equal(usageChartDays([], "2024-01-01", "2024-02-11").bucket, "day", "42 days stay daily");
-  assert.equal(usageChartDays([], "2024-01-01", "2024-02-12").bucket, "week", "43 days group by week");
-  assert.equal(usageChartDays([], "2024-01-01", "2024-12-30").bucket, "week", "365 days group by week");
+  assert.equal(usageChartDays([], "2024-01-01", "2024-02-01").bucket, "day", "32 days stay daily");
+  assert.equal(usageChartDays([], "2024-01-01", "2024-02-02").bucket, "week", "33 days group by week");
+  assert.equal(usageChartDays([], "2024-01-01", "2024-08-11").bucket, "week", "32 weeks stay weekly");
+  assert.equal(usageChartDays([], "2024-01-01", "2024-08-12").bucket, "month", "33 weeks group by month");
   assert.equal(usageChartDays([], "2024-01-01", "2024-12-31").bucket, "month", "366 days group by month");
 });
