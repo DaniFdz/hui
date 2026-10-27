@@ -475,7 +475,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -505,7 +505,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape to clear the filter is a keyboard key; an iPhone has no keyboard to press it.", decision: KEYBOARD },
   },
   {

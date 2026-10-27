@@ -1,5 +1,5 @@
-/** The Work pane's Files view over a conversation's folder: the navigator, filtering by path, creating and deleting an
- * entry (WORK-042, 050, 052, 053). */
+/** The Work pane's Files view over a conversation's folder: the navigator, filtering by path and clearing it with
+ * Escape, creating and deleting an entry (WORK-042, 050, 051, 052, 053). */
 import { mkdir, readdir, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { expect } from "e2e";
@@ -98,6 +98,30 @@ test("New file and New folder create the named entry and open a new file, and a 
   await screen.getByRole("button", "Create folder").tap();
   await expect(navigator.getByRole("button", "docs")).toBeVisible();
   expect(await readdir(join(repository.path, "sub"))).toContain("docs");
+});
+
+test("Escape in a non-empty Filter files field clears it and restores the tree", { tags: ["WORK-051"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const repository = await hui.repository();
+  await writeFile(join(repository.path, "readme.md"), "# Notes\n");
+  await writeFile(join(repository.path, "a-note.md"), "# Another\n");
+  const session = await hui.createSession({ title: "Clear the filter", cwd: repository.path });
+  const navigator = screen.getByLabel("Files navigator");
+  const filter = navigator.getByLabel("Filter files");
+
+  await hui.open(`/sessions/${session.id}`);
+  await hui.openWorkView("Files");
+  await expect(navigator.getByRole("button", "readme.md")).toBeVisible();
+
+  await filter.fill("note");
+  await expect(navigator.getByRole("button", /^a-note\.md$/u)).toBeVisible();
+  await expect(navigator.getByRole("button", "readme.md")).toHaveCount(0);
+
+  await hui.keyboard.down("Escape");
+  await hui.keyboard.up("Escape");
+  await expect(filter).toHaveValue("");
+  await expect(navigator.getByRole("button", "readme.md")).toBeVisible();
+  await expect(navigator.getByRole("button", /^a-note\.md$/u)).toBeVisible();
+  await expect(navigator.getByRole("button", "sub")).toBeVisible();
 });
 
 test("deleting asks before it goes, says it cannot be undone and lists what goes, and Delete removes it from disk and the tree", { tags: ["WORK-053"] }, async ({ screen, hui }) => {
