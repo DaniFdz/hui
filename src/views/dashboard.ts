@@ -1,6 +1,7 @@
 /**
- * The Dashboard page (Labs → Dashboard): a summary of the sessions by status, their Kanban stages, the sessions waiting
- * for the operator, the other sessions that are not idle grouped by status, and a card per host metric with its value,
+ * The Dashboard page (Labs → Dashboard): a summary of the sessions in flight by status with a count of the finished
+ * ones, their Kanban stages, the sessions waiting for the operator, the other sessions that are not idle grouped by
+ * status with their subagents, and a card per host metric with its value,
  * a bar and a sparkline of the samples the browser kept. A metric above 85% is marked; one the host can't report says so.
  */
 import { html, nothing, type TemplateResult } from "lit";
@@ -104,7 +105,7 @@ function chip(kind: string, label: string, tone?: string, title?: string) {
 
 function sessionRow(session: SessionView, summary: SessionSummary, showStatus: boolean, props: DashboardProps) {
   const target = { kind: "session", id: session.id } as const;
-  const parent = session.parentId && summary.titles.get(session.parentId);
+  const subagents = summary.subagents.get(session.id);
   return html`<li><a class="dashboard-session" href=${navigationPath(target)} @click=${(event: MouseEvent) => {
     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -117,7 +118,7 @@ function sessionRow(session: SessionView, summary: SessionSummary, showStatus: b
       ${showStatus ? chip("status", DASHBOARD_STATUS_LABELS[session.status]) : nothing}
       ${isSessionStage(session.stage) ? chip("stage", SESSION_STAGE_LABELS[session.stage], session.stage) : nothing}
       ${session.worker ? chip("worker", session.worker.name) : nothing}
-      ${session.parentId || session.subagent ? chip("subagent", parent ? `Subagent of ${parent}` : "Subagent") : nothing}
+      ${subagents ? chip("subagent", `${subagents.total} subagent${subagents.total === 1 ? "" : "s"}${subagents.active ? ` · ${subagents.active} running` : ""}`) : nothing}
       ${(session.pullRequests ?? []).map((pullRequest) => chip("pr", `#${pullRequest.number}${pullRequest.state ? ` ${pullRequestStateLabel(pullRequest.state)}` : ""}`,
         pullRequest.state ?? "unknown", pullRequestAccessibleLabel(pullRequest)))}
     </span>
@@ -130,7 +131,7 @@ function summaryCard(summary: SessionSummary) {
   const waiting = summary.statuses.waiting;
   return html`<div class="dashboard-summary" data-testid="dashboard-summary">
     <div class="dashboard-summary__head">
-      <strong class="dashboard-summary__total">${summary.total} session${summary.total === 1 ? "" : "s"}</strong>
+      <strong class="dashboard-summary__total">${summary.total || !summary.finished ? `${summary.total} session${summary.total === 1 ? "" : "s"}` : "No sessions in flight"}${summary.finished ? html` <span class="dashboard-summary__finished">· ${summary.finished} finished</span>` : nothing}</strong>
       <span class="dashboard-summary__state ${waiting ? "dashboard-summary__state--attention" : ""}">${waiting ? `${waiting} need${waiting === 1 ? "s" : ""} you` : "Nothing needs you"}</span>
     </div>
     ${present.length ? html`
@@ -147,7 +148,7 @@ function sessionsSection(props: DashboardProps) {
   const summary = summarizeSessions(props.groups);
   const empty = !props.groups.length;
   const rows = (sessions: readonly SessionView[], showStatus: boolean) => sessions.map((session) => sessionRow(session, summary, showStatus, props));
-  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Sessions</h2><p class="settings-section__desc">Archived sessions are left out.</p></div></header>
+  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Sessions</h2><p class="settings-section__desc">A session idle in Done counts as finished and is not listed. Subagents show on their parent; archived sessions are left out.</p></div></header>
     ${props.sessionsError ? html`<div class="callout danger" role="alert">${props.sessionsError}</div>` : nothing}
     ${empty && props.sessionsLoading ? html`<div role="status">Reading sessions…</div>` : html`
       ${summaryCard(summary)}
@@ -160,11 +161,11 @@ function sessionsSection(props: DashboardProps) {
         ? html`<div class="dashboard-groups" data-testid="dashboard-active-sessions">${summary.groups.map((group) => html`
           <h3 class="dashboard-subheading">${group.label} <span class="dashboard-subheading__count">${group.sessions.length}</span></h3>
           <ul class="settings-group dashboard-sessions">${rows(group.sessions, group.mixed)}</ul>`)}</div>`
-        : summary.waiting.length ? nothing : html`<p class="dashboard-empty">${summary.total ? "Every session is idle." : "No sessions yet."}</p>`}`}
+        : summary.waiting.length || summary.finished && !summary.total ? nothing : html`<p class="dashboard-empty">${summary.total ? "Every session is idle." : "No sessions yet."}</p>`}`}
   </section>`;
 }
 
 export function renderDashboard(props: DashboardProps): TemplateResult {
-  return html`<header class="content-header content-header--settings"><div><div class="page-title">Dashboard</div><div class="page-subtitle">Every session's status and the gateway host's resource use.</div></div></header>
+  return html`<header class="content-header content-header--settings"><div><div class="page-title">Dashboard</div><div class="page-subtitle">The sessions in flight and the gateway host's resource use.</div></div></header>
     <main class="settings-page settings-page--wide dashboard-page" data-testid="dashboard">${sessionsSection(props)}${hostSection(props)}</main>`;
 }

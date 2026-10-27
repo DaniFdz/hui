@@ -205,9 +205,9 @@ const cases: UseCase[] = [
   },
   {
     id: "PAGE-045",
-    title: "See every session's status and the host's resource use on the Dashboard",
-    behaviour: "Dashboard counts the sessions by status (*Needs input*, *Error*, *Disconnected*, *Reconnecting*, *Running*, *Starting*, *Idle*) and by stage, and lists under *Not idle* each session that is running, waiting, failing or reconnecting with its status, stage and when it changed; a row opens its session, and with none it reads *Every session is idle.* Below, *Gateway host* shows CPU, Memory, Disk, GPU, Network and Gateway process cards, refreshed every five seconds, each with its value and a sparkline, marked above 85%, or *Not available on this host*. A failed read shows the error with **Retry**.",
-    spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "docs/api.md#get-__huihost-metrics"],
+    title: "See the sessions in flight and the host's resource use on the Dashboard",
+    behaviour: "Dashboard counts the top-level sessions in flight by status (*Needs input*, *Error*, *Disconnected*, *Reconnecting*, *Running*, *Starting*, *Idle*) and by stage, with the finished ones (idle in Done) only counted after the total, and lists under *Not idle* each session that is running, waiting, failing or reconnecting with its status, stage, when it changed and how many subagents it has; a row opens its session, and with none it reads *Every session is idle.* Below, *Gateway host* shows CPU, Memory, Disk, GPU, Network and Gateway process cards, refreshed every five seconds, each with its value and a sparkline, marked above 85%, or *Not available on this host*. A failed read shows the error with **Retry**.",
+    spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "SPEC.md#dashboard-counts-the-sessions-in-flight-2026-10-27", "docs/api.md#get-__huihost-metrics"],
     surfaces: ["page:dashboard", "route:GET /__hui/host-metrics"],
     web: "required",
     ios: "backlog",

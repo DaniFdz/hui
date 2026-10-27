@@ -13,6 +13,7 @@
 .dashboard-summary { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); }
 .dashboard-summary__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-3); }
 .dashboard-summary__total { color: var(--text-strong); font-size: var(--text-xl); font-variant-numeric: tabular-nums; }
+.dashboard-summary__finished { color: var(--muted); font-size: var(--text-base); font-weight: 400; }
 .dashboard-summary__state { color: var(--ok); font-weight: 600; }
 .dashboard-summary__state--attention { color: var(--warn); }
 .dashboard-summary__bar { display: flex; gap: 2px; height: 10px; border-radius: var(--radius-full); overflow: hidden; }

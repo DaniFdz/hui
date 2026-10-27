@@ -2180,6 +2180,26 @@ before it is a default. So it sits behind `settings.labs.dashboard`, a
 - **The route answers whether or not the page is on**: it is read-only and
   costs nothing until asked, and one sample serves every tab for two seconds.
 
+### Dashboard counts the sessions in flight (2026-10-27)
+
+The Dashboard counted every session that was not archived, idle subagents of
+old sessions included, so it read *1039 sessions* when 23 top-level sessions
+were open. The owner asked to hide the finished ones.
+
+- **A subagent is not a session here.** It is never in the total, the status
+  bar, the stage pipeline or the lists; its parent's row carries a chip,
+  *3 subagents*, or *2 subagents · 1 running* while any of them is not idle.
+- **A finished session is only counted.** One that is idle in Done is left
+  out of everything else and shown as *· 2 finished* after the total, or
+  *No sessions in flight · 2 finished* when nothing else is left. An idle
+  session in another stage is parked work and stays counted, and the Done
+  segment of the pipeline counts the sessions in Done still running or
+  waiting.
+
+This supersedes the *Sessions come from the list* part of [Dashboard page
+behind Labs → Dashboard](#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23)
+where it counts every session and marks a child as a *Subagent*.
+
 ### Use cases live in one catalogue (2026-10-21)
 
 The owner wants a native iOS app with the web UI's capabilities, and a way to

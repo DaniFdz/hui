@@ -21,7 +21,7 @@ const PAGE_ROWS = [
   ["contributions", "Contributions", "Development", "GitHub commits and pull requests of the connected accounts."],
   ["connection", "Connection", "System", "Gateway URL, authentication and connection diagnostics."],
   ["cron", "Automations", "Automation", "Scheduled jobs, run history and manual triggers."],
-  ["dashboard", "Dashboard", "Operations", "Every session's status and the gateway host's resource use."],
+  ["dashboard", "Dashboard", "Operations", "The sessions in flight and the gateway host's resource use."],
   ["debug", "Debug", "System", "Logs, RPC inspection and diagnostic actions."],
   ["labs", "Labs", "Experimental", "Experimental and opt-in product features."],
   ["logs", "Logs", "System", "Live gateway logs and filtering."],

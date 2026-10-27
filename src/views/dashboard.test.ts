@@ -73,18 +73,24 @@ test("the sessions summary counts every status that is present and the pipeline 
         session("c"),
         session("d", { status: "error" }),
         session("e", { status: "waiting", archived: true }),
+        session("kid", { status: "running", parentId: "a" }),
+        session("old-kid", { parentId: "gone" }),
+        session("shipped", { stage: "done" }),
       ] },
-      { label: "Other", sessions: [session("f", { stage: "done" })] },
+      { label: "Other", sessions: [session("f", { stage: "done", status: "running" }), session("g", { stage: "done" })] },
     ],
   });
   const summary = part(markup, "summary");
-  assert.match(summary, /5 sessions<\/strong>\s*<span class="dashboard-summary__state ">Nothing needs you/u, "an archived session is not counted");
-  assert.match(summary, /role="img" aria-label=Sessions by status: 1 Error, 2 Running, 2 Idle>/u);
-  assert.deepEqual([...summary.matchAll(/data-status=(\w+) style=flex-grow: (\d)>/gu)].map((match) => `${match[1]} ${match[2]}`), ["error 1", "running 2", "idle 2"]);
-  assert.deepEqual([...summary.matchAll(/<\/span>(\d+ [\w ]+)<\/li>/gu)].map((match) => match[1]), ["1 Error", "2 Running", "2 Idle"], "the legend leaves zero statuses out");
+  assert.match(summary, /5 sessions <span class="dashboard-summary__finished">· 2 finished<\/span><\/strong>\s*<span class="dashboard-summary__state ">Nothing needs you/u,
+    "archived sessions and subagents are not counted, and idle sessions in Done are counted apart");
+  assert.match(summary, /role="img" aria-label=Sessions by status: 1 Error, 3 Running, 1 Idle>/u);
+  assert.deepEqual([...summary.matchAll(/data-status=(\w+) style=flex-grow: (\d)>/gu)].map((match) => `${match[1]} ${match[2]}`), ["error 1", "running 3", "idle 1"]);
+  assert.deepEqual([...summary.matchAll(/<\/span>(\d+ [\w ]+)<\/li>/gu)].map((match) => match[1]), ["1 Error", "3 Running", "1 Idle"], "the legend leaves zero statuses out");
   const stages = part(markup, "stage-counts");
   assert.deepEqual([...stages.matchAll(/class="dashboard-stage ([\w-]*)" data-stage=(\w+)><strong>(\d+)/gu)].map((match) => `${match[2]} ${match[3]}${match[1] ? " zero" : ""}`),
-    ["investigation 2", "implementation 1", "testing 1", "done 1"]);
+    ["investigation 2", "implementation 1", "testing 1", "done 1"], "Done counts only a session still in flight");
+  assert.deepEqual([...part(markup, "active-sessions").matchAll(/__name">Session ([\w-]+)</gu)].map((match) => match[1]).sort(), ["a", "b", "d", "f"],
+    "no subagent or finished session is listed");
   assert.match(page({ groups: [{ label: "", sessions: [session("x")] }] }), /dashboard-stage--zero" data-stage=done><strong>0/u);
 });
 
@@ -93,8 +99,11 @@ test("waiting sessions come first under Needs you, then the rest of what is not 
     groups: [{ label: "", sessions: [
       session("run", { status: "running", stage: "implementation", updatedAt: "2026-10-23T11:58:00Z" }),
       session("wait", { status: "waiting", stage: "testing", worker: { id: "w1", name: "Workspace One" } }),
-      session("child", { status: "running", parentId: "run", pullRequests: [{ repository: "o/r", number: 123, url: "https://github.com/o/r/pull/123", state: "open" }] }),
-      session("orphan", { status: "starting", parentId: "gone" }),
+      session("child", { status: "running", parentId: "run" }),
+      session("done-child", { parentId: "run" }),
+      session("err-child", { status: "error", parentId: "err" }),
+      session("idle-child", { parentId: "err" }),
+      session("start", { status: "starting", pullRequests: [{ repository: "o/r", number: 123, url: "https://github.com/o/r/pull/123", state: "open" }] }),
       session("err", { status: "error" }),
       session("off", { status: "disconnected" }),
       session("idle"),
@@ -107,13 +116,16 @@ test("waiting sessions come first under Needs you, then the rest of what is not 
   assert.ok(markup.indexOf("dashboard-needs-you") < markup.indexOf("dashboard-stage-counts"), "Needs you sits above the pipeline");
   const active = part(markup, "active-sessions");
   assert.deepEqual([...active.matchAll(/<h3 class="dashboard-subheading">(\w+) <span class="dashboard-subheading__count">(\d)/gu)].map((match) => `${match[1]} ${match[2]}`),
-    ["Errors 2", "Running 2", "Starting 1"], "empty groups are left out");
-  assert.deepEqual([...active.matchAll(/__name">Session (\w+)</gu)].map((match) => match[1]), ["err", "off", "run", "child", "orphan"]);
+    ["Errors 2", "Running 1", "Starting 1"], "empty groups are left out and a subagent is no row");
+  assert.deepEqual([...active.matchAll(/__name">Session (\w+)</gu)].map((match) => match[1]), ["err", "off", "run", "start"]);
   assert.match(active, /Session off<[\s\S]*dashboard-chip--status" data-tone= title=>Disconnected/u, "the Errors group tells an error from a disconnect");
   assert.doesNotMatch(active.slice(active.indexOf("Running")), /dashboard-chip--status/u, "a single-status group needs no status chip");
-  assert.match(active, /Session child<[\s\S]*>Subagent of Session run<[\s\S]*dashboard-chip--pr" data-tone=open title=Pull request o\/r#123, open>#123 Open</u);
-  assert.match(active, /Session orphan<[\s\S]*>Subagent</u, "a subagent whose parent is not listed is still marked");
-  assert.doesNotMatch(active, /Session run<\/span>[^]*?Subagent[^]*?Session child/u, "a top-level session has no Subagent mark");
+  assert.match(active, /Session err<[^]*?dashboard-chip--subagent" data-tone= title=>2 subagents · 1 running<[^]*?Session off</u);
+  assert.match(active, /Session run<[^]*?>2 subagents · 1 running<[^]*?Session start/u);
+  assert.match(active, /Session start<[\s\S]*dashboard-chip--pr" data-tone=open title=Pull request o\/r#123, open>#123 Open</u);
+  assert.doesNotMatch(active.slice(active.indexOf("Session off"), active.indexOf("Session run")), /subagent/u, "a session without subagents has no subagent chip");
+  const quiet = part(page({ groups: [{ label: "", sessions: [session("p", { status: "running" }), session("k", { parentId: "p" })] }] }), "active-sessions");
+  assert.match(quiet, />1 subagent</u, "no running count when every subagent is idle");
   assert.match(active, /href=\/sessions\/run/u);
   assert.doesNotMatch(markup, /Session idle</u);
 });
@@ -124,6 +136,12 @@ test("every idle session reads as such, and the list waits for the first session
   assert.match(idle, /1 session<\/strong>/u);
   assert.doesNotMatch(idle, /data-testid="dashboard-(needs-you|active-sessions)"/u);
   assert.match(page({ sessionsLoading: true }), /Reading sessions…/u);
+  const none = page();
+  assert.match(none, /0 sessions<\/strong>/u);
+  assert.match(none, /No sessions yet\./u);
+  const finished = page({ groups: [{ label: "", sessions: [session("a", { stage: "done" }), session("b", { stage: "done" }), session("k", { parentId: "a", status: "running" })] }] });
+  assert.match(finished, /No sessions in flight <span class="dashboard-summary__finished">· 2 finished<\/span><\/strong>/u);
+  assert.doesNotMatch(finished, /No sessions yet|Every session is idle|data-testid="dashboard-(needs-you|active-sessions)"/u);
 });
 
 test("each host metric shows its value, marks one above 85% and says when the host can't report it", () => {
