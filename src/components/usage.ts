@@ -63,7 +63,7 @@ export class HuiUsagePage extends LitElement {
         ${days.days.map(({ date, end, metrics }, index) => {
           const unpriced = state.metric === "cost" && metrics.unpricedCalls > 0;
           const byType = state.metric === "tokens" && state.chart === "types" && TYPES.some(([key]) => metrics[key] > 0);
-          const shown = days.bucket === "day" ? labelDate(date) : `${labelDate(date)} to ${labelDate(end)}`;
+          const shown = days.bucket === "week" ? `${labelDate(date)} to ${labelDate(end)}` : labelDate(date);
           const description = `${shown}: ${number(metrics.totalTokens)} tokens · ${metrics.calls ? cost(metrics) : "No recorded usage"}${metrics.unpricedCalls ? ` · ${count(metrics.unpricedCalls, "unpriced record")}` : ""}`;
           return html`<button type="button" class="daily-bar-wrapper usage-report__day" title=${description} aria-label=${description} tabindex=${index === Math.min(this.#chartFocus, days.days.length - 1) ? 0 : -1} @keydown=${(event: KeyboardEvent) => this.#chartKey(event, index, days.days.length)} @click=${() => {
             state.applyRange(days.bucket === "month" ? `${date}-01` : date, end);
