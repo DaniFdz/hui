@@ -104,6 +104,14 @@ struct SessionsModelTests {
         try await until { model.groups.flatMap(\.rows).map(\.title) == ["Fix the login bug"] }
     }
 
+    @Test func aCollapsedGroupStaysCollapsedAcrossRelaunches() async throws {
+        let (model, host) = try start([snapshot([notes: "idle"])])
+        try await until { model.loaded }
+        model.toggleGroup("ungrouped")
+        let relaunched = SessionsModel(core: try HUICore.bundled(), defaults: try #require(UserDefaults(suiteName: host)))
+        #expect(relaunched.collapsedGroups == ["ungrouped"])
+    }
+
     private func start(_ frames: [String], routes: [String: [(status: Int, body: Data)]] = [:]) throws -> (SessionsModel, String) {
         let host = "\(UUID().uuidString.lowercased()).stub.test"
         GatewayStub.serve(host, list: try fixture("sessions.json"), events: Data(frames.map { $0 + "\n\n" }.joined().utf8), routes: routes)

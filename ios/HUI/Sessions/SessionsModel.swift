@@ -1,8 +1,9 @@
 // The live session list, as the web's sessions controller owns it: opens GET /__hui/sessions/events, loads
 // GET /__hui/sessions, then reads the stream for statuses and list changes, reconnecting with the core's backoff. The
 // stream's statuses win over every list and upsert once its snapshot arrived. Rows are projected by the core with the
-// web sidebar's Filter & sort options (kept on the device as the web keeps them in the browser), grouping,
-// subagent folding, labels and accessible names. The session menu's actions patch or delete a session as the web's
+// web sidebar's Filter & sort options (kept on the device as the web keeps them in the browser), the search text
+// (filtered by the core) and the collapsed custom groups (also kept on the device), grouping, subagent folding,
+// labels and accessible names. The session menu's actions patch or delete a session as the web's
 // do, with the web's notices: an archive keeps a toast with Restore for 15 s, other notices go after 6 s, and a
 // failure stays until the next one. It also holds the menu's pending steps for the screens: the session being
 // renamed, given an icon or removed, the trees an archive or delete closed, and the shared preset icons.
@@ -62,7 +63,9 @@ final class SessionsModel {
     var search = "" {
         didSet { if search != oldValue { reproject() } }
     }
-    private(set) var collapsedGroups: Set<String> = []
+    private(set) var collapsedGroups: Set<String> = [] {
+        didSet { defaults.set(Array(collapsedGroups), forKey: Self.collapsedKey) }
+    }
     private var toggled: Set<String> = []
 
     private var query: String {
@@ -79,6 +82,7 @@ final class SessionsModel {
     }
 
     private static let optionsKey = "hui.sidebar-session-options"
+    private static let collapsedKey = "hui.collapsed-groups"
 
     private let core: HUICore
     private let defaults: UserDefaults
@@ -94,6 +98,7 @@ final class SessionsModel {
     init(core: HUICore, defaults: UserDefaults = .standard) {
         self.core = core
         self.defaults = defaults
+        collapsedGroups = Set(defaults.stringArray(forKey: Self.collapsedKey) ?? [])
     }
 
     func session(_ id: String) -> API.SessionView? {
@@ -359,8 +364,9 @@ final class SessionsModel {
             var projected: [Group] = []
             for group in try await core.sidebarSessionGroups(input, search: query, options: options) {
                 var rows: [Row] = []
-                if query.isEmpty && collapsedGroups.contains(group.key) {
-                    projected.append(Group(id: group.key, label: try await core.sessionGroupLabel(group.label), rows: []))
+                let label = try await core.sessionGroupLabel(group.label)
+                if !filtering && collapsedGroups.contains(group.key) {
+                    projected.append(Group(id: group.key, label: label, rows: []))
                     continue
                 }
                 for tree in try await core.sessionTree(group.sessions, selected: selected, toggled: toggled) {
@@ -369,7 +375,7 @@ final class SessionsModel {
                                     icon: session.icon ?? "", pinned: session.pinned == true, unread: session.unread == true, group: session.group,
                                     depth: tree.depth, hasChildren: tree.hasChildren, collapsed: tree.collapsed))
                 }
-                projected.append(Group(id: group.key, label: try await core.sessionGroupLabel(group.label), rows: rows))
+                projected.append(Group(id: group.key, label: label, rows: rows))
             }
             let moves = try await core.sessionMoveGroupOptions(input)
             guard current == projection else { return }
