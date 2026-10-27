@@ -716,8 +716,18 @@ the session switches back to its own model; utility is a
 cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 
 ```json
-{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna" } }
+{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
 ```
+
+The same block carries `routes`: the named models a `sessions_spawn` call can pass
+as `route`. An entry is `{ name, description, model, thinking? }`; a name must be
+1 to 40 Unicode letters or digits, `_`, `.` or `-`. At most 50 routes are kept.
+Descriptions become a single line of at most 200 characters. A route without a
+usable name or canonical model is dropped; a repeated name keeps the first.
+`thinking` accepts PI reasoning levels through `max`, not HUI's Ultra delegation
+mode; an unknown level leaves the route without a pinned level. The prompt's route
+list contains only `name` and `description`, not model ids. Raw `model` remains
+supported by `sessions_spawn`, so these routes are not an allowlist.
 
 The settings document also holds `questions: { timeoutMinutes }`, the question timeout of
 [Structured questions](#structured-questions), `0` (Off) unless 5, 10, 15, 30
@@ -1133,7 +1143,7 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking, a bounded run timeout and `collect`; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
+| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
 | `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished, at the timeout (default 600, 1-3600 s), or as soon as a message is steered to the caller (once per change of its steering queue in a tool round), with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId], interrupted?: string }`; `interrupted` says a steered message ended the wait while tasks were pending. An abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |

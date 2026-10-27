@@ -95,6 +95,7 @@ export const JOURNEYS: Readonly<Record<string, { kind: JourneyKind; reason?: str
   "slash-commands": { kind: "automate" },
   "steer-enqueue-fix": { kind: "automate" },
   "subagent-delivery": { kind: "automate" },
+  "subagent-routes": { kind: "visual", reason: "The route editor's layout is judged by eye; route resolution and the refusals are asserted in server/agent-tools/subagents.test.ts." },
   "subagent-steering": { kind: "automate" },
   "subagent-tree-collapse": { kind: "automate" },
   "subagents": { kind: "automate" },

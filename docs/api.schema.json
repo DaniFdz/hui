@@ -10126,7 +10126,8 @@
           "required": [
             "primary",
             "fallback",
-            "utility"
+            "utility",
+            "routes"
           ],
           "properties": {
             "primary": {
@@ -10137,6 +10138,60 @@
             },
             "utility": {
               "type": "string"
+            },
+            "routes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "description",
+                  "model"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "thinking": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "off"
+                      },
+                      {
+                        "type": "string",
+                        "const": "minimal"
+                      },
+                      {
+                        "type": "string",
+                        "const": "low"
+                      },
+                      {
+                        "type": "string",
+                        "const": "medium"
+                      },
+                      {
+                        "type": "string",
+                        "const": "high"
+                      },
+                      {
+                        "type": "string",
+                        "const": "xhigh"
+                      },
+                      {
+                        "type": "string",
+                        "const": "max"
+                      }
+                    ]
+                  }
+                }
+              }
             }
           }
         },

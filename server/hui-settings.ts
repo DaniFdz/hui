@@ -6,10 +6,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CONFIG_DIR } from "./paths.ts";
+import { THINKING_LEVELS } from "./sessions/thinking.ts";
 import type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
 export type { Settings, BrowserSettings, VscodeSettings, VscodeProviderPreference } from "./api/settings.ts";
 
 const GPT_LIVE_VOICES = ["cove", "arbor", "breeze", "ember", "juniper", "maple", "sol", "spruce", "vale"] as const;
+
 type GptLiveVoice = (typeof GPT_LIVE_VOICES)[number];
 const DEFAULT_GPT_LIVE_VOICE: GptLiveVoice = "cove";
 
@@ -101,7 +103,7 @@ export const DEFAULT_SETTINGS: Settings = {
   vscode: DEFAULT_VSCODE_SETTINGS,
   power: { keepAwake: true },
   notifications: { tool: false, runFinished: false, runFailed: true, needsInput: true },
-  models: { primary: "", fallback: "", utility: "" },
+  models: { primary: "", fallback: "", utility: "", routes: [] },
   calls: { voice: DEFAULT_GPT_LIVE_VOICE },
   disabledSkills: [],
   disabledPlugins: [],
@@ -194,7 +196,32 @@ function normalizeModels(value: unknown): Settings["models"] {
     primary: normalizeModelRef(source["primary"]),
     fallback: normalizeModelRef(source["fallback"]),
     utility: normalizeModelRef(source["utility"]),
+    routes: normalizeSubagentRoutes(source["routes"]),
   };
+}
+
+function routeNameIsValid(name: string): boolean {
+  return name.length <= 40 && /^[\p{L}\p{N}_.-]+$/u.test(name);
+}
+
+function normalizeSubagentRoutes(value: unknown): Settings["models"]["routes"] {
+  if (!Array.isArray(value)) return [];
+  const routes = new Map<string, Settings["models"]["routes"][number]>();
+  for (const item of value) {
+    if (!isRecord(item)) continue;
+    const name = typeof item["name"] === "string" ? item["name"].trim() : "";
+    const model = normalizeModelRef(item["model"]);
+    const thinking = THINKING_LEVELS.filter((level) => level !== "ultra").find((level) => level === item["thinking"]);
+    if (!routeNameIsValid(name) || !model || routes.has(name)) continue;
+    routes.set(name, {
+      name,
+      description: boundedText(item["description"], "", 200).replace(/\s+/gu, " ").trim(),
+      model,
+      ...(thinking ? { thinking } : {}),
+    });
+    if (routes.size >= 50) break;
+  }
+  return [...routes.values()];
 }
 
 function normalizeDisabledPlugins(value: unknown): Settings["disabledPlugins"] {

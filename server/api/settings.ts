@@ -1,5 +1,6 @@
 /** Public HUI settings payloads, including browser and VS Code preferences. */
 import { Type, type Static } from "typebox";
+import { ThinkingLevel } from "./sessions.ts";
 
 export const VscodeProviderPreference = Type.Union([
   Type.Literal("auto"), Type.Literal("configured"), Type.Literal("desktop"), Type.Literal("managed"), Type.Literal("path"),
@@ -36,7 +37,13 @@ export const Settings = Type.Object({
   browser: BrowserSettings, codemode: Type.Object({ enabled: Type.Boolean() }), questions: Type.Object({ timeoutMinutes: Type.Number() }),
   vscode: VscodeSettings, power: Type.Object({ keepAwake: Type.Boolean() }),
   notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
-  models: Type.Object({ primary: Type.String(), fallback: Type.String(), utility: Type.String() }),
+  models: Type.Object({
+    primary: Type.String(), fallback: Type.String(), utility: Type.String(),
+    routes: Type.Immutable(Type.Array(Type.Object({
+      name: Type.String(), description: Type.String(), model: Type.String(),
+      thinking: Type.Optional(Type.Exclude(ThinkingLevel, Type.Literal("ultra"))),
+    }))),
+  }),
   calls: Type.Object({ voice: Type.Union([
     Type.Literal("cove"), Type.Literal("arbor"), Type.Literal("breeze"), Type.Literal("ember"), Type.Literal("juniper"),
     Type.Literal("maple"), Type.Literal("sol"), Type.Literal("spruce"), Type.Literal("vale"),

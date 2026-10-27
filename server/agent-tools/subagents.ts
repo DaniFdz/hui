@@ -7,6 +7,7 @@ import {
   type SubagentTaskView,
 } from "../sessions/live-sessions.ts";
 import type { SessionStatus } from "../api/sessions.ts";
+import type { Settings } from "../api/settings.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import {
   readRegistry,
@@ -44,6 +45,7 @@ type SessionAccess = Pick<
   | "ensure"
   | "followUp"
   | "models"
+  | "subagentRoutes"
   | "notifySnapshot"
   | "prompt"
   | "release"
@@ -275,16 +277,23 @@ export class SubagentService {
     const task = text(params, "task", 20_000)!;
     const label = text(params, "label", 120, true);
     const model = text(params, "model", 200, true);
+    const route = text(params, "route", 40, true);
     const thinking = text(params, "thinking", 16, true);
     const runTimeoutSeconds = integer(params, "runTimeoutSeconds", 0, 0, 3_600);
     const collect = params["collect"] === true;
+    if (route && model) {
+      throw new AgentToolInputError("Pass route or model, not both: a route already names a model.");
+    }
     if (model && !/^[^/\s]+\/\S+$/.test(model)) {
       throw new AgentToolInputError("model must use provider/id format.");
     }
     if (thinking && !isThinkingLevel(thinking)) {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
-    if (model) await this.#assertModelAvailable(callerId, model);
+    const picked = route ? await this.#resolveRoute(route) : undefined;
+    const childModel = picked?.model ?? model;
+    const childThinking = thinking ?? picked?.thinking;
+    if (childModel) await this.#assertModelAvailable(callerId, childModel, route);
     const taskId = this.uuid();
     const sessionId = this.uuid();
     const now = this.now().toISOString();
@@ -320,9 +329,9 @@ export class SubagentService {
         // A remote session's children run on the same worker.
         ...(caller.worker ? { worker: caller.worker } : {}),
         tool: caller.tool,
-        model: model ?? caller.model,
+        model: childModel ?? caller.model,
         // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
-        thinking: thinking ?? (caller.thinking && piThinking(caller.thinking)),
+        thinking: childThinking ?? (caller.thinking && piThinking(caller.thinking)),
         parentId: caller.id,
         subagent: {
           taskId,
@@ -390,12 +399,25 @@ export class SubagentService {
     }
   }
 
+  async #resolveRoute(name: string): Promise<Settings["models"]["routes"][number]> {
+    const routes = await this.sessions.subagentRoutes();
+    const match = routes.find((entry) => entry.name === name);
+    if (match) return match;
+    if (!routes.length) {
+      throw new AgentToolInputError(
+        `Unknown route: ${name}. No subagent routes are configured yet; add one in HUI's Settings → Models → Subagent routes.`,
+      );
+    }
+    throw new AgentToolInputError(`Unknown route: ${name}. Configured routes are ${routes.map((entry) => entry.name).join(", ")}.`);
+  }
+
   /** Reject an unknown model before a child exists, so the caller can retry in
    * the same turn. An unavailable or empty catalog is not a reason to block. */
-  async #assertModelAvailable(callerId: string, model: string): Promise<void> {
+  async #assertModelAvailable(callerId: string, model: string, route?: string): Promise<void> {
     const catalog = await this.sessions.models(callerId).catch(() => []);
     const names = catalog.map((entry) => `${entry.provider}/${entry.id}`);
     if (!names.length || names.includes(model)) return;
+    if (route) throw new AgentToolInputError(`Route ${route} names an unavailable model; update it in HUI's Settings → Models → Subagent routes.`);
     const id = model.slice(model.lastIndexOf("/") + 1);
     const similar = names.filter((name) => name.endsWith(`/${id}`)).slice(0, 5);
     throw new AgentToolInputError(similar.length

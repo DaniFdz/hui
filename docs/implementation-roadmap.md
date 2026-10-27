@@ -1247,6 +1247,29 @@ claims, and from the PR that adds the iOS job a new or changed use case must
 pass on both clients in the same PR. Milestones M0 (spikes) to M11 (calls) are in
 the plan, section 7.
 
+### HUI-23 — Subagent model routes
+
+**Status:** implemented on `dani.fernandez/subagent-routes`; validation recorded in
+[`e2e/subagent-routes.browser.md`](../e2e/subagent-routes.browser.md).
+
+Ports the useful half of Hermes Agent's *Advanced Delegation modes* plugin. The
+operator names model routes in Settings → Models → Subagent routes, and an agent
+passes one of those names as `route` to `sessions_spawn` instead of a
+`provider/id`. A route is a name, a one-line description, a model and an optional
+reasoning level. The prompt's route list contains names and descriptions, not
+model ids. Raw `model` remains supported; routes are not an allowlist. A route resolves
+before the child record is written, a route plus `model` is refused, an unknown
+route names the configured ones, and a spawn's own `thinking` overrides the
+route's. Routes live in the existing settings document (`models.routes`, in the
+published schema) and are read at spawn time. Local Durable sessions refresh
+the prompt list each turn, remote ones after settings sync. Older PI SDK workers
+receive a launch-time snapshot through `HUI_MODEL_ROUTES`. Route reasoning levels
+stop at PI's Maximum; HUI's Ultra delegation mode remains a session choice. Hermes' profile routes and speed tiers are
+deliberately not ported. Proof: `src/lib/settings/settings.fixture.json` and
+`server/hui-settings.fixture.json` (shared normalisation fixtures),
+`server/agent-tools/subagents.test.ts`, `server/runtimes/hui-prompt.test.ts` and
+`e2e/subagent-routes.browser.md`.
+
 ## Recommended implementation order
 
 `HUI-01 → HUI-02 → HUI-03 → HUI-04 → HUI-05 → HUI-06`, then run HUI-07,

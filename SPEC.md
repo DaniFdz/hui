@@ -706,10 +706,14 @@ or Retry-After are respected, with a one-minute retry cooldown when unavailable.
 The highest-priority ready account is reconsidered for every new request.
 A HUI selection overrides only the matching provider; an empty HUI model list
 selects nothing. Remaining PI models follow the operator's `models.json`
-provider/model selection using the `model-name` extension's rules. HUI owns three routes over that catalog: **primary** starts
+provider/model selection using the `model-name` extension's rules. HUI owns three model roles over that catalog: **primary** starts
 normal sessions, **fallback** retries a primary failure only when no useful output
 or tool activity has occurred, then returns the session to its own model, and **utility** runs cheap, fast, tool-free calls
 for concise (3–6 word, at most 60 character) new-session names in the prompt's language, generated worktree branch names and `/btw`. These settings never rewrite PI files.
+**Subagent routes** are a fourth, operator-named part of that block: each route
+names a model (and optionally a reasoning level), and a session spawns a subagent
+on one by name instead of a model id. See
+[Session-born subagents](#session-born-subagents) for the contract.
 Missing or malformed PI selection files preserve the normal available catalog; see
 `docs/api.md` for empty-list and default-model semantics.
 
@@ -1350,6 +1354,27 @@ child's task and `sessions_send` messages show as the sending session's. Deliver
 steers an active parent, prompts an idle one, or queues a follow-up if steering
 cannot be accepted. This does not abort the parent's current run. At most eight
 ordinary descendants may be active in one tree.
+
+A spawn picks the child's model in one of three ways: a **route** name from the
+operator's configured routes, a raw `provider/id`, or neither, which inherits the
+caller's model and reasoning level. A route carries a name, a one-line
+description and a model, and may pin a PI reasoning level through `max`; the
+spawn's own `thinking` overrides it. HUI's Ultra delegation mode is not a route
+reasoning level. The route block in the prompt lists names and descriptions, not model ids.
+Routes are shortcuts, not an allowlist: the tool still accepts a raw `model`. Route and model together are refused, because the route already
+names one. An unknown route is refused before any child exists, naming the
+configured routes or pointing at Settings → Models → Subagent routes when there
+are none. A route whose model is missing from the caller's catalog is refused
+with a message naming the route and pointing at its setting. HUI resolves the route before it writes the child's
+record, so the record always holds a real `provider/id`.
+
+Routes are read from HUI settings at spawn time, so a route added in Settings
+works in a running session. Local Durable sessions refresh the prompt's route
+list on the next turn. A remote Durable session reads the worker's synced copy
+and lists changes after its next settings sync. The older PI SDK
+worker receives a launch-time snapshot of the names and descriptions in
+`HUI_MODEL_ROUTES`; relaunching that worker refreshes its prompt list. Neither
+route resolution nor this setting changes when a child starts or reports back.
 
 **Swarm.** Modeled on OpenClaw's Swarm, a spawn with `collect: true` creates a
 collected child: its result is for the parent to collect with `agents_wait`,

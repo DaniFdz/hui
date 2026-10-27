@@ -223,6 +223,18 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
+**Subagent routes** sit under the same page. A route is a name you choose, a
+one-line description and a model, and may pin a reasoning level. An agent that
+spawns a subagent can pass the name to `sessions_spawn` instead of a model id.
+The prompt lists your names and descriptions. Raw model ids remain supported;
+routes do not restrict which models the tool can use. A spawn without a route or
+model inherits its parent's model and reasoning level. Its own `thinking`
+overrides the route's level. Routes apply to new subagents as soon as you save
+them. Local Durable sessions refresh the list in their prompt on the next turn.
+Remote Durable sessions list changes after their next settings sync; older PI
+SDK workers refresh that list when they relaunch. Routes offer PI reasoning
+levels through Maximum, not HUI's Ultra delegation mode.
+
 The composer's **Effort** slider offers the reasoning levels the session's model
 has, up to **Maximum** (PI's `max` level) where the model supports it, then
 **Ultra**, as in OpenClaw: the model's highest level plus an instruction to plan
