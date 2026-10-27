@@ -488,7 +488,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-multiplexing", "session-header-overflow"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
