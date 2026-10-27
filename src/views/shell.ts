@@ -14,7 +14,7 @@ import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
 import { kanbanIcon } from "./kanban.ts";
 import { isSessionStage, SESSION_STAGE_LABELS } from "../lib/kanban.ts";
 export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
-import { HUI_PAGES, type HuiPage } from "../lib/pages.ts";
+import type { HuiPage } from "../lib/pages.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { writeSessionDrag } from "../lib/session/pane-layout.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
@@ -50,8 +50,10 @@ loadViewAssets(
  * Plugins and Skills live in Settings. */
 /** Local: the shared icon set is pinned to upstream geometry, so a HUI-only destination carries its own. */
 const usageIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg`<path d="M3 3v18h18" /><path d="M8 17v-4M13 17V9M18 17V6" />`}</svg>`;
+const dashboardIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg`<path d="M22 12h-4l-3 9L9 3l-3 9H2" />`}</svg>`;
 
 export const PRIMARY_NAV = [
+  { id: "dashboard", label: "Dashboard", icon: dashboardIcon },
   { id: "contributions", label: "Contributions", icon: openclawIcons.gitPullRequest },
   { id: "sessions", label: "Sessions", icon: icons.messageSquare },
   { id: "usage", label: "Usage", icon: usageIcon },
@@ -139,6 +141,7 @@ export type ShellBotsProps = {
 export type ShellProps = {
   view: NavId;
   activePage?: HuiPage;
+  pages: readonly HuiPage[];
   selectedSessionId: string;
   splitSessionId: string;
   openSessionIds?: ReadonlySet<string>;
@@ -874,7 +877,7 @@ export function renderSidebar(props: ShellProps) {
           <div class="sidebar-shell__body" id="sidebar-tabpanel" role="tabpanel" aria-labelledby="sidebar-tab-${props.bots.tab}">
           ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation" data-testid="primary-navigation">
             ${PRIMARY_NAV.map((item) => {
-              const page = HUI_PAGES.find((candidate) => candidate.id === item.id);
+              const page = props.pages.find((candidate) => candidate.id === item.id);
               return page ? html`
                 <a
                   href=${navigationPath({ kind: "page", page })}

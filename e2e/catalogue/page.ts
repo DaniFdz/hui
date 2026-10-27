@@ -194,6 +194,24 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "PAGE-044",
+    title: "Turn the Dashboard on in Labs",
+    behaviour: "The *Dashboard* switch in Labs is off by default: the sidebar has no Dashboard entry and `/dashboard` lands home. Turning it on adds **Dashboard** at the top of the sidebar, which opens the page; the switch keeps its state after a reload, and turning it off removes the entry again.",
+    spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "docs/api.md#put-__huisettings"],
+    surfaces: ["page:labs", "page:dashboard", "setting:labs.dashboard", "route:PUT /__hui/settings"],
+    web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "PAGE-045",
+    title: "See every session's status and the host's resource use on the Dashboard",
+    behaviour: "Dashboard counts the sessions by status (*Needs input*, *Error*, *Disconnected*, *Reconnecting*, *Running*, *Starting*, *Idle*) and by stage, and lists under *Not idle* each session that is running, waiting, failing or reconnecting with its status, stage and when it changed; a row opens its session, and with none it reads *Every session is idle.* Below, *Gateway host* shows CPU, Memory, Disk, GPU, Network and Gateway process cards, refreshed every five seconds, each with its value and a sparkline, marked above 85%, or *Not available on this host*. A failed read shows the error with **Retry**.",
+    spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "docs/api.md#get-__huihost-metrics"],
+    surfaces: ["page:dashboard", "route:GET /__hui/host-metrics"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

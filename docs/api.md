@@ -780,6 +780,51 @@ Staying awake with the lid closed is never saved: it lasts one gateway run.
   the switch on reports it active and changes nothing, and turning it off
   reports that it is still on outside HUI.
 
+### `GET /__hui/host-metrics`
+
+Read-only resource use of the machine the gateway runs on, for the Dashboard
+page (Labs → Dashboard). It answers whether or not the page is on: it reads
+nothing private and starts nothing until it is asked.
+
+```ts
+{
+  sampledAt: string;                         // ISO time of the sample
+  host: { platform: string; cores: number };
+  cpu: { percent: number; load: number[] };  // all cores; load is 1, 5 and 15 minutes
+  memory: { totalBytes: number; usedBytes: number; swapUsedBytes?: number };
+  disk: { path: string; totalBytes: number; usedBytes: number } | null;
+  network: { rxBytesPerSecond: number; txBytesPerSecond: number } | null;
+  gpu: { percent: number } | null;
+  gateway: { cpuPercent: number; rssBytes: number };
+}
+```
+
+- `cpu.percent`, the network rates and `gateway.cpuPercent` are deltas against
+  the previous sample the gateway keeps. The first read, and a read more than
+  30 seconds after the last, takes a baseline 250 ms earlier, so every answer
+  holds a rate. `gateway.cpuPercent` is the gateway process's CPU time as a share
+  of one core (above 100 when it uses more than one).
+- One sample serves every caller for two seconds, and concurrent reads share the
+  one in flight, so many open tabs cost one sample. Child processes run
+  asynchronously with a two-second timeout and never block the event loop.
+- Memory: on macOS `usedBytes` is `vm_stat`'s active, wired and
+  compressor-occupied pages (`os.freemem()` there leaves inactive and purgeable
+  memory out of free); elsewhere it is total minus `os.freemem()`.
+  `swapUsedBytes` comes from `sysctl vm.swapusage` on macOS and `/proc/meminfo`
+  on Linux, and is absent when neither answers.
+- Disk is the volume holding HUI's config directory (`statfs`); used is what is
+  not available to HUI (total minus available blocks). `null` when it can't be
+  read.
+- Network sums the physical interfaces: one `<Link#…>` row each in
+  `netstat -ib` on macOS, `/proc/net/dev` on Linux; `null` elsewhere.
+  Loopback, tunnels and bridges (`utun`, `bridge`, `awdl`, `llw` on macOS;
+  `veth`, `docker`, `br-`, `virbr` on Linux) are left out, since their traffic
+  also crosses a physical interface.
+- GPU is the busiest accelerator: `ioreg -r -d 1 -c IOAccelerator`'s
+  "Device Utilization %" on macOS (no administrator rights needed on Apple
+  Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise.
+- Any method other than `GET` is 405.
+
 ### `GET /__hui/workspaces`
 
 Returns a read-only inventory derived solely from canonical working directories
@@ -3887,7 +3932,8 @@ OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
 Profile presentation fields and reversible Labs flags (`labs`:
-`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
+`denseObservability`, `detailedDebug` and `dashboard`, each off unless
+explicitly `true`).
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 

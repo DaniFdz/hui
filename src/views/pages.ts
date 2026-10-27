@@ -5,6 +5,7 @@
 import { html, type TemplateResult } from "lit";
 import type { HuiPageId } from "../lib/pages.ts";
 import { renderAutomationSurface } from "./automation.ts";
+import { renderDashboard, type DashboardProps } from "./dashboard.ts";
 import { renderNewSession, type HomeProps } from "./home.ts";
 import { renderSessionsPage, type SessionsPageProps } from "./sessions.ts";
 import type { AutomationProps } from "./settings-automation.ts";
@@ -13,6 +14,7 @@ export type DedicatedPageProps = {
   home: () => HomeProps;
   automation: () => AutomationProps;
   sessions: () => SessionsPageProps;
+  dashboard: () => DashboardProps;
   onOpenSettings: () => void;
   onOpenSession: (id: string) => void;
 };
@@ -22,6 +24,7 @@ export const PAGE_RENDERERS = {
   cron: (props) => renderAutomationSurface(props.automation(), "Automations"),
   tasks: (props) => renderAutomationSurface(props.automation(), "Tasks"),
   sessions: (props) => renderSessionsPage(props.sessions()),
+  dashboard: (props) => renderDashboard(props.dashboard()),
   usage: (props) => html`<hui-usage-page .onOpenSession=${props.onOpenSession}></hui-usage-page>`,
   contributions: (props) => html`<hui-contributions-page .onOpenSettings=${props.onOpenSettings}
     .onOpenSession=${props.onOpenSession}></hui-contributions-page>`,

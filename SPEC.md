@@ -2116,6 +2116,33 @@ of [Bots import other platforms' templates](#bots-import-other-platforms-templat
 set up like Grok Bot](#bots-are-set-up-like-grok-bot-2026-10-06) where it says
 the soul holds preferences.
 
+### Dashboard page behind Labs → Dashboard, to iterate on it (2026-10-23)
+
+The owner wants one page that shows what every session is doing and how the
+gateway's machine is holding up, to spot bottlenecks, and to iterate on it
+before it is a default. So it sits behind `settings.labs.dashboard`, a
+*Dashboard* switch on the Labs page, off by default.
+
+- **Off, it doesn't exist** for the browser: no sidebar entry, no command
+  palette row, and `/dashboard` lands home like an unknown address. On, it is
+  at the top of the sidebar and in the command palette.
+- **Sessions come from the list the app already holds**, with no new route:
+  counts by status (Needs input, Error, Disconnected, Reconnecting, Running,
+  Starting, Idle) and by Kanban stage, then every session that is not idle,
+  the ones needing the operator first, each with its stage, worker when remote,
+  how long since it changed and a *Subagent* mark for a child. A row opens its
+  session. Archived sessions and bot chats are left out.
+- **The host comes from `GET /__hui/host-metrics`**: CPU, memory, disk (the
+  volume holding HUI's config), network, GPU and the gateway process. The page
+  reads it every five seconds while it shows and the document is visible,
+  asks again only once the last read answered, and keeps the last 60 samples
+  in the browser for each card's sparkline. A card above 85% (CPU, memory,
+  disk, GPU) is marked in the danger color; a metric the host can't report
+  reads *Not available on this host*. A failed read keeps the last cards with
+  the error and **Retry**.
+- **The route answers whether or not the page is on**: it is read-only and
+  costs nothing until asked, and one sample serves every tab for two seconds.
+
 ### Use cases live in one catalogue (2026-10-21)
 
 The owner wants a native iOS app with the web UI's capabilities, and a way to
