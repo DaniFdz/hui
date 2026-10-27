@@ -76,6 +76,8 @@ export type Hui = {
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
   wideScreen(): Promise<void>;
   paletteChord(): Promise<void>;
+  /** A Work pane chord: `code` pressed with ⌥⇧⌘ on Apple platforms and Ctrl+Alt+Shift elsewhere. */
+  workChord(code: string): Promise<void>;
   back(): Promise<void>;
   forward(): Promise<void>;
   overflowsSideways(): Promise<boolean>;
@@ -445,6 +447,10 @@ export const test = base.extend<{ hui: Hui }>({
           const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
           await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
         },
+        workChord: async (code) => {
+          const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+          await browser().keyboard.press([apple ? "Meta" : "Control", "Alt", "Shift", code].join("+"));
+        },
         back: () => browser().back(),
         forward: () => browser().forward(),
         peek: (target) => target.hover(),
@@ -792,6 +798,7 @@ export const test = base.extend<{ hui: Hui }>({
           await expect(fixtures.screen.getByRole("button", "Close settings navigation")).toBeVisible();
         },
         keyboard: { down: notOnIos("keyboard.down"), up: notOnIos("keyboard.up") },
+        workChord: notOnIos("workChord"),
         hold: async (target, until) => {
           await target.longPress();
           await expect(until).toBeVisible();
