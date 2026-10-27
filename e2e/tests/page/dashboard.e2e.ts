@@ -1,4 +1,4 @@
-/** Labs → Dashboard adds the Dashboard page, which shows the sessions that are not idle and the host's metrics (PAGE-044, PAGE-045). */
+/** Labs → Dashboard adds the Dashboard page, which shows the sessions in flight and the host's metrics (PAGE-044, PAGE-045). */
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
@@ -24,7 +24,7 @@ test("Labs → Dashboard adds the Dashboard to the sidebar and keeps it across a
   await expect(toggle).toBeChecked();
   await navigation.getByText("Dashboard").tap();
   await expect(dashboard).toBeVisible();
-  await expect(screen.getByText("Every session's status and the gateway host's resource use.")).toBeVisible();
+  await expect(screen.getByText("The sessions in flight and the gateway host's resource use.")).toBeVisible();
 
   await hui.open("/labs");
   await toggle.tap({ position: { x: 8, y: 8 } });

@@ -2173,12 +2173,45 @@ before it is a default. So it sits behind `settings.labs.dashboard`, a
   volume holding HUI's config), network, GPU and the gateway process. The page
   reads it every five seconds while it shows and the document is visible,
   asks again only once the last read answered, and keeps the last 60 samples
-  in the browser for each card's sparkline. A card above 85% (CPU, memory,
-  disk, GPU) is marked in the danger color; a metric the host can't report
+  in the browser for each card's sparkline. A card that reads above 85% (CPU,
+  memory, disk, GPU; 85.1% reads 85%) is marked in the danger color; a metric the host can't report
   reads *Not available on this host*. A failed read keeps the last cards with
   the error and **Retry**.
 - **The route answers whether or not the page is on**: it is read-only and
   costs nothing until asked, and one sample serves every tab for two seconds.
+
+### Dashboard counts the sessions in flight (2026-10-27)
+
+The Dashboard counted every session that was not archived, idle subagents of
+old sessions included, so it read *1039 sessions* when 23 top-level sessions
+were open. The owner asked to hide the finished ones.
+
+- **A subagent is not a session here.** It is never in the total, the status
+  bar, the stage pipeline or the lists; its parent's row carries a chip,
+  *3 subagents*, or *2 subagents · 1 running* while any of them is not idle.
+- **A finished session is only counted.** One that is idle in Done is left
+  out of everything else and shown as *· 2 finished* after the total, or
+  *No sessions in flight · 2 finished* when nothing else is left. An idle
+  session in another stage is parked work and stays counted, and the Done
+  segment of the pipeline counts the sessions in Done still running or
+  waiting.
+
+This supersedes the *Sessions come from the list* part of [Dashboard page
+behind Labs → Dashboard](#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23)
+where it counts every session and marks a child as a *Subagent*.
+
+### Dashboard lists show three rows each (2026-10-27)
+
+With 200 sessions in flight the Dashboard was about 13,000 pixels tall. The
+owner asked to "limit the sessions we show to maybe 3 in the list".
+
+- **Each list shows its first three rows**, newest first: *Needs you* and each
+  status group. A longer one ends in **Show all 12**, which opens that list in
+  place; open, it ends in **Show fewer**. Each list opens on its own. The
+  headings, the summary and the pipeline still count every session.
+- **An open list stays open** across a metrics read and a session list refresh,
+  new sessions included. It folds again when it is down to three rows or fewer
+  and when the operator leaves the page.
 
 ### Use cases live in one catalogue (2026-10-21)
 

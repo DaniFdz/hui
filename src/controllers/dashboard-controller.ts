@@ -1,12 +1,14 @@
 /**
  * Owns the Dashboard page's host metrics: the poll that runs while the page shows and the document is visible (it
  * stops itself once the page is gone, however the app left it), the last read or its error, and the recent samples
- * the sparklines draw. The session counts come from the session list
- * the app already holds.
+ * the sparklines draw, and which session lists show every row instead of the first three. A list folds again when the
+ * page is left or the list shrinks to three rows. The session counts come from the session list the app already holds.
  */
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { loadHostMetrics } from "../api/control-surfaces.ts";
 import type { HostMetrics } from "../api/schema/host.ts";
+import type { SessionGroup } from "../api/schema/sessions.ts";
+import { DASHBOARD_ROWS, NEEDS_YOU_LIST, summarizeSessions } from "../lib/dashboard.ts";
 
 export const DASHBOARD_POLL_MS = 5_000;
 export const DASHBOARD_HISTORY = 60;
@@ -15,15 +17,19 @@ export class DashboardController implements ReactiveController {
   metrics: HostMetrics | undefined;
   history: readonly HostMetrics[] = [];
   error = "";
+  expandedLists: ReadonlySet<string> = new Set();
   readonly #host: Pick<ReactiveControllerHost, "requestUpdate">;
   readonly #shown: () => boolean;
+  readonly #groups: () => readonly SessionGroup[];
   readonly #load: () => Promise<HostMetrics>;
+  #foldedFor: readonly SessionGroup[] | undefined;
   #timer: ReturnType<typeof setInterval> | undefined;
   #pending: Promise<void> | undefined;
 
-  constructor(host: Pick<ReactiveControllerHost, "requestUpdate" | "addController">, shown: () => boolean, load = loadHostMetrics) {
+  constructor(host: Pick<ReactiveControllerHost, "requestUpdate" | "addController">, shown: () => boolean, groups: () => readonly SessionGroup[], load = loadHostMetrics) {
     this.#host = host;
     this.#shown = shown;
+    this.#groups = groups;
     this.#load = load;
     host.addController(this);
   }
@@ -31,6 +37,28 @@ export class DashboardController implements ReactiveController {
   hostDisconnected(): void {
     this.stop();
   }
+
+  hostUpdate(): void {
+    if (!this.expandedLists.size) return;
+    if (!this.#shown()) {
+      this.expandedLists = new Set();
+      return;
+    }
+    const listed = this.#groups();
+    if (listed === this.#foldedFor) return;
+    this.#foldedFor = listed;
+    const { waiting, groups } = summarizeSessions(listed);
+    const sizes = new Map([[NEEDS_YOU_LIST, waiting.length], ...groups.map((group) => [group.key, group.sessions.length] as const)]);
+    const kept = [...this.expandedLists].filter((key) => (sizes.get(key) ?? 0) > DASHBOARD_ROWS);
+    if (kept.length < this.expandedLists.size) this.expandedLists = new Set(kept);
+  }
+
+  toggleList = (key: string): void => {
+    const next = new Set(this.expandedLists);
+    if (!next.delete(key)) next.add(key);
+    this.expandedLists = next;
+    this.#host.requestUpdate();
+  };
 
   start(): void {
     if (this.#timer !== undefined) return;
