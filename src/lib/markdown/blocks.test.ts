@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
-import { handleCodeBlockDisclosure, updateCodeBlockWidthOverflow } from "./blocks.ts";
+import { test, vi } from "vitest";
+import { handleCodeBlockCopy, handleCodeBlockDisclosure, updateCodeBlockWidthOverflow } from "./blocks.ts";
 
 function fixture() {
   const classes = new Set<string>();
@@ -50,4 +50,50 @@ test("code reveal and wrap controls update actual state and accessible labels", 
   assert.ok(f.classes.has("has-horizontal-overflow"));
   assert.equal(f.attributes.get("aria-pressed"), "false");
   assert.equal(f.button.title, "Enable word wrap");
+});
+
+function copyFixture(text: string) {
+  const classes = new Set<string>();
+  const attributes = new Map<string, string>();
+  const wrapper = { querySelector: () => ({ textContent: text }) };
+  const button = {
+    isConnected: true,
+    classList: {
+      toggle: (name: string, force: boolean) => { if (force) classes.add(name); else classes.delete(name); },
+      remove: (...names: string[]) => { for (const name of names) classes.delete(name); },
+    },
+    closest: () => wrapper,
+    setAttribute: (name: string, value: string) => attributes.set(name, value),
+  };
+  return {
+    classes,
+    attributes,
+    target: { closest: (selector: string) => selector === "[data-copy-code]" ? button : null } as unknown as Element,
+  };
+}
+
+test("copying a code block drops the trailing newline and reports the state on the button", async () => {
+  vi.useFakeTimers();
+  const f = copyFixture("const value = 1;\n");
+  const written: string[] = [];
+  await handleCodeBlockCopy(f.target, (text) => { written.push(text); return true; });
+  assert.deepEqual(written, ["const value = 1;"]);
+  assert.ok(f.classes.has("copied"));
+  assert.equal(f.attributes.get("aria-label"), "Copied");
+  vi.advanceTimersByTime(1500);
+  assert.ok(!f.classes.has("copied"));
+  assert.equal(f.attributes.get("aria-label"), "Copy code");
+  vi.useRealTimers();
+});
+
+test("a refused clipboard write reads Copy failed on the button", async () => {
+  vi.useFakeTimers();
+  const f = copyFixture("value");
+  await handleCodeBlockCopy(f.target, () => false);
+  assert.ok(f.classes.has("copy-failed"));
+  assert.equal(f.attributes.get("aria-label"), "Copy failed");
+  vi.advanceTimersByTime(2000);
+  assert.ok(!f.classes.has("copy-failed"));
+  assert.equal(f.attributes.get("aria-label"), "Copy code");
+  vi.useRealTimers();
 });
