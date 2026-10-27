@@ -458,7 +458,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-split-layout"],
     surfaces: ["nav:session"],
     journeys: ["session-multiplexing", "session-header-overflow", "pane-reposition"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
