@@ -70,7 +70,7 @@ export class HuiUsagePage extends LitElement {
             this.querySelector<HTMLButtonElement>(".usage-date-range button")?.focus();
           }}><span class="daily-bar ${byType ? "daily-bar--stacked" : ""} ${unpriced ? "usage-report__unpriced" : ""}" style=${`height: ${max ? value(metrics) / max * 200 : 0}px; opacity: ${metrics.calls || metrics.totalTokens ? 1 : 0.25}`}>
               ${byType ? this.#segments(metrics) : nothing}</span>
-              <span class="daily-bar-label">${days.days.length <= 10 || index % Math.ceil(days.days.length / 7) === 0 || index === days.days.length - 1 ? labelDate(date) : ""}</span><span class="daily-bar-total">${unpriced ? "?" : ""}</span></button>`;
+              <span class="daily-bar-label">${days.days.length <= 10 || index % Math.ceil(days.days.length / 6) === 0 || index === days.days.length - 1 ? labelDate(date) : ""}</span><span class="daily-bar-total">${unpriced ? "?" : ""}</span></button>`;
         })}
       </div></div>
       <div class="cost-breakdown"><h3 class="usage-summary-title">Tokens by type</h3><div class="cost-breakdown-bar" aria-hidden="true">${this.#segments(totals)}</div>
