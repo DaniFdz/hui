@@ -471,7 +471,7 @@ const cases: UseCase[] = [
   {
     id: "WORK-048",
     title: "Read a Markdown file rendered or as source",
-    behaviour: "A Markdown file opens Rendered, with headings, lists, tables and code blocks whose copy control copies the code; Source shows and edits the Markdown in the editor.",
+    behaviour: "A Markdown file opens Rendered, with headings, lists, tables and code blocks with their copy control; Source shows and edits the Markdown in the editor.",
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
