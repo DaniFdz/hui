@@ -16,7 +16,7 @@ const edges = async (target: Locator) => {
   return { left: x, right: x + width, top: y, bottom: y + height };
 };
 
-test("A details block shows only its summary, and activating the summary shows its body, then hides it again", { tags: ["RICH-003"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("A details block shows only its summary, and activating the summary shows its body, then hides it again", { tags: ["RICH-003"] }, async ({ screen, hui }) => {
   const transcript = await reply(screen, hui, "Before the block.\n\n<details><summary>More formatting</summary>\n\nThe body behind the summary.\n\n</details>\n\nAfter the block.");
   const summary = transcript.getByText("More formatting");
   const body = transcript.getByText("The body behind the summary.");
@@ -24,9 +24,9 @@ test("A details block shows only its summary, and activating the summary shows i
   await expect(transcript.getByText("After the block.")).toBeVisible();
   await expect(body).toBeHidden();
 
-  await summary.tap();
+  await hui.tapAt(summary);
   await expect(body).toBeVisible();
-  await summary.tap();
+  await hui.tapAt(summary);
   await expect(body).toBeHidden();
   await expect(summary).toBeVisible();
 });

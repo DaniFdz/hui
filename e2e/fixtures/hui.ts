@@ -116,6 +116,8 @@ export type Hui = {
   fingerDrag({ dx, dy }: { dx: number; dy: number }): Promise<void>;
   scrollSideways(target: Locator): Promise<void>;
   wheel(target: Locator, deltaY: number): Promise<void>;
+  /** A tap at the middle of where the target is now, read at the moment of the press: a phone sends a plain tap to the row its last reading put the target in, which a screen that just laid that row out elsewhere would miss. */
+  tapAt(target: Locator): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
@@ -131,6 +133,13 @@ export type Hui = {
   repository(): Promise<{ path: string; git(...args: string[]): string }>;
   stored(text: string): Promise<string[]>;
   secretDirectories(): Promise<string[]>;
+};
+
+/** A tap at the middle of where a target is at the moment of the press. */
+const tapAt = async (target: Locator) => {
+  const box = await target.boundingBox();
+  if (!box) throw new Error("tapAt: the target is not on screen");
+  await target.tap({ position: { x: box.width / 2, y: box.height / 2 } });
 };
 
 const holding = <R>() => {
@@ -639,6 +648,7 @@ export const test = base.extend<{ hui: Hui }>({
         scrollTo: (_within, target) => target.scrollIntoView(),
         expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
         textOf: async (target) => (await target.textContent()) ?? "",
+        tapAt,
         scrollSideways: async (target) => {
           const box = await target.boundingBox();
           if (!box) throw new Error("scrollSideways: the target is not on screen");
@@ -823,6 +833,7 @@ export const test = base.extend<{ hui: Hui }>({
         intercept: async (method, path) => proxy!.intercept(method, path),
         dropStreams: async () => proxy!.dropStreams(),
         url: async () => proxy!.url + await fixtures.screen.getByTestId("app-route").inputValue(),
+        tapAt,
         scrollTo: async (within, target) => {
           await within.swipe({ direction: "down", momentum: "slow" });
           const bar = within.getByLabel(/^Vertical scroll bar/u).first();
