@@ -90,7 +90,7 @@ function controlledMedia(initialMatches = true) {
 }
 
 test("the primary sidebar lists work destinations above a Settings footer", () => {
-  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["contributions", "sessions", "usage", "dashboard"]);
+  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["dashboard", "contributions", "sessions", "usage"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);

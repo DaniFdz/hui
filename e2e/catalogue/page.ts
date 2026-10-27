@@ -197,7 +197,7 @@ const cases: UseCase[] = [
   {
     id: "PAGE-044",
     title: "Turn the Dashboard on in Labs",
-    behaviour: "The *Dashboard* switch in Labs is off by default: the sidebar has no Dashboard entry and `/dashboard` lands home. Turning it on adds **Dashboard** to the sidebar below Usage, which opens the page; the switch keeps its state after a reload, and turning it off removes the entry again.",
+    behaviour: "The *Dashboard* switch in Labs is off by default: the sidebar has no Dashboard entry and `/dashboard` lands home. Turning it on adds **Dashboard** at the top of the sidebar, which opens the page; the switch keeps its state after a reload, and turning it off removes the entry again.",
     spec: ["SPEC.md#dashboard-page-behind-labs--dashboard-to-iterate-on-it-2026-10-23", "docs/api.md#put-__huisettings"],
     surfaces: ["page:labs", "page:dashboard", "setting:labs.dashboard", "route:PUT /__hui/settings"],
     web: "required",

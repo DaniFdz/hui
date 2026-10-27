@@ -53,10 +53,10 @@ const usageIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 const dashboardIcon = html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${svg`<path d="M22 12h-4l-3 9L9 3l-3 9H2" />`}</svg>`;
 
 export const PRIMARY_NAV = [
+  { id: "dashboard", label: "Dashboard", icon: dashboardIcon },
   { id: "contributions", label: "Contributions", icon: openclawIcons.gitPullRequest },
   { id: "sessions", label: "Sessions", icon: icons.messageSquare },
   { id: "usage", label: "Usage", icon: usageIcon },
-  { id: "dashboard", label: "Dashboard", icon: dashboardIcon },
 ] as const;
 
 /** Compact content geometry and the platform-aware browser drawer contract

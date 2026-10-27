@@ -2127,7 +2127,7 @@ before it is a default. So it sits behind `settings.labs.dashboard`, a
 
 - **Off, it doesn't exist** for the browser: no sidebar entry, no command
   palette row, and `/dashboard` lands home like an unknown address. On, it is
-  in the sidebar below Usage and in the command palette.
+  at the top of the sidebar and in the command palette.
 - **Sessions come from the list the app already holds**, with no new route:
   counts by status (Needs input, Error, Disconnected, Reconnecting, Running,
   Starting, Idle) and by Kanban stage, then every session that is not idle,
