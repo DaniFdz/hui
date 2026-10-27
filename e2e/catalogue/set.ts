@@ -740,6 +740,26 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "SET-078",
+    title: "Name the models a subagent can be spawned on",
+    behaviour: "“Subagent routes” lists one row per route with its name, one-line description, model and optional thinking level, plus “Add route”; edits are saved immediately and survive a reload, a name that repeats another route or holds a blank is refused, and removing a route removes its row.",
+    spec: ["SPEC.md#session-born-subagents", "docs/api.md#put-__huisettings"],
+    surfaces: ["setting:models.routes", "route:PUT /__hui/settings"],
+    journeys: ["subagent-routes"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
+    id: "SET-079",
+    title: "Spawn a subagent on a route",
+    behaviour: "A session spawned with `route` names the route only: the child runs on that route's model and pinned thinking level, so its own header shows them while its parent runs on the parent's model. A route sent together with `model` is refused, and an unknown route is refused before any child exists, naming the configured routes.",
+    spec: ["SPEC.md#session-born-subagents"],
+    surfaces: ["tool:sessions_spawn"],
+    journeys: ["subagent-routes"],
+    web: "backlog",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
