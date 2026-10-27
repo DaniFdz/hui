@@ -175,9 +175,7 @@
       "WORK-063",
       "WORK-064",
       "WORK-065",
-      "WORK-066",
       "WORK-067",
-      "WORK-068",
       "WORK-069",
       "WORK-070",
       "WORK-071",
@@ -878,7 +876,6 @@
     "Download",
     "Ears",
     "Event field",
-    "Filter changed files",
     "Filter worktrees",
     "GitHub links",
     "Group by",
@@ -931,7 +928,6 @@
     "Worktree scope",
     "Year",
     "Zoom",
-    "renamed to",
     "tweakcn theme link"
   ]
 }
