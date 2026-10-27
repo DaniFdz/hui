@@ -444,7 +444,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "docs/api.md#get-__huisessionsidcommands"],
     surfaces: ["route:GET /__hui/sessions/:id/commands"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -454,7 +454,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["slash-commands", "command-references"],
-    web: "backlog",
+    web: "required",
     ios: keyboardOnly("tapping a menu entry (CHAT-045)"),
   },
   {
@@ -464,7 +464,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: ["route:GET /__hui/sessions/:id/commands"],
     journeys: ["slash-commands"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -484,7 +484,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection", "SPEC.md#new-sessions-run-on-pi-durable"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["slash-commands", "command-references", "durable-extensions"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
