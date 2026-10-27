@@ -738,38 +738,42 @@ function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { val
     save([...routes, { name, description: "", model: model.value }]);
   };
   const thinking = [{ value: "", label: "Inherit parent" }, ...PI_THINKING_LEVELS.map((level) => ({ value: level, label: level }))];
-  return renderSection(
-    "Subagent routes",
-    "Named models for subagents. An agent passes a name to `sessions_spawn` as `route`; the prompt lists your names and descriptions.",
-    html`
-      ${routes.length
-        ? routes.map((route, at) => html`
-          <div class="settings-row settings-row--stacked">
-            <div class="settings-row__control subagent-route-fields">
-              <div class="subagent-route-fields__line">
-                <input class="settings-input subagent-route-fields__name" name="routeName" aria-label=${`Route name: ${route.name}`}
-                  maxlength="40" spellcheck="false" autocomplete="off" .value=${route.name}
-                  @input=${(event: Event) => (event.target as HTMLInputElement).setCustomValidity("")}
-                  @change=${(event: Event) => rename(at, event.target as HTMLInputElement)} />
-                <input class="settings-input" name="routeDescription" aria-label=${`Description of ${route.name}`}
-                  maxlength="200" placeholder="What this route is for, in one line" .value=${route.description}
-                  @change=${(event: Event) => replace(at, { description: (event.target as HTMLInputElement).value })} />
-              </div>
-              <div class="subagent-route-fields__line">
-                ${renderSettingsPicker(`Model for ${route.name}`, route.model, models, (value) => replace(at, { model: value }))}
-                ${renderSettingsPicker(`Thinking for ${route.name}`, route.thinking ?? "", thinking, (value) => replace(at, { thinking: PI_THINKING_LEVELS.find((level) => level === value) }))}
-                <button type="button" class="btn btn--sm btn--ghost" aria-label=${`Remove route ${route.name}`} @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>
-              </div>
-            </div>
-          </div>`)
-        : renderRow("No routes yet", "Agents keep choosing models by id until you add one.", html`<span class="settings-row__value">—</span>`)}
-      ${renderRow(
-        "Add a route",
-        models.length ? "Starts on your primary model, if you have one. Edit it after adding." : "Connect a provider first: a route needs a model.",
-        html`<button type="button" class="btn btn--sm" ?disabled=${!models.length || routes.length >= 50} @click=${add}>Add route</button>`,
-      )}
-    `,
-  );
+  return html`
+    <section class="settings-section">
+      <div class="settings-section__header"><div class="settings-section__copy">
+        <h2 class="settings-section__heading">Subagent routes</h2>
+        <p class="settings-section__desc">Named models for subagents. An agent passes a name to <code>sessions_spawn</code> as <code>route</code>; the prompt lists your names and descriptions.</p>
+      </div></div>
+      ${routes.map((route, at) => html`
+        <div class="settings-group" role="group" aria-label=${`Route ${route.name}`}>
+          ${renderRow(route.name, "", html`<button type="button" class="btn btn--sm btn--ghost" aria-label=${`Remove route ${route.name}`} @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>`)}
+          ${renderRow("Name", "The name agents pass when choosing a route.", html`
+            <input class="settings-input" name="routeName" aria-label=${`Route name: ${route.name}`}
+              maxlength="40" spellcheck="false" autocomplete="off" .value=${route.name}
+              @input=${(event: Event) => (event.target as HTMLInputElement).setCustomValidity("")}
+              @change=${(event: Event) => rename(at, event.target as HTMLInputElement)} />
+          `)}
+          ${renderRow("Description", "Helps agents decide when to use this route.", html`
+            <input class="settings-input" name="routeDescription" aria-label=${`Description of ${route.name}`}
+              maxlength="200" placeholder="What this route is for, in one line" .value=${route.description}
+              @change=${(event: Event) => replace(at, { description: (event.target as HTMLInputElement).value })} />
+          `)}
+          ${renderRow("Model", "The model subagents use on this route.",
+            renderSettingsPicker(`Model for ${route.name}`, route.model, models, (value) => replace(at, { model: value })))}
+          ${renderRow("Thinking", "Inherit the parent's level, or choose a default for this route.",
+            renderSettingsPicker(`Thinking for ${route.name}`, route.thinking ?? "", thinking, (value) => replace(at, { thinking: PI_THINKING_LEVELS.find((level) => level === value) })))}
+        </div>
+      `)}
+      <div class="settings-group">
+        ${routes.length ? nothing : renderRow("No routes yet", "Agents keep choosing models by id until you add one.", html`<span class="settings-row__value">—</span>`)}
+        ${renderRow(
+          "Add a route",
+          models.length ? "Starts on your primary model, if you have one. Edit it after adding." : "Connect a provider first: a route needs a model.",
+          html`<button type="button" class="btn btn--sm" ?disabled=${!models.length || routes.length >= 50} @click=${add}>Add route</button>`,
+        )}
+      </div>
+    </section>
+  `;
 }
 
 function renderModelsPage(props: SettingsProps) {

@@ -27,12 +27,13 @@ twice in one turn: `route: "deep"` (accepted) and `route: "no-such-route"`
 1. Settings → Models shows **Subagent routes** with *No routes yet* and **Add
    route**. Adding a route writes it immediately: the isolated
    `config/hui/settings.json` holds `models.routes`.
-2. Editing the row's name, description, model and thinking saves each field. A
+2. Each route uses the standard Settings group and labeled Name, Description,
+   Model and Thinking rows. Editing them saves each field. A
    name that repeats another route, or holds a space, is refused and the stored
    names stay as they were; picking a model from the catalog stores its
    `provider/id`; thinking stores the chosen level or no level at all.
 3. With `fast` (HUI SDK Fixture, thinking low) and `deep` (HUI Route Fixture,
-   thinking high) configured, a reload shows both rows and the same values.
+   thinking high) configured, a reload shows both groups and the same values.
 4. Create a session with `E2E_SUBAGENTS_ROUTE spawn two workers`. The transcript
    shows two `sessions_spawn` calls: one *Completed* whose input carries
    `route: "deep"` and no model, and one *Failed* whose output reads
@@ -46,10 +47,11 @@ twice in one turn: `route: "deep"` (accepted) and `route: "no-such-route"`
    then lists one line per route: `- fast: Cheap and quick: lookups, summaries,
    simple edits.` and `- deep: Slow and careful: hard debugging and design
    work.`
-7. 1440×900 gives each route two lines: its name and description, then its
-   model, thinking and Remove. At 390×844 the name and description share the
-   first line, the model and thinking controls stack below it, and Remove stays
-   right-aligned. The child session's model and thinking fit beside the composer.
+7. At 1440×900, each route uses the same labeled Settings rows as the other
+   pages: labels and help text on the left, standard inputs and pickers on the
+   right. At 390×844, the shared Settings styles put each control below its
+   visible label. Names use the standard input font. The child session's model
+   and thinking fit beside the composer.
 
 ## Shared web tests
 

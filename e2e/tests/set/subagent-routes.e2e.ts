@@ -16,6 +16,10 @@ test("Subagent routes keep edits, reject invalid names, and remove saved rows", 
   await expect(screen.getByText("No routes yet", { exact: true })).toBeVisible();
   await screen.getByRole("button", "Add route").tap();
   await rename("route", "fast");
+  const route = screen.getByLabel("Route fast", { exact: true });
+  for (const label of ["Name", "Description", "Model", "Thinking"]) {
+    await expect(route.getByText(label, { exact: true })).toBeVisible();
+  }
   await screen.getByLabel("Description of fast").fill("Quick lookups");
   await screen.getByLabel("Description of fast").press("Tab");
   await expect(screen.getByRole("button", "Model for fast: HUI SDK Fixture")).toBeVisible();
