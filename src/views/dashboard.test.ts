@@ -180,6 +180,7 @@ test("a long network value wraps between its rates and a long disk path stays on
   assert.match(rule(".dashboard-metric__value"), /min-width: 0;[^]*overflow-wrap: anywhere/u);
   assert.match(rule(".dashboard-metric__path"), /overflow: hidden;[^]*direction: rtl;[^]*text-overflow: ellipsis; white-space: nowrap/u, "a long path ends in an ellipsis at its start");
   assert.match(rule(".dashboard-chip"), /display: inline-block;[^]*text-overflow: ellipsis/u, "a chip can show its ellipsis");
+  assert.match(rule(".dashboard-page"), /font-size: var\(--text-base\)/u, "values, details and rows follow the text scale");
 });
 
 test("a metric is marked high only once it reads above 85%", () => {
