@@ -508,7 +508,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-multiplexing", "session-header-overflow"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Below 1100px only the active pane is visible\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {

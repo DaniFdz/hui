@@ -50,3 +50,34 @@ test("split view opens from the header and a row menu, the split and pane menus 
   await expect(panes.nth(2)).toHaveAttribute("aria-current", "true");
   await expect(resize.first()).toHaveAttribute("aria-valuenow", "54");
 });
+test("the arrow keys resize a split pane by 2% and with Shift by 5%, and Home and End jump to 15% and 85%", { tags: ["SESS-052"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const divider = screen.getByTestId("pane-divider");
+  const step = async (key: string) => {
+    await hui.keyboard.down(key);
+    await hui.keyboard.up(key);
+  };
+  await hui.wideScreen(3200);
+  const first = await hui.createSession({ title: "Keyboard left" });
+  await hui.createSession({ title: "Keyboard right" });
+  await hui.open(`/sessions/${first.id}`);
+  await screen.getByRole("button", "Open split view").tap();
+  await expect(divider).toHaveCount(1);
+  await expect(divider).toHaveAttribute("aria-valuenow", "50");
+
+  await divider.focus();
+  await step("ArrowRight");
+  await expect(divider).toHaveAttribute("aria-valuenow", "52");
+  await step("ArrowRight");
+  await expect(divider).toHaveAttribute("aria-valuenow", "54");
+  await step("ArrowLeft");
+  await expect(divider).toHaveAttribute("aria-valuenow", "52");
+  await hui.keyboard.down("Shift");
+  await step("ArrowRight");
+  await step("ArrowRight");
+  await hui.keyboard.up("Shift");
+  await expect(divider).toHaveAttribute("aria-valuenow", "62");
+  await step("Home");
+  await expect(divider).toHaveAttribute("aria-valuenow", "15");
+  await step("End");
+  await expect(divider).toHaveAttribute("aria-valuenow", "85");
+});
