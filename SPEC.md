@@ -2116,8 +2116,6 @@ of [Bots import other platforms' templates](#bots-import-other-platforms-templat
 set up like Grok Bot](#bots-are-set-up-like-grok-bot-2026-10-06) where it says
 the soul holds preferences.
 
-||||||| parent of c8424087 (feat: Dashboard page behind Labs)
-
 ### Dashboard page behind Labs → Dashboard, to iterate on it (2026-10-23)
 
 The owner wants one page that shows what every session is doing and how the
