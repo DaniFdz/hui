@@ -3866,15 +3866,22 @@ Query parameters:
 - Malformed, impossible or reversed dates and unknown time zones return 400.
 
 The gateway reads every registered history once per time zone and answers any
-range from that scan, so changing the range, the zone or the filters does not
-read the conversations again. While each registered session's activity timestamp
-and run marker stay unchanged, the scan is reused as it is. A run finishing
-invalidates a scan read before its answer was recorded, even when the prompt's
-admission timestamp stays unchanged. When either changes, only the entries
-appended since that scan are read, and entries already counted stay counted, so
-a fork made afterwards does not add its inherited history again. `refresh=1`, and
-the first read after the gateway starts, read every history. A scan in progress is shared
-by concurrent requests. Compaction completion updates that activity even when no dated entry was added.
+range from that scan. Switching to a zone not yet scanned requires its own read;
+returning to a scanned zone reuses it. Session filtering happens in the browser.
+While each registered session's activity timestamp and run marker stay unchanged,
+the scan is reused as it is. A run finishing invalidates a scan read before its
+answer was recorded, even when the prompt's admission timestamp stays unchanged.
+When either changes, only the entries appended since that scan are read, and
+entries already counted stay counted, so a fork made afterwards does not add its
+inherited history again. Newer local Durable sessions can reuse the scan when
+existing sources and their order remain unchanged and the new sources were not
+already represented through inherited history. Removals, changed sources, older
+claimants and ambiguous additions require a full read. Visible metadata is
+refreshed even without a newer activity clock. `refresh=1`, and the first read in
+a zone after the gateway starts, read every history. Concurrent requests share
+compatible registry snapshots and full reads; a forced refresh waits for an
+incremental scan and then reads in full. Compaction completion updates activity
+even when no dated entry was added.
 Activity the registry does not record is not seen until the next scan or a forced
 refresh.
 
@@ -3898,8 +3905,11 @@ Durable history is read in pages without changing the store. Each conversation's
 ledger and latest entry ID are read together, and its scan stops at that ID so
 a concurrent reply cannot inflate the spend outside the entries. Inherited entries
 retain their global IDs and count once across registered sessions, attributed
-to their registered source conversation when available. Otherwise the newest
+to their registered source conversation when available. Otherwise the oldest
 claiming session receives them, including retained history after a rewind.
+Counters, entry claims and read boundaries are applied only after every page of
+that conversation succeeds, so a failed read can be retried without duplicating
+or skipping entries.
 Legacy PI files are read only from registry references, bounded at 32 MB and
 counted once per path. Models and providers come from records, never from the
 session's current selection. Unrecorded labels are `Unknown`.
@@ -3913,7 +3923,8 @@ Legacy PI compaction records do carry usage, so those already count inside the
 dated entries. A conversation whose ledger reports less than the entries it
 wrote contributes zero rather than a negative amount. Cost-only amounts are
 retained. A failed ledger read identifies the conversation in
-`coverage.unavailable` instead of implying that its spend is zero.
+`coverage.unavailable`, and that conversation's remainder is absent from the
+report's `unplacedSpend` total. The coverage gap does not imply zero spend.
 
 `coverage` lists the number of registered sessions and readable local histories,
 individual unavailable histories with their reasons, and `undatedRecords` excluded
