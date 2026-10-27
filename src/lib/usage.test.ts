@@ -34,14 +34,34 @@ test("a session search changes every total and ranking, and zero-priced sessions
   assert.match(usageCost(sumUsage([metrics(1, 0), metrics(1, null)])), /^≥ \$0\.00/u);
 });
 
-test("the daily chart retains empty days and leap days; long ranges group every recorded token by month", () => {
+test("the chart keeps empty days and leap days, groups wide ranges by week and long ones by month", () => {
   const rows = [{ date: "2024-02-29", metrics: metrics(7, null) }];
   const daily = usageChartDays(rows, "2024-02-28", "2024-03-01");
-  assert.equal(daily.monthly, false);
-  assert.deepEqual(daily.days.map(({ date, metrics }) => [date, metrics.totalTokens, metrics.costUsd]), [["2024-02-28", 0, null], ["2024-02-29", 7, null], ["2024-03-01", 0, null]]);
+  assert.equal(daily.bucket, "day");
+  assert.deepEqual(daily.days.map(({ date, end, metrics }) => [date, end, metrics.totalTokens, metrics.costUsd]), [
+    ["2024-02-28", "2024-02-28", 0, null], ["2024-02-29", "2024-02-29", 7, null], ["2024-03-01", "2024-03-01", 0, null],
+  ]);
+
+  const weekly = usageChartDays([...rows, { date: "2024-03-30", metrics: metrics(9, 0) }], "2024-01-01", "2024-03-30");
+  assert.equal(weekly.bucket, "week");
+  assert.equal(weekly.days.length, 13);
+  assert.deepEqual(weekly.days[0], { date: "2024-01-01", end: "2024-01-06", metrics: sumUsage([]) });
+  assert.deepEqual(weekly.days.find(({ date, end }) => date <= "2024-02-29" && end >= "2024-02-29"), { date: "2024-02-25", end: "2024-03-02", metrics: sumUsage([metrics(7, null)]) });
+  assert.deepEqual(weekly.days.at(-1), { date: "2024-03-24", end: "2024-03-30", metrics: sumUsage([metrics(9, 0)]) });
+  for (const [index, bucket] of weekly.days.entries()) {
+    assert.ok((Date.parse(bucket.end) - Date.parse(bucket.date)) / 86_400_000 + 1 <= 7, "a week holds seven days at most");
+    if (index > 0) assert.equal(Date.parse(bucket.date) - Date.parse(weekly.days[index - 1]!.end), 86_400_000, "weeks cover the range without gaps");
+  }
+
   const monthly = usageChartDays([...rows, { date: "2025-01-01", metrics: metrics(9, 0) }], "2024-02-01", "2025-03-01");
-  assert.equal(monthly.monthly, true);
+  assert.equal(monthly.bucket, "month");
   assert.equal(monthly.days.length, 14);
+  assert.deepEqual(monthly.days[0], { date: "2024-02", end: "2024-02-29", metrics: sumUsage([metrics(7, null)]) });
   assert.deepEqual(monthly.days.filter(({ metrics }) => metrics.calls).map(({ date, metrics }) => [date, metrics.totalTokens, metrics.costUsd]), [["2024-02", 7, null], ["2025-01", 9, 0]]);
-  assert.deepEqual(monthly.days.at(-1), { date: "2025-03", metrics: sumUsage([]) });
+  assert.deepEqual(monthly.days.at(-1), { date: "2025-03", end: "2025-03-31", metrics: sumUsage([]) });
+
+  assert.equal(usageChartDays([], "2024-01-01", "2024-02-11").bucket, "day", "42 days stay daily");
+  assert.equal(usageChartDays([], "2024-01-01", "2024-02-12").bucket, "week", "43 days group by week");
+  assert.equal(usageChartDays([], "2024-01-01", "2024-12-30").bucket, "week", "365 days group by week");
+  assert.equal(usageChartDays([], "2024-01-01", "2024-12-31").bucket, "month", "366 days group by month");
 });

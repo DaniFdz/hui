@@ -533,11 +533,12 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   invalid prices show Unpriced, a recorded numeric zero remains $0.00, and a mix
   of priced and unpriced calls labels cost as partial. HUI never adds external
   session cost reports to PI estimates or presents either as a provider bill.
-- Daily usage switches between tokens and recorded cost. Token bars can show the
-  input, output, cache-read and cache-write shares. Empty calendar days remain
-  visible; a day with usage but no price is unpriced rather than free. Selecting
-  a day narrows the report to that date. All-time ranges longer than one year
-  group their chart by month. A token-type bar and legend show the same period.
+- Usage switches between tokens and recorded cost. Token bars can show the
+  input, output, cache-read and cache-write shares. Empty days remain visible; a
+  period with usage but no price is unpriced rather than free. Selecting a bar
+  narrows the report to its period: a day up to 42 days, a week above that, and a
+  month once the range covers a full year. A token-type bar and legend show the
+  same range.
 - Overview cards show recorded messages, tool results, errors, average tokens per
   usage record and cache hit rate. Ranked model, provider and tool lists use the
   same period. Unknown model/provider labels stay unknown rather than being

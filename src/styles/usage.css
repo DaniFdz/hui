@@ -9,7 +9,10 @@
 .usage-report__scope { color: var(--muted); font-size: var(--control-ui-text-xs); margin: 0; }
 .usage-report .daily-chart-header .settings-section__desc { margin-top: var(--space-1); }
 .usage-report .daily-chart-bars { padding-inline: var(--space-4); }
+.usage-report .daily-bar-wrapper:first-child .daily-bar-label { justify-self: start; }
+.usage-report .daily-bar-wrapper:last-child .daily-bar-label { justify-self: end; }
 .usage-report__day { border: 0; background: transparent; padding: 0; font: inherit; cursor: var(--cursor-action); color: inherit; }
+.usage-report .daily-bar-wrapper { grid-template-columns: minmax(0, 1fr); }
 .usage-report__unpriced { border: 2px dashed var(--warn); background: var(--warn-subtle); }
 .usage-report__rank-name { min-width: 0; overflow-wrap: anywhere; }
 .usage-report__session-values { display: grid; gap: var(--space-1); text-align: right; flex-shrink: 0; }
@@ -19,4 +22,5 @@
 @container (max-width: 600px) {
   .usage-report__totals { flex-direction: column; gap: var(--space-2); }
   .usage-query-bar { grid-template-columns: minmax(0, 1fr); }
+  .usage-report .daily-chart-bars { grid-auto-columns: minmax(14px, 1fr); gap: 2px; }
 }
