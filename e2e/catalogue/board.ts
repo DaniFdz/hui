@@ -241,7 +241,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#kanban"],
     surfaces: ["route:GET /__hui/git-checkout", "route:POST /__hui/backlog/items/:id/start"],
     journeys: ["kanban"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
