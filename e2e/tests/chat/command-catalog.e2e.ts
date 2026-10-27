@@ -26,7 +26,7 @@ test("a slow command catalog says Loading commands without sending, and a failed
   await expect(message).toHaveValue("/");
 
   await screen.getByRole("button", "Retry commands").tap();
-  await expect(menu.getByText("/clear", { exact: true })).toBeVisible();
+  await expect(menu.getByText("$check-status", { exact: true })).toBeVisible();
   await expect(screen.getByText(/Could not load commands\./u)).toBeHidden();
   await expect(message).toHaveValue("/");
   await expect(transcript.getByText("Start a conversation")).toBeVisible();

@@ -71,6 +71,9 @@ test("the / menu groups commands, narrows as you type, inserts a reference witho
   expect(top.x).toBeGreaterThanOrEqual(0);
   expect(top.x + top.width).toBeLessThanOrEqual(phone.width);
   expect(top.y + top.height).toBeLessThanOrEqual(phone.height);
+  const frame = (await menu.boundingBox())!;
+  expect(frame.x).toBeGreaterThanOrEqual(0);
+  expect(frame.x + frame.width).toBeLessThanOrEqual(phone.width);
   expect((await last.boundingBox())!.y).toBeGreaterThan(phone.height);
   await hui.scrollTo(menu, last);
   const scrolled = (await last.boundingBox())!;

@@ -47,6 +47,10 @@ test("ArrowDown and ArrowUp walk the menu across groups and wrap, Enter and Tab 
   await message.press("Tab");
   await expect(message).toHaveValue("$key-check ");
   await expect(menu).toBeHidden();
+  await message.fill("$key");
+  await message.press("ArrowDown");
+  await message.press("Enter");
+  await expect(message).toHaveValue("$key-skill ");
   await message.fill("/key");
   await message.press("Escape");
   await expect(menu).toBeHidden();

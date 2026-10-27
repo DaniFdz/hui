@@ -24,6 +24,13 @@ test("a plugin action runs the extension without a model turn and a busy menu de
   await expect(message).toBeEnabled();
   expect(await hui.providerRequests()).toBe(before);
 
+  await message.fill("/check-status ready");
+  await screen.getByRole("button", "Send message").tap();
+  await expect(screen.getByText("Extension executed: ready")).toBeVisible();
+  await expect(transcript.getByText("Start a conversation")).toBeVisible();
+  await expect(idle).toBeVisible();
+  expect(await hui.providerRequests()).toBe(before);
+
   await message.fill("E2E_REPLAY");
   await screen.getByRole("button", "Send message").tap();
   await hui.provider.held();
