@@ -2173,8 +2173,8 @@ before it is a default. So it sits behind `settings.labs.dashboard`, a
   volume holding HUI's config), network, GPU and the gateway process. The page
   reads it every five seconds while it shows and the document is visible,
   asks again only once the last read answered, and keeps the last 60 samples
-  in the browser for each card's sparkline. A card above 85% (CPU, memory,
-  disk, GPU) is marked in the danger color; a metric the host can't report
+  in the browser for each card's sparkline. A card that reads above 85% (CPU,
+  memory, disk, GPU; 85.1% reads 85%) is marked in the danger color; a metric the host can't report
   reads *Not available on this host*. A failed read keeps the last cards with
   the error and **Retry**.
 - **The route answers whether or not the page is on**: it is read-only and

@@ -38,7 +38,8 @@ export type SessionSummary = {
   subagents: ReadonlyMap<string, SubagentCount>;
 };
 
-const newestFirst = (a: SessionView, b: SessionView) => b.updatedAt.localeCompare(a.updatedAt);
+const updatedTime = (session: SessionView) => Date.parse(session.updatedAt) || 0;
+const newestFirst = (a: SessionView, b: SessionView) => updatedTime(b) - updatedTime(a);
 
 export function summarizeSessions(groups: readonly SessionGroup[]): SessionSummary {
   const statuses: Record<SessionStatus, number> = { waiting: 0, error: 0, disconnected: 0, reconnecting: 0, running: 0, starting: 0, idle: 0 };

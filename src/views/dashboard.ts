@@ -2,7 +2,8 @@
  * The Dashboard page (Labs → Dashboard): a summary of the sessions in flight by status with a count of the finished
  * ones, their Kanban stages, the sessions waiting for the operator, the other sessions that are not idle grouped by
  * status with their subagents, and a card per host metric with its value,
- * a bar and a sparkline of the samples the browser kept. A metric above 85% is marked; one the host can't report says so.
+ * a bar and a sparkline of the samples the browser kept. A metric that reads above 85% is marked; one the host can't report
+ * says so. A value too long for its card wraps between its parts, and the disk path keeps its end on one line.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import type { HostMetrics } from "../api/schema/host.ts";
@@ -31,11 +32,15 @@ export type DashboardProps = {
   onOpenSession: (session: SessionView) => void;
 };
 
-type Metric = { value: string; detail: string; percent?: number; series: number[] };
+type Metric = { value: string; detail: string; path?: string; percent?: number; series: number[] };
 
 const percentLabel = (value: number) => `${Math.round(value)}%`;
 const share = (used: number, total: number) => (total > 0 ? (used / total) * 100 : 0);
-const rate = (bytes: number) => `${formatBytes(bytes)}/s`;
+const rate = (arrow: string, bytes: number) => `${arrow} ${formatBytes(bytes)}/s`.replaceAll(" ", "\u00a0");
+const updatedAgo = (updatedAt: string, now: number) => {
+  const updated = Date.parse(updatedAt);
+  return Number.isNaN(updated) ? nothing : html`<time class="dashboard-session__time" datetime=${updatedAt}>${relativeTime(updated, now)}</time>`;
+};
 
 function sparkline(series: readonly number[], max?: number) {
   if (series.length < 2) return nothing;
@@ -46,13 +51,13 @@ function sparkline(series: readonly number[], max?: number) {
 
 function card(id: string, title: string, metric: Metric | null) {
   if (!metric) {
-    return html`<article data-testid=${`dashboard-metric-${id}`} class="dashboard-metric"><span class="dashboard-metric__title">${title}</span><p class="dashboard-metric__unavailable">Not available on this host</p></article>`;
+    return html`<article data-testid=${`dashboard-metric-${id}`} class="dashboard-metric"><div class="dashboard-metric__head"><span class="dashboard-metric__title">${title}</span></div><p class="dashboard-metric__unavailable">Not available on this host</p></article>`;
   }
-  const high = metric.percent !== undefined && metric.percent > HIGH_PERCENT;
+  const high = metric.percent !== undefined && Math.round(metric.percent) > HIGH_PERCENT;
   return html`<article data-testid=${`dashboard-metric-${id}`} class="dashboard-metric ${high ? "dashboard-metric--high" : ""}">
     <div class="dashboard-metric__head"><span class="dashboard-metric__title">${title}</span><strong class="dashboard-metric__value">${metric.value}</strong></div>
     ${metric.percent === undefined ? nothing : html`<div class="dashboard-metric__bar" role="meter" aria-label=${`${title} use`} aria-valuemin="0" aria-valuemax="100" aria-valuenow=${Math.round(metric.percent)}><span style=${`width: ${Math.min(100, metric.percent)}%`}></span></div>`}
-    <small class="dashboard-metric__detail">${metric.detail}</small>
+    <small class="dashboard-metric__detail">${metric.detail}${metric.path ? html`<span class="dashboard-metric__path" title=${metric.path}><span dir="ltr">${metric.path}</span></span>` : nothing}</small>
     ${sparkline(metric.series, metric.percent === undefined ? undefined : 100)}
   </article>`;
 }
@@ -74,11 +79,11 @@ function hostCards(metrics: HostMetrics, history: readonly HostMetrics[]) {
     card("disk", "Disk", disk && {
       value: percentLabel(share(disk.usedBytes, disk.totalBytes)), percent: share(disk.usedBytes, disk.totalBytes),
       series: series((sample) => sample.disk && share(sample.disk.usedBytes, sample.disk.totalBytes)),
-      detail: `${formatBytes(disk.usedBytes)} of ${formatBytes(disk.totalBytes)} · ${disk.path}`,
+      detail: `${formatBytes(disk.usedBytes)} of ${formatBytes(disk.totalBytes)}`, path: disk.path,
     }),
     card("gpu", "GPU", gpu && { value: percentLabel(gpu.percent), percent: gpu.percent, series: series((sample) => sample.gpu?.percent), detail: "Busiest accelerator" }),
     card("network", "Network", network && {
-      value: `↓ ${rate(network.rxBytesPerSecond)} ↑ ${rate(network.txBytesPerSecond)}`,
+      value: `${rate("↓", network.rxBytesPerSecond)} ${rate("↑", network.txBytesPerSecond)}`,
       series: series((sample) => sample.network && sample.network.rxBytesPerSecond + sample.network.txBytesPerSecond),
       detail: "Physical interfaces",
     }),
@@ -112,12 +117,12 @@ function sessionRow(session: SessionView, summary: SessionSummary, showStatus: b
     props.onOpenSession(session);
   }}>
     <span class="dashboard-dot" data-status=${session.status} aria-hidden="true"></span>
-    <span class="dashboard-session__name">${session.title}</span>
-    <time class="dashboard-session__time" datetime=${session.updatedAt}>${relativeTime(Date.parse(session.updatedAt), props.now)}</time>
+    <span class="dashboard-session__name" title=${session.title}>${session.title}</span>
+    ${updatedAgo(session.updatedAt, props.now)}
     <span class="dashboard-session__meta">
       ${showStatus ? chip("status", DASHBOARD_STATUS_LABELS[session.status]) : nothing}
       ${isSessionStage(session.stage) ? chip("stage", SESSION_STAGE_LABELS[session.stage], session.stage) : nothing}
-      ${session.worker ? chip("worker", session.worker.name) : nothing}
+      ${session.worker ? chip("worker", session.worker.name, undefined, session.worker.name) : nothing}
       ${subagents ? chip("subagent", `${subagents.total} subagent${subagents.total === 1 ? "" : "s"}${subagents.active ? ` · ${subagents.active} running` : ""}`) : nothing}
       ${(session.pullRequests ?? []).map((pullRequest) => chip("pr", `#${pullRequest.number}${pullRequest.state ? ` ${pullRequestStateLabel(pullRequest.state)}` : ""}`,
         pullRequest.state ?? "unknown", pullRequestAccessibleLabel(pullRequest)))}
