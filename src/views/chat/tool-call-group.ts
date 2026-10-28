@@ -162,6 +162,20 @@ const PACKAGE_RUNNERS = new Set(["npx", "bunx"]);
 /** Shell builtins that only set up the command that follows. */
 const SHELL_SETUP = new Set(["cd", "export", "set", "source", "."]);
 
+/** A glyph per CLI and per tool, keyed like the marks: the CLI binary for a command, the tool's name otherwise.
+ * Built in so the card is recognisable without configuration; `chat.toolMarks` overrides any of them. */
+export const TOOL_EMOJI: Record<string, string> = {
+  git: "🐙", gh: "🐙", npm: "📦", pnpm: "📦", yarn: "🧶", bun: "🥟", node: "🟢", deno: "🦕",
+  docker: "🐳", podman: "🦭", curl: "🌐", wget: "🌐", http: "🌐", grep: "🔍", rg: "🔍", ag: "🔍",
+  cat: "📄", head: "📄", tail: "📄", less: "📄", bat: "📄", ls: "📁", find: "📁", tree: "📁",
+  make: "🔨", cmake: "🔨", cargo: "🦀", go: "🐹", tsc: "🟦", vitest: "🧪", jest: "🃏", pytest: "🐍",
+  kubectl: "☸️", k9s: "☸️", minikube: "☸️", kind: "☸️", kustomize: "☸️", helm: "⛵",
+  terraform: "🏗️", aws: "☁️", gcloud: "☁️", ssh: "🔑", rsync: "🔄",
+  read: "📄", edit: "✏️", write: "✏️", apply_patch: "✏️", search: "🔍",
+  web_fetch: "🌐", web_search: "🌐", codemode: "⚡", browser: "🧭", task: "🤖", message_bot: "💬",
+  present_media: "🖼️", ask_user_question: "❓",
+};
+
 /** The program a shell command runs: leading `FOO=bar` assignments, wrappers and a path are stripped, and `npx foo`
  * reports `foo`, since that is the tool the row is about. */
 export function commandBinary(item: ToolItem): string {
@@ -185,6 +199,18 @@ export function commandBinary(item: ToolItem): string {
     return binary;
   }
   return "";
+}
+
+/** The key a custom mark or an emoji is looked up by: the CLI for a command, the tool's name otherwise. */
+function markKey(item: ToolItem): string {
+  return toolKind(item) === "command" ? commandBinary(item) : item.name.trim().toLowerCase();
+}
+
+/** The glyph a row shows: the user's own emoji first, then the built-in one, then the SVG mark. */
+function toolEmoji(item: ToolItem, marks: Readonly<Record<string, string>>): string | undefined {
+  const key = markKey(item);
+  const name = item.name.trim().toLowerCase();
+  return marks[key] ?? marks[name] ?? TOOL_EMOJI[key] ?? TOOL_EMOJI[name] ?? TOOL_EMOJI[toolKind(item)];
 }
 
 /** The mark a call carries: its CLI for a command, its kind for every other tool. */
@@ -233,17 +259,23 @@ export type ToolCallGroupOptions = {
   expandedIds: ReadonlySet<string>;
   onRowToggle: (expansionId: string, open: boolean) => void;
   onCopy: (text: string, key: string) => void;
+  /** `chat.toolMarks`: the user's own emoji per CLI or tool name, over the built-in set. */
+  marks?: Readonly<Record<string, string>>;
 };
 
 /** The tool calls of one activity row as one card. */
 export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCallGroupOptions): TemplateResult {
   const running = items.some((item) => statusOf(item) === "running");
   const tools = items.length;
-  const distinct = new Map<string, { glyph: TemplateResult; color?: string }>();
-  for (const item of items) { const icon = toolIcon(item); if (!distinct.has(icon.key)) distinct.set(icon.key, { glyph: icon.glyph, ...(icon.color ? { color: icon.color } : {}) }); }
+  const custom = options.marks ?? {};
+  const distinct = new Map<string, { glyph: TemplateResult; color?: string; emoji?: string }>();
+  for (const item of items) {
+    const icon = toolIcon(item);
+    if (!distinct.has(icon.key)) distinct.set(icon.key, { glyph: icon.glyph, ...(icon.color ? { color: icon.color } : {}), ...(toolEmoji(item, custom) ? { emoji: toolEmoji(item, custom)! } : {}) });
+  }
   const kinds = [...distinct];
   const marks = kinds.slice(0, 4).map(([key, mark]) => html`<span class="tool-call-group__mark" title=${key.replace(/^cli:/u, "")}
-    style=${mark.color ? `--tool-mark:${mark.color}` : nothing}>${mark.glyph}</span>`);
+    style=${mark.color ? `--tool-mark:${mark.color}` : nothing}>${mark.emoji ? html`<span class="tool-call-group__emoji" aria-hidden="true">${mark.emoji}</span>` : mark.glyph}</span>`);
   return html`<div class="tool-call-group">
     <details class="tool-call-group__disclosure" .open=${options.expanded}
       @toggle=${(event: Event) => options.onToggle((event.currentTarget as HTMLDetailsElement).open)}>
@@ -262,10 +294,11 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
           const open = options.expandedIds.has(expansionId);
           const title = status === "running" ? label.running : label.done;
           const icon = toolIcon(item);
+          const emoji = toolEmoji(item, custom);
           return html`<div class="tool-call-row" data-status=${status}>
             <button type="button" class=${open ? "tool-call-row__toggle is-open" : "tool-call-row__toggle"} aria-expanded=${String(open)}
               @click=${() => options.onRowToggle(expansionId, !open)}>
-              <span class="tool-call-row__icon${icon.color ? " tool-call-row__icon--brand" : ""}" style=${icon.color ? `--tool-mark:${icon.color}` : nothing} aria-hidden="true">${icon.glyph}</span>
+              <span class="tool-call-row__icon${emoji ? " tool-call-row__icon--emoji" : icon.color ? " tool-call-row__icon--brand" : ""}" style=${icon.color ? `--tool-mark:${icon.color}` : nothing} aria-hidden="true">${emoji ?? icon.glyph}</span>
               <span class=${status === "running" ? "tool-call-row__title tool-call-row__title--live" : "tool-call-row__title"}>${title}</span>
               ${meta ? html`<span class="tool-call-row__meta">${meta}</span>` : nothing}
               ${statusGlyph(status)}

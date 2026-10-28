@@ -242,6 +242,8 @@ export type HomeProps = {
     sendShortcut: "enter" | "modifierEnter";
     githubEmbeds: boolean;
     datadogEmbeds: boolean;
+    /** The user's own emoji per CLI or tool, over the built-in set (tool-call-group.ts). */
+    toolMarks: Record<string, string>;
   };
   queue: QueueSnapshot;
   thinking: string;
@@ -1295,6 +1297,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
             expandedIds: props.expandedActivityIds,
             onRowToggle: (id, next) => props.onActivityExpanded(id, next),
             onCopy: (text, key) => void props.onCopy(text, key),
+            marks: props.chatPreferences.toolMarks,
           }) : nothing}
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>

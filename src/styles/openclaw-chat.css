@@ -1395,3 +1395,33 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   background: color-mix(in srgb, var(--tool-mark, var(--panel-strong)) 12%, var(--bg-elevated));
   border-color: color-mix(in srgb, var(--tool-mark, var(--border-strong)) 32%, var(--border-strong));
 }
+
+/* Even boxes: the ring is drawn inside the 24px chip, so an odd 1px border never shifts the mark by half a pixel. */
+.tool-call-group__mark {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  box-shadow: 0 0 0 2px var(--bg), inset 0 0 0 1px color-mix(in srgb, var(--tool-mark, var(--border-strong)) 32%, var(--border-strong));
+}
+
+.tool-call-group__mark svg { width: 12px; height: 12px; }
+
+.tool-call-row__icon { width: 16px; height: 16px; }
+.tool-call-row__icon svg { width: 16px; height: 16px; }
+
+/* Emoji marks: one em box, centered, so a wide glyph never nudges the title or the chip's ring. */
+.tool-call-row__icon--emoji,
+.tool-call-group__emoji {
+  display: grid;
+  place-items: center;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-size: 14px;
+  line-height: 1;
+  font-variant-emoji: emoji;
+}
+
+.tool-call-group__emoji { font-size: 13px; }
+
+/* Emoji read best a touch larger than the stroke marks at the same box. */
+.tool-call-row__icon--emoji { font-size: 15px; }
+.tool-call-group__emoji { font-size: 14px; }
