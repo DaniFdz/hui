@@ -103,6 +103,8 @@ export type Hui = {
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
   /** The target's opacity and its ancestors', read where it is, for a cue CSS draws on an element no pointer reaches. */
   opacity(target: Locator): Promise<number>;
+  /** Whether the control the target belongs to is disabled, which a menu option's own text cannot say. */
+  disabled(target: Locator): Promise<boolean>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
@@ -591,6 +593,14 @@ export const test = base.extend<{ hui: Hui }>({
             for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
             return opacity;
           }, box);
+        },
+        disabled: async (target) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("disabled: the target lays out no box");
+          return browser().evaluate(({ x, y }) => {
+            const control = document.elementFromPoint(x, y)?.closest<HTMLElement>("button, [aria-disabled]");
+            return control ? (control as HTMLButtonElement).disabled === true || control.getAttribute("aria-disabled") === "true" : false;
+          }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
         },
         attach: async (target, files) => {
           const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";

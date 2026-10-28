@@ -524,7 +524,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisessionsidmodels", "docs/api.md#post-__huisessionsidmodel", "docs/api.md#model-catalog-selection"],
     surfaces: ["route:GET /__hui/sessions/:id/models", "route:POST /__hui/sessions/:id/model"],
     journeys: ["chat-composer", "configured-models"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -534,7 +534,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessionsidthinking"],
     surfaces: ["route:POST /__hui/sessions/:id/thinking"],
     journeys: ["chat-composer"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

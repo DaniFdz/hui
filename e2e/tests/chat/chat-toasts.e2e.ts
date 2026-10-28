@@ -1,17 +1,9 @@
 /** A failed chat action says so in the shell's toast, in the top trailing corner, and repeats when it fails again (CHAT-021). */
-import { expect, type Locator } from "e2e";
+import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 const REWIND = /\/__hui\/sessions\/[^/]+\/rewind$/u;
 const REASON = "The branch could not be rewound.";
-
-const inside = async (target: Locator, width: number, height: number) => {
-  const box = (await target.boundingBox())!;
-  expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.y).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(width);
-  expect(box.y + box.height).toBeLessThanOrEqual(height);
-};
 
 test("a rejected chat action shows its reason in the toast, which dismisses and repeats", { tags: ["CHAT-021"], platforms: ["web"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
@@ -48,6 +40,10 @@ test("a rejected chat action shows its reason in the toast, which dismisses and 
   await again.arrived();
   await again.reject(503, REASON);
   await expect(toast).toBeVisible();
-  await inside(toast, phone.width, phone.height);
+  const shown = (await toast.boundingBox())!;
+  expect(shown.x).toBeGreaterThanOrEqual(0);
+  expect(shown.y).toBeGreaterThanOrEqual(0);
+  expect(shown.x + shown.width).toBeLessThanOrEqual(phone.width);
+  expect(shown.y + shown.height).toBeLessThanOrEqual(phone.height);
   await expect(transcript.getByText(REASON)).toHaveCount(0);
 });
