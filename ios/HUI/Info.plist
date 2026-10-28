@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.hui.ios</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hui</string>
+			</array>
+		</dict>
+	</array>
+	<key>UIAppFonts</key>
+	<array>
+		<string>atkinson-hyperlegible-next-italic.ttf</string>
+		<string>atkinson-hyperlegible-next.ttf</string>
+		<string>dm-sans-italic.ttf</string>
+		<string>dm-sans.ttf</string>
+		<string>fraunces-italic.ttf</string>
+		<string>fraunces.ttf</string>
+		<string>geist.ttf</string>
+		<string>hui-nerd-font-symbols.ttf</string>
+		<string>ibm-plex-sans-italic.ttf</string>
+		<string>ibm-plex-sans.ttf</string>
+		<string>instrument-sans-italic.ttf</string>
+		<string>instrument-sans.ttf</string>
+		<string>jetbrains-mono-italic.ttf</string>
+		<string>jetbrains-mono.ttf</string>
+		<string>lora-italic.ttf</string>
+		<string>lora.ttf</string>
+		<string>space-grotesk.ttf</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

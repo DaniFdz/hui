@@ -142,3 +142,48 @@ Pi Durable owns conversations, runs, queues and crash recovery.
 - When you add a source directory, name it here; the same test checks that
   every directory holding source modules appears in this file by its full
   path (`server/browser/`, not `browser/`).
+
+## ios/ (the iPhone app)
+
+`ios/` holds the native iPhone app's code, with its rules in `ios/AGENTS.md`. `ios/HUI.xcodeproj` builds the
+`HUI` app and its `HUITests` unit tests from the `ios/HUI/` and `ios/HUITests/` folders, so adding a file never
+edits the project; `npm run ios:build` builds the core, then the app, and installs it on the simulator, and
+`npm run e2e:ios` runs the shared e2e tests (`e2e/tests/`) on that simulator.
+
+| Path | Owns |
+|---|---|
+| `ios/core/` | The JavaScriptCore core: `entry.ts` re-exports pure `src/lib/` functions (navigation, server-sent event frames, reconnect backoff, the sidebar's groups and session labels, the transcript reducer, the chat projection, the tool cards' presentation, send request ids and Markdown tokens). `npm run ios:core` (`scripts/ios-build.ts`) bundles it into `ios/HUI/Resources/Generated/hui-core.js`, with `hui-core.sha256` beside it listing the bundle and its inputs for the Xcode build to check; git ignores both |
+| `ios/HUI/App/` | `HUIApp.swift` (entry point, loads the core), `RootView.swift` (Connect, then the session list; `hui://open?path=` links through the core's `resolveNavigation`), `GatewayModel.swift` (gateway URL and version check), `ConnectView.swift` |
+| `ios/HUI/Sessions/` | `SessionsModel.swift` (the live list: `GET /__hui/sessions`, the events stream, reconnects), `SessionListView.swift` (rows grouped and named as the web sidebar's) |
+| `ios/HUI/Settings/` | `SettingsModel.swift` (`GET`/`PUT /__hui/settings`, whether a change was saved, the colour mode, theme palettes (the core's `themePalettes`) and text size the app applies, the Settings words from the core's `SETTINGS_COPY`), `SettingsView.swift` (the Settings pages and their page list, as the web's phone layout shows them) |
+| `ios/HUI/Chat/` | `ChatView.swift` (the chat screen: header, transcript, activity rows, working indicator, composer), `ToolCardView.swift` (read, command, codemode and other tool cards, with their copy actions), `QueueView.swift` (the message queue: Steer and Follow up rows, steer now, edit, remove and reorder), `ProgressCardView.swift` (the agent's task progress card above the composer, folded or open), `MarkdownView.swift` (messages drawn from the core's Markdown tokens), `ConversationModel.swift` (one open session: open, the session stream with tickets, `Origin` and reconnects, the core's transcript and rows, send, steer, follow-up and Stop, the queue and its changes), `SessionSocket.swift` (the stream's WebSocket), `ChatRows.swift` (the transcript items and chat rows the core returns, mirrored by hand and checked by `scripts/ios-contract.test.mjs`) |
+| `ios/HUI/Work/` | `WorkPaneView.swift` (the open conversation's Work pane: its views as one control's segments, the "Open Work view" launcher, Files for now), `FilesView.swift` (the navigator with its filter, new entry and delete dialogs, and the open file's draft below it), `FilesModel.swift` (the Files routes, the tree it expands folder by folder, the filter's search, the draft's save, and the words from the core's `src/lib/files/copy.ts`) |
+| `ios/HUI/Core/` | `HUICore.swift`: the JavaScriptCore host that runs `hui-core.js` on its own serial queue, and the types its answers decode into |
+| `ios/HUI/Gateway/` | `API.swift`: the `API` namespace of the payload types, and the `JSONValue` they use for open values; `GatewayClient.swift` (`x-hui`, deadlines, error bodies); `EventStream.swift` (server-sent event framing) |
+| `ios/HUI/Gateway/Schema/` | The payload types, one Swift file per API area, generated from `docs/api.schema.json` by `npm run api:schema` |
+| `ios/HUITests/` | Swift unit tests: SSE framing, the core bridge, the session list and a conversation against a stubbed gateway, and decoding of payloads recorded from a fixture gateway (`Fixtures/`) |
+
+## Elsewhere
+
+| Path | Owns |
+|---|---|
+| `cli/` | The `hui` command: gateway lifecycle (`gateway*.ts`, `state.ts`), installed releases and updates (`releases.ts`, `update*.ts`, `installation.ts`), `hui doctor` (`doctor*.ts`), the `/__hui/` client of `hui bot` and `hui schedule` (`gateway-client.ts`) |
+| `desktop/` | Electron wrapper (`main.cjs`, `policy.cjs`) and macOS app registration (`install.mjs`) |
+| `bin/` | Entry points: `hui.mjs` (installed CLI), `hui-dev.mjs` (`npm run dev`) |
+| `scripts/` | Build, release and nightly versioning, and the iOS core bundle (`ios-build.ts`) |
+| `e2e/` | Browser-tool E2E procedures (`*.browser.md`), the launcher (`visual-verification.mjs`) and the package test; `e2e/catalogue/` (every user outcome HUI supports, one file per area, with the collectors of code surfaces that `scripts/use-cases.test.ts` checks it against), `e2e/tests/` (the shared e2e suite that `e2e.config.ts` runs, with its fixture in `e2e/fixtures/hui.ts`), `e2e/fixtures/` (fake providers, CLIs and services, seeds and PI extensions the launcher and tests start), `e2e/probes/` (in-page probes and oracles a procedure loads into the running app) |
+| `nix/` | Flake package, NixOS module and smoke checks |
+| `skills/` | Skills shipped with HUI |
+| `themes/`, `public/` | Theme palettes and static assets |
+
+## Conventions that keep this map short
+
+- Every source module begins with a header comment: what it owns and, when it
+  helps, what it deliberately leaves to someone else. A test enforces that the
+  header exists (`scripts/module-headers.test.mjs`); keeping it true is the
+  editor's job.
+- Tests sit beside their owner as `*.test.ts`; helpers that several server tests share
+  (bounded waits, log readers) live in `server/test-support/`, which the build leaves out.
+- When you add a source directory, name it here; the same test checks that
+  every directory holding source modules appears in this file by its full
+  path (`server/browser/`, not `browser/`).
