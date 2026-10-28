@@ -301,7 +301,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id", "route:GET /__hui/directories"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
