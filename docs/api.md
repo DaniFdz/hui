@@ -3348,7 +3348,7 @@ blocked, and changing a goal on a worker's session are `400`.
 
 While a goal is `active`, each request's system prompt carries a `hui_goal`
 section with the objective. When such a turn settles cleanly, HUI queues
-`Advance the active goal; keep it active until fully achieved.` through the
+`Continue the goal.` through the
 normal follow-up queue, which is what keeps the work going without a human
 message. A stop, a failed run, an open question, input already queued, or a
 worker's session queues nothing. After ten automatic turns the goal is paused

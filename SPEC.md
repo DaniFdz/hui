@@ -1340,7 +1340,7 @@ its answer.
 
 While a goal is active, every request's prompt carries its objective in a
 `hui_goal` section. When a turn settles cleanly, HUI queues one continuation
-turn ("Advance the active goal; keep it active until fully achieved.") through
+turn ("Continue the goal.") through
 the ordinary follow-up queue: it obeys admission, permissions and delivery like
 any message, and it appears in the transcript because it is a real prompt.
 Nothing is queued after a stop, a failed run, an open question, a message

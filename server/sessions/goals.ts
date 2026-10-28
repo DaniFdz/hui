@@ -13,7 +13,7 @@ const GOAL_NOTE_MAX = 2_000;
 /** Automatic turns one goal may spend before HUI pauses it. The operator resumes it for another window. */
 export const MAX_GOAL_CONTINUATIONS = 10;
 /** What HUI queues to pursue an active goal, in the operator's place. */
-export const GOAL_CONTINUE_PROMPT = "Advance the active goal; keep it active until fully achieved.";
+export const GOAL_CONTINUE_PROMPT = "Continue the goal.";
 
 /** Statuses the agent may report; pausing, resuming and clearing stay operator actions. */
 const AGENT_GOAL_STATUSES = ["complete", "blocked"] as const;
