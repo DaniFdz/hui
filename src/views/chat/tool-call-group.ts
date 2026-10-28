@@ -76,7 +76,17 @@ export function toolCallLabel(item: ToolItem): { done: string; running: string }
     if (query) return { done: `Searched the web for “${clip(query, 40)}”`, running: `Searching the web for “${clip(query, 40)}”` };
   }
   if (name === "codemode") return { done: "Ran a codemode script", running: "Running a codemode script" };
-  if (name === "browser") return { done: "Used the browser", running: "Using the browser" };
+  if (name === "browser") {
+    const action = stringArg(item, "action");
+    if (action === "open" || action === "navigate") {
+      const url = stringArg(item, "url");
+      const shown = url ? new URL(url.startsWith("http") ? url : `https://${url}`).hostname.replace(/^www\./u, "") : "";
+      if (shown) return { done: `Opened ${shown}`, running: `Opening ${shown}` };
+    }
+    // `act` names a page element the transcript should not paraphrase: the row says a page was touched.
+    if (action === "act") return { done: "Acted on the page", running: "Acting on the page" };
+    return { done: "Used the browser", running: "Using the browser" };
+  }
   const readable = item.name.replace(/[_-]+/gu, " ").trim();
   return { done: `Used ${readable}`, running: `Using ${readable}` };
 }
