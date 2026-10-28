@@ -241,7 +241,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots", "bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
