@@ -7,7 +7,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-001",
     title: "Switch the sidebar between Agents and Bots",
-    behaviour: "The sidebar's top row always offers Agents and Bots, with no setting to turn bots on. Bots shows only the roster, without the navigation, with Search bots and its + (New bot); the choice survives a reload, and a bot's page keeps the Bots tab, in the mobile drawer too.",
+    behaviour: "The sidebar's top row always offers Agents, Bots and Files, with no setting to turn bots on. Bots shows only the roster, without the navigation, with Search bots and its + (New bot); the choice survives a reload, and a bot's page keeps the Bots tab, in the mobile drawer too.",
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-always-on-2026-10-20", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05", "docs/api.md#bots-are-always-on"],
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
@@ -17,7 +17,7 @@ const cases: UseCase[] = [
   {
     id: "BOT-002",
     title: "Move between Agents and Bots with the arrow keys",
-    behaviour: "With a tab focused, ArrowLeft and ArrowRight (and Home and End) select the other tab and move the focus to it.",
+    behaviour: "With a tab focused, ArrowLeft and ArrowRight select the previous or next tab, wrapping at the ends, and Home and End select the first and last tab; the focus moves with the selection.",
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05"],
     surfaces: [],
     journeys: ["bots"],

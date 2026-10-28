@@ -127,13 +127,15 @@ test("a bot at rest is done while its finished turn is unread, then sleeps; the 
 
 test("tab strips move with arrows, Home and End and ignore other keys", () => {
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "ArrowRight"), "bots");
-  assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "ArrowRight"), "sessions");
-  assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "ArrowLeft"), "bots");
-  assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "Home"), "sessions");
-  assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "End"), "bots");
+  assert.equal(tabAfterKey(SIDEBAR_TABS, "bots", "ArrowRight"), "files");
+  assert.equal(tabAfterKey(SIDEBAR_TABS, "files", "ArrowRight"), "sessions");
+  assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "ArrowLeft"), "files");
+  assert.equal(tabAfterKey(SIDEBAR_TABS, "files", "Home"), "sessions");
+  assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "End"), "files");
   assert.equal(tabAfterKey(SIDEBAR_TABS, "sessions", "Enter"), undefined);
   assert.equal(normalizeSidebarTab("bots"), "bots");
-  for (const value of [null, "Bots", "agents", 1]) assert.equal(normalizeSidebarTab(value), "sessions");
+  assert.equal(normalizeSidebarTab("files"), "files");
+  for (const value of [null, "Bots", "agents", "Files", 1]) assert.equal(normalizeSidebarTab(value), "sessions");
 });
 
 test("the side panel remembers open/closed and its width, defaulting open at 344 px", () => {
