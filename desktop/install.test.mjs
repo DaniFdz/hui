@@ -68,6 +68,9 @@ test('launch metadata excludes credentials and plist edits are idempotent', asyn
   const registered = updatePlist(plist, '1.0.0');
   assert.match(registered, /<key>CFBundleURLTypes<\/key><array><dict>.*<key>CFBundleURLSchemes<\/key><array><string>hui<\/string><\/array>.*<\/dict><\/array>/u);
   assert.equal(updatePlist(registered, '1.0.0'), registered, 'the scheme is registered once');
+  // Electron's plist nests a dictionary; the scheme belongs to the root one or macOS never sees it.
+  const nested = '<plist><dict><key>ElectronAsarIntegrity</key><dict><key>hash</key><string>0</string></dict><key>Name</key><string>HUI</string></dict></plist>';
+  assert.match(updatePlist(nested, '1.0.0'), /<key>Name<\/key><string>HUI<\/string><key>CFBundleURLTypes<\/key>/u);
   const { png, icns } = appIcon(await readFile(new URL('../public/pi-logo-3d.png', import.meta.url)));
   assert.equal(png.subarray(1, 4).toString(), 'PNG');
   assert.equal(icns.subarray(0, 4).toString(), 'icns');

@@ -52,8 +52,9 @@ export function updatePlist(plist, version) {
     plist = pattern.test(plist) ? plist.replace(pattern, entry) : plist.replace('</dict>', `${entry}</dict>`);
   }
   // The scheme the web app's `?open=app` hand-off and any launcher open; without it macOS cannot launch HUI from a link.
+  // Anchored to the root dictionary: Electron's plist has nested ones, and a scheme there is registered nowhere.
   if (!plist.includes('<key>CFBundleURLTypes</key>')) {
-    plist = plist.replace('</dict>', `<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>${marker}</string><key>CFBundleURLSchemes</key><array><string>hui</string></array></dict></array></dict>`);
+    plist = plist.replace(/<\/dict>(\s*<\/plist>)/u, `<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>${marker}</string><key>CFBundleURLSchemes</key><array><string>hui</string></array></dict></array></dict>$1`);
   }
   return plist;
 }
