@@ -25,6 +25,7 @@ test("Conversation as Markdown is offered disabled unless its session is the ope
   const bystander = await hui.createSession({ title: "Copy bystander" });
   const copied = screen.getByText("Conversation copied as Markdown.");
 
+  await hui.clipboard();
   await hui.prompt(source, "Keep this transcript");
   await hui.open(`/sessions/${bystander.id}`);
   await expect(screen.getByTestId("transcript")).toBeVisible();
@@ -33,7 +34,7 @@ test("Conversation as Markdown is offered disabled unless its session is the ope
   await away.getByText("Conversation as Markdown", { visible: true }).tap();
   await expect(away.getByText("Session ID", { visible: true })).toBeVisible();
   await expect(copied).toBeHidden();
-  await expect.poll(() => hui.url()).toContain(`/sessions/${bystander.id}`);
+  await expect.poll(() => hui.copied()).toBe("");
   await away.getByText("Session ID", { visible: true }).press("Escape");
   await expect(away.getByText("Session ID", { visible: true })).toBeHidden();
 
@@ -43,4 +44,5 @@ test("Conversation as Markdown is offered disabled unless its session is the ope
   await menu.getByText("Copy", { exact: true, visible: true }).tap();
   await menu.getByText("Conversation as Markdown", { visible: true }).tap();
   await expect(copied).toBeVisible();
+  await expect.poll(() => hui.copied()).toContain("Keep this transcript");
 });

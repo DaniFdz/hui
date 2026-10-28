@@ -9,6 +9,7 @@ test("a new session takes its generated title in the document title, sidebar row
   const generated = "Mejorar los nombres de sesión";
   const heading = screen.getByTestId("session-title", { visible: true });
   const transcript = screen.getByTestId("transcript");
+  const composer = screen.getByLabel("Message");
   const row = (title: string) => screen.getByLabel(new RegExp(`^${title}, status `, "u"));
 
   await hui.open("/");
@@ -18,16 +19,21 @@ test("a new session takes its generated title in the document title, sidebar row
 
   await expect(heading).toHaveText(message);
   await expect(row(message)).toBeVisible();
+  await expect(screen.getByTestId("session-row")).toHaveCount(1);
   await expect.poll(() => hui.documentTitle()).toBe(`${message} · HUI`);
+
   await hui.provider.held();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
-  await expect(screen.getByText(/timed out|Could not name/iu)).toBeHidden();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await composer.fill("A draft kept while the model names the session");
+  await expect(composer).toBeFocused();
 
   await hui.provider.release();
   await expect(heading).toHaveText(generated);
   await expect(row(generated)).toBeVisible();
   await expect.poll(() => hui.documentTitle()).toBe(`${generated} · HUI`);
-  await expect(screen.getByTestId("session-row")).toHaveCount(1);
+  await expect(composer).toHaveValue("A draft kept while the model names the session");
+  await expect(composer).toBeFocused();
   const words = (await heading.textContent())?.trim().split(/\s+/u) ?? [];
   expect(words.length).toBeGreaterThanOrEqual(3);
   expect(words.length).toBeLessThanOrEqual(6);
