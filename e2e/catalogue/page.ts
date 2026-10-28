@@ -27,7 +27,7 @@ const cases: UseCase[] = [
     behaviour: "With no session to target, New task reads *Start a session first: automation runs inside a session HUI already owns.*, and the Session picker and **Create task** are disabled. Bot chats are never offered as targets.",
     spec: ["SPEC.md#behaviour", "SPEC.md#bots"],
     surfaces: ["page:cron"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
