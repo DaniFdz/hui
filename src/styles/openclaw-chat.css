@@ -1169,3 +1169,42 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
     animation-duration: 4s;
   }
 }
+
+/* HUI adds a refresh control to the composer progress card, so its summary
+   carries one column more than the reference geometry. */
+.session-progress-card--composer .session-progress-card__summary {
+  grid-template-columns: var(--session-progress-marker-size) minmax(0, 1fr) auto auto auto;
+}
+
+.session-progress-card__refresh {
+  display: inline-grid;
+  width: var(--chat-stack-trailing-control-size);
+  height: var(--chat-stack-trailing-control-size);
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: var(--cursor-action);
+  transition: color 140ms ease;
+}
+
+.session-progress-card__refresh:not(:disabled):hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.session-progress-card__refresh:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.session-progress-card__refresh:disabled {
+  cursor: default;
+}
+
+.session-progress-card__refresh svg {
+  width: 14px;
+  height: 14px;
+}

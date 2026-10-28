@@ -228,6 +228,10 @@ export type HomeProps = {
   opening: boolean;
   /** The open request failed, so there is no transcript to show; onRetry asks again. */
   openError?: string;
+  /** A re-read of the open session is in flight. */
+  refreshing?: boolean;
+  /** Reads the open session again, for a card the stream left behind. */
+  onRefreshSession: () => void;
   /** A turn is in flight, so the composer is locked. */
   streaming: boolean;
   sending: boolean;
@@ -1854,6 +1858,7 @@ function renderTaskProgress(props: HomeProps) {
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
+        <button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Refresh task progress" ?disabled=${props.refreshing} @click=${(event: Event) => refreshTaskProgress(event, props)}>${props.refreshing ? html`<span class="session-run-spinner"></span>` : icons.refresh}</button>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
       <div class="session-progress-card__body" role="region" aria-label="Task progress">
@@ -1862,6 +1867,13 @@ function renderTaskProgress(props: HomeProps) {
       </div>
     </details>
   </div>`;
+}
+
+/** A control inside the summary re-reads the card instead of collapsing it. */
+function refreshTaskProgress(event: Event, props: HomeProps) {
+  event.preventDefault();
+  event.stopPropagation();
+  props.onRefreshSession();
 }
 
 function renderConnection(props: HomeProps) {

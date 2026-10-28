@@ -4,7 +4,8 @@
  * the models it can switch to and the one it runs on, its context usage, thinking level and fast mode, with the
  * requests that change them and the once-per-selection model list request; the pending question with the focus it
  * returns to; the live compaction; and the copied-message mark. The shell reads its props and receives the stream's
- * frames that belong to the composer, the backlog and the sidebar.
+ * frames that belong to the composer, the backlog and the sidebar; and the request that reads the session again when
+ * a view shows something the stream left behind.
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
 import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
@@ -35,6 +36,8 @@ export class ConversationController implements ReactiveController {
   transcript: readonly TranscriptItem[] = [];
   subagents: readonly SubagentTaskView[] = [];
   opening = false;
+  /** A re-read of the open session is in flight. */
+  refreshing = false;
   /** Why the selected session's open request failed; its view offers a retry. */
   openError = "";
   streaming = false;
@@ -172,6 +175,28 @@ export class ConversationController implements ReactiveController {
         this.#host.requestUpdate();
         this.#deps.flushLaunchPrompt();
       }
+    }
+  }
+
+  /** Reads the open session again, so a card whose update never reached this page shows the gateway's copy. */
+  async refresh(): Promise<void> {
+    const id = this.selected?.id;
+    if (!id || this.refreshing) return;
+    const requestToken = this.#openRequestToken;
+    this.refreshing = true;
+    this.#host.requestUpdate();
+    try {
+      const opened = await openSession(id);
+      if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) return;
+      this.selected = opened.session;
+      this.applySnapshot(opened.snapshot);
+    } catch (error) {
+      if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
+        this.#deps.showError(error instanceof Error ? error.message : "Could not refresh that session.");
+      }
+    } finally {
+      this.refreshing = false;
+      this.#host.requestUpdate();
     }
   }
 
@@ -521,16 +546,18 @@ export class ConversationController implements ReactiveController {
       });
   };
 
-  props(): Pick<HomeProps, "thinking" | "fast" | "models" | "currentModel" | "usage" | "onSelectModel" | "onSelectThinking" | "onSelectFast"> {
+  props(): Pick<HomeProps, "thinking" | "fast" | "models" | "currentModel" | "usage" | "refreshing" | "onSelectModel" | "onSelectThinking" | "onSelectFast" | "onRefreshSession"> {
     return {
       thinking: this.thinking,
       ...(this.fast === undefined ? {} : { fast: this.fast }),
       models: this.models,
       currentModel: this.currentModel,
       usage: this.usage,
+      refreshing: this.refreshing,
       onSelectModel: this.#selectModel,
       onSelectThinking: this.#selectThinking,
       onSelectFast: this.#selectFast,
+      onRefreshSession: () => void this.refresh(),
     };
   }
 }
