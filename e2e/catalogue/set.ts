@@ -474,12 +474,12 @@ const cases: UseCase[] = [
   },
   {
     id: "SET-050",
-    title: "Review PI's own model configuration",
-    behaviour: "Below the HUI sections, Models shows PI's default provider, model and thinking level, its cycling patterns, the credential sources it found (never their values), the collapsed “Available catalog · N models” and any configuration diagnostics, read from PI's settings path, which HUI never writes. While PI's configuration loads the page says “Reading pi configuration…”, and a failed read shows the reason with Retry.",
+    title: "Inspect the model catalog without PI configuration panels",
+    behaviour: "Below HUI model routing, Subagent routes and Calls, Models keeps the collapsed “Available catalog · N models”. Opening it lists each model's provider/id and context/output limits, with PI's read-only settings path below. PI defaults, Cycling models and PI credential sources are not shown on this page, including after a reload.",
     spec: ["docs/api.md#get-__huipi", "SPEC.md#behaviour"],
     surfaces: ["route:GET /__hui/pi"],
     journeys: ["configured-models"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -758,6 +758,16 @@ const cases: UseCase[] = [
     surfaces: ["tool:sessions_spawn"],
     journeys: ["subagent-routes"],
     web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "SET-080",
+    title: "Read Models configuration diagnostics and recover a failed load",
+    behaviour: "Models shows any configuration diagnostics from PI and the settings path, which HUI never writes. While PI's configuration loads the page says “Reading pi configuration…”, and a failed read shows the reason with Retry.",
+    spec: ["docs/api.md#get-__huipi", "SPEC.md#behaviour"],
+    surfaces: ["route:GET /__hui/pi"],
+    journeys: ["configured-models"],
+    web: "backlog",
     ios: "backlog",
   },
 ];

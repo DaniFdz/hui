@@ -818,53 +818,6 @@ function renderModelsPage(props: SettingsProps) {
     )}
     ${renderSubagentRoutes(props, modelOptions)}
     ${renderCallsSection(props)}
-    ${renderSection(
-      "PI defaults",
-      "Read-only fallbacks used when HUI has no primary route.",
-      html`
-        ${renderRow(
-          "Provider",
-          "pi's default provider.",
-          html`<span class="settings-row__value">${model.defaultProvider || "pi default"}</span>`,
-        )}
-        ${renderRow(
-          "Model",
-          "pi's default model.",
-          html`<span class="settings-row__value">${model.defaultModel || "pi default"}</span>`,
-        )}
-        ${renderRow(
-          "Thinking level",
-          "Reasoning budget for a new session.",
-          html`<span class="settings-row__value">${model.thinking ?? "pi default"}</span>`,
-        )}
-      `,
-    )}
-    ${renderSection(
-      "Cycling models",
-      model.enabled.length === 0
-        ? "Not configured, so pi cycles through its own list."
-        : `${model.enabled.length} pattern${model.enabled.length === 1 ? "" : "s"}`,
-      model.enabled.length === 0
-        ? renderRow(
-            "No patterns set",
-            "Add `enabledModels` to pi's settings to control Ctrl+P cycling.",
-            html`<span class="settings-row__muted">—</span>`,
-          )
-        : html`${model.enabled.map((pattern) => renderRow(pattern, "Enabled model pattern", html`<span class="settings-row__muted">Configured</span>`))}`,
-    )}
-    ${renderSection(
-      "PI credential sources",
-      model.authenticated.length === 0
-        ? "No provider credentials found."
-        : "PI credential sources, separate from HUI-managed connections. Secret values never appear here.",
-      model.authenticated.length === 0
-        ? renderRow(
-            "None",
-            `Expected in ${pi.agentDir}/auth.json`,
-            html`<span class="settings-row__muted">—</span>`,
-          )
-        : html`${model.authenticated.map((name) => renderRow(name, "Credential source present; values remain private.", html`<span class="settings-row__muted">Configured</span>`))}`,
-    )}
     <details class="hui-provider-catalog"><summary>Available catalog · ${model.catalog.length} models</summary>
     ${renderSection(
       "Available catalog",

@@ -54,6 +54,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   stylesheets and are not rewritten. The two font selectors expose OpenClaw's ten choices
   independently, while code retains its dedicated monospace stack. Choosing
   Miami does not replace a custom preference.
+- Settings → Models does not show PI defaults, Cycling models or PI credential
+  sources. PI's defaults, cycling configuration and credential handling stay unchanged.
 - Gateway settings shows labeled green/red connection states and an amber
   initial loading state. Health refreshes every three seconds while that page
   is visible. Failed checks label cached runtime values as last known; retry

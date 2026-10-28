@@ -442,7 +442,6 @@
       "SET-046",
       "SET-047",
       "SET-048",
-      "SET-050",
       "SET-051",
       "SET-052",
       "SET-053",
@@ -578,7 +577,8 @@
       "CALL-023",
       "CALL-026",
       "CALL-027",
-      "CALL-028"
+      "CALL-028",
+      "SET-080"
     ],
     "ios": [
       "SHELL-001",
@@ -1122,7 +1122,8 @@
       "SET-079",
       "CHAT-073",
       "WORK-081",
-      "WORK-082"
+      "WORK-082",
+      "SET-080"
     ]
   },
   "unexercisedLabels": [
