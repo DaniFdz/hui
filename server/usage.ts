@@ -521,11 +521,8 @@ export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
   };
 }
 
-/** What a scan covers: the registered histories and the newest activity among them. */
 function coverageStamp(sessions: readonly SessionRecord[]): string {
-  let latest = "";
-  for (const session of sessions) if (session.updatedAt > latest) latest = session.updatedAt;
-  return `${sessions.length}:${latest}`;
+  return JSON.stringify(sessions.map(({ id, updatedAt, runStartedAt }) => [id, updatedAt, runStartedAt]));
 }
 
 /**
