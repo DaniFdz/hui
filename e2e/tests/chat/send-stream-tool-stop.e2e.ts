@@ -31,6 +31,7 @@ test("a reply streams, its tool card opens, and Stop ends the next run", { tags:
   const readRow = transcript.getByRole("button", /Read fixture\.txt/u);
   if (!(await readRow.isVisible())) await transcript.getByText("Used 1 tool").tap();
   await readRow.tap();
+  await expect(readRow.getByLabel("Done")).toBeVisible();
   await expect(transcript.getByText("Inspecting the fixture.")).toBeVisible();
   await expect(transcript.getByText(/^from .+\/fixture\.txt$/u)).toBeVisible();
   await expect(transcript.getByText("Real SDK browser fixture", { exact: false })).toBeVisible();
