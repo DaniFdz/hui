@@ -242,6 +242,28 @@ test("Task progress projects the durable progress_card signal above the composer
   assert.match(source, /agent-chat__composer-shell--question-composer/);
 });
 
+test("Task progress offers a refresh control that asks for a new card without folding it, and turns busy meanwhile", async () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  const props = {
+    transcript: [
+      { kind: "message", role: "user", text: "long task" },
+      { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "Check the build", status: "in_progress" }] }, status: "running" },
+    ],
+  };
+  const idle = await renderWorkerSession("running", props);
+  const busy = await renderWorkerSession("running", { ...props, refreshing: true });
+
+  assert.match(idle, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card"/u);
+  assert.doesNotMatch(idle, /aria-busy=(?:true|"true")/u);
+  assert.match(idle, /Check the build/u);
+  assert.match(busy, /aria-busy=true \?disabled=true/u);
+  assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*props\.onRefreshSession\(\);/u);
+  assert.match(styles, /\.session-progress-card__refresh\s*\{[^}]*cursor:\s*var\(--cursor-action\);/s);
+  assert.match(styles, /\.session-progress-card__refresh\[aria-busy="true"\] > svg\s*\{[^}]*animation:\s*session-run-spin/s);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.session-progress-card__refresh\[aria-busy="true"\]/s);
+});
+
 test("model and thinking reuse one exclusive composer picker pattern", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
@@ -724,4 +746,22 @@ test("subagent and watcher cards blur nothing behind them, so a long chat keeps 
   const cardRules = styles.match(/(?<=^|[{}])[^{}]*\.chat-subagents[^{}]*\{[^}]*\}/gu) ?? [];
   assert.ok(cardRules.length > 0);
   for (const rule of cardRules) assert.doesNotMatch(rule, /backdrop-filter/u, rule.trim());
+});
+
+test("the goal sits above the composer with its status and the operator's controls", async () => {
+  const goal = { objective: "get CI green on PR 1", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 };
+  const active = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal } });
+  assert.match(active, /class="agent-chat__goal-float"/u);
+  assert.match(active, /class="agent-chat__goal agent-chat__goal--active" data-expanded="false"/u);
+  assert.match(active, /class="agent-chat__goal-label">Pursuing goal</u);
+  assert.match(active, /class="agent-chat__goal-objective">get CI green on PR 1</u);
+  assert.match(active, /aria-label="Pause goal"/u);
+  assert.match(active, /aria-label="Clear goal"/u);
+  assert.doesNotMatch(active, /aria-label="Resume goal"/u);
+  const blocked = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal: { ...goal, status: "blocked", note: "waiting on review" } } });
+  assert.match(blocked, /agent-chat__goal--blocked" data-expanded="false" title=waiting on review>/u);
+  assert.match(blocked, /class="agent-chat__goal-label">Goal blocked</u);
+  assert.match(blocked, /aria-label="Resume goal"/u);
+  const none = await renderWorkerSession("idle");
+  assert.doesNotMatch(none, /agent-chat__goal-float/u);
 });

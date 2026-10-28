@@ -137,6 +137,13 @@ External web and mail links open in the default browser. The renderer is
 sandboxed without Node integration. Browser-local drafts have a separate Electron
 profile; HUI/PI storage remains shared through the existing gateway.
 
+The app also claims the `hui://` scheme, so a chat can be handed to it. A link
+carrying `?open=app`, which bots can mint, shows an **Open in HUI** button above
+the chat in a macOS browser; the button opens that chat in the app instead of
+the tab. The button is the hand-off because browsers only launch another program
+after a click. Other platforms and phones never show it and keep the chat in the
+browser.
+
 Installation is per-user, without sudo, and downloads the platform's Electron
 runtime. Reinstallation replaces only an HUI-owned bundle, never an unrelated
 `HUI.app`. `hui update` reinstalls the app when it runs an older release than
@@ -1110,6 +1117,32 @@ the rest of the work and list the decisions still open for you in its final
 reply. The transcript marks the questions as expired, with their options, so
 you can see what it asked; reply in the chat to decide. The timeout applies to
 questions asked after you change it.
+
+## Giving a conversation a goal
+
+A goal is one objective a conversation keeps pursuing, for work that outlasts a
+single reply: closing out a pull request, reproducing and fixing a bug, or
+finishing a docs pass.
+
+- Type `/goal get CI green on PR 12345 and push the fix` in the composer. The
+  objective starts the goal and is sent as its first message, so the work
+  begins at once.
+- A pill above the composer shows the goal: **Pursuing goal**, the objective,
+  and pause and clear buttons. Hover it to read why a goal is paused or blocked.
+- `/goal pause` keeps the objective but stops the automatic work; `/goal
+  resume` picks it up again; `/goal clear` removes it. The pill's buttons do the
+  same, and `/goal <new objective>` replaces the current goal.
+- While a goal is active, HUI continues the work after a clean turn ends. You
+  do not have to say "keep going". Pressing **Stop**, an error, an open
+  question or a message you have already queued all end the automatic work
+  instead: the next message you send carries the goal again.
+- The agent marks the goal **complete** only when the whole objective is
+  verified, or **blocked** when the same blocker has held for three turns. It
+  still replies to you when it does.
+- After ten automatic turns HUI pauses the goal and says so. Resume it to allow
+  another ten.
+- Goals run where the session runs. A session on a remote worker keeps its own
+  state, so goals are not offered there.
 
 ## Giving an agent a secret
 

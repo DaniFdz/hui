@@ -918,12 +918,22 @@ type SessionView = {
   jiraIssues?: SessionJiraIssue[];     // oldest first, at most 20
   stage: SessionStage;                 // effective Kanban column
   stageOrigin: "operator" | "agent" | "pullRequest" | "default";
+  goal?: SessionGoal;                  // the objective this conversation pursues, if any
   createdAt: string;
   updatedAt: string;
 };
 
 type SessionStage = "investigation" | "implementation" | "testing" | "done";
 // The board's first column, "backlog", holds backlog items, never sessions.
+
+type SessionGoal = {
+  objective: string;
+  status: "active" | "paused" | "blocked" | "complete";
+  createdAt: string;
+  updatedAt: string;
+  note?: string;         // why it is paused or blocked, when one was given
+  continuations: number; // automatic turns spent pursuing it
+};
 
 type SubagentStatus =
   | "starting" | "running" | "completed" | "failed"
@@ -1123,6 +1133,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
+| `goal` | HUI | Optional objective the conversation pursues: objective, status, timestamps, a note and how many automatic turns it spent. Only the operator starts, pauses, resumes and clears it (`POST …/goal`, `/goal`); the agent may only report `complete` or `blocked` through `update_goal`. |
 | `piSessionFile` | Runtime identity, HUI pointer | PI: learned from `get_state`, then stored by HUI for `--session` resume. Durable: `durable:<conversationId>`, replaced by a rewind's fork; a fork's session starts on its copy |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |
@@ -3200,6 +3211,13 @@ Idempotent: opening an already-open session must not spawn a second pi. For a
 session with a `piSessionFile`, the runtime resumes it so the old conversation
 appears.
 
+The browser waits up to 20 seconds for response headers, not for the whole
+transcript to download. Its JSON reader fails after 40 seconds without any body
+bytes and shows a recoverable load error with **Try again**. Progressing downloads
+may take longer. Replacing or discarding a view cancels its unfinished read,
+without stopping the runtime. The gateway skips JSON encoding for a client that
+has already disconnected.
+
 ### `POST /__hui/sessions/:id/prompt`
 
 ```json
@@ -3320,6 +3338,28 @@ Returns `{ ok: true }` after the operation, or the existing 400 or 409 error.
 
 Uses the prompt body and attachment rules. Queues work for after the current
 agent run has completely settled.
+
+### `POST /__hui/sessions/:id/goal`
+
+Starts, pauses, resumes or clears the conversation's goal and returns
+`{ "session": SessionView }`. The body is
+`{ "action": "start", "objective": string }` or
+`{ "action": "pause" | "resume" | "clear" }`.
+
+`start` replaces any existing goal and sends the objective as the goal's first
+turn, so it needs an idle session on this gateway (`409` while a turn is
+running). `resume` flips the status back to `active` and, when the session is
+idle, queues HUI's continuation turn. `pause` and `clear` never start work.
+Pausing a goal that is not active, resuming one that is neither paused nor
+blocked, and changing a goal on a worker's session are `400`.
+
+While a goal is `active`, each request's system prompt carries a `hui_goal`
+section with the objective. When such a turn settles cleanly, HUI queues
+`Continue the goal.` through the
+normal follow-up queue, which is what keeps the work going without a human
+message. A stop, a failed run, an open question, input already queued, or a
+worker's session queues nothing. After ten automatic turns the goal is paused
+with a note instead of claiming another.
 
 When PI consumes a steering or follow-up entry, HUI promotes the removed queue
 entry into the live transcript before the next model response. Slow turns and
@@ -3541,6 +3581,12 @@ direction), so the snapshot's transcript crosses a slow link compressed; a
 client that does not offer it gets uncompressed frames. After `closed` the
 server closes normally; a session deleted before the upgrade closes with code
 4404. 429 means too many tickets are pending, so retry later.
+
+The browser gives ticket acquisition and the WebSocket handshake 20 seconds
+each. A timed-out attempt enters the same retry/backoff path as a dropped
+connection. The socket's deadline is cleared on `open`; it does not limit the
+time an established connection may take to deliver a large first snapshot or
+force a healthy idle stream to reconnect.
 
 ### `POST /__hui/sessions/:id/continue`
 
@@ -3833,13 +3879,22 @@ Query parameters:
 - Malformed, impossible or reversed dates and unknown time zones return 400.
 
 The gateway reads every registered history once per time zone and answers any
-range from that scan, so changing the range, the zone or the filters does not
-read the conversations again. While the registry records no newer activity the
-scan is reused as it is. When it does, only the entries appended since that
-scan are read, and entries already counted stay counted, so a fork made
-afterwards does not add its inherited history again. `refresh=1`, and the first
-read after the gateway starts, read every history. A scan in progress is shared
-by concurrent requests. Compaction completion updates that activity even when no dated entry was added.
+range from that scan. Switching to a zone not yet scanned requires its own read;
+returning to a scanned zone reuses it. Session filtering happens in the browser.
+While each registered session's activity timestamp and run marker stay unchanged,
+the scan is reused as it is. A run finishing invalidates a scan read before its
+answer was recorded, even when the prompt's admission timestamp stays unchanged.
+When either changes, only the entries appended since that scan are read, and
+entries already counted stay counted, so a fork made afterwards does not add its
+inherited history again. Newer local Durable sessions can reuse the scan when
+existing sources and their order remain unchanged and the new sources were not
+already represented through inherited history. Removals, changed sources, older
+claimants and ambiguous additions require a full read. Visible metadata is
+refreshed even without a newer activity clock. `refresh=1`, and the first read in
+a zone after the gateway starts, read every history. Concurrent requests share
+compatible registry snapshots and full reads; a forced refresh waits for an
+incremental scan and then reads in full. Compaction completion updates activity
+even when no dated entry was added.
 Activity the registry does not record is not seen until the next scan or a forced
 refresh.
 
@@ -3863,8 +3918,11 @@ Durable history is read in pages without changing the store. Each conversation's
 ledger and latest entry ID are read together, and its scan stops at that ID so
 a concurrent reply cannot inflate the spend outside the entries. Inherited entries
 retain their global IDs and count once across registered sessions, attributed
-to their registered source conversation when available. Otherwise the newest
+to their registered source conversation when available. Otherwise the oldest
 claiming session receives them, including retained history after a rewind.
+Counters, entry claims and read boundaries are applied only after every page of
+that conversation succeeds, so a failed read can be retried without duplicating
+or skipping entries.
 Legacy PI files are read only from registry references, bounded at 32 MB and
 counted once per path. Models and providers come from records, never from the
 session's current selection. Unrecorded labels are `Unknown`.
@@ -3878,7 +3936,8 @@ Legacy PI compaction records do carry usage, so those already count inside the
 dated entries. A conversation whose ledger reports less than the entries it
 wrote contributes zero rather than a negative amount. Cost-only amounts are
 retained. A failed ledger read identifies the conversation in
-`coverage.unavailable` instead of implying that its spend is zero.
+`coverage.unavailable`, and that conversation's remainder is absent from the
+report's `unplacedSpend` total. The coverage gap does not imply zero spend.
 
 `coverage` lists the number of registered sessions and readable local histories,
 individual unavailable histories with their reasons, and `undatedRecords` excluded
@@ -4624,6 +4683,17 @@ conversation stops and forgets it.
 | `watcher { action: "dismiss", id }` | Removes a settled watcher, its log and its exit record, like the operator's `DELETE`; returns `{ id, status: "dismissed" }`. Refused while the watcher is running |
 | `watcher { action: "log", id, lines? }` | `{ id, lines, truncated }`: at most `lines` (default 100, max 400) from the end of the log, reading at most 256 KiB |
 
+A watcher that settles into `done`, `failed` or `dead` writes one automated
+user-role message into the owning conversation, once per settle (`reportedAt`
+in its record): `[HUI watcher event]` with `id`, `purpose`, `state`, `note`
+(why it ended), `target`, `outcome`, `started_at`, `ended_at`, `exit_code`,
+`last_output`, `log` and the action that follows. An idle conversation runs it as
+its next turn, a running one is steered, and one that is not open is woken for
+it; a deleted conversation is left alone. `stopped` (an operator stop) and
+`dismissed` announce nothing. A settle found at the next gateway start is
+announced only when the record was marked `interrupted`, i.e. it was still
+running when the last gateway stopped.
+
 Operator routes (all require `x-hui`, scoped to the owning session; unknown
 session or watcher → 404, a running watcher for `restart` or `DELETE` → 409):
 
@@ -4651,14 +4721,19 @@ logPath, state, pid, exitCode?, startedAt, endedAt?, lastLine, keepRunning? }`;
 `~/.config/hui/watchers.json` (records carry `keepRunning: true` when set);
 logs and exit records live under `~/.config/hui/watchers/`. State is derived on
 read and on the gateway's poll, which re-emits the session snapshot when a
-watcher's state or latest log line changes. `running` means the recorded PID is
-the process HUI started (its age matches the start time within 20 seconds), or
-that process is gone and a process of its group whose age matches still runs.
+watcher's state or latest log line changes. `running` means HUI can prove its
+shell is the recorded PID — `ps` reports the watcher's own script in that
+process's command line — or that process is gone and a process of its group
+whose age matches still runs. A check that cannot answer, or a PID the kernel
+gave to another process, reads `dead`; only the seconds right after `start` or
+`restart` count as proof by themselves. `stop` still ends what a failed check
+could not rule out, and `restart` refuses while death is unproven.
 A `keepRunning` watcher read `dead` on a poll, the first of which runs ten
 seconds after the gateway starts, starts again in place with a new PID and
-start time, then its log gets `[HUI] Started again at <time>: its processes
-were gone with no exit status.` `done`, `failed` and `stopped` watchers, and
-one whose working directory is gone, are left as they are.
+start time once its death is proven, then its log gets `[HUI] Started again at
+<time>: its processes were gone with no exit status.` `done`, `failed` and
+`stopped` watchers, and one whose working directory is gone, are left as they
+are.
 
 ### Secret requests
 
@@ -4811,7 +4886,11 @@ Markdown and at most 50 ordered steps whose status is `pending`, `in_progress`
 or `completed`. PI remains the durable writer: the latest tool-call arguments in
 its transcript are the card state, and an empty call clears it. HUI hides the raw
 control call from transcript activity and renders the validated projection above
-the composer; it never derives progress from assistant prose.
+the composer; it never derives progress from assistant prose. The card's refresh
+control reads the session again through `POST /__hui/sessions/:id/open`, then
+sends the agent an ordinary prompt asking it to update the card. A view that
+missed a streamed call and a card the agent stopped revising both come back
+current.
 
 ### Session-list progress
 

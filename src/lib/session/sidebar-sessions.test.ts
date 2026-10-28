@@ -109,6 +109,32 @@ test("Swarm helpers have no sidebar rows; ordinary subagents keep theirs", () =>
   assert.deepEqual(ids(sidebarSessionGroups(source, "helper", defaults)), []);
 });
 
+test("hiding many Swarm trees reads parent links once per projection", () => {
+  let parentReads = 0;
+  const helpers = Array.from({ length: 128 }, (_, index) => ({
+    ...session(`helper-${index}`, {
+      archived: index % 2 === 0 ? true : undefined,
+      subagent: {
+        taskId: `task-${index}`, collect: true, status: "completed",
+        startedAt: "2026-09-20T00:00:00Z", updatedAt: "2026-09-20T00:00:00Z",
+      },
+    }),
+    get parentId() {
+      parentReads += 1;
+      return index % 2 ? "helper-0" : "parent";
+    },
+  }));
+  const source = [
+    { label: "Work", sessions: [session("parent"), session("ordinary", { parentId: "parent" }), ...helpers] },
+    { label: "Other", sessions: [session("outside"), session("hidden-descendant", { parentId: "helper-0" })] },
+  ];
+  for (const groupBy of ["custom", "project", "none"] as const) {
+    parentReads = 0;
+    assert.deepEqual(ids(sidebarSessionGroups(source, "", { ...defaults, groupBy })).sort(), ["ordinary", "outside", "parent"]);
+    assert.ok(parentReads <= helpers.length * 4, `parent links were read ${parentReads} times for ${helpers.length} helpers`);
+  }
+});
+
 test("search recognizes OTHER and raw labels across every grouping mode", () => {
   for (const groupBy of ["custom", "project", "none"] as const) {
     assert.deepEqual(ids(sidebarSessionGroups(groups, "other", { ...defaults, groupBy })), ["Other note"]);

@@ -712,6 +712,15 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "CHAT-073",
+    title: "Give a conversation a goal and manage it",
+    behaviour: "Sending /goal <objective> empties the composer, sends the objective as the goal's first turn and shows a pill above the composer reading Pursuing goal with that objective. A clean turn ends with HUI's own continuation turn queued in the transcript. Pause goal turns the pill into Goal paused with Pause replaced by Resume, Resume goal makes it Pursuing goal again, and Clear goal removes the pill. /goal pause, /goal resume and /goal clear do the same from the composer.",
+    spec: ["SPEC.md#goals", "docs/api.md#post-__huisessionsidgoal"],
+    surfaces: ["command:goal", "tool:update_goal", "route:POST /__hui/sessions/:id/goal"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

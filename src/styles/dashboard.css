@@ -62,7 +62,8 @@
 .dashboard-chip--stage[data-tone="implementation"] { --stage-color: var(--stage-implementation); }
 .dashboard-chip--stage[data-tone="testing"] { --stage-color: var(--stage-testing); }
 .dashboard-chip--stage[data-tone="done"] { --stage-color: var(--stage-done); }
-.dashboard-chip--status { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
+.dashboard-chip--status[data-tone="waiting"] { border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); color: var(--warn); }
+.dashboard-chip--status:is([data-tone="error"], [data-tone="disconnected"]) { border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); }
 .dashboard-chip--pr[data-tone="open"] { color: var(--ok); }
 .dashboard-chip--pr[data-tone="merged"] { color: var(--pr-merged); }
 .dashboard-chip--pr[data-tone="closed"] { color: var(--danger); }

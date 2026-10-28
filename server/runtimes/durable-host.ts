@@ -9,8 +9,9 @@
  * the database.
  */
 import { randomUUID } from "node:crypto";
-import { closeSync, openSync, readFileSync, unlinkSync, writeSync } from "node:fs";
+import { closeSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { mkdir, stat } from "node:fs/promises";
+import { uptime } from "node:os";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
@@ -34,6 +35,7 @@ import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
 import { ImageLimits } from "./durable-images.ts";
 import type { BotChat, OfferedTool, ToolOrigin } from "./durable-offer.ts";
 import { invokeAgentTool } from "../agent-tools/bridge.ts";
+import { sessionGoalSection } from "../sessions/goals.ts";
 
 /** The tools of `extension` the model may call: not the ones only other tools call, such as codemode's `models.*`. */
 export const modelCallable = (extension: Extension): ToolRegistration[] =>
@@ -80,6 +82,12 @@ function alive(pid: number): boolean {
   catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
+/** A lock written before the last boot is stale; its PID now belongs to another
+ * process. The margin keeps clock adjustments after boot on the safe side. */
+function lockedBeforeBoot(path: string): boolean {
+  return statSync(path).mtimeMs < Date.now() - uptime() * 1000 - 60_000;
+}
+
 /** One owner per store: Durable has no cross-process locking of its own. */
 function acquireStoreLock(path: string): () => void {
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -93,7 +101,7 @@ function acquireStoreLock(path: string): () => void {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       const pid = Number(readFileSync(path, "utf8").trim());
-      if (Number.isInteger(pid) && pid > 0 && alive(pid)) {
+      if (Number.isInteger(pid) && pid > 0 && alive(pid) && !lockedBeforeBoot(path)) {
         throw new Error(pid === process.pid
           ? "The Durable session store is already open in this process."
           : `The Durable session store is already open in another HUI gateway (pid ${pid}).`);
@@ -163,6 +171,8 @@ export type DurableHostOptions = {
   invokeTool?: DurableToolInvoker;
   /** HUI session for a conversation nobody has reopened since a restart. */
   lookupCaller?: (conversationId: ConversationId) => Promise<string | undefined>;
+  /** The goal section a session's next prompt carries; the gateway answers from its registry, workers have none. */
+  goalFor?: (sessionId: string) => Promise<string | undefined>;
   /** Resume interrupted runs when the store opens (default). `hui doctor` opens it without running any work. */
   resume?: boolean;
   /** OptChat constants a test changes (docs/optchat.md). */
@@ -326,6 +336,13 @@ export class DurableHost implements ExtensionHost {
     };
     this.prompt.skillDirsFor = (conversationId) => this.skillDirsFor(conversationId);
     this.prompt.ultraFor = (conversationId) => this.#ultra.has(this.#callers.get(conversationId) ?? "");
+    const goalFor = options.goalFor;
+    if (goalFor) {
+      this.prompt.goalFor = async (conversationId) => {
+        const sessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId).catch(() => undefined);
+        return sessionId ? goalFor(sessionId).catch(() => undefined) : undefined;
+      };
+    }
   }
 
   /** Sets the bots this host runs, once, before its store opens: `null` on a host that never runs bot work. */
@@ -733,6 +750,6 @@ let defaultHost: DurableHost | undefined;
 
 /** The gateway's store: HUI's configuration directory and PI's agent directory. */
 export function durableHost(): DurableHost {
-  defaultHost ??= new DurableHost({ dir: DURABLE_DIR, agentDir: resolvePiAgentDir() });
+  defaultHost ??= new DurableHost({ dir: DURABLE_DIR, agentDir: resolvePiAgentDir(), goalFor: sessionGoalSection });
   return defaultHost;
 }

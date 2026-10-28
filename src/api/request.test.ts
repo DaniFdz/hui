@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
-import { fetchWithResponseDeadline, gatewayRequestError } from "./request.ts";
+import { test, vi } from "vitest";
+import { fetchJson, fetchWithResponseDeadline, gatewayRequestError } from "./request.ts";
 
 /** Answers after `headersMs`; its body then streams for `bodyMs` more. */
 function slowGateway(headersMs: number, bodyMs: number) {
@@ -59,6 +59,66 @@ test("a caller's own deadline is not reported as the default one", async () => {
     assert.equal(error.message, "HUI did not answer in time. Check the connection and try again.");
     return true;
   });
+});
+
+test("a JSON response that stops delivering bytes fails instead of leaving its chat loading forever", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  let body!: ReadableStreamDefaultController<Uint8Array>;
+  let signal: AbortSignal | null | undefined;
+  vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+    signal = init?.signal;
+    return new Response(new ReadableStream<Uint8Array>({
+      start(controller) {
+        body = controller;
+        controller.enqueue(new TextEncoder().encode('{"ok":true}'));
+        setTimeout(() => controller.enqueue(new Uint8Array()), 30_000);
+        signal?.addEventListener("abort", () => controller.error(signal?.reason), { once: true });
+      },
+    }));
+  });
+  let outcome: unknown;
+  const reading = fetchJson("/__hui/sessions/a/open").then((value) => { outcome = value; }, (error: unknown) => { outcome = error; });
+  t.onTestFinished(async () => { body.error(new Error("fixture closed")); await reading; vi.useRealTimers(); });
+  await vi.advanceTimersByTimeAsync(40_000);
+  assert.ok(outcome instanceof Error, "a stalled body must settle the opening request");
+  assert.match(outcome.message, /stopped sending data/u);
+  assert.equal(signal?.aborted, true, "the stalled transfer releases its connection");
+});
+
+test("a JSON download that keeps making progress can outlast the stall deadline", async (t) => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  vi.stubGlobal("fetch", async () => new Response(new ReadableStream<Uint8Array>({
+    start(controller) {
+      const bytes = new TextEncoder();
+      controller.enqueue(bytes.encode('{"ok":'));
+      setTimeout(() => controller.enqueue(bytes.encode("true")), 30_000);
+      setTimeout(() => { controller.enqueue(bytes.encode("}")); controller.close(); }, 60_000);
+    },
+  })));
+  const reading = fetchJson("/__hui/sessions/a/open");
+  await vi.advanceTimersByTimeAsync(60_000);
+  assert.deepEqual(await reading, { ok: true });
+});
+
+test("cancelling a view does not replace the response-header deadline", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    let requestSignal: AbortSignal | null | undefined;
+    const fetcher = (_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      requestSignal = init?.signal;
+      requestSignal?.addEventListener("abort", () => reject(requestSignal?.reason), { once: true });
+    });
+    const view = new AbortController();
+    const reading = fetchWithResponseDeadline(fetcher, "/__hui/sessions/a/open", {}, 20_000, view.signal);
+    const failed = assert.rejects(reading, /HUI did not answer within 20 s/u);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await failed;
+    assert.equal(view.signal.aborted, false);
+    assert.equal(requestSignal?.aborted, true);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("connection failures read as such; deliberate cancellation passes through", () => {

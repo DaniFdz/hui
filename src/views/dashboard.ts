@@ -1,8 +1,8 @@
 /**
  * The Dashboard page (Labs → Dashboard): a summary of the sessions in flight by status with a count of the finished
- * ones, their Kanban stages, the sessions waiting for the operator, the other sessions that are not idle grouped by
- * status with their subagents (three rows per list until its Show all button opens it), and a card per host metric
- * with its value, a bar and a sparkline of the samples the browser kept. A metric that reads above 85% is marked; one the host can't report
+ * ones, their Kanban stages, the sessions waiting for the operator, the ones still in flight grouped by status with
+ * their subagents (three rows per list until its Show all button opens it), and a card per host metric with its value,
+ * a bar and a sparkline of the samples the browser kept. A metric that reads above 85% is marked; one the host can't report
  * says so. A value too long for its card wraps between its parts, and the disk path keeps its end on one line.
  */
 import { html, nothing, type TemplateResult } from "lit";
@@ -122,7 +122,7 @@ function sessionRow(session: SessionView, summary: SessionSummary, showStatus: b
     <span class="dashboard-session__name" title=${session.title}>${session.title}</span>
     ${updatedAgo(session.updatedAt, props.now)}
     <span class="dashboard-session__meta">
-      ${showStatus ? chip("status", DASHBOARD_STATUS_LABELS[session.status]) : nothing}
+      ${showStatus ? chip("status", DASHBOARD_STATUS_LABELS[session.status], session.status) : nothing}
       ${isSessionStage(session.stage) ? chip("stage", SESSION_STAGE_LABELS[session.stage], session.stage) : nothing}
       ${session.worker ? chip("worker", session.worker.name, undefined, session.worker.name) : nothing}
       ${subagents ? chip("subagent", `${subagents.total} subagent${subagents.total === 1 ? "" : "s"}${subagents.active ? ` · ${subagents.active} running` : ""}`) : nothing}
@@ -135,11 +135,11 @@ function sessionRow(session: SessionView, summary: SessionSummary, showStatus: b
 function summaryCard(summary: SessionSummary) {
   const present = DASHBOARD_STATUSES.filter((status) => summary.statuses[status]);
   const counts = present.map((status) => `${summary.statuses[status]} ${DASHBOARD_STATUS_LABELS[status]}`);
-  const waiting = summary.statuses.waiting;
+  const needsYou = summary.needsYou.length;
   return html`<div class="dashboard-summary" data-testid="dashboard-summary">
     <div class="dashboard-summary__head">
       <strong class="dashboard-summary__total">${summary.total || !summary.finished ? `${summary.total} session${summary.total === 1 ? "" : "s"}` : "No sessions in flight"}${summary.finished ? html` <span class="dashboard-summary__finished">· ${summary.finished} finished</span>` : nothing}</strong>
-      <span class="dashboard-summary__state ${waiting ? "dashboard-summary__state--attention" : ""}">${waiting ? `${waiting} need${waiting === 1 ? "s" : ""} you` : "Nothing needs you"}</span>
+      <span class="dashboard-summary__state ${needsYou ? "dashboard-summary__state--attention" : ""}">${needsYou ? `${needsYou} need${needsYou === 1 ? "s" : ""} you` : "Nothing needs you"}</span>
     </div>
     ${present.length ? html`
       <div class="dashboard-summary__bar" role="img" aria-label=${`Sessions by status: ${counts.join(", ")}`}>${present.map((status) => html`<span class="dashboard-summary__segment" data-status=${status} style=${`flex-grow: ${summary.statuses[status]}`}></span>`)}</div>
@@ -161,20 +161,20 @@ function sessionsSection(props: DashboardProps) {
     return html`<ul id=${id} class=${className}>${shown.map((session) => sessionRow(session, summary, showStatus, props))}</ul>
       ${sessions.length > DASHBOARD_ROWS ? html`<button class="dashboard-more" type="button" aria-controls=${id} aria-expanded=${String(expanded)} @click=${() => props.onToggleList(key)}>${expanded ? "Show fewer" : `Show all ${sessions.length}`}</button>` : nothing}`;
   };
-  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Sessions</h2><p class="settings-section__desc">A session idle in Done counts as finished and is not listed. Subagents show on their parent; archived sessions are left out.</p></div></header>
+  return html`<section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Sessions</h2><p class="settings-section__desc">A session idle in Done counts as finished and is not listed; one that stopped anywhere else needs you. Subagents show on their parent; archived sessions are left out.</p></div></header>
     ${props.sessionsError ? html`<div class="callout danger" role="alert">${props.sessionsError}</div>` : nothing}
     ${empty && props.sessionsLoading ? html`<div role="status">Reading sessions…</div>` : html`
       ${summaryCard(summary)}
-      ${summary.waiting.length ? html`<div class="dashboard-needs-you" data-testid="dashboard-needs-you">
-        <h3 class="dashboard-subheading">Needs you <span class="dashboard-subheading__count">${summary.waiting.length}</span></h3>
-        ${list(NEEDS_YOU_LIST, summary.waiting, false, "dashboard-sessions")}
+      ${summary.needsYou.length ? html`<div class="dashboard-needs-you" data-testid="dashboard-needs-you">
+        <h3 class="dashboard-subheading">Needs you <span class="dashboard-subheading__count">${summary.needsYou.length}</span></h3>
+        ${list(NEEDS_YOU_LIST, summary.needsYou, true, "dashboard-sessions")}
       </div>` : nothing}
       ${stagePipeline(summary)}
       ${summary.groups.length
         ? html`<div class="dashboard-groups" data-testid="dashboard-active-sessions">${summary.groups.map((group) => html`
           <h3 class="dashboard-subheading">${group.label} <span class="dashboard-subheading__count">${group.sessions.length}</span></h3>
-          ${list(group.key, group.sessions, group.mixed, "settings-group dashboard-sessions")}`)}</div>`
-        : summary.waiting.length || summary.finished && !summary.total ? nothing : html`<p class="dashboard-empty">${summary.total ? "Every session is idle." : "No sessions yet."}</p>`}`}
+          ${list(group.key, group.sessions, false, "settings-group dashboard-sessions")}`)}</div>`
+        : summary.total || summary.finished ? nothing : html`<p class="dashboard-empty">No sessions yet.</p>`}`}
   </section>`;
 }
 

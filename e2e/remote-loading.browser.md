@@ -97,3 +97,65 @@ The proxy models latency and one shared bandwidth budget over HTTP/1.1 to
 loopback; Tailscale serve speaks HTTP/2 to the phone and adds its own TLS
 handshakes and DERP relays. A real phone on mobile data was not part of this run,
 and CPU throttling of a Mac core stands in for a phone's.
+
+## Session switching and stalled responses
+
+Use the isolated launcher from `.agents/skills/hui-visual-verification/SKILL.md`.
+The `session-load-proxy.mjs` fixture models a busy or interrupted gateway
+response, not whole-machine CPU saturation. It affects only the first open of
+one named session; every other request and WebSocket passes through.
+
+1. Launch the intended branch and run doctor. From the receipt, set
+   `HUI_E2E_URL` to its `url` and `HUI_E2E_WORKSPACE` to its `workspace`. Create
+   four disposable sessions as setup:
+
+   ```sh
+   node --input-type=module <<'JS'
+   const sessions = [];
+   for (const name of ["A", "B", "C", "D"]) {
+     const response = await fetch(`${process.env.HUI_E2E_URL}/__hui/sessions`, {
+       method: "POST", headers: { "x-hui": "1", "content-type": "application/json" },
+       body: JSON.stringify({ cwd: process.env.HUI_E2E_WORKSPACE, title: `Load probe ${name}`, group: "Load probe" }),
+       signal: AbortSignal.timeout(20_000),
+     });
+     if (!response.ok) throw new Error(`Session setup failed: ${response.status}`);
+     sessions.push((await response.json()).session);
+   }
+   console.log(JSON.stringify(sessions.map(({ id, title }) => ({ id, title }))));
+   JS
+   ```
+
+2. Through the real UI, open A and B and send each a message. Observe the
+   fixture replies so both have history. Record A's id as `SESSION_A`.
+3. Start the controlled proxy in its own foreground process:
+
+   ```sh
+   node e2e/fixtures/session-load-proxy.mjs "$HUI_E2E_URL" "$SESSION_A" stall
+   ```
+
+   Open its printed URL with the Browser tool. Select A and observe
+   *Loading the conversation…*. Switch to B and confirm its transcript and
+   composer work. Return to retained A. After 40 seconds without body bytes,
+   A must show *Could not load this conversation*, the no-progress reason and
+   **Try again**, not an empty chat. Press **Try again** and observe A's history
+   and a successful follow-up reply.
+4. With a fresh `stall` proxy, open A, then B, C and D. The three-view cache
+   evicts A. Read `GET /__load-probe/stats` on the proxy: `abandoned` must be 1
+   after eviction, before the 40-second body deadline. `abandonedAfterMs`
+   records the actual connection-close time. Confirm D remains usable. Closing
+   the browser view must not stop any agent turn.
+5. With a fresh proxy in `progress` mode, open A. The fixture sends its JSON in
+   six parts ten seconds apart. Switch only between A and B so A stays in the
+   three-view cache while it downloads. A must load intact after fifty seconds, without a timeout or
+   empty-chat state. This proves the guard measures silence, not total time.
+6. Repeat the load failure, Retry and session switching at 390×844. Exercise
+   the navigation drawer at 844×390. Inspect the screens and console, record
+   expected errors from the deliberately interrupted connection separately,
+   and capture final-HEAD desktop/mobile evidence outside Git. Stop every owned
+   proxy and clean up the launcher.
+
+The native HTTP/WebSocket checks in `src/api/sessions.test.ts` additionally
+hold the ticket response or socket handshake, verify retry after twenty
+seconds, and permit a slow first snapshot on an established connection. The
+browser's WebSocket API does not expose partial-message progress, so the
+handshake guard must not become a total first-snapshot deadline.

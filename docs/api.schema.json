@@ -8659,6 +8659,100 @@
         }
       }
     },
+    "SessionGoal": {
+      "type": "object",
+      "required": [
+        "objective",
+        "status",
+        "createdAt",
+        "updatedAt",
+        "continuations"
+      ],
+      "properties": {
+        "objective": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SessionGoalStatus"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "continuations": {
+          "type": "number"
+        }
+      }
+    },
+    "SessionGoalRequest": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "objective"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "start"
+            },
+            "objective": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "pause"
+                },
+                {
+                  "type": "string",
+                  "const": "resume"
+                },
+                {
+                  "type": "string",
+                  "const": "clear"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "SessionGoalStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "active"
+        },
+        {
+          "type": "string",
+          "const": "paused"
+        },
+        {
+          "type": "string",
+          "const": "blocked"
+        },
+        {
+          "type": "string",
+          "const": "complete"
+        }
+      ]
+    },
     "SessionGroup": {
       "type": "object",
       "required": [
@@ -9828,6 +9922,9 @@
         },
         "stageOrigin": {
           "$ref": "#/$defs/SessionStageOrigin"
+        },
+        "goal": {
+          "$ref": "#/$defs/SessionGoal"
         },
         "createdAt": {
           "type": "string"
@@ -13572,6 +13669,9 @@
       "SessionConnectResponse",
       "SessionError",
       "SessionFastResponse",
+      "SessionGoal",
+      "SessionGoalRequest",
+      "SessionGoalStatus",
       "SessionGroup",
       "SessionJiraIssue",
       "SessionList",
@@ -14980,6 +15080,16 @@
     {
       "method": "POST",
       "path": "/__hui/sessions/:id/fork",
+      "response": {
+        "$ref": "#/$defs/SessionResponse"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/__hui/sessions/:id/goal",
+      "request": {
+        "$ref": "#/$defs/SessionGoalRequest"
+      },
       "response": {
         "$ref": "#/$defs/SessionResponse"
       }

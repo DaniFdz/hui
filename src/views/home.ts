@@ -229,6 +229,10 @@ export type HomeProps = {
   opening: boolean;
   /** The open request failed, so there is no transcript to show; onRetry asks again. */
   openError?: string;
+  /** A re-read of the open session is in flight. */
+  refreshing?: boolean;
+  /** Reads the open session again, for a card the stream left behind. */
+  onRefreshSession: () => void;
   /** A turn is in flight, so the composer is locked. */
   streaming: boolean;
   sending: boolean;
@@ -310,6 +314,8 @@ export type HomeProps = {
   onLocalPathKeydown: (event: KeyboardEvent) => void;
   onSendPrompt: (text: string, attachments: readonly Attachment[], mode: PromptMode) => void;
   onContinueInterrupted: () => void;
+  /** Pauses, resumes or clears the conversation's goal from the pill above the composer. */
+  onGoalChange: (action: "pause" | "resume" | "clear") => void;
   queueEditingId: string;
   queueEditingText: string;
   onQueueEdit: (id: string) => void;
@@ -1737,6 +1743,7 @@ function renderComposer(props: HomeProps) {
         </div>
       ` : nothing}
       ${renderTaskProgress(props)}
+      ${renderGoalPill(props)}
       ${renderQueue(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
@@ -1858,6 +1865,40 @@ function renderRunError(props: HomeProps, blocked: boolean) {
   </div>`;
 }
 
+const goalTargetIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3" /></svg>`;
+const goalPauseIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5v14M14.5 5v14" /></svg>`;
+const goalPlayIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none" /></svg>`;
+
+/** The goal above the composer, in OpenClaw's own pill: status, objective, and the operator's controls. */
+function renderGoalPill(props: HomeProps) {
+  const goal = props.session?.goal;
+  if (!goal) return nothing;
+  const label = { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[goal.status];
+  const icon = goal.status === "complete" ? checkIcon
+    : goal.status === "blocked" ? icons.alertTriangle
+      : goal.status === "paused" ? goalPauseIcon
+        : goalTargetIcon;
+  return html`<div class="agent-chat__goal-float">
+    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded="false" title=${goal.note ?? goal.objective}>
+      <div class="agent-chat__goal-row">
+        <span class="agent-chat__goal-icon" aria-hidden="true">${icon}</span>
+        <span class="agent-chat__goal-copy">
+          <span class="agent-chat__goal-label">${label}</span>
+          <span class="agent-chat__goal-objective">${goal.objective}</span>
+        </span>
+        <span class="agent-chat__goal-actions">
+          ${goal.status === "active"
+            ? html`<button type="button" class="agent-chat__goal-action" aria-label="Pause goal" title="Pause goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("pause")}>${goalPauseIcon}</button>`
+            : goal.status === "complete"
+              ? nothing
+              : html`<button type="button" class="agent-chat__goal-action" aria-label="Resume goal" title="Resume goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("resume")}>${goalPlayIcon}</button>`}
+          <button type="button" class="agent-chat__goal-action" aria-label="Clear goal" title="Clear goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("clear")}>${icons.trash}</button>
+        </span>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderTaskProgress(props: HomeProps) {
   const card = progressCardFromTranscript(props.transcript);
   if (!card) return nothing;
@@ -1873,6 +1914,7 @@ function renderTaskProgress(props: HomeProps) {
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
+        <button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card" aria-busy=${props.refreshing} ?disabled=${props.refreshing} @click=${(event: Event) => refreshTaskProgress(event, props)}>${icons.refresh}</button>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
       <div class="session-progress-card__body" role="region" aria-label="Task progress">
@@ -1881,6 +1923,13 @@ function renderTaskProgress(props: HomeProps) {
       </div>
     </details>
   </div>`;
+}
+
+/** A control inside the summary asks for a fresh card instead of collapsing it. */
+function refreshTaskProgress(event: Event, props: HomeProps) {
+  event.preventDefault();
+  event.stopPropagation();
+  props.onRefreshSession();
 }
 
 function renderConnection(props: HomeProps) {

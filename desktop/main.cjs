@@ -1,12 +1,13 @@
 /** Electron window shell around the gateway's web UI. It starts or reuses the gateway through the installed CLI, shows
  * one sandboxed window confined to that origin and hands every other link to the system browser. Closing or quitting
- * the window never stops the gateway or its runs. Native notification clicks open their originating chat. */
+ * the window never stops the gateway or its runs. Native notification clicks open their originating chat, and so does
+ * a `hui://sessions/<id>` link, which is what the web app's `?open=app` hand-off and any launcher send. */
 const { app, BrowserWindow, dialog, Menu, nativeTheme, shell, Notification } = require('electron');
 const { execFile } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
-const { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, notificationFromUrl } = require('./policy.cjs');
+const { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, appChatPath, notificationFromUrl } = require('./policy.cjs');
 
 app.setName('HUI');
 // CLI and installed bundle use the same lock, cookies and IndexedDB location.
@@ -17,6 +18,8 @@ const pendingNotifications = [];
 const notifications = new Set();
 let launchedForNotification = false;
 let launchedFromBanner;
+/** A `hui://` chat link that arrived before the gateway address was known. */
+let launchedFromChatLink;
 
 // Electron's default viewMenu binds Zoom In to CommandOrControl+Plus only, which
 // needs Shift on US layouts, so the browser-standard Cmd/Ctrl+= does nothing.
@@ -141,6 +144,12 @@ async function start() {
   app.on('second-instance', showWindow);
   app.on('open-url', (event, link) => {
     event.preventDefault();
+    const chat = appChatPath(link);
+    if (chat) {
+      launchedFromChatLink = chat;
+      if (url) showWindow(new URL(chat, url).href);
+      return;
+    }
     const request = notificationFromUrl(link);
     if (!request) return;
     if (!app.isReady()) launchedForNotification = true;
@@ -177,7 +186,8 @@ async function start() {
     for (const banner of leftBanners) track(banner, bannerChat(banner.id));
     flushNotifications();
     const bannerTarget = bannerChat(launchedFromBanner);
-    if (bannerTarget || !launchedForNotification) showWindow(bannerTarget);
+    const chatTarget = launchedFromChatLink && new URL(launchedFromChatLink, url).href;
+    if (chatTarget || bannerTarget || !launchedForNotification) showWindow(chatTarget ?? bannerTarget);
   } catch (error) {
     dialog.showErrorBox('HUI could not start', `${error.message}\nReinstall the npm package or run hui install-app to repair the launcher.`);
     app.quit();

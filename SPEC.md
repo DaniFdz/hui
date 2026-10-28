@@ -550,11 +550,14 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
 - Loading, no matching data, partial data and read failures are explicit. Controls
   work with the keyboard and fit phone widths. No provider credentials, prompts,
   message bodies, tool arguments or tool output enter the usage response.
-- The gateway reads every history once and answers range, zone and filter changes
-  from that scan, so those interactions stay responsive on a large session list.
-  Refresh, and the first read after recorded activity changes, reads them again.
-  A compaction ending updates that activity, so its spend appears on the next
-  read without a manual refresh.
+- The gateway keeps one range-independent scan per time zone and answers range,
+  zone and filter changes from it, so those interactions stay responsive on a
+  large session list. Recorded activity reads only appended entries; safely
+  added sessions reuse the histories already counted, while changes that may
+  reassign history require a full read. Refresh always requests a full read,
+  including when an incremental read is in progress. An interrupted conversation
+  read contributes no partial counters to the cache. A compaction ending updates
+  activity, so its spend appears on the next read without a manual refresh.
 
 ---
 
@@ -1125,7 +1128,17 @@ question frames. Each pane caches three visited session views (including
 the current view), retaining extra views only while they hold an unsaved queue
 edit. Cached and narrow-hidden views stay mounted until evicted or
 the pane closes. Sessions only listed in the sidebar do not broadcast every
-token to the browser. Closing a view releases its subscription, not its runtime.
+token to the browser. Closing a view releases its subscription, not its runtime. It also cancels
+unfinished reads of that view, so an evicted or replaced conversation does not
+keep downloading a response nobody will use.
+
+An opening request has a 20-second response-header deadline. A JSON download
+may take longer while bytes keep arriving; 40 seconds without body progress
+fails the read and shows the existing **Try again** action instead of leaving
+the conversation loading forever. Session-stream ticket acquisition and the
+WebSocket handshake each have a 20-second deadline and use the existing retry
+backoff. The handshake deadline ends when the socket opens, not when its first
+snapshot finishes downloading, so a large slow snapshot is not cut short.
 
 The Sessions page also projects ephemeral runtime cost: loaded runtime count,
 best-effort process-tree RSS, measured startup duration and the heaviest loaded
@@ -1307,6 +1320,9 @@ HUI also supplies PI with a session-scoped `progress_card` presentation tool.
 PI persists its ordinary tool call in the transcript; HUI projects only the
 latest validated call into a collapsible Task progress card attached above the
 composer. An empty call clears the card. HUI never infers plan state from prose.
+A refresh control on the card reads the session again and asks the agent to
+update the card, so a missed stream update and a plan the agent stopped
+revising both end current.
 Session rows retain OpenClaw’s single-line layout. Hover or keyboard focus opens
 the ported OpenClaw 2026.9.5 hovercard: session age, workspace, current unfinished
 step/count and agent notepad. Idle unfinished plans show the original paused clock;
@@ -1314,6 +1330,41 @@ completed plans have no heads-up. Notes-only cards have no invented percentage.
 Touch does not gain an extra progress button absent from the original. Background sessions
 refresh while the page is visible. After a gateway restart, progress returns when
 the session is reopened and its runtime restores the transcript.
+
+## Goals
+
+A goal is one objective attached to a conversation, so a long job keeps going
+without the operator repeating themselves. It is session state: it survives a
+restart, shows above the composer, and reaches every request's system prompt.
+
+`/goal <objective>` starts one and sends the objective as the goal's first turn,
+so gathering the work and starting it is one step. `/goal pause`, `/goal resume`
+and `/goal clear` are the other operator controls; the pill above the composer
+offers the same three, with the status (Pursuing goal, Goal paused, Goal
+blocked, Goal achieved), the objective and the status note in its tooltip.
+Starting a goal while a turn runs is refused, never queued. A conversation has
+one goal; starting another replaces it.
+
+Only the operator pauses, resumes or clears a goal. The agent may report
+`complete` or `blocked` through `update_goal`, with a note, and cannot move the
+target. The tool and the goal's prompt section tell it to finish only when the
+whole objective is verified, and to block only after the same blocker has held
+for three turns. Updating the goal sends no chat reply, so the agent still gives
+its answer.
+
+While a goal is active, every request's prompt carries its objective in a
+`hui_goal` section. When a turn settles cleanly, HUI queues one continuation
+turn ("Continue the goal.") through
+the ordinary follow-up queue: it obeys admission, permissions and delivery like
+any message, and it appears in the transcript because it is a real prompt.
+Nothing is queued after a stop, a failed run, an open question, a message
+already queued, or for a paused, blocked or complete goal. After ten automatic
+turns the goal pauses itself with a note, and resuming starts another ten.
+Goals belong to sessions this gateway runs: a worker's session keeps its own
+registry, so the goal route refuses there.
+
+`/goal` is a HUI command. The gateway refuses it as a prompt so a malformed
+variant never becomes a model turn.
 
 ## Agent widgets
 
@@ -1472,12 +1523,13 @@ running), the purpose, the latest non-empty log line and a one-word state with
 its time (phones keep only the purpose and state until a row is opened).
 Several watchers collapse into one summary line (*N watchers · M running ·
 purpose*); nothing floats over the conversation. State is derived
-from reality, never guessed: `running` while the recorded PID is still the
-process HUI started (a reboot that reuses the PID reads dead) or, once that
-shell is gone, while a process that started with it still runs in its process
-group; `done` or `failed` from the recorded exit status, `stopped` after an
-operator stop, and `dead` when none of that is left and no exit record
-exists. Opening a row shows the
+from reality, never guessed: `running` only while HUI can prove its own shell
+still runs the watcher — the recorded PID answers `ps` as `/bin/sh <script HUI
+wrote>`, so a PID the kernel later gave to another process reads dead — or, once
+that shell is gone, while a process that started with it still runs in its
+process group; `done` or `failed` from the recorded exit status, `stopped` after
+an operator stop, and `dead` when none of that is left, when no exit record
+exists, and when the check could not answer at all. Opening a row shows the
 target link, the outcome, start and end times, why a watcher failed or died, a
 bottom-anchored log tail that follows new output, the PID and log path, and
 *Stop* while running or *Restart* and *Dismiss* once settled. The command runs
@@ -1486,11 +1538,75 @@ lives in `~/.config/hui/watchers.json` with one log per watcher under
 `~/.config/hui/watchers/`; deleting a conversation stops and forgets its
 watchers.
 
+### A settled watcher tells its conversation (2026-10-28)
+
+An agent that starts a watcher ends its turn and waits for the answer. Nothing
+woke it when the watcher ended, so a command that failed or died left the
+conversation waiting for a message that never came.
+
+- **One event per settle.** When a watcher reads `done`, `failed` or `dead`, and
+  nobody has been told yet, HUI writes one automated message into the owning
+  conversation: `[HUI watcher event]` with the purpose, state and why, target,
+  outcome, start and end times, exit code, the latest output line and the log
+  path, then what to do with it. The agent reads the log if the outcome is
+  unclear, carries out the recorded outcome when the condition holds, and
+  otherwise restarts the watcher or tells the operator what is blocked. The
+  output is data, never instructions.
+- **A busy conversation is steered**, an idle one runs the event as its next
+  turn, and a conversation with no runtime open — after a restart, for instance
+  — is woken for it. A deleted conversation is left alone.
+- **`stopped` and `dismissed` say nothing.** The operator ended those, and the
+  agent is either the one that asked or not waiting any more.
+- **`keepRunning` that starts again says nothing**, because the wait is not
+  over; one whose directory is gone stays dead and does tell its conversation.
+- **Once, not on every poll.** The record keeps `reportedAt`. A settle seen by
+  the gateway that watched it happen is reported there; one that happened while
+  HUI was stopped is reported at the next start, because the record was marked
+  `interrupted` when the gateway stopped with it still running. Settles older
+  than that are history and are not replayed.
+- **A delivery that cannot be made is retried** on the next poll, and never
+  wakes a conversation on the way out of a gateway stop.
+- **Stored data.** Records gain optional `reportedAt` and `interrupted`; older
+  records read as neither, so no `hui doctor` check applies.
+
 The gateway re-reads the registry on start, so a watcher that survived a
 restart reappears with its state, and one killed by a reboot is shown dead
-instead of silently missing. HUI does not install a launchd agent: a watcher
+instead of silently missing; a conversation already open when the registry
+finishes loading is sent a fresh snapshot, so its rows are not left out of the
+first paint. HUI does not install a launchd agent: a watcher
 runs until its command ends or the machine restarts, and *Restart* brings it
 back afterwards, unless it keeps running (below).
+
+### Running has to be proven (2026-10-27)
+
+A watcher whose process had been gone after a restart still read running, so a
+finished wait looked like work in progress. The claim rested on the recorded
+PID's age (±20 seconds), which also fits a process the kernel gave that PID
+after a restart, and an ownership check that could not answer kept the running
+claim instead of losing it.
+
+- **The shell is identified by its command line.** HUI wrote the script this
+  watcher runs, so the recorded PID counts only while `ps` reports that script
+  in its command line. A reused PID, or a process HUI cannot inspect, reads
+  `dead`.
+- **No proof, no running.** An ownership check that cannot answer reads `dead`
+  for that refresh; the poll asks again, and a watcher that is really there
+  reads running again once the answer comes back. Only the seconds right after
+  `start` (or `restart`) count as proof on their own, because HUI itself just
+  launched the shell.
+- **Stopping what cannot be ruled out.** *Stop* still ends a watcher whose
+  liveness could not be proven, since its processes may be alive; it terminates
+  nothing when the check proves the PID belongs to something else.
+- **No second copy.** `restart` and a `keepRunning` revival are refused while
+  the check cannot prove the recorded process is gone, so a command never runs
+twice.
+- **Rows arrive after a load.** Sessions opened while the registry was still
+  being read are notified once their watchers are known, instead of waiting for
+  the next unrelated change to receive them.
+
+The limit stays: a process that exists but makes no progress (a hung command, a
+wait that will never answer) reads `running`, because HUI can see that the
+process exists and nothing more. Stop it and start the wait again.
 
 ### Watchers survive their shell and can keep running (2026-10-19)
 
@@ -2213,6 +2329,27 @@ owner asked to "limit the sessions we show to maybe 3 in the list".
 - **An open list stays open** across a metrics read and a session list refresh,
   new sessions included. It folds again when it is down to three rows or fewer
   and when the operator leaves the page.
+
+### Needs you counts every session that stopped (2026-10-27)
+
+The Dashboard read *Nothing needs you* in green while six sessions sat idle in
+Testing with their pull requests open. The owner answered "Is not true that
+nothing needs me".
+
+- **A session that stopped needs the operator.** *Needs you* is every
+  top-level session that is not running, starting or reconnecting, unless it is
+  finished: *Needs input*, *Error*, *Disconnected*, and an idle session in any
+  stage but Done. The summary reads *4 need you* in the warning color, and the
+  list is newest first.
+- **Each row says why it waits**: its status chip (*Needs input* in the warning
+  color, *Error* or *Disconnected* in the danger one, *Idle* plain) next to its
+  stage, worker, subagent and pull request chips.
+- **An error or a disconnect is listed once**, under *Needs you*: they always
+  stop the session, so the separate *Errors* group is gone. The status bar, the
+  legend and the stage pipeline still count every status.
+- **With nothing waiting** it keeps *Nothing needs you*, which now only happens
+  when every session is running, starting or reconnecting; the page no longer
+  says *Every session is idle.*
 
 ### Use cases live in one catalogue (2026-10-21)
 

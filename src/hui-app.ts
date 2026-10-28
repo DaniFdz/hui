@@ -62,6 +62,7 @@ import { BotImportController } from "./controllers/bot-import-controller.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
+import { renderAppLinkNotice } from "./views/app-link-notice.ts";
 import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
 import {
@@ -139,6 +140,7 @@ import {
   settingsReturnTarget,
   type NavigationTarget,
 } from "./lib/navigation.ts";
+import { appHandoffUrl } from "./lib/app-link.ts";
 
 const HUI_UPDATE_SESSION_TITLE = "HUI update";
 
@@ -223,6 +225,9 @@ export class HuiApp extends HuiElement {
     launching: () => this.launching,
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
+  /** The `hui://` address a `?open=app` link offers the desktop app, until the banner is dismissed. */
+  @state() private appLink: string | undefined;
+  @state() private appLinkDismissed = false;
   @state() private kanbanMovePendingId = "";
   @state() private draggingSessionId = "";
   @state() private sessionDropTarget = "";
@@ -498,6 +503,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) {
       if (this.paneSessionId) this.applyNavigation({ kind: "session", id: this.paneSessionId });
     } else {
+      this.appLink = appHandoffUrl({ pathname: window.location.pathname, search: window.location.search, userAgent: navigator.userAgent });
       this.work.start();
       this.syncFromLocation();
       this.mobileNavMedia = window.matchMedia(APP_SHELL_DRAWER_MEDIA);
@@ -633,7 +639,9 @@ export class HuiApp extends HuiElement {
       const listed = selected && this.listedSession(selected.id);
       // The stream clears an interruption when a run starts; the gateway clears
       // it when a reattached remote run turns out to have finished.
-      if (listed) this.conversation.select({ ...selected, ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted });
+      // The list is the registry's word on everything HUI writes outside a run (title, goal, stage), so a field it
+      // no longer has is gone here too; only this pane's live status and interruption stay its own.
+      if (listed) this.conversation.select({ ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted });
       const shellStatus = selected && this.paneGroups.flatMap((group) => group.sessions).find((session) => session.id === selected.id)?.status;
       if (selected && shellStatus) this.reopenIfRestarted(selected.id, shellStatus);
       this.sessions.loading = false;
@@ -783,6 +791,8 @@ export class HuiApp extends HuiElement {
   }
 
   private navigate(target: NavigationTarget, replace = false) {
+    // The app suggestion names one chat; moving anywhere else retires it.
+    this.appLink = undefined;
     if (this.embeddedPane) {
       if (target.kind === "session") this.onPaneNavigate?.(target.id);
       else if (target.kind === "home") void this.onPaneRegistryChange?.();
@@ -2662,6 +2672,12 @@ export class HuiApp extends HuiElement {
         inert: noticesInert,
         onTurnOff: () => { this.control.setLidAwake(false); this.composerTextarea?.focus(); },
         onDismiss: () => { this.control.dismissPowerNotice(); this.composerTextarea?.focus(); },
+      })}
+      ${this.embeddedPane ? null : renderAppLinkNotice({
+        href: this.appLink,
+        dismissed: this.appLinkDismissed,
+        inert: noticesInert,
+        onDismiss: () => { this.appLinkDismissed = true; this.composerTextarea?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
       ${this.sessions.actionToast ? html`<div class="app-toast action-toast" data-level=${this.sessions.actionToast.failed ? "error" : "info"}>

@@ -130,6 +130,7 @@ export function createSessionViews(deps: SessionViewDeps) {
       ...(record.subagent ? { subagent: subagentView(record.subagent) } : {}),
       ...(bot ? { bot } : {}),
       ...effectiveSessionStage(record, pullRequests),
+      ...(record.goal ? { goal: record.goal } : {}),
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
