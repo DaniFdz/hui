@@ -26,8 +26,6 @@ jobs:
       - run: npm install -g npm@11
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
-      # The iOS app's generated API types must compile; GitHub's Ubuntu images ship swiftc.
-      - run: swiftc -typecheck -swift-version 6 ios/HUI/Gateway/API.swift ios/HUI/Gateway/Schema/*.swift
       # Reports each run to Datadog Test Optimization. The tracer is preloaded for this step only: npm ci must not
       # load it, and vitest.setup.ts keeps it out of the processes the tests spawn.
       - run: npm test

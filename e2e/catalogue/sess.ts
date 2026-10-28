@@ -48,7 +48,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-005",
     title: "Start a session in a group",
-    behaviour: "A group's \"New session in <GROUP>\" opens New Session with that group selected in \"Choose session group\" and the group's directory filled in; the Group picker can change it. The new session appears under that group.",
+    behaviour: "A group's \"New session in <GROUP>\" opens New Session with that group selected in \"Choose session group\" and the group's directory filled in; the Group picker can change it. The new session appears under that group and the group's count goes up.",
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisessions"],
     surfaces: ["page:new-session", "route:POST /__hui/sessions"],
     journeys: ["session-groups", "session-registry"],
@@ -215,7 +215,7 @@ const cases: UseCase[] = [
   {
     id: "SESS-023",
     title: "Create a session group",
-    behaviour: "The Sessions toolbar always offers New group, and so does each custom group's Group options menu; it opens a dialog with Group name and Create group. The group appears at once in uppercase, above OTHER, even when filters hid everything (search and status reset, sort kept), and focus returns to New group. A rejected name is shown in the dialog. On a phone the drawer closes before the dialog opens and focus returns to Open navigation.",
+    behaviour: "The Sessions toolbar always offers New group, which opens a dialog with Group name and Create group. The group appears at once in uppercase, above OTHER, even when filters hid everything (search and status reset, sort kept), and focus returns to New group. A rejected name is shown in the dialog. On a phone the drawer closes before the dialog opens and focus returns to Open navigation.",
     spec: ["SPEC.md#behaviour", "docs/api.md#post-__huisession-groups"],
     surfaces: ["route:POST /__hui/session-groups"],
     journeys: ["session-groups", "session-registry"],
@@ -284,10 +284,10 @@ const cases: UseCase[] = [
   {
     id: "SESS-030",
     title: "Move a session to another group",
-    behaviour: "Dragging a row onto a custom group, or the row menu's Move to group submenu, moves the session and announces \"Moved <title> to <GROUP>.\"; it stays there after a reload. A failed move shows an error.",
-    spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid"],
+    behaviour: "Dragging a row onto a custom group, or the row menu's Move to group submenu (the current group disabled), moves the session and announces \"Moved <title> to <GROUP>.\"; it stays there after a reload. On the Kanban board with Custom groups lanes, dragging a card into another lane or the card's Options → Move to group does the same (OTHER clears it), together with any stage change. Project groups never accept a drop, and a failed move shows an error.",
+    spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisessionsid", "SPEC.md#kanban"],
     surfaces: ["route:PATCH /__hui/sessions/:id"],
-    journeys: ["session-move", "session-menu-parity"],
+    journeys: ["session-move", "session-menu-parity", "kanban"],
     web: "required",
     ios: "backlog",
   },

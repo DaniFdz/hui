@@ -117,7 +117,7 @@ const cases: UseCase[] = [
   {
     id: "CHAT-012",
     title: "Get the draft back when a send fails",
-    behaviour: "While a send waits for the gateway, the textarea and attachment picker are disabled, and the composer offers neither Send nor removal controls for the attachments it took. If the gateway rejects it, the turn shows \"Not sent — draft recovered.\", the exact text and attachments return to the composer once and an error toast says why; resending a send the gateway already took does not run it twice.",
+    behaviour: "While a send waits for the gateway, the textarea, attachment picker, removal controls and send button stay disabled. If the gateway rejects it, the turn shows \"Not sent — draft recovered.\", the exact text and attachments return to the composer once, ahead of anything typed since, and an error toast says why; resending a send the gateway already took does not run it twice.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: ["route:POST /__hui/sessions/:id/prompt"],
     journeys: ["chat-composer"],
