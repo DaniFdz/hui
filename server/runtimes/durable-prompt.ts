@@ -51,7 +51,7 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
   "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
-  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_ultra",
+  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_ultra",
 ] as const;
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
@@ -111,6 +111,8 @@ export class DurablePrompt {
   skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
   /** Whether the conversation's session is on Ultra. The Durable host answers. */
   ultraFor: (conversationId: ConversationId) => boolean = () => false;
+  /** The active goal of the conversation's session, as its own prompt section. The Durable host answers. */
+  goalFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
   readonly extension;
 
   constructor(agentDir: string, readSettings: () => Promise<PromptSettings>) {
@@ -225,6 +227,8 @@ export class DurablePrompt {
     const skillDirs = conversationId === undefined ? [] : await this.skillDirsFor(conversationId);
     const ultra = conversationId !== undefined && this.ultraFor(conversationId);
     const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra);
+    const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
+    if (goal) base.sections = { ...base.sections, hui_goal: goal };
     const sections = buildSystemPromptSections(run?.options ? {
       ...run.options,
       // The run keeps the sections its extensions edited; the tool loadout stays the request's own, and so do a bot's

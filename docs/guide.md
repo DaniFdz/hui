@@ -1111,6 +1111,32 @@ reply. The transcript marks the questions as expired, with their options, so
 you can see what it asked; reply in the chat to decide. The timeout applies to
 questions asked after you change it.
 
+## Giving a conversation a goal
+
+A goal is one objective a conversation keeps pursuing, for work that outlasts a
+single reply: closing out a pull request, reproducing and fixing a bug, or
+finishing a docs pass.
+
+- Type `/goal get CI green on PR 12345 and push the fix` in the composer. The
+  objective starts the goal and is sent as its first message, so the work
+  begins at once.
+- A pill above the composer shows the goal: **Pursuing goal**, the objective,
+  and pause and clear buttons. Hover it to read why a goal is paused or blocked.
+- `/goal pause` keeps the objective but stops the automatic work; `/goal
+  resume` picks it up again; `/goal clear` removes it. The pill's buttons do the
+  same, and `/goal <new objective>` replaces the current goal.
+- While a goal is active, HUI continues the work after a clean turn ends. You
+  do not have to say "keep going". Pressing **Stop**, an error, an open
+  question or a message you have already queued all end the automatic work
+  instead: the next message you send carries the goal again.
+- The agent marks the goal **complete** only when the whole objective is
+  verified, or **blocked** when the same blocker has held for three turns. It
+  still replies to you when it does.
+- After ten automatic turns HUI pauses the goal and says so. Resume it to allow
+  another ten.
+- Goals run where the session runs. A session on a remote worker keeps its own
+  state, so goals are not offered there.
+
 ## Giving an agent a secret
 
 When an agent needs an API key, a token, a password or a one-time login code,

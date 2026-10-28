@@ -34,6 +34,7 @@ import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
 import { ImageLimits } from "./durable-images.ts";
 import type { BotChat, OfferedTool, ToolOrigin } from "./durable-offer.ts";
 import { invokeAgentTool } from "../agent-tools/bridge.ts";
+import { sessionGoalSection } from "../sessions/goals.ts";
 
 /** The tools of `extension` the model may call: not the ones only other tools call, such as codemode's `models.*`. */
 export const modelCallable = (extension: Extension): ToolRegistration[] =>
@@ -163,6 +164,8 @@ export type DurableHostOptions = {
   invokeTool?: DurableToolInvoker;
   /** HUI session for a conversation nobody has reopened since a restart. */
   lookupCaller?: (conversationId: ConversationId) => Promise<string | undefined>;
+  /** The goal section a session's next prompt carries; the gateway answers from its registry, workers have none. */
+  goalFor?: (sessionId: string) => Promise<string | undefined>;
   /** Resume interrupted runs when the store opens (default). `hui doctor` opens it without running any work. */
   resume?: boolean;
   /** OptChat constants a test changes (docs/optchat.md). */
@@ -326,6 +329,13 @@ export class DurableHost implements ExtensionHost {
     };
     this.prompt.skillDirsFor = (conversationId) => this.skillDirsFor(conversationId);
     this.prompt.ultraFor = (conversationId) => this.#ultra.has(this.#callers.get(conversationId) ?? "");
+    const goalFor = options.goalFor;
+    if (goalFor) {
+      this.prompt.goalFor = async (conversationId) => {
+        const sessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId).catch(() => undefined);
+        return sessionId ? goalFor(sessionId).catch(() => undefined) : undefined;
+      };
+    }
   }
 
   /** Sets the bots this host runs, once, before its store opens: `null` on a host that never runs bot work. */
@@ -733,6 +743,6 @@ let defaultHost: DurableHost | undefined;
 
 /** The gateway's store: HUI's configuration directory and PI's agent directory. */
 export function durableHost(): DurableHost {
-  defaultHost ??= new DurableHost({ dir: DURABLE_DIR, agentDir: resolvePiAgentDir() });
+  defaultHost ??= new DurableHost({ dir: DURABLE_DIR, agentDir: resolvePiAgentDir(), goalFor: sessionGoalSection });
   return defaultHost;
 }

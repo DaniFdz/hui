@@ -633,7 +633,9 @@ export class HuiApp extends HuiElement {
       const listed = selected && this.listedSession(selected.id);
       // The stream clears an interruption when a run starts; the gateway clears
       // it when a reattached remote run turns out to have finished.
-      if (listed) this.conversation.select({ ...selected, ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted });
+      // The list is the registry's word on everything HUI writes outside a run (title, goal, stage), so a field it
+      // no longer has is gone here too; only this pane's live status and interruption stay its own.
+      if (listed) this.conversation.select({ ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted });
       const shellStatus = selected && this.paneGroups.flatMap((group) => group.sessions).find((session) => session.id === selected.id)?.status;
       if (selected && shellStatus) this.reopenIfRestarted(selected.id, shellStatus);
       this.sessions.loading = false;

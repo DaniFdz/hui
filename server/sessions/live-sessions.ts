@@ -287,6 +287,8 @@ export class LiveSessions {
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
   #watcherSnapshot: (sessionId: string) => readonly Watcher[] = () => [];
   #huiQuestions: (sessionId: string) => readonly HuiQuestion[] = () => [];
+  /** Claims one automatic turn for a session's active goal, or answers nothing when there is none to pursue. */
+  #goalContinuation: (sessionId: string) => Promise<string | undefined> = async () => undefined;
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
@@ -416,6 +418,11 @@ export class LiveSessions {
   /** Every stop (the Stop button, rewind, automations, subagents) passes here. */
   setAbortListener(listener: (sessionId: string) => void): void {
     this.#aborted = listener;
+  }
+
+  /** A settled turn asks whether its goal is still active, and queues the next one when it is. */
+  setGoalContinuation(claim: (sessionId: string) => Promise<string | undefined>): void {
+    this.#goalContinuation = claim;
   }
 
   /** Re-emits the session's state after coordination state changes outside the
@@ -1620,10 +1627,21 @@ export class LiveSessions {
     const retried = await this.#retryWithFallback(live, runtime).catch(() => false);
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
+      await this.#queueGoalContinuation(live);
       const continued = await this.#drainFollowUp(live);
       if (!continued && this.#reported(live) === "idle" && live.followUps.length === 0) this.#endRun(live, live.runFailed === true);
       this.#closeIfReleased(live);
     }
+  }
+
+  /** An active goal whose turn ended cleanly gets the next one from the queue. A stop, a failed run, an open
+   * question or input already waiting ends the pursuit here: the operator's next message picks it up. */
+  async #queueGoalContinuation(live: Live): Promise<void> {
+    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker) return;
+    const text = await this.#goalContinuation(live.record.id).catch(() => undefined);
+    if (!text || live.closed) return;
+    live.followUps.push({ id: crypto.randomUUID(), text, mode: "followUp" });
+    this.#broadcastQueue(live);
   }
 
   #closeIfReleased(live: Live): void {

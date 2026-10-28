@@ -735,3 +735,21 @@ test("subagent and watcher cards blur nothing behind them, so a long chat keeps 
   assert.ok(cardRules.length > 0);
   for (const rule of cardRules) assert.doesNotMatch(rule, /backdrop-filter/u, rule.trim());
 });
+
+test("the goal sits above the composer with its status and the operator's controls", async () => {
+  const goal = { objective: "get CI green on PR 1", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 };
+  const active = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal } });
+  assert.match(active, /class="agent-chat__goal-float"/u);
+  assert.match(active, /class="agent-chat__goal agent-chat__goal--active" data-expanded="false"/u);
+  assert.match(active, /class="agent-chat__goal-label">Pursuing goal</u);
+  assert.match(active, /class="agent-chat__goal-objective">get CI green on PR 1</u);
+  assert.match(active, /aria-label="Pause goal"/u);
+  assert.match(active, /aria-label="Clear goal"/u);
+  assert.doesNotMatch(active, /aria-label="Resume goal"/u);
+  const blocked = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal: { ...goal, status: "blocked", note: "waiting on review" } } });
+  assert.match(blocked, /agent-chat__goal--blocked" data-expanded="false" title=waiting on review>/u);
+  assert.match(blocked, /class="agent-chat__goal-label">Goal blocked</u);
+  assert.match(blocked, /aria-label="Resume goal"/u);
+  const none = await renderWorkerSession("idle");
+  assert.doesNotMatch(none, /agent-chat__goal-float/u);
+});

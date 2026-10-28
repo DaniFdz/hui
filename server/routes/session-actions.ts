@@ -28,7 +28,8 @@ import { type createSessionViews, pendingSessions } from "../sessions/views.ts";
 import type { SubagentService } from "../agent-tools/subagents.ts";
 import { foreverChatRefusal, MAX_PROMPT_BYTES, sessionMutationErrorStatus } from "./sessions.ts";
 import { isThinkingLevel } from "../sessions/thinking.ts";
-import { parseClearCommand, parseCompactCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
+import { parseClearCommand, parseCompactCommand, parseGoalCommand, parseReloadCommand, parseUpdateCommand } from "../sessions/slash-commands.ts";
+import { changeSessionGoal, GOAL_CONTINUE_PROMPT, GoalError } from "../sessions/goals.ts";
 
 export const routeSchemas: RouteSchema[] = [
   ...sessionActionRouteSchemas,
@@ -38,7 +39,7 @@ export const routeSchemas: RouteSchema[] = [
 
 /** Session actions and live catalogs, all addressed by HUI's own session id. */
 const SESSION_ACTION =
-  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork)$/;
+  /^\/__hui\/sessions\/([^/]+)\/(open|prompt|continue|resume|steer|follow-up|btw|queue|events|connect|models|commands|tools|model|thinking|fast|question|abort|clear|reload|compact|rewind|fork|goal)$/;
 
 export function createSessionActionRoutes(deps: {
   lifecycle: Pick<ReturnType<typeof createSessionLifecycle>, "updateSession" | "forkRequest" | "forkFromSession">;
@@ -80,8 +81,11 @@ export function createSessionActionRoutes(deps: {
           return reply(SessionError, { error: `unknown session: ${id}` }, 404);
         }
         const openedRecord = await liveSessions.markRead(id);
+        // The live record is what its runtime booted with; the registry is what HUI has written since (a title, a
+        // goal, a stage), so opening reads that and lets the runtime answer only for the fields it owns.
+        const persisted = (await readRegistry()).find((each) => each.id === id) ?? openedRecord;
         return reply(SessionOpenResponse, {
-          session: toView(openedRecord, liveSessions.status(id)),
+          session: toView(persisted, liveSessions.status(id)),
           snapshot: liveSessions.snapshot(id),
           revision: liveSessions.revision(id),
         });
@@ -112,6 +116,9 @@ export function createSessionActionRoutes(deps: {
         }
         if (parseCompactCommand(text)) {
           return reply(SessionError, { error: "/compact is a HUI command. Use the compact endpoint, not the model prompt or queue." }, 400);
+        }
+        if (parseGoalCommand(text)) {
+          return reply(SessionError, { error: "/goal is a HUI command. It starts and manages a goal, not a model prompt or queue." }, 400);
         }
         const send = async () => {
           let prepared: PreparedAttachments | undefined;
@@ -240,6 +247,30 @@ export function createSessionActionRoutes(deps: {
           return reply(SessionError, {
             error: error instanceof Error ? error.message : "The side question failed.",
           }, 502);
+        }
+      }
+      if (action[2] === "goal" && method === "POST") {
+        try {
+          const body = (await request.json()) as Record<string, unknown>;
+          const action = body["action"];
+          if (record.worker) {
+            throw new GoalError("Goals run on the machine their session runs on. Start one in a conversation this gateway runs.");
+          }
+          if (action === "start" || action === "resume") {
+            if (!liveSessions.ensure(record)) throw new SessionNotFoundError(`unknown session: ${id}`);
+          }
+          if (action === "start" && liveSessions.status(id) !== "idle") {
+            throw new SessionBusyError("Finish or stop the active turn before starting a goal.");
+          }
+          const change = await changeSessionGoal(id, body);
+          // The objective becomes the goal's first turn, and resume picks the work up again, exactly as a message would.
+          if (change.start) await liveSessions.prompt(id, change.start);
+          else if (change.resumed && liveSessions.status(id) === "idle") await liveSessions.followUp(id, GOAL_CONTINUE_PROMPT);
+          return reply(SessionResponse, { session: toView({ ...record, goal: change.goal }, liveSessions.status(id)) });
+        } catch (error) {
+          return reply(SessionError, {
+            error: error instanceof Error ? error.message : "Could not change the goal.",
+          }, error instanceof SessionBusyError ? 409 : sessionMutationErrorStatus(error));
         }
       }
       if (action[2] === "queue" && method === "POST") {

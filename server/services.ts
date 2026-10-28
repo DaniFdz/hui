@@ -117,6 +117,7 @@ import {
 } from "./sessions/sessions.ts";
 import { createSessionLifecycle, defaultSessionTool, SESSION_TITLE_MAX } from "./sessions/lifecycle.ts";
 import { setAgentStage } from "./sessions/stages.ts";
+import { claimGoalContinuation, updateGoalFromAgent } from "./sessions/goals.ts";
 import { createSessionViews } from "./sessions/views.ts";
 
 const piMutations = new PiMutationService();
@@ -328,6 +329,8 @@ export const macPower = process.platform === "darwin" ? new MacPower() : undefin
 export const powerRoutes = createPowerRoutes({ macPower });
 export const hostMetricsRoutes = createHostMetricsRoutes({ hostMetrics: createHostMetrics() });
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
+/** A goal that is still active gets its next turn from the queue, never from a timer of its own. */
+liveSessions.setGoalContinuation((id) => claimGoalContinuation(id));
 liveSessions.setWatcherProvider((id) => watchers.list(id));
 export const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
 export const secretFiles = new SecretFiles();
@@ -367,6 +370,9 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "update_goal") {
+    return updateGoalFromAgent(invocation.callerSessionId, invocation.params);
   }
   if (invocation.action === "notify_user") {
     if (!(await readHuiSettings()).notifications.tool) throw new Error("The notification tool is off. The operator can turn it on in Settings → Tools.");
