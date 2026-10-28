@@ -194,6 +194,41 @@ test('a link that is not an alert does not keep HUI windowless when it launches 
   assert.equal(state.notifications.length, 0);
 });
 
+test('hui:// chat links open the window on that chat, including one that launched HUI', async (t) => {
+  const launched = await shell(t, { themeMode: 'system' }, ['hui://sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f']);
+  launched.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await launched.settle();
+  assert.equal(launched.windows.length, 1);
+  assert.equal(launched.windows[0].url, 'http://127.0.0.1:5174/sessions/4f0c2d9e-7a1b-4c3d-9e8f-0a1b2c3d4e5f');
+
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  state.openUrl('hui://bots/scout');
+  await state.settle();
+  assert.equal(state.windows[0].url, 'http://127.0.0.1:5174/bots/scout');
+});
+
+test('a hui:// link cannot open another scheme, host or non-chat path', async (t) => {
+  const state = await shell(t);
+  state.complete(null, JSON.stringify({ status: 'running', url: 'http://127.0.0.1:5174/' }));
+  await state.settle();
+  const window = state.windows[0];
+  for (const link of ['hui://sessions', 'hui://sessions/', 'hui://sessions/a/b', 'hui://files/a', 'hui://sessions/a?x=1', 'hui://sessions/a#x', 'https://example.com/sessions/a', 'hui-notification:{}', 'x://sessions/a']) {
+    state.openUrl(link);
+    await state.settle();
+    assert.equal(window.url, 'http://127.0.0.1:5174/', link);
+  }
+});
+
+test('hui:// chat paths keep the id they name and nothing else', () => {
+  assert.equal(policy.appChatPath('hui://sessions/a%20b'), '/sessions/a%20b');
+  assert.equal(policy.appChatPath('hui://bots/scout'), '/bots/scout');
+  for (const link of ['hui://sessions/a%2Fb', 'hui://sessions/a?b=1', 'hui://user@sessions/a', 'hui://sessions/a#b', 'hui://sessionsSC/a', 'hui://sessions/']) {
+    assert.equal(policy.appChatPath(link), undefined, link);
+  }
+});
+
 test('clicking a banner left by a crashed HUI launches HUI on its chat, but only on the same gateway', async (t) => {
   const [botBanner] = await bannerIds(t, 'http://127.0.0.1:5174/bots/stable-bot');
   for (const [identifier, gateway, opened] of [

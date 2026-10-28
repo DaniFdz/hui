@@ -1,5 +1,6 @@
 /** Pure decisions for the desktop shell, kept apart from the Electron process code: which URLs stay in the window,
- * which open externally, validated notification destinations, gateway addresses and the saved color scheme. */
+ * which open externally, `hui://` chat links, validated notification destinations, gateway addresses and the saved
+ * color scheme. */
 const { URL } = require('node:url');
 const { isIP } = require('node:net');
 
@@ -38,6 +39,20 @@ function chatUrl(value) {
   } catch { return; }
 }
 
+/** A `hui://sessions/<id>` or `hui://bots/<id>` link, as `?open=app` hands off and as a launcher opens one: the
+ * gateway path it shows, or nothing when it is not such a link. */
+function appChatPath(link) {
+  try {
+    const target = new URL(link);
+    if (target.protocol !== 'hui:' || target.username || target.password || target.search || target.hash) return;
+    const [kind, id, ...rest] = [target.hostname, ...target.pathname.split('/').filter(Boolean)];
+    if (!['sessions', 'bots'].includes(kind) || !id || rest.length) return;
+    const decoded = decodeURIComponent(id);
+    if (!decoded.trim() || decoded.length > 200 || decoded.includes('/')) return;
+    return `/${kind}/${encodeURIComponent(decoded)}`;
+  } catch { return; }
+}
+
 function notificationFromUrl(link) {
   try {
     const { protocol, pathname } = new URL(link);
@@ -62,4 +77,4 @@ function notificationFromUrl(link) {
   } catch { return; }
 }
 
-module.exports = { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, notificationFromUrl };
+module.exports = { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, appChatPath, notificationFromUrl };

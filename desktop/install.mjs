@@ -1,7 +1,8 @@
 /** Registers HUI as a macOS application. It assembles HUI.app from the bundled Electron with the window shell inside,
  * signs it ad hoc and only ever replaces a bundle HUI itself installed, recognized by its owner marker; the app keeps
- * launching the installed CLI. Runs from `hui install-app`, from postinstall on global npm installs on macOS, and from
- * an update that left the installed app on another version. */
+ * launching the installed CLI and claims the `hui://` scheme, so a chat link can open the window. Runs from
+ * `hui install-app`, from postinstall on global npm installs on macOS, and from an update that left the installed app
+ * on another version. */
 import { execFileSync } from 'node:child_process';
 import { cp, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -49,6 +50,11 @@ export function updatePlist(plist, version) {
     const pattern = new RegExp(`<key>${key}</key>\\s*<string>[^<]*</string>`);
     const entry = `<key>${key}</key><string>${value}</string>`;
     plist = pattern.test(plist) ? plist.replace(pattern, entry) : plist.replace('</dict>', `${entry}</dict>`);
+  }
+  // The scheme the web app's `?open=app` hand-off and any launcher open; without it macOS cannot launch HUI from a link.
+  // Anchored to the root dictionary: Electron's plist has nested ones, and a scheme there is registered nowhere.
+  if (!plist.includes('<key>CFBundleURLTypes</key>')) {
+    plist = plist.replace(/<\/dict>(\s*<\/plist>)/u, `<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>${marker}</string><key>CFBundleURLSchemes</key><array><string>hui</string></array></dict></array></dict>$1`);
   }
   return plist;
 }
