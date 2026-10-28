@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -985,6 +985,18 @@ test("one store has one owner", { timeout: 30_000 }, async (t) => {
   const f = await fixture(t);
   await f.host().open();
   await assert.rejects(() => f.host().open(), /already open in this process/u);
+});
+
+test("a store lock written before the last boot is stale even when its PID was reused", { timeout: 30_000 }, async (t) => {
+  const f = await fixture(t);
+  const lock = join(f.store, "harness.lock");
+  await mkdir(f.store, { recursive: true });
+  await writeFile(lock, String(process.ppid));
+  await assert.rejects(() => f.host().open(), /already open in another HUI gateway/u);
+  const beforeBoot = new Date("2000-01-01T00:00:00.000Z");
+  await utimes(lock, beforeBoot, beforeBoot);
+  await f.host().open();
+  assert.equal(await readFile(lock, "utf8"), String(process.pid));
 });
 
 test("overlapping closes settle once the store is released, and a reopen waits for them", { timeout: 30_000 }, async (t) => {
