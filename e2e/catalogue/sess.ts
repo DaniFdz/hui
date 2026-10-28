@@ -458,7 +458,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-split-layout"],
     surfaces: ["nav:session"],
     journeys: ["session-multiplexing", "session-header-overflow", "pane-reposition"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -488,7 +488,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-multiplexing", "session-header-overflow"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -498,7 +498,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-split-layout"],
     surfaces: [],
     journeys: ["session-multiplexing", "pane-reposition"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Below 1100px only the active pane is visible\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
@@ -508,7 +508,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-multiplexing", "session-header-overflow"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Below 1100px only the active pane is visible\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
@@ -518,7 +518,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-multiplexing", "pane-reposition"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -538,7 +538,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["pane-reposition"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: DESKTOP_ONLY, decision: "SPEC.md#behaviour" },
   },
   {
@@ -558,7 +558,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#get-__huisessionsevents", "docs/api.md#post-__huisessionsidconnect"],
     surfaces: ["route:POST /__hui/sessions/:id/connect", "route:GET /__hui/sessions/events"],
     journeys: ["session-registry"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

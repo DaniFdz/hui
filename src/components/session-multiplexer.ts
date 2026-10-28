@@ -275,7 +275,7 @@ export class SessionMultiplexer extends HuiElement {
             const rect = this.narrow ? { left: 0, top: 0, ...canvas } : geometry.panes.get(pane.id)!;
             return html`<div
               class="chat-split-view__cell ${split && active ? "chat-split-view__cell--active" : ""} ${!visible ? this.narrow ? "chat-split-view__cell--narrow-hidden" : "chat-split-view__cell--tab-hidden" : ""} ${rect.left === 0 && rect.top === 0 ? "chat-split-view__cell--origin" : ""}"
-              data-session-pane=${pane.id} aria-current=${split && active ? "true" : nothing}
+              data-session-pane=${pane.id} data-testid="session-pane" aria-current=${split && active ? "true" : nothing}
               style=${rectStyle(rect)}
               @pointerdown=${() => this.onFocusPane(pane.id)} @focusin=${() => this.onFocusPane(pane.id)}
             >${!this.narrow && spot?.tabs ? this.renderTabs(spotTabs(spot), pane.id) : nothing}<div class="chat-pane-cache">
@@ -288,7 +288,7 @@ export class SessionMultiplexer extends HuiElement {
             </div></div>`;
           })}
           ${this.narrow ? nothing : repeat(geometry.dividers, (divider) => divider.id, (divider) => html`<resizable-divider
-            style=${rectStyle(divider)} orientation=${divider.columnId ? "horizontal" : "vertical"}
+            data-testid="pane-divider" style=${rectStyle(divider)} orientation=${divider.columnId ? "horizontal" : "vertical"}
             .splitRatio=${divider.ratio} .resizeExtent=${divider.extent} .minRatio=${divider.minRatio} .maxRatio=${divider.maxRatio} label="Resize"
             @resize=${(event: CustomEvent<{ splitRatio: number }>) => this.onResize(divider.columnId, divider.index, event.detail.splitRatio)}
             @resize-end=${this.onResizeEnd}
