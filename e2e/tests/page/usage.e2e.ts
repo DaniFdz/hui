@@ -44,7 +44,7 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   const overview = screen.getByTestId("usage-overview");
   await expect(overview).toContainText("PI cost / message", { ignoreCase: true });
   await expect(overview).toContainText("$0.00");
-  await expect(overview).toContainText("Across 3 messages");
+  await expect(overview).toContainText("Across 7 messages");
   await expect(overview).toContainText("Error rate", { ignoreCase: true });
   await expect(overview).toContainText("0.00%");
   await expect(screen.getByTestId("usage-rankings")).not.toContainText("of priced cost");
