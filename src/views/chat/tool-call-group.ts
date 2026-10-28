@@ -97,7 +97,7 @@ export function toolCallMeta(item: ToolItem): string | undefined {
   const name = item.name.trim().toLowerCase();
   if (name === "codemode") {
     const view = codemodeToolPresentation(item);
-    if (view) return `${view.calls.length} call${view.calls.length === 1 ? "" : "s"}`;
+    if (view?.calls.length) return `${view.calls.length} call${view.calls.length === 1 ? "" : "s"}`;
   }
   const output = item.output?.trimEnd() ?? "";
   if (!output) return undefined;
