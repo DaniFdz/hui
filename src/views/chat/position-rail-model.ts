@@ -3,7 +3,7 @@
  * position, and how keys move between markers. It reads projected rows and measured positions only; the view does
  * the measuring and scrolling.
  */
-import { attributedMessage, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./projection.ts";
+import { attributedMessage, type ChatMessage, type ChatProjectionRow, type MessageSender } from "../../lib/chat-projection.ts";
 
 export type ConversationMarker = {
   id: string;

@@ -471,11 +471,12 @@ async function updateSession(
   }
 
   let updated: SessionRecord | undefined;
-  await registryUpdater((records) => {
+  let tree = new Set<string>();
+  const written = await registryUpdater((records) => {
     if (!records.some((record) => record.id === id)) {
       throw new SessionNotFoundError(`unknown session: ${id}`);
     }
-    const tree = patch.archived === undefined ? new Set([id]) : sessionTreeIds(records, id);
+    tree = patch.archived === undefined ? new Set([id]) : sessionTreeIds(records, id);
     return records.map((record) => {
       if (record.id !== id) {
         return tree.has(record.id) ? { ...record, archived: patch.archived } : record;
@@ -485,6 +486,7 @@ async function updateSession(
     });
   });
   if (!updated) throw new SessionNotFoundError(`unknown session: ${id}`);
+  for (const record of written) if (tree.has(record.id)) liveSessions.follow(record);
   return updated;
 }
 

@@ -735,6 +735,15 @@ export class LiveSessions {
     return live.record;
   }
 
+  /** Takes a registry write made elsewhere, such as a rename or a hand-set unread mark, into a live session's record. */
+  follow(record: SessionRecord): void {
+    const live = this.#live.get(record.id);
+    if (!live) return;
+    const unread = live.record.unread === true;
+    live.record = this.#withUnsaved(live, record);
+    if ((live.record.unread === true) !== unread) this.#publishStatus(live, this.#reported(live), false, !unread);
+  }
+
   /** The model in use, so a header can render before it asks for the full list. */
   currentModel(id: string): RuntimeModel | undefined {
     return this.#live.get(id)?.runtime?.currentModel?.();

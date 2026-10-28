@@ -7,21 +7,21 @@ import { sessionMenuShortcuts } from "../lib/session/menu-shortcuts.ts";
 import { labelDropdown, closeDropdownOnEscape } from "../lib/web-awesome.ts";
 import { renderHoverMarquee } from "../lib/hover-marquee.ts";
 import { type SessionGroup, type SessionView } from "../api/sessions.ts";
-import { sessionGroupLabel, storedSessionGroup, unreachableHost } from "../lib/session/sessions.ts";
+import { normalizeCustomSessionIcon, SESSION_ICONS, sessionGroupLabel, sessionMoveGroupOptions, storedSessionGroup } from "../lib/session/sessions.ts";
 import { subagentElapsed, subagentVisualState } from "../lib/subagent-activity.ts";
 import { customGroupOrder, sessionTreeRows, sidebarSessionGroups, type SidebarSessionGroup, type SidebarSessionOptions, type SidebarSessionTreeRow } from "../lib/session/sidebar-sessions.ts";
 import { renderSidebarSessionOptions } from "./sidebar-session-options.ts";
 import { kanbanIcon } from "./kanban.ts";
-import { isSessionStage, SESSION_STAGE_LABELS } from "../lib/kanban.ts";
+import { isSessionStage } from "../lib/kanban.ts";
 export { filterSessionGroups } from "../lib/session/sidebar-sessions.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import { navigationPath } from "../lib/navigation.ts";
 import { writeSessionDrag } from "../lib/session/pane-layout.ts";
 import { pullRequestAccessibleLabel } from "../lib/pull-requests.ts";
 import { pullRequestStateIcon } from "../components/pull-request-hovercard.ts";
-import { jiraIssueAccessibleLabel, primaryJiraIssue } from "../lib/jira.ts";
+import { primaryJiraIssue } from "../lib/jira.ts";
 import { brandIcons } from "../lib/brand-icons.ts";
-import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
+import { sessionAccessibleName, sessionGlyph } from "../lib/session/labels.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bots/roster.ts";
@@ -212,31 +212,6 @@ export type ShellProps = {
   bots: ShellBotsProps;
 };
 
-export function sessionMoveGroupOptions(groups: readonly SessionGroup[]): Array<{ label: string; value: string }> {
-  const labels = ["ungrouped", ...groups.map((group) => group.label)];
-  return [...new Set(labels.map((label) => label || "ungrouped"))]
-    .map((label) => ({ label: sessionGroupLabel(label), value: storedSessionGroup(label) }));
-}
-
-export function sessionAccessibleName(session: SessionView): string {
-  return [
-    session.title,
-    session.creating ? worktreeProgressLabel(session.creating) : `status ${session.status}`,
-    ...(session.background && session.status !== "running" ? ["watcher or subagent running"] : []),
-    `tool ${session.tool}`,
-    ...(isSessionStage(session.stage) ? [`stage ${SESSION_STAGE_LABELS[session.stage].toLocaleLowerCase()}`] : []),
-    ...(session.pinned ? ["pinned"] : []),
-    ...(session.unread ? ["unread"] : []),
-    ...(session.archived ? ["archived"] : []),
-  ].join(", ");
-}
-
-const SESSION_ICONS = ["🦞", "🚀", "🐛", "✅", "🔥", "📦", "🧪", "📝", "🔍", "⚡", "🎯"] as const;
-export function normalizeCustomSessionIcon(value: string): string | undefined {
-  const icon = value.trim();
-  return icon && icon.length <= 32 ? icon : undefined;
-}
-
 function shortcut(key: string) {
   return html`<kbd slot="details" class="session-menu__shortcut" aria-hidden="true">${key}</kbd>`;
 }
@@ -401,17 +376,10 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   const linkedJira = session.jiraIssues?.at(-1);
   const canDrag = props.sessionMovePendingId !== session.id;
   const dragging = props.draggingSessionId === session.id;
-  const away = unreachableHost(session);
-  const attention = session.status === "waiting"
-    ? { label: "Waiting for your answer", icon: icons.hand, tone: "question" }
-    : session.status === "error"
-      ? { label: "Session failed", icon: icons.alertTriangle, tone: "error" }
-      // Calm, not a failure: the session goes on on its machine.
-      : away ? { label: away.status, icon: icons.plug, tone: "away" } : undefined;
-  // Also shown as running while a watcher or a subagent below it still works.
-  const background = session.status !== "running" && session.background === true && !attention;
-  const busy = session.status === "running" || background;
-  const unread = session.unread === true && !attention && !session.icon && !busy;
+  const glyph = sessionGlyph(session);
+  const icon = { question: icons.hand, error: icons.alertTriangle, away: icons.plug };
+  const attention = glyph.attention && { ...glyph.attention, icon: icon[glyph.attention.tone] };
+  const { busy, unread } = glyph;
   // The Jira mark sits in the leading status column, aligned with child
   // status glyphs. Live status (attention, running, child result) takes the
   // column while it applies; the Jira mark outranks a custom icon.
@@ -423,6 +391,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
   return html`
     <div
       class="session-row-wrap session-row-host sidebar-recent-session sidebar-recent-session--single-line ${depth > 0 ? "sidebar-recent-session--child" : ""} ${selected ? "sidebar-recent-session--active" : ""} ${splitOpen ? "sidebar-recent-session--split" : ""} ${session.pinned ? "session-row-host--pinned" : ""} ${session.unread ? "sidebar-recent-session--unread" : ""} ${stage ? "sidebar-recent-session--staged" : ""} ${session.status === "running" ? "session-row-host--running" : ""} ${hasDraft ? "sidebar-recent-session--has-draft" : ""} ${session.status === "error" ? "sidebar-recent-session--attention-danger" : ""} ${dragging ? "sidebar-recent-session--dragging" : ""} ${props.sessionMovePendingId === session.id ? "sidebar-recent-session--moving" : ""}"
+      data-testid="session-row"
       data-session-id=${session.id}
       data-session-key=${session.id}
       data-session-stage=${stage ?? nothing}
@@ -446,7 +415,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
         draggable="false"
         data-status=${session.status}
         aria-current=${selected ? "true" : "false"}
-        aria-label=${`${sessionAccessibleName(session)}${hasDraft ? ", draft" : ""}${splitOpen ? ", open in split pane" : ""}${session.jiraIssues?.length ? `, ${jiraIssueAccessibleLabel(session.jiraIssues.at(-1)!, session.jiraIssues.length)}` : ""}`}
+        aria-label=${sessionAccessibleName(session, [...(hasDraft ? ["draft"] : []), ...(splitOpen ? ["open in split pane"] : [])])}
         @click=${(event: MouseEvent) => {
           if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
           event.preventDefault();
@@ -454,7 +423,7 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
           props.onSelectSession(session);
         }}
       >
-        <span class="sidebar-session-indicator" title=${attention?.label ?? (background ? "Watcher or subagent running" : session.creating ? worktreeProgressLabel(session.creating) : unread ? "Unread activity" : nothing)} aria-hidden="true">
+        <span class="sidebar-session-indicator" title=${glyph.label || nothing} aria-hidden="true">
           ${attention ? html`<span class="session-glyph"><span class="session-glyph__content"><span class="sidebar-session-attention__icon sidebar-session-attention__icon--${attention.tone}">${attention.icon}</span></span></span>` : nothing}
           ${!attention && !busy && depth > 0 && session.subagent ? renderChildStatus(session.subagent.status) : nothing}
           ${busy || session.creating ? html`<span class="session-glyph session-glyph--running session-glyph--bare"><span class="session-glyph__content"></span><span class="session-glyph__ring"></span></span>` : nothing}
@@ -487,8 +456,10 @@ function sessionRow(session: SessionView, selected: boolean, props: ShellProps, 
       <wa-dropdown class="session-menu" placement="bottom-end" distance="4" .open=${open}
         id=${menuId(session.id)} aria-label=${`Actions for ${session.title}`}
         @keydown=${sessionMenuShortcuts}
+        @wa-after-show=${sessionMenuShortcuts}
+        @wa-after-hide=${sessionMenuShortcuts}
         @wa-show=${(event: Event) => { (event.currentTarget as HTMLElement).dispatchEvent(new Event("openclaw-session-menu-open", { bubbles: true })); labelDropdown(event); if (!open) props.onToggleMenu(session.id); }}
-        @wa-hide=${() => { if (open) props.onCloseMenu(); }}
+        @wa-hide=${(event: Event) => { sessionMenuShortcuts.handleEvent(event); if (open) props.onCloseMenu(); }}
         @wa-select=${(event: CustomEvent<{ item: { value: string } }>) => {
           const trigger = (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[slot="trigger"]');
           trigger?.focus();
@@ -756,6 +727,7 @@ function kanbanNavItem(props: ShellProps) {
   return html`<a
     href=${navigationPath({ kind: "kanban" })}
     class="nav-item sidebar-nav__item ${active ? "nav-item--active" : ""}"
+    data-testid="nav-item"
     aria-current=${active ? "page" : "false"}
     @click=${(event: MouseEvent) => {
       if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -857,7 +829,7 @@ export function renderSidebar(props: ShellProps) {
       }}
     >
         <div class="sidebar-shell sidebar-drawer__body">
-          <div class="sidebar-brand">
+          <div class="sidebar-brand" data-testid="sidebar-header">
             <button type="button" class="sidebar-brand__icon sidebar-brand__header-control sidebar-brand__collapse" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" @click=${toggleDesktopSidebar}>${icons.panelLeftClose}</button>
             <div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>
           </div>
@@ -882,6 +854,7 @@ export function renderSidebar(props: ShellProps) {
                 <a
                   href=${navigationPath({ kind: "page", page })}
                   class="nav-item sidebar-nav__item ${props.view === "surface" && props.activePage?.id === page.id ? "nav-item--active" : ""}"
+                  data-testid="nav-item"
                   aria-current=${props.view === "surface" && props.activePage?.id === page.id ? "page" : "false"}
                   @click=${(event: MouseEvent) => {
                     if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, composerSendAction, filterSlashCommands, slashMenu, parseClearCommand, parseReloadCommand, parseUpdateCommand, skillCommands, slashCommandQuery, parseCompactCommand } from "./slash-commands.ts";
 import type { RuntimeCommand } from "../../api/sessions.ts";
 
 test("slash suggestions follow the command word at the caret", () => {
@@ -130,4 +130,26 @@ test("slash-commands preserves the shared runtime fixtures", () => {
   for (const fixture of fixtures) {
     assert.deepEqual({ clear: parseClearCommand(fixture.input), compact: parseCompactCommand(fixture.input) ?? null, reload: parseReloadCommand(fixture.input), update: parseUpdateCommand(fixture.input) }, fixture.expected);
   }
+});
+
+test("sending decides between a HUI command, a refusal and a prompt", () => {
+  const idle = { bot: false, attachments: 0, steering: false, busy: false };
+  assert.deepEqual(composerSendAction(" /clear ", idle), { kind: "clear" });
+  assert.deepEqual(composerSendAction("/reload", idle), { kind: "reload" });
+  assert.deepEqual(composerSendAction("/clear everything", idle), { kind: "refuse", note: "Use /clear without arguments or attachments." });
+  assert.deepEqual(composerSendAction("/reload", { ...idle, attachments: 1 }), { kind: "refuse", note: "Use /reload without arguments or attachments." });
+  assert.deepEqual(composerSendAction("/clear", { ...idle, busy: true }), { kind: "refuse", note: "Finish or stop active work before clearing the session." });
+  assert.deepEqual(composerSendAction("/clear", { ...idle, bot: true }).kind, "refuse");
+  assert.deepEqual(composerSendAction("/compact keep it", { ...idle, busy: true }), { kind: "compact", instructions: "keep it" });
+  assert.deepEqual(composerSendAction("/compact", { ...idle, steering: true }), { kind: "refuse", note: "Finish or stop active work before compacting the session." });
+  assert.deepEqual(composerSendAction("/side what now?", idle), { kind: "side", question: "what now?" });
+  assert.deepEqual(composerSendAction("/btw", idle), { kind: "refuse", note: "Add a question after /btw. Example: /btw which file are we editing?" });
+  assert.deepEqual(composerSendAction("hello /clear", idle), { kind: "prompt" });
+});
+
+test("the command menu lists matches with their reference and completion", () => {
+  const catalog = composerCommands([{ name: "skill:review", description: "Review code", source: "skill" }], true);
+  assert.deepEqual(slashMenu(catalog, "/cle")?.map((option) => [option.reference, option.completion]), [["/clear", "/clear "]]);
+  assert.equal(slashMenu(catalog, "/rev")?.[0]?.reference, "$review");
+  assert.equal(slashMenu(catalog, "hello"), null);
 });

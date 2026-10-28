@@ -16,8 +16,8 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-002",
@@ -26,8 +26,8 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-003",
@@ -36,8 +36,8 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-004",
@@ -46,8 +46,8 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-005",
@@ -56,7 +56,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Number keys, arrows, Enter chords and Escape are keyboard-only; the visible rows, Next, Back, Submit and Cancel cover them.", decision: KEYBOARD },
   },
   {
@@ -66,18 +66,18 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-007",
     title: "Stop a run that waits for an answer",
-    behaviour: "Stop while a question or secret card is open closes the card and leaves the session idle. The question counts as declined and the secret request as cancelled; no secret file is written.",
+    behaviour: "Stop while a question or secret card is open closes the card and leaves the session idle; the call's row reads that it was aborted, and no secret file is written.",
     spec: [...QUESTIONS, ...SECRETS],
     surfaces: ["route:POST /__hui/sessions/:id/abort"],
     journeys: ["ask-user-question", "secret-requests"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-008",
@@ -86,8 +86,8 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, ...SECRETS],
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-009",
@@ -96,7 +96,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question", "route:POST /__hui/sessions/:id/question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -106,8 +106,8 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-011",
@@ -116,7 +116,7 @@ const cases: UseCase[] = [
     spec: QUESTIONS,
     surfaces: ["tool:ask_user_question"],
     journeys: ["ask-user-question"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -146,8 +146,8 @@ const cases: UseCase[] = [
     spec: [...SECRETS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-016",
@@ -156,8 +156,8 @@ const cases: UseCase[] = [
     spec: SECRETS,
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-017",
@@ -166,8 +166,8 @@ const cases: UseCase[] = [
     spec: [...SECRETS, "docs/api.md#post-__huisessionsidquestion"],
     surfaces: ["tool:secret_request", "route:POST /__hui/sessions/:id/question"],
     journeys: ["secret-requests"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "AGENT-018",
@@ -176,7 +176,7 @@ const cases: UseCase[] = [
     spec: SECRETS,
     surfaces: ["tool:secret_request"],
     journeys: ["secret-requests"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard-only affordance; on iOS the card is closed only with Cancel, which AGENT-017 covers.", decision: KEYBOARD },
   },
   {
@@ -206,7 +206,7 @@ const cases: UseCase[] = [
     spec: [...QUESTIONS, ...SECRETS, "docs/api.md#suggested-tasks"],
     surfaces: [],
     journeys: ["ask-user-question", "secret-requests", "task-suggestions"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -246,7 +246,7 @@ const cases: UseCase[] = [
     spec: [...SUBAGENTS, "docs/api.md#subagent-completion-events"],
     surfaces: ["row:subagentEvent"],
     journeys: ["subagent-steering", "subagent-delivery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -344,7 +344,7 @@ const cases: UseCase[] = [
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -354,7 +354,7 @@ const cases: UseCase[] = [
     spec: [...WATCHERS, "docs/api.md#get-__huisessionsidwatcherswidlog"],
     surfaces: ["tool:watcher", "route:GET /__hui/sessions/:id/watchers/:wid/log"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -364,7 +364,7 @@ const cases: UseCase[] = [
     spec: [...WATCHERS, "docs/api.md#post-__huisessionsidwatcherswidstop"],
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/stop"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -374,7 +374,7 @@ const cases: UseCase[] = [
     spec: [...WATCHERS, "docs/api.md#post-__huisessionsidwatcherswidrestart"],
     surfaces: ["route:POST /__hui/sessions/:id/watchers/:wid/restart"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -384,7 +384,7 @@ const cases: UseCase[] = [
     spec: [...WATCHERS, "docs/api.md#delete-__huisessionsidwatcherswid"],
     surfaces: ["route:DELETE /__hui/sessions/:id/watchers/:wid"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -413,7 +413,7 @@ const cases: UseCase[] = [
     behaviour: "A watcher that outlived a gateway restart reappears in its conversation with its real state, and one whose processes are gone without an exit status, as after a reboot, shows Dead with The process is gone and recorded no exit status, for example after a restart.",
     spec: WATCHERS,
     surfaces: ["tool:watcher"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -423,7 +423,7 @@ const cases: UseCase[] = [
     spec: WATCHERS,
     surfaces: ["route:DELETE /__hui/sessions/:id"],
     journeys: ["watchers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -513,7 +513,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#task-progress"],
     surfaces: ["tool:progress_card", "setting:chat.collapseTaskProgress"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "AGENT-054",

@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("a reply streams, its tool card opens, and Stop ends the next run", { tags: ["CHAT-001", "CHAT-025", "CHAT-004", "smoke"], platforms: ["web"] }, async ({ app, screen, hui }) => {
+test("a reply streams, its tool card opens, and Stop ends the next run", { tags: ["CHAT-001", "CHAT-025", "CHAT-004", "smoke"] }, async ({ app, screen, hui }) => {
   const message = screen.getByLabel("Message");
   const send = screen.getByRole("button", "Send message");
   const status = (value: string) => screen.getByLabel(`Session status: ${value}`);
@@ -26,8 +26,10 @@ test("a reply streams, its tool card opens, and Stop ends the next run", { tags:
   await send.tap();
   await expect(transcript.getByText("Tool complete")).toBeVisible();
   await expect(status("Idle")).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
   await transcript.getByText("Ran 1 command").tap();
   await expect(transcript.getByText("Inspecting the fixture.")).toBeVisible();
+  await hui.scrollTo(transcript, transcript.getByRole("button", "Read fixture.txt"));
   await transcript.getByRole("button", "Read fixture.txt").tap();
   await expect(transcript.getByText(/^from .+\/fixture\.txt$/u)).toBeVisible();
   await expect(transcript.getByText("Real SDK browser fixture", { exact: false })).toBeVisible();

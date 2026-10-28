@@ -4,51 +4,14 @@
 import { html, nothing } from "lit";
 import { icons } from "../../lib/icons.ts";
 import { openMessageContextMenu } from "../../lib/message-context-menu.ts";
+import { displayToolValue, readToolOutput, readToolPresentation } from "../../lib/tool-cards.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 
 type Tool = Extract<TranscriptItem, { kind: "tool" }>;
 
-const READ_TOOLS = ["read", "read_file", "readfile", "notebookread", "notebook_read"];
-/** Tools whose path argument names the one file they change. */
-const FILE_TOOLS = [...READ_TOOLS, "edit", "edit_file", "multiedit", "multi_edit", "write", "write_file", "create_file", "notebookedit", "notebook_edit"];
-const PATH_KEYS = ["path", "file_path", "filePath", "file", "filepath", "filename", "notebook_path"];
-
-function toolArgs(item: Tool): Record<string, unknown> | null {
-  return item.args && typeof item.args === "object" && !Array.isArray(item.args) ? item.args as Record<string, unknown> : null;
-}
-
-/** The file a read, edit or write tool call names, as the agent passed it. */
-export function toolFilePath(item: Tool): string | undefined {
-  if (!FILE_TOOLS.includes(item.name.trim().toLowerCase())) return undefined;
-  const args = toolArgs(item);
-  return PATH_KEYS.map((key) => args?.[key]).find((value): value is string => typeof value === "string" && !!value.trim());
-}
-
 /** A tool's path as a file reference; `label` is what to show (by default the path itself). */
 export function renderToolFileReference(path: string, label: string = path) {
   return html`<hui-file-ref data-path=${path.trim()}>${label}</hui-file-ref>`;
-}
-
-export function readToolPresentation(item: Tool) {
-  if (!READ_TOOLS.includes(item.name.trim().toLowerCase())) return null;
-  const args = toolArgs(item);
-  const path = toolFilePath(item);
-  if (!path) return null;
-  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  const target = normalized.slice(normalized.lastIndexOf("/") + 1) || path;
-  const shortPath = path.replace(/^\/(?:Users|home)\/[^/]+(\/|$)/, "~$1").replace(/^C:\\Users\\[^\\]+(\\|$)/i, "~$1");
-  // These are the exact row-summarized fields in upstream tool content.
-  const summarizedKeys = new Set(["path", "file_path", "filePath", "notebook_path"]);
-  const extras = Object.entries(args ?? {}).filter(([key]) => !summarizedKeys.has(key));
-  return { target, path, shortPath, detail: `from ${shortPath}`, extras };
-}
-
-export function displayToolValue(value: unknown): string {
-  const text = typeof value === "string" ? value : value === null || value === undefined ? String(value)
-    : typeof value === "object" ? JSON.stringify(value) : String(value);
-  // Avoid cutting a UTF-16 surrogate pair, as in the upstream display helper.
-  const end = text.length > 400 && /[\uD800-\uDBFF]/.test(text[399] ?? "") && /[\uDC00-\uDFFF]/.test(text[400] ?? "") ? 399 : 400;
-  return text.slice(0, end);
 }
 
 export function syncToolOverflow(event: Event) {
@@ -66,7 +29,7 @@ export function renderReadToolCard(item: Tool, options: {
   if (!view) return html``;
   const running = (item.status ?? "running") === "running";
   const failed = item.failed || item.status === "failed";
-  const output = item.output?.trim() ? item.output : failed ? "No output — tool failed." : "";
+  const output = readToolOutput(item);
   const copy = (event: MouseEvent | KeyboardEvent) => openMessageContextMenu(event, item.output ?? "", options.onCopy);
   return html`<div class="chat-tool-msg-collapse chat-tool-msg-collapse--manual ${options.expanded ? "is-open" : ""}" data-tool-id=${item.id}>
     <div class="chat-inline-disclosure chat-tool-msg-summary chat-tool-row chat-tool-row--file ${running ? "chat-tool-row--running" : ""}"

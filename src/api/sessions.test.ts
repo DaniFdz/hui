@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { test, vi } from "vitest";
 
+import { reconnectDelay } from "../lib/event-stream.ts";
 import {
-  reconnectDelay,
   STATUS_STREAM_STALL_MS,
   subscribeSessionStatuses,
   type RuntimeEvent,

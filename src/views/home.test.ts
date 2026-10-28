@@ -714,7 +714,7 @@ test("an unanswered questionnaire reads as expired with what it asked, never as 
 });
 
 test("a long conversation renders its latest rows and offers the earlier ones; a closed activity group renders no items", async () => {
-  const { TRANSCRIPT_WINDOW_ROWS } = await import("./chat/projection.ts");
+  const { TRANSCRIPT_WINDOW_ROWS } = await import("../lib/chat-projection.ts");
   const transcript = Array.from({ length: TRANSCRIPT_WINDOW_ROWS + 10 }, (_, index) => [
     { kind: "message", id: `u${index}`, role: "user", text: `Step ${index}` },
     { kind: "tool", id: `t${index}`, name: "bash", status: "succeeded", args: { command: `echo step-${index}` }, output: `step-${index}` },

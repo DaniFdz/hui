@@ -8,6 +8,7 @@
  */
 import { html } from "lit";
 import { clearFilesViewState, filesViewTitle } from "../../lib/files/view-state.ts";
+import { FILES_COPY } from "../../lib/files/copy.ts";
 import { workViewKey, type SessionWorkPane, type WorkViewKind } from "../../lib/work-pane.ts";
 import { WORK_SHORTCUTS } from "../../lib/work-shortcuts.ts";
 
@@ -40,7 +41,7 @@ export function filesViewToReveal(pane: Pick<SessionWorkPane, "views" | "active"
 
 export const filesWorkViewKind: WorkViewKind<FilesWorkViewRef> = {
   kind: "files",
-  label: "Files",
+  label: FILES_COPY.view,
   icon: filesIcon,
   shortcut: FILES_WORK_VIEW_SHORTCUT,
   create: () => ({ kind: "files", id: newFilesViewId() }),

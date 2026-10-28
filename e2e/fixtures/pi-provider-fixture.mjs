@@ -241,6 +241,20 @@ const server = createServer(async (request, response) => {
     text(response, compress ? `${input.slice(0, input.indexOf(":"))}: FIXTURE_MEMORY ${marker}` : `FIXTURE_MEMORY merged ${marker}`);
     return finish(response);
   }
+  // PI retries 5xx answers and messages that look transient, so E2E_ERROR_LONG fails at once with a 400, and its
+  // message is longer than the run error card's summary, so the card offers Details.
+  if (source.includes("E2E_ERROR_LONG")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
+    message: `fixture provider error: ${"the fixture refuses this request on purpose; ".repeat(4)}see the fixture for why` } });
+  // E2E_ERROR_QUOTA fails at once with a 400 whose message names the quota, as a provider out of credits does, so a
+  // routine's run records the rate-limit kind that needs the operator.
+  if (source.includes("E2E_ERROR_QUOTA")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
+    message: "fixture quota exhausted: the fixture's plan has no credits left" } });
+  // E2E_OVERFLOW overflows the context window until PI's summary is in the request, so PI compacts and retries the turn.
+  if (source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
+    return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 213462 tokens > 200000 maximum" } });
+  }
+  // E2E_PRIMARY_ERROR fails only the primary fixture model, so the run falls back to another model that answers it.
+  if (source.includes("E2E_PRIMARY_ERROR") && body.model === "fixture") return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
   // E2E_FAIL_ONCE fails the first run of each session that mentions it, so a journey can watch a recovered run
   // finish. It is an expired key rather than E2E_ERROR's retryable 500, because the run has to fail, not be retried.
@@ -267,20 +281,28 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  const reply = /E2E_REPLY:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
+  if (reply) {
+    text(response, Buffer.from(reply, "base64url").toString("utf8"));
+    return finish(response);
+  }
+
   // Tool calls a test chooses: E2E_CALL:<base64url JSON of { name, input }, or an array of them> calls them all in one
-  // response, and the next answer quotes every result.
+  // response, and the next answer quotes every result. E2E_HOLD:<the same> does too, and a `fixture_echo` call among
+  // them runs until POST /control/release-replay.
   // E2E_ASK_USER:<name> does the same with ask_user_question and the workspace's `ask-<name>.json`: its input, or an
   // array of inputs for parallel calls.
-  const chosen = /E2E_CALL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
+  const chosen = /E2E_(CALL|HOLD):([A-Za-z0-9_-]+)/u.exec(source);
   const asked = /E2E_ASK_USER:([a-z0-9-]+)/u.exec(source)?.[1];
   if (chosen || asked) {
     const calls = asked
       ? [JSON.parse(await readFile(`${workspace}/ask-${asked}.json`, "utf8"))].flat().map((input) => ({ name: "ask_user_question", input }))
-      : [JSON.parse(Buffer.from(chosen, "base64url").toString("utf8"))].flat();
-    calls.forEach((call, index) => toolUse(response, `tool-e2e-call-${index}`, call.name, call.input ?? {}, index));
+      : [JSON.parse(Buffer.from(chosen[2], "base64url").toString("utf8"))].flat();
+    const id = chosen?.[1] === "HOLD" ? "tool-e2e-hold" : "tool-e2e-call";
+    calls.forEach((call, index) => toolUse(response, `${id}-${index}`, call.name, call.input ?? {}, index));
     return finish(response, "tool_use");
   }
-  if (String(latestToolResult?.id ?? "").startsWith("tool-e2e-call-")) {
+  if (/^tool-e2e-(call|hold)-/u.test(String(latestToolResult?.id ?? ""))) {
     text(response, `tool answered: ${toolResultTexts([body.messages?.at(-1)]).join(" | ")}`);
     return finish(response);
   }
@@ -326,18 +348,26 @@ const server = createServer(async (request, response) => {
       : "Hi, I'm new here. What would you like me to look after for you?");
     return finish(response);
   }
-  // A bot saving its own SOUL.md with its write_soul tool.
+  // A bot saving its own SOUL.md with its write_soul tool: the default soul, or the text after E2E_WRITE_SOUL:.
+  const soul = /E2E_WRITE_SOUL:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
   if (source.includes("E2E_WRITE_SOUL")) {
-    toolUse(response, "tool-e2e-write-soul", "write_soul", { soul: "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n" });
+    toolUse(response, "tool-e2e-write-soul", "write_soul", { soul: soul ? Buffer.from(soul, "base64url").toString("utf8") : "# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.\n" });
     return finish(response, "tool_use");
   }
+  // A rewrite says what it changed, read from the soul the request now holds.
   if (latestToolResult?.id === "tool-e2e-write-soul") {
-    text(response, "I wrote my SOUL.md. To change it, just tell me.");
+    text(response, flattenedText(body.system).includes("E2E_SOUL_V2")
+      ? "I rewrote my SOUL.md: from now on I answer in one line."
+      : "I wrote my SOUL.md. To change it, just tell me.");
     return finish(response);
   }
-  // A bot naming itself with set_profile, as the operator said.
+  // A bot naming itself with set_profile, as the operator said: its default name and title, or the JSON after
+  // E2E_SET_PROFILE: for a later rename that changes its look too.
+  const profile = /E2E_SET_PROFILE:([A-Za-z0-9_-]+)/u.exec(source)?.[1];
   if (source.includes("E2E_SET_PROFILE")) {
-    toolUse(response, "tool-e2e-set-profile", "set_profile", { name: "Echo", title: "Fixture tester" });
+    toolUse(response, "tool-e2e-set-profile", "set_profile", profile
+      ? JSON.parse(Buffer.from(profile, "base64url").toString("utf8"))
+      : { name: "Echo", title: "Fixture tester" });
     return finish(response, "tool_use");
   }
   if (latestToolResult?.id === "tool-e2e-set-profile") {
@@ -803,6 +833,14 @@ const server = createServer(async (request, response) => {
     request.on("close", () => response.end());
     return;
   }
+  if (source.includes("E2E_THINKING")) {
+    event(response, { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Weighing the fixture." } });
+    event(response, { type: "content_block_delta", index: 0, delta: { type: "signature_delta", signature: "e2e-signature" } });
+    event(response, { type: "content_block_stop", index: 0 });
+    text(response, "Thought it through.", 1);
+    return finish(response);
+  }
   if (source.includes("E2E_REPLAY")) {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "text", text: "", citations: null } });
     event(response, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Replay prefix — " } });
@@ -812,6 +850,21 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
+  // PI's compaction summarizer; a distinct reply shows where the summary lands.
+  // E2E_SLOW_COMPACT in the conversation holds it until POST
+  // /control/release-replay, so a check can watch, queue into or cancel it.
+  if (flattenedText(body.system).includes("context summarization assistant")) {
+    if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
+    text(response, "FIXTURE_SUMMARY");
+    return finish(response);
+  }
+  // E2E_CONTEXT_HOLDS followed by words answers which of them the request holds outside that question.
+  const wanted = /E2E_CONTEXT_HOLDS(?: [A-Z0-9_]+)+/u.exec(source)?.[0];
+  if (wanted) {
+    const rest = JSON.stringify([body.system, body.messages]).replaceAll(wanted, "");
+    text(response, `Earlier context: ${wanted.split(" ").slice(1).map((word) => `${word} ${rest.includes(word) ? "yes" : "no"}`).join(", ")}`);
+    return finish(response);
+  }
   // Attachment requests reach this branch. The request log is the proof that
   // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
   text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.");

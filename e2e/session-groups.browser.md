@@ -50,42 +50,22 @@ for inspection. No operator registry or transcripts are modified.
 
 ## Browser journeys and observed results
 
-1. With **only OTHER** visible, click the Sessions toolbar's **New group** button.
-   The existing modal focuses Group name. Create `Research Lab`; **RESEARCH LAB**
-   appears immediately, above OTHER, with count 0. Focus returns to New group.
-2. Open **Filter & sort**, select **Created** and observe `Pinned note`,
-   `Alpha recently created`, `Zulu recently updated`. Reload: the group and sort
-   preference both survive. Select **Last updated** and the two unpinned rows
-   reverse; the pin stays first. **Name** also places Alpha before Zulu.
-3. Select **Project**: sessions split into OTHER-PROJECT and WORKSPACE, with no
-   custom-group mutation menus. Click **New session in OTHER-PROJECT**: the real
-   launch form selects that fixture directory and the OTHER group (empty raw
-   group value). Select **None**: group headings disappear and all rows sort
-   together.
-4. Choose **Error** with no failed sessions: the sidebar announces **No matching
-   sessions.** New group remains reachable. Create `Sprint Notes` using Enter:
-   custom grouping and All status return, the new empty group is visible, and
-   the selected Name sort is preserved.
-5. Click **New session in RESEARCH LAB**, enter the disposable workspace and
-   `Ping`, then Start session. HUI creates the session, PI starts, and the chat
-   receives **Fixture response.** The sidebar count becomes 1. Read-only fixture
-   inspection confirms raw group `Research Lab` and unchanged registry version 2.
-6. Click **Search sessions** and enter `other`: only OTHER and its three rows
-   remain. Clearing search restores the custom groups and rows. (Since
-   2026-10-06 the desktop header has no Search button: use the mobile top bar's
-   Search, or Tab to the field below the header.)
-7. On iPhone 13 emulation (390×664 CSS px, DPR 3), open navigation and the menu.
+The shared tests in `e2e/tests/sess/` (`sidebar-filters.e2e.ts`, `session-groups.e2e.ts` and `group-defaults.e2e.ts`)
+now prove creating groups, search, sort, grouping, the status filter, Hide empty groups and the group Git defaults.
+What is left here is the keyboard (SESS-041) and the layout of the menu and the group dialogs on a phone.
+
+1. On iPhone 13 emulation (390×664 CSS px, DPR 3), open navigation and the Filter & sort menu.
    **End** scrolls the last option, Never, into view; Enter applies it. Escape
    closes the menu, returns focus to Filter & sort and leaves the drawer modal.
-8. From the mobile drawer, create `Mobile Ideas`. The drawer closes before the
-   modal opens; the dialog fits x=12…378. On success focus returns to Open
-   navigation and main is no longer inert. Reopen: **MOBILE IDEAS** is visible.
-9. Select **Hide empty groups → Always** using End/ArrowUp/Enter: only RESEARCH
-   LAB and OTHER remain. Select **When filtering**: both empty groups return.
-10. Repeat the menu inspection at 844×390 landscape; the menu flips above the
-    trigger, remains in bounds and scrolls. Resize the open drawer to desktop:
-    the drawer state clears and main is not left inert. Desktop menu selection
-    also works with Home/ArrowDown/Enter.
+2. Select **Hide empty groups → Always** using End/ArrowUp/Enter, then **When filtering** the same way.
+3. Repeat the menu inspection at 844×390 landscape; the menu flips above the
+   trigger, remains in bounds and scrolls. Resize the open drawer to desktop:
+   the drawer state clears and main is not left inert. Desktop menu selection
+   also works with Home/ArrowDown/Enter.
+4. From the mobile drawer, choose **Rename group**, **New session defaults** and
+   **Delete group** in a group's Group options menu. Each time the drawer closes
+   before the dialog opens, the dialog fits x=12…378, and once it closes main is
+   no longer inert.
 
 The portrait menu measured x=40…264, y=225…654 with scrollable content (737 px
 content, 427 px client height). Landscape measured x=232…456, y=10…187. There
@@ -97,9 +77,7 @@ error-level console messages**.
 
 All five live status values, pin precedence, duplicate project-directory names,
 invalid saved preferences, empty-group policies and source-data non-mutation
-are covered by focused unit tests. The Browser journey verifies status-filter
-interaction and its no-match state; it does not fabricate every live status.
-Project grouping is by exact directory, not inferred Git-repository identity.
+are covered by focused unit tests. Project grouping is by exact directory, not inferred Git-repository identity.
 Owners, archival state, message previews and system-session classifications are
 not exposed because this registry does not supply them.
 
@@ -109,22 +87,11 @@ not exposed because this registry does not supply them.
 - `npm run build`: passed.
 - `git diff --check`: passed.
 
-
 ## Group Git defaults journey
 
 Use `visual-verification.mjs` with a disposable repository on `feature/current`,
 its `origin/HEAD` pointing to `main`, and a `release/1.0` branch at a distinct
 commit. Create a group through the UI, then open **New session defaults**.
-
-1. Select the fixture directory: Environment is Branch, Base branch is main.
-2. Select New worktree and release/1.0; toggle Branch and back: the ref stays.
-   Save and reload. Reopen defaults and verify both selections persisted.
-3. Start a new session from the group: its checkout picker inherits both values.
-   Enter a suffix and prompt; verify the isolated branch starts at release/1.0
-   and the original checkout is unchanged.
-4. Save Branch with main. Start another session from the group; verify it uses
-   the original directory and checks out main. Existing sessions are not moved.
-5. Change the defaults directory to a non-Git directory: Git selectors vanish.
-   Save/reload and verify Git defaults are cleared; cancel leaves saved values
-   untouched. Inspect desktop, portrait and landscape with keyboard-operated
-   selectors, no clipping and no new page/console errors.
+Operate the Working directory, Environment and Base branch selectors from the
+keyboard on desktop, portrait and landscape, with no clipping and no new page
+or console errors.

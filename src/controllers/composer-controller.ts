@@ -20,8 +20,8 @@ import { SendRequests } from "../lib/composer/send-requests.ts";
 import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseGoalCommand, parseReloadCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
-import { appendPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
+import { completeCommandReference, composerCommands, composerSendAction, filterSlashCommands, parseGoalCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
+import { appendPendingUser, dropDuplicateSend, failPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
 
@@ -542,24 +542,18 @@ export class ComposerController {
     if (!session || (!trimmed && !hasImage) || this.#conversation.opening || this.sending || this.#conversation.connection !== "live") {
       return;
     }
-    // The gateway refuses these for a bot's permanent chat; say why without a round trip.
-    const botRefusal = session.bot ? botChatCommandRefusal(trimmed) : undefined;
-    if (botRefusal) {
-      this.#deps.showNote(botRefusal, "error");
+    const action = composerSendAction(trimmed, {
+      bot: Boolean(session.bot),
+      attachments: attachments.length,
+      steering: mode !== "prompt",
+      busy: this.#conversation.streaming || session.status !== "idle",
+    });
+    if (action.kind === "refuse") {
+      this.#deps.showNote(action.note, "error");
       return;
     }
-    const clearCommand = parseClearCommand(trimmed);
-    const reloadCommand = parseReloadCommand(trimmed);
-    const command = clearCommand ? "clear" : reloadCommand ? "reload" : undefined;
-    if (command) {
-      if ((clearCommand ?? reloadCommand) === "invalid" || attachments.length) {
-        this.#deps.showNote(`Use /${command} without arguments or attachments.`, "error");
-        return;
-      }
-      if (mode !== "prompt" || this.#conversation.streaming || session.status !== "idle") {
-        this.#deps.showNote(`Finish or stop active work before ${command}ing the session.`, "error");
-        return;
-      }
+    if (action.kind === "clear" || action.kind === "reload") {
+      const command = action.kind;
       this.#deps.showNote("", "info");
       this.sending = true;
       this.#host.requestUpdate();
@@ -592,13 +586,8 @@ export class ComposerController {
       });
       return;
     }
-    const compact = parseCompactCommand(trimmed);
-    if (compact) {
-      if (attachments.length || mode !== "prompt") {
-        this.#deps.showNote(attachments.length ? "Use /compact without attachments." : "Finish or stop active work before compacting the session.", "error");
-        return;
-      }
-      this.#compactNow(compact.instructions, text);
+    if (action.kind === "compact") {
+      this.#compactNow(action.instructions, text);
       return;
     }
     const goal = parseGoalCommand(trimmed);
@@ -619,16 +608,8 @@ export class ComposerController {
       this.changeGoal(goal.action, goal.action === "start" ? goal.objective : undefined, text);
       return;
     }
-    const sideQuestion = /^\/(?:btw|side)(?:\s+([\s\S]+))?$/iu.exec(trimmed)?.[1]?.trim();
-    if (/^\/(?:btw|side)(?:\s|$)/iu.test(trimmed)) {
-      if (!sideQuestion) {
-        this.#deps.showNote("Add a question after /btw. Example: /btw which file are we editing?", "error");
-        return;
-      }
-      if (attachments.length) {
-        this.#deps.showNote("/btw does not support attachments in this build.", "error");
-        return;
-      }
+    if (action.kind === "side") {
+      const sideQuestion = action.question;
       this.draftEdit += 1;
       this.setDraft("");
       void this.persistDraft(sessionDraftKey(session.id), "", []);
@@ -679,8 +660,7 @@ export class ComposerController {
     void request(session.id, trimmed, attachments, requestId)
       .then(({ duplicate }) => {
         if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
-        // The gateway had the first attempt all along: its message is in the session, so drop the local copies.
-        if (duplicate) this.#conversation.transcript = this.#conversation.transcript.filter((item) => item.id !== pendingId && item.id !== earlierRow);
+        if (duplicate) this.#conversation.transcript = dropDuplicateSend(this.#conversation.transcript, pendingId, earlierRow);
         else if (mode === "prompt") this.#conversation.transcript = settlePendingUser(this.#conversation.transcript, pendingId, true);
         this.#conversation.streaming = streamingAfterSubmission(
           this.#conversation.streaming,
@@ -693,9 +673,7 @@ export class ComposerController {
       .catch(async (error: unknown) => {
         this.#sendRequests.failed(session.id, requestId, trimmed, attachments, mode === "prompt" ? pendingId : undefined);
         const stillSelected = isSelectedSession(session.id, this.#conversation.selected?.id);
-        // The gateway's snapshots may have replaced the local row and then withdrawn theirs: show it failed again.
-        if (stillSelected && mode === "prompt") this.#conversation.transcript = settlePendingUser(this.#conversation.transcript.some((item) => item.id === pendingId)
-          ? this.#conversation.transcript : appendPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments), pendingId, false);
+        if (stillSelected && mode === "prompt") this.#conversation.transcript = failPendingUser(this.#conversation.transcript, pendingId, trimmed, sentAttachments);
         this.#host.requestUpdate();
         const stored = stillSelected
           ? { text: this.draft, attachments: this.attachments }

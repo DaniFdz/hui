@@ -162,11 +162,13 @@ short-landscape scrolling checks are recorded in the
   interface/chat-prose typography, text size and functional Chat preferences.
   The full ten-choice font catalogue is self-hosted and the former single-font
   setting migrates without changing an existing installation's appearance.
-  Desktop/mobile and persistence proof:
-  [independent font preferences](../e2e/font-preferences.browser.md).
+  Persistence proof: the shared tests in
+  [typography.e2e.ts](../e2e/tests/set/typography.e2e.ts).
 - Done: the native Miami palette from OpenClaw 2026.9.5, including light/dark
   variants, system-mode switching, saved selection and accent overrides.
-  Desktop/mobile and keyboard proof: [Miami Browser report](../e2e/miami-theme.browser.md).
+  Proof: the shared tests in [theme.e2e.ts](../e2e/tests/set/theme.e2e.ts),
+  [color-mode.e2e.ts](../e2e/tests/set/color-mode.e2e.ts) and
+  [accent.e2e.ts](../e2e/tests/set/accent.e2e.ts).
 - Done: message width, task-progress collapse and Enter shortcut persist through
   HUI settings and drive the real chat UI.
 - Next: portable Sidebar/session-source preferences, then PI-backed model
@@ -276,8 +278,9 @@ startup now resumes those records automatically with a three-admission budget;
 the recovery prompt verifies transcript and workspace state before repeating an
 unknown effect, while **Continue run** remains the exhausted-budget fallback.
 Settled background sessions persist OpenClaw's accent unread marker until opened.
-A real gateway restart, PI continuation and responsive proof are recorded in
-[`e2e/interrupted-recovery.browser.md`](../e2e/interrupted-recovery.browser.md).
+A real gateway restart and PI continuation are proved by
+[`e2e/tests/chat/gateway-restart.e2e.ts`](../e2e/tests/chat/gateway-restart.e2e.ts), and the phone layout
+by [`e2e/interrupted-recovery.browser.md`](../e2e/interrupted-recovery.browser.md).
 
 The PI-backed behavior above remains authoritative. Chat, tool rows, thinking,
 queue and composer now use the OpenClaw 2026.9.5 hierarchy and measured desktop
@@ -458,8 +461,9 @@ extension completion now settles correctly, including after extension questions.
 The HUI-owned `/clear` command resets an idle chat through PI's native
 `new_session` RPC while preserving the HUI row and the previous PI transcript.
 Browser proof and protocol limits are recorded in
-[`e2e/slash-commands.browser.md`](../e2e/slash-commands.browser.md) and
-[`e2e/clear-command.browser.md`](../e2e/clear-command.browser.md).
+[`e2e/slash-commands.browser.md`](../e2e/slash-commands.browser.md); the shared
+test [`e2e/tests/chat/clear-command.e2e.ts`](../e2e/tests/chat/clear-command.e2e.ts)
+covers the command.
 
 The 2026-09-25 composer follow-up adds catalog-resolved `$` references for skills
 and plugin actions, and combines leading `/` discovery with absolute-path
