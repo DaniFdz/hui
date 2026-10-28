@@ -1339,3 +1339,19 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 @media (max-width: 460px) {
   .tool-call-row .chat-tool-msg-body { padding: 2px 10px 10px; }
 }
+
+/* A long command or an unwrapped output must scroll inside its well, never widen the card or the page. */
+.tool-call-group,
+.tool-call-group__disclosure,
+.tool-call-group__rows,
+.tool-call-row,
+.tool-call-row__toggle,
+.tool-call-row .chat-tool-msg-body,
+.tool-call-row .chat-tool-card,
+.tool-call-row .chat-tool-term,
+.tool-call-row .chat-tool-term__cmd,
+.tool-call-row .chat-tool-term__out { min-width: 0; max-width: 100%; }
+
+.tool-call-row .chat-tool-msg-body { overflow: hidden; }
+.tool-call-row .chat-tool-term__out { overflow-x: auto; }
+.tool-call-row .chat-tool-card__block-content { max-width: 100%; overflow-x: auto; }
