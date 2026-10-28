@@ -221,7 +221,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no Expand.", decision: "SPEC.md#bots" },
   },
   {
@@ -231,7 +231,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots", "bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard-only affordance; the sheet's Close button (BOT-024) is the visible equivalent.", decision: KEYBOARD_ONLY },
   },
   {
