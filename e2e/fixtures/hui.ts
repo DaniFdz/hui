@@ -365,7 +365,11 @@ export const test = base.extend<{ hui: Hui }>({
     const sessions = async () => (await groups()).flatMap((group) => group.sessions);
     const sessionIds = async () => (await sessions()).map((session) => session.id);
     const taskIds = async () => (await api<{ tasks: { id: string }[] }>("GET", "/__hui/automation")).tasks.map((task) => task.id);
-    const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
+    // Archived bots too: leaving one behind keeps its chat, and the session cleanup then refuses to delete it.
+    const botIds = async () => {
+      const listed = [...(await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots, ...(await api<{ bots: { id: string }[] }>("GET", "/__hui/bots?archived=1")).bots];
+      return [...new Set(listed.map((bot) => bot.id))];
+    };
     const backlogTaskIds = async () => (await api<{ items: { id: string; kind: string }[] }>("GET", "/__hui/backlog")).items
       .filter((item) => item.kind === "local").map((item) => item.id);
     const prompt = async (session: { id: string }, text: string) => {

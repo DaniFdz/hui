@@ -141,7 +141,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#delete-__huibotsid", "docs/api.md#routines"],
     surfaces: ["route:DELETE /__hui/bots/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
