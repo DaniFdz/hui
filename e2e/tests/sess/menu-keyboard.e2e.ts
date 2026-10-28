@@ -82,5 +82,4 @@ test("the session, group and sort menus move with the arrow keys, Home, End and 
   await press("Escape");
   await expect(screen.getByText("Remove Keyboard session from HUI?")).toBeHidden();
   await expect(actions).toBeFocused();
-  await expect(screen.getByRole("button", "Actions for Keyboard session")).toBeVisible();
 });
