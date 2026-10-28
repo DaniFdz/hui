@@ -113,7 +113,7 @@ test("hiding many Swarm trees reads parent links once per projection", () => {
   let parentReads = 0;
   const helpers = Array.from({ length: 128 }, (_, index) => ({
     ...session(`helper-${index}`, {
-      archived: index % 2 === 0,
+      archived: index % 2 === 0 ? true : undefined,
       subagent: {
         taskId: `task-${index}`, collect: true, status: "completed",
         startedAt: "2026-09-20T00:00:00Z", updatedAt: "2026-09-20T00:00:00Z",
