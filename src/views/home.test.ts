@@ -252,7 +252,7 @@ test("Task progress offers a refresh control that reads the session again withou
     ],
   });
 
-  assert.match(html, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Refresh task progress"/u);
+  assert.match(html, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card"/u);
   assert.match(html, /Check the build/u);
   assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*props\.onRefreshSession\(\);/u);
   assert.match(styles, /\.session-progress-card__refresh\s*\{[^}]*cursor:\s*var\(--cursor-action\);/s);

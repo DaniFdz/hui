@@ -9,6 +9,7 @@ const fake = vi.hoisted(() => ({
   modelsFail: false,
   thinking: [] as { id: string; level: string; resolve: (level: string) => void }[],
   opens: [] as { id: string; resolve: (status: SessionStatus, snapshot?: Partial<SessionSnapshot>) => void }[],
+  prompts: [] as { id: string; text: string }[],
   streams: [] as { id: string; handlers: SessionStreamHandlers; heldRevision?: number; stopped: boolean }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
@@ -18,6 +19,7 @@ vi.mock("../api/sessions.ts", () => ({
     return [{ provider: "gw", id: "opus", name: "Opus" }];
   },
   setSessionThinking: (id: string, level: string) => new Promise((resolve) => fake.thinking.push({ id, level, resolve })),
+  sendPrompt: async (id: string, text: string) => { fake.prompts.push({ id, text }); return { duplicate: false }; },
   openSession: (id: string) => new Promise((resolve) => fake.opens.push({
     id,
     resolve: (status, snapshot = {}) => resolve({
@@ -38,6 +40,7 @@ beforeEach(() => {
   fake.modelsFail = false;
   fake.thinking = [];
   fake.opens = [];
+  fake.prompts = [];
   fake.streams = [];
 });
 
@@ -164,6 +167,8 @@ test("a refresh reads the open session again and shows the card the gateway has"
 
   assert.equal(controller.refreshing, false);
   assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "New step");
+  assert.deepEqual(fake.prompts.map(({ id }) => id), ["s1"], "the card is the agent's, so the refresh asks it for a current one");
+  assert.match(fake.prompts[0]?.text ?? "", /^Refresh the task progress card/u);
 });
 
 test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer or stale state", async () => {
