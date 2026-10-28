@@ -26,9 +26,9 @@ test("a reply streams, its tool card opens, and Stop ends the next run", { tags:
   await send.tap();
   await expect(transcript.getByText("Tool complete")).toBeVisible();
   await expect(status("Idle")).toBeVisible();
-  await transcript.getByText("Ran 1 command").tap();
-  await expect(transcript.getByText("Inspecting the fixture.")).toBeVisible();
+  await transcript.getByText("Used 1 tool").tap();
   await transcript.getByRole("button", "Read fixture.txt").tap();
+  await expect(transcript.getByText("Inspecting the fixture.")).toBeVisible();
   await expect(transcript.getByText(/^from .+\/fixture\.txt$/u)).toBeVisible();
   await expect(transcript.getByText("Real SDK browser fixture", { exact: false })).toBeVisible();
   await expect(transcript.getByText("Completed")).toBeVisible();
