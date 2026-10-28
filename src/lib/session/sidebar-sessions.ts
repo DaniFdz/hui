@@ -152,7 +152,7 @@ export function sidebarSessionGroups(
     projected = [{ label: "", key: "\u0000flat", kind: "none", sessions: groups.flatMap((group) => group.sessions) }];
   }
   const all = groups.flatMap((group) => group.sessions);
-  const swarmIds = new Set(all.filter((session) => session.subagent?.collect).flatMap((helper) => [...sessionTreeIds(all, helper.id)]));
+  const swarmIds = sessionTreeIds(all, all.filter((session) => session.subagent?.collect).map((helper) => helper.id));
   const query = search.trim().toLocaleLowerCase();
   const filtering = Boolean(query) || options.status !== "all";
   const hideEmpty = options.hideEmpty === "always" || (options.hideEmpty === "filtering" && filtering);

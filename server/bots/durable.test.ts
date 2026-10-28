@@ -36,6 +36,7 @@ type DurableHost = import("../runtimes/durable-host.ts").DurableHost;
 /** Stands in for OptChat's document: written by `enable` inside the commit that creates the conversation. */
 const MemoryMarker = defineDoc<{ name: string; model: string }>({
   kind: "test.bot-memory", version: 1, scope: "conversation", history: "latest", fork: "initial", initial: () => ({ name: "", model: "" }),
+  checkpointWhen: () => false,
 });
 
 function fakeMemory(options: { failEnable?: boolean } = {}): BotMemory {

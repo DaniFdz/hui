@@ -356,6 +356,41 @@ test("one scan answers every range, and a forced refresh or newer activity reads
   assert.equal(reads, 4, "unchanged reads reuse the completed run's scan");
 });
 
+test("settling a turn invalidates an early usage read without rescanning unchanged ranges", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const initial = priced(10, 5, 20, 0.5);
+  const later = priced(10, 5, 20, 0.25);
+  const conversation = await harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, initial) as never] });
+    await recordUsage(tx, id, "models", "fixture/model-a", initial);
+    return id;
+  }, durableContext);
+  let session = record("settled", `durable:${conversation}`, new Date(T1).toISOString(), {
+    updatedAt: new Date(T2).toISOString(), runStartedAt: new Date(T2).toISOString(),
+  });
+  let reads = 0;
+  const reports = new UsageReports(async () => [session], async (given, timeZone, previous) => {
+    reads += 1;
+    return scanUsage(given, timeZone, previous);
+  });
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  assert.equal((await reports.get(june)).sessions[0]?.metrics.calls, 1);
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(conversation, { kind: AssistantEntry.kind, model: [assistant(T2, later) as never] });
+    await recordUsage(tx, conversation, "models", "fixture/model-a", later);
+  }, durableContext);
+  session = { ...session, runStartedAt: undefined };
+  const settled = await reports.get(june);
+  assert.equal(settled.sessions[0]?.metrics.calls, 2);
+  assert.equal(settled.sessions[0]?.metrics.costUsd, 0.75);
+  assert.equal(reads, 2, "clearing the run marker refreshes the early scan once");
+  const firstDay = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-01", timeZone: "UTC" }));
+  assert.equal((await reports.get(firstDay)).sessions[0]?.metrics.calls, 1);
+  await reports.get(june);
+  assert.equal(reads, 2, "unchanged reads and range changes reuse the settled scan");
+});
+
 test("a session that leaves the registry stops being reported", async () => {
   const { UsageReports } = await import("./usage.ts");
   const seed = (title: string) => harness.commit(async (tx) => {
