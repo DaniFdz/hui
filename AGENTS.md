@@ -85,6 +85,7 @@ corrects a new kind of slowness, and enforce it with a type, check or test.
 | Streamed frames redraw at most once per animation frame. | `src/controllers/conversation-controller.test.ts` "streamed text, thinking and tool output redraw…" |
 | An idle conversation redraws only for its clocks, and a poll assigns state only when it changed and asks again only once its last read answered. | `src/hui-app.test.ts` "an idle conversation redraws for its clocks…" and "the main app's bot roster redraws…"; `src/controllers/settings-controller.test.ts` "the newest power read wins…" and "the power poll asks again only once…"; `src/controllers/dashboard-controller.test.ts` "the dashboard poll asks again only once…" |
 | A model request never blocks the gateway's event loop, which every Durable session and browser request waits on: a models.json `!command` key runs asynchronously, once per request as in PI. | `server/runtimes/hui-models.test.ts` "a models.json key command runs while the event loop keeps going…" |
+| Usage reuses counted histories only when registry changes preserve attribution, and commits a conversation's counters only after every page succeeds. | `server/usage.test.ts` "a session that joins the registry…", "a cached scan rereads…" and "a repeated, emptied or interrupted read…" |
 | A change to what opening, streaming or listing a session sends or draws is measured on a slow link. | Judgment: the procedure and the last numbers are in `e2e/remote-loading.browser.md`. |
 
 ## Change Discipline

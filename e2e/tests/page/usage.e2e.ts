@@ -101,17 +101,26 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
   await expect(chart).toContainText("· UTC");
   await screen.getByLabel("Time zone").selectOption("Local");
   await expect(screen.getByLabel("Time zone")).toHaveValue("local");
-  await expect(chart).toBeVisible();
+  await expect(screen.getByTestId("usage-report")).toHaveAttribute("aria-busy", "false");
+  const beforeDisplay = await screen.getByTestId("usage-totals").allTextContents();
 
-  await screen.getByRole("button", "Cost").tap();
-  await expect(chart).toContainText("Daily cost estimates", { ignoreCase: true });
-  await expect(screen.getByRole("button", "Total")).toBeHidden();
-  await screen.getByRole("button", "Tokens").tap();
-  await expect(chart).toContainText("Daily token usage", { ignoreCase: true });
+  for (let pass = 0; pass < 2; pass++) {
+    await screen.getByRole("button", "Cost").tap();
+    await expect(chart).toContainText("Daily cost estimates", { ignoreCase: true });
+    await expect(screen.getByRole("button", "Total")).toBeHidden();
+    await screen.getByRole("button", "Tokens").tap();
+    await expect(chart).toContainText("Daily token usage", { ignoreCase: true });
+  }
   await screen.getByRole("button", "By type").tap();
   await expect(screen.getByRole("button", "By type")).toHaveAttribute("aria-pressed", "true");
   await screen.getByRole("button", "Total").tap();
   await expect(screen.getByRole("button", "Total")).toHaveAttribute("aria-pressed", "true");
+  const days = chart.getByRole("button", /: [\d,]+ tokens ·/u);
+  await days.first().press("End");
+  await expect(days.last()).toBeFocused();
+  await days.last().press("Home");
+  await expect(days.first()).toBeFocused();
+  await expect.poll(() => screen.getByTestId("usage-totals").allTextContents()).toEqual(beforeDisplay);
 
   await screen.getByRole("button", /: [1-9][\d,]* tokens · \$0\.00$/u).tap();
   await expect.poll(async () => { const { from, to } = await shownRange(screen); return from === to; }).toBe(true);
