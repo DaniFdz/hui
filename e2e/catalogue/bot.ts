@@ -181,7 +181,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -201,7 +201,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to drag.", decision: "SPEC.md#bots" },
   },
   {
@@ -211,7 +211,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to resize.", decision: "SPEC.md#bots" },
   },
   {
