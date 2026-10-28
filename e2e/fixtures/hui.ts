@@ -76,6 +76,8 @@ export type Hui = {
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
   wideScreen(width?: number): Promise<void>;
   paletteChord(): Promise<void>;
+  /** A bot's Settings chord: ⇧⌘, on Apple platforms and Ctrl+Shift+, elsewhere. */
+  settingsChord(): Promise<void>;
   /** A Work pane chord: `code` pressed with ⌥⇧⌘ on Apple platforms and Ctrl+Alt+Shift elsewhere. */
   workChord(code: string): Promise<void>;
   back(): Promise<void>;
@@ -459,6 +461,10 @@ export const test = base.extend<{ hui: Hui }>({
         paletteChord: async () => {
           const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
           await browser().keyboard.press(apple ? "Meta+K" : "Control+K");
+        },
+        settingsChord: async () => {
+          const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));
+          await browser().keyboard.press(apple ? "Meta+Shift+Comma" : "Control+Shift+Comma");
         },
         workChord: async (code) => {
           const apple = await browser().evaluate(() => /Mac|iPhone|iPad|iPod/u.test(navigator.platform));

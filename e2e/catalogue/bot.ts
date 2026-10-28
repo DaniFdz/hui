@@ -21,7 +21,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Arrow keys on the tab bar are a keyboard-only affordance; tapping a tab is BOT-001.", decision: KEYBOARD_ONLY },
   },
   {
@@ -121,7 +121,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#a-forever-chat"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -181,7 +181,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -201,7 +201,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to drag.", decision: "SPEC.md#bots" },
   },
   {
@@ -211,7 +211,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to resize.", decision: "SPEC.md#bots" },
   },
   {
@@ -221,7 +221,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no Expand.", decision: "SPEC.md#bots" },
   },
   {
@@ -231,7 +231,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots", "bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard-only affordance; the sheet's Close button (BOT-024) is the visible equivalent.", decision: KEYBOARD_ONLY },
   },
   {
@@ -241,7 +241,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots", "bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -251,7 +251,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06"],
     surfaces: [],
     journeys: ["bot-setup", "bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The chord is a keyboard-only affordance; Edit bot… and the profile's Edit are BOT-026.", decision: KEYBOARD_ONLY },
   },
   {
@@ -261,7 +261,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06"],
     surfaces: [],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -460,7 +460,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#routines"],
     surfaces: ["route:GET /__hui/automation"],
     journeys: ["bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

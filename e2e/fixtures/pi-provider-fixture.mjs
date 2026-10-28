@@ -242,6 +242,10 @@ const server = createServer(async (request, response) => {
   // message is longer than the run error card's summary, so the card offers Details.
   if (source.includes("E2E_ERROR_LONG")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
     message: `fixture provider error: ${"the fixture refuses this request on purpose; ".repeat(4)}see the fixture for why` } });
+  // E2E_ERROR_QUOTA fails at once with a 400 whose message names the quota, as a provider out of credits does, so a
+  // routine's run records the rate-limit kind that needs the operator.
+  if (source.includes("E2E_ERROR_QUOTA")) return json(response, 400, { type: "error", error: { type: "invalid_request_error",
+    message: "fixture quota exhausted: the fixture's plan has no credits left" } });
   // E2E_OVERFLOW overflows the context window until PI's summary is in the request, so PI compacts and retries the turn.
   if (source.includes("E2E_OVERFLOW") && !flattenedText(body.messages).includes("FIXTURE_SUMMARY") && !flattenedText(body.system).includes("context summarization assistant")) {
     return json(response, 400, { type: "error", error: { type: "invalid_request_error", message: "prompt is too long: 213462 tokens > 200000 maximum" } });
