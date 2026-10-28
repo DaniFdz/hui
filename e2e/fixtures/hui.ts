@@ -101,6 +101,8 @@ export type Hui = {
   appearance(): Promise<"light" | "dark">;
   pressed(within: Screen, name: string, on?: boolean): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
+  /** The target's opacity and its ancestors', read where it is, for a cue CSS draws on an element no pointer reaches. */
+  opacity(target: Locator): Promise<number>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
@@ -567,6 +569,21 @@ export const test = base.extend<{ hui: Hui }>({
                 : style.outlineStyle !== "none" ? rgb(style.outlineColor)
                 : outerShadow === "none" ? null : rgb(outerShadow),
             };
+          }, box);
+        },
+        opacity: async (target) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("opacity: the target lays out no box");
+          return browser().evaluate(({ x, y, width, height }) => {
+            const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+            const element = [...document.querySelectorAll("*")].find((candidate) => {
+              const rect = candidate.getBoundingClientRect();
+              return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
+            });
+            if (!element) throw new Error("opacity: no element has the target's box");
+            let opacity = 1;
+            for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+            return opacity;
           }, box);
         },
         attach: async (target, files) => {

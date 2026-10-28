@@ -308,7 +308,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["message-metadata"],
-    web: "backlog",
+    web: "required",
     ios: keyboardOnly("the message's context menu and footer buttons (CHAT-030, CHAT-032)"),
   },
   {
