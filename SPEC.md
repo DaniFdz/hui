@@ -1125,7 +1125,17 @@ question frames. Each pane caches three visited session views (including
 the current view), retaining extra views only while they hold an unsaved queue
 edit. Cached and narrow-hidden views stay mounted until evicted or
 the pane closes. Sessions only listed in the sidebar do not broadcast every
-token to the browser. Closing a view releases its subscription, not its runtime.
+token to the browser. Closing a view releases its subscription, not its runtime. It also cancels
+unfinished reads of that view, so an evicted or replaced conversation does not
+keep downloading a response nobody will use.
+
+An opening request has a 20-second response-header deadline. A JSON download
+may take longer while bytes keep arriving; 40 seconds without body progress
+fails the read and shows the existing **Try again** action instead of leaving
+the conversation loading forever. Session-stream ticket acquisition and the
+WebSocket handshake each have a 20-second deadline and use the existing retry
+backoff. The handshake deadline ends when the socket opens, not when its first
+snapshot finishes downloading, so a large slow snapshot is not cut short.
 
 The Sessions page also projects ephemeral runtime cost: loaded runtime count,
 best-effort process-tree RSS, measured startup duration and the heaviest loaded

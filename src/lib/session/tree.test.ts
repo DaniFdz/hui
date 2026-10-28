@@ -10,6 +10,8 @@ test("subtree traversal includes nested descendants regardless of order, without
   ];
   assert.deepEqual([...sessionTreeIds(sessions, "root")].sort(), ["child", "grandchild", "root"]);
   assert.deepEqual([...sessionTreeIds(sessions, "outside")], ["outside"]);
+  assert.deepEqual([...sessionTreeIds(sessions, ["outside", "root", "child", "missing", "root"])].sort(), ["child", "grandchild", "missing", "outside", "root"]);
+  assert.deepEqual([...sessionTreeIds(sessions, [])], []);
 });
 
 const fixtures: { input: { sessions: Parameters<typeof sessionTreeIds>[0]; rootId: string }; expected: string[] }[] = JSON.parse(readFileSync(new URL("./tree.fixture.json", import.meta.url), "utf8"));

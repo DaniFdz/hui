@@ -58,6 +58,8 @@ export const BotDoc = defineDoc<{ bot: string; disabledTools?: string[]; disable
   history: "latest",
   fork: "current",
   initial: () => ({ bot: "" }),
+  // pi-durable 1.4 requires the predicate; false keeps every change a delta, as 1.3 did when it was absent.
+  checkpointWhen: () => false,
 });
 
 const isSkillRef = (value: unknown): value is BotSkillRef =>

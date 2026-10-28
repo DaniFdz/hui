@@ -13,7 +13,7 @@ import type { CallRecord } from "./schema/calls.ts";
 import type { RuntimeCommand, RuntimeCompaction, RuntimeModel, RuntimeQueue as QueueSnapshot, RuntimeUsage, SessionCommandsResponse, SessionModelResponse, SessionModelsResponse, SessionThinkingResponse, SideQuestionResult, SubagentTaskView } from "./schema/session-events.ts";
 import type { TaskSuggestion } from "./schema/task-suggestions.ts";
 import type { Watcher } from "./schema/watchers.ts";
-import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
+import { CLIENT_HEADERS, fetchJson, RESPONSE_TIMEOUT_MS, trackedFetch } from "./request.ts";
 
 export type { SessionGroup, SessionList, SessionSearchResult, SessionStatus, SessionView, SubagentStatus, WorktreeProgress } from "./schema/sessions.ts";
 export type {
@@ -253,10 +253,12 @@ export async function loadGitCheckout(cwd: string): Promise<GitCheckoutInfo> {
 /** Ensures a runtime exists and returns what to paint immediately. */
 export async function openSession(
   id: string,
+  signal?: AbortSignal,
 ): Promise<{ session: SessionView; snapshot: SessionSnapshot; revision?: number }> {
   const body = await fetchJson<{ session?: SessionView; snapshot?: SessionSnapshot; revision?: number }>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/open`,
     { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+    signal,
   );
   if (!body.session || !body.snapshot) {
     throw new Error("Could not open that session.");
@@ -656,12 +658,14 @@ async function connectOnce(
   heldRevision: number | undefined,
 ): Promise<StreamOutcome> {
   let socket: WebSocket;
+  const attempt = new AbortController();
+  const ticketDeadline = setTimeout(() => attempt.abort(new DOMException("The session connection did not answer.", "TimeoutError")), RESPONSE_TIMEOUT_MS);
   try {
     const response = await trackedFetch(`${SESSIONS_URL}/${encodeURIComponent(id)}/connect`, {
       method: "POST",
       headers: CLIENT_HEADERS,
       cache: "no-store",
-      signal,
+      signal: AbortSignal.any([signal, attempt.signal]),
     });
     if (!response.ok) {
       return response.status >= 500 || response.status === 429
@@ -676,17 +680,22 @@ async function connectOnce(
     socket = new WebSocket(address);
   } catch {
     return { kind: "dropped" };
+  } finally {
+    clearTimeout(ticketDeadline);
   }
   return new Promise((resolve) => {
     let live = false;
     const finish = (outcome: StreamOutcome) => {
+      clearTimeout(handshakeDeadline);
       signal.removeEventListener("abort", abort);
-      socket.onmessage = socket.onclose = null;
+      socket.onopen = socket.onmessage = socket.onclose = null;
       socket.close();
       resolve(outcome);
     };
+    const handshakeDeadline = setTimeout(() => finish({ kind: "dropped" }), RESPONSE_TIMEOUT_MS);
     const abort = () => finish({ kind: "dropped" });
     signal.addEventListener("abort", abort, { once: true });
+    socket.onopen = () => clearTimeout(handshakeDeadline);
     socket.onmessage = (message) => {
       if (!live) {
         live = true;

@@ -421,7 +421,7 @@ test("a restart catches the log up from Durable without duplicates, and a resent
   await first.close();
 
   // An entry committed while no gateway follows the conversation.
-  const raw = await Harness.open(await openNodeSqliteStorage(join(f.store, "harness.sqlite")), { models: {} as Models, registry: createRegistry() }, durableContext);
+  const raw = await Harness.open(await openNodeSqliteStorage(join(f.store, "harness.sqlite")), { models: { getAuth: () => undefined } as unknown as Models, registry: createRegistry() }, durableContext);
   const conversation = (await raw.conversation(id, durableContext))!;
   await conversation.commit((tx) => tx.appendEntry(UserEntry, id, { model: [user("OPT_OFFLINE written while closed", Date.now())] }), durableContext);
   await raw.close(durableContext);
