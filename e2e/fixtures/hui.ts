@@ -126,6 +126,8 @@ export type Hui = {
   wheel(target: Locator, deltaY: number): Promise<void>;
   /** A tap at the middle of where the target is now, read at the moment of the press: a phone sends a plain tap to the row its last reading put the target in, which a screen that just laid that row out elsewhere would miss. */
   tapAt(target: Locator): Promise<void>;
+  /** Makes the page a touch device, which the composer's placeholder reads, and reloads it. */
+  touchPointer(): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
@@ -438,6 +440,10 @@ export const test = base.extend<{ hui: Hui }>({
           const phone = orientation === "portrait" ? { width: 390, height: 844 } : { width: 844, height: 390 };
           await browser().setViewport(phone);
           return phone;
+        },
+        touchPointer: async () => {
+          await browser().addInitScript(() => Object.defineProperty(Navigator.prototype, "maxTouchPoints", { configurable: true, get: () => 5 }));
+          await browser().reload();
         },
         overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
           .some((element) => element.scrollWidth > element.clientWidth)),

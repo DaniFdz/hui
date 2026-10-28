@@ -211,7 +211,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
     journeys: ["continue-error-toast"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -701,7 +701,7 @@ const cases: UseCase[] = [
     behaviour: "On a touch layout, the empty composer of a busy run shows the placeholder \"Add to this run…\" instead of the keyboard shortcuts.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -719,7 +719,7 @@ const cases: UseCase[] = [
     behaviour: "At 390 px wide, while a run is busy with a Steer and a Follow up row queued and the draft empty, the Queued messages tray above the composer, the Message field, the composer's controls and Stop all stay on screen, and nothing overflows sideways.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -764,7 +764,7 @@ const cases: UseCase[] = [
     behaviour: "On a 390 px wide screen, messages that arrive while a turn runs and the turn's folded activity fit the width, with no sideways scrolling, and expanding the activity keeps them readable.",
     spec: ["SPEC.md#live-chat-projection"],
     surfaces: [],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
 ];
