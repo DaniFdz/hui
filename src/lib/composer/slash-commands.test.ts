@@ -149,7 +149,7 @@ test("sending decides between a HUI command, a refusal and a prompt", () => {
 
 test("the command menu lists matches with their reference and completion", () => {
   const catalog = composerCommands([{ name: "skill:review", description: "Review code", source: "skill" }], true);
-  assert.deepEqual(slashMenu(catalog, "/cle")?.map((option) => [option.reference, option.completion]), [["/clear", "/clear "]]);
+  assert.deepEqual(slashMenu(catalog, "/cle")?.map((option) => [option.reference, option.completion]), [["/clear", "/clear "], ["/goal", "/goal "]]);
   assert.equal(slashMenu(catalog, "/rev")?.[0]?.reference, "$review");
   assert.equal(slashMenu(catalog, "hello"), null);
 });
