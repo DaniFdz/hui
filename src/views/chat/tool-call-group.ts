@@ -149,7 +149,10 @@ const CLI_ICONS: Record<string, ToolMark> = {
   make: { glyph: icons.wrench }, cmake: { glyph: icons.wrench }, cargo: { glyph: icons.wrench, color: "#dea584" },
   go: { glyph: icons.wrench, color: "#00add8" }, tsc: { glyph: icons.wrench },
   vitest: { glyph: icons.wrench, color: "#8fbf3f" }, jest: { glyph: icons.wrench, color: "#c21325" }, pytest: { glyph: icons.wrench, color: "#0a9edc" },
-  kubectl: { glyph: icons.plug, color: "#326ce5" }, helm: { glyph: icons.plug, color: "#277a9f" },
+  kubectl: { glyph: icons.kubernetes, color: "#326ce5" }, k9s: { glyph: icons.kubernetes, color: "#326ce5" },
+  minikube: { glyph: icons.kubernetes, color: "#326ce5" }, kind: { glyph: icons.kubernetes, color: "#326ce5" },
+  kustomize: { glyph: icons.kubernetes, color: "#326ce5" },
+  helm: { glyph: icons.plug, color: "#277a9f" },
   terraform: { glyph: icons.plug, color: "#a78bfa" }, aws: { glyph: icons.plug, color: "#ff9900" },
   gcloud: { glyph: icons.plug, color: "#4285f4" }, ssh: { glyph: icons.plug }, rsync: { glyph: icons.plug },
 };
