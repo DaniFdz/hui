@@ -418,7 +418,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#session-list-progress"],
     surfaces: ["tool:progress_card", "route:GET /__hui/sessions"],
     journeys: ["session-progress", "session-hovercard"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -468,7 +468,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-multiplexing"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: DESKTOP_ONLY, decision: "SPEC.md#behaviour" },
   },
   {
@@ -528,7 +528,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["pane-reposition"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: DESKTOP_ONLY, decision: "SPEC.md#behaviour" },
   },
   {

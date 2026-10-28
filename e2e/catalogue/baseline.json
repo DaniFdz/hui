@@ -17,15 +17,10 @@
       "SESS-014",
       "SESS-015",
       "SESS-039",
-      "SESS-041",
       "SESS-042",
-      "SESS-043",
       "SESS-044",
       "SESS-045",
       "SESS-046",
-      "SESS-048",
-      "SESS-049",
-      "SESS-054",
       "SESS-056",
       "SESS-063",
       "SESS-064",
@@ -338,7 +333,9 @@
       "CALL-023",
       "CALL-026",
       "CALL-027",
-      "CALL-028"
+      "CALL-028",
+      "SESS-041",
+      "SESS-049"
     ],
     "ios": [
       "SHELL-001",
