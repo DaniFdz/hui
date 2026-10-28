@@ -283,7 +283,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: ["route:GET /__hui/sessions/:owner/terminals"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -313,7 +313,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
