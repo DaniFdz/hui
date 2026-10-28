@@ -57,7 +57,7 @@ export function fixtureEnvironment(dir, inherited = process.env) {
   // shell startup hooks or the operator's HUI/PI overrides. HOME is not changed.
   // HUI_OPENVSCODE_SERVER_MIRROR points the VS Code view's server install at a local release (the checksums stay
   // pinned), so its journey never downloads from GitHub.
-  for (const name of ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "SystemRoot", "HUI_OPENVSCODE_SERVER_MIRROR"]) {
+  for (const name of ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "SystemRoot", "HUI_OPENVSCODE_SERVER_MIRROR", "HUI_E2E_USAGE_PROFILE", "HUI_E2E_USAGE_SESSIONS"]) {
     if (inherited[name] !== undefined) env[name] = inherited[name];
   }
   return {

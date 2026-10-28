@@ -550,11 +550,14 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
 - Loading, no matching data, partial data and read failures are explicit. Controls
   work with the keyboard and fit phone widths. No provider credentials, prompts,
   message bodies, tool arguments or tool output enter the usage response.
-- The gateway reads every history once and answers range, zone and filter changes
-  from that scan, so those interactions stay responsive on a large session list.
-  Refresh, and the first read after recorded activity changes or a registered run
-  finishes, reads them again. A compaction ending updates that activity, so its
-  spend appears on the next read without a manual refresh.
+- The gateway keeps one range-independent scan per time zone and answers range,
+  zone and filter changes from it, so those interactions stay responsive on a
+  large session list. Recorded activity reads only appended entries; safely
+  added sessions reuse the histories already counted, while changes that may
+  reassign history require a full read. Refresh always requests a full read,
+  including when an incremental read is in progress. An interrupted conversation
+  read contributes no partial counters to the cache. A compaction ending updates
+  activity, so its spend appears on the next read without a manual refresh.
 
 ---
 

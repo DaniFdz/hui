@@ -1,8 +1,9 @@
 /**
  * The Usage page's report: contracts read through a real Durable store and real
  * legacy transcripts, so a fork's inherited entries count once, a recorded zero
- * stays zero, calendar days follow the requested zone, and nothing but counters
- * leaves the gateway.
+ * stays zero, calendar days follow the requested zone, a repeated or interrupted
+ * read never doubles what it counted, and nothing but counters leaves the
+ * gateway.
  */
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
@@ -45,6 +46,7 @@ afterAll(async () => {
 });
 
 const T1 = Date.UTC(2026, 5, 1, 20, 0);
+const DAY = 86_400_000;
 const T2 = Date.UTC(2026, 5, 2, 10, 0);
 const T3 = Date.UTC(2026, 5, 2, 20, 0);
 const FUTURE = Date.UTC(2100, 0, 5, 12, 0);
@@ -66,7 +68,31 @@ function record(id: string, piSessionFile: string, createdAt: string, extra: Par
   return { id, title: id, group: "fixture", cwd: "/tmp", tool: "pi", piSessionFile, createdAt, updatedAt: createdAt, ...extra };
 }
 
+function watchEntryReads() {
+  const payloads = new Map<number, number>();
+  const real = harness.conversation.bind(harness);
+  const spy = vi.spyOn(harness, "conversation").mockImplementation(async (id, context) => {
+    const conversation = await real(id, context);
+    if (!conversation) return undefined;
+    const entries = conversation.entries.bind(conversation);
+    conversation.entries = async (...args) => {
+      const page = await entries(...args);
+      payloads.set(id, (payloads.get(id) ?? 0) + page.items.length);
+      return page;
+    };
+    return conversation;
+  });
+  return { payloads, restore: () => spy.mockRestore() };
+}
+
+function deferred() {
+  let resolve = () => {};
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 const todayIn = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+const sessionTotals = (report: UsageReport) => report.sessions.map((each) => [each.id, each.metrics.totalTokens, each.metrics.costUsd]).toSorted();
 
 test("a fork's inherited entries count once, attributed to the conversation that owns them", async () => {
   const { source, answer, future } = await harness.commit(async (tx) => {
@@ -319,7 +345,11 @@ test("one scan answers every range, and a forced refresh or newer activity reads
   let reads = 0;
   let activity = new Date(T1).toISOString();
   let runStartedAt: string | undefined;
-  const reports = new UsageReports(async () => sessions.map((session) => ({ ...session, updatedAt: activity, runStartedAt })), async (given, timeZone, previous) => {
+  const reports = new UsageReports(async () => sessions.map((session) => ({
+    ...session,
+    updatedAt: session.id === "cached" ? activity : new Date(T3).toISOString(),
+    ...(runStartedAt === undefined ? {} : { runStartedAt }),
+  })), async (given, timeZone, previous) => {
     reads += 1;
     return scanUsage(given, timeZone, previous);
   });
@@ -354,6 +384,23 @@ test("one scan answers every range, and a forced refresh or newer activity reads
   assert.equal(reads, 4);
   await reports.get(juneFirst);
   assert.equal(reads, 4, "unchanged reads reuse the completed run's scan");
+
+  const steady = await harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, priced(1, 1, 2, 0.1)) as never] });
+    return id;
+  }, durableContext);
+  sessions.push(record("steady", `durable:${steady}`, new Date(T1).toISOString()));
+  assert.equal((await reports.get(june)).sessions.length, 2);
+  assert.equal(reads, 5, "a session joining the registry reads the histories again");
+
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(conversation, { kind: AssistantEntry.kind, model: [assistant(T3, priced(4, 4, 8, 0.4)) as never] });
+  }, durableContext);
+  activity = new Date(T2 + 3_600_000).toISOString();
+  const later = await reports.get(june);
+  assert.equal(reads, 6, "activity in a session older than the newest registry clock still reads the histories");
+  assert.equal(later.sessions.find((each) => each.id === "cached")?.metrics.calls, 4);
 });
 
 test("settling a turn invalidates an early usage read without rescanning unchanged ranges", async () => {
@@ -405,6 +452,12 @@ test("a session that leaves the registry stops being reported", async () => {
   const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
 
   await reports.get(june);
+
+  const replacement = await seed("replacement");
+  records = [kept, replacement];
+  assert.deepEqual((await reports.get(june)).sessions.map(({ id }) => id), ["kept", "replacement"],
+    "one session replacing another under the same count and clock is reported, and the one it replaced is gone");
+
   records = [kept];
   assert.deepEqual((await reports.get(june)).sessions.map(({ id }) => id), ["kept"]);
 });
@@ -426,15 +479,17 @@ test("a later pass reads only newer entries and a fork made afterwards still cou
   const calls = (scan: Awaited<ReturnType<typeof scanUsage>>, id = "incremental") => sliceUsage(scan, june).sessions.find((each) => each.id === id)?.metrics.calls;
 
   const first = await scanUsage(sessions, "UTC");
+  const original = sliceUsage(first, june);
   assert.equal(calls(first), 1);
   assert.deepEqual(sliceUsage(first, june).unplacedSpend, { totalTokens: 0, costUsd: 0.25 });
 
   await harness.commit(async (tx) => {
-    await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T2, later) as never] });
+    await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T1 + 60_000, later) as never] });
     await recordUsage(tx, source, "models", "fixture/model-a", later);
   }, durableContext);
   const second = await scanUsage(sessions, "UTC", first);
   assert.equal(calls(second), 2, "the new entry joins the one already counted");
+  assert.equal(original.sessions[0]?.days[0]?.metrics.calls, 1, "an earlier report owns its day counters rather than sharing the mutable cache");
   assert.equal(sliceUsage(second, june).sessions[0]?.metrics.costUsd, 0.75);
   assert.deepEqual(sliceUsage(second, june).unplacedSpend, { totalTokens: 0, costUsd: 0.25 }, "a later scan subtracts previously counted entry spend too");
 
@@ -463,4 +518,278 @@ test("a later pass reads only newer entries and a fork made afterwards still cou
   assert.deepEqual(sliceUsage(summarized, june).unplacedSpend, { totalTokens: 100, costUsd: 0.75 }, "ledger-only spend updates even without a newer entry");
   assert.equal(calls(summarized), 2, "ledger-only spend stays out of the dated totals");
   assert.deepEqual((await readUsageReport(withFork, june)).unplacedSpend, sliceUsage(summarized, june).unplacedSpend, "a full read and an incremental read agree");
+});
+
+test("a session that joins the registry is read without reading older entry payloads again", async () => {
+  const { UsageReports, scanUsage } = await import("./usage.ts");
+  const olderUsage = priced(10, 5, 20, 0.5);
+  const newerUsage = priced(6, 2, 8, 0.25);
+  const { older, newer } = await harness.commit(async (tx) => {
+    const older = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(older, { kind: UserEntry.kind, model: [user(T1, "first") as never] });
+    await tx.appendEntry(older, { kind: AssistantEntry.kind, model: [assistant(T1, olderUsage) as never] });
+    await recordUsage(tx, older, "models", "fixture/model-a", olderUsage);
+    await recordUsage(tx, older, "models", "fixture/model-a", priced(100, 0, 100, 1));
+    const newer = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(newer, { kind: AssistantEntry.kind, model: [assistant(T2, newerUsage) as never] });
+    await recordUsage(tx, newer, "models", "fixture/model-a", newerUsage);
+    return { older, newer };
+  }, durableContext);
+
+  const olderRecord = record("older", `durable:${older}`, new Date(T1 - DAY).toISOString());
+  const newerRecord = record("newer", `durable:${newer}`, new Date(T2).toISOString());
+  let registry = [olderRecord];
+  const reports = new UsageReports(async () => registry);
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  const reads = watchEntryReads();
+  try {
+    const before = await reports.get(june);
+    assert.equal(reads.payloads.get(older), 2, "the two recorded entries are read once");
+    assert.deepEqual(sessionTotals(before), [["older", 20, 0.5]]);
+    assert.deepEqual(before.unplacedSpend, { totalTokens: 100, costUsd: 1 }, "spend the store keeps outside the entries sits beside the totals");
+
+    registry = [olderRecord, newerRecord];
+    const after = await reports.get(june);
+    assert.equal(reads.payloads.get(older), 2, "the entries already counted are not read again");
+    assert.equal(reads.payloads.get(newer), 1, "the new session's entry is read");
+    assert.deepEqual(sessionTotals(after), [["newer", 8, 0.25], ["older", 20, 0.5]]);
+    assert.deepEqual(after.coverage, { registeredSessions: 2, readSessions: 2, unavailable: [], undatedRecords: 0 });
+    assert.deepEqual(after.unplacedSpend, { totalTokens: 100, costUsd: 1 }, "the remainder the older conversation contributed stays");
+
+    const baseline = sliceUsage(await scanUsage(registry, "UTC"), june);
+    assert.deepEqual(after.sessions, baseline.sessions, "a reused read answers what a full read would");
+    assert.deepEqual(after.coverage, baseline.coverage);
+  } finally {
+    reads.restore();
+  }
+});
+
+test("a cached scan rereads when a later record changes which registered conversation owns shared history", async () => {
+  const { UsageReports, scanUsage } = await import("./usage.ts");
+  const shared = priced(7, 3, 10, 0.25);
+  const own = priced(2, 1, 3, 0.05);
+  const { source, answer } = await harness.commit(async (tx) => {
+    const source = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    const answer = (await tx.appendEntry(source, { kind: AssistantEntry.kind, model: [assistant(T1, shared) as never] })).id;
+    return { source, answer };
+  }, durableContext);
+  const fork = await harness.commit(async (tx) => {
+    const fork = (await tx.forkConversation(source, answer, { ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(fork, { kind: AssistantEntry.kind, model: [assistant(T2, own) as never] });
+    return fork;
+  }, durableContext);
+
+  const forkRecord = record("fork", `durable:${fork}`, new Date(T1 - 2 * DAY).toISOString(), { parentId: "source" });
+  const sourceRecord = record("source", `durable:${source}`, new Date(T1 - DAY).toISOString());
+  let registry: SessionRecord[] = [forkRecord];
+  const reports = new UsageReports(async () => registry);
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  const agreesWithAFullRead = async (report: UsageReport) => {
+    const baseline = sliceUsage(await scanUsage(registry, "UTC"), june);
+    assert.deepEqual({ sessions: report.sessions, coverage: report.coverage, unplacedSpend: report.unplacedSpend },
+      { sessions: baseline.sessions, coverage: baseline.coverage, unplacedSpend: baseline.unplacedSpend }, "the cached report matches a full read of the same registry");
+  };
+
+  const alone = await reports.get(june);
+  assert.deepEqual(sessionTotals(alone), [["fork", 13, 0.3]], "while its source is unregistered, a fork holds the history it inherited");
+  await agreesWithAFullRead(alone);
+
+  registry = [forkRecord, sourceRecord];
+  const owned = await reports.get(june);
+  assert.deepEqual(sessionTotals(owned), [["fork", 3, 0.05], ["source", 10, 0.25]],
+    "registering the source moves the inherited entry to the conversation that owns it, and never counts it twice");
+  await agreesWithAFullRead(owned);
+
+  const reads = watchEntryReads();
+  try {
+    forkRecord.updatedAt = new Date(T3).toISOString();
+    await reports.get(june);
+    assert.equal(reads.payloads.get(source) ?? 0, 0, "entries counted through a fork also advance the source's completed read boundary");
+  } finally {
+    reads.restore();
+  }
+
+  const copyRecord = record("source-copy", `durable:${source}`, new Date(T1).toISOString());
+  registry = [forkRecord, sourceRecord, copyRecord];
+  const copied = await reports.get(june);
+  assert.deepEqual(sessionTotals(copied), [["fork", 3, 0.05], ["source-copy", 10, 0.25]],
+    "a second record for a counted conversation takes its entries over without counting them twice");
+  await agreesWithAFullRead(copied);
+
+  registry = [forkRecord, { ...sourceRecord, worker: "w1" }];
+  const remote = await reports.get(june);
+  assert.deepEqual(sessionTotals(remote), [["fork", 13, 0.3]], "a source that moves to a remote worker stops being read, so the fork holds its history again");
+  await agreesWithAFullRead(remote);
+
+  forkRecord.title = "Renamed fork";
+  forkRecord.parentId = "updated-parent";
+  const renamed = await reports.get(june);
+  assert.equal(renamed.sessions[0]?.title, "Renamed fork", "visible metadata changes without a newer activity clock");
+  assert.equal(renamed.sessions[0]?.parentId, "updated-parent");
+  forkRecord.piSessionFile = `durable:${source}`;
+  const changed = await reports.get(june);
+  assert.deepEqual(sessionTotals(changed), [["fork", 10, 0.25]], "a changed source replaces the old history even when the caller mutates its record in place");
+  await agreesWithAFullRead(changed);
+});
+
+test("an earlier or reordered claimant replaces the fallback owner of inherited history", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const source = await harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    const head = (await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, priced(10, 0, 10, 0.5)) as never] })).id;
+    return { id, head };
+  }, durableContext);
+  const seedFork = (tokens: number) => harness.commit(async (tx) => {
+    const id = (await tx.forkConversation(source.id, source.head, { ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T2, priced(tokens, 0, tokens, 0)) as never] });
+    return id;
+  }, durableContext);
+  const later = record("later", `durable:${await seedFork(2)}`, new Date(T2).toISOString());
+  const earlier = record("earlier", `durable:${await seedFork(3)}`, new Date(T1).toISOString());
+  let registry = [later];
+  const reports = new UsageReports(async () => registry);
+  const query = usageQuery(new URLSearchParams({ timeZone: "UTC" }));
+  const totals = async () => (await reports.get(query)).sessions.map((row) => [row.id, row.metrics.totalTokens]).toSorted();
+  assert.deepEqual(await totals(), [["later", 12]]);
+  registry = [later, earlier];
+  assert.deepEqual(await totals(), [["earlier", 13], ["later", 2]], "a newly registered older claimant receives the inherited entries");
+  later.createdAt = earlier.createdAt;
+  assert.deepEqual(await totals(), [["earlier", 3], ["later", 12]], "equal creation times use registry order");
+  registry = [earlier, later];
+  assert.deepEqual(await totals(), [["earlier", 13], ["later", 2]], "reordering tied claimants recomputes attribution");
+});
+
+test("a pending scan never answers for a different registry snapshot", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const seed = (title: string) => harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, priced(1, 0, 1, 0)) as never] });
+    return record(title, `durable:${id}`, new Date(T1).toISOString());
+  }, durableContext);
+  const firstRecord = await seed("before");
+  const nextRecord = await seed("after");
+  let registry = [firstRecord];
+  const entered = deferred();
+  const release = deferred();
+  let reads = 0;
+  const reports = new UsageReports(async () => registry, async (given, timeZone, previous) => {
+    if (++reads === 1) { entered.resolve(); await release.promise; }
+    return scanUsage(given, timeZone, previous);
+  });
+  const query = usageQuery(new URLSearchParams({ timeZone: "UTC" }));
+  const first = reports.get(query);
+  await entered.promise;
+  registry = [nextRecord];
+  const next = reports.get(query);
+  release.resolve();
+  const [before, after] = await Promise.all([first, next]);
+  assert.deepEqual(before.sessions.map(({ id }) => id), ["before"]);
+  assert.deepEqual(after.sessions.map(({ id }) => id), ["after"], "the second request waits and scans its own registered histories");
+});
+
+test("a repeated, emptied or interrupted read never doubles the totals or keeps a stale row", async () => {
+  const { scanUsage, sliceUsage } = await import("./usage.ts");
+  const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
+  const dir = join(root, "legacy-repeat");
+  await mkdir(dir, { recursive: true });
+  const transcript = join(dir, "repeat.jsonl");
+  const write = (records: unknown[]) => writeFile(transcript, records.map((line) => JSON.stringify(line)).join("\n") + "\n");
+  const message = (usage: unknown, timestamp?: number) => ({ type: "message", message: { role: "assistant", provider: "fixture", model: "model-b", content: [], usage, ...(timestamp === undefined ? {} : { timestamp }) } });
+  await write([message(priced(1, 0, 1, 0), T1), message(unpriced(1, 0, 1))]);
+
+  const conversation = await harness.commit(async (tx) => {
+    const id = (await tx.createConversation({ ownership: { kind: "ownerless" } })).id;
+    for (let index = 0; index < 10; index += 1) {
+      await tx.appendEntry(id, { kind: AssistantEntry.kind, model: [assistant(T1, priced(1, 0, 1, 0)) as never] });
+    }
+    return id;
+  }, durableContext);
+  const sessions = [
+    record("legacy", transcript, new Date(T1 - DAY).toISOString()),
+    record("durable", `durable:${conversation}`, new Date(T1).toISOString()),
+  ];
+  const counted = (scan: Awaited<ReturnType<typeof scanUsage>>) => {
+    const report = sliceUsage(scan, june);
+    return {
+      undated: report.coverage.undatedRecords,
+      calls: report.sessions.reduce((sum, each) => sum + each.metrics.calls, 0),
+      rows: report.sessions.map((each) => each.id).toSorted(),
+    };
+  };
+
+  const first = await scanUsage(sessions, "UTC");
+  assert.deepEqual(counted(first), { undated: 1, calls: 11, rows: ["durable", "legacy"] });
+
+  const repeated = await scanUsage(sessions, "UTC", first);
+  const repeatedCounts = counted(repeated);
+
+  await rm(transcript);
+  const emptied = await scanUsage(sessions, "UTC", repeated);
+  const emptiedCounts = counted(emptied);
+  assert.deepEqual(sliceUsage(emptied, june).coverage.unavailable, [{ sessionId: "legacy", reason: "The transcript is unavailable." }]);
+
+  await harness.commit(async (tx) => {
+    for (let index = 0; index < 201; index += 1) {
+      await tx.appendEntry(conversation, { kind: AssistantEntry.kind, model: [assistant(T2, priced(1, 0, 1, 0)) as never] });
+    }
+  }, durableContext);
+
+  const real = harness.conversation.bind(harness);
+  let pages = 0;
+  const interrupted = vi.spyOn(harness, "conversation").mockImplementation(async (id, context) => {
+    const opened = await real(id, context);
+    if (!opened || id !== conversation) return opened;
+    const entries = opened.entries.bind(opened);
+    opened.entries = (...args) => {
+      pages += 1;
+      return pages === 2 ? Promise.reject(new Error("the second page was interrupted")) : entries(...args);
+    };
+    return opened;
+  });
+  const partial = await scanUsage(sessions, "UTC", emptied).finally(() => interrupted.mockRestore());
+  assert.equal(pages, 2, "the interrupted pass read one page and failed on the next");
+  assert.deepEqual(sliceUsage(partial, june).coverage.unavailable, [
+    { sessionId: "durable", reason: "The local conversation or its spend ledger could not be read." },
+    { sessionId: "legacy", reason: "The transcript is unavailable." },
+  ], "a pass that could not read every page claims no complete conversation");
+
+  const partialCounts = counted(partial);
+  const retried = await scanUsage(sessions, "UTC", partial);
+  assert.deepEqual({ repeated: repeatedCounts, emptied: emptiedCounts, partial: partialCounts, retried: counted(retried) }, {
+    repeated: { undated: 1, calls: 11, rows: ["durable", "legacy"] },
+    emptied: { undated: 0, calls: 10, rows: ["durable"] },
+    partial: { undated: 0, calls: 10, rows: ["durable"] },
+    retried: { undated: 0, calls: 211, rows: ["durable"] },
+  }, "repeated legacy records replace their counts, missing files clear them, and an interrupted page never commits half a conversation");
+});
+
+test("Refresh during an incremental scan waits for a full read shared by concurrent refreshes", async () => {
+  const { UsageReports } = await import("./usage.ts");
+  const conversation = await harness.commit(async (tx) => (await tx.createConversation({ ownership: { kind: "ownerless" } })).id, durableContext);
+  const session = record("refresh-race", `durable:${conversation}`, new Date(T1).toISOString());
+  let activity = session.updatedAt;
+  let pauseNext = false;
+  const started = deferred();
+  const barrier = deferred();
+  const reads: string[] = [];
+  const reports = new UsageReports(async () => [{ ...session, updatedAt: activity }], async (given, timeZone, previous) => {
+    reads.push(previous ? "incremental" : "full");
+    if (pauseNext) {
+      pauseNext = false;
+      started.resolve();
+      await barrier.promise;
+    }
+    return scanUsage(given, timeZone, previous);
+  });
+  const query = usageQuery(new URLSearchParams({ timeZone: "UTC" }));
+  await reports.get(query);
+  activity = new Date(T2).toISOString();
+  pauseNext = true;
+  const incremental = reports.get(query);
+  await started.promise;
+  const first = reports.get(query, true);
+  const second = reports.get(query, true);
+  barrier.resolve();
+  await Promise.all([incremental, first, second]);
+  assert.deepEqual(reads, ["full", "incremental", "full"], "an in-flight incremental scan cannot consume Refresh, and the full refresh is shared");
 });
