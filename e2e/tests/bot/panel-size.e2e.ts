@@ -32,8 +32,12 @@ test("Show and Close dock the panel beside the bot's overview, and its open stat
   await expect(screen.getByRole("button", "Show the bot panel")).toBeVisible();
 
   await screen.getByRole("button", "Show the bot panel").tap();
-  await expect(panel).toBeVisible();
   await expect(screen.getByLabel("About Solo")).toBeVisible();
+  await expect.poll(async () => {
+    const box = (await panel.boundingBox())!;
+    const chat = (await header.boundingBox())!;
+    return { docked: box.x >= chat.x + chat.width - 1, width: Math.round(box.width) };
+  }).toEqual({ docked: true, width: 344 });
   const resizer = screen.getByLabel("Resize the bot panel");
   await resizer.focus();
   await hui.keyboard.down("ArrowLeft");
@@ -48,8 +52,9 @@ test("Show and Close dock the panel beside the bot's overview, and its open stat
   await expect(screen.getByRole("tab", "Bots")).toBeVisible();
   await expect(panel).toBeHidden();
   await hui.open(`/bots/${id}`);
-  await expect.poll(async () => Math.round((await panel.boundingBox())!.width)).toBe(368);
   await expect(screen.getByLabel("About Solo")).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect.poll(async () => Math.round((await panel.boundingBox())!.width)).toBe(368);
 
   await screen.getByRole("button", "Hide the bot panel").tap();
   await expect(panel).toBeHidden();

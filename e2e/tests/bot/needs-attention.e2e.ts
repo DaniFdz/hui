@@ -19,10 +19,11 @@ test("a routine run that needs the operator reads Needs attention on the Routine
   await expect(latestRuns.getByText(/fixture quota exhausted/u)).toBeVisible();
 
   await screen.getByRole("button", "Back to Solo").tap();
-  await expect(screen.getByText(/^Needs attention · Check the provider's quota or billing, then run again when it is available\. · /u)).toBeVisible();
+  await expect(screen.getByText(/^Needs attention · Check the provider's quota or billing, then run again when it is available\. · .*fixture quota exhausted/u)).toBeVisible();
 
   await hui.open("/settings/automation");
   await expect(screen.getByText("Quota check").first()).toBeVisible();
+  await expect(screen.getByText(/Manual · started /u).first()).toBeVisible();
   await expect(screen.getByText("Needs attention").first()).toBeVisible();
   await expect(screen.getByText(GUIDANCE).first()).toBeVisible();
   await expect(screen.getByText(/fixture quota exhausted/u).first()).toBeVisible();

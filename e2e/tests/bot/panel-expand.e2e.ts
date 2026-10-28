@@ -16,7 +16,6 @@ async function say(hui: Hui, id: string, reply: string): Promise<void> {
   await hui.api("POST", `/__hui/bots/${id}/messages`, { text: `E2E_REPLY:${Buffer.from(reply).toString("base64url")}` });
 }
 
-
 test("Expand fills the bot's view and Show the chat beside brings it back with the reply that streamed in meanwhile, its draft and its scroll, and expanded is never remembered", { tags: ["BOT-022"], platforms: ["web"] }, async ({ screen, hui }) => {
   const id = await openBot(hui, "Solo", "Fixture helper");
   const transcript = screen.getByTestId("transcript");
@@ -34,12 +33,13 @@ test("Expand fills the bot's view and Show the chat beside brings it back with t
   const scrolled = (await anchor.boundingBox())!.y;
   await screen.getByLabel("Message").fill("A draft I have not sent");
 
-  const chatLeft = (await header.boundingBox())!.x;
+  const chat = (await header.boundingBox())!;
+  const view = { left: Math.round(chat.x), reaches: Math.round(chat.x + chat.width + (await panel.boundingBox())!.width) };
   await screen.getByRole("button", "Expand the panel").tap();
   await expect.poll(async () => {
     const box = (await panel.boundingBox())!;
     return { left: Math.round(box.x), reaches: Math.round(box.x + box.width) };
-  }).toEqual({ left: Math.round(chatLeft), reaches: 1440 });
+  }).toEqual(view);
   await expect(header).toBeHidden();
 
   await hui.api("POST", `/__hui/bots/${id}/messages`, { text: "E2E_REPLAY" });
