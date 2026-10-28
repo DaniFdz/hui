@@ -3676,6 +3676,14 @@ that launches another installation is that installation's to refresh. `hui
 doctor` reports an app an earlier update left behind and `--fix` reinstalls it
 ([`hui doctor`](#hui-doctor-migrates-state-an-upgrade-leaves-behind)).
 
+### Desktop downloads ask where to save them
+
+Electron saves a download into the Downloads folder without asking. The desktop
+app answers every download with a save dialog that starts in Downloads and
+offers the file's name. Cancelling the dialog cancels the download. A presented
+file's download, an attachment card's open link and the Files view's
+**Download** all go through it; the browser keeps its own download behaviour.
+
 ### Clickable desktop notifications
 
 The explicit `notify_user` agent tool takes a title, an optional subtitle, an

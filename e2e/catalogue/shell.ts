@@ -367,6 +367,15 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "SHELL-043",
+    title: "Save each download where you choose",
+    behaviour: "In HUI's desktop app a download (a presented file, an attachment card's open link or a Files view's Download) opens a save dialog that starts in Downloads with the file's name, and cancelling the dialog saves nothing.",
+    spec: ["SPEC.md#desktop-downloads-ask-where-to-save-them"],
+    surfaces: [],
+    web: { excluded: "The browser saves downloads itself, and the save dialog belongs to HUI's Electron desktop app, which the web runner cannot drive; desktop/main.test.mjs covers the chosen path, the cancel and one dialog per download.", decision: "SPEC.md#desktop-downloads-ask-where-to-save-them" },
+    ios: { excluded: "The save dialog is a macOS desktop app behaviour; the iPhone app has no file save dialog.", decision: "SPEC.md#desktop-downloads-ask-where-to-save-them" },
+  },
 ];
 
 export default cases;
