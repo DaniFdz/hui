@@ -16,10 +16,6 @@ async function say(hui: Hui, id: string, reply: string): Promise<void> {
   await hui.api("POST", `/__hui/bots/${id}/messages`, { text: `E2E_REPLY:${Buffer.from(reply).toString("base64url")}` });
 }
 
-/** Sends a message the fixture provider answers in two parts, holding the second until the test releases it. */
-async function replay(hui: Hui, id: string): Promise<void> {
-  await hui.api("POST", `/__hui/bots/${id}/messages`, { text: "E2E_REPLAY" });
-}
 
 test("Expand fills the bot's view and Show the chat beside brings it back with the reply that streamed in meanwhile, its draft and its scroll, and expanded is never remembered", { tags: ["BOT-022"], platforms: ["web"] }, async ({ screen, hui }) => {
   const id = await openBot(hui, "Solo", "Fixture helper");
@@ -46,7 +42,7 @@ test("Expand fills the bot's view and Show the chat beside brings it back with t
   }).toEqual({ left: Math.round(chatLeft), reaches: 1440 });
   await expect(header).toBeHidden();
 
-  await replay(hui, id);
+  await hui.api("POST", `/__hui/bots/${id}/messages`, { text: "E2E_REPLAY" });
   await hui.provider.held();
   await expect(panel.getByText("Fixture helper · Working")).toBeVisible();
   await hui.provider.release();
@@ -73,7 +69,7 @@ test("Escape brings the chat back from an expanded panel without stopping the bo
   const header = screen.getByTestId("chat-header");
   await expect(panel).toBeVisible();
 
-  await replay(hui, id);
+  await hui.api("POST", `/__hui/bots/${id}/messages`, { text: "E2E_REPLAY" });
   await hui.provider.held();
   await screen.getByRole("button", "Expand the panel").tap();
   await expect(header).toBeHidden();

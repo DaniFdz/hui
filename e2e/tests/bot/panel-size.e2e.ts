@@ -18,12 +18,11 @@ test("Show and Close dock the panel beside the bot's overview, and its open stat
   const header = screen.getByTestId("chat-header");
   await expect(panel).toBeVisible();
   await expect(screen.getByLabel("About Solo")).toBeVisible();
-  const beside = async () => {
+  await expect.poll(async () => {
     const box = (await panel.boundingBox())!;
     const chat = (await header.boundingBox())!;
     return { docked: box.x >= chat.x + chat.width - 1, width: Math.round(box.width) };
-  };
-  await expect.poll(beside).toEqual({ docked: true, width: 344 });
+  }).toEqual({ docked: true, width: 344 });
 
   await screen.getByRole("button", "Close the bot panel").tap();
   await expect(panel).toBeHidden();
