@@ -528,7 +528,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["pane-reposition"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: DESKTOP_ONLY, decision: "SPEC.md#behaviour" },
   },
   {
