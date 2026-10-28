@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
     sendShortcut: "enter",
     githubEmbeds: true,
     datadogEmbeds: true,
+    toolMarks: {},
   },
   profileName: "HUI Operator",
   profileHandle: "",
@@ -213,7 +214,23 @@ function normalizeChat(value: unknown): Settings["chat"] {
     // Opt-out: only an explicit false disables previews.
     githubEmbeds: source["githubEmbeds"] !== false,
     datadogEmbeds: source["datadogEmbeds"] !== false,
+    toolMarks: normalizeToolMarks(source["toolMarks"]),
   };
+}
+
+/** The user's own emoji per CLI or tool, mirrored from the gateway's sanitizer. */
+function normalizeToolMarks(value: unknown): Settings["chat"]["toolMarks"] {
+  if (!isRecord(value)) return {};
+  const marks: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim().toLowerCase().slice(0, 40);
+    if (!key || /[\p{Cc}\s]/u.test(key) || typeof rawValue !== "string") continue;
+    const mark = rawValue.trim();
+    if (!mark || /[\p{Cc}]/u.test(mark) || Array.from(mark).length > 12) continue;
+    marks[key] = mark;
+    if (Object.keys(marks).length >= 200) break;
+  }
+  return marks;
 }
 
 /** Keep the configurable part a Git-ref prefix rather than accepting arbitrary
