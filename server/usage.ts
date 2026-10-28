@@ -16,8 +16,8 @@
  *
  * One scan is range-independent: it buckets every recorded day, so any range,
  * zone or filter is answered by slicing it. The gateway keeps that scan per
- * time zone and, once the registry records newer activity, reads only the
- * entries appended since it read the conversation last.
+ * time zone and, when the registry records activity or a run finishes, reads
+ * only the entries appended since it read the conversation last.
  */
 import { readFile, stat } from "node:fs/promises";
 
@@ -521,19 +521,10 @@ export function sliceUsage(scan: UsageScan, query: UsageQuery): UsageReport {
   };
 }
 
-/** What a scan covers: the registered histories and the newest activity among them. */
 function coverageStamp(sessions: readonly SessionRecord[]): string {
-  let latest = "";
-  for (const session of sessions) if (session.updatedAt > latest) latest = session.updatedAt;
-  return `${sessions.length}:${latest}`;
+  return JSON.stringify(sessions.map(({ id, updatedAt, runStartedAt }) => [id, updatedAt, runStartedAt]));
 }
 
-/**
- * Keeps one scan of every history per time zone and answers any range from it.
- * A scan is reused until the registry records newer activity, so changing the
- * range, the zone or the filters costs a slice instead of another read of every
- * conversation. `refresh` always reads them again.
- */
 export class UsageReports {
   #scans = new Map<string, { scan: UsageScan; stamp: string; sessions: string }>();
   #pending = new Map<string, Promise<UsageScan>>();
