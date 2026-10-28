@@ -885,7 +885,8 @@ disk. Line endings, BOM and a missing final newline are preserved.
 
 Markdown files have a **Markdown display mode**, **Source** or **Rendered**
 (HUI's chat Markdown renderer); the mode never decides whether the file is
-writable. Images and PDFs show as previews; other binary files and text over
+writable. **Copy Markdown** beside the mode copies the file's Markdown text as
+the view holds it, unsaved edits included, and shows **Copied**. Images and PDFs show as previews; other binary files and text over
 the limit show their size and modification time with **Download**.
 
 The navigator refreshes open folders and the selected file when the

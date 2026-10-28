@@ -153,7 +153,7 @@ export class HuiFilesView extends HuiElement {
   declare dialog: Dialog | undefined;
   declare uploadStatus: string;
   declare editorReady: boolean;
-  declare copied: boolean;
+  declare copied: "" | "path" | "markdown";
 
   private draft: FileDraft | undefined;
   /** The registry key of `draft`, kept so releasing it never depends on later property changes. */
@@ -202,7 +202,7 @@ export class HuiFilesView extends HuiElement {
     this.dialog = undefined;
     this.uploadStatus = "";
     this.editorReady = false;
-    this.copied = false;
+    this.copied = "";
   }
 
   override connectedCallback() {
@@ -815,10 +815,17 @@ export class HuiFilesView extends HuiElement {
   private async copyPath() {
     if (!this.selected || !this.info?.available) return;
     const root = this.info.root.replace(/\/$/u, "");
-    if (await writeClipboardText(`${root}/${this.selected}`)) {
-      this.copied = true;
-      setTimeout(() => { this.copied = false; }, 1500);
-    }
+    await this.copyText(`${root}/${this.selected}`, "path");
+  }
+
+  private async copyMarkdown() {
+    if (this.draft) await this.copyText(this.draft.content, "markdown");
+  }
+
+  private async copyText(text: string, copied: "path" | "markdown") {
+    if (!await writeClipboardText(text)) return;
+    this.copied = copied;
+    setTimeout(() => { this.copied = ""; }, 1500);
   }
 
   private async download() {
@@ -986,12 +993,14 @@ export class HuiFilesView extends HuiElement {
         @click=${this.toggleNavigator}>${open && !this.narrow ? icons.panelLeftClose : icons.panelLeftOpen}</button>
       ${path
         ? html`<span class="hui-files-path" data-hui-tooltip=${path}><bdi dir="ltr">${path}</bdi></span>
-          <button type="button" class="btn btn--ghost btn--icon hui-files-copy" aria-label="Copy full path" data-hui-tooltip=${this.copied ? "Copied" : "Copy full path"}
-            @click=${() => void this.copyPath()}>${this.copied ? icons.check : icons.copy}</button>`
+          <button type="button" class="btn btn--ghost btn--icon hui-files-copy" aria-label="Copy full path" data-hui-tooltip=${this.copied === "path" ? "Copied" : "Copy full path"}
+            @click=${() => void this.copyPath()}>${this.copied === "path" ? icons.check : icons.copy}</button>`
         : html`<span class="hui-files-path hui-files-path--empty">No file selected</span>`}
       <span class="hui-files-main__spacer"></span>
       ${this.renderStatus()}
-      ${this.isMarkdown ? html`<span class="hui-files-segmented" role="group" aria-label="Markdown display mode">
+      ${this.isMarkdown ? html`<button type="button" class="btn btn--ghost btn--icon hui-files-copy" aria-label="Copy Markdown" data-hui-tooltip=${this.copied === "markdown" ? "Copied" : "Copy Markdown"}
+          @click=${() => void this.copyMarkdown()}>${this.copied === "markdown" ? icons.check : icons.copy}</button>
+        <span class="hui-files-segmented" role="group" aria-label="Markdown display mode">
           <button type="button" class="hui-files-segmented__option" aria-pressed=${this.markdownMode === "source" ? "true" : "false"} @click=${() => this.setMarkdownMode("source")}>Source</button>
           <button type="button" class="hui-files-segmented__option" aria-pressed=${this.markdownMode === "rendered" ? "true" : "false"} @click=${() => this.setMarkdownMode("rendered")}>Rendered</button>
         </span>` : nothing}

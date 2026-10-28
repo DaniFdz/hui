@@ -799,6 +799,16 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "WORK-081",
+    title: "Copy a Markdown file's text",
+    behaviour: "Copy Markdown in a Markdown file's header copies the file's Markdown source to the clipboard, and the button shows Copied.",
+    spec: ["SPEC.md#files"],
+    surfaces: ["work-view:files"],
+    journeys: ["files-view"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
