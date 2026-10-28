@@ -8,7 +8,7 @@
  * asks the agent to bring the task progress card up to date.
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
-import { loadModels, openSession, sendPrompt, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
+import { followUpSession, loadModels, openSession, sendPrompt, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { announceTurnEnd } from "../lib/session/turn-end.ts";
 import { emptySessionPresentation, isCurrentSessionRequest, isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels, streamingAfterEvent, streamingForStatus } from "../lib/session/ui-state.ts";
@@ -199,8 +199,9 @@ export class ConversationController implements ReactiveController {
       if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) return;
       this.selected = opened.session;
       this.applySnapshot(opened.snapshot);
-      // Accepted after the snapshot's own status, which says nothing about the turn to come.
-      await sendPrompt(id, REFRESH_PROGRESS_PROMPT);
+      // Accepted after the snapshot's own status, which says nothing about the turn to come. A running
+      // session takes it as the follow-up the composer would send, rather than refusing it.
+      await (this.streaming ? followUpSession : sendPrompt)(id, REFRESH_PROGRESS_PROMPT);
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) this.#refreshAccepted = true;
     } catch (error) {
       this.#endRefresh();

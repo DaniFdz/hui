@@ -9,7 +9,7 @@ const fake = vi.hoisted(() => ({
   modelsFail: false,
   thinking: [] as { id: string; level: string; resolve: (level: string) => void }[],
   opens: [] as { id: string; resolve: (status: SessionStatus, snapshot?: Partial<SessionSnapshot>) => void }[],
-  prompts: [] as { id: string; text: string }[],
+  prompts: [] as { id: string; text: string; mode: string }[],
   streams: [] as { id: string; handlers: SessionStreamHandlers; heldRevision?: number; stopped: boolean }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
@@ -19,7 +19,8 @@ vi.mock("../api/sessions.ts", () => ({
     return [{ provider: "gw", id: "opus", name: "Opus" }];
   },
   setSessionThinking: (id: string, level: string) => new Promise((resolve) => fake.thinking.push({ id, level, resolve })),
-  sendPrompt: async (id: string, text: string) => { fake.prompts.push({ id, text }); return { duplicate: false }; },
+  sendPrompt: async (id: string, text: string) => { fake.prompts.push({ id, text, mode: "prompt" }); return { duplicate: false }; },
+  followUpSession: async (id: string, text: string) => { fake.prompts.push({ id, text, mode: "follow-up" }); return { duplicate: false }; },
   openSession: (id: string) => new Promise((resolve) => fake.opens.push({
     id,
     resolve: (status, snapshot = {}) => resolve({
@@ -163,7 +164,7 @@ test("a refresh reads the open session again, asks the agent, and stays busy unt
   void controller.refresh();
   await settle();
   assert.equal(fake.opens.length, 2, "a second click while busy asks the gateway nothing");
-  fake.opens[1]?.resolve("running", {
+  fake.opens[1]?.resolve("idle", {
     transcript: [
       { kind: "message", role: "user", text: "go" },
       { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "New step", status: "in_progress" }] } },
@@ -174,10 +175,22 @@ test("a refresh reads the open session again, asks the agent, and stays busy unt
   assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "New step");
   assert.deepEqual(fake.prompts.map(({ id }) => id), ["s1"], "the card is the agent's, so the refresh asks it for a current one");
   assert.match(fake.prompts[0]?.text ?? "", /^Refresh the task progress card/u);
+  assert.equal(fake.prompts[0]?.mode, "prompt", "an idle session starts the turn at once");
   assert.equal(controller.refreshing, true, "the agent is still working on the card");
 
   fake.streams[0]?.handlers.onStatus("idle");
   assert.equal(controller.refreshing, false);
+});
+
+test("a refresh on a running session queues the request rather than being refused", async () => {
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView, streaming: true });
+  const refreshed = controller.refresh();
+  await settle();
+  fake.opens[0]?.resolve("running");
+  await refreshed;
+
+  assert.equal(fake.prompts[0]?.mode, "follow-up");
+  assert.equal(controller.refreshing, true);
 });
 
 test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer or stale state", async () => {
