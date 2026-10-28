@@ -27,21 +27,23 @@ test("Task progress shows the agent's plan, folds, refreshes, clears and returns
   // The raw control call is never activity.
   await expect(transcript.getByText("progress_card")).toBeHidden();
 
-  // Refreshing reads the session again and leaves the card exactly as it was.
+  // Refreshing reads the session again and asks the agent for a card that matches the work now.
   await refresh.tap();
-  await expect(screen.getByText("1 of 2")).toBeVisible();
-  await expect(card.getByRole("listitem").filter({ hasText: "Verify presentation" })).toBeVisible();
+  await expect(screen.getByText("2 of 3")).toBeVisible();
+  await expect(card).toContainText("refreshed after the click");
+  await expect(card.getByRole("listitem").filter({ hasText: "Report the plan" })).toHaveAttribute("data-status", "in_progress");
+  await expect(status("Idle")).toBeVisible();
 
   // Folded: the current step and done/total.
-  await screen.getByText("1 of 2").tap();
+  await screen.getByText("2 of 3").tap();
   await expect(card).toBeHidden();
-  await expect(screen.getByText("1/2")).toBeVisible();
-  await expect(screen.getByText("Verify presentation", { visible: true })).toBeVisible();
+  await expect(screen.getByText("2/3")).toBeVisible();
+  await expect(screen.getByText("Report the plan", { visible: true })).toBeVisible();
 
   // An empty call clears the card.
   await message.fill("E2E_CLEAR_PROGRESS");
   await send.tap();
-  await expect(screen.getByText("1/2")).toBeHidden();
+  await expect(screen.getByText("2/3")).toBeHidden();
 
   // A later call brings it back, and it is still projected from PI's transcript after a reload.
   await message.fill("E2E_PROGRESS");
