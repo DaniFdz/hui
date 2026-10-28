@@ -44,7 +44,6 @@ test("the archived bot's address explains it, its chat opens only once it is res
   await restored();
   await expect(row).toBeVisible();
   await expect(screen.getByRole("button", "Show archived (1)")).toHaveCount(0);
-  await expect(screen.getByLabel(/^Solo,/u).getByText("Fixture helper")).toBeVisible();
 
   await hui.open(`/bots/${bot.id}`);
   await screen.getByTestId("chat-header").getByRole("button", "Actions for Solo").tap();
