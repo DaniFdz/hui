@@ -73,6 +73,7 @@ export type Hui = {
   reload(): Promise<void>;
   clearState(): Promise<void>;
   url(): Promise<string>;
+  documentTitle(): Promise<string>;
   phoneScreen(orientation?: "portrait" | "landscape"): Promise<{ width: number; height: number }>;
   wideScreen(width?: number): Promise<void>;
   paletteChord(): Promise<void>;
@@ -414,6 +415,7 @@ export const test = base.extend<{ hui: Hui }>({
 
       const webSteps: Omit<Hui, "workspace" | "gateway" | "api" | "createSession" | "prompt" | "createSubagent" | "provider" | "restartGateway" | "exitRuntimes" | "open" | "reload" | "clearState" | "repository"> = {
         url: () => browser().url(),
+        documentTitle: () => browser().title(),
         clipboard: ({ refuse = false, legacyCopy = false } = {}) => browser().addInitScript(({ refused, legacy }: { refused: boolean; legacy: boolean }) => {
           const page = window as unknown as { huiCopied: string };
           page.huiCopied = "";
