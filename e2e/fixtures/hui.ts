@@ -101,6 +101,12 @@ export type Hui = {
   appearance(): Promise<"light" | "dark">;
   pressed(within: Screen, name: string, on?: boolean): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
+  /** The target's opacity and its ancestors', read where it is, for a cue CSS draws on an element no pointer reaches. */
+  opacity(target: Locator): Promise<number>;
+  /** Whether the control the target belongs to is disabled, which a menu option's own text cannot say. */
+  disabled(target: Locator): Promise<boolean>;
+  /** The text of whatever holds keyboard focus: an input's value, else its text, else its label. */
+  focused(): Promise<string>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
@@ -124,6 +130,8 @@ export type Hui = {
   wheel(target: Locator, deltaY: number): Promise<void>;
   /** A tap at the middle of where the target is now, read at the moment of the press: a phone sends a plain tap to the row its last reading put the target in, which a screen that just laid that row out elsewhere would miss. */
   tapAt(target: Locator): Promise<void>;
+  /** Makes the page a touch device, which the composer's placeholder reads, and reloads it. */
+  touchPointer(): Promise<void>;
   scrollTo(within: Locator, target: Locator): Promise<void>;
   expectLinkTo(within: Locator, name: string, href: string): Promise<void>;
   contextMenu(target: Locator): Promise<void>;
@@ -437,6 +445,10 @@ export const test = base.extend<{ hui: Hui }>({
           await browser().setViewport(phone);
           return phone;
         },
+        touchPointer: async () => {
+          await browser().addInitScript(() => Object.defineProperty(Navigator.prototype, "maxTouchPoints", { configurable: true, get: () => 5 }));
+          await browser().reload();
+        },
         overflowsSideways: () => browser().evaluate(() => [document.documentElement, ...document.querySelectorAll(".main, .sidebar")]
           .some((element) => element.scrollWidth > element.clientWidth)),
         reachable: async (target) => {
@@ -569,6 +581,35 @@ export const test = base.extend<{ hui: Hui }>({
             };
           }, box);
         },
+        opacity: async (target) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("opacity: the target lays out no box");
+          return browser().evaluate(({ x, y, width, height }) => {
+            const same = (a: number, b: number) => Math.abs(a - b) < 0.5;
+            const element = [...document.querySelectorAll("*")].find((candidate) => {
+              const rect = candidate.getBoundingClientRect();
+              return same(rect.x, x) && same(rect.y, y) && same(rect.width, width) && same(rect.height, height);
+            });
+            if (!element) throw new Error("opacity: no element has the target's box");
+            let opacity = 1;
+            for (let node: Element | null = element; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+            return opacity;
+          }, box);
+        },
+        disabled: async (target) => {
+          const box = await target.boundingBox();
+          if (!box) throw new Error("disabled: the target lays out no box");
+          return browser().evaluate(({ x, y }) => {
+            const control = document.elementFromPoint(x, y)?.closest<HTMLElement>("button, [aria-disabled]");
+            if (!control) throw new Error("disabled: nothing clickable holds the target's box");
+            return (control as HTMLButtonElement).disabled === true || control.getAttribute("aria-disabled") === "true";
+          }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
+        },
+        focused: () => browser().evaluate(() => {
+          const element = document.activeElement;
+          if (!(element instanceof HTMLElement)) return "";
+          return (element as HTMLInputElement).value || element.textContent?.trim() || element.getAttribute("aria-label") || "";
+        }),
         attach: async (target, files) => {
           const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
           if (made) directories.push(made);
