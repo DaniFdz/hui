@@ -133,18 +133,25 @@ const KIND_ICON: Record<ToolKind, TemplateResult> = {
   other: icons.wrench,
 };
 
-/** A command's own mark, by the CLI it runs: the binary's name is the only signal the transcript carries. */
-const CLI_ICONS: Record<string, TemplateResult> = {
-  git: icons.github, gh: icons.github,
-  npm: icons.box, pnpm: icons.box, yarn: icons.box, bun: icons.box, node: icons.box, deno: icons.box,
-  docker: icons.box, podman: icons.box,
-  curl: icons.globe, wget: icons.globe, http: icons.globe,
-  grep: icons.search, rg: icons.search, ag: icons.search,
-  cat: icons.fileText, head: icons.fileText, tail: icons.fileText, less: icons.fileText, bat: icons.fileText,
-  ls: icons.folder, find: icons.folder, tree: icons.folder,
-  make: icons.wrench, cmake: icons.wrench, cargo: icons.wrench, go: icons.wrench, tsc: icons.wrench,
-  vitest: icons.wrench, jest: icons.wrench, pytest: icons.wrench,
-  kubectl: icons.plug, helm: icons.plug, terraform: icons.plug, aws: icons.plug, gcloud: icons.plug, ssh: icons.plug, rsync: icons.plug,
+/** A command's own mark, by the CLI it runs: the binary's name is the only signal the transcript carries. `color` is
+ * the tool's own brand tint; a CLI without one keeps the row's muted ink. */
+type ToolMark = { glyph: TemplateResult; color?: string };
+const CLI_ICONS: Record<string, ToolMark> = {
+  git: { glyph: icons.github, color: "#e6edf3" }, gh: { glyph: icons.github, color: "#e6edf3" },
+  npm: { glyph: icons.box, color: "#cb3837" }, pnpm: { glyph: icons.box, color: "#f9ad00" },
+  yarn: { glyph: icons.box, color: "#2c8ebb" }, bun: { glyph: icons.box, color: "#fbf0df" },
+  node: { glyph: icons.box, color: "#5fa04e" }, deno: { glyph: icons.box, color: "#a3e635" },
+  docker: { glyph: icons.box, color: "#2496ed" }, podman: { glyph: icons.box, color: "#c084fc" },
+  curl: { glyph: icons.globe, color: "#4aa8ff" }, wget: { glyph: icons.globe, color: "#4aa8ff" }, http: { glyph: icons.globe, color: "#4aa8ff" },
+  grep: { glyph: icons.search }, rg: { glyph: icons.search }, ag: { glyph: icons.search },
+  cat: { glyph: icons.fileText }, head: { glyph: icons.fileText }, tail: { glyph: icons.fileText }, less: { glyph: icons.fileText }, bat: { glyph: icons.fileText },
+  ls: { glyph: icons.folder }, find: { glyph: icons.folder }, tree: { glyph: icons.folder },
+  make: { glyph: icons.wrench }, cmake: { glyph: icons.wrench }, cargo: { glyph: icons.wrench, color: "#dea584" },
+  go: { glyph: icons.wrench, color: "#00add8" }, tsc: { glyph: icons.wrench },
+  vitest: { glyph: icons.wrench, color: "#8fbf3f" }, jest: { glyph: icons.wrench, color: "#c21325" }, pytest: { glyph: icons.wrench, color: "#0a9edc" },
+  kubectl: { glyph: icons.plug, color: "#326ce5" }, helm: { glyph: icons.plug, color: "#277a9f" },
+  terraform: { glyph: icons.plug, color: "#a78bfa" }, aws: { glyph: icons.plug, color: "#ff9900" },
+  gcloud: { glyph: icons.plug, color: "#4285f4" }, ssh: { glyph: icons.plug }, rsync: { glyph: icons.plug },
 };
 
 const COMMAND_WRAPPERS = new Set(["sudo", "time", "env", "command", "nohup", "nice", "stdbuf"]);
@@ -178,11 +185,11 @@ export function commandBinary(item: ToolItem): string {
 }
 
 /** The mark a call carries: its CLI for a command, its kind for every other tool. */
-function toolIcon(item: ToolItem): { key: string; glyph: TemplateResult } {
+function toolIcon(item: ToolItem): { key: string; glyph: TemplateResult; color?: string } {
   if (toolKind(item) === "command") {
     const binary = commandBinary(item);
-    const glyph = CLI_ICONS[binary];
-    if (glyph) return { key: `cli:${binary === "gh" ? "git" : binary}`, glyph };
+    const mark = CLI_ICONS[binary];
+    if (mark) return { key: `cli:${binary === "gh" ? "git" : binary}`, ...mark };
     return { key: "cli", glyph: icons.squareTerminal };
   }
   const kind = toolKind(item);
@@ -229,10 +236,11 @@ export type ToolCallGroupOptions = {
 export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCallGroupOptions): TemplateResult {
   const running = items.some((item) => statusOf(item) === "running");
   const tools = items.length;
-  const distinct = new Map<string, TemplateResult>();
-  for (const item of items) { const icon = toolIcon(item); if (!distinct.has(icon.key)) distinct.set(icon.key, icon.glyph); }
+  const distinct = new Map<string, { glyph: TemplateResult; color?: string }>();
+  for (const item of items) { const icon = toolIcon(item); if (!distinct.has(icon.key)) distinct.set(icon.key, { glyph: icon.glyph, ...(icon.color ? { color: icon.color } : {}) }); }
   const kinds = [...distinct];
-  const marks = kinds.slice(0, 4).map(([key, glyph]) => html`<span class="tool-call-group__mark" title=${key.replace(/^cli:/u, "")}>${glyph}</span>`);
+  const marks = kinds.slice(0, 4).map(([key, mark]) => html`<span class="tool-call-group__mark" title=${key.replace(/^cli:/u, "")}
+    style=${mark.color ? `--tool-mark:${mark.color}` : nothing}>${mark.glyph}</span>`);
   return html`<div class="tool-call-group">
     <details class="tool-call-group__disclosure" .open=${options.expanded}
       @toggle=${(event: Event) => options.onToggle((event.currentTarget as HTMLDetailsElement).open)}>
@@ -253,7 +261,7 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
           return html`<div class="tool-call-row" data-status=${status}>
             <button type="button" class=${open ? "tool-call-row__toggle is-open" : "tool-call-row__toggle"} aria-expanded=${String(open)}
               @click=${() => options.onRowToggle(expansionId, !open)}>
-              <span class="tool-call-row__icon${toolKind(item) === "command" && CLI_ICONS[commandBinary(item)] ? " tool-call-row__icon--brand" : ""}" aria-hidden="true">${toolIcon(item).glyph}</span>
+              <span class="tool-call-row__icon${icon.color ? " tool-call-row__icon--brand" : ""}" style=${icon.color ? `--tool-mark:${icon.color}` : nothing} aria-hidden="true">${icon.glyph}</span>
               <span class=${status === "running" ? "tool-call-row__title tool-call-row__title--live" : "tool-call-row__title"}>${title}</span>
               ${meta ? html`<span class="tool-call-row__meta">${meta}</span>` : nothing}
               ${statusGlyph(status)}

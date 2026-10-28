@@ -1386,3 +1386,12 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   max-height: min(38vh, 380px);
   overflow: auto;
 }
+
+/* A CLI's own tint: the mark keeps its brand color, the chip behind it only borrows 12% of it. */
+.tool-call-row__icon--brand { color: var(--tool-mark); }
+
+.tool-call-group__mark {
+  color: var(--tool-mark, var(--text));
+  background: color-mix(in srgb, var(--tool-mark, var(--panel-strong)) 12%, var(--bg-elevated));
+  border-color: color-mix(in srgb, var(--tool-mark, var(--border-strong)) 32%, var(--border-strong));
+}
