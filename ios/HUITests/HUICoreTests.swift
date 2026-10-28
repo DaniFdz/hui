@@ -58,6 +58,16 @@ struct HUICoreTests {
         #expect(rows.compactMap { $0.activity?.first?.key } == ["tool:t", "tool:t#1"])
     }
 
+    @Test func aProgressCallBecomesTheComposerCardInsteadOfARow() async throws {
+        let core = try HUICore.bundled()
+        let entries = try JSONDecoder().decode([API.TranscriptEntry].self, from: Data(#"[{"kind":"tool","id":"p","name":"progress_card","args":{"markdown":"Notes","plan":[{"step":"One","status":"completed"},{"step":"Two","status":"in_progress"}]}}]"#.utf8))
+        let projection = try await core.transcript("p", snapshot: entries, streaming: false)
+        #expect(projection.rows.isEmpty)
+        #expect(projection.progressCard?.markdown == "Notes")
+        #expect(projection.progressCard?.steps.map(\.step) == ["One", "Two"])
+        #expect(projection.progressCard?.steps.map(\.status) == [.completed, .inProgress])
+    }
+
     @Test func anUnknownKindDecodesAsUnrecognizedAndABrokenRowIsLeftOut() throws {
         let json = #"[{"kind":"poll","key":"poll:p"},{"kind":"messages"},{"kind":"messages","key":"m","messages":[{"kind":"sticker","id":"s","key":"s"}]}]"#
         let rows = try JSONDecoder().decode(ChatRows.self, from: Data(json.utf8)).rows

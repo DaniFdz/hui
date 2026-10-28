@@ -1831,16 +1831,16 @@ function renderTaskProgress(props: HomeProps) {
   const allComplete = card.steps.length > 0 && completed === card.steps.length;
   return html`<div class="agent-chat__progress-float">
     <details class="session-progress-card session-progress-card--composer" data-testid="task-progress" ?open=${!props.chatPreferences.collapseTaskProgress && !allComplete}>
-      <summary class="session-progress-card__summary">
+      <summary class="session-progress-card__summary" data-testid="task-progress-summary">
         <span class="session-progress-card__summary-indicator ${allComplete ? "session-progress-card__summary-indicator--complete" : ""}" data-status=${current?.status ?? "pending"} aria-hidden="true">${allComplete ? checkIcon : current?.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span>
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
-      <div class="session-progress-card__body" role="region" aria-label="Task progress">
+      <div class="session-progress-card__body" role="region" aria-label="Task progress" data-testid="task-progress-steps">
         ${card.markdown ? html`<div class="session-progress-card__markdown">${renderMarkdown(card.markdown)}</div>` : nothing}
-        ${card.steps.length ? html`<ol class="session-progress-card__steps">${card.steps.map((step) => html`<li class="session-progress-card__step session-progress-card__step--${step.status}" data-status=${step.status}><span class="session-progress-card__step-marker" aria-hidden="true">${step.status === "completed" ? checkIcon : step.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span><span>${step.step}</span></li>`)}</ol>` : nothing}
+        ${card.steps.length ? html`<ol class="session-progress-card__steps">${card.steps.map((step) => html`<li class="session-progress-card__step session-progress-card__step--${step.status}" data-testid="task-progress-step" data-status=${step.status}><span class="session-progress-card__step-marker" aria-hidden="true">${step.status === "completed" ? checkIcon : step.status === "in_progress" ? html`<span class="session-run-spinner"></span>` : circleIcon}</span><span>${step.step}</span></li>`)}</ol>` : nothing}
       </div>
     </details>
   </div>`;
