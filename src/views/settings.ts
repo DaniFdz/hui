@@ -1,14 +1,13 @@
 /**
  * The Settings shell: its page list, drawer and search, and the render functions for the built-in pages. Edits leave
  * through prop callbacks to the app; the pi-backed pages only report pi's configuration, and self-contained sections
- * (providers, integrations, tools, browser, workers, calls) are their own elements.
+ * (providers, model routes, integrations, tools, browser, workers, calls) are their own elements.
  */
 import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal/font.ts";
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
-import { QUESTION_TIMEOUTS, routeNameIsValid, type Settings } from "../lib/settings/settings.ts";
-import { PI_THINKING_LEVELS } from "../lib/thinking.ts";
+import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
@@ -29,7 +28,7 @@ import "../components/settings/calls.ts";
 import "../components/settings/github.ts";
 import "../components/settings/datadog.ts";
 import "../components/settings/providers.ts";
-import "../components/settings/add-subagent-route.ts";
+import "../components/settings/subagent-routes.ts";
 import "../components/settings/workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
 import { renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
@@ -127,7 +126,7 @@ export type SettingsProps = AutomationProps & {
   onChangeNotifications: (next: Settings["notifications"]) => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
-  onAddSubagentRoute: (route: Settings["models"]["routes"][number]) => Promise<boolean>;
+  onSaveSubagentRoute: (route: Settings["models"]["routes"][number], originalName?: string) => Promise<boolean>;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
   onSetLidAwake: (on: boolean) => void;
@@ -712,61 +711,6 @@ function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
-function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { value: string; label: string }[]): TemplateResult {
-  const routes = props.settings.models.routes;
-  const models = modelOptions.filter((option) => option.value);
-  const save = (next: Settings["models"]["routes"]): void => props.onChangeModels({ ...props.settings.models, routes: next });
-  const replace = (at: number, patch: Partial<Settings["models"]["routes"][number]>): void => {
-    save(routes.map((route, index) => index === at ? { ...route, ...patch } : route));
-  };
-  const rename = (at: number, input: HTMLInputElement): void => {
-    const name = input.value.trim();
-    const error = !routeNameIsValid(name) ? "Use 1 to 40 letters, digits, underscores, dots or hyphens."
-      : routes.some((route, index) => index !== at && route.name === name) ? "That route name is already in use." : "";
-    input.setCustomValidity(error);
-    if (error) {
-      input.value = routes[at]?.name ?? "";
-      input.reportValidity();
-      return;
-    }
-    replace(at, { name });
-  };
-  const thinking = [{ value: "", label: "Inherit parent" }, ...PI_THINKING_LEVELS.map((level) => ({ value: level, label: level }))];
-  return html`
-    <section class="settings-section">
-      <div class="settings-section__header"><div class="settings-section__copy">
-        <h2 class="settings-section__heading">Subagent routes</h2>
-        <p class="settings-section__desc">Named models for subagents. An agent passes a name to <code>sessions_spawn</code> as <code>route</code>; the prompt lists your names and descriptions.</p>
-      </div><div class="settings-section__actions">
-        <hui-add-subagent-route .routes=${routes} .models=${models} .primary=${props.settings.models.primary} .onAdd=${props.onAddSubagentRoute}></hui-add-subagent-route>
-      </div></div>
-      ${routes.map((route, at) => html`
-        <div class="settings-group" role="group" aria-label=${`Route ${route.name}`}>
-          ${renderRow(route.name, "", html`<button type="button" class="btn btn--sm btn--ghost" aria-label=${`Remove route ${route.name}`} @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>`)}
-          ${renderRow("Name", "The name agents pass when choosing a route.", html`
-            <input class="settings-input" name="routeName" aria-label=${`Route name: ${route.name}`}
-              maxlength="40" spellcheck="false" autocomplete="off" .value=${route.name}
-              @input=${(event: Event) => (event.target as HTMLInputElement).setCustomValidity("")}
-              @change=${(event: Event) => rename(at, event.target as HTMLInputElement)} />
-          `)}
-          ${renderRow("Description", "Helps agents decide when to use this route.", html`
-            <input class="settings-input" name="routeDescription" aria-label=${`Description of ${route.name}`}
-              maxlength="200" placeholder="What this route is for, in one line" .value=${route.description}
-              @change=${(event: Event) => replace(at, { description: (event.target as HTMLInputElement).value })} />
-          `)}
-          ${renderRow("Model", "The model subagents use on this route.",
-            renderSettingsPicker(`Model for ${route.name}`, route.model, models, (value) => replace(at, { model: value })))}
-          ${renderRow("Thinking", "Inherit the parent's level, or choose a default for this route.",
-            renderSettingsPicker(`Thinking for ${route.name}`, route.thinking ?? "", thinking, (value) => replace(at, { thinking: PI_THINKING_LEVELS.find((level) => level === value) })))}
-        </div>
-      `)}
-      ${routes.length ? nothing : html`<div class="settings-group">
-        ${renderRow("No routes yet", models.length ? "Agents keep choosing models by id until you add one." : "Connect a provider first: a route needs a model.", html`<span class="settings-row__value">—</span>`)}
-      </div>`}
-    </section>
-  `;
-}
-
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
   if (!pi) {
@@ -807,7 +751,10 @@ function renderModelsPage(props: SettingsProps) {
         )}
       `,
     )}
-    ${renderSubagentRoutes(props, modelOptions)}
+    <hui-subagent-routes .routes=${props.settings.models.routes} .models=${modelOptions.filter((option) => option.value)}
+      .primary=${props.settings.models.primary} .onSave=${props.onSaveSubagentRoute}
+      .onRemove=${(name: string) => props.onChangeModels({ ...props.settings.models, routes: props.settings.models.routes.filter((route) => route.name !== name) })}
+    ></hui-subagent-routes>
     ${renderCallsSection(props)}
     ${renderSection(
       "PI defaults",

@@ -235,8 +235,11 @@ form for its name, one-line description, model and optional reasoning level.
 The model starts on your primary model when available, and thinking inherits
 the parent's level. **Add route** saves the completed form; **Cancel** or Escape
 closes it without adding anything. A failed save keeps the form for retry.
-Saved routes can still be edited or removed on the page. An agent that
-spawns a subagent can pass the name to `sessions_spawn` instead of a model id.
+Saved routes show a brief summary of their description, model and thinking level.
+Choose **Edit** to open the same form with the current values. **Save changes**
+applies the edit; Cancel or Escape leaves the saved configuration unchanged.
+**Remove** stays beside Edit. An agent that spawns a subagent can pass the name
+to `sessions_spawn` instead of a model id.
 The prompt lists your names and descriptions. Raw model ids remain supported;
 routes do not restrict which models the tool can use. A spawn without a route or
 model inherits its parent's model and reasoning level. Its own `thinking`

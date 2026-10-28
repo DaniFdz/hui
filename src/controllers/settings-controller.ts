@@ -20,7 +20,7 @@ import { closeModal } from "../lib/modal-dialog.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import { skillPreferencePath, type PiMutationKind, type PiMutationResult, type PiMutationState, type PiSnapshot } from "../lib/pi.ts";
 import type { Settings } from "../lib/settings/settings.ts";
-import { addSubagentRoute, currentSettings, patchSettings } from "../lib/settings/settings-store.ts";
+import { currentSettings, patchSettings, saveSubagentRoute } from "../lib/settings/settings-store.ts";
 import type { ThemeMode, ThemeVariant } from "../lib/theme/theme.ts";
 import {
   applyAccent,
@@ -110,9 +110,9 @@ export class SettingsController implements ReactiveController {
     this.#changed();
   }
 
-  addSubagentRoute = async (route: Settings["models"]["routes"][number]): Promise<boolean> => {
+  saveSubagentRoute = async (route: Settings["models"]["routes"][number], originalName?: string): Promise<boolean> => {
     const revision = ++this.#saveRevision;
-    const saved = await addSubagentRoute(route);
+    const saved = await saveSubagentRoute(route, originalName);
     if (revision === this.#saveRevision) this.saveFailed = !saved;
     this.settings = currentSettings();
     this.#changed();
@@ -439,7 +439,7 @@ export class SettingsController implements ReactiveController {
       observabilityError: this.observabilityError,
       onExportDiagnostics: this.exportDiagnostics,
       onRetryPi: () => this.loadControlSurfaceData(true),
-      onAddSubagentRoute: this.addSubagentRoute,
+      onSaveSubagentRoute: this.saveSubagentRoute,
       previews: this.previews,
       settings: this.settings,
       themeId: this.themeId,

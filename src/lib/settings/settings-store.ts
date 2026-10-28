@@ -75,15 +75,20 @@ export async function patchSettings(patch: Partial<Settings>): Promise<boolean> 
   }
 }
 
-export async function addSubagentRoute(route: Settings["models"]["routes"][number]): Promise<boolean> {
+export async function saveSubagentRoute(route: Settings["models"]["routes"][number], originalName?: string): Promise<boolean> {
   const write = settingsWriteQueue.then(async () => {
     const routes = settings.models.routes;
-    if (!routeNameIsValid(route.name) || routes.length >= 50 || routes.some((entry) => entry.name === route.name)) return false;
-    const next = normalizeSettings({ ...settings, models: { ...settings.models, routes: [...routes, route] } });
+    if (!routeNameIsValid(route.name) || (originalName === undefined && routes.length >= 50)
+      || (originalName !== undefined && !routes.some((entry) => entry.name === originalName))
+      || routes.some((entry) => entry.name !== originalName && entry.name === route.name)) return false;
+    const withRoute = (next: typeof route) => originalName === undefined ? [...settings.models.routes, next]
+      : settings.models.routes.map((entry) => entry.name === originalName ? next : entry);
+    const next = normalizeSettings({ ...settings, models: { ...settings.models, routes: withRoute(route) } });
+    if (!next.models.routes.some((entry) => entry.name === route.name)) return false;
     const confirmed = normalizeSettings(await saveSettings(next));
     const saved = confirmed.models.routes.find((entry) => entry.name === route.name);
     if (!saved) return false;
-    settings = { ...settings, models: { ...settings.models, routes: [...settings.models.routes, saved] } };
+    settings = { ...settings, models: { ...settings.models, routes: withRoute(saved) } };
     return true;
   });
   settingsWriteQueue = write.then(() => undefined, () => undefined);
