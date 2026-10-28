@@ -70,16 +70,16 @@ describe("goals", () => {
 
   it("claims one automatic turn at a time and pauses at the cap", async () => {
     const { state, updater } = registry(goal({ continuations: 5 }));
-    expect(await claimGoalContinuation("s1", NOW, updater)).toBe(GOAL_CONTINUE_PROMPT);
+    expect(await claimGoalContinuation("s1", NOW, updater, async () => [state.record])).toBe(GOAL_CONTINUE_PROMPT);
     expect(state.record.goal?.continuations).toBe(6);
 
     state.record = { ...state.record, goal: goal({ continuations: MAX_GOAL_CONTINUATIONS }) };
-    expect(await claimGoalContinuation("s1", NOW, updater)).toBeUndefined();
+    expect(await claimGoalContinuation("s1", NOW, updater, async () => [state.record])).toBeUndefined();
     expect(state.record.goal?.status).toBe("paused");
     expect(state.record.goal?.note).toContain("automatic turns");
 
     state.record = { ...state.record, goal: goal({ status: "complete" }) };
-    expect(await claimGoalContinuation("s1", NOW, updater)).toBeUndefined();
+    expect(await claimGoalContinuation("s1", NOW, updater, async () => [state.record])).toBeUndefined();
     expect(state.record.goal).toMatchObject({ status: "complete", continuations: 0 });
   });
 

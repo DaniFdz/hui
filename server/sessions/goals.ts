@@ -160,7 +160,10 @@ export async function claimGoalContinuation(
   id: string,
   now = new Date(),
   registryUpdater: typeof updateRegistry = updateRegistry,
+  reader: () => Promise<readonly SessionRecord[]> = readRegistry,
 ): Promise<string | undefined> {
+  // The registry is rewritten for every mutation, so a conversation without an active goal must not reach one.
+  if ((await reader()).find((each) => each.id === id)?.goal?.status !== "active") return undefined;
   let prompt: string | undefined;
   await registryUpdater((records) => records.map((record) => {
     if (record.id !== id || record.goal?.status !== "active") return record;
