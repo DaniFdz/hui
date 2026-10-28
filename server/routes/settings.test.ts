@@ -30,6 +30,8 @@ type OriginalSettings = {
     githubEmbeds: boolean;
 
     datadogEmbeds: boolean;
+
+    toolMarks: Record<string, string>;
   };
   profileName: string;
   profileHandle: string;
