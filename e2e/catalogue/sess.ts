@@ -398,7 +398,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-registry", "session-groups"],
-    web: "required",
+    web: "backlog",
     ios: { excluded: "Arrow, Home, End and Escape navigation is keyboard-only; the menus' visible items are separate use cases.", decision: KEYBOARD },
   },
   {
@@ -478,7 +478,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-composer-drafts"],
     surfaces: [],
     journeys: ["session-multiplexing", "pane-reposition"],
-    web: "required",
+    web: "backlog",
     ios: "backlog",
   },
   {

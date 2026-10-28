@@ -24,10 +24,17 @@ test("a row dropped on a pane's left or right edge adds a column, on its top or 
     }
     throw new Error(`no pane shows ${title}`);
   };
-  const dropOn = (source: Locator, pane: Locator, at: { x: number; y: number }, preview: string) =>
-    hui.dragOnto(source, pane, at, async () => {
-      await expect(screen.getByText(preview, { exact: true, visible: true })).toBeVisible();
-    });
+  const dropOn = async (source: Locator, pane: Locator, at: { x: number; y: number }, preview: string) => {
+    const paneBox = (await pane.boundingBox())!;
+    await hui.drag(source, pane, async () => {
+      const mark = screen.getByText(preview, { exact: true, visible: true });
+      await expect(mark).toBeVisible();
+      const box = (await mark.boundingBox())!;
+      const centre = { x: box.x + box.width / 2 - (paneBox.x + paneBox.width / 2), y: box.y + box.height / 2 - (paneBox.y + paneBox.height / 2) };
+      if (at.x !== 0.5) expect(Math.sign(centre.x)).toBe(Math.sign(at.x - 0.5));
+      if (at.y !== 0.5) expect(Math.sign(centre.y)).toBe(Math.sign(at.y - 0.5));
+    }, at);
+  };
 
   const host = await hui.createSession({ title: "Pane host" });
   await hui.createSession({ title: "Left row" });

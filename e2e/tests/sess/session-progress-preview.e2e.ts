@@ -16,7 +16,7 @@ test("a session's progress card shows in its row preview, follows a cleared and 
   const step = (text: string) => screen.getByText(text, { exact: true, visible: true });
   const preview = async () => hui.peek(row);
   const busy = await hui.createSession({ title: "Plan in background" });
-  await hui.createSession({ title: "Other session" });
+  const other = await hui.createSession({ title: "Other session" });
   await hui.open("/");
 
   await hui.prompt(busy, PLAN);
@@ -41,7 +41,8 @@ test("a session's progress card shows in its row preview, follows a cleared and 
   await expect(step("Report the result")).toBeHidden();
   await hui.open(`/sessions/${busy.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  await hui.open("/");
+  await hui.open(`/sessions/${other.id}`);
+  await expect(screen.getByTestId("session-title")).toHaveText("Other session");
   await preview();
   await expect(step("Report the result")).toBeVisible();
 });

@@ -333,7 +333,9 @@
       "CALL-023",
       "CALL-026",
       "CALL-027",
-      "CALL-028"
+      "CALL-028",
+      "SESS-041",
+      "SESS-049"
     ],
     "ios": [
       "SHELL-001",
