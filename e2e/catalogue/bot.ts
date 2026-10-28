@@ -11,7 +11,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-always-on-2026-10-20", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05", "docs/api.md#bots-are-always-on"],
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
