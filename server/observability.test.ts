@@ -22,7 +22,7 @@ test("usage aggregates numeric PI metadata without returning transcript content"
   assert.equal(usage.inputTokens, 13);
   assert.equal(usage.cacheReadTokens, 52);
   assert.equal(usage.costUsd, 0.03);
-  assert.deepEqual(usage.models, [{ model: "provider/model", tokens: 77 }]);
+  assert.deepEqual(usage.models, [{ model: "provider/model", tokens: 77, costUsd: usage.costUsd }]);
   assert.doesNotMatch(JSON.stringify(usage), /private prompt|secret=never/u);
 });
 
@@ -43,7 +43,7 @@ test("usage totals read Durable spend per conversation and model, not a transcri
   assert.equal(usage.totalTokens, 422);
   assert.equal(usage.cacheReadTokens, 300);
   assert.equal(usage.costUsd, 0.25);
-  assert.deepEqual(usage.models, [{ model: "anthropic/claude-opus-5-5", tokens: 420 }, { model: "hui-e2e/fixture", tokens: 2 }]);
+  assert.deepEqual(usage.models, [{ model: "anthropic/claude-opus-5-5", tokens: 420, costUsd: 0.25 }, { model: "hui-e2e/fixture", tokens: 2, costUsd: 0 }]);
   assert.deepEqual(usage.unavailable, ["closed: Durable store unavailable"]);
 });
 

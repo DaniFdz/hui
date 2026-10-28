@@ -14,6 +14,9 @@ surface coverage. Product direction remains in `SPEC.md`; onboarding stays in
 - `implementation-roadmap.md` tracks iterative work and dependencies. Mark work done
   only after its implementation and required tests, including Browser-tool E2E proof
   for user-visible behavior.
+- `native-ios-plan.md` is the plan for the native iOS app and the shared web and iOS
+  e2e suite (roadmap item HUI-22). It records intentions; as parts ship, move what
+  they verify into `SPEC.md`, `api.md` and the owning guides.
 - `control-ui-coverage.md` records measured parity with the referenced OpenClaw version.
   Distinguish cloned structure from implemented PI-backed functionality.
 - Document current verified behavior, not intentions as facts. Include commands and

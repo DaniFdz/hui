@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { SendRequests } from "./send-requests.ts";
 import type { Attachment } from "../../api/sessions.ts";
 
@@ -13,6 +13,14 @@ test("a resend of a failed payload reuses its id and names the row it left", () 
   requests.failed("s1", first.requestId, "Plan it", [image], "local-row-1");
   assert.deepEqual(requests.take("s1", "Plan it", [{ ...image }]), { requestId: "id-1", earlierRow: "local-row-1" }, "same contents, another object");
   assert.deepEqual(requests.take("s1", "Plan it", [image]), { requestId: "id-2" }, "once resent, the id is used up");
+});
+
+test("a page on plain HTTP, which has no crypto.randomUUID, still gets distinct ids the gateway accepts", () => {
+  vi.stubGlobal("crypto", { getRandomValues: crypto.getRandomValues.bind(crypto) });
+  const requests = new SendRequests();
+  const first = requests.take("s1", "Plan it", []).requestId;
+  assert.match(first, /^[\w.:-]{1,100}$/u);
+  assert.notEqual(requests.take("s1", "Plan it", []).requestId, first);
 });
 
 test("another text, other attachments or another session get a new id", () => {

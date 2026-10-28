@@ -1,6 +1,7 @@
 /** Owns the one in-memory session list every screen shares. While anyone
  * listens it is recomputed on an interval and only changes are broadcast, as
- * revisioned update frames (`SessionListUpdate`) this module encodes.
+ * revisioned update frames (`SessionListUpdate`) this module encodes. A screen
+ * that joins after nobody listened waits for a fresh read, not the stale cache.
  * ponytail: timer-driven; hook registry/runtime events if 1 s lag matters. */
 type SessionListGroup<S> = { label: string; cwd?: string; workspaceMode?: "branch" | "worktree"; baseRef?: string; sessions: S[] };
 type Layout = (Omit<SessionListGroup<never>, "sessions"> & { ids: string[] })[];
@@ -25,7 +26,13 @@ function diffSessionList<S extends { id: string }>(
   return { ...(layoutChanged ? { groups: layout } : {}), upserts };
 }
 
-export function createSessionListHub<S extends { id: string }>(load: () => Promise<Groups<S>>, intervalMs = 1_000) {
+export function createSessionListHub<S extends { id: string }>(
+  load: () => Promise<Groups<S>>,
+  intervalMs = 1_000,
+  /** True when the list this hub holds no longer matches what `load` would
+   * return, so a request may not be answered from memory. */
+  stale: () => boolean = () => false,
+) {
   // Clock-seeded so revisions keep rising across gateway restarts.
   let current = { revision: Date.now(), groups: [] as Groups<S> };
   let loaded = false;
@@ -33,6 +40,7 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
   let queue: Promise<unknown> = Promise.resolve();
   let timer: ReturnType<typeof setInterval> | undefined;
   let ticking = false;
+  let reading: Promise<unknown> = Promise.resolve();
 
   /** Serialized so revisions and diffs always advance in order. */
   function refresh(): Promise<{ revision: number; groups: Groups<S> }> {
@@ -57,22 +65,39 @@ export function createSessionListHub<S extends { id: string }>(load: () => Promi
     void refresh().catch(() => {}).finally(() => { ticking = false; });
   }
 
+  /** The list the running poller already holds, so a screen asking for it does
+   * not wait for a second read of a large registry. Anything that changed the
+   * list since it was built still forces a fresh one. */
+  async function snapshot(): Promise<{ revision: number; groups: Groups<S> }> {
+    if (!timer) return refresh();
+    // A read already on its way answers this one too.
+    await queue;
+    return loaded && !stale() ? current : refresh();
+  }
+
   return {
     refresh,
-    subscribe(listener: (update: SessionListUpdate<S>) => void): () => void {
-      listeners.add(listener);
-      if (loaded) listener({
-        revision: current.revision,
-        groups: sessionListLayout(current.groups),
-        upserts: current.groups.flatMap((group) => group.sessions),
-      });
+    snapshot,
+    subscribe(listener: (update: SessionListUpdate<S>) => void, heldRevision?: number): () => void {
+      let joined = false;
+      const relay = (update: SessionListUpdate<S>) => { if (joined) listener(update); };
+      listeners.add(relay);
       if (!timer) {
-        tick();
+        reading = refresh().catch(() => {});
         timer = setInterval(tick, intervalMs);
         timer.unref();
       }
+      void reading.then(() => {
+        if (!listeners.has(relay)) return;
+        joined = true;
+        if (loaded && heldRevision !== current.revision) listener({
+          revision: current.revision,
+          groups: sessionListLayout(current.groups),
+          upserts: current.groups.flatMap((group) => group.sessions),
+        });
+      });
       return () => {
-        listeners.delete(listener);
+        listeners.delete(relay);
         if (listeners.size || !timer) return;
         clearInterval(timer);
         timer = undefined;

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 import { test, vi } from "vitest";
 
 import {
@@ -33,8 +34,8 @@ test("jitter stays inside the band and under the cap", () => {
   }
 });
 
-test("the browser demultiplexes lifecycle snapshot and status frames", async () => {
-  const body = [
+test("the browser demultiplexes lifecycle snapshot and status frames, however the body is split into reads", async () => {
+  const body = new TextEncoder().encode([
     "event: snapshot",
     'data: {"statuses":[{"id":"a","status":"running"}]}',
     "",
@@ -45,11 +46,17 @@ test("the browser demultiplexes lifecycle snapshot and status frames", async () 
     'data: {"revision":2,"upserts":[]}',
     "",
     "",
-  ].join("\n");
+  ].join("\r\n"));
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     assert.equal(String(input), "/__hui/sessions/events");
     assert.deepEqual(init?.headers, { "x-hui": "1", accept: "text/event-stream" });
-    return new Response(body, {
+    const reads = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const byte of body) controller.enqueue(Uint8Array.of(byte));
+        controller.close();
+      },
+    });
+    return new Response(reads, {
       status: 200,
       headers: { "content-type": "text/event-stream" },
     });
@@ -101,4 +108,12 @@ test("a status stream that goes silent reconnects to resync", async (t) => {
   vi.advanceTimersByTime(reconnectDelay(1, () => 1));
   await settle();
   assert.equal(connections, 2);
+});
+
+test("the browser reads every event stream through readEventStream", () => {
+  const src = new URL("../", import.meta.url);
+  const readers = readdirSync(src, { recursive: true, encoding: "utf8" })
+    .filter((file) => file.endsWith(".ts") && !file.endsWith(".test.ts") && file !== "api/sessions.ts")
+    .filter((file) => /\.getReader\(|\.pipeTo\(|for await \(.+\.body\b/u.test(readFileSync(new URL(file, src), "utf8")));
+  assert.deepEqual(readers, [], "Read an event stream with readEventStream from src/api/sessions.ts instead of its own reader");
 });

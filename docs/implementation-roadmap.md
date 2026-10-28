@@ -510,8 +510,12 @@ branch/worktree transaction; deletion and garbage collection remain absent.
 
 - Activity, Logs and Debug use HUI gateway/session/runtime events retained in
   memory for the current gateway process.
-- Usage aggregates numeric PI session metadata; unavailable cost remains
-  explicitly unavailable and is never estimated.
+- Usage has a date-ranged report over current local conversation histories,
+  separate from diagnostics and bot lifetime totals. It has token/cost charts,
+  search, rankings and session navigation. Recorded PI prices are labelled as
+  estimates; missing prices stay unpriced, numeric zero stays zero, and shared
+  fork history counts once. See [Usage reporting](../SPEC.md#usage-reporting)
+  and the [Browser journey](../e2e/usage.browser.md).
 - Diagnostic exports exclude prompts, transcript content, tool payloads,
   credentials and secret-shaped values.
 - Warnings and errors keep their reported cause as a redacted, bounded
@@ -1231,6 +1235,41 @@ migration), `src/lib/shortcut-binding.test.ts`, `src/views/panel-selector.test.t
 `src/lib/session/multiplexer.test.ts` (the old format stays readable) and the
 Browser-tool journey.
 
+### HUI-22 — Native iOS app and one e2e suite for both clients
+
+**Status:** planned, not started. The plan is [`native-ios-plan.md`](native-ios-plan.md).
+
+A SwiftUI iPhone app with the web UI's capabilities, on the same `/__hui/`
+contract, distributed through SideStore. Every use case lives in one catalogue
+(`e2e/catalogue/`), and each shared tester-army/e2e test in `e2e/tests/` runs on
+the web UI and on the app. Guards fail a PR that adds a surface no use case
+claims, and from the PR that adds the iOS job a new or changed use case must
+pass on both clients in the same PR. Milestones M0 (spikes) to M11 (calls) are in
+the plan, section 7.
+
+### HUI-23 — Subagent model routes
+
+**Status:** implemented on `dani.fernandez/subagent-routes`; validation recorded in
+[`e2e/subagent-routes.browser.md`](../e2e/subagent-routes.browser.md).
+
+Ports the useful half of Hermes Agent's *Advanced Delegation modes* plugin. The
+operator names model routes in Settings → Models → Subagent routes, and an agent
+passes one of those names as `route` to `sessions_spawn` instead of a
+`provider/id`. A route is a name, a one-line description, a model and an optional
+reasoning level. The prompt's route list contains names and descriptions, not
+model ids. Raw `model` remains supported; routes are not an allowlist. A route resolves
+before the child record is written, a route plus `model` is refused, an unknown
+route names the configured ones, and a spawn's own `thinking` overrides the
+route's. Routes live in the existing settings document (`models.routes`, in the
+published schema) and are read at spawn time. Local Durable sessions refresh
+the prompt list each turn, remote ones after settings sync. Older PI SDK workers
+receive a launch-time snapshot through `HUI_MODEL_ROUTES`. Route reasoning levels
+stop at PI's Maximum; HUI's Ultra delegation mode remains a session choice. Hermes' profile routes and speed tiers are
+deliberately not ported. Proof: `src/lib/settings/settings.fixture.json` and
+`server/hui-settings.fixture.json` (shared normalisation fixtures),
+`server/agent-tools/subagents.test.ts`, `server/runtimes/hui-prompt.test.ts` and
+`e2e/subagent-routes.browser.md`.
+
 ## Recommended implementation order
 
 `HUI-01 → HUI-02 → HUI-03 → HUI-04 → HUI-05 → HUI-06`, then run HUI-07,
@@ -1261,6 +1300,11 @@ Verified desktop/mobile behavior and checks are recorded in
 - Installer fixtures cover ownership, replacement, rollback and install gating;
   shell tests cover gateway startup, single-instance focus, renderer isolation
   and navigation/clipboard policy.
+- `notify_user` queues a caller-bound native macOS notification; clicking it
+  opens that session or bot chat without switching focus on delivery. The
+  tool requires acknowledgement from a current HUI app and never falls back
+  to Script Editor. Native delivery and clicks are verified on macOS:
+  [desktop package proof](../e2e/desktop-package.browser.md#native-notification-proof).
 - The existing installed-package lifecycle suite includes the desktop assets
   in release/update fixtures. Browser proof and native-platform limitations:
   [desktop package proof](../e2e/desktop-package.browser.md).

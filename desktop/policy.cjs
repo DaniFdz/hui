@@ -1,5 +1,6 @@
 /** Pure decisions for the desktop shell, kept apart from the Electron process code: which URLs stay in the window,
- * which open externally, what counts as a valid gateway address, and how the saved theme maps to Electron's. */
+ * which open externally, `hui://` chat links, validated notification destinations, gateway addresses and the saved
+ * color scheme. */
 const { URL } = require('node:url');
 const { isIP } = require('node:net');
 
@@ -27,4 +28,53 @@ function themeSource(mode) {
   return mode === 'light' || mode === 'dark' ? mode : 'system';
 }
 
-module.exports = { isInternal, isExternal, gatewayUrl, themeSource };
+function chatUrl(value) {
+  try {
+    const target = new URL(value);
+    const segments = target.pathname.split('/');
+    if (target.protocol !== 'http:' || target.username || target.password || target.search || target.hash
+      || segments.length !== 3 || !['sessions', 'bots'].includes(segments[1])
+      || !decodeURIComponent(segments[2]).trim() || decodeURIComponent(segments[2]).length > 200) return;
+    return target.href;
+  } catch { return; }
+}
+
+/** A `hui://sessions/<id>` or `hui://bots/<id>` link, as `?open=app` hands off and as a launcher opens one: the
+ * gateway path it shows, or nothing when it is not such a link. */
+function appChatPath(link) {
+  try {
+    const target = new URL(link);
+    if (target.protocol !== 'hui:' || target.username || target.password || target.search || target.hash) return;
+    const [kind, id, ...rest] = [target.hostname, ...target.pathname.split('/').filter(Boolean)];
+    if (!['sessions', 'bots'].includes(kind) || !id || rest.length) return;
+    const decoded = decodeURIComponent(id);
+    if (!decoded.trim() || decoded.length > 200 || decoded.includes('/')) return;
+    return `/${kind}/${encodeURIComponent(decoded)}`;
+  } catch { return; }
+}
+
+function notificationFromUrl(link) {
+  try {
+    const { protocol, pathname } = new URL(link);
+    const payload = protocol === 'hui-notification:' ? decodeURIComponent(pathname) : '';
+    if (!payload || payload.length > 8_000) return;
+    const value = JSON.parse(payload);
+    const optional = (text, limit) => text === undefined || (typeof text === 'string' && text.length <= limit);
+    if (!value || typeof value !== 'object' || Array.isArray(value)
+      || typeof value.title !== 'string' || !value.title.trim() || value.title.length > 120
+      || !optional(value.subtitle, 120) || !optional(value.message, 1_000)
+      || !['low', 'normal', 'high', undefined].includes(value.priority)
+      || typeof value.url !== 'string' || typeof value.replyTo !== 'string') return;
+    const reply = new URL(value.replyTo);
+    if (reply.protocol !== 'http:' || reply.hostname !== '127.0.0.1' || !reply.port
+      || reply.username || reply.password || reply.search || reply.hash || !/^\/[a-f0-9]{64}\/$/.test(reply.pathname)) return;
+    const target = chatUrl(value.url);
+    if (!target) return;
+    return {
+      title: value.title.trim(), subtitle: value.subtitle?.trim() ?? '', message: value.message?.trim() ?? '',
+      priority: value.priority ?? 'normal', url: target, replyTo: reply.href,
+    };
+  } catch { return; }
+}
+
+module.exports = { isInternal, isExternal, gatewayUrl, themeSource, chatUrl, appChatPath, notificationFromUrl };

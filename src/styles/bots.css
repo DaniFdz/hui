@@ -789,3 +789,15 @@
   .bot-look__swatch { width: 32px; height: 32px; }
 }
 .bot-look__emoji { display: grid; grid-template-columns: auto minmax(0, 140px); align-items: center; gap: 10px; }
+
+/* ── cost: the total opens the cost per model ── */
+.bot-cost > summary { cursor: pointer; list-style: none; }
+.bot-cost > summary::-webkit-details-marker { display: none; }
+.bot-cost > summary > svg { transition: transform 120ms ease; }
+.bot-cost[open] > summary > svg { transform: rotate(90deg); }
+.bot-cost__models { margin: 0; padding: 0; list-style: none; }
+.bot-cost__models > * + * { border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent); }
+.bot-cost__model { text-align: start; }
+.bot-cost__amount { flex: none; color: var(--text-strong); font-size: var(--control-ui-text-xs); font-variant-numeric: tabular-nums; }
+.bot-cost__empty { margin: 0; padding: 8px 12px; }
+@media (prefers-reduced-motion: reduce) { .bot-cost > summary > svg { transition: none; } }

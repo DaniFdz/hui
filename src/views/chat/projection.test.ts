@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 import { formatSubagentCompletionEvent } from "../../lib/subagent-completion.ts";
-import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel } from "./projection.ts";
+import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, rowOfMessage, transcriptWindowStart, TRANSCRIPT_WINDOW_ROWS, workingLabel } from "./projection.ts";
 
 test("a message HUI delivered names its sender and keeps only what they wrote", () => {
   assert.deepEqual(attributedMessage("[from @grace · hop 2] PR #7 needs **your** decision."), { sender: { kind: "bot", handle: "grace" }, body: "PR #7 needs **your** decision." });
@@ -254,4 +254,18 @@ test("projection renders completion as a system event, not a user row", () => {
     { kind: "message", id: "b", role: "assistant", text: "done" },
   ]);
   assert.deepEqual(rows.map((r) => r.kind === "messages" ? r.role : r.kind), ["user", "assistant", "subagentEvent", "assistant"]);
+});
+
+test("a long transcript renders its latest rows, or from where the reader held it, never past what is left", () => {
+  assert.equal(transcriptWindowStart(10), 0);
+  assert.equal(transcriptWindowStart(TRANSCRIPT_WINDOW_ROWS + 30), 30);
+  assert.equal(transcriptWindowStart(TRANSCRIPT_WINDOW_ROWS + 30, 12), 12, "rows the reader asked for stay");
+  assert.equal(transcriptWindowStart(TRANSCRIPT_WINDOW_ROWS + 30, 80), 30, "a shorter transcript, after a rewind, still fills the window");
+  const rows = projectChatTranscript([
+    { kind: "message", role: "user", id: "u1", text: "first" },
+    { kind: "message", role: "assistant", id: "a1", text: "reply" },
+    { kind: "message", role: "user", id: "u2", text: "second" },
+  ]);
+  assert.equal(rowOfMessage(rows, "u2"), rows.length - 1);
+  assert.equal(rowOfMessage(rows, "missing"), -1);
 });

@@ -25,7 +25,7 @@ import { durableContext as context, durableHost, modelCallable, type DurableHost
 import { CallEntry } from "./turn-origins.ts";
 import { skillBlock, type BotChat, type OfferedTool, type ToolOrigin } from "./durable-offer.ts";
 import { QuestionBox, type QuestionDraft } from "./question-box.ts";
-import { DurableExtensions, ExtensionMessageEntry, isCustomInput, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
+import { DurableExtensions, ExtensionMessageEntry, isCustomInput, reportedSessionCost, type CustomMessage, type ExtensionSession } from "./durable-extensions.ts";
 import { filterConfiguredModels } from "./pi-models.ts";
 import { fitThinking, modelControls, piThinking } from "./model-controls.ts";
 import {
@@ -263,6 +263,8 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
   #disposed = false;
   /** `rows()`, until the history changes. */
   #rows: readonly EntryRecord[] | undefined;
+  /** The newest session cost an extension reported, recomputed with `#rows` so a snapshot never walks the history. */
+  #reportedCost: RuntimeUsage["sessionCost"];
   /** The session's PI extensions; absent when its PI setup has none. */
   #extensions: DurableExtensions | undefined;
   #extensionFailure: string | undefined;
@@ -331,13 +333,13 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Offers the conversation its extensions and the tools they keep active, OptChat's zoom and date when the
    * conversation has OptChat, `message_bot` and a bot's own tools when it is a bot's chat (`message_bot` alone for any
-   * other conversation), and drops the browser when Settings turns it off. A bot's chat goes without the tools the operator turned off, without its own tools while
+   * other conversation), and drops the browser when Settings turns it off and notify_user unless Settings turns it on. A bot's chat goes without the tools the operator turned off, without its own tools while
    * it has no use for them (`bots/durable-access.ts`), and without the HUI tools that act on another machine than this
    * host's (`gatewayOnlyTools`, on a worker), which it is never offered. Codemode, in the default selection, goes with
    * Settings → Tools → Codemode off, or a bot's chat that has it turned off. Applies per conversation, at start and on
    * every change. */
   async applyTools(): Promise<void> {
-    const { browser, codemode } = await this.#host.settings();
+    const { browser, codemode, notifications } = await this.#host.settings();
     const browserEnabled = browser.enabled !== false;
     const bots = this.#host.bots;
     const bot = await this.#host.botStateFor(this.#conversation.id);
@@ -346,6 +348,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     this.#botChat = bot !== undefined;
     const inactive = new Map([
       ...(browserEnabled ? [] : this.#host.toolsNamed(["browser"])),
+      ...(notifications.tool ? [] : this.#host.toolsNamed(["notify_user"])),
       ...(bot ? this.#host.toolsNamed(this.#host.gatewayOnlyTools) : []),
       ...(this.#extensions?.inactiveTools() ?? []),
     ].map((tool) => [tool.name, tool]));
@@ -500,7 +503,11 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
 
   /** Entries since the latest reset, oldest first: what the extensions' PI session view holds. */
   rows(): readonly EntryRecord[] {
-    this.#rows ??= this.#history.slice(this.#resetIndex()).map((row) => row.entry);
+    if (!this.#rows) {
+      const rows = this.#history.slice(this.#resetIndex()).map((row) => row.entry);
+      this.#rows = rows;
+      this.#reportedCost = reportedSessionCost(rows);
+    }
     return this.#rows;
   }
 
@@ -1265,16 +1272,19 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     };
   }
 
-  /** Context use as Durable measures it against its compaction thresholds, plus the latest run's spend. */
+  /** Context use as Durable measures it against its compaction thresholds, the latest run's spend, and any session
+   * cost an extension reported from a source Durable cannot price. */
   currentUsage(): RuntimeUsage | undefined {
     const window = this.currentModel()?.contextWindow;
     if (!window) return undefined;
     const tokens = this.#history.length ? this.#contextSize ??= this.#contextTokens(this.#history.length) : null;
+    this.rows();
     return {
       contextTokens: tokens,
       contextWindow: window,
       percent: tokens === null ? null : Math.min(100, (tokens / window) * 100),
       ...latestRunUsage(this.#visible()),
+      ...(this.#reportedCost ? { sessionCost: this.#reportedCost } : {}),
     };
   }
 
@@ -1483,7 +1493,7 @@ export class DurableSession implements RuntimeSession, ExtensionSession, BotChat
     return imageFromMessages(this.#visible(), message, image);
   }
 
-  attachmentFile(message: number, file: number): string | undefined {
+  attachmentFile(message: number, file: number): { name: string; path: string } | undefined {
     return fileFromMessages(this.#visible(), message, file);
   }
 

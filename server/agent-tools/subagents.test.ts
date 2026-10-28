@@ -3,6 +3,8 @@ import { test, vi } from "vitest";
 
 import { LiveSessions, type SessionStreamMessage } from "../sessions/live-sessions.ts";
 import type { SessionRecord } from "../sessions/sessions.ts";
+import { DEFAULT_SETTINGS } from "../hui-settings.ts";
+import type { Settings } from "../api/settings.ts";
 import { SubagentService } from "./subagents.ts";
 import { workers, type RemoteSessionSink } from "../workers.ts";
 import { RuntimeUnreachableError } from "../runtimes/types.ts";
@@ -147,7 +149,10 @@ class CoordinatedSession implements RuntimeSession {
 
 function harness(
   initial: SessionRecord[],
-  options: { manualSessionId?: string; manual?: (id: string) => boolean; ids?: string[] } = {},
+  options: {
+    manualSessionId?: string; manual?: (id: string) => boolean; ids?: string[];
+    routes?: Settings["models"]["routes"];
+  } = {},
 ) {
   let records = [...initial];
   const sessions = new Map<string, CoordinatedSession>();
@@ -171,7 +176,10 @@ function harness(
     records = [...mutate(records)];
     return records;
   };
-  const manager = new LiveSessions(runtime, update);
+  const manager = new LiveSessions(runtime, update, async () => ({
+    ...DEFAULT_SETTINGS,
+    models: { ...DEFAULT_SETTINGS.models, routes: options.routes ?? [] },
+  }));
   const ids = [...(options.ids ?? ["task-1", "child-1"])];
   const service = new SubagentService(
     manager,
@@ -275,6 +283,65 @@ test("spawn rejects a model missing from the caller's catalog before creating a 
   assert.equal(state.records().filter((item) => item.parentId === parent.id).length, 1);
   assert.equal((await spawn("gateway/anthropic/claude-opus") as { status: string }).status, "accepted");
 
+  state.service.dispose();
+  state.manager.disposeAll();
+});
+
+test("spawn resolves live routes for ordinary and collected children without changing raw model or inheritance", async (t) => {
+  const parent = record("parent", { model: "gateway/parent", thinking: "medium" });
+  const options: { routes: Settings["models"]["routes"]; ids: string[] } = {
+    routes: [
+      { name: "fast", description: "Quick lookups.", model: "gateway/cheap", thinking: "low" },
+      { name: "deep", description: "Hard work.", model: "gateway/opus" },
+    ],
+    ids: Array.from({ length: 12 }, (_, index) => `route-${index}`),
+  };
+  const state = harness([parent], options);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  const spawn = (params: Record<string, unknown>) => state.service.handle(parent.id, "sessions_spawn", { task: "Work", ...params });
+
+  state.sessions.get(parent.id)!.models = [
+    { provider: "gateway", id: "cheap", name: "Cheap" },
+    { provider: "gateway", id: "opus", name: "Opus" },
+  ];
+  await spawn({ route: "fast" });
+  await spawn({ route: "deep" });
+  await spawn({ route: "fast", thinking: "xhigh" });
+  await spawn({});
+  await spawn({ model: "gateway/opus" });
+  options.routes = [{ name: "deep", description: "Changed live.", model: "gateway/cheap", thinking: "max" }];
+  await spawn({ route: "deep", collect: true });
+  const children = state.records().filter((item) => item.parentId === parent.id);
+  assert.deepEqual(children.map((child) => [child.model, child.thinking]), [
+    ["gateway/cheap", "low"],
+    ["gateway/opus", "medium"],
+    ["gateway/cheap", "xhigh"],
+    ["gateway/parent", "medium"],
+    ["gateway/opus", "medium"],
+    ["gateway/cheap", "max"],
+  ]);
+  assert.equal(children.at(-1)?.subagent?.collect, true);
+
+  await assert.rejects(() => spawn({ route: "largest" }), /Unknown route: largest\. Configured routes are deep\./);
+  await assert.rejects(() => spawn({ route: "deep", model: "gateway/cheap" }), /Pass route or model, not both/);
+  options.routes = [{ name: "deep", description: "Unavailable model.", model: "gateway/missing" }];
+  await assert.rejects(() => spawn({ route: "deep" }), /Route deep names an unavailable model; update it in HUI's Settings/);
+  assert.equal(state.records().filter((item) => item.parentId === parent.id).length, children.length);
+});
+
+test("a route name with no configured routes points at the setting", async () => {
+  const parent = record("parent");
+  const state = harness([parent]);
+  state.manager.ensure(parent);
+  await waitForStatus(state.manager, parent.id, "idle");
+  await state.service.initialize();
+  await assert.rejects(
+    () => state.service.handle(parent.id, "sessions_spawn", { task: "Work", route: "fast" }),
+    /No subagent routes are configured yet/,
+  );
   state.service.dispose();
   state.manager.disposeAll();
 });
@@ -542,6 +609,17 @@ function pendingChild(id = "done", patch: Partial<SessionRecord> = {}): SessionR
     updatedAt: timestamp, endedAt: timestamp, summary: "Verified result", completionDelivery: "pending",
   }, ...patch });
 }
+
+test("a parent's snapshot shows each child's card, not its whole task and report", async (t) => {
+  const report = `Verified result. ${"Every check passed and the report goes on. ".repeat(40)}`;
+  const state = harness([record("parent"), pendingChild("done", { subagent: { ...pendingChild().subagent!, task: "Review ".repeat(400), summary: report } })]);
+  t.onTestFinished(() => { state.service.dispose(); state.manager.disposeAll(); });
+  await state.service.initialize();
+  const [card] = state.service.snapshot("parent");
+  assert.equal(card && "task" in card, false);
+  assert.ok(card?.summary?.startsWith("Verified result.") && card.summary.length <= 280);
+  assert.equal(state.records()[1]?.subagent?.summary, report, "the record keeps the whole report");
+});
 
 test("a refused completion remains durable and retries without changing the child result", async (t) => {
   const state = harness([record("parent"), pendingChild()]);
@@ -901,6 +979,29 @@ test("agents_wait returns what finished by its timeout, and a collected subagent
     completed: [{ taskId: "task-0", sessionKey: "child-0", label: "Part 0", status: "completed", result: "First" }],
     pending: ["task-1"],
   });
+});
+
+test("a message steered to the waiting parent ends agents_wait, and ends one wait per tool round", async (t) => {
+  const state = await swarm(2);
+  t.onTestFinished(() => { vi.useRealTimers(); state.service.dispose(); state.manager.disposeAll(); });
+  type Waited = { completed: unknown[]; pending: string[]; interrupted?: string };
+  const wait = () => state.service.handle("parent", "agents_wait", { ids: ["task-0", "task-1"], timeoutSeconds: 5 }) as Promise<Waited>;
+  const steer = (...steering: string[]) => state.parentRuntime.emit({ type: "queue_update", queue: { steering, followUp: [] } });
+
+  steer("Stop waiting, the page resolved");
+  const steered = await wait();
+  assert.deepEqual(steered.pending, ["task-0", "task-1"]);
+  assert.match(steered.interrupted ?? "", /new message/u);
+
+  // Still queued until this round ends, the same message leaves a script's next wait alone instead of spinning it.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const next = wait();
+  await vi.advanceTimersByTimeAsync(5_000);
+  assert.deepEqual(await next, { completed: [], pending: ["task-0", "task-1"] });
+
+  const later = wait();
+  steer("Stop waiting, the page resolved", "Another page fired");
+  assert.match((await later).interrupted ?? "", /new message/u);
 });
 
 test("a running swarm does not hold back an ordinary result, and Stop reports nothing back, finished results included", async (t) => {

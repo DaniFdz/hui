@@ -16,7 +16,9 @@ import { dirname, join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { clampThinkingLevel, Type, type Message, type Models, type ModelThinkingLevel, type Usage, type UserMessage } from "@earendil-works/pi-ai";
+import {
+  clampThinkingLevel, getSupportedThinkingLevels, Type, type Api, type Message, type Model, type Models, type ModelThinkingLevel, type Usage, type UserMessage,
+} from "@earendil-works/pi-ai";
 import {
   AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, section, ToolResultEntry, UserEntry,
   type CommitPublication, type Conversation, type ConversationId, type Cursor, type EntryId, type EntryRecord, type Extension, type Harness,
@@ -29,10 +31,11 @@ import { masterPrompt, viewDoc } from "../optchat/prompts.ts";
 import { LineFile, readLines, syncDirectory, type Kind } from "../optchat/store.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import { callRecordLines, parseCallRecord } from "../calls-format.ts";
+import { offIsSent } from "./thinking-level.ts";
 import { CallEntry } from "./turn-origins.ts";
 
 /** A conversation's OptChat choice. `name` is the agent's display name in the prompts; `model` ("provider/id") and
- * `thinking` pick the compactor's model, by default the conversation's own model at medium thinking. */
+ * `thinking` pick the compactor's model, by default HUI's utility model, at medium thinking or the nearest level below it. */
 export type OptChatState = { enabled: boolean; name: string; model?: string; thinking?: string };
 
 /** Absent or `enabled: false`: the conversation is plain Durable. A fork starts without it. */
@@ -65,6 +68,7 @@ export type OptChatTuning = {
   readonly cap?: number;
   /** Lines per text block of a view or compaction context sent to Anthropic. */
   readonly blockLines?: number;
+  readonly callTimeoutMs?: number;
 };
 
 const context = BACKGROUND_CONTEXT;
@@ -72,7 +76,9 @@ const context = BACKGROUND_CONTEXT;
 const PAGE = 200;
 /** Frozen views kept in `runs.jsonl` before it starts over: only the current run can still need its own. */
 const RUNS_KEPT = 64;
-const THINKING = new Set<string>(["off", "minimal", "low", "medium", "high", "xhigh", "max"]);
+const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const satisfies readonly ModelThinkingLevel[];
+const THINKING = new Set<string>(THINKING_LEVELS);
+const CALL_TIMEOUT_MS = 120_000;
 const ZOOM = "Open the line id+n of the view into the two lines of n/2 under it; n = 1 gives the message whole.";
 const DATE = "The date and time of message id.";
 const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -87,6 +93,12 @@ const plain = (value: unknown): unknown => JSON.parse(JSON.stringify(value)) as 
 function modelRef(value: string | undefined): { provider: string; modelId: string } | undefined {
   const slash = value?.indexOf("/") ?? -1;
   return value && slash > 0 && slash < value.length - 1 ? { provider: value.slice(0, slash), modelId: value.slice(slash + 1) } : undefined;
+}
+
+export function thinkingAtMost(model: Model<Api>, level: ModelThinkingLevel): ModelThinkingLevel {
+  const supported = getSupportedThinkingLevels(model);
+  const sent = (candidate: ModelThinkingLevel) => supported.includes(candidate) && (candidate !== "off" || offIsSent(model));
+  return THINKING_LEVELS.slice(0, THINKING_LEVELS.indexOf(level) + 1).findLast(sent) ?? clampThinkingLevel(model, level);
 }
 
 /** The prompt section of an enabled conversation: byte-identical across calls (no date, no state). */
@@ -381,6 +393,7 @@ export class OptChatManager {
   readonly #utilityModel: (() => Promise<string | undefined>) | undefined;
   readonly #tuning: OptChatTuning;
   readonly #blockLines: number;
+  readonly #callTimeoutMs: number;
   /** One compactor limit for every memory of the gateway. */
   readonly #limiter: Limiter;
   #harness: Harness | undefined;
@@ -398,6 +411,7 @@ export class OptChatManager {
     this.#utilityModel = options.utilityModel;
     this.#tuning = options.tuning ?? {};
     this.#blockLines = this.#tuning.blockLines ?? BLOCK_LINES;
+    this.#callTimeoutMs = this.#tuning.callTimeoutMs ?? CALL_TIMEOUT_MS;
     this.#limiter = createLimiter(this.#tuning.jobs ?? OPTCHAT_DEFAULTS.jobs);
     this.extension = defineExtension({
       name: OPTCHAT_EXTENSION,
@@ -753,21 +767,31 @@ export class OptChatManager {
     const models = this.#models();
     const model = models.getModel(ref.provider, ref.modelId);
     if (!model) throw new Error(`Unknown model for OptChat's compactor: ${ref.provider}/${ref.modelId}`);
-    const thinking = clampThinkingLevel(model, (state?.thinking ?? "medium") as ModelThinkingLevel);
+    const thinking = thinkingAtMost(model, (state?.thinking ?? "medium") as ModelThinkingLevel);
     const first = request.messages[0];
     const block = first?.role === "user" ? first.content[0] : undefined;
+    signal.throwIfAborted();
+    // Not AbortSignal.any, which keeps every signal it joins to the memory's long-lived one reachable for good (Node 24).
+    const call = new AbortController();
+    const stop = () => call.abort();
+    const timer = setTimeout(stop, this.#callTimeoutMs);
+    signal.addEventListener("abort", stop);
     const reply = await models.completeSimple(model, {
       systemPrompt: request.system,
       messages: request.messages.map((message): Message => message.role === "user"
         ? { role: "user", content: message.content.map((text) => ({ type: "text" as const, text })), timestamp: 0 }
         : { role: "assistant", content: [{ type: "text", text: message.content }], api: model.api, provider: model.provider, model: model.id, usage: NO_USAGE, stopReason: "stop", timestamp: 0 }),
     }, {
-      signal,
+      signal: call.signal,
       ...(thinking === "off" ? {} : { reasoning: thinking }),
       // Compactions share the compaction view's start: cache it in blocks, like a turn's view.
       ...(block === undefined ? {} : { onPayload: (payload: unknown, target: unknown) => this.#markContext(payload, target, block, contextMark) }),
-    });
-    if (reply.stopReason === "error" || reply.stopReason === "aborted") throw new Error(reply.errorMessage || `The compactor's model stopped: ${reply.stopReason}`);
+    }).finally(() => { clearTimeout(timer); signal.removeEventListener("abort", stop); });
+    if (reply.stopReason === "error" || reply.stopReason === "aborted") {
+      throw new Error(call.signal.aborted && !signal.aborted
+        ? `${ref.provider}/${ref.modelId} did not answer within ${this.#callTimeoutMs / 1000} seconds.`
+        : reply.errorMessage || `The compactor's model stopped: ${reply.stopReason}`);
+    }
     const { usage } = reply;
     return {
       text: reply.content.flatMap((part) => part.type === "text" ? [part.text] : []).join(""),

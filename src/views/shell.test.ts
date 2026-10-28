@@ -8,6 +8,7 @@ import {
   isSessionGroupCollapsed,
   normalizeCustomSessionIcon,
   PRIMARY_NAV,
+  renderSidebar,
   sessionAccessibleName,
   sessionMoveGroupOptions,
   setNavigationDrawer,
@@ -23,6 +24,9 @@ import {
   SETTINGS_PAGES,
 } from "./settings.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
+import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
+import { HUI_PAGES, availablePages } from "../lib/pages.ts";
+import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 
 function session(
   id: string,
@@ -85,21 +89,59 @@ function controlledMedia(initialMatches = true) {
   };
 }
 
-test("the primary sidebar lists work destinations and ends with Settings", () => {
-  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["contributions", "sessions"]);
+test("the primary sidebar lists work destinations above a Settings footer", () => {
+  assert.deepEqual(PRIMARY_NAV.map((item) => item.id), ["dashboard", "contributions", "sessions", "usage"]);
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const nav = source.slice(source.indexOf('<nav class="sidebar-nav"'), source.indexOf("</nav>", source.indexOf('<nav class="sidebar-nav"')));
   assert.doesNotMatch(nav, /(?<![A-Z_])NAV\.map|icons\.home/u);
   // Kanban is a HUI route rendered directly below Contributions.
   assert.match(nav, /item\.id === "contributions" \? kanbanNavItem\(props\)/u);
-  assert.match(nav, /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>\s*<\/a>\s*$/u);
+  // Settings is not a destination in that tab panel: it closes the sidebar below both lists.
+  assert.doesNotMatch(nav, /sidebar-nav__settings/u);
+  const footer = source.indexOf('class="sidebar-footer"');
+  assert.ok(footer > source.indexOf('class="sidebar-shell__content"'), "the footer follows the scrolling content");
+  assert.match(source.slice(footer), /sidebar-nav__settings[\s\S]*props\.onOpenSettings\(\)[\s\S]*>Settings<\/span>/u);
 });
 
-test("settings navigation contains only the thirteen accepted regions", () => {
+test("each destination marks itself current, and Settings never does", () => {
+  const rendered = markup(renderSidebar({
+    view: "surface", activePage: { id: "usage" }, pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [], draftSessionIds: new Set(),
+    collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "", importFailed: false, search: "",
+    sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "",
+    sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+  const current = (path: string) => new RegExp(`href=\\${path}\\b[\\s\\S]{0,160}?aria-current=page`, "u");
+  assert.match(rendered, current("/usage"));
+  assert.doesNotMatch(rendered, current("/sessions"));
+  assert.doesNotMatch(rendered, current("/settings/appearance"));
+});
+
+test("the sidebar lists Dashboard only while Labs → Dashboard is on", () => {
+  const rendered = (dashboard: boolean) => markup(renderSidebar({
+    view: "home", pages: availablePages({ ...DEFAULT_SETTINGS.labs, dashboard }), selectedSessionId: "", splitSessionId: "", groups: [],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "", importNote: "",
+    importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: "", groupMenuFor: "",
+    draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "", groupDropTarget: undefined,
+    groupReorderPending: false, bots: { tab: "agents", search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  } as unknown as Parameters<typeof renderSidebar>[0]));
+  assert.doesNotMatch(rendered(false), /href=\/dashboard\b/u);
+  assert.match(rendered(true), /href=\/dashboard\b[\s\S]*>Dashboard</u);
+  assert.match(rendered(false), /href=\/usage\b/u, "the other destinations stay");
+});
+
+test("Settings stays available while the Bots list is showing", () => {
+  assert.match(sidebar(1), /sidebar-nav__settings[\s\S]*>Settings</u);
+  assert.match(sidebar(1, "", "bots"), /sidebar-nav__settings[\s\S]*>Settings</u);
+  assert.doesNotMatch(sidebar(1, "", "bots"), /Primary navigation/u, "the Agents navigation stays out of the Bots list");
+});
+
+test("settings navigation contains only the fourteen accepted regions", () => {
   assert.deepEqual(
     SETTINGS_PAGES.map((page) => page.id),
     [
       "appearance",
+      "notifications",
       "connection",
       "integrations",
       "workers",
@@ -715,4 +757,42 @@ test("session link names retain upstream single-line navigation semantics", () =
   assert.equal(sessionAccessibleName({ ...row, stage: "investigation" }), "Build, status idle, tool pi, stage investigation");
   // A legacy Backlog stage from an older gateway is not a session stage any more.
   assert.equal(sessionAccessibleName({ ...row, stage: "backlog" as never }), "Build, status idle, tool pi");
+});
+
+function markup(value: unknown): string {
+  if (Array.isArray(value)) return value.map(markup).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + markup(template.values[i])).join("");
+  }
+  if (value && typeof value === "object" && "_$litDirective$" in value && "values" in value) {
+    const values = (value as { values: unknown[] }).values;
+    const [items, , template] = values;
+    if (Array.isArray(items) && typeof template === "function") return markup(items.map((item, index) => (template as (item: unknown, index: number) => unknown)(item, index)));
+    return markup(values);
+  }
+  return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
+}
+
+function sidebar(count: number, open = "", tab: "agents" | "bots" = "agents"): string {
+  const sessions = Array.from({ length: count }, (_, index) => session(`s${index}`, `Session ${index}`, "Work"));
+  if (open) sessions.push(session(open, "Open", "Work"));
+  const data = {
+    view: "home", pages: HUI_PAGES, selectedSessionId: "", splitSessionId: "", groups: [{ label: "Work", sessions }],
+    draftSessionIds: new Set(), collapsed: new Set(), toggledSessionTrees: new Set(), loading: false, error: "",
+    importNote: "", importFailed: false, search: "", sessionOptions: DEFAULT_SIDEBAR_SESSION_OPTIONS, menuFor: open,
+    groupMenuFor: "", draggingSessionId: "", sessionDropTarget: "", sessionMovePendingId: "", draggingGroup: "",
+    groupDropTarget: undefined, groupReorderPending: false,
+    bots: { tab, search: "", workers: [], creating: false, unread: false, roster: { bots: [] } },
+  };
+  return markup(renderSidebar(data as unknown as Parameters<typeof renderSidebar>[0]));
+}
+
+test("a session row draws its actions menu only once it opens, so a long list stays light", () => {
+  const elements = (text: string) => text.match(/<[a-z][\w-]*/gu)?.length ?? 0;
+  const closed = sidebar(100);
+  const perRow = (elements(sidebar(200)) - elements(closed)) / 100;
+  assert.doesNotMatch(closed, /value="pin"/u, "a closed row's menu has no items");
+  assert.ok(perRow > 5 && perRow <= 40, `each session row draws ${perRow} elements; draw what a row only shows on demand when it is asked for`);
+  assert.equal(sidebar(100, `open-${crypto.randomUUID()}`).split('value="pin"').length - 1, 1, "the open row's menu has its items");
 });

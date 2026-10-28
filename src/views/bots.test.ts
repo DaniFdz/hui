@@ -36,6 +36,7 @@ test("routines and overview Activity explain retries and intervention without hi
     routines: { automation: { scheduler: { enabled: true, activeRuns: 0, nextWakeAt: run.retryAt }, tasks: [], runs: [run] } },
     triggers: { state: { list: { triggers: [], runs: [] } } },
     settings: { models: [], call: { defaultVoice: "sol" } },
+    usage: { botId: "", error: "" },
   } as unknown as BotPanelProps;
   for (const view of ["routines", "overview"] as const) {
     const retryPage = markup(renderBotPanel({ ...props, view }));
@@ -53,6 +54,29 @@ test("routines and overview Activity explain retries and intervention without hi
     assert.match(failedPage, /Interrupted while running/);
     assert.doesNotMatch(failedPage, /Next retry/);
   }
+});
+
+test("the overview totals a bot's cost, its memory summaries' included, and lists the cost per model under it", () => {
+  const props = {
+    id: "bot-panel", view: "overview", width: 400, timezone: "UTC",
+    bot: { id: "b1", name: "Ada", handle: "ada", sessionId: "s1", cwd: "/bots/b1", status: "idle", memory: { usage: { cost: 0.5 } } },
+    routines: { automation: { scheduler: { enabled: true, activeRuns: 0 }, tasks: [], runs: [] } },
+    triggers: { state: { list: { triggers: [], runs: [] } } },
+    settings: { models: [], call: { defaultVoice: "sol" } },
+    usage: { botId: "b1", error: "", usage: { sessions: 3, costUsd: 1.254, unavailable: [], models: [{ model: "openai/mini", tokens: 90, costUsd: 0.004 }, { model: "anthropic/opus", tokens: 9, costUsd: 1.25 }] } },
+  } as unknown as BotPanelProps;
+  const page = markup(renderBotPanel(props));
+  assert.match(page, /<summary[^>]*>.*Total.*\$1\.75/su);
+  assert.match(page, /anthropic\/opus.*\$1\.25.*openai\/mini.*<\$0\.01/su);
+  assert.match(page, /Memory summaries, since HUI started.*\$0\.50/su);
+  assert.match(page, /Includes 2 subagents/);
+  const remote = markup(renderBotPanel({ ...props, bot: { ...props.bot, worker: { id: "w", name: "Box" } } }));
+  assert.match(remote, /cost is kept on Box/);
+  assert.doesNotMatch(remote, /Total/);
+  const unreported = markup(renderBotPanel({ ...props, bot: { ...props.bot, memory: undefined }, usage: { ...props.usage, usage: { ...props.usage.usage!, costUsd: null, unavailable: ["s2: Durable store unavailable"] } } }));
+  assert.match(unreported, /Not reported/);
+  assert.match(unreported, /One session's cost could not be read/);
+  assert.match(markup(renderBotPanel({ ...props, usage: { ...props.usage, botId: "other" } })), /Reading cost…/);
 });
 
 test("a bot shows its face, or its emoji while it has one, always decorative beside its name in text", () => {

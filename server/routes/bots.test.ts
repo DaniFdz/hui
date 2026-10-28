@@ -224,6 +224,32 @@ test("bots are created, read, edited, archived and restored through the guarded 
   assert.equal(botOf(await call("/__hui/bots/bob/restore", "POST", {})).archived, undefined);
 });
 
+test("a bot's home files are read by name, and only the operator's BOOTSTRAP.md can be replaced through the API", async () => {
+  const created = botOf(await call("/__hui/bots", "POST", {
+    name: "Files", soul: "# Who I am\nFiles.", user: "Prefers brief answers.", memory: "# MEMORY.md\n\n## Projects\n\nHUI.", bootstrap: "Ask what they need.",
+  }));
+  assert.deepEqual((await call(`/__hui/bots/${created.id}/files/user`)).body, { file: "user", text: "Prefers brief answers." });
+  assert.deepEqual((await call(`/__hui/bots/${created.id}/files/memory`)).body, { file: "memory", text: "# MEMORY.md\n\n## Projects\n\nHUI." });
+  assert.deepEqual((await call(`/__hui/bots/${created.id}/files/soul`)).body, { file: "soul", text: "# Who I am\nFiles." });
+  assert.deepEqual((await call(`/__hui/bots/${created.id}/files/bootstrap`)).body, { file: "bootstrap", text: "Ask what they need." });
+  // Only the operator's onboarding may be replaced here; the bot writes USER.md and MEMORY.md itself.
+  assert.deepEqual((await call(`/__hui/bots/${created.id}/files/bootstrap`, "PUT", { text: "  Greet them.  " })).body, { file: "bootstrap", text: "Greet them." });
+  assert.equal((await call(`/__hui/bots/${created.id}/files/bootstrap`, "PUT", { text: "" })).body["text"], null);
+  for (const [file, body, pattern] of [
+    ["user", { text: "x" }, /USER\.md and MEMORY\.md are the bot's/u],
+    ["memory", { text: "x" }, /USER\.md and MEMORY\.md are the bot's/u],
+    ["bootstrap", { text: "x", extra: true }, /Unknown bootstrap field: extra/u],
+  ] as const) {
+    const refused = await call(`/__hui/bots/${created.id}/files/${file}`, "PUT", body);
+    assert.equal(refused.status, 400, file);
+    assert.match(String(refused.body["error"]), pattern);
+  }
+  assert.equal((await call(`/__hui/bots/${created.id}/files/nope`)).status, 404, "a file that is no bot file is no route");
+  assert.equal((await call(`/__hui/bots/${created.id}/files/bootstrap`, "POST", {})).status, 405);
+  await call(`/__hui/bots/${created.id}`, "DELETE", undefined);
+  await call(`/__hui/bots/${created.id}?permanent=1`, "DELETE");
+});
+
 test("messages reach the chat, a wait returns the reply, and message_bot crosses to another bot", { timeout: 120_000 }, async () => {
   const bots = (await call("/__hui/bots")).body["bots"] as BotView[];
   const ada = bots.find((bot) => bot.handle === "ada")!;

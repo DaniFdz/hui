@@ -33,7 +33,7 @@ import { botTurnOrigin } from "../runtimes/turn-origins.ts";
 import { botSkillsDir } from "./skills.ts";
 import { bundledSkills } from "../pi/bundled-skills.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
-import { BOT_TOOL_CONTRIBUTIONS, BotDoc, conversationBotState, huiBotsExtensions, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, WRITE_SOUL_TOOL, type BotSoulHost, type BotState } from "./durable.ts";
+import { BOT_TOOL_CONTRIBUTIONS, BotDoc, conversationBotState, huiBotsExtensions, MESSAGE_BOT_TOOL, SET_PROFILE_TOOL, UPDATE_MEMORY_TOOL, UPDATE_USER_TOOL, WRITE_SOUL_TOOL, type BotHomeHost, type BotState } from "./durable.ts";
 import { BOT_ROUTINES_CONTRIBUTION, botRoutinesTool, ROUTINES_TOOL } from "./durable-routines.ts";
 import { durableContext, modelCallable, type DurableBots, type DurableHost } from "../runtimes/durable-host.ts";
 import { TRIGGERS_TOOL, TRIGGERS_TOOL_INFO } from "./durable-triggers.ts";
@@ -44,11 +44,11 @@ import { QuestionsClosedError, type QuestionDraft } from "../runtimes/question-b
 export const REQUEST_ACCESS_TOOL = "request_access";
 export const LOAD_SKILL_TOOL = "load_skill";
 /**
- * A bot's own tools, its essentials: the operator can't turn them off, and the catalog doesn't offer them. Its soul
- * and profile tools are always offered; `request_access` and `load_skill` while it has a use for them. OptChat's
- * memory tools are essentials too, kept apart because only a chat with OptChat has them.
+ * A bot's own tools, its essentials: the operator can't turn them off, and the catalog doesn't offer them. Its soul,
+ * USER.md, MEMORY.md and profile tools are always offered; `request_access` and `load_skill` while it has a use for them.
+ * OptChat's memory tools are essentials too, kept apart because only a chat with OptChat has them.
  */
-export const BOT_OWN_TOOLS: readonly string[] = [WRITE_SOUL_TOOL, SET_PROFILE_TOOL, REQUEST_ACCESS_TOOL, LOAD_SKILL_TOOL];
+export const BOT_OWN_TOOLS: readonly string[] = [WRITE_SOUL_TOOL, UPDATE_USER_TOOL, UPDATE_MEMORY_TOOL, SET_PROFILE_TOOL, REQUEST_ACCESS_TOOL, LOAD_SKILL_TOOL];
 /** The file tools a model loads skills with (PI's skills section names one); a bot with neither gets `load_skill`. */
 const SKILL_READERS: readonly string[] = ["read", "bash"];
 
@@ -67,6 +67,8 @@ export const POWERFUL_TOOLS: ReadonlySet<string> = new Set([
 /** What the catalog shows as always on: a bot's own tools and OptChat's memory tools, which every bot's chat has. */
 export const BOT_ALWAYS_ON: readonly { name: string; description: string }[] = [
   { name: WRITE_SOUL_TOOL, description: "Rewrite its SOUL.md when you ask" },
+  { name: UPDATE_USER_TOOL, description: "Keep what it knows about you when you tell it" },
+  { name: UPDATE_MEMORY_TOOL, description: "Keep durable knowledge when you ask it to" },
   { name: SET_PROFILE_TOOL, description: "Change its name, title or look when you ask" },
   { name: REQUEST_ACCESS_TOOL, description: "Ask you to turn something back on, while anything is off" },
   { name: LOAD_SKILL_TOOL, description: "Load its skills when it has neither read nor bash" },
@@ -88,14 +90,14 @@ const [ALLOW, DENY] = BOT_ACCESS_ANSWERS;
 
 /* ── catalog ─────────────────────────────────────────────────────────── */
 
-const CODING_TOOLS: Readonly<Record<string, { group: BotToolGroup; label: string; description: string }>> = {
+export const CODING_TOOLS: Readonly<Record<string, { group: BotToolGroup; label: string; description: string }>> = {
   read: { group: "files", label: "Read files", description: "Read files and images" },
   write: { group: "files", label: "Write files", description: "Create or replace files" },
   edit: { group: "files", label: "Edit files", description: "Apply exact text replacements to files" },
   bash: { group: "shell", label: "Shell", description: "Run shell commands" },
   codemode: { group: "shell", label: "Codemode", description: "Run JavaScript that calls its other tools" },
 };
-const BOT_TOOLS: Readonly<Record<string, { label: string; description: string }>> = {
+export const BOT_TOOLS: Readonly<Record<string, { label: string; description: string }>> = {
   [MESSAGE_BOT_TOOL]: { label: "Message bots", description: "Message another bot of this HUI, which answers in its own chat" },
   [ROUTINES_TOOL]: { label: "Manage its own routines", description: "List, add, change and remove its own routines, temporary ones included" },
   [TRIGGERS_TOOL]: TRIGGERS_TOOL_INFO,
@@ -488,7 +490,7 @@ export type DurableBotsDeps = {
   section?(botId: string | undefined, conversationId: ConversationId): Promise<string | undefined>;
   /** Where bots' SOUL.md files are on this host, for the `soul` section and a bot's own skills; the gateway's are each
    * bot's home folder in HUI's configuration, and a host without one leaves the section out. */
-  souls?: BotSoulHost | undefined;
+  home?: BotHomeHost | undefined;
   /** Mirrors a bot's lists into the gateway's roster after the operator allowed one of its requests. */
   recorded?(botId: string, access: BotAccess): Promise<void>;
 };
@@ -515,14 +517,14 @@ export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): Dur
       });
       return huiBotsExtensions({
         chat: (conversationId) => host.chatFor(conversationId),
-        invoke, section: async (botId, conversationId) => deps.section?.(botId, conversationId), souls: () => deps.souls,
+        invoke, section: async (botId, conversationId) => deps.section?.(botId, conversationId), home: () => deps.home,
         tools: [...access.tools, botRoutinesTool({ invoke })], sections: access.sections,
       });
     },
     state: (reader, conversationId) => conversationBotState(reader, conversationId, durableContext),
     mayCall: (state: BotState, action) => botMayCall(state, action),
     skillsDir(state) {
-      const home = deps.souls?.home(state.bot);
+      const home = deps.home?.home(state.bot);
       return home ? botSkillsDir(home) : undefined;
     },
     skills: <T extends { readonly name: string; readonly filePath: string }>(skills: readonly T[], state: BotState) => botSkills(skills, state.disabledSkills),
@@ -537,8 +539,11 @@ export function createDurableBots(host: DurableHost, deps: DurableBotsDeps): Dur
 }
 
 /** The tools every bot's chat on `host` has before extensions that the operator can turn off: what a chat that isn't
- * running there is checked against. Never the ones that act on another machine (`gatewayOnlyTools`). */
+ * running there is checked against. Never the ones that act on another machine (`gatewayOnlyTools`), nor notify_user
+ * while Settings leaves it off. */
 export async function builtinBotOffer(host: DurableHost): Promise<OfferedTool[]> {
-  const codemode = (await host.settings()).codemode.enabled ? modelCallable(host.codemode) : [];
-  return builtinOffer(host.codingTools, host.huiTools.filter((tool) => !host.gatewayOnlyTools.includes(tool.name)), host.botTools, codemode);
+  const settings = await host.settings();
+  const codemode = settings.codemode.enabled ? modelCallable(host.codemode) : [];
+  const huiTools = host.huiTools.filter((tool) => !host.gatewayOnlyTools.includes(tool.name) && (settings.notifications.tool || tool.name !== "notify_user"));
+  return builtinOffer(host.codingTools, huiTools, host.botTools, codemode);
 }

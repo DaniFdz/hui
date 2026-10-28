@@ -18,13 +18,15 @@ export type RuntimeQuestion = ({ "id": string; "method": "select"; "title": stri
 
 export type RuntimeQueue = { "steering": Array<string>; "followUp": Array<string>; "items"?: Array<QueuedMessage>; };
 
-export type RuntimeUsage = { "contextTokens": (number) | (null); "contextWindow": number; "percent": (number) | (null); "inputTokens": number; "outputTokens": number; "costUsd": (number) | (null); };
+export type RuntimeUsage = { "contextTokens": (number) | (null); "contextWindow": number; "percent": (number) | (null); "inputTokens": number; "outputTokens": number; "costUsd": (number) | (null); "sessionCost"?: SessionCostReport; };
 
 export type SessionBtwRequest = { "question": string; };
 
 export type SessionClearResponse = { "snapshot": SessionSnapshot; };
 
 export type SessionCommandsResponse = { "commands": Array<RuntimeCommand>; };
+
+export type SessionCostReport = { "usd": number; "source": string; "asOf": number; };
 
 export type SessionEvent = ({ "type": "text"; "delta": string; }) | ({ "type": "thinking"; "delta": string; }) | ({ "type": "tool_start"; "id": string; "name": string; "args"?: unknown; }) | ({ "type": "tool_update"; "id": string; "name": string; "output"?: string; "details"?: unknown; }) | ({ "type": "tool_end"; "id": string; "name": string; "output"?: string; "details"?: unknown; "failed"?: boolean; }) | ({ "type": "queue_update"; "queue": RuntimeQueue; }) | ({ "type": "question"; "question": SessionQuestion; }) | ({ "type": "notice"; "message": string; "level": ("info") | ("warning") | ("error"); "recovery"?: true; }) | ({ "type": "turn_start"; }) | ({ "type": "turn_end"; }) | ({ "type": "compaction_start"; "reason": CompactionReason; "blocking"?: false; "background"?: true; }) | ({ "type": "compaction_end"; "reason": CompactionReason; "outcome": ("done") | ("failed") | ("cancelled"); "willRetry": boolean; "message"?: string; }) | ({ "type": "settled"; "historyRefreshed"?: boolean; }) | ({ "type": "error"; "message": string; });
 
@@ -34,13 +36,15 @@ export type SessionModelResponse = { "model": (RuntimeModel) | (null); };
 
 export type SessionModelsResponse = { "models": Array<RuntimeModel>; };
 
-export type SessionOpenResponse = { "session": SessionView; "transcript": Array<TranscriptEntry>; "snapshot": SessionSnapshot; };
+export type SessionOpenResponse = { "session": SessionView; "snapshot": SessionSnapshot; "revision"?: number; };
 
 export type SessionQuestion = (RuntimeQuestion) | ({ "id": string; "method": "secret"; "title": string; "message": string; }) | ({ "id": string; "method": "questionnaire"; "title": string; "questions": Array<QuestionnaireQuestion>; });
 
 export type SessionSnapshot = { "transcript": Array<TranscriptEntry>; "status": SessionStatus; "model"?: RuntimeModel; "usage"?: RuntimeUsage; "thinking"?: string; "fast"?: boolean; "queue": RuntimeQueue; "questions": Array<SessionQuestion>; "subagents": Array<SubagentTaskView>; "suggestions"?: Array<TaskSuggestion>; "watchers"?: Array<Watcher>; "compaction"?: RuntimeCompaction; };
 
-export type SessionStreamFrame = ({ "event": "snapshot"; "data": SessionSnapshot; }) | ({ "event": "transcript"; "data": Array<TranscriptEntry>; }) | ({ "event": "status"; "data": { "status": SessionStatus; }; }) | ({ "event": "event"; "data": SessionEvent; }) | ({ "event": "model"; "data": RuntimeModel; }) | ({ "event": "thinking_level"; "data": { "level": string; }; }) | ({ "event": "fast"; "data": { "fast": boolean; }; }) | ({ "event": "closed"; "data": Record<string, unknown>; });
+export type SessionStreamFrame = ({ "event": "snapshot"; "data": SessionStreamSnapshot; }) | ({ "event": "transcript"; "data": Array<TranscriptEntry>; }) | ({ "event": "status"; "data": { "status": SessionStatus; }; }) | ({ "event": "event"; "data": SessionEvent; }) | ({ "event": "model"; "data": RuntimeModel; }) | ({ "event": "thinking_level"; "data": { "level": string; }; }) | ({ "event": "fast"; "data": { "fast": boolean; }; }) | ({ "event": "closed"; "data": Record<string, unknown>; });
+
+export type SessionStreamSnapshot = { "transcript"?: Array<TranscriptEntry>; "status": SessionStatus; "model"?: RuntimeModel; "usage"?: RuntimeUsage; "thinking"?: string; "fast"?: boolean; "queue": RuntimeQueue; "questions": Array<SessionQuestion>; "subagents": Array<SubagentTaskView>; "suggestions"?: Array<TaskSuggestion>; "watchers"?: Array<Watcher>; "compaction"?: RuntimeCompaction; };
 
 export type SessionThinkingRequest = { "level": ThinkingLevel; };
 
@@ -48,7 +52,7 @@ export type SessionThinkingResponse = { "level": (string) | (null); };
 
 export type SideQuestionResult = { "question": string; "answer": string; "model": string; };
 
-export type SubagentTaskView = { "taskId": string; "sessionId": string; "parentSessionId": string; "title": string; "task": string; "status": (SubagentStatus) | ("queued"); "startedAt": string; "updatedAt": string; "endedAt"?: string; "summary"?: string; "error"?: string; };
+export type SubagentTaskView = { "taskId": string; "sessionId": string; "parentSessionId": string; "title": string; "status": (SubagentStatus) | ("queued"); "startedAt": string; "updatedAt": string; "endedAt"?: string; "summary"?: string; "error"?: string; };
 
 export type TranscriptAttachment = { "name": string; "kind": ("image") | ("file"); "mimeType"?: string; "url"?: string; };
 

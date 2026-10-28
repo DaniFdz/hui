@@ -37,6 +37,40 @@ test("attachment image route is guarded, typed and never resolves unknown sessio
   assert.equal((await get("/__hui/sessions/alpha/attachments/0/files/0")).status, 404);
 });
 
+test("a stored file attachment opens inline as a PDF and downloads under its name otherwise", async () => {
+  const { storeAttachmentFile } = await import("../sessions/attachments.ts");
+  const { createAttachmentRoutes } = await import("./attachments.ts");
+  const files = [
+    await storeAttachmentFile("alpha", "report.pdf", Buffer.from("%PDF-1.4").toString("base64")),
+    await storeAttachmentFile("alpha", "página notes.html", Buffer.from("<script>").toString("base64")),
+    await storeAttachmentFile("alpha", "Dani's notes (1).txt", Buffer.from("notes").toString("base64")),
+    await storeAttachmentFile("alpha", "\uD800.bin", Buffer.from("x").toString("base64")),
+  ];
+  const routes = createAttachmentRoutes({
+    session: async () => ({}),
+    liveSessions: { attachmentFile: (_id, _message, file) => files[file], attachmentImage: async () => undefined },
+  });
+  const get = (file: number) => routes.handle({ method: "GET", path: `/__hui/sessions/alpha/attachments/0/files/${file}`, query: new URLSearchParams(), headers: { "x-hui": "1" }, json: async () => ({}), bytes: async () => Buffer.alloc(0), signal: new AbortController().signal });
+
+  const pdf = await get(0);
+  assert.ok(pdf && "file" in pdf);
+  assert.equal(pdf.file.mimeType, "application/pdf");
+  assert.equal(pdf.file.headers["content-disposition"], "inline; filename*=UTF-8''report.pdf");
+  assert.equal(pdf.file.data.toString(), "%PDF-1.4");
+  const html = await get(1);
+  assert.ok(html && "file" in html);
+  assert.equal(html.file.mimeType, "application/octet-stream");
+  assert.equal(html.file.headers["content-disposition"], "attachment; filename*=UTF-8''p%C3%A1gina%20notes.html");
+  assert.match(html.file.headers["content-security-policy"] ?? "", /sandbox/u);
+  const apostrophe = await get(2);
+  assert.ok(apostrophe && "file" in apostrophe);
+  assert.equal(apostrophe.file.headers["content-disposition"], "attachment; filename*=UTF-8''Dani%27s%20notes%20%281%29.txt");
+  const surrogate = await get(3);
+  assert.ok(surrogate && "file" in surrogate);
+  assert.equal(surrogate.file.headers["content-disposition"], "attachment; filename*=UTF-8''%EF%BF%BD.bin");
+  assert.equal((await get(4))?.status, 404);
+});
+
 test("stored attachment files are only read from inside the attachment store", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "hui-attachment-store-"));
   t.onTestFinished(() => rm(dir, { recursive: true, force: true }));

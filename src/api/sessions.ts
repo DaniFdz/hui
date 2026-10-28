@@ -143,6 +143,8 @@ export type SessionSnapshot = {
   compaction?: RuntimeCompaction;
 };
 
+export type SessionStreamSnapshot = Omit<SessionSnapshot, "transcript"> & { transcript?: TranscriptEntry[] };
+
 /** Mirrors the server's RuntimeCompaction. */
 /** `blocking: false`: the runtime compacts beside the conversation (Durable), so
  * a run carries on and its working indicator stays. `background: true`: the
@@ -251,15 +253,32 @@ export async function loadGitCheckout(cwd: string): Promise<GitCheckoutInfo> {
 /** Ensures a runtime exists and returns what to paint immediately. */
 export async function openSession(
   id: string,
-): Promise<{ session: SessionView; transcript: TranscriptEntry[]; snapshot?: SessionSnapshot }> {
-  const body = await fetchJson<{ session?: SessionView; transcript?: TranscriptEntry[]; snapshot?: SessionSnapshot }>(
+): Promise<{ session: SessionView; snapshot: SessionSnapshot; revision?: number }> {
+  const body = await fetchJson<{ session?: SessionView; snapshot?: SessionSnapshot; revision?: number }>(
     `${SESSIONS_URL}/${encodeURIComponent(id)}/open`,
     { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
   );
-  if (!body.session) {
+  if (!body.session || !body.snapshot) {
     throw new Error("Could not open that session.");
   }
-  return { session: body.session, transcript: body.transcript ?? [], snapshot: body.snapshot };
+  return { session: body.session, snapshot: body.snapshot, revision: body.revision };
+}
+
+/** Starts, pauses, resumes or clears this conversation's goal. Starting also sends the objective as its first turn. */
+export async function setSessionGoal(
+  id: string,
+  action: "start" | "pause" | "resume" | "clear",
+  objective?: string,
+): Promise<SessionView> {
+  const body = await fetchJson<{ session?: SessionView }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/goal`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(action === "start" ? { action, objective: objective ?? "" } : { action }),
+  });
+  if (!body.session) {
+    throw new Error("The goal change did not come back.");
+  }
+  return body.session;
 }
 
 /** Resolves once pi has accepted the prompt, not when the turn finishes. */
@@ -504,7 +523,7 @@ export async function resumeSession(id: string): Promise<void> {
 export type SessionConnection = "live" | "reconnecting" | "stopped";
 
 export type SessionStreamHandlers = {
-  onSnapshot: (snapshot: SessionSnapshot) => void;
+  onSnapshot: (snapshot: SessionStreamSnapshot) => void;
   onTranscript: (entries: TranscriptEntry[]) => void;
   onEvent: (event: RuntimeEvent) => void;
   onStatus: (status: SessionStatus) => void;
@@ -541,8 +560,9 @@ export type SessionStatusesHandlers = {
   /** First frame of every (re)connect. */
   onSnapshot: (statuses: readonly SessionStatusUpdate[]) => void;
   onStatus: (update: SessionStatusUpdate) => void;
-  /** The gateway's shared session list: full on connect, then only changes. */
+  /** The gateway's shared session list: full on connect unless it is still `heldRevision`, then only changes. */
   onSessions?: (update: SessionListUpdate) => void;
+  heldRevision?: () => number;
 };
 
 /** Keeps one lightweight stream open for lifecycle updates from every live
@@ -582,9 +602,10 @@ export function subscribeSessionStatuses(
  * close code) means the server will keep refusing this session; both stop the
  * loop rather than replaying a session that is gone.
  */
-export function subscribeSession(id: string, handlers: SessionStreamHandlers): () => void {
+export function subscribeSession(id: string, handlers: SessionStreamHandlers, heldRevision?: number): () => void {
   const abort = new AbortController();
   let attempt = 0;
+  let held = heldRevision;
 
   void (async () => {
     while (!abort.signal.aborted) {
@@ -592,7 +613,8 @@ export function subscribeSession(id: string, handlers: SessionStreamHandlers): (
         // A connection that delivered a frame is healthy, so the backoff
         // restarts rather than growing across unrelated drops.
         attempt = 0;
-      });
+      }, held);
+      held = undefined;
       if (abort.signal.aborted) {
         return;
       }
@@ -631,6 +653,7 @@ async function connectOnce(
   handlers: SessionStreamHandlers,
   signal: AbortSignal,
   onLive: () => void,
+  heldRevision: number | undefined,
 ): Promise<StreamOutcome> {
   let socket: WebSocket;
   try {
@@ -647,6 +670,8 @@ async function connectOnce(
     }
     const address = new URL(((await response.json()) as { url: string }).url, location.href);
     address.protocol = address.protocol === "https:" ? "wss:" : "ws:";
+    address.searchParams.set("slim", "1");
+    if (heldRevision !== undefined) address.searchParams.set("revision", String(heldRevision));
     if (signal.aborted) return { kind: "dropped" };
     socket = new WebSocket(address);
   } catch {
@@ -692,7 +717,8 @@ async function connectStatusesOnce(
 ): Promise<StreamOutcome> {
   let response: Response;
   try {
-    response = await fetcher(SESSION_STATUSES_URL, {
+    const held = handlers.heldRevision?.();
+    response = await fetcher(held ? `${SESSION_STATUSES_URL}?revision=${held}` : SESSION_STATUSES_URL, {
       headers: { ...CLIENT_HEADERS, accept: "text/event-stream" },
       cache: "no-store",
       signal,
@@ -706,53 +732,60 @@ async function connectStatusesOnce(
       : { kind: "refused", message: `The session status stream returned HTTP ${response.status}.` };
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let live = false;
-  // A phone changing networks can leave the socket open but silent; the gateway
-  // heartbeats every 15 s, so a longer silence means reconnect and resync.
+  try {
+    await readEventStream(response.body, (frame) => {
+      if (frame.name === "snapshot") {
+        handlers.onSnapshot((frame.payload as { statuses?: SessionStatusUpdate[] }).statuses ?? []);
+      } else if (frame.name === "status") {
+        handlers.onStatus(frame.payload as SessionStatusUpdate);
+      } else if (frame.name === "sessions") {
+        handlers.onSessions?.(frame.payload as SessionListUpdate);
+      }
+    }, () => {
+      if (live) return;
+      live = true;
+      onLive();
+    });
+  } catch {
+    return { kind: "dropped" };
+  }
+  return { kind: "dropped" };
+}
+
+/** Reads an event stream to its end and hands each frame to onFrame, in linear time. A phone changing networks can
+ * leave the socket open but silent; the gateway heartbeats every 15 s, so a longer silence cancels the read. */
+export async function readEventStream(
+  body: ReadableStream<Uint8Array>,
+  onFrame: (frame: { name: string; payload: unknown }) => void,
+  onData?: () => void,
+): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const frames = sseFrameReader();
   let stall: ReturnType<typeof setTimeout> | undefined;
   try {
     for (;;) {
       clearTimeout(stall);
       stall = setTimeout(() => void reader.cancel(), STATUS_STREAM_STALL_MS);
       const { done, value } = await reader.read();
-      if (done) break;
-      if (!live) {
-        live = true;
-        onLive();
-      }
-      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
-      let at: number;
-      while ((at = buffer.indexOf("\n\n")) !== -1) {
-        const frame = decodeSseFrame(buffer.slice(0, at));
-        buffer = buffer.slice(at + 2);
-        if (!frame) continue;
-        if (frame.name === "snapshot") {
-          handlers.onSnapshot(
-            (frame.payload as { statuses?: SessionStatusUpdate[] }).statuses ?? [],
-          );
-        } else if (frame.name === "status") {
-          handlers.onStatus(frame.payload as SessionStatusUpdate);
-        } else if (frame.name === "sessions") {
-          handlers.onSessions?.(frame.payload as SessionListUpdate);
-        }
+      if (done) return;
+      onData?.();
+      for (const text of frames(decoder.decode(value, { stream: true }))) {
+        const frame = decodeSseFrame(text);
+        if (frame) onFrame(frame);
       }
     }
-  } catch {
-    return { kind: "dropped" };
   } finally {
     clearTimeout(stall);
   }
-  return { kind: "dropped" };
 }
 
 /** Returns true for the server's terminal `closed` event. */
 function dispatch(name: string, payload: unknown, handlers: SessionStreamHandlers): boolean {
   switch (name) {
     case "snapshot":
-      handlers.onSnapshot(payload as SessionSnapshot);
+      handlers.onSnapshot(payload as SessionStreamSnapshot);
       break;
     case "transcript":
       handlers.onTranscript(payload as TranscriptEntry[]);
@@ -780,8 +813,36 @@ function dispatch(name: string, payload: unknown, handlers: SessionStreamHandler
   return false;
 }
 
-/** One SSE frame; shared with other HUI event streams (bots). */
-export function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
+function sseFrameReader(): (text: string) => string[] {
+  let pending: string[] = [];
+  let carriageReturn = false;
+  let endsWithNewline = false;
+  return (input) => {
+    let text = (carriageReturn ? "\r" : "") + input;
+    carriageReturn = text.endsWith("\r");
+    if (carriageReturn) text = text.slice(0, -1);
+    text = text.replace(/\r\n/g, "\n");
+    if (!text) return [];
+    const ended = text.includes("\n\n") || (endsWithNewline && text.startsWith("\n"));
+    pending.push(text);
+    endsWithNewline = text.endsWith("\n");
+    if (!ended) return [];
+    const buffer = pending.join("");
+    const frames: string[] = [];
+    let start = 0;
+    for (let at = buffer.indexOf("\n\n"); at !== -1; at = buffer.indexOf("\n\n", start)) {
+      frames.push(buffer.slice(start, at));
+      start = at + 2;
+    }
+    const rest = buffer.slice(start);
+    pending = rest ? [rest] : [];
+    endsWithNewline = rest.endsWith("\n");
+    return frames;
+  };
+}
+
+/** One SSE frame. */
+function decodeSseFrame(chunk: string): { name: string; payload: unknown } | undefined {
   let name = "message";
   const data: string[] = [];
   for (const line of chunk.split("\n")) {

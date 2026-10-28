@@ -189,7 +189,7 @@ test("the automation region renders real controls instead of a pending placehold
   assert.match(settings, /props\.page === "automation"\s*\?\s*renderAutomationPage\(props, renderSection\)/);
   // Dropping it from the pending summaries is what stops the placeholder copy.
   assert.doesNotMatch(settings, /automation: "Scheduled jobs/);
-  assert.match(settings, /Exclude<SettingsPage, "appearance" \| "skills" \| "tools" \| "models" \| "automation" \| "security" \| "worktrees" \| "workers">/);
+  assert.match(settings, /Exclude<SettingsPage, "appearance" \| "notifications" \| "skills" \| "tools" \| "models" \| "automation" \| "security" \| "worktrees" \| "workers">/);
 });
 
 test("automation keeps the original row-control and field-control containers separate", () => {

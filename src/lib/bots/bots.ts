@@ -26,6 +26,12 @@ export const BOT_LIMITS = {
   description: 500,
   /** SOUL.md, in characters: what a bot's chat reads of it, and what `PUT …/soul` accepts. */
   soul: 20_000,
+  /** USER.md: what this bot knows about the operator. Read every request, never exported. */
+  user: 6_000,
+  /** MEMORY.md: what the bot chose to keep. Read every request, never exported. */
+  memory: 10_000,
+  /** BOOTSTRAP.md: the operator's onboarding body, read while SOUL.md does not exist. */
+  bootstrap: 6_000,
   /** One `message_bot` message. */
   message: 20_000,
   /** `lastMessage.text`, a one-line preview. */

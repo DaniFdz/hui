@@ -6,7 +6,7 @@ section in [`README.md`](README.md) for the user-facing commands.
 
 ## Requirements
 
-- Node.js **22.18 or newer** and npm.
+- Node.js **24.8 or newer** and npm.
 - Git.
 - GitHub CLI (`gh`) authenticated when opening or maintaining pull requests.
 
@@ -61,6 +61,7 @@ npm test
 npm run typecheck
 npm run build
 npm run test:package
+npm run e2e
 ```
 
 The Test workflow runs `npm run typecheck` and `npm test` on every pull request
@@ -68,6 +69,14 @@ and push to `main`, on Node 24, the only version `engines` allows. `npm test` ru
 naming it, a test or hook that runs longer than five minutes instead of waiting
 for it. The workflow reports every run to Datadog Test Optimization, using the
 repository's `DD_API_KEY` secret.
+
+`npm run e2e` runs the shared e2e suite in `e2e/tests/` on the web, in headless
+Chromium against a disposable gateway; install the browser once with
+`npx e2e-web install chromium`. The script turns the library's telemetry off. A
+failure leaves `trace.md`, a screenshot and the screen dump in `.e2e/results/`.
+The E2E workflow runs the suite on every pull request and push to `main`, and
+Nightly and Release run it before publishing. `e2e/AGENTS.md` has the rules for
+writing a test.
 
 User-visible changes also need a real Browser-tool E2E check. Documentation-only
 changes need at least `git diff --check` and verification that commands and links
@@ -77,7 +86,7 @@ still match the source.
 
 `hui doctor` is how an upgrade changes state earlier versions left behind. A
 change that leaves persisted state behind (a format, a location, a runtime
-switch) adds a check in `cli/doctor-<name>.ts` and lists it in `DOCTOR_CHECKS`
+switch) adds a check in `cli/doctor-<name>.ts` and lists it in `doctorChecks`
 (`cli/doctor.ts`):
 
 - `inspect()` only reads. It reports each affected item as `issue`, which

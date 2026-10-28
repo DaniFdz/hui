@@ -1,10 +1,13 @@
 /** Generated from docs/api.schema.json by scripts/api-schema.ts. Do not edit. */
+import type { UsageTotals } from "./diagnostics.ts";
 
 export type BotAccessRequest = { "id": string; "sessionId": string; "title": string; "message": string; };
 
 export type BotAvatar = { "emoji"?: string; "color"?: string; "shape"?: BotFaceShape; "ears"?: BotFaceEars; };
 
 export type BotAvatarPatch = { "emoji"?: string; "color"?: string; "shape"?: (BotFaceShape) | (""); "ears"?: (BotFaceEars) | (""); };
+
+export type BotBootstrapRequest = { "text": string; };
 
 export type BotCatalog = { "tools": Array<BotCatalogTool>; "skills": Array<BotCatalogSkill>; "alwaysOn": Array<{ "name": string; "description": string; }>; "disabledTools": Array<string>; "disabledSkills": Array<BotSkillRef>; "live": boolean; "request"?: BotAccessRequest; };
 
@@ -32,7 +35,11 @@ export type BotFactPatch = { "kind"?: BotFactKind; "text"?: string; "pinned"?: b
 
 export type BotFactsResponse = { "facts": Array<BotFact>; };
 
-export type BotInput = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "soul"?: string; "worker"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; };
+export type BotFileName = "soul" | "user" | "memory" | "bootstrap";
+
+export type BotFileText = { "file": BotFileName; "text": (string) | (null); };
+
+export type BotInput = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "soul"?: string; "user"?: string; "memory"?: string; "bootstrap"?: string; "worker"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; };
 
 export type BotLastMessage = { "role": ("user") | ("assistant"); "text": string; "at": string; };
 
@@ -48,7 +55,7 @@ export type BotMessageRequest = { "text"?: string; "attachments"?: Array<unknown
 
 export type BotMessageResult = (BotDelivery) | (BotReply);
 
-export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); };
+export type BotPatch = { "name"?: string; "handle"?: string; "title"?: string; "description"?: string; "tagging"?: BotTagging; "cwd"?: string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "hidden"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillSelector>; "avatar"?: (BotAvatarPatch) | (null); "voice"?: (BotVoicePatch) | (null); "split"?: true; };
 
 export type BotQuestion = { "id": string; "method": "select" | "confirm" | "input" | "editor" | "secret" | "questionnaire"; "title": string; "message"?: string; "options"?: Array<string>; "placeholder"?: string; "prefill"?: string; };
 
@@ -69,6 +76,8 @@ export type BotSoulRequest = { "soul": string; };
 export type BotTagging = "anyone" | "mention" | "nobody";
 
 export type BotToolGroup = "files" | "shell" | "hui" | "extension" | "bots";
+
+export type BotUsageResponse = { "usage": UsageTotals; };
 
 export type BotView = { "id": string; "handle": string; "name": string; "title"?: string; "description"?: string; "tagging"?: "mention" | "nobody"; "cwd": string; "model"?: string; "thinking"?: string; "memoryModel"?: string; "memoryThinking"?: string; "avatar"?: BotAvatar; "voice"?: BotVoice; "hidden"?: boolean; "archived"?: boolean; "disabledTools"?: Array<string>; "disabledSkills"?: Array<BotSkillRef>; "sessionId": string; "createdAt": string; "updatedAt": string; "worker"?: { "id": string; "name": string; }; "status": BotSessionStatus; "soul": boolean; "lastMessage"?: BotLastMessage; "unread": boolean; "memory"?: BotMemoryStatus; "routines": number; };
 

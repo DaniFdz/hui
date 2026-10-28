@@ -4,7 +4,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream, existsSync } from "node:fs";
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
@@ -14,13 +14,15 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--pi-sessions] [--fast-fixture] [--quota-fixture | --jira-fixture | --github-fixture | --datadog-fixture | --activity-fixture | --demo]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--port <n>] [--receipt-dir <dir>] [--pi-sessions] [--fast-fixture] [--quota-fixture | --jira-fixture | --github-fixture | --datadog-fixture | --activity-fixture | --usage-fixture | --demo]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
 Launch stays in the foreground and prints one JSON ready receipt. Keep its exec
-session alive during Browser-tool checks. App/provider ports are OS-allocated,
-state and evidence stay in a private temporary directory outside the checkout.
+session alive during Browser-tool checks. App and provider ports are OS-allocated
+unless --port fixes the app's. State and evidence stay in a private temporary
+directory outside the checkout. --receipt-dir also writes the printed receipt to
+<dir>/receipt-<port>.json once ready (the shared e2e suite reads it there).
 Doctor checks instance identity, branch/HEAD/content fingerprint, provider health
 and the HUI x-hui boundary. Run before and after browser evidence. After any source
 edit or commit, cleanup and relaunch: a stale checkout fails doctor.
@@ -194,8 +196,12 @@ function ready(child, listen) {
   });
 }
 
-export async function launch(expectedBranch) {
+export async function launch(expectedBranch, { port, receiptDir } = {}) {
   if (!expectedBranch) throw new Error("launch requires --branch <expected-branch> to prevent verifying the wrong checkout.");
+  if (port !== undefined && !(Number.isInteger(port) && port > 0 && port < 65536)) throw new Error("--port needs a port number.");
+  const sharedReceipt = receiptDir && port ? join(resolve(receiptDir), `receipt-${port}.json`) : undefined;
+  if (receiptDir && !port) throw new Error("--receipt-dir needs --port, which names the receipt.");
+  if (sharedReceipt) await rm(sharedReceipt, { force: true });
   const checkout = await checkoutIdentity(repo);
   if (checkout.branch !== expectedBranch) throw new Error(`Wrong branch: expected ${expectedBranch}, found ${checkout.branch || "detached HEAD"}.`);
   const dir = await mkdtemp(join(tmpdir(), "hui-visual-"));
@@ -288,6 +294,9 @@ export async function launch(expectedBranch) {
       baseUrl: receipt.providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
       models: [
         { id: "fixture", name: demo ? "Demo model" : "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+        // A second model on the same provider lets a journey see which model a
+        // subagent route resolved to (e2e/subagent-routes.browser.md).
+        { id: "fixture-deep", name: "HUI Route Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
         // --fast-fixture: a Claude Opus 5.5 id, so the composer offers Maximum effort and Speed (fast mode).
         ...process.argv.includes("--fast-fixture") ? [{
           id: "claude-opus-5-5", name: "Opus fixture", reasoning: true, input: ["text"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -385,11 +394,15 @@ export async function launch(expectedBranch) {
       // Two weeks of synthetic Durable sessions for Contributions → Calendar.
       execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "activity-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
     }
+    if (process.argv.includes("--usage-fixture")) {
+      execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "usage-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
+    }
     const server = start("visual-verification-server.mjs", {
       ...serverEnv,
       HUI_VERIFICATION_IDENTITY: JSON.stringify({ runId: receipt.runId, runnerPid: process.pid, checkout }),
       HUI_VERIFICATION_TOKEN: receipt.token,
       HUI_VERIFICATION_CACHE: join(dir, "vite-cache"),
+      HUI_VERIFICATION_PORT: String(port ?? 0),
     }, true);
     receipt.serverPid = server.pid;
     server.on("message", (message) => { if (message.type === "shutdown") void stop(); });
@@ -404,6 +417,12 @@ export async function launch(expectedBranch) {
     await doctor(receiptPath);
     // The private receipt has the control token; stdout is safe to share.
     const { token: _token, ...publicReceipt } = receipt;
+    if (sharedReceipt) {
+      await mkdir(dirname(sharedReceipt), { recursive: true });
+      const temporary = `${sharedReceipt}.${randomUUID()}.tmp`;
+      await writeFile(temporary, `${JSON.stringify(publicReceipt, null, 2)}\n`);
+      await rename(temporary, sharedReceipt);
+    }
     process.stdout.write(`${JSON.stringify(publicReceipt)}\n`);
   } catch (error) {
     await stop();
@@ -414,11 +433,20 @@ export async function launch(expectedBranch) {
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || args.includes("--help")) return process.stdout.write(help);
+  const valueOf = (name) => {
+    const index = args.indexOf(name);
+    if (index < 0) return undefined;
+    const [, value] = args.splice(index, 2);
+    if (value === undefined || value.startsWith("--")) throw new Error(`${name} needs a value. Run with --help.`);
+    return value;
+  };
+  const port = command === "launch" ? valueOf("--port") : undefined;
+  const receiptDir = command === "launch" ? valueOf("--receipt-dir") : undefined;
   // Trailing launch options; `launch` reads them from argv.
-  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--jira-fixture", "--github-fixture", "--datadog-fixture", "--activity-fixture", "--demo"].includes(args.at(-1))) args.pop();
+  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--jira-fixture", "--github-fixture", "--datadog-fixture", "--activity-fixture", "--usage-fixture", "--demo"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
-  if (command === "launch") return launch(args[1]);
+  if (command === "launch") return launch(args[1], { port: port === undefined ? undefined : Number(port), receiptDir });
   process.stdout.write(`${JSON.stringify(await (command === "doctor" ? doctor(args[1]) : cleanup(args[1])))}\n`);
 }
 

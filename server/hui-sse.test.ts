@@ -172,6 +172,7 @@ test("the session event route forwards model stream messages as SSE", () => {
   let subscriber: ((message: SessionStreamMessage) => void) | undefined;
   streamSession(response as unknown as ServerResponse, record(), {
     ensure: () => true,
+    replaySince: () => undefined,
     watch: (_id, listener) => {
       subscriber = listener;
       return {

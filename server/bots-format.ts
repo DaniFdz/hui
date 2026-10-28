@@ -1,9 +1,10 @@
 /**
  * Bots (HUI-18): named, persistent agents, each with one forever chat whose
- * memory is OptChat and whose persona is the SOUL.md it writes in its first
- * conversation. The gateway's and the `hui bot` CLI's records, limits, faces,
- * kickoff and tags; the browser keeps its own copy of what it shows in
- * src/lib/bots/bots.ts, and who started a turn is in runtimes/turn-origins.ts.
+ * memory is OptChat, whose persona is the SOUL.md it writes, and whose USER.md
+ * and MEMORY.md hold what it knows and keeps (never exported; `home.ts`). The
+ * gateway's and the `hui bot` CLI's records, limits, files, faces, kickoff and
+ * tags; the browser keeps its own copy of what it shows in src/lib/bots/bots.ts,
+ * and who started a turn is in runtimes/turn-origins.ts.
  * The chat itself is an ordinary Durable session (`BotRecord.sessionId`); the
  * session API drives it like any other.
  */
@@ -11,7 +12,7 @@ import type { BotAvatar, BotFaceEars, BotFaceShape, BotSkillRef, BotTagging, Bot
 
 export type {
   BotAccessRequest, BotAvatar, BotAvatarPatch, BotCatalog, BotCatalogSkill, BotCatalogTool, BotDelivery, BotFaceEars, BotFaceShape, BotInput,
-  BotLastMessage, BotMemoryStatus, BotMemoryUsage, BotMessageResult, BotPatch, BotQuestion, BotReply, BotSessionStatus, BotSkillRef,
+  BotFileName, BotFileText, BotLastMessage, BotMemoryStatus, BotMemoryUsage, BotMessageResult, BotPatch, BotQuestion, BotReply, BotSessionStatus, BotSkillRef,
   BotSkillSelector, BotSoul, BotsUpdate, BotTagging, BotToolGroup, BotView, BotVoice, BotVoicePatch,
 } from "./api/bots.ts";
 
@@ -23,6 +24,12 @@ export const BOT_LIMITS = {
   description: 500,
   /** SOUL.md, in characters: what a bot's chat reads of it, and what `PUT …/soul` accepts. */
   soul: 20_000,
+  /** USER.md: what this bot knows about the operator. Read every request, never exported. */
+  user: 6_000,
+  /** MEMORY.md: what the bot chose to keep. Read every request, never exported. */
+  memory: 10_000,
+  /** BOOTSTRAP.md: the operator's onboarding body, read while SOUL.md does not exist. */
+  bootstrap: 6_000,
   /** One `message_bot` message. */
   message: 20_000,
   /** `lastMessage.text`, a one-line preview. */
@@ -124,6 +131,9 @@ export type BotRecord = {
   hidden?: boolean;
   /** Archived bots keep their chat and memory; their routines are disabled. */
   archived?: boolean;
+  /** Its prompt is SOUL.md, USER.md and MEMORY.md: it was created with them, or `hui bot split` asked it to sort an
+   * older single-file soul. Absent on records from before, which `hui doctor` lists until they are split. */
+  split?: true;
   /**
    * Tools and skills the operator turned off in its chat; absent: none. Everything else a session in its directory
    * gets is on, tools and skills that appear later included. A mirror: the chat's `hui.bot` document holds the lists,
@@ -142,6 +152,35 @@ export const NEW_BOT_NAME = "New Bot";
 
 /** The persona file in each bot's home folder. */
 export const BOT_SOUL_FILE = "SOUL.md";
+/** What this bot knows about the operator: preferences, corrections, how they work. Never exported. */
+export const BOT_USER_FILE = "USER.md";
+/** What the bot chose to keep, by topic: curated knowledge, not the chat's log. Never exported. */
+export const BOT_MEMORY_FILE = "MEMORY.md";
+/** The operator's onboarding body, read while SOUL.md does not exist. Exported: it is the bot's ritual, not personal data. */
+export const BOT_BOOTSTRAP_FILE = "BOOTSTRAP.md";
+
+/** The prompt files of a bot's home, by the name the API and CLI use (`/__hui/bots/:id/files/:file`). */
+export const BOT_FILES = ["soul", "user", "memory", "bootstrap"] as const;
+export type BotFile = (typeof BOT_FILES)[number];
+
+export const BOT_FILE_NAMES: Readonly<Record<BotFile, string>> = {
+  soul: BOT_SOUL_FILE, user: BOT_USER_FILE, memory: BOT_MEMORY_FILE, bootstrap: BOT_BOOTSTRAP_FILE,
+};
+
+/** The most of each file a bot's chat reads; the API and the tools write no more. */
+export const BOT_FILE_LIMITS: Readonly<Record<BotFile, number>> = {
+  soul: BOT_LIMITS.soul, user: BOT_LIMITS.user, memory: BOT_LIMITS.memory, bootstrap: BOT_LIMITS.bootstrap,
+};
+
+/** Which of them an export may carry: SOUL.md and BOOTSTRAP.md are the bot's; USER.md and MEMORY.md describe the operator and never leave. */
+export const BOT_EXPORTED_FILES: readonly BotFile[] = ["soul", "bootstrap"];
+
+/** The file a name or path names (`user`, `USER.md`), any case; undefined for anything else. */
+export function botFile(value: string): BotFile | undefined {
+  const key = value.trim().toLowerCase();
+  return BOT_FILES.find((file) => file === key || BOT_FILE_NAMES[file].toLowerCase() === key || BOT_FILE_NAMES[file].toLowerCase().slice(0, -3) === key);
+}
+
 
 /**
  * The first line of the message HUI sends a new bot without a soul, so it speaks

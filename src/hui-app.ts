@@ -9,6 +9,7 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session/tree.ts";
+import { isSubagentActive } from "./lib/subagent-activity.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
 import type { QuestionnaireCard } from "./components/questionnaire-card.ts";
@@ -52,6 +53,7 @@ import { ComposerController } from "./controllers/composer-controller.ts";
 import { WorkLayoutController } from "./controllers/work-layout-controller.ts";
 import { BotsController } from "./controllers/bots-controller.ts";
 import { BotFactsController } from "./controllers/bot-facts-controller.ts";
+import { BotUsageController } from "./controllers/bot-usage-controller.ts";
 import { BotToolsController } from "./controllers/bot-tools-controller.ts";
 import { BotTriggersController } from "./controllers/bot-triggers-controller.ts";
 import { renderBotArchiveDialog, renderBotDeleteDialog, renderBotPanel, renderBotPlaceholder } from "./views/bots.ts";
@@ -60,6 +62,7 @@ import { BotImportController } from "./controllers/bot-import-controller.ts";
 import { renderUpdateDialog } from "./views/update-dialog.ts";
 import { renderUpdateNotice } from "./views/update-notice.ts";
 import { renderPowerNotice } from "./views/power-notice.ts";
+import { renderAppLinkNotice } from "./views/app-link-notice.ts";
 import { customGroupOrder, moveGroupLabel, readSidebarSessionOptions, writeSidebarSessionOptions, type SidebarSessionOptions } from "./lib/session/sidebar-sessions.ts";
 import { disconnectTextareaOverflowObserver, observeTextareaOverflow, scheduleTextareaHeightAdjustment } from "./lib/composer/textarea.ts";
 import {
@@ -70,7 +73,7 @@ import {
   sessionDraftKey,
   writeComposerDraft,
 } from "./lib/composer/drafts.ts";
-import { CONTINUE_AFTER_ERROR_PROMPT, latestRunError } from "./lib/run-error.ts";
+import { latestRunError } from "./lib/run-error.ts";
 import {
   emptySessionPresentation,
   isSelectedSession,
@@ -79,11 +82,13 @@ import {
 } from "./lib/session/ui-state.ts";
 import { closeModal, ensureModal } from "./lib/modal-dialog.ts";
 import { documentTitle } from "./lib/document-title.ts";
+import { DashboardController } from "./controllers/dashboard-controller.ts";
 import { AutomationController } from "./controllers/automation-controller.ts";
 import { SettingsController } from "./controllers/settings-controller.ts";
 import { UpdateController } from "./controllers/update-controller.ts";
 import { QUESTION_FOCUS_SELECTOR, renderHome, TRANSCRIPT_SCROLLER_SELECTOR, type BotHeaderAction, type HomeBot, type HomeProps } from "./views/home.ts";
 import "./components/contributions.ts";
+import "./components/usage.ts";
 import { renderPanelSelector } from "./views/panel-selector.ts";
 import { dedicatedPageRenderer, type DedicatedPageProps } from "./views/pages.ts";
 import { renderKanbanPage } from "./views/kanban.ts";
@@ -112,7 +117,7 @@ import { isPiSurface, renderPiSurface } from "./views/pi-surfaces.ts";
 import { renderPiResourceReader } from "./views/pi-resource-reader.ts";
 import { isObservabilitySurface, renderObservabilitySurface } from "./views/observability.ts";
 import { isOwnedSurface, renderOwnedSurface } from "./views/hui-owned-surfaces.ts";
-import { HUI_PAGES, type HuiPage } from "./lib/pages.ts";
+import { HUI_PAGES, availablePages, isPageAvailable, type HuiPage } from "./lib/pages.ts";
 import { activeSessionPane, closeSessionPane, focusSessionPane, isChatPane, parseSessionLayout, replacePaneSession, resizeSessionLayout, SESSION_LAYOUT_KEY, sessionPanes, visibleSessionPanes, singleSessionLayout, splitSessionPane, type DropZone, type SessionPane, type SplitDirection } from "./lib/session/multiplexer.ts";
 import {
   activateWorkView, launchableWorkViewKinds, migrateLayoutWorkViews, pruneWorkPaneStore, reorderWorkView,
@@ -135,6 +140,7 @@ import {
   settingsReturnTarget,
   type NavigationTarget,
 } from "./lib/navigation.ts";
+import { appHandoffUrl } from "./lib/app-link.ts";
 
 const HUI_UPDATE_SESSION_TITLE = "HUI update";
 
@@ -219,6 +225,9 @@ export class HuiApp extends HuiElement {
     launching: () => this.launching,
   });
   @state() private sessionOptions: SidebarSessionOptions = readSidebarSessionOptions();
+  /** The `hui://` address a `?open=app` link offers the desktop app, until the banner is dismissed. */
+  @state() private appLink: string | undefined;
+  @state() private appLinkDismissed = false;
   @state() private kanbanMovePendingId = "";
   @state() private draggingSessionId = "";
   @state() private sessionDropTarget = "";
@@ -258,6 +267,7 @@ export class HuiApp extends HuiElement {
   private groupCheckoutDirectory = "";
   private readonly launcher = new LaunchController(this);
   private readonly automation = new AutomationController(this);
+  private readonly dashboard = new DashboardController(this, () => this.view === "surface" && this.activePage?.id === "dashboard" && !this.settingsOpen, () => this.listedGroups);
   private readonly control = new SettingsController(this, {
     piLoaded: (snapshot) => this.launcher.seedPreferences(snapshot, this.control.settings.models.primary),
     copyFailed: (message) => {
@@ -295,6 +305,7 @@ export class HuiApp extends HuiElement {
     onFrame: () => {
       this.followBotTools();
       this.followBotTriggers();
+      this.followBotUsage();
     },
     notify: (message, failed) => this.sessions.notify(message, failed),
     navigate: (target, replace) => this.navigate(target, replace),
@@ -314,9 +325,11 @@ export class HuiApp extends HuiElement {
   /** The panel's Tools page: what the operator can turn off in the bot's chat, kept in its own controller. */
   private botTools = new BotToolsController(this);
   private botFacts = new BotFactsController(this);
+  private botUsage = new BotUsageController(this);
   /** The bot's triggers, read while its overview or Triggers page shows. */
   private botTriggers = new BotTriggersController(this, { visible: () => this.botTriggersVisible() });
   private botRosterTick = 0;
+  private transcriptClockTick = 0;
   /** Set on the bot route's embedded pane: header identity and panel state. */
   @property(paneBotProperty) paneBot: PaneBot | undefined;
   @property(paneCallback) onPaneBotPanel: (() => void) | undefined;
@@ -391,6 +404,7 @@ export class HuiApp extends HuiElement {
   private deleteReturnFocus: HTMLElement | undefined;
   private deleteNeedsFocus = false;
   private autoFollow = true;
+  @state() private transcriptWindowStart: number | undefined;
   /** Rows grow after they render (link previews, images, diagrams): a followed thread stays at its end. */
   private readonly followResize = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(([entry]) => {
     const thread = entry?.target.parentElement;
@@ -489,6 +503,7 @@ export class HuiApp extends HuiElement {
     if (this.embeddedPane) {
       if (this.paneSessionId) this.applyNavigation({ kind: "session", id: this.paneSessionId });
     } else {
+      this.appLink = appHandoffUrl({ pathname: window.location.pathname, search: window.location.search, userAgent: navigator.userAgent });
       this.work.start();
       this.syncFromLocation();
       this.mobileNavMedia = window.matchMedia(APP_SHELL_DRAWER_MEDIA);
@@ -530,11 +545,12 @@ export class HuiApp extends HuiElement {
 
   private sessionProgressPoll?: number;
   override firstUpdated() {
-    if (!this.embeddedPane) void this.control.refreshPower();
+    if (!this.embeddedPane) this.control.pollPower();
     this.sessionProgressPoll = window.setInterval(() => {
       // Not on macOS stays not on macOS; otherwise the banner follows the gateway.
-      if (!this.embeddedPane && !document.hidden && this.control.power !== null) void this.control.refreshPower();
-      if (!document.hidden && this.conversation.transcript.length) this.requestUpdate();
+      if (!this.embeddedPane && !document.hidden && this.control.power !== null) this.control.pollPower();
+      const subagentClockRunning = this.conversation.subagents.some((task) => isSubagentActive(task.status));
+      if (!document.hidden && this.conversation.transcript.length && (subagentClockRunning || ++this.transcriptClockTick % 10 === 0)) this.requestUpdate();
       if (!this.embeddedPane && !document.hidden && this.settingsOpen && this.settingsPage === "connection") {
         void this.control.refreshGatewayHealth();
       }
@@ -550,7 +566,6 @@ export class HuiApp extends HuiElement {
       this.loadLaunchPreferences();
       // The home page shows the launch form too, without a page navigation.
       this.launcher.loadWorkers();
-      this.control.loadPreviews();
     }
   }
 
@@ -605,6 +620,7 @@ export class HuiApp extends HuiElement {
     if (this.updatingSelectedId !== this.conversation.selected?.id) {
       this.updatingSelectedId = this.conversation.selected?.id;
       this.sessions.toggledSessionTrees = new Set();
+      this.transcriptWindowStart = undefined;
     }
     if (changed.has("paneCreating") && !this.paneCreating && changed.get("paneCreating") && this.conversation.selected?.id === this.paneSessionId) {
       void this.conversation.open(this.conversation.selected.id);
@@ -623,7 +639,9 @@ export class HuiApp extends HuiElement {
       const listed = selected && this.listedSession(selected.id);
       // The stream clears an interruption when a run starts; the gateway clears
       // it when a reattached remote run turns out to have finished.
-      if (listed) this.conversation.select({ ...selected, ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted });
+      // The list is the registry's word on everything HUI writes outside a run (title, goal, stage), so a field it
+      // no longer has is gone here too; only this pane's live status and interruption stay its own.
+      if (listed) this.conversation.select({ ...listed, status: selected.status, interrupted: selected.interrupted && listed.interrupted });
       const shellStatus = selected && this.paneGroups.flatMap((group) => group.sessions).find((session) => session.id === selected.id)?.status;
       if (selected && shellStatus) this.reopenIfRestarted(selected.id, shellStatus);
       this.sessions.loading = false;
@@ -773,6 +791,8 @@ export class HuiApp extends HuiElement {
   }
 
   private navigate(target: NavigationTarget, replace = false) {
+    // The app suggestion names one chat; moving anywhere else retires it.
+    this.appLink = undefined;
     if (this.embeddedPane) {
       if (target.kind === "session") this.onPaneNavigate?.(target.id);
       else if (target.kind === "home") void this.onPaneRegistryChange?.();
@@ -806,10 +826,15 @@ export class HuiApp extends HuiElement {
   }
 
   private applyNavigation(target: NavigationTarget) {
+    if (target.kind === "page" && !isPageAvailable(target.page, this.control.settings.labs)) {
+      this.navigate({ kind: "home" }, true);
+      return;
+    }
     if (target.kind === "settings") {
       this.settingsPage = target.page;
       this.settingsOpen = true;
       this.loadSettingsData();
+      if (target.page === "appearance") this.control.loadPreviews();
       if (target.page === "diagnostics") this.loadOperationalData();
       if (target.page === "worktrees") this.sessions.openWorktrees();
       if (target.page === "automation") this.automation.startPolling();
@@ -866,6 +891,7 @@ export class HuiApp extends HuiElement {
       this.view = "surface";
       if (isPiSurface(target.page)) this.control.loadControlSurfaceData();
       if (isObservabilitySurface(target.page) || isOwnedSurface(target.page)) this.loadOperationalData();
+      if (target.page.id === "dashboard") this.dashboard.start();
       if (target.page.id === "cron" || target.page.id === "tasks") {
         this.automation.load();
         this.automation.startPolling();
@@ -955,6 +981,9 @@ export class HuiApp extends HuiElement {
       case "settings":
         this.openSurfaceSettings(action.page);
         break;
+      case "bot":
+        this.navigate({ kind: "bot", id: action.bot.id });
+        break;
       case "session":
         this.selectSession(action.session);
         break;
@@ -966,8 +995,9 @@ export class HuiApp extends HuiElement {
       open: this.commandPaletteOpen,
       query: this.commandPaletteQuery,
       activeIndex: this.commandPaletteActiveIndex,
-      pages: HUI_PAGES,
+      pages: availablePages(this.control.settings.labs),
       groups: this.listedGroups,
+      bots: this.bots.list,
       onQuery: (query) => {
         this.commandPaletteQuery = query;
         this.commandPaletteActiveIndex = 0;
@@ -1477,7 +1507,7 @@ export class HuiApp extends HuiElement {
 
   private continueAfterError = () => {
     if (!this.currentRunError()) return;
-    this.composer.send(CONTINUE_AFTER_ERROR_PROMPT);
+    this.composer.continueStoppedRun();
   };
 
   private forked = async (forked: SessionView) => {
@@ -1528,6 +1558,18 @@ export class HuiApp extends HuiElement {
   private transcriptScrolled = (element: HTMLElement) => {
     this.autoFollow = element.scrollHeight - element.scrollTop - element.clientHeight < 48;
     this.showScrollToBottom = !this.autoFollow;
+    if (!this.autoFollow) this.transcriptWindowStart ??= Number(element.dataset["windowStart"] ?? 0);
+    else if (this.transcriptWindowStart !== undefined) this.scrollToBottom();
+  };
+
+  private showEarlierRows = async (start: number) => {
+    const scroller = this.renderRoot.querySelector?.(TRANSCRIPT_SCROLLER_SELECTOR);
+    if (!(scroller instanceof HTMLElement)) return;
+    const fromBottom = scroller.scrollHeight - scroller.scrollTop;
+    this.autoFollow = false;
+    this.transcriptWindowStart = start;
+    await this.updateComplete;
+    scroller.scrollTop = scroller.scrollHeight - fromBottom;
   };
 
   private navigateTranscript = (element: HTMLElement, top: number) => {
@@ -1541,6 +1583,7 @@ export class HuiApp extends HuiElement {
 
   private scrollToBottom = () => {
     this.autoFollow = true;
+    this.transcriptWindowStart = undefined;
     void this.updateComplete.then(() => {
       // Measuring a pane out of sight would lay out its whole transcript on
       // every streamed token; it follows once it is shown again.
@@ -1724,6 +1767,7 @@ export class HuiApp extends HuiElement {
     this.continuing = false;
     this.showScrollToBottom = false;
     this.autoFollow = true;
+    this.transcriptWindowStart = undefined;
     this.resetSessionEphemeral();
   }
 
@@ -1917,6 +1961,12 @@ export class HuiApp extends HuiElement {
     if (bot) this.botTriggers.follow(bot);
   }
 
+  /** The overview shows the bot's cost, read again whenever its chat changes state. A worker keeps its own. */
+  private followBotUsage() {
+    const bot = this.botPanelShows("overview") ? this.activeBot() : undefined;
+    if (bot && !bot.worker) void this.botUsage.show(bot);
+  }
+
   /** The panel's page decides what is read: the overview and Routines poll Automation like its page, the overview and
    * Triggers read the triggers, Tools its catalog, and the overview and Settings PI's model catalog. */
   private syncBotPanelData() {
@@ -1928,6 +1978,7 @@ export class HuiApp extends HuiElement {
       this.automation.stopPolling();
     }
     this.botTriggers.sync(this.botTriggersVisible() ? this.activeBot() : undefined);
+    this.followBotUsage();
     const factsBot = this.botPanelShows("facts") ? this.activeBot() : undefined;
     if (factsBot) void this.botFacts.load(factsBot.id);
     const toolsBot = this.botPanelShows("tools") ? this.activeBot() : undefined;
@@ -2099,6 +2150,7 @@ export class HuiApp extends HuiElement {
         },
         tools: this.botTools.props(bot),
         facts: this.botFacts,
+        usage: this.botUsage.state,
         triggers: this.botTriggers.props(bot),
         settings: {
           models: this.control.pi?.model.catalog ?? [],
@@ -2505,6 +2557,7 @@ export class HuiApp extends HuiElement {
       copiedId: this.conversation.copiedId,
       ...(this.paneCall && this.onPaneCall ? { call: { inCall: this.paneCall.inCall, onCall: this.onPaneCall } } : {}),
       expandedActivityIds: this.expandedActivityIds,
+      transcriptWindowStart: this.transcriptWindowStart,
       showScrollToBottom: this.showScrollToBottom,
       ...this.conversation.props(),
       compaction: this.conversation.compaction,
@@ -2572,6 +2625,7 @@ export class HuiApp extends HuiElement {
       onActivityExpanded: this.setActivityExpanded,
       onTranscriptScroll: this.transcriptScrolled,
       onTranscriptNavigate: this.navigateTranscript,
+      onShowEarlier: this.showEarlierRows,
       onScrollToBottom: this.scrollToBottom,
       renaming: this.renamingFor === this.conversation.selected?.id,
       confirmingDelete: this.deletingFor === this.conversation.selected?.id,
@@ -2618,6 +2672,12 @@ export class HuiApp extends HuiElement {
         inert: noticesInert,
         onTurnOff: () => { this.control.setLidAwake(false); this.composerTextarea?.focus(); },
         onDismiss: () => { this.control.dismissPowerNotice(); this.composerTextarea?.focus(); },
+      })}
+      ${this.embeddedPane ? null : renderAppLinkNotice({
+        href: this.appLink,
+        dismissed: this.appLinkDismissed,
+        inert: noticesInert,
+        onDismiss: () => { this.appLinkDismissed = true; this.composerTextarea?.focus(); },
       })}
       <div class="hui-workspace">${this.renderWorkspace()}</div>
       ${this.sessions.actionToast ? html`<div class="app-toast action-toast" data-level=${this.sessions.actionToast.failed ? "error" : "info"}>
@@ -2774,6 +2834,19 @@ export class HuiApp extends HuiElement {
         onRefresh: () => void this.refreshSessions(),
         ...this.sessions.sessionsPageProps(),
       }),
+      dashboard: () => ({
+        groups: this.listedGroups,
+        sessionsLoading: this.sessions.loading,
+        sessionsError: this.sessions.error,
+        metrics: this.dashboard.metrics,
+        history: this.dashboard.history,
+        metricsError: this.dashboard.error,
+        expandedLists: this.dashboard.expandedLists,
+        now: Date.now(),
+        onRetry: this.dashboard.refresh,
+        onToggleList: this.dashboard.toggleList,
+        onOpenSession: this.selectSession,
+      }),
       onOpenSettings: () => this.navigate({ kind: "settings", page: "integrations" }),
       onOpenSession: (id) => this.navigate({ kind: "session", id }),
     };
@@ -2813,6 +2886,7 @@ export class HuiApp extends HuiElement {
     const props = {
       view: this.view,
       activePage: this.activePage,
+      pages: availablePages(this.control.settings.labs),
       selectedSessionId: this.view === "bot" ? "" : this.conversation.selected?.id ?? "",
       splitSessionId: "",
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),

@@ -1,6 +1,6 @@
 /**
  * HUI's agent tools for PI conversations: shared terminals, sibling sessions and subagents, media, secret
- * requests, task suggestions, the stage and watchers. Each tool only declares its schema and forwards the call
+ * requests, desktop notifications, task suggestions, the stage and watchers. Each tool only declares its schema and forwards the call
  * over HUI's agent bridge; the gateway owns the state and decides what the bound caller may do.
  */
 import { Type } from "typebox";
@@ -121,7 +121,12 @@ Every question also offers a free-text answer the card adds itself, and the user
     parameters: Type.Object({
       task: Type.String({ minLength: 1, maxLength: 20_000 }),
       label: Type.Optional(Type.String({ minLength: 1, maxLength: 120 })),
-      model: Type.Optional(Type.String({ minLength: 3, maxLength: 200 })),
+      route: Type.Optional(Type.String({
+        minLength: 1,
+        maxLength: 40,
+        description: "Name of a model route the prompt lists; the route already names the provider and model.",
+      })),
+      model: Type.Optional(Type.String({ minLength: 3, maxLength: 200, description: "A raw `provider/id` model, only when no route fits." })),
       thinking: Type.Optional(Type.Union([
         Type.Literal("off"), Type.Literal("minimal"), Type.Literal("low"),
         Type.Literal("medium"), Type.Literal("high"), Type.Literal("xhigh"), Type.Literal("max"),
@@ -137,7 +142,7 @@ Every question also offers a free-text answer the card adds itself, and the user
   pi.registerTool({
     name: "agents_wait",
     label: "Wait for subagents",
-    description: "Wait until the listed subagents of this session have finished and return their results; at the timeout, return those finished so far and the pending ones.",
+    description: "Wait until the listed subagents of this session have finished and return their results; at the timeout, or as soon as a new message arrives for this session, return those finished so far and the pending ones.",
     parameters: Type.Object({
       ids: Type.Array(Type.String({ minLength: 1, maxLength: 200 }), { minItems: 1, maxItems: 100, description: "taskIds from sessions_spawn." }),
       timeoutSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 3_600, description: "Default 600." })),
@@ -169,6 +174,28 @@ Every question also offers a free-text answer the card adds itself, and the user
         content: [{ type: "text", text: `Presented ${count} media ${count === 1 ? "item" : "items"} in HUI.` }],
         details: result,
       };
+    },
+  });
+
+  pi.registerTool({
+    name: "notify_user",
+    label: "Notify user",
+    description: "Queue a native HUI desktop notification on the macOS gateway. Clicking it opens this conversation, not whichever chat was last active. Priority low shows it without a sound, normal plays the default sound, and high also bounces HUI's Dock icon until the operator opens HUI. Requires the current HUI desktop app; macOS settings may suppress the banner.",
+    promptSnippet: "Send a clickable desktop notification that opens this chat",
+    promptGuidelines: [
+      "Use notify_user when the operator asked for an alert or an important update from an agreed background task. Do not notify for every response.",
+      "Keep the title, subtitle and message short and keep secrets out of notifications. Put the details in this chat. HUI supplies the destination automatically.",
+      "Use priority high only for what needs the operator now; leave routine updates at normal or low.",
+      "A queued notification is not proof a banner appeared or the operator read it, and in-view means the operator has this chat in front. Report an unavailable desktop app or platform instead of falling back to Script Editor alerts.",
+    ],
+    parameters: Type.Object({
+      title: Type.String({ minLength: 1, maxLength: 120 }),
+      subtitle: Type.Optional(Type.String({ maxLength: 120 })),
+      message: Type.Optional(Type.String({ maxLength: 1_000 })),
+      priority: Type.Optional(Type.Union([Type.Literal("low"), Type.Literal("normal"), Type.Literal("high")])),
+    }, { additionalProperties: false }),
+    async execute(_toolCallId, params, signal) {
+      return output(await invokeHuiBridge("notify_user", params, { timeoutMs: 20_000, signal }));
     },
   });
 
@@ -296,6 +323,28 @@ Every question also offers a free-text answer the card adds itself, and the user
   });
 
   pi.registerTool({
+    name: "update_goal",
+    label: "Update goal",
+    description: "Report this conversation's goal as complete or blocked. Only valid while the operator's goal is active; HUI refuses and tells you to carry on when there is none.",
+    promptSnippet: "Mark this conversation's goal complete or blocked",
+    promptGuidelines: [
+      "Mark the goal complete only when the whole objective is verified and no required work remains. Mark it blocked only when the same blocker has held for three consecutive turns and no progress is possible without the operator or an outside change. Difficulty, unfinished polish or a nearly spent budget justify neither.",
+      "Updating the goal sends no reply. Continue the turn and give the operator the answer they asked for.",
+    ],
+    parameters: Type.Object({
+      status: Type.Union([Type.Literal("complete"), Type.Literal("blocked")]),
+      note: Type.Optional(Type.String({ maxLength: 2_000, description: "Short status note for the operator." })),
+    }),
+    async execute(_toolCallId, params) {
+      const result = await invoke("update_goal", params);
+      return {
+        content: [{ type: "text", text: `${result?.status === "updated" ? `Goal ${result.goal?.status}.` : result?.error ?? "The goal was not updated."} ${result?.nextAction ?? ""}`.trim() }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "subagents",
     label: "Manage subagents",
     description: "List, steer, or stop child agents spawned from the current agent tree.",
@@ -315,11 +364,11 @@ Every question also offers a free-text answer the card adds itself, and the user
     description: "Start and manage a long-running background watcher that waits for an external condition (a pull request approval, a CI run, a deploy) and then acts. HUI runs it, keeps its output and exit status, and shows it as a card in this conversation where the operator can read, stop or restart it.",
     promptSnippet: "Run a long-lived watcher that HUI shows in this conversation",
     promptGuidelines: [
-      "Use watcher instead of a detached nohup loop whenever a condition may take a long time to become true: waiting for a pull request approval, a CI run, a deploy or an external state change. The watcher keeps running after this turn ends and after HUI restarts.",
+      "Use watcher instead of a detached nohup loop whenever a condition may take a long time to become true: waiting for a pull request approval, a CI run, a deploy or an external state change. The watcher keeps running after this turn ends and after HUI restarts, and when it ends HUI writes one automated event into this conversation, so end your turn and wait for it instead of polling.",
       "Record the purpose (what it waits for), the target (the pull request or other URL) and the outcome (what happens when the condition holds), so the operator can see what it is doing without reading the command.",
       "The command runs with /bin/sh in this conversation's working directory, appends its output to the watcher's own log and records its exit status. It must end on its own unless it was started with keepRunning; do not start background children of your own inside it.",
       "Keep one watcher per condition. Stop watchers that are no longer needed instead of leaving them running, and dismiss finished ones you no longer need: a conversation holds at most 10 watchers, finished ones included.",
-      "A watcher card reports running, done, failed, stopped or dead (the process was lost, for example after a reboot). Restart a dead watcher instead of starting a duplicate. Restarting re-runs the same command; to watch something else, start a new watcher.",
+      "A watcher card reports running, done, failed, stopped or dead: running only while HUI can prove its own process is alive, and dead when the process was lost, for example after a reboot. Restart a dead watcher instead of starting a duplicate; if HUI could not rule out a surviving process it refuses the restart, so stop it first. Restarting re-runs the same command; to watch something else, start a new watcher.",
       "Pass keepRunning: true only for a watcher that should run until stopped, such as a listener that reports to a bot's trigger: HUI starts it again whenever it finds it dead, including after a reboot. Never for a one-shot wait, whose command would act again.",
     ],
     parameters: Type.Object({

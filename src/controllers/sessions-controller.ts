@@ -81,6 +81,7 @@ export class SessionsController {
   readonly #host: SessionsHost;
   readonly #deps: SessionsDeps;
   #hasStatusSnapshot = false;
+  #streamWanted = false;
   /** One lightweight connection keeps background session lifecycle visible. */
   #statusStreamStop: (() => void) | undefined;
   #archiveToastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -94,14 +95,21 @@ export class SessionsController {
   }
 
   start(): void {
+    this.#streamWanted = true;
+    if (this.revision) this.#openStatusStream();
+  }
+
+  #openStatusStream(): void {
     this.#statusStreamStop ??= subscribeSessionStatuses({
       onSnapshot: this.#applyStatusSnapshot,
       onStatus: this.#applyStatusUpdate,
       onSessions: this.#applyListChange,
+      heldRevision: () => this.revision,
     });
   }
 
   stop(): void {
+    this.#streamWanted = false;
     clearTimeout(this.#worktreePoll);
     clearTimeout(this.#actionToastTimer);
     this.#statusStreamStop?.();
@@ -135,6 +143,7 @@ export class SessionsController {
       if (!background) this.loading = false;
       this.#host.requestUpdate();
       this.#deps.listSettled();
+      if (this.#streamWanted) this.#openStatusStream();
     }
   }
 

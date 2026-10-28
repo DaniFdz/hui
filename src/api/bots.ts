@@ -1,12 +1,13 @@
 /**
  * Client half of the bots API (`/__hui/bots`, owned by `server/`; the contract is in `docs/api.md`): reading the
- * roster, the live list stream, and creating, editing, archiving, restoring and deleting a bot. Records are
+ * roster, the live list stream, creating, editing, archiving, restoring and deleting a bot, and what it cost. Records are
  * normalized by src/lib/bots/bots.ts on the way in.
  */
-import type { BotInput, BotPatch, BotView } from "./schema/bots.ts";
+import type { BotInput, BotPatch, BotUsageResponse, BotView } from "./schema/bots.ts";
+import type { UsageTotals } from "./schema/diagnostics.ts";
 import { isRecord, parseBot, parseBotList, parseBotsUpdate, type BotsStreamHandlers } from "../lib/bots/bots.ts";
 import { CLIENT_HEADERS, fetchJson, trackedFetch } from "./request.ts";
-import { decodeSseFrame, reconnectDelay, STATUS_STREAM_STALL_MS } from "./sessions.ts";
+import { readEventStream, reconnectDelay } from "./sessions.ts";
 
 const BOTS_URL = "/__hui/bots";
 
@@ -58,36 +59,20 @@ async function connectBotsOnce(handlers: BotsStreamHandlers, signal: AbortSignal
     return "dropped";
   }
   if (!response.ok || !response.body) return response.status === 404 || response.status === 405 ? "unsupported" : "dropped";
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let first = true;
-  let stall: ReturnType<typeof setTimeout> | undefined;
   try {
-    for (;;) {
-      clearTimeout(stall);
-      stall = setTimeout(() => void reader.cancel(), STATUS_STREAM_STALL_MS);
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer = (buffer + decoder.decode(value, { stream: true })).replace(/\r\n/g, "\n");
-      let at: number;
-      while ((at = buffer.indexOf("\n\n")) !== -1) {
-        const frame = decodeSseFrame(buffer.slice(0, at));
-        buffer = buffer.slice(at + 2);
-        const update = frame?.name === "bots" ? parseBotsUpdate(frame.payload) : undefined;
-        if (!update) continue;
-        if (first) {
-          onLive();
-          handlers.onConnection("live");
-        }
-        handlers.onUpdate(update, first);
-        first = false;
+    await readEventStream(response.body, (frame) => {
+      const update = frame.name === "bots" ? parseBotsUpdate(frame.payload) : undefined;
+      if (!update) return;
+      if (first) {
+        onLive();
+        handlers.onConnection("live");
       }
-    }
+      handlers.onUpdate(update, first);
+      first = false;
+    });
   } catch {
     return "dropped";
-  } finally {
-    clearTimeout(stall);
   }
   return "dropped";
 }
@@ -139,4 +124,9 @@ export async function restoreBot(id: string): Promise<BotView> {
 /** Deletes an archived bot for good: its routines and chat go from HUI; its files stay. */
 export async function deleteBot(id: string): Promise<void> {
   await fetchJson<unknown>(botUrl(id, "?permanent=1"), { method: "DELETE", signal: AbortSignal.timeout(30_000) });
+}
+
+/** What a bot's chat and the subagents under it cost, per model. */
+export async function loadBotUsage(id: string): Promise<UsageTotals> {
+  return (await fetchJson<BotUsageResponse>(`${BOTS_URL}/${encodeURIComponent(id)}/usage`)).usage;
 }

@@ -404,6 +404,71 @@ test("every session announces a prompt with a snapshot before its run, so screen
   manager.disposeAll();
 });
 
+test("answering a question or settling without refreshed history sends a page the session's state without its transcript", async () => {
+  const { watchSessionEvents } = await import("./http/events.ts");
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor(`question-${crypto.randomUUID()}`);
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const snapshots: string[] = [];
+  const stop = watchSessionEvents(record.id, (event, data) => {
+    if (event === "snapshot") snapshots.push("transcript" in (data as object) ? "with transcript" : "without transcript");
+  }, manager, { slim: true, heldRevision: manager.revision(record.id) });
+  started[0]!.emit({ type: "question", question: { id: "q-1", method: "input", title: "Name" } });
+  await manager.respondQuestion(record.id, "q-1", { value: "Ada" });
+  started[0]!.emit({ type: "question", question: { id: "q-2", method: "confirm", title: "Continue?", message: "Proceed" } });
+  await manager.cancelQuestion(record.id, "q-2");
+  started[0]!.emit({ type: "settled", historyRefreshed: false });
+  assert.deepEqual(snapshots, ["without transcript", "without transcript", "without transcript", "without transcript"]);
+  started[0]!.emit({ type: "settled" });
+  assert.equal(snapshots.at(-1), "with transcript", "PI's refreshed history replaces the streamed one");
+  stop();
+  manager.disposeAll();
+});
+
+test("a browser's stream starts from the transcript it holds: nothing again, or only what happened since; scripts get whole snapshots", async () => {
+  const { watchSessionEvents } = await import("./http/events.ts");
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const record = recordFor(`held-${crypto.randomUUID()}`);
+  manager.ensure(record);
+  await waitForBoot(manager, record.id);
+  const opened = manager.revision(record.id);
+  const watch = (options: { slim?: boolean; heldRevision?: number }) => {
+    const frames: string[] = [];
+    const stop = watchSessionEvents(record.id, (event, data) => {
+      frames.push(event === "snapshot" ? ("transcript" in (data as object) ? "snapshot" : "snapshot without transcript")
+        : event === "event" ? (data as RuntimeEvent).type : event);
+    }, manager, options);
+    return { frames, stop };
+  };
+  const browser = watch({ slim: true, heldRevision: opened });
+  const script = watch({});
+  manager.notifySnapshot(record.id);
+  assert.deepEqual(browser.frames, ["snapshot without transcript", "snapshot without transcript"]);
+  assert.deepEqual(script.frames, ["snapshot", "snapshot"]);
+  started[0]!.emit({ type: "text", delta: "Working on it" });
+  started[0]!.emit({ type: "tool_start", id: "build", name: "bash" });
+  started[0]!.emit({ type: "tool_update", id: "build", name: "bash", output: "compiling" });
+  started[0]!.emit({ type: "tool_update", id: "build", name: "bash", output: "compiling\nlinking" });
+  manager.notifySnapshot(record.id);
+  const late = watch({ slim: true, heldRevision: opened });
+  assert.deepEqual(late.frames, ["text", "tool_start", "tool_update", "snapshot without transcript"],
+    "what changed since the open, in order, without what a later frame replaces");
+  const now = Date.now();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(now + 61_000);
+  started[0]!.emit({ type: "text", delta: " still" });
+  clock.mockRestore();
+  const slow = watch({ slim: true, heldRevision: opened });
+  assert.deepEqual(slow.frames, ["snapshot"], "frames from more than a minute ago are gone, so the whole snapshot comes");
+  await manager.prompt(record.id, "Next step");
+  const stale = watch({ slim: true, heldRevision: opened });
+  assert.deepEqual(stale.frames, ["snapshot"], "a revision from before a new transcript gets the whole one");
+  for (const watcher of [browser, script, late, slow, stale]) watcher.stop();
+  manager.disposeAll();
+});
+
 test("restart boots an idle session again from a new record and keeps its listeners", async () => {
   const started: FakeSession[] = [];
   const options: StartOptions[] = [];
@@ -678,8 +743,7 @@ test("only work a restart would lose blocks an ordinary gateway stop", async () 
   pi.disposeAll();
 });
 
-test("manual continuation remains available after automatic recovery is exhausted", async () => {
-  const started: FakeSession[] = [];
+test("manual continuation remains available after automatic recovery is exhausted", async () => {  const started: FakeSession[] = [];
   const manager = new LiveSessions(factory(started));
   manager.ensure({
     ...recordFor("continue-interrupted"),
@@ -695,6 +759,108 @@ test("manual continuation remains available after automatic recovery is exhauste
   const durable = (await readRegistry()).find((session) => session.id === "continue-interrupted");
   assert.equal(durable?.runPrompt, "finish the original task");
   assert.equal(durable?.runRecoveryAttempts, undefined);
+});
+
+test("a run end is announced once nothing else will run, and is failed when it ends in an error or its runtime exits mid-turn", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const ends: import("./sessions/live-sessions.ts").RunEnd[] = [];
+  manager.watchRunEnds((end) => ends.push(end));
+  const id = `run-ends-${crypto.randomUUID()}`;
+  manager.ensure(recordFor(id));
+  await waitForBoot(manager, id);
+  const runtime = started[0]!;
+  await manager.prompt(id, "first");
+  await manager.followUp(id, "second");
+  runtime.emit({ type: "settled" });
+  await waitFor("the queued message to start", () => runtime.prompts.at(-1) === "second");
+  assert.deepEqual(ends, [], "not between a run and its queued message");
+  runtime.emit({ type: "settled" });
+  await waitFor("the run to end", () => ends.length === 1, { state: () => ends });
+  assert.deepEqual(ends, [{ id, failed: false, prompt: "second" }]);
+
+  runtime.history = [...runtime.history, { kind: "error", message: "provider failed" }];
+  await manager.prompt(id, "third");
+  runtime.emit({ type: "settled" });
+  await waitFor("the failed run to end", () => ends.length === 2);
+  assert.deepEqual(ends[1], { id, failed: true, prompt: "third" });
+
+  await manager.prompt(id, "fourth");
+  runtime.exit();
+  assert.deepEqual(ends[2], { id, failed: true, prompt: "fourth" });
+  assert.equal(ends.length, 3);
+  manager.disposeAll();
+});
+
+test("a run end names the message that started its run, through recoveries and subagent results, and Stop announces none", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  const ends: import("./sessions/live-sessions.ts").RunEnd[] = [];
+  manager.watchRunEnds((end) => ends.push(end));
+  manager.ensure({ ...recordFor("origins"), runPrompt: "[trigger: PR merged · #7] check it" });
+  await waitForBoot(manager, "origins");
+  const runtime = started[0]!;
+  runtime.emit({ type: "settled" });
+  await waitFor("the resumed run to end", () => ends.length === 1);
+
+  await manager.prompt("origins", "[routine: Digest] summarize");
+  runtime.emit({ type: "settled" });
+  await waitFor("the routine's run to end", () => ends.length === 2);
+  await manager.prompt("origins", "[HUI subagent completion event]\nchild done");
+  runtime.emit({ type: "settled" });
+  await waitFor("the run its subagent continued to end", () => ends.length === 3);
+  await manager.prompt("origins", "HUI restarted while this ran. Continue: [from @grace] deploy", undefined, "[from @grace] deploy");
+  runtime.emit({ type: "settled" });
+  await waitFor("the recovered run to end", () => ends.length === 4);
+  assert.deepEqual(ends.map(({ prompt }) => prompt), [
+    "[trigger: PR merged · #7] check it", "[routine: Digest] summarize", "[routine: Digest] summarize", "[from @grace] deploy",
+  ]);
+
+  await manager.prompt("origins", "stop me");
+  await manager.abort("origins");
+  runtime.emit({ type: "settled" });
+  await manager.prompt("origins", "fails after the stop");
+  runtime.emit({ type: "error", message: "provider failed" });
+  runtime.emit({ type: "settled" });
+  await waitFor("the failed run to end", () => ends.length === 5);
+  assert.deepEqual(ends[4], { id: "origins", failed: true, prompt: "fails after the stop" }, "the stopped run sent nothing, and an error the history drops still fails the run");
+  manager.disposeAll();
+});
+
+test("continue after a failed answer restates the request the run was handling", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("continue-failed"));
+  await waitForBoot(manager, "continue-failed");
+  started[0]!.history = [
+    { kind: "message", role: "user", text: "Use pup" },
+    { kind: "message", role: "assistant", text: "Searching the pipelines" },
+    { kind: "error", message: "API key auth failed for provider ai-gw-logical" },
+  ];
+  started[0]!.emit({ type: "history" });
+
+  await manager.continueInterrupted("continue-failed");
+  assert.equal(
+    started[0]!.prompts.at(-1),
+    "The previous run was interrupted while handling this request:\n\nUse pup\n\nReview the latest transcript and workspace state, finish the unfinished task, and avoid repeating work that is already complete.",
+  );
+  const stored = (await readRegistry()).find((session) => session.id === "continue-failed");
+  assert.equal(stored?.runPrompt, "Use pup");
+  // Settle the resumed run so the marker it wrote cannot reach another test file: a registry record left
+  // mid-run is one a later gateway would try to recover by booting a real runtime for it.
+  started[0]!.emit({ type: "settled" });
+  await waitForStored(manager, "continue-failed", "the run marker to be cleared", (record) => !record?.runStartedAt);
+  manager.disposeAll();
+});
+
+test("continue refuses a session with neither a lost run nor a failed answer", async () => {
+  const started: FakeSession[] = [];
+  const manager = new LiveSessions(factory(started));
+  manager.ensure(recordFor("continue-plain"));
+  await waitForBoot(manager, "continue-plain");
+  await assert.rejects(() => manager.continueInterrupted("continue-plain"), /no interrupted run to continue/u);
+  assert.deepEqual(started[0]!.prompts, []);
+  manager.disposeAll();
 });
 
 test("settled background activity becomes unread and a reader clears it", async () => {
@@ -788,7 +954,7 @@ test("a primary failure before output retries once on the configured fallback", 
   const runtime = factory(started);
   const manager = new LiveSessions(runtime, undefined, async () => ({
     ...DEFAULT_SETTINGS,
-    models: { primary: "openai/gpt", fallback: "anthropic/sonnet", utility: "openai/tiny" },
+    models: { primary: "openai/gpt", fallback: "anthropic/sonnet", utility: "openai/tiny", routes: [] },
   }));
   manager.ensure(recordFor("fallback"));
   await waitForBoot(manager, "fallback");

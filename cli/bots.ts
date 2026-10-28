@@ -2,15 +2,18 @@
  * `hui bot`: bots (HUI-18) from a terminal. Everything goes through the running
  * gateway, as in Settings and the Bots tab: the `/__hui/bots` routes, the
  * session API for `chat`, and the Automation routes for routines, which
- * `hui schedule` shares (`schedules.ts`). The CLI never opens the Durable store
- * or OptChat's files; the gateway is their only writer.
+ * `hui schedule` shares (`schedules.ts`). The CLI never opens the Durable store,
+ * OptChat's files or a bot's home; the gateway is their only writer. `soul`,
+ * `user`, `memory` and `bootstrap` read (and, for the first and last, write) the
+ * bot's own files; `history` is its OptChat view; `split` asks the bot to move an
+ * old single-file soul into the three.
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import {
   BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, botColorName, botFaceEars, botDisplayCwd, botFaceColor, botFaceShape, botKickoffName, botLook, NEW_BOT_NAME,
-  type BotCatalog, type BotCatalogTool, type BotMessageResult, type BotQuestion, type BotSkillSelector, type BotSoul, type BotsUpdate, type BotTagging, type BotView,
+  type BotCatalog, type BotCatalogTool, type BotFileText, type BotMessageResult, type BotQuestion, type BotSkillSelector, type BotSoul, type BotsUpdate, type BotTagging, type BotView,
 } from "../server/bots-format.ts";
 import { voiceLanguage, voiceLanguageName } from "../server/bots/voice-languages.ts";
 import { gptLiveVoiceLabel } from "../server/calls-format.ts";
@@ -136,8 +139,9 @@ export async function botCommand(base: string, action: string, operands: readonl
   const path = `/__hui/bots/${encodeURIComponent(bot.id)}`;
   switch (action) {
     case "show": {
-      const { bot: view } = await request<{ bot: BotView }>(base, path);
-      print(view, formatBot(view));
+      const homeText = (file: "user" | "memory") => flags.json ? undefined : request<BotFileText>(base, `${path}/files/${file}`).then((result) => result.text, () => undefined);
+      const [{ bot: view }, user, memory] = await Promise.all([request<{ bot: BotView }>(base, path), homeText("user"), homeText("memory")]);
+      print(view, formatBot(view, { user, memory }));
       return 0;
     }
     case "edit": {
@@ -180,10 +184,14 @@ export async function botCommand(base: string, action: string, operands: readonl
     case "send": return send(base, bot, operands[1]!, flags, io);
     case "export": return (await import("./bot-templates.ts")).exportCommand(base, bot, flags, io);
     case "soul": return soul(base, bot, flags, io);
+    case "user": return fileText(base, bot, "user", flags, io);
+    case "memory": return memory(base, bot, flags, io);
+    case "history": return history(base, bot, flags, io);
+    case "bootstrap": return bootstrap(base, bot, flags, io);
+    case "split": return split(base, bot, flags, io);
     case "tools": return tools(base, bot, flags, io);
     case "skills": return skills(base, bot, flags, io);
     case "chat": return botChat(base, bot, io);
-    case "memory": return memory(base, bot, flags, io);
     case "routine list":
     case "routine add":
     case "routine run":
@@ -295,7 +303,7 @@ async function skills(base: string, bot: BotView, flags: BotFlags, io: BotIO): P
   return 0;
 }
 
-async function memory(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
+async function history(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
   const path = `/__hui/bots/${encodeURIComponent(bot.id)}/memory`;
   if (flags.zoom !== undefined) {
     const { id, n } = parseZoom(flags.zoom);
@@ -310,8 +318,59 @@ async function memory(base: string, bot: BotView, flags: BotFlags, io: BotIO): P
     return 0;
   }
   const result = await request<{ status: NonNullable<BotView["memory"]>; view: string }>(base, path);
-  io.out(`${flags.json ? JSON.stringify(result) : `${formatMemory(result.status)}\n${result.view}`}\n`);
+  io.out(`${flags.json ? JSON.stringify(result) : `${formatHistory(result.status)}\n${result.view}`}\n`);
   return 0;
+}
+
+/** `hui bot memory`: MEMORY.md, what the bot chose to keep; `--zoom`/`--html` still print its history, as before. */
+async function memory(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
+  if (flags.zoom !== undefined || flags.html !== undefined) {
+    io.err("--zoom and --html show the chat's history now: hui bot history\n");
+    return history(base, bot, flags, io);
+  }
+  return fileText(base, bot, "memory", flags, io);
+}
+
+/** `hui bot user`, `memory`: one of the bot's home files, read-only: the bot writes them when you tell it to. */
+async function fileText(base: string, bot: BotView, file: "user" | "memory", flags: BotFlags, io: BotIO): Promise<number> {
+  const result = await request<BotFileText>(base, `/__hui/bots/${encodeURIComponent(bot.id)}/files/${file}`);
+  const name = file === "user" ? "USER.md" : "MEMORY.md";
+  io.out(`${flags.json ? JSON.stringify(result) : result.text ?? `@${bot.handle} has no ${name} yet: it writes one when you tell it what to keep.`}\n`);
+  return 0;
+}
+
+/** `hui bot bootstrap`: the operator's onboarding body, read or replaced with --file ("" or `-` removes it). */
+async function bootstrap(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
+  const path = `/__hui/bots/${encodeURIComponent(bot.id)}/files/bootstrap`;
+  if (flags.file !== undefined) {
+    const text = await readText(flags.file, io);
+    const result = await request<BotFileText>(base, path, { method: "PUT", body: { text } });
+    io.out(`${flags.json ? JSON.stringify(result) : result.text === null
+      ? `Removed @${bot.handle}'s BOOTSTRAP.md.`
+      : `Replaced @${bot.handle}'s BOOTSTRAP.md (${result.text.length} characters); its first conversation follows it while it has no SOUL.md.`}\n`);
+    return 0;
+  }
+  const result = await request<BotFileText>(base, path);
+  io.out(`${flags.json ? JSON.stringify(result) : result.text ?? `@${bot.handle} has no BOOTSTRAP.md: its first conversation is HUI's own.`}\n`);
+  return 0;
+}
+
+/** The message `hui bot split` sends: the three files, what belongs in each, and that the bot does the moving. */
+export function splitMessage(): string {
+  return [
+    "[HUI bot split] HUI now keeps your prompt in three files instead of one, and I want you to split what you have.",
+    "- SOUL.md is still who you are: your role, how you work and sound, when you reach out, your boundaries. Timeless, about you.",
+    "- USER.md is what you know about me: my preferences, how I like to work, corrections I gave you, what I told you about myself. Keep what is about me there, one line each, and no dates.",
+    "- MEMORY.md is what you chose to keep: durable knowledge for your work, by topic. Not the chat's log.",
+    "Read your current SOUL.md, move anything about me to USER.md with update_user and anything you keep as knowledge to MEMORY.md with update_memory, then rewrite SOUL.md with write_soul so only you and how you work stay in it. Never invent a preference I did not tell you. Then tell me what you moved, in a short list.",
+  ].join("\n");
+}
+
+/** `hui bot split`: tells the bot to move its old SOUL.md into SOUL.md, USER.md and MEMORY.md. */
+async function split(base: string, bot: BotView, flags: BotFlags, io: BotIO): Promise<number> {
+  const code = await send(base, bot, splitMessage(), flags, io);
+  if (code !== 1) await request(base, `/__hui/bots/${encodeURIComponent(bot.id)}`, { method: "PATCH", body: { split: true } });
+  return code;
 }
 
 type ChatEntry = { kind: string; role?: string; text?: string; id?: string; name?: string };
@@ -683,7 +742,7 @@ export function formatSkills(bot: BotView, catalog: BotCatalog): string {
 }
 
 /** One line: the log, the tree, the view, and what the compactor spent since the gateway opened the memory. */
-function formatMemory(status: NonNullable<BotView["memory"]>): string {
+function formatHistory(status: NonNullable<BotView["memory"]>): string {
   const size = status.viewBytes < 1024 ? `${status.viewBytes} B` : `${Math.round(status.viewBytes / 1024)} KB`;
   const { usage } = status;
   return [
@@ -723,14 +782,17 @@ function formatLanguage(value: string | undefined): string {
   return code ? `${code} (${voiceLanguageName(code)})` : "auto";
 }
 
-export function formatBot(bot: BotView): string {
+export function formatBot(bot: BotView, files: { user?: string | null; memory?: string | null }): string {
+  const homeFile = (name: string, command: string, text: string | null | undefined) => text === undefined
+    ? "unavailable"
+    : text === null ? "none yet: it writes one when you tell it what to keep" : `${name}, ${plural(text.length, "character")} (hui bot ${command} ${bot.handle})`;
   return [
     `${bot.avatar?.emoji ? `${bot.avatar.emoji} ` : ""}@${bot.handle} · ${bot.name}${bot.title ? ` (${bot.title})` : ""}${bot.archived ? " · archived" : ""}`,
     `status: ${bot.status}${bot.unread ? " · unread" : ""}`,
     ...(bot.worker ? [`worker: ${bot.worker.name} (${bot.worker.id})`] : []),
     `look: ${formatLook(bot)}`,
     `model: ${bot.model ?? "default"}${bot.thinking ? ` · thinking ${bot.thinking}` : ""}`,
-    `memory: ${bot.memory ? formatMemory(bot.memory) : "unavailable"}`,
+    `history: ${bot.memory ? formatHistory(bot.memory) : "unavailable"}`,
     `utility model: ${bot.memoryModel ?? "default (Settings' utility model, else its model)"}`,
     `language: ${formatLanguage(bot.voice?.language)}`,
     ...(bot.voice?.live ? [`call voice: ${gptLiveVoiceLabel(bot.voice.live)}`] : []),
@@ -742,5 +804,7 @@ export function formatBot(bot: BotView): string {
     ...(bot.description ? [`description: ${bot.description}`] : []),
     `tagging: ${TAGGING_TEXT[bot.tagging ?? "anyone"]}`,
     `soul: ${bot.soul ? `SOUL.md (hui bot soul ${bot.handle})` : "none yet: it writes SOUL.md in its first conversation"}`,
+    `user: ${homeFile("USER.md", "user", files.user)}`,
+    `memory: ${homeFile("MEMORY.md", "memory", files.memory)}`,
   ].join("\n");
 }

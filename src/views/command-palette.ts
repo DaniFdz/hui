@@ -1,9 +1,10 @@
 /**
- * The Cmd/Ctrl+K palette: its shortcut, the search and ranking over pages, settings pages and chats, keyboard
+ * The Cmd/Ctrl+K palette: its shortcut, the search and ranking over pages, settings pages, bots and chats, keyboard
  * movement and the dialog. It keeps no state; the open flag, query and active index belong to the app.
  */
 import { html, nothing, type TemplateResult } from "lit";
 
+import type { BotView } from "../lib/bots/bots.ts";
 import { icons } from "../lib/icons.ts";
 import type { HuiPage } from "../lib/pages.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
@@ -12,13 +13,14 @@ import { SETTINGS_PAGES, type SettingsPage } from "./settings.ts";
 export type CommandPaletteAction =
   | { kind: "page"; page: HuiPage }
   | { kind: "settings"; page: SettingsPage }
+  | { kind: "bot"; bot: BotView }
   | { kind: "session"; session: SessionView };
 
 export type CommandPaletteItem = {
   id: string;
   label: string;
   description: string;
-  category: "navigation" | "settings" | "chats";
+  category: (typeof CATEGORIES)[number];
   searchText: string;
   action: CommandPaletteAction;
 };
@@ -29,6 +31,7 @@ export type CommandPaletteProps = {
   activeIndex: number;
   pages: readonly HuiPage[];
   groups: readonly SessionGroup[];
+  bots: readonly BotView[];
   onQuery: (query: string) => void;
   onActiveIndex: (index: number) => void;
   onSelect: (action: CommandPaletteAction) => void;
@@ -46,9 +49,11 @@ export function isCommandPaletteShortcut(
 }
 
 const DEFAULT_PAGE_IDS = ["new-session", "sessions", "cron", "plugins"] as const;
+const CATEGORIES = ["navigation", "settings", "bots", "chats"] as const;
 const CATEGORY_LABELS: Record<CommandPaletteItem["category"], string> = {
   navigation: "Navigation",
   settings: "Settings",
+  bots: "Bots",
   chats: "Chats",
 };
 
@@ -73,8 +78,19 @@ function settingsItem(page: (typeof SETTINGS_PAGES)[number]): CommandPaletteItem
     label: page.label,
     description: page.group || "Settings",
     category: "settings",
-    searchText: `${page.id} ${page.group}`,
+    searchText: `settings ${page.id} ${page.group}`,
     action: { kind: "settings", page: page.id },
+  };
+}
+
+function botItem(bot: BotView): CommandPaletteItem {
+  return {
+    id: `bot:${bot.id}`,
+    label: bot.name,
+    description: bot.title ? `@${bot.handle} · ${bot.title}` : `@${bot.handle}`,
+    category: "bots",
+    searchText: bot.description ?? "",
+    action: { kind: "bot", bot },
   };
 }
 
@@ -100,26 +116,31 @@ export function commandPaletteItems(
   pages: readonly HuiPage[],
   groups: readonly SessionGroup[],
   query: string,
+  bots: readonly BotView[] = [],
 ): readonly CommandPaletteItem[] {
   const defaults = DEFAULT_PAGE_IDS.flatMap((id) => {
     const page = pages.find((candidate) => candidate.id === id);
     return page ? [pageItem(page)] : [];
   });
   const settings = SETTINGS_PAGES.map(settingsItem);
+  const settingsHome = { ...settings[0]!, id: "settings", label: "Settings", description: "Appearance and preferences" };
   const normalized = normalize(query);
-  if (!normalized) {
-    return [...defaults, { ...settings[0]!, label: "Settings", description: "Appearance and preferences" }];
-  }
+  if (!normalized) return [...defaults, settingsHome];
   const defaultIds = new Set(defaults.map((item) => item.id));
   return [
-    ...sessionItems(groups),
     ...defaults,
     ...pages.map(pageItem).filter((item) => !defaultIds.has(item.id)),
+    settingsHome,
     ...settings,
+    ...bots.filter((bot) => !bot.archived).map(botItem),
+    ...sessionItems(groups),
   ]
     .map((item) => ({ item, rank: rank(item, normalized) }))
     .filter((entry) => entry.rank > 0)
-    .sort((left, right) => right.rank - left.rank || left.item.label.localeCompare(right.item.label))
+    .sort((left, right) => Number(left.item.category === "chats") - Number(right.item.category === "chats")
+      || right.rank - left.rank
+      || CATEGORIES.indexOf(left.item.category) - CATEGORIES.indexOf(right.item.category)
+      || left.item.label.localeCompare(right.item.label))
     .slice(0, 30)
     .map((entry) => entry.item);
 }
@@ -137,6 +158,7 @@ export function nextCommandPaletteIndex(
 
 function itemIcon(item: CommandPaletteItem): TemplateResult {
   if (item.action.kind === "session") return html`${icons.fileText}`;
+  if (item.action.kind === "bot") return html`${icons.messageSquare}`;
   if (item.action.kind === "settings") return html`${icons.settings}`;
   switch (item.action.page.id) {
     case "new-session": return html`${icons.plus}`;
@@ -148,12 +170,9 @@ function itemIcon(item: CommandPaletteItem): TemplateResult {
 
 export function renderCommandPalette(props: CommandPaletteProps): TemplateResult {
   if (!props.open) return html``;
-  const matches = commandPaletteItems(props.pages, props.groups, props.query);
-  const groups = (["chats", "navigation", "settings"] as const)
-    .map((category) => ({ category, items: matches.filter((item) => item.category === category) }))
-    .filter((group) => group.items.length > 0);
-  // Keyboard navigation must follow the rendered category order, not the
-  // pre-grouping relevance order (the upstream palette uses the same flatten).
+  const matches = commandPaletteItems(props.pages, props.groups, props.query, props.bots);
+  const groups = [...new Set(matches.map((item) => item.category))]
+    .map((category) => ({ category, items: matches.filter((item) => item.category === category) }));
   const items = groups.flatMap((group) => group.items);
   const activeIndex = items.length === 0 ? 0 : Math.min(props.activeIndex, items.length - 1);
   const select = (item: CommandPaletteItem) => props.onSelect(item.action);

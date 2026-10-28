@@ -29,7 +29,7 @@ import type { CallCompletion } from "./call-helper.ts";
 import { runCommand } from "../git/worktree-inventory.ts";
 
 export type BotExportDeps = {
-  bots: Pick<BotService, "get" | "list" | "soul">;
+  bots: Pick<BotService, "get" | "list" | "soul" | "file">;
   /** What a new bot's chat is offered, here or on a worker: its tools are the built-in ones an export lists. */
   offer(worker?: string): Promise<BotOffer>;
   routines: { tasks(): Promise<readonly AutomationTask[]> };
@@ -62,6 +62,8 @@ const RANK = { remove: 0, ask: 1, confirm: 2 } as const;
 type Input = {
   bot: BotView;
   soul: string;
+  /** The operator's onboarding body, if it wrote one; it travels with the soul. */
+  bootstrap: string;
   skills: BotOwnSkill[];
   skillsKept: "all" | "skill-md" | "none";
   routines: AutomationTask[];
@@ -210,8 +212,11 @@ export class BotExportService {
   /** What of the bot would travel, read where it runs, and its hash: exactly what the export holds, nothing else. */
   async #read(bot: BotView): Promise<Input> {
     const own = this.#deps.skills(bot.worker?.id);
-    const [soul, tasks, triggers, offer, skills] = await Promise.all([
-      this.#deps.bots.soul(bot.id), this.#deps.routines.tasks(), this.#deps.triggers.list(bot.id), this.#deps.offer(bot.worker?.id), own ? own.read(bot.id) : [],
+    const [soul, bootstrap, tasks, triggers, offer, skills] = await Promise.all([
+      this.#deps.bots.soul(bot.id),
+      // An older worker keeps no BOOTSTRAP.md: it has none to travel, and that must not fail the export.
+      this.#deps.bots.file(bot.id, "bootstrap").catch(() => null),
+      this.#deps.routines.tasks(), this.#deps.triggers.list(bot.id), this.#deps.offer(bot.worker?.id), own ? own.read(bot.id) : [],
     ]);
     // A new bot's tools: the built-in ones. An extension's tool may be the operator's own, and a new owner's bot has its own.
     const builtIn = new Set(offer.tools.filter((tool) => tool.group !== "extension").map((tool) => tool.name));
@@ -221,13 +226,13 @@ export class BotExportService {
     const routines = tasks.filter((task) => task.sessionId === bot.sessionId);
     const exported = {
       name: bot.name, title: bot.title, description: bot.description, avatar: bot.avatar, model: bot.model, thinking: bot.thinking,
-      memoryModel: bot.memoryModel, memoryThinking: bot.memoryThinking, voice: bot.voice, tagging: bot.tagging, soul, skills,
+      memoryModel: bot.memoryModel, memoryThinking: bot.memoryThinking, voice: bot.voice, tagging: bot.tagging, soul, bootstrap, skills,
       routines: routines.map(({ name, description, prompt, schedule }) => ({ name, description, prompt, schedule })),
       triggers: triggers.map(({ name, filter, prompt, cooldownSeconds, delivery }) => ({ name, filter, prompt, cooldownSeconds, ...(delivery ? { delivery } : {}) })),
       disabledTools, disabledSkills,
     };
     return {
-      bot, soul: soul ?? "", skills, skillsKept: !own ? "none" : own.files ? "all" : "skill-md", routines, triggers: [...triggers], disabledTools, disabledSkills,
+      bot, soul: soul ?? "", bootstrap: bootstrap ?? "", skills, skillsKept: !own ? "none" : own.files ? "all" : "skill-md", routines, triggers: [...triggers], disabledTools, disabledSkills,
       otherTools: (bot.disabledTools ?? []).length - disabledTools.length, otherSkills: (bot.disabledSkills ?? []).length - disabledSkills.length,
       hash: createHash("sha256").update(JSON.stringify(exported)).digest("hex"),
     };
@@ -239,7 +244,7 @@ export class BotExportService {
     const parts: BotExportPart[] = [];
     const cleanup: BotExportCleanup[] = [];
     const copies = new Map<string, { key: string; text: string }[]>();
-    const leftOut = ["Its memory and its chat: an export never carries them."];
+    const leftOut = ["Its memory and its chat: an export never carries them.", "USER.md and MEMORY.md, what it knows about you and what it keeps: they describe the operator, and never leave with an export."];
     const clean = (part: string, field: string, value: string) => {
       const result = cleanText(value, identity);
       for (const hit of result.hits) cleanup.push({ part, field, ...hit });
@@ -259,6 +264,8 @@ export class BotExportService {
 
     text("profile", "Profile", [["name", bot.name], ["title", bot.title], ["description", bot.description]]);
     text("SOUL.md", "SOUL.md", [["text", input.soul]]);
+    // The onboarding body the operator wrote, if any: the bot's ritual, not personal data. It travels with the soul.
+    if (input.bootstrap) text("BOOTSTRAP.md", "BOOTSTRAP.md", [["text", input.bootstrap]]);
     // A skill's name and a file's path travel as they are (they can't be rewritten): one that gives the operator away stays.
     const skills = input.skills.filter((skill) => {
       const kind = personalIn(skill.name, identity);

@@ -19,7 +19,8 @@ try {
     process.send?.({ ready: true });
     process.disconnect?.();
     const result = await updateRelease(installation, { expectedVersion: job.version });
-    await atomicJson(updateJobFile(installation.installationRoot), { ...job, status: "succeeded", version: result.version, message: `HUI ${result.version} is ready.` });
+    await atomicJson(updateJobFile(installation.installationRoot), { ...job, status: "succeeded", version: result.version,
+      message: `HUI ${result.version} is ready.${result.app === undefined ? "" : " Quit and reopen the HUI app to load it."}` });
   });
 } catch (error) {
   const detail = error instanceof Error ? error.message : "Update failed.";

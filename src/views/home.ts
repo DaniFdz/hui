@@ -8,6 +8,7 @@ import { formatCount, metricSummary, relativeTime, replyDraft } from "../lib/mes
 import { renderDirectoryPicker } from "./directory-picker.ts";
 import { html, nothing, type TemplateResult } from "lit";
 import { ref } from "lit/directives/ref.js";
+import { repeat } from "lit/directives/repeat.js";
 import { renderPaneMoveHandle } from "./pane-move-handle.ts";
 import { matchesModelSearch, modelSearchText } from "../lib/model-selection.ts";
 import { sessionGroupLabel, unreachableHost } from "../lib/session/sessions.ts";
@@ -51,7 +52,7 @@ import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
 import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
-import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown/blocks.ts";
+import { markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
@@ -59,7 +60,7 @@ import { widgetView, type WidgetView } from "../lib/widgets.ts";
 import type { RunErrorNotice } from "../lib/run-error.ts";
 import { renderProviderBrandIcon } from "../lib/provider-icons.ts";
 import { parseSlackLink } from "../lib/markdown/slack-link.ts";
-import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./chat/projection.ts";
+import { activityLabel, attributedMessage, browserPreviewRow, projectChatTranscript, rowOfMessage, TRANSCRIPT_WINDOW_ROWS, transcriptWindowStart, workingLabel, type ChatActivity, type ChatMessage, type ChatProjectionRow, type MessageSender } from "./chat/projection.ts";
 import { conversationMarkers } from "./chat/position-rail-model.ts";
 import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard, renderToolFileReference, toolFilePath } from "./chat/read-tool-card.ts";
@@ -227,6 +228,10 @@ export type HomeProps = {
   opening: boolean;
   /** The open request failed, so there is no transcript to show; onRetry asks again. */
   openError?: string;
+  /** A re-read of the open session is in flight. */
+  refreshing?: boolean;
+  /** Reads the open session again, for a card the stream left behind. */
+  onRefreshSession: () => void;
   /** A turn is in flight, so the composer is locked. */
   streaming: boolean;
   sending: boolean;
@@ -250,6 +255,7 @@ export type HomeProps = {
   copiedId: string;
   /** Activity disclosures explicitly opened by the user. Runs are collapsed by default. */
   expandedActivityIds: ReadonlySet<string>;
+  transcriptWindowStart?: number;
   showScrollToBottom: boolean;
   /** Models the session can switch to; empty when the tool cannot list any. */
   models: readonly RuntimeModel[];
@@ -305,6 +311,8 @@ export type HomeProps = {
   onLocalPathKeydown: (event: KeyboardEvent) => void;
   onSendPrompt: (text: string, attachments: readonly Attachment[], mode: PromptMode) => void;
   onContinueInterrupted: () => void;
+  /** Pauses, resumes or clears the conversation's goal from the pill above the composer. */
+  onGoalChange: (action: "pause" | "resume" | "clear") => void;
   queueEditingId: string;
   queueEditingText: string;
   onQueueEdit: (id: string) => void;
@@ -338,6 +346,7 @@ export type HomeProps = {
   onAnswerQuestion: (answer: QuestionResponse) => void;
   onTranscriptScroll: (element: HTMLElement) => void;
   onTranscriptNavigate: (thread: HTMLElement, top: number) => void;
+  onShowEarlier: (start: number) => Promise<void>;
   onScrollToBottom: () => void;
   renaming: boolean;
   confirmingDelete: boolean;
@@ -798,15 +807,18 @@ function attachmentName(item: string | { name: string }): string {
   return typeof item === "string" ? item : item.name;
 }
 
-function attachmentCard(attachment: string | { name: string }): TemplateResult {
-  return html`<div class="chat-assistant-attachment-card chat-assistant-attachment-card--compact" role="listitem"><div class="chat-assistant-attachment-card__header"><div class="chat-assistant-attachment-card__identity">${renderAttachmentFileIcon({ filename: attachmentName(attachment), mode: "large-placeholder" })}<span class="chat-assistant-attachment-card__details"><span class="chat-assistant-attachment-card__title" title=${attachmentName(attachment)}>${attachmentName(attachment)}</span><span class="chat-assistant-attachment-card__meta">${resolveAttachmentFileIcon(attachmentName(attachment)).extensionLabel}</span></span></div><span class="chat-assistant-attachment-card__actions"></span></div></div>`;
+function attachmentCard(attachment: string | { name: string }, url?: string): TemplateResult {
+  const name = attachmentName(attachment);
+  const open = url ? html`<a class="chat-assistant-attachment-card__action" href=${url} target="_blank" rel="noopener" aria-label=${`Open ${name}`} title=${`Open ${name}`}>${icons.externalLink}</a>` : nothing;
+  return html`<div class="chat-assistant-attachment-card chat-assistant-attachment-card--compact" role="listitem"><div class="chat-assistant-attachment-card__header"><div class="chat-assistant-attachment-card__identity">${renderAttachmentFileIcon({ filename: name, mode: "large-placeholder" })}<span class="chat-assistant-attachment-card__details"><span class="chat-assistant-attachment-card__title" title=${name}>${name}</span><span class="chat-assistant-attachment-card__meta">${resolveAttachmentFileIcon(name).extensionLabel}</span></span></div><span class="chat-assistant-attachment-card__actions">${open}</span></div></div>`;
 }
 
 /** Image attachments with a URL render as a thumbnail; a failed load swaps
  * back to the generic file card. */
 function renderMessageAttachment(attachment: string | { name: string; kind?: string; url?: string }): TemplateResult {
   const name = attachmentName(attachment);
-  if (typeof attachment === "string" || attachment.kind !== "image" || !attachment.url) return attachmentCard(attachment);
+  if (typeof attachment === "string") return attachmentCard(attachment);
+  if (attachment.kind !== "image" || !attachment.url) return attachmentCard(attachment, attachment.url);
   const fallback = (event: Event) => {
     const figure = (event.target as HTMLElement).closest(".hui-message-attachment-image");
     if (figure) figure.setAttribute("data-failed", "");
@@ -822,30 +834,6 @@ function renderMessageAttachment(attachment: string | { name: string; kind?: str
 function printable(value: unknown): string {
   if (typeof value === "string") return value;
   try { return JSON.stringify(value, null, 2); } catch { return String(value); }
-}
-
-const codeCopyAttempts = new WeakMap<HTMLElement, symbol>();
-
-async function copyCodeBlock(event: Event, props: HomeProps) {
-  if (!(event.target instanceof Element)) return;
-  handleCodeBlockDisclosure(event.target);
-  const button = event.target.closest<HTMLElement>("[data-copy-code]");
-  if (!button) return;
-  const content = button.closest(".code-block-wrapper")?.querySelector("code")?.textContent ?? "";
-  const code = content.endsWith("\n") ? content.slice(0, -1) : content;
-  const attempt = Symbol();
-  codeCopyAttempts.set(button, attempt);
-  const copied = await props.onCopy(code, `code-${code.slice(0, 40)}`);
-  if (!button.isConnected || codeCopyAttempts.get(button) !== attempt) return;
-  button.classList.toggle("copied", copied);
-  button.classList.toggle("copy-failed", !copied);
-  button.setAttribute("aria-label", copied ? "Copied" : "Copy failed");
-  window.setTimeout(() => {
-    if (!button.isConnected || codeCopyAttempts.get(button) !== attempt) return;
-    button.classList.remove("copied", "copy-failed");
-    button.setAttribute("aria-label", "Copy code");
-    codeCopyAttempts.delete(button);
-  }, copied ? 1500 : 2000);
 }
 
 /** One hover/focus/dismiss contract for every transcript footer action. */
@@ -1248,12 +1236,18 @@ function renderCompaction(row: Extract<ChatProjectionRow, { kind: "compaction" }
   </div>`;
 }
 
-function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[]): TemplateResult {
+function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow[], start: number): TemplateResult {
   const latestAssistantRowId = rows.findLast((row) => row.kind === "messages" && row.role === "assistant")?.id;
   const latestSent = (role: ChatMessage["role"]) => rows.flatMap((row) => row.kind === "messages" && row.role === role ? row.messages : []).findLast((item) => !item.pending && !item.failed);
   const withEmbeds = [latestSent("user"), latestSent("assistant")];
   const browserPreview = props.browserPreview ? browserPreviewRow(rows) : undefined;
-  return html`${rows.map((row, rowIndex) => {
+  const earlier = start > 0 ? html`<div class="chat-history-boundary">
+    <span class="chat-history-boundary__line"></span>
+    <button type="button" class="chat-history-boundary__action" @click=${() => void props.onShowEarlier(Math.max(0, start - TRANSCRIPT_WINDOW_ROWS))}>Show earlier messages</button>
+    <span class="chat-history-boundary__line"></span>
+  </div>` : nothing;
+  return html`${earlier}${repeat(rows.slice(start), (_row, index) => start + index, (row, index) => {
+    const rowIndex = start + index;
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
     if (row.kind === "botCreated") return renderBotCreated(props, row);
     if (row.kind === "compaction") return renderCompaction(row);
@@ -1275,11 +1269,12 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       const handoff = handoffActivity(row.items);
       if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
+      const open = props.expandedActivityIds.has(expansionId);
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
           <details
             class="chat-activity-group"
-            .open=${props.expandedActivityIds.has(expansionId)}
+            .open=${open}
             @toggle=${(event: Event) => {
               const details = event.currentTarget as HTMLDetailsElement;
               props.onActivityExpanded(expansionId, details.open);
@@ -1289,7 +1284,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
               <span class="chat-activity-group__icon">${chevronDownIcon}</span>
               <span class="chat-activity-group__label">${activityLabel(row.items, props.streaming)}</span>
             </summary>
-            <div class="chat-activity-group__body">${row.items.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>
+            ${open ? html`<div class="chat-activity-group__body">${row.items.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
           </details>
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>
@@ -1335,7 +1330,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
   })}`;
 }
 
-function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow[]) {
+function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow[], start: number) {
   if (props.worktreeProgress) {
     return html`<div class="agent-chat__empty agent-chat__creating" role="status" aria-live="polite">
       <div class="agent-chat__creating-copy">
@@ -1379,7 +1374,7 @@ function renderTranscriptBody(props: HomeProps, rows: readonly ChatProjectionRow
       ? html`<div class="agent-chat__empty bot-chat-empty" data-face-stage>${renderBotAvatar(props.bot.bot, "lg", { state: botFaceState(props) })}<strong>Say hi to ${props.bot.bot.name}</strong>${props.bot.bot.title ? html`<span>${props.bot.bot.title}</span>` : nothing}</div>`
       : html`<div class="agent-chat__empty"><strong>Start a conversation</strong><span>Send a message below.</span></div>`;
   }
-  return html`${renderTranscriptRows(props, rows)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
+  return html`${renderTranscriptRows(props, rows, start)}${renderLiveCompaction(props.compaction, props.onCancelCompaction)}${renderWorkingIndicator(props)}`;
 }
 
 /** The same divider while PI summarizes, or why it wrote no summary. The
@@ -1729,6 +1724,7 @@ function renderComposer(props: HomeProps) {
         </div>
       ` : nothing}
       ${renderTaskProgress(props)}
+      ${renderGoalPill(props)}
       ${renderQueue(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
@@ -1850,6 +1846,40 @@ function renderRunError(props: HomeProps, blocked: boolean) {
   </div>`;
 }
 
+const goalTargetIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3" /></svg>`;
+const goalPauseIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5v14M14.5 5v14" /></svg>`;
+const goalPlayIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none" /></svg>`;
+
+/** The goal above the composer, in OpenClaw's own pill: status, objective, and the operator's controls. */
+function renderGoalPill(props: HomeProps) {
+  const goal = props.session?.goal;
+  if (!goal) return nothing;
+  const label = { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[goal.status];
+  const icon = goal.status === "complete" ? checkIcon
+    : goal.status === "blocked" ? icons.alertTriangle
+      : goal.status === "paused" ? goalPauseIcon
+        : goalTargetIcon;
+  return html`<div class="agent-chat__goal-float">
+    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded="false" title=${goal.note ?? goal.objective}>
+      <div class="agent-chat__goal-row">
+        <span class="agent-chat__goal-icon" aria-hidden="true">${icon}</span>
+        <span class="agent-chat__goal-copy">
+          <span class="agent-chat__goal-label">${label}</span>
+          <span class="agent-chat__goal-objective">${goal.objective}</span>
+        </span>
+        <span class="agent-chat__goal-actions">
+          ${goal.status === "active"
+            ? html`<button type="button" class="agent-chat__goal-action" aria-label="Pause goal" title="Pause goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("pause")}>${goalPauseIcon}</button>`
+            : goal.status === "complete"
+              ? nothing
+              : html`<button type="button" class="agent-chat__goal-action" aria-label="Resume goal" title="Resume goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("resume")}>${goalPlayIcon}</button>`}
+          <button type="button" class="agent-chat__goal-action" aria-label="Clear goal" title="Clear goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("clear")}>${icons.trash}</button>
+        </span>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderTaskProgress(props: HomeProps) {
   const card = progressCardFromTranscript(props.transcript);
   if (!card) return nothing;
@@ -1865,6 +1895,7 @@ function renderTaskProgress(props: HomeProps) {
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
+        <button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card" aria-busy=${props.refreshing} ?disabled=${props.refreshing} @click=${(event: Event) => refreshTaskProgress(event, props)}>${icons.refresh}</button>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
       <div class="session-progress-card__body" role="region" aria-label="Task progress">
@@ -1873,6 +1904,13 @@ function renderTaskProgress(props: HomeProps) {
       </div>
     </details>
   </div>`;
+}
+
+/** A control inside the summary asks for a fresh card instead of collapsing it. */
+function refreshTaskProgress(event: Event, props: HomeProps) {
+  event.preventDefault();
+  event.stopPropagation();
+  props.onRefreshSession();
 }
 
 function renderConnection(props: HomeProps) {
@@ -1984,6 +2022,8 @@ function renderContextPicker(usage: RuntimeUsage | undefined, onCompact?: () => 
         ${usage
           ? html`<dl class="context-usage__stats"><div><dt>Input</dt><dd>${compactTokens(usage.inputTokens)}</dd></div><div><dt>Output</dt><dd>${compactTokens(usage.outputTokens)}</dd></div><div><dt>Est. cost</dt><dd>${usage.costUsd === null ? "Unavailable" : `$${usage.costUsd.toFixed(2)}`}</dd></div></dl>`
           : html`<p>The runtime has not reported usage for this session yet.</p>`}
+        ${usage?.sessionCost ? html`<div class="context-usage__section-label">Session cost</div>
+          <dl class="context-usage__stats"><div><dt>${usage.sessionCost.source}</dt><dd>$${usage.sessionCost.usd.toFixed(2)}</dd></div><div><dt>Checked</dt><dd>${relativeTime(usage.sessionCost.asOf)}</dd></div></dl>` : nothing}
         ${compactable ? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact" ?disabled=${!onCompact}
           @click=${(event: Event) => { (event.currentTarget as HTMLElement).closest("details")?.removeAttribute("open"); onCompact?.(); }}>Compact now</button>` : nothing}
       </section>
@@ -2253,7 +2293,7 @@ function renderQuestion(props: HomeProps) {
   if (!question) return nothing;
   if (question.method === "questionnaire") {
     // Its previews' code blocks copy and wrap as the transcript's do.
-    return html`<div class="agent-chat__question-dock" aria-live="polite" @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
+    return html`<div class="agent-chat__question-dock" aria-live="polite">
       <hui-questionnaire-card .prompt=${question} .onAnswer=${props.onAnswerQuestion} .idPrefix=${sessionControlId(props, "questionnaire")}></hui-questionnaire-card>
     </div>`;
   }
@@ -2432,8 +2472,12 @@ function renderBotIdentity(bot: HomeBot, session: SessionView, face: BotFaceStat
     <h2 class="transcript__title chat-pane__session-title" title=${bot.bot.name}>${bot.bot.name}</h2>
     <span class="transcript__meta" title=${worker ? `${worker.name}:${session.cwd}` : session.cwd}>${bot.bot.title ? `${bot.bot.title} · ` : ""}${worker
       ? html`<span class="bot-chat-identity__machine" title=${`Runs on ${worker.name}`}><span class="sr-only">on </span>${icons.globe}<span>${worker.name}</span></span> · `
-      : nothing}${status}</span>
+      : nothing}${renderSessionStatus(status)}</span>
   </div>`;
+}
+
+function renderSessionStatus(status: string) {
+  return html`<span role="status" aria-label=${`Session status: ${status}`}>${status}</span>`;
 }
 
 function renderHeader(props: HomeProps, session: SessionView) {
@@ -2453,7 +2497,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${unreachableHost(session)?.status ?? STATUS_TEXT[session.status]}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(unreachableHost(session)?.status ?? STATUS_TEXT[session.status])}
           </span>
         </div>`}
         ${session.parentId ? html`<button
@@ -2474,9 +2518,9 @@ function renderHeader(props: HomeProps, session: SessionView) {
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
           ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
           ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
-          <button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
+          ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
             <span class="session-history-action__icon">${continueIcon}</span><span class="session-history-action__label">${props.continuing ? "Continuing…" : "Continue"}</span>
-          </button>
+          </button>` : nothing}
           ${props.onSplitPane ? props.onClosePane ? html`
             <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-pane__split-down" aria-label="Split down" title="Split down" @click=${() => props.onSplitPane?.("down")}>${icons.panelBottomOpen}</button>
             <button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-pane__split-right" aria-label="Split right" title="Split right" @click=${() => props.onSplitPane?.("right")}>${icons.panelRightOpen}</button>
@@ -2508,8 +2552,21 @@ function renderHeader(props: HomeProps, session: SessionView) {
   `;
 }
 
+const projections = new WeakMap<readonly TranscriptItem[], readonly ChatProjectionRow[]>();
+
+function projectedRows(transcript: readonly TranscriptItem[]): readonly ChatProjectionRow[] {
+  let rows = projections.get(transcript);
+  if (!rows) projections.set(transcript, rows = projectChatTranscript(transcript.filter((item) => item.kind !== "tool" || item.name !== "progress_card")));
+  return rows;
+}
+
 function renderTranscript(props: HomeProps, session: SessionView) {
-  const rows = projectChatTranscript(props.transcript.filter((item) => item.kind !== "tool" || item.name !== "progress_card"));
+  const rows = projectedRows(props.transcript);
+  const start = transcriptWindowStart(rows.length, props.transcriptWindowStart);
+  const reveal = (messageId: string) => {
+    const row = rowOfMessage(rows, messageId);
+    return row >= 0 && row < start ? props.onShowEarlier(row) : undefined;
+  };
   return html`
     ${renderHeader(props, session)}
     <section class="card chat">
@@ -2524,11 +2581,10 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                   : nothing}
                 <div class="chat-main__conversation">
                   ${props.taskSuggestions?.suggestions.length ? html`<div class="chat-gutter-stack">${renderTaskSuggestionCard(props.taskSuggestions)}</div>` : nothing}
-                  <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0"
-                    @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
-                    @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
-                    ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate })}
-                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
+                  <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
+                    @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
+                    ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
+                    <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>
                 </div>
                 <div class="chat-scroll-to-bottom-wrap"><button type="button" class="chat-scroll-to-bottom" data-visible=${String(props.showScrollToBottom)} ?inert=${!props.showScrollToBottom} aria-hidden=${String(!props.showScrollToBottom)} @click=${props.onScrollToBottom} aria-label="Scroll to latest">${icons.arrowDown}</button></div>

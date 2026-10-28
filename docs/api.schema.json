@@ -936,6 +936,17 @@
         }
       }
     },
+    "BotBootstrapRequest": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "BotCatalog": {
       "type": "object",
       "required": [
@@ -1651,12 +1662,43 @@
         }
       }
     },
+    "BotFileName": {
+      "enum": [
+        "soul",
+        "user",
+        "memory",
+        "bootstrap"
+      ]
+    },
+    "BotFileText": {
+      "type": "object",
+      "required": [
+        "file",
+        "text"
+      ],
+      "properties": {
+        "file": {
+          "$ref": "#/$defs/BotFileName"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "BotImportPreview": {
       "type": "object",
       "required": [
         "template",
         "bot",
         "soul",
+        "memory",
         "memories",
         "skills",
         "routines",
@@ -1751,6 +1793,12 @@
           }
         },
         "soul": {
+          "type": "string"
+        },
+        "memory": {
+          "type": "string"
+        },
+        "bootstrap": {
           "type": "string"
         },
         "opener": {
@@ -2122,6 +2170,15 @@
         "soul": {
           "type": "string"
         },
+        "user": {
+          "type": "string"
+        },
+        "memory": {
+          "type": "string"
+        },
+        "bootstrap": {
+          "type": "string"
+        },
         "worker": {
           "type": "string"
         },
@@ -2395,6 +2452,10 @@
               "type": "null"
             }
           ]
+        },
+        "split": {
+          "type": "boolean",
+          "const": true
         }
       }
     },
@@ -2654,6 +2715,9 @@
           }
         },
         "soul": {
+          "type": "string"
+        },
+        "bootstrap": {
           "type": "string"
         },
         "opener": {
@@ -3274,6 +3338,17 @@
     "BotTriggerSource": {
       "type": "string",
       "const": "listener"
+    },
+    "BotUsageResponse": {
+      "type": "object",
+      "required": [
+        "usage"
+      ],
+      "properties": {
+        "usage": {
+          "$ref": "#/$defs/UsageTotals"
+        }
+      }
     },
     "BotView": {
       "type": "object",
@@ -5991,6 +6066,167 @@
         "vale"
       ]
     },
+    "HostMetrics": {
+      "type": "object",
+      "required": [
+        "sampledAt",
+        "host",
+        "cpu",
+        "memory",
+        "disk",
+        "network",
+        "gpu",
+        "gateway"
+      ],
+      "properties": {
+        "sampledAt": {
+          "type": "string"
+        },
+        "host": {
+          "type": "object",
+          "required": [
+            "platform",
+            "cores"
+          ],
+          "properties": {
+            "platform": {
+              "type": "string"
+            },
+            "cores": {
+              "type": "number"
+            }
+          }
+        },
+        "cpu": {
+          "type": "object",
+          "required": [
+            "percent",
+            "load"
+          ],
+          "properties": {
+            "percent": {
+              "type": "number"
+            },
+            "load": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "required": [
+            "totalBytes",
+            "usedBytes"
+          ],
+          "properties": {
+            "totalBytes": {
+              "type": "number"
+            },
+            "usedBytes": {
+              "type": "number"
+            },
+            "swapUsedBytes": {
+              "type": "number"
+            }
+          }
+        },
+        "disk": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "totalBytes",
+                "usedBytes"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "totalBytes": {
+                  "type": "number"
+                },
+                "usedBytes": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "network": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "rxBytesPerSecond",
+                "txBytesPerSecond"
+              ],
+              "properties": {
+                "rxBytesPerSecond": {
+                  "type": "number"
+                },
+                "txBytesPerSecond": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gpu": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "percent"
+              ],
+              "properties": {
+                "percent": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gateway": {
+          "type": "object",
+          "required": [
+            "cpuPercent",
+            "rssBytes"
+          ],
+          "properties": {
+            "cpuPercent": {
+              "type": "number"
+            },
+            "rssBytes": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "HostMetricsError": {
+      "type": "object",
+      "required": [
+        "error"
+      ],
+      "properties": {
+        "error": {
+          "type": "string"
+        }
+      }
+    },
     "JiraConnection": {
       "type": "object",
       "required": [
@@ -8019,6 +8255,9 @@
               "type": "null"
             }
           ]
+        },
+        "sessionCost": {
+          "$ref": "#/$defs/SessionCostReport"
         }
       }
     },
@@ -8080,6 +8319,25 @@
       "properties": {
         "url": {
           "type": "string"
+        }
+      }
+    },
+    "SessionCostReport": {
+      "type": "object",
+      "required": [
+        "usd",
+        "source",
+        "asOf"
+      ],
+      "properties": {
+        "usd": {
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        },
+        "asOf": {
+          "type": "number"
         }
       }
     },
@@ -8401,6 +8659,100 @@
         }
       }
     },
+    "SessionGoal": {
+      "type": "object",
+      "required": [
+        "objective",
+        "status",
+        "createdAt",
+        "updatedAt",
+        "continuations"
+      ],
+      "properties": {
+        "objective": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SessionGoalStatus"
+        },
+        "createdAt": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "continuations": {
+          "type": "number"
+        }
+      }
+    },
+    "SessionGoalRequest": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "action",
+            "objective"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "start"
+            },
+            "objective": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "action"
+          ],
+          "properties": {
+            "action": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "const": "pause"
+                },
+                {
+                  "type": "string",
+                  "const": "resume"
+                },
+                {
+                  "type": "string",
+                  "const": "clear"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "SessionGoalStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "active"
+        },
+        {
+          "type": "string",
+          "const": "paused"
+        },
+        {
+          "type": "string",
+          "const": "blocked"
+        },
+        {
+          "type": "string",
+          "const": "complete"
+        }
+      ]
+    },
     "SessionGroup": {
       "type": "object",
       "required": [
@@ -8607,21 +8959,17 @@
       "type": "object",
       "required": [
         "session",
-        "transcript",
         "snapshot"
       ],
       "properties": {
         "session": {
           "$ref": "#/$defs/SessionView"
         },
-        "transcript": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/TranscriptEntry"
-          }
-        },
         "snapshot": {
           "$ref": "#/$defs/SessionSnapshot"
+        },
+        "revision": {
+          "type": "number"
         }
       }
     },
@@ -9109,7 +9457,7 @@
               "const": "snapshot"
             },
             "data": {
-              "$ref": "#/$defs/SessionSnapshot"
+              "$ref": "#/$defs/SessionStreamSnapshot"
             }
           }
         },
@@ -9255,20 +9603,78 @@
         }
       ]
     },
+    "SessionStreamSnapshot": {
+      "type": "object",
+      "required": [
+        "status",
+        "queue",
+        "questions",
+        "subagents"
+      ],
+      "properties": {
+        "transcript": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TranscriptEntry"
+          }
+        },
+        "status": {
+          "$ref": "#/$defs/SessionStatus"
+        },
+        "model": {
+          "$ref": "#/$defs/RuntimeModel"
+        },
+        "usage": {
+          "$ref": "#/$defs/RuntimeUsage"
+        },
+        "thinking": {
+          "type": "string"
+        },
+        "fast": {
+          "type": "boolean"
+        },
+        "queue": {
+          "$ref": "#/$defs/RuntimeQueue"
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SessionQuestion"
+          }
+        },
+        "subagents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SubagentTaskView"
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TaskSuggestion"
+          }
+        },
+        "watchers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Watcher"
+          }
+        },
+        "compaction": {
+          "$ref": "#/$defs/RuntimeCompaction"
+        }
+      }
+    },
     "SessionSubagent": {
       "type": "object",
       "required": [
         "taskId",
-        "task",
         "status",
         "startedAt",
         "updatedAt"
       ],
       "properties": {
         "taskId": {
-          "type": "string"
-        },
-        "task": {
           "type": "string"
         },
         "label": {
@@ -9284,9 +9690,6 @@
           "type": "string"
         },
         "endedAt": {
-          "type": "string"
-        },
-        "summary": {
           "type": "string"
         },
         "error": {
@@ -9520,6 +9923,9 @@
         "stageOrigin": {
           "$ref": "#/$defs/SessionStageOrigin"
         },
+        "goal": {
+          "$ref": "#/$defs/SessionGoal"
+        },
         "createdAt": {
           "type": "string"
         },
@@ -9547,6 +9953,7 @@
         "questions",
         "vscode",
         "power",
+        "notifications",
         "models",
         "calls",
         "disabledSkills",
@@ -9788,12 +10195,36 @@
             }
           }
         },
+        "notifications": {
+          "type": "object",
+          "required": [
+            "tool",
+            "runFinished",
+            "runFailed",
+            "needsInput"
+          ],
+          "properties": {
+            "tool": {
+              "type": "boolean"
+            },
+            "runFinished": {
+              "type": "boolean"
+            },
+            "runFailed": {
+              "type": "boolean"
+            },
+            "needsInput": {
+              "type": "boolean"
+            }
+          }
+        },
         "models": {
           "type": "object",
           "required": [
             "primary",
             "fallback",
-            "utility"
+            "utility",
+            "routes"
           ],
           "properties": {
             "primary": {
@@ -9804,6 +10235,60 @@
             },
             "utility": {
               "type": "string"
+            },
+            "routes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "description",
+                  "model"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "model": {
+                    "type": "string"
+                  },
+                  "thinking": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "const": "off"
+                      },
+                      {
+                        "type": "string",
+                        "const": "minimal"
+                      },
+                      {
+                        "type": "string",
+                        "const": "low"
+                      },
+                      {
+                        "type": "string",
+                        "const": "medium"
+                      },
+                      {
+                        "type": "string",
+                        "const": "high"
+                      },
+                      {
+                        "type": "string",
+                        "const": "xhigh"
+                      },
+                      {
+                        "type": "string",
+                        "const": "max"
+                      }
+                    ]
+                  }
+                }
+              }
             }
           }
         },
@@ -9908,13 +10393,17 @@
           "type": "object",
           "required": [
             "denseObservability",
-            "detailedDebug"
+            "detailedDebug",
+            "dashboard"
           ],
           "properties": {
             "denseObservability": {
               "type": "boolean"
             },
             "detailedDebug": {
+              "type": "boolean"
+            },
+            "dashboard": {
               "type": "boolean"
             }
           }
@@ -9991,7 +10480,6 @@
         "sessionId",
         "parentSessionId",
         "title",
-        "task",
         "status",
         "startedAt",
         "updatedAt"
@@ -10007,9 +10495,6 @@
           "type": "string"
         },
         "title": {
-          "type": "string"
-        },
-        "task": {
           "type": "string"
         },
         "status": {
@@ -11313,6 +11798,261 @@
         }
       }
     },
+    "UsageDay": {
+      "type": "object",
+      "required": [
+        "date",
+        "metrics"
+      ],
+      "properties": {
+        "date": {
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/UsageMetrics"
+        }
+      }
+    },
+    "UsageMetrics": {
+      "type": "object",
+      "required": [
+        "inputTokens",
+        "outputTokens",
+        "cacheReadTokens",
+        "cacheWriteTokens",
+        "totalTokens",
+        "costUsd",
+        "unpricedCalls",
+        "calls",
+        "userMessages",
+        "assistantMessages",
+        "toolResults",
+        "errors"
+      ],
+      "properties": {
+        "inputTokens": {
+          "type": "number"
+        },
+        "outputTokens": {
+          "type": "number"
+        },
+        "cacheReadTokens": {
+          "type": "number"
+        },
+        "cacheWriteTokens": {
+          "type": "number"
+        },
+        "totalTokens": {
+          "type": "number"
+        },
+        "costUsd": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unpricedCalls": {
+          "type": "number"
+        },
+        "calls": {
+          "type": "number"
+        },
+        "userMessages": {
+          "type": "number"
+        },
+        "assistantMessages": {
+          "type": "number"
+        },
+        "toolResults": {
+          "type": "number"
+        },
+        "errors": {
+          "type": "number"
+        }
+      }
+    },
+    "UsageModel": {
+      "type": "object",
+      "required": [
+        "provider",
+        "model",
+        "metrics"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/UsageMetrics"
+        }
+      }
+    },
+    "UsageReport": {
+      "type": "object",
+      "required": [
+        "generatedAt",
+        "range",
+        "sessions",
+        "coverage",
+        "unplacedSpend"
+      ],
+      "properties": {
+        "generatedAt": {
+          "type": "string"
+        },
+        "range": {
+          "type": "object",
+          "required": [
+            "from",
+            "to",
+            "timeZone"
+          ],
+          "properties": {
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            },
+            "timeZone": {
+              "type": "string"
+            }
+          }
+        },
+        "sessions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageSession"
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "required": [
+            "registeredSessions",
+            "readSessions",
+            "unavailable",
+            "undatedRecords"
+          ],
+          "properties": {
+            "registeredSessions": {
+              "type": "number"
+            },
+            "readSessions": {
+              "type": "number"
+            },
+            "unavailable": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "sessionId",
+                  "reason"
+                ],
+                "properties": {
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "undatedRecords": {
+              "type": "number"
+            }
+          }
+        },
+        "unplacedSpend": {
+          "type": "object",
+          "required": [
+            "totalTokens",
+            "costUsd"
+          ],
+          "properties": {
+            "totalTokens": {
+              "type": "number"
+            },
+            "costUsd": {
+              "type": "number"
+            }
+          }
+        }
+      }
+    },
+    "UsageSession": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "lastActivityAt",
+        "metrics",
+        "days",
+        "models",
+        "tools"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "parentId": {
+          "type": "string"
+        },
+        "lastActivityAt": {
+          "type": "number"
+        },
+        "metrics": {
+          "$ref": "#/$defs/UsageMetrics"
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageDay"
+          }
+        },
+        "models": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageModel"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/UsageTool"
+          }
+        }
+      }
+    },
+    "UsageTool": {
+      "type": "object",
+      "required": [
+        "name",
+        "calls",
+        "errors"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "calls": {
+          "type": "number"
+        },
+        "errors": {
+          "type": "number"
+        }
+      }
+    },
     "UsageTotals": {
       "type": "object",
       "required": [
@@ -11369,13 +12109,17 @@
             "type": "object",
             "required": [
               "model",
-              "tokens"
+              "tokens",
+              "costUsd"
             ],
             "properties": {
               "model": {
                 "type": "string"
               },
               "tokens": {
+                "type": "number"
+              },
+              "costUsd": {
                 "type": "number"
               }
             }
@@ -12809,6 +13553,10 @@
       "PowerState",
       "PowerStatus"
     ],
+    "host": [
+      "HostMetrics",
+      "HostMetricsError"
+    ],
     "github": [
       "ActivityBlock",
       "ActivitySession",
@@ -12912,6 +13660,9 @@
       "SessionConnectResponse",
       "SessionError",
       "SessionFastResponse",
+      "SessionGoal",
+      "SessionGoalRequest",
+      "SessionGoalStatus",
       "SessionGroup",
       "SessionJiraIssue",
       "SessionList",
@@ -12947,6 +13698,7 @@
       "SessionBtwRequest",
       "SessionClearResponse",
       "SessionCommandsResponse",
+      "SessionCostReport",
       "SessionEvent",
       "SessionModelRequest",
       "SessionModelResponse",
@@ -12955,6 +13707,7 @@
       "SessionQuestion",
       "SessionSnapshot",
       "SessionStreamFrame",
+      "SessionStreamSnapshot",
       "SessionThinkingRequest",
       "SessionThinkingResponse",
       "SideQuestionResult",
@@ -13058,6 +13811,7 @@
       "BotAccessRequest",
       "BotAvatar",
       "BotAvatarPatch",
+      "BotBootstrapRequest",
       "BotCatalog",
       "BotCatalogSkill",
       "BotCatalogTool",
@@ -13071,6 +13825,8 @@
       "BotFactKind",
       "BotFactPatch",
       "BotFactsResponse",
+      "BotFileName",
+      "BotFileText",
       "BotInput",
       "BotLastMessage",
       "BotMemoryResponse",
@@ -13090,6 +13846,7 @@
       "BotSoulRequest",
       "BotTagging",
       "BotToolGroup",
+      "BotUsageResponse",
       "BotView",
       "BotVoice",
       "BotVoicePatch",
@@ -13233,6 +13990,12 @@
       "UiErrorKind",
       "UiErrorReceipt",
       "UiErrorReport",
+      "UsageDay",
+      "UsageMetrics",
+      "UsageModel",
+      "UsageReport",
+      "UsageSession",
+      "UsageTool",
       "UsageTotals"
     ],
     "local-paths": [
@@ -13524,6 +14287,23 @@
     },
     {
       "method": "GET",
+      "path": "/__hui/bots/:id/files/:file",
+      "response": {
+        "$ref": "#/$defs/BotFileText"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/__hui/bots/:id/files/bootstrap",
+      "request": {
+        "$ref": "#/$defs/BotBootstrapRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/BotFileText"
+      }
+    },
+    {
+      "method": "GET",
       "path": "/__hui/bots/:id/memory",
       "response": {
         "$ref": "#/$defs/BotMemoryResponse"
@@ -13623,6 +14403,13 @@
       "path": "/__hui/bots/:id/triggers/:trigger/token",
       "response": {
         "$ref": "#/$defs/BotTriggerCreated"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/bots/:id/usage",
+      "response": {
+        "$ref": "#/$defs/BotUsageResponse"
       }
     },
     {
@@ -13818,6 +14605,13 @@
       "path": "/__hui/health",
       "response": {
         "$ref": "#/$defs/GatewayHealth"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/host-metrics",
+      "response": {
+        "$ref": "#/$defs/HostMetrics"
       }
     },
     {
@@ -14283,6 +15077,16 @@
     },
     {
       "method": "POST",
+      "path": "/__hui/sessions/:id/goal",
+      "request": {
+        "$ref": "#/$defs/SessionGoalRequest"
+      },
+      "response": {
+        "$ref": "#/$defs/SessionResponse"
+      }
+    },
+    {
+      "method": "POST",
       "path": "/__hui/sessions/:id/jira",
       "request": {
         "$ref": "#/$defs/JiraCreateRequest"
@@ -14611,6 +15415,13 @@
       "path": "/__hui/update/check",
       "response": {
         "$ref": "#/$defs/UpdateSnapshot"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/__hui/usage",
+      "response": {
+        "$ref": "#/$defs/UsageReport"
       }
     },
     {

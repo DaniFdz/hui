@@ -157,6 +157,7 @@ test("the gateway guards file routes with x-hui and serves previews as inert byt
   ], groups: [] }));
   await writeFile(join(cwd, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
   await writeFile(join(cwd, "blob.bin"), Buffer.from([1, 0, 2]));
+  await writeFile(join(cwd, "Dani's notes.bin"), Buffer.from([3]));
   const { middleware } = await import("../hui.ts");
   const { stopBackend } = await import("../backend.ts");
   const server = createServer((req, res) => middleware(req, res, () => { res.writeHead(404).end(); }));
@@ -197,6 +198,9 @@ test("the gateway guards file routes with x-hui and serves previews as inert byt
   assert.equal(binary.headers.get("content-type"), "application/octet-stream");
   assert.match(binary.headers.get("content-disposition") ?? "", /^attachment; filename\*=UTF-8''blob\.bin$/u);
   await binary.arrayBuffer();
+  const quoted = await fetch(`${origin}/raw?path=${encodeURIComponent("Dani's notes.bin")}`, { headers: guarded });
+  assert.equal(quoted.headers.get("content-disposition"), "attachment; filename*=UTF-8''Dani%27s%20notes.bin");
+  await quoted.arrayBuffer();
   const upload = await fetch(`${origin}/upload?dir=src&name=photo.png`, { method: "POST", headers: guarded, body: new Uint8Array([7, 8, 9]) });
   assert.equal(upload.status, 201);
   assert.deepEqual([...await readFile(join(cwd, "src", "photo.png"))], [7, 8, 9]);

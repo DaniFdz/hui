@@ -95,7 +95,7 @@ test("only the newest save reports whether it landed", async () => {
 });
 
 test("the newest power read wins, and a lid turned off brings its notice back", async () => {
-  const { controller } = setup();
+  const { controller, host } = setup();
   const older = controller.refreshPower();
   const newer = controller.refreshPower();
   fake.power[1]!(power(true));
@@ -109,6 +109,23 @@ test("the newest power read wins, and a lid turned off brings its notice back", 
   fake.power[2]!(power(false));
   await off;
   assert.equal(controller.powerNoticeDismissed, false);
+  const updates = host.updates;
+  const same = controller.refreshPower();
+  fake.power[3]!(power(false));
+  await same;
+  assert.equal(host.updates, updates, "a poll that changes nothing redraws nothing");
+});
+
+test("the power poll asks again only once the gateway answered its last read", async () => {
+  const { controller } = setup();
+  controller.pollPower();
+  controller.pollPower();
+  assert.equal(fake.power.length, 1, "a slow gateway is not asked twice");
+  fake.power[0]!(power(true));
+  await settle();
+  assert.equal(controller.power?.lidOn, true);
+  controller.pollPower();
+  assert.equal(fake.power.length, 2);
 });
 
 test("the resource reader's Copied mark clears after 1.5 s, and closing returns the focus", async () => {

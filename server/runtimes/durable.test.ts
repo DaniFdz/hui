@@ -6,6 +6,8 @@ import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { crc32, deflateSync } from "node:zlib";
+import { getImageDimensions } from "@earendil-works/pi-tui";
 import { afterAll, test, type TestContext } from "vitest";
 import { normalizeSettings } from "../hui-settings.ts";
 import type { DurableSession } from "./durable.ts";
@@ -13,6 +15,7 @@ import type { AgentToolInvocation } from "../agent-tools/bridge.ts";
 import type { RuntimeEvent, TranscriptEntry } from "./types.ts";
 import { SecretFiles, SecretRequests } from "../agent-tools/secret-requests.ts";
 import { completeLines } from "../test-support/json-lines.ts";
+import { waitFor } from "../test-support/wait-for.ts";
 
 // HUI's configuration directory (provider selections, credentials, the default
 // Durable store) is resolved at import time, and PI finds skills in
@@ -204,6 +207,39 @@ test("the live view streams an answer Durable sends whole, exactly once", { time
   // The fixture's short reply reaches Durable's stream as one partial; the live view shows it from these events.
   assert.equal(streamed.join(""), "Fixture response.");
   await transcriptWhere(session, answered("Fixture response."));
+});
+
+function solidPng(width: number, height: number): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const framed = Buffer.alloc(body.length + 8);
+    framed.writeUInt32BE(data.length);
+    body.copy(framed, 4);
+    framed.writeUInt32BE(crc32(body), body.length + 4);
+    return framed;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width); header.writeUInt32BE(height, 4); header[8] = 8; header[9] = 2;
+  const rows = Buffer.alloc((width * 3 + 1) * height, 0x80);
+  for (let row = 0; row < height; row += 1) rows[row * (width * 3 + 1)] = 0;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", header), chunk("IDAT", deflateSync(rows)), chunk("IEND", Buffer.alloc(0))]);
+}
+
+test("an image larger than the provider accepts reaches it shrunk, on every turn, and stays whole in the history", { timeout: 45_000 }, async (t) => {
+  const f = await fixture(t, { contextWindow: 200_000 });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-image-limits" }, f.host());
+  const tall = solidPng(40, 8192).toString("base64");
+  await session.prompt("look at this", [{ kind: "image", mimeType: "image/png", dataBase64: tall, name: "tall.png" }]);
+  await transcriptWhere(session, (entries) => answers(entries) === 1 && !session.isStreaming);
+  await turns(session, ["and again"]);
+  const sent = (await providerRequests(f.log)).map((request) => JSON.stringify(request.messages).match(/"data":"([^"]+)"/u)?.[1]);
+  assert.equal(sent.length, 2);
+  for (const data of sent) {
+    assert(data);
+    const size = getImageDimensions(data, "image/png");
+    assert.deepEqual(size && [size.widthPx, size.heightPx], [10, 2000]);
+  }
+  assert.equal((await session.attachmentImage(0, 0))?.data.toString("base64"), tall);
 });
 
 test("fast mode asks a Claude Opus model for speed: fast, while the session has it on", { timeout: 45_000 }, async (t) => {
@@ -1008,14 +1044,15 @@ test("Durable requests give each HUI session its own PI_CLIENT_SESSION_ID for pr
   const [firstId, ...otherFirst] = await identities("IDENTITY_FIRST");
   const [secondId, ...otherSecond] = await identities("IDENTITY_SECOND");
   assert.deepEqual([otherFirst, otherSecond], [[], []], "one identity per HUI session");
-  assert.match(String(firstId), /^[0-9a-f-]{36}$/u);
-  assert.match(String(secondId), /^[0-9a-f-]{36}$/u);
-  assert.notEqual(firstId, secondId, "independent sessions need independent identities");
+  assert.equal(firstId, "identity-first", "a request is identified by its HUI session, as a cost lookup expects");
+  assert.equal(secondId, "identity-second");
   assert.deepEqual([...await identities("IDENTITY_FIRST", true)], [firstId], "a summary is requested as its session");
   assert.equal(process.env["PI_CLIENT_SESSION_ID"], undefined, "the gateway environment is unchanged");
-  process.env["PI_CLIENT_SESSION_ID"] = "operator-id";
-  await turns(second, ["IDENTITY_OPERATOR two"]);
-  assert.deepEqual([...await identities("IDENTITY_OPERATOR")], ["operator-id"], "an explicit gateway value is kept, as for PI workers");
+  // An extension loaded in the gateway process writes that variable for the session it starts in. Sessions it did
+  // not start keep their own identity.
+  process.env["PI_CLIENT_SESSION_ID"] = "extension-id";
+  await turns(second, ["IDENTITY_EXTENSION two"]);
+  assert.deepEqual([...await identities("IDENTITY_EXTENSION")], ["identity-second"], "an in-process write does not retarget a session");
 });
 
 test("a worker row with the same durable:N never becomes the caller of a gateway conversation", async () => {
@@ -1123,6 +1160,28 @@ async function extensionFixture(t: TestContext, options: Parameters<typeof fixtu
   const f = await fixture(t, { ...options, extensions: { "fixture.js": fixtureExtension(events), ...options.extensions } });
   return { ...f, events, eventsDir: dir };
 }
+
+test("a session cost an extension reports reaches the session's usage and survives a reopen", async (t) => {
+  const f = await fixture(t, { extensions: { "cost.js": `
+    export default function (pi) {
+      pi.on('session_start', () => {
+        pi.appendEntry('hui.session-cost', { usd: 1.25, source: 'fixture gateway', asOf: 1792920000000 });
+        // Unreadable, and therefore skipped rather than shown as this session's cost.
+        pi.appendEntry('hui.session-cost', { usd: -1, source: 'fixture gateway', asOf: 1 });
+      });
+    }
+  ` } });
+  const host = f.host();
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "reported-cost" }, host);
+  const reported = { usd: 1.25, source: "fixture gateway", asOf: 1792920000000 };
+  assert.deepEqual(await waitFor("the reported session cost", () => session.currentUsage()?.sessionCost), reported);
+
+  const reference = session.sessionFile;
+  session.dispose();
+  const reopened = await startDurable({ cwd: f.cwd, sessionFile: reference, huiSessionId: "reported-cost" }, host);
+  assert.deepEqual(await waitFor("the reopened session's cost", () => reopened.currentUsage()?.sessionCost), reported, "the report is kept in the store, not in the extension's memory");
+  reopened.dispose();
+});
 
 test("Durable sessions load PI extensions: their tools, hooks and prompt additions reach the model", { timeout: 45_000 }, async (t) => {
   const f = await extensionFixture(t);
@@ -1567,6 +1626,21 @@ test("a codemode script's calls show on its own tool row, live and once it ends;
   huiSettings.codemode = { enabled: true };
   await host.applyTools();
   assert.ok((await session.inspect()).tools.some((tool) => tool.name === "codemode"), "on again: back from the next request");
+});
+
+test("notify_user reaches a session only while Settings → Tools turns the notification tool on", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t);
+  const huiSettings = normalizeSettings(undefined);
+  const host = f.host({ huiSettings });
+  const session = await startDurable({ cwd: f.cwd, huiSessionId: "durable-notify-user" }, host);
+  const offered = async () => (await session.inspect()).tools.some((tool) => tool.name === "notify_user");
+  assert.equal(await offered(), false, "off by default");
+  huiSettings.notifications = { ...huiSettings.notifications, tool: true };
+  await host.applyTools();
+  assert.equal(await offered(), true, "on: the open session gets it");
+  await settledAfter(session, "hello with the notification tool");
+  const request = (await providerRequests(f.log)).at(-1) as { tools?: { name?: string }[] };
+  assert.ok(request.tools?.some((tool) => tool.name === "notify_user"), "and its next request offers it");
 });
 
 test("an extension tool's ctx.executeTool() runs nested calls, and tool_result redaction reaches what scripts get", { timeout: 60_000 }, async (t) => {

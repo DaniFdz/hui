@@ -7,6 +7,7 @@ import {
   type SubagentTaskView,
 } from "../sessions/live-sessions.ts";
 import type { SessionStatus } from "../api/sessions.ts";
+import type { Settings } from "../api/settings.ts";
 import { recordDiagnosticEvent } from "../observability.ts";
 import {
   readRegistry,
@@ -27,6 +28,7 @@ const MAX_RUNNING_COLLECTED = 32;
 const MAX_LIVE_COLLECTED = 50;
 const MAX_WAIT_IDS = 100;
 const READY_TIMEOUT_MS = 30_000;
+const CARD_SUMMARY_CHARS = 280;
 const DELIVERY_RETRY_MS = 5_000;
 const HISTORY_MAX_BYTES = 80 * 1024;
 const OVERSIZED_HISTORY_ENTRY: TranscriptEntry = {
@@ -43,6 +45,7 @@ type SessionAccess = Pick<
   | "ensure"
   | "followUp"
   | "models"
+  | "subagentRoutes"
   | "notifySnapshot"
   | "prompt"
   | "release"
@@ -113,12 +116,11 @@ function taskView(record: SessionRecord): SubagentTaskView | undefined {
     sessionId: record.id,
     parentSessionId: record.parentId,
     title: record.title,
-    task: record.subagent.task,
     status: record.subagent.status,
     startedAt: record.subagent.startedAt,
     updatedAt: record.subagent.updatedAt,
     ...(record.subagent.endedAt ? { endedAt: record.subagent.endedAt } : {}),
-    ...(record.subagent.summary ? { summary: record.subagent.summary } : {}),
+    ...(record.subagent.summary ? { summary: truncate(record.subagent.summary, CARD_SUMMARY_CHARS) } : {}),
     ...(record.subagent.error ? { error: record.subagent.error } : {}),
   };
 }
@@ -149,6 +151,9 @@ function boundedHistory(entries: readonly TranscriptEntry[], limit: number): Tra
   return selected.reverse();
 }
 
+/** How a sessions_send message starts in the conversation it reaches. */
+export const INTER_SESSION_TAG = "[Inter-session message from ";
+
 export class SubagentService {
   #tasks = new Map<string, SubagentTaskView[]>();
   #controls = new Map<string, RunControl>();
@@ -163,6 +168,10 @@ export class SubagentService {
   #running = new Map<string, string>();
   /** `agents_wait` calls, told about every registry change, and with nothing when the service shuts down. */
   #waiters = new Set<(records?: readonly SessionRecord[]) => void>();
+  /** Per caller, the steering that last ended its `agents_wait`, with the transcript length it ended at: that steering
+   * reaches the model only once the tool round ends, so it does not end another wait of the same round (a script
+   * waiting in a loop would spin). */
+  #steeredWaits = new Map<string, string>();
   private readonly sessions: SessionAccess;
   private readonly registryReader: typeof readRegistry;
   private readonly registryUpdater: typeof updateRegistry;
@@ -268,16 +277,23 @@ export class SubagentService {
     const task = text(params, "task", 20_000)!;
     const label = text(params, "label", 120, true);
     const model = text(params, "model", 200, true);
+    const route = text(params, "route", 40, true);
     const thinking = text(params, "thinking", 16, true);
     const runTimeoutSeconds = integer(params, "runTimeoutSeconds", 0, 0, 3_600);
     const collect = params["collect"] === true;
+    if (route && model) {
+      throw new AgentToolInputError("Pass route or model, not both: a route already names a model.");
+    }
     if (model && !/^[^/\s]+\/\S+$/.test(model)) {
       throw new AgentToolInputError("model must use provider/id format.");
     }
     if (thinking && !isThinkingLevel(thinking)) {
       throw new AgentToolInputError(`Unsupported thinking level: ${thinking}`);
     }
-    if (model) await this.#assertModelAvailable(callerId, model);
+    const picked = route ? await this.#resolveRoute(route) : undefined;
+    const childModel = picked?.model ?? model;
+    const childThinking = thinking ?? picked?.thinking;
+    if (childModel) await this.#assertModelAvailable(callerId, childModel, route);
     const taskId = this.uuid();
     const sessionId = this.uuid();
     const now = this.now().toISOString();
@@ -313,9 +329,9 @@ export class SubagentService {
         // A remote session's children run on the same worker.
         ...(caller.worker ? { worker: caller.worker } : {}),
         tool: caller.tool,
-        model: model ?? caller.model,
+        model: childModel ?? caller.model,
         // Ultra stays with the session that chose it; its children work at the same level without delegating on their own.
-        thinking: thinking ?? (caller.thinking && piThinking(caller.thinking)),
+        thinking: childThinking ?? (caller.thinking && piThinking(caller.thinking)),
         parentId: caller.id,
         subagent: {
           taskId,
@@ -383,12 +399,25 @@ export class SubagentService {
     }
   }
 
+  async #resolveRoute(name: string): Promise<Settings["models"]["routes"][number]> {
+    const routes = await this.sessions.subagentRoutes();
+    const match = routes.find((entry) => entry.name === name);
+    if (match) return match;
+    if (!routes.length) {
+      throw new AgentToolInputError(
+        `Unknown route: ${name}. No subagent routes are configured yet; add one in HUI's Settings → Models → Subagent routes.`,
+      );
+    }
+    throw new AgentToolInputError(`Unknown route: ${name}. Configured routes are ${routes.map((entry) => entry.name).join(", ")}.`);
+  }
+
   /** Reject an unknown model before a child exists, so the caller can retry in
    * the same turn. An unavailable or empty catalog is not a reason to block. */
-  async #assertModelAvailable(callerId: string, model: string): Promise<void> {
+  async #assertModelAvailable(callerId: string, model: string, route?: string): Promise<void> {
     const catalog = await this.sessions.models(callerId).catch(() => []);
     const names = catalog.map((entry) => `${entry.provider}/${entry.id}`);
     if (!names.length || names.includes(model)) return;
+    if (route) throw new AgentToolInputError(`Route ${route} names an unavailable model; update it in HUI's Settings → Models → Subagent routes.`);
     const id = model.slice(model.lastIndexOf("/") + 1);
     const similar = names.filter((name) => name.endsWith(`/${id}`)).slice(0, 5);
     throw new AgentToolInputError(similar.length
@@ -694,7 +723,7 @@ export class SubagentService {
     ]);
     if (!this.sessions.ensure(target)) throw new AgentToolInputError(`Unknown session: ${sessionKey}`);
     if (this.sessions.status(target.id) === "starting") await this.#waitUntilReady(target.id);
-    const delivered = `[Inter-session message from ${caller.title} (${caller.id})]\n${message}`;
+    const delivered = `${INTER_SESSION_TAG}${caller.title} (${caller.id})]\n${message}`;
     const baseline = this.sessions.transcript(target.id).length;
     const reply = timeoutSeconds > 0
       ? this.#waitForReply(target.id, delivered, baseline, timeoutSeconds * 1_000)
@@ -851,8 +880,9 @@ export class SubagentService {
     await settle();
   }
 
-  /** Wait until every listed child of the caller has finished, or the timeout passes. What it returns counts as
-   * delivered, so the parent is not told again. */
+  /** Wait until every listed child of the caller has finished, the timeout passes or a message is steered to the
+   * caller, which it would otherwise read only after the wait. What it returns counts as delivered, so the parent is not
+   * told again. */
   async #wait(callerId: string, params: Record<string, unknown>, signal?: AbortSignal) {
     const ids = params["ids"];
     if (!Array.isArray(ids) || !ids.length || ids.length > MAX_WAIT_IDS || !ids.every((id) => typeof id === "string" && id.trim())) {
@@ -871,6 +901,19 @@ export class SubagentService {
     let wake!: () => void;
     const woken = new Promise<void>((resolve) => { wake = resolve; });
     const listener = (records?: readonly SessionRecord[]) => { if (!records || finished(records)) wake(); };
+    let round = 0;
+    let steeredBy: string | undefined;
+    const steered = (steering: readonly string[]) => {
+      const mark = `${round}\n${JSON.stringify(steering)}`;
+      if (!steering.length || mark === this.#steeredWaits.get(callerId)) return;
+      steeredBy = mark;
+      wake();
+    };
+    const watched = this.sessions.watch(callerId, (message) => {
+      if (message.kind === "event" && message.event.type === "queue_update") steered(message.event.queue.steering);
+    });
+    round = watched.snapshot.transcript.length;
+    steered(watched.snapshot.queue.steering);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let onAbort = () => {};
     this.#waiters.add(listener);
@@ -894,6 +937,7 @@ export class SubagentService {
       }
     } finally {
       this.#waiters.delete(listener);
+      watched.unsubscribe();
       signal?.removeEventListener("abort", onAbort);
       if (timer) {
         clearTimeout(timer);
@@ -911,6 +955,8 @@ export class SubagentService {
           ? { ...record, subagent: { ...record.subagent, completionDelivery: "delivered" as const } } : record)));
       for (const id of returned) this.#admitted.delete(id);
     }
+    if (steeredBy !== undefined) this.#steeredWaits.set(callerId, steeredBy);
+    const pending = records.filter((record) => record && ACTIVE_STATUSES.has(record.subagent!.status)).map((record) => record!.subagent!.taskId);
     return {
       completed: done.map((record) => ({
         taskId: record.subagent!.taskId,
@@ -920,7 +966,10 @@ export class SubagentService {
         ...(record.subagent!.summary ? { result: record.subagent!.summary } : {}),
         ...(record.subagent!.error ? { error: record.subagent!.error } : {}),
       })),
-      pending: records.filter((record) => record && ACTIVE_STATUSES.has(record.subagent!.status)).map((record) => record!.subagent!.taskId),
+      pending,
+      ...(steeredBy !== undefined && pending.length
+        ? { interrupted: "A new message is waiting for you. You see it only once this tool call returns, or once the script returns when a codemode script called this. Return now, and call agents_wait again for the pending tasks if they still matter." }
+        : {}),
     };
   }
 

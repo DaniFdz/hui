@@ -125,7 +125,9 @@ function renderPreviewStep(props: BotImportDialogProps, preview: BotImportPrevie
   const { bot, template } = preview;
   const from = [BOT_TEMPLATE_FORMATS[template.format], template.author ? `by ${template.author}` : "", template.origin ? `· ${template.origin}` : ""].filter(Boolean).join(" ");
   const facts: [string, string][] = [
-    ["Soul", preview.soul ? `${preview.soul.length.toLocaleString()} characters${preview.memories.total ? `, with ${preview.memories.included} of ${plural(preview.memories.total, "memory", "memories")}` : ""}` : "None: it starts with its first conversation"],
+    ["Soul", preview.soul ? `${preview.soul.length.toLocaleString()} characters` : "None: it starts with its first conversation"],
+    ["Memory", preview.memory ? `${preview.memory.length.toLocaleString()} characters, never exported` : "None"],
+    ...(preview.bootstrap ? [["Onboarding", `${preview.bootstrap.length.toLocaleString()} characters`] as [string, string]] : []),
     ["Model", preview.model ?? "Gateway default"],
     ["Skills", preview.skills.length ? `${preview.skills.length} of its own, on` : "None of its own"],
     ["Routines", preview.routines.length ? `${preview.routines.length}, disabled` : "None"],
@@ -156,6 +158,8 @@ function renderPreviewStep(props: BotImportDialogProps, preview: BotImportPrevie
       </li>`)}</ul>`, { name: "open", open: true }) : nothing}
     ${preview.needs.length ? section("What it needs", String(preview.needs.length), html`<ul class="bot-import__lines">${preview.needs.map((need) => html`<li>${need}</li>`)}</ul>`, { name: "needs", open: true }) : nothing}
     ${section("SOUL.md", preview.soul ? `${preview.soul.length.toLocaleString()} characters` : "none", preview.soul ? textBlock(preview.soul) : html`<p class="bot-import__hint">No persona: the bot asks what you expect from it and writes its own SOUL.md.</p>`, { open: true, name: "soul" })}
+    ${preview.memory ? section("MEMORY.md", `${preview.memory.length.toLocaleString()} characters · never exported`, html`${textBlock(preview.memory)}<p class="bot-import__hint">What the source bot knew: reference data, not instructions. It is read on every request and never leaves with an export.${preview.memories.total > preview.memories.included ? ` ${preview.memories.total - preview.memories.included} did not fit.` : ""}</p>`, { name: "memory" }) : nothing}
+    ${preview.bootstrap ? section("BOOTSTRAP.md", `${preview.bootstrap.length.toLocaleString()} characters`, html`${textBlock(preview.bootstrap)}<p class="bot-import__hint">Its onboarding body: used while it has no SOUL.md, framed by HUI's own rules.</p>`, { name: "bootstrap" }) : nothing}
     ${preview.opener ? section("First message", undefined, html`${textBlock(preview.opener)}<p class="bot-import__hint">It sends this as its first message, in a first turn HUI starts once it exists.</p>`, { name: "opener" }) : nothing}
     ${preview.skills.length ? section("Skills", String(preview.skills.length), html`<ul class="bot-import__list">${preview.skills.map((skill) => html`<li>
         <div><strong>${skill.name}</strong>${skill.original && skill.original !== skill.name ? html` <span class="bot-import__muted">(from ${skill.original})</span>` : nothing} — ${skill.description}</div>

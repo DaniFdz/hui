@@ -52,6 +52,7 @@ export class SettingsController implements ReactiveController {
   previews: readonly ThemePreview[] = [];
   themeImportNote = "";
   themeImportFailed = false;
+  #previewsLoad: Promise<unknown> | undefined;
   /** `undefined` until the backend answers, so an empty list never reads as "none". */
   pi: PiSnapshot | undefined;
   piLoading = false;
@@ -75,6 +76,7 @@ export class SettingsController implements ReactiveController {
   #saveRevision = 0;
   #healthPending = false;
   #powerRequest = 0;
+  #powerPoll: Promise<void> | undefined;
   #piRequest: Promise<void> | undefined;
   #readerReturnFocus: HTMLElement | undefined;
   #readerRequest = 0;
@@ -112,8 +114,13 @@ export class SettingsController implements ReactiveController {
     void this.save(patch);
   };
 
+  /** Reads every theme file once: a second visit to the picker, or one made
+   * while the first read is still running, reuses it. */
   loadPreviews(): void {
-    void loadThemePreviews().then((previews) => {
+    if (this.previews.length) return;
+    const pending = this.#previewsLoad ??= loadThemePreviews().then((previews) => {
+      if (this.#previewsLoad !== pending) return;
+      this.#previewsLoad = undefined;
       this.previews = previews;
       this.#changed();
     });
@@ -151,6 +158,7 @@ export class SettingsController implements ReactiveController {
     this.#changed();
     void importTheme(url)
       .then(async (id) => {
+        this.#previewsLoad = undefined;
         this.previews = await loadThemePreviews();
         this.themeImportNote = `Imported ${id}.`;
         this.themeImportFailed = false;
@@ -188,9 +196,15 @@ export class SettingsController implements ReactiveController {
       // Unknown rather than stale: no banner or switches until the gateway answers.
     }
     if (request !== this.#powerRequest) return;
+    const dismissed = this.powerNoticeDismissed && Boolean(power?.lidOn);
+    if (JSON.stringify(power) === JSON.stringify(this.power) && dismissed === this.powerNoticeDismissed) return;
     this.power = power;
-    if (!power?.lidOn) this.powerNoticeDismissed = false;
+    this.powerNoticeDismissed = dismissed;
     this.#changed();
+  }
+
+  pollPower(): void {
+    this.#powerPoll ??= this.refreshPower().finally(() => { this.#powerPoll = undefined; });
   }
 
   setLidAwake = (on: boolean) => void this.refreshPower(setLidAwake(on));
@@ -432,6 +446,7 @@ export class SettingsController implements ReactiveController {
       onChangeBrowser: (browser) => this.save({ browser }),
       onChangeVscode: (vscode) => this.save({ vscode }),
       onChangeCodemode: (codemode) => void this.save({ codemode }),
+      onChangeNotifications: (notifications) => void this.save({ notifications }),
       onChangeQuestions: (questions) => void this.save({ questions }),
       onChangeCalls: (calls) => void this.save({ calls }),
       onChangePower: (power) => void this.save({ power }).then(() => this.refreshPower()),

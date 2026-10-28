@@ -12,7 +12,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 
 import { CONFIG_DIR } from "../paths.ts";
-import type { SessionStage, SessionStageSource } from "../api/sessions.ts";
+import type { SessionGoal, SessionGoalStatus, SessionStage, SessionStageSource } from "../api/sessions.ts";
 import { isSessionStage, isSessionStageSource } from "./session-stages.ts";
 
 const REGISTRY_FILE = join(CONFIG_DIR, "sessions.json");
@@ -79,6 +79,9 @@ export type SessionRecord = {
   /** Lower-case PR URLs already known at the last explicit placement; they no
    * longer advance the stage. Server-only, never returned in views. */
   stagePullRequests?: string[];
+  /** The objective this conversation pursues, with how far it got. Absent on
+   * every session without a goal, so existing registries need no migration. */
+  goal?: SessionGoal;
   createdAt: string;
   updatedAt: string;
   /** Where the record came from, so an import can be reported honestly. */
@@ -182,6 +185,22 @@ function toSubagent(raw: unknown): SubagentRecord | undefined {
   };
 }
 
+const GOAL_STATUSES = new Set<SessionGoalStatus>(["active", "paused", "blocked", "complete"]);
+
+/** A stored goal the operator or the agent wrote; anything malformed reads as no goal. */
+function storedGoal(raw: unknown): SessionGoal | undefined {
+  if (!isRecord(raw)) return undefined;
+  const objective = str(raw["objective"]).trim().slice(0, 2_000);
+  const status = str(raw["status"]) as SessionGoalStatus;
+  const createdAt = str(raw["createdAt"]);
+  const updatedAt = str(raw["updatedAt"]);
+  if (!objective || !GOAL_STATUSES.has(status) || !createdAt || !updatedAt) return undefined;
+  const note = str(raw["note"]).trim().slice(0, 2_000);
+  const continuations = typeof raw["continuations"] === "number" && Number.isInteger(raw["continuations"])
+    && raw["continuations"] >= 0 ? raw["continuations"] : 0;
+  return { objective, status, createdAt, updatedAt, continuations, ...(note ? { note } : {}) };
+}
+
 /** Every field is checked, because the file is hand-editable and predates any
  * schema we might add. */
 function toRecord(raw: unknown): SessionRecord | undefined {
@@ -223,6 +242,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
   const stagePullRequests = Array.isArray(raw["stagePullRequests"])
     ? raw["stagePullRequests"].filter((url): url is string => typeof url === "string" && /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/u.test(url)).slice(-20)
     : [];
+  const goal = storedGoal(raw["goal"]);
   return {
     id,
     title: str(raw["title"]).trim() || id,
@@ -247,6 +267,7 @@ function toRecord(raw: unknown): SessionRecord | undefined {
     ...(jiraIssues.length ? { jiraIssues } : {}),
     ...(stage ? { stage, stageSource: stageSource ?? "agent" } : {}),
     ...(stagePullRequests.length ? { stagePullRequests } : {}),
+    ...(goal ? { goal } : {}),
     createdAt: str(raw["createdAt"]),
     updatedAt: str(raw["updatedAt"]),
     ...(source === "hui" ? { source } : {}),
@@ -331,6 +352,14 @@ export async function readSessionRegistry(): Promise<{
   return { sessions: registry.sessions, groups: registry.groups };
 }
 
+/** How many times this gateway has written the registry. A shared list is only
+ * worth reusing while nothing has changed it. */
+let writes = 0;
+
+export function sessionRegistryWrites(): number {
+  return writes;
+}
+
 /**
  * Writes through a temporary file and renames, so a crash mid-write cannot leave
  * a truncated registry behind.
@@ -343,6 +372,7 @@ async function writeRegistryState(registry: Registry): Promise<void> {
     const temporary = `${REGISTRY_FILE}.${process.pid}-${randomUUID().slice(0, 8)}.tmp`;
     await writeFile(temporary, `${JSON.stringify(registry, null, 2)}\n`, "utf8");
     await rename(temporary, REGISTRY_FILE);
+    writes += 1;
   } catch (error) {
     throw new SessionRegistryError("HUI's session registry could not be written.", {
       cause: error,

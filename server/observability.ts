@@ -160,7 +160,11 @@ export async function aggregateUsage(sessions: readonly SessionRecord[], durable
     sessions: sessions.length, filesRead: 0, records: 0, inputTokens: 0, outputTokens: 0,
     cacheReadTokens: 0, cacheWriteTokens: 0, totalTokens: 0, costUsd: null, models: [], unavailable: [],
   };
-  const models = new Map<string, number>();
+  const models = new Map<string, { tokens: number; costUsd: number }>();
+  const addModel = (model: string, tokens: number, cost: number) => {
+    const entry = models.get(model) ?? { tokens: 0, costUsd: 0 };
+    models.set(model, { tokens: entry.tokens + tokens, costUsd: entry.costUsd + cost });
+  };
   let knownCost = 0;
   let hasCost = false;
   for (const session of sessions) {
@@ -192,7 +196,7 @@ export async function aggregateUsage(sessions: readonly SessionRecord[], durable
         const rawCost = entry["cost"];
         const cost = typeof rawCost === "object" && rawCost !== null ? numberAt(rawCost, "total") : 0;
         if (cost > 0) { knownCost += cost; hasCost = true; }
-        if (total > 0) models.set(model, (models.get(model) ?? 0) + total);
+        if (total > 0 || cost > 0) addModel(model, total, cost);
       }
       continue;
     }
@@ -219,7 +223,7 @@ export async function aggregateUsage(sessions: readonly SessionRecord[], durable
         totals.totalTokens += total;
         if (cost > 0) { knownCost += cost; hasCost = true; }
         const model = modelOf(record);
-        if (model && total > 0) models.set(model, (models.get(model) ?? 0) + total);
+        if (model && (total > 0 || cost > 0)) addModel(model, total, cost);
       }
     } catch {
       totals.unavailable = [...totals.unavailable, `${session.id}: transcript unavailable`];
@@ -227,7 +231,7 @@ export async function aggregateUsage(sessions: readonly SessionRecord[], durable
   }
   totals.costUsd = hasCost ? knownCost : null;
   totals.models = [...models.entries()]
-    .map(([model, tokens]) => ({ model, tokens }))
+    .map(([model, entry]) => ({ model, ...entry }))
     .toSorted((a, b) => b.tokens - a.tokens || a.model.localeCompare(b.model));
   return totals;
 }

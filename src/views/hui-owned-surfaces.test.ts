@@ -26,6 +26,15 @@ function handlers(value: unknown, found: Array<(event: unknown) => void> = []): 
   return found;
 }
 
+/** The change handler of the switch labelled `label`. */
+function switchFor(value: unknown, label: string): ((event: unknown) => void) | undefined {
+  if (Array.isArray(value)) return value.map((item) => switchFor(item, label)).find(Boolean);
+  if (!value || typeof value !== "object" || !("strings" in value && "values" in value)) return undefined;
+  const template = value as { strings: readonly string[]; values: readonly unknown[] };
+  if (template.strings.join("").includes("<wa-switch") && template.values.includes(label)) return handlers(template.values)[0];
+  return switchFor(template.values, label);
+}
+
 const LABS = HUI_PAGES.find((page) => page.id === "labs")!;
 const labs = (settings: Settings, onSettings: (patch: Partial<Settings>) => void = () => {}) =>
   renderOwnedSurface({ page: LABS, settings, health: undefined, onSettings });
@@ -45,5 +54,14 @@ test("Labs holds the presentation flags and no Bots switch, and a switch saves i
   const saved: Array<Partial<Settings>> = [];
   const [, change] = handlers(labs(normalizeSettings({ labs: { detailedDebug: true } }), (patch) => saved.push(patch)));
   change!({ currentTarget: { checked: true } });
-  assert.deepEqual(saved, [{ labs: { denseObservability: true, detailedDebug: true } }]);
+  assert.deepEqual(saved, [{ labs: { denseObservability: true, detailedDebug: true, dashboard: false } }]);
+});
+
+test("Labs → Dashboard turns the Dashboard page on and saves it with the other flags", () => {
+  const page = text(labs(DEFAULT_SETTINGS));
+  assert.match(page, /Dashboard/u);
+  assert.match(page, /CPU, GPU, memory, disk and network, to spot bottlenecks\./u);
+  const saved: Array<Partial<Settings>> = [];
+  switchFor(labs(DEFAULT_SETTINGS, (patch) => saved.push(patch)), "Dashboard")!({ currentTarget: { checked: true } });
+  assert.deepEqual(saved, [{ labs: { denseObservability: false, detailedDebug: false, dashboard: true } }]);
 });

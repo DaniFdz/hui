@@ -1,5 +1,6 @@
 /** Public HUI settings payloads, including browser and VS Code preferences. */
 import { Type, type Static } from "typebox";
+import { ThinkingLevel } from "./sessions.ts";
 
 export const VscodeProviderPreference = Type.Union([
   Type.Literal("auto"), Type.Literal("configured"), Type.Literal("desktop"), Type.Literal("managed"), Type.Literal("path"),
@@ -35,7 +36,14 @@ export const Settings = Type.Object({
   profileName: Type.String(), profileHandle: Type.String(), branchPrefix: Type.String(),
   browser: BrowserSettings, codemode: Type.Object({ enabled: Type.Boolean() }), questions: Type.Object({ timeoutMinutes: Type.Number() }),
   vscode: VscodeSettings, power: Type.Object({ keepAwake: Type.Boolean() }),
-  models: Type.Object({ primary: Type.String(), fallback: Type.String(), utility: Type.String() }),
+  notifications: Type.Object({ tool: Type.Boolean(), runFinished: Type.Boolean(), runFailed: Type.Boolean(), needsInput: Type.Boolean() }),
+  models: Type.Object({
+    primary: Type.String(), fallback: Type.String(), utility: Type.String(),
+    routes: Type.Immutable(Type.Array(Type.Object({
+      name: Type.String(), description: Type.String(), model: Type.String(),
+      thinking: Type.Optional(Type.Exclude(ThinkingLevel, Type.Literal("ultra"))),
+    }))),
+  }),
   calls: Type.Object({ voice: Type.Union([
     Type.Literal("cove"), Type.Literal("arbor"), Type.Literal("breeze"), Type.Literal("ember"), Type.Literal("juniper"),
     Type.Literal("maple"), Type.Literal("sol"), Type.Literal("spruce"), Type.Literal("vale"),
@@ -44,7 +52,7 @@ export const Settings = Type.Object({
   disabledPlugins: Type.Immutable(Type.Array(Type.Object({
     id: Type.String(), name: Type.String(), kind: Type.Union([Type.Literal("package"), Type.Literal("extension")]),
   }))),
-  labs: Type.Object({ denseObservability: Type.Boolean(), detailedDebug: Type.Boolean() }),
+  labs: Type.Object({ denseObservability: Type.Boolean(), detailedDebug: Type.Boolean(), dashboard: Type.Boolean() }),
 }, { $id: "Settings" });
 export type Settings = Static<typeof Settings>;
 

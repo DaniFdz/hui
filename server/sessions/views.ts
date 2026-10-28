@@ -9,10 +9,10 @@ import { recordDiagnosticEvent } from "../observability.ts";
 import { pullRequestsFromTranscript, type PullRequestStatuses } from "../integrations/pull-requests.ts";
 import { runtimeMemoryByPid } from "../runtimes/resources.ts";
 import type { TranscriptEntry } from "../runtimes/types.ts";
-import { groupSessions, readSessionRegistry, updateRegistry, type SessionRecord } from "./sessions.ts";
+import { groupSessions, readSessionRegistry, sessionRegistryWrites, updateRegistry, type SessionRecord, type SubagentRecord } from "./sessions.ts";
 import type { WatcherService } from "../agent-tools/watchers.ts";
 import { workers } from "../workers.ts";
-import type { SessionJiraIssue, SessionStatus, SessionView, WorktreeProgress } from "../api/sessions.ts";
+import type { SessionJiraIssue, SessionStatus, SessionSubagent, SessionView, WorktreeProgress } from "../api/sessions.ts";
 import { progressCardFromTranscript } from "./progress-card.ts";
 import { effectiveSessionStage, stageRank } from "./session-stages.ts";
 
@@ -42,6 +42,8 @@ export function publishPendingStatus(update: PendingStatusUpdate): void {
  * each advance it proves so a cold session keeps its column after a restart.
  * Only a changed stage writes; ordinary polling stays read-only. */
 let stagePersistence: Promise<unknown> = Promise.resolve();
+/** The registry write count the last built list saw. */
+let listedWrites = -1;
 function persistInferredStages(records: readonly SessionRecord[], views: readonly SessionView[]): void {
   const stored = new Map(records.map((record) => [record.id, record.stage]));
   const inferred = new Map(views
@@ -78,6 +80,10 @@ export function markBackgroundWork(views: SessionView[], watching: (id: string) 
       parent.background = true;
     }
   }
+}
+
+function subagentView({ task: _task, summary: _summary, ...view }: SubagentRecord): SessionSubagent {
+  return view;
 }
 
 export type SessionViewDeps = {
@@ -121,9 +127,10 @@ export function createSessionViews(deps: SessionViewDeps) {
       ...(record.unread ? { unread: true } : {}),
       ...(record.icon ? { icon: record.icon } : {}),
       ...(record.parentId ? { parentId: record.parentId } : {}),
-      ...(record.subagent ? { subagent: record.subagent } : {}),
+      ...(record.subagent ? { subagent: subagentView(record.subagent) } : {}),
       ...(bot ? { bot } : {}),
       ...effectiveSessionStage(record, pullRequests),
+      ...(record.goal ? { goal: record.goal } : {}),
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     };
@@ -147,6 +154,7 @@ export function createSessionViews(deps: SessionViewDeps) {
     const pendingSnapshot = [...pendingSessions.values()];
     // Refreshes the bot names session views show; a broken bots.json leaves them plain sessions.
     await deps.botRegistry.list().catch(() => undefined);
+    const writes = sessionRegistryWrites();
     const registry = await readSessionRegistry();
     const runtimes = liveSessions.runtimeTelemetry();
     const memoryByPid = await runtimeMemoryByPid([...runtimes.values()].flatMap(({ pid }) => pid ? [pid] : []));
@@ -170,8 +178,15 @@ export function createSessionViews(deps: SessionViewDeps) {
     const all = views.flatMap((group) => group.sessions);
     markBackgroundWork(all, (id) => deps.watchers().list(id).some((watcher) => watcher.state === "running"));
     persistInferredStages(registry.sessions, all);
+    listedWrites = writes;
     return views;
   }
 
-  return { toView, pendingView, listSessionViews };
+  /** True once the registry has changed since the list was built, so a screen
+   * asking for it gets a session it just created rather than the list before it. */
+  function listSessionViewsStale(): boolean {
+    return sessionRegistryWrites() !== listedWrites;
+  }
+
+  return { toView, pendingView, listSessionViews, listSessionViewsStale };
 }

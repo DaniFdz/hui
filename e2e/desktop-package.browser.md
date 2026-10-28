@@ -65,3 +65,59 @@ macOS verification, test:
 
 The bundle is not Apple-notarized. It keeps its signed shell locally but depends
 on the recorded npm/Node installation for gateway startup and release selection.
+
+## Native notification proof
+
+Verified 2026-10-22 on macOS 26.7 (arm64) with Electron 44.4.5, against an
+isolated managed gateway started from the checkout. The operator's own HUI app,
+gateway and notification settings were not touched.
+
+### Setup
+
+1. `npm run build`, then start the fixture provider
+   (`e2e/fixtures/pi-provider-fixture.mjs`) and `hui gateway start --port <free>`
+   with `HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `PI_CODING_AGENT_DIR` set
+   to a scratch directory under the home folder. `notify_user` looks for
+   `$HOME/Applications/HUI.app`, so the scratch `HOME` holds the proof bundle.
+2. Build that bundle with `installMacApp({ applications: '<scratch>/home/Applications', … })`
+   and a `finalize` step that gives it its own `CFBundleIdentifier` and the name
+   "HUI Proof", then signs it ad hoc. Its `LSEnvironment` sets `CFFIXED_USER_HOME`
+   to the scratch home, which gives Electron its own user data and
+   single-instance lock, and the same XDG and PI variables, so its
+   `gateway start --json` reuses the scratch gateway. Register it with
+   `lsregister -f`.
+3. Keep the scratch directory out of `/tmp`. A bundle there that macOS has never
+   allowed fails every notification with "Notifications are not allowed for
+   this application" and no prompt.
+4. Trigger the tool with `E2E_CALL:` prompts, from regular sessions over
+   `POST /__hui/sessions/:id/prompt` and from a bot over
+   `POST /__hui/bots/:id/messages`. Follow the front app and the proof window's
+   title, which names the open chat, with `NSWorkspace` and `CGWindowList`, and
+   Electron's notification log with `ELECTRON_DEBUG_NOTIFICATIONS=1`. Make that
+   log file append-only with `chflags uappnd`, because every Electron launch
+   deletes the file `ELECTRON_LOG_FILE` names.
+
+### Results
+
+The operator clicked most banners and Notification Center entries by hand. Two
+clicks used the banner's own accessibility press action instead.
+
+| Case | Observed |
+| --- | --- |
+| First launch | Opening HUI asked for notification permission before any alert was sent. |
+| HUI not running | `open -g -a` started HUI in the background with no window and the front app unchanged; the banner appeared 1.5 to 7 s after the call, slowest on the first launch after an install, and the tool returned `queued`. Clicking it opened a window on that chat. |
+| HUI running | The banner appeared within 1 s. HUI kept a single process, and the Dock showed no second HUI icon. |
+| Another chat open | The window stayed on its chat and in the background while the alert arrived. Clicking opened the alert's chat and brought HUI to the front within 2 s. |
+| Bot chat | Clicking opened `/bots/<id>`, the bot's stable address. |
+| Three alerts at once | All three returned `queued` while the window stayed on another chat. Clicked in Notification Center in a different order, each opened its own chat. |
+| Window closed | HUI kept running without a window; clicking created a window on the alert's chat. |
+| Quit with an unread alert | Quitting HUI removed the alert from Notification Center. |
+| Force Quit, then a click starts HUI | The alert stayed in Notification Center. Clicking it started HUI on the alert's chat. |
+| Force Quit, then a click after HUI restarted | The restarted HUI took over the alert, and clicking it opened the alert's chat. |
+| macOS refuses | The tool failed within the launch time with "Allow notifications for HUI in System Settings"; HUI showed no dialog and did not come to the front. |
+
+Known limits:
+
+- The first alert that launches a never-opened HUI is lost behind the
+  permission prompt, although the tool reports it queued. Opening HUI once
+  shows the prompt instead.

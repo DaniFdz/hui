@@ -73,7 +73,7 @@ test("session history actions expose direct editable rewind and prompt-free cont
   assert.match(source, /renderActionTooltip\(rewindTooltipId, props\.rewindPending \? "Rewinding…" : "Rewind"/u);
   assert.match(source, /props\.onRewind\(rewindTo, last\?\.text \?\? "", last\?\.attachments\)/u);
   assert.doesNotMatch(source, /row\.role === "user" && !props\.streaming/u);
-  assert.match(source, /aria-label="Continue without a prompt"/u);
+  assert.match(source, /\$\{session\.tool === "pi" \? html`<button[^`]*aria-label="Continue without a prompt"/u);
   assert.doesNotMatch(source, /rewind-session-dialog|Rewind here|Rewind point/u);
   // The rewind itself, also while the session runs, is composer-controller.test.ts's.
 });
@@ -96,11 +96,9 @@ test("the composer attachment button exposes camera, photo and file pickers", ()
   assert.match(source, /input\.closest\("details"\)\?\.removeAttribute\("open"\)/);
 });
 
-test("sent file cards retain original compact geometry and the empty action slot", () => {
+test("sent file cards retain original compact geometry", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   assert.match(source, /chat-assistant-attachment-card chat-assistant-attachment-card--compact/);
-  assert.match(source, /<span class="chat-assistant-attachment-card__actions"><\/span>/);
-  assert.match(source, /chat-assistant-attachment-card__title" title=\$\{attachmentName\(attachment\)\}/);
 });
 
 test("sent attachments do not render stray template syntax", () => {
@@ -244,6 +242,28 @@ test("Task progress projects the durable progress_card signal above the composer
   assert.match(source, /agent-chat__composer-shell--question-composer/);
 });
 
+test("Task progress offers a refresh control that asks for a new card without folding it, and turns busy meanwhile", async () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  const props = {
+    transcript: [
+      { kind: "message", role: "user", text: "long task" },
+      { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "Check the build", status: "in_progress" }] }, status: "running" },
+    ],
+  };
+  const idle = await renderWorkerSession("running", props);
+  const busy = await renderWorkerSession("running", { ...props, refreshing: true });
+
+  assert.match(idle, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card"/u);
+  assert.doesNotMatch(idle, /aria-busy=(?:true|"true")/u);
+  assert.match(idle, /Check the build/u);
+  assert.match(busy, /aria-busy=true \?disabled=true/u);
+  assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*props\.onRefreshSession\(\);/u);
+  assert.match(styles, /\.session-progress-card__refresh\s*\{[^}]*cursor:\s*var\(--cursor-action\);/s);
+  assert.match(styles, /\.session-progress-card__refresh\[aria-busy="true"\] > svg\s*\{[^}]*animation:\s*session-run-spin/s);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.session-progress-card__refresh\[aria-busy="true"\]/s);
+});
+
 test("model and thinking reuse one exclusive composer picker pattern", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
@@ -298,6 +318,9 @@ test("the composer exposes PI context usage beside the model", () => {
   assert.match(source, />Compact now<\/button>/);
   assert.match(source, /Context window/);
   assert.match(source, /Latest run tokens/);
+  // A cost an extension measured reaches the popover with its source and its age, beside the estimated latest run.
+  assert.match(source, /\$\{usage\?\.sessionCost \? html`<div class="context-usage__section-label">Session cost<\/div>/);
+  assert.match(source, /\$\{relativeTime\(usage\.sessionCost\.asOf\)\}/);
   assert.match(styles, /\.context-ring__dial/);
   assert.match(source, /stroke-dashoffset/);
 });
@@ -448,8 +471,13 @@ function markup(value: unknown): string {
     const template = value as { strings: readonly string[]; values: unknown[] };
     return template.strings.map((part, i) => part + markup(template.values[i])).join("");
   }
-  // A directive's arguments, such as the HTML `unsafeHTML` renders.
-  if (value && typeof value === "object" && "_$litDirective$" in value && "values" in value) return markup((value as { values: unknown[] }).values);
+  // A directive's arguments, such as the HTML `unsafeHTML` renders, or each item `repeat` renders.
+  if (value && typeof value === "object" && "_$litDirective$" in value && "values" in value) {
+    const values = (value as { values: unknown[] }).values;
+    const [items, , template] = values;
+    if (Array.isArray(items) && typeof template === "function") return markup(items.map((item, index) => (template as (item: unknown, index: number) => unknown)(item, index)));
+    return markup(values);
+  }
   return ["string", "number", "boolean"].includes(typeof value) ? String(value) : "";
 }
 
@@ -501,7 +529,7 @@ const sendButton = (html: string) => html.match(/<button type="submit" class="ch
 
 test("a worker session HUI is reconnecting to reads calm: a status, one notice, the draft kept and no failure", async () => {
   const html = await renderWorkerSession("reconnecting");
-  assert.match(html, /durable on devbox · [^<]* · Reconnecting to devbox… </u);
+  assert.match(html, /durable on devbox · [^<]* · <span role="status" aria-label=Session status: Reconnecting to devbox…>Reconnecting to devbox…<\/span> </u);
   assert.match(html, /Reconnecting to devbox — draft preserved\./u);
   assert.equal(html.split("Connection to devbox lost — the session keeps running there. HUI reconnects automatically.").length, 2, "exactly one notice");
   assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
@@ -513,7 +541,7 @@ test("a worker session HUI is reconnecting to reads calm: a status, one notice, 
 
 test("a worker session HUI no longer retries says it is disconnected and offers Reconnect", async () => {
   const html = await renderWorkerSession("disconnected");
-  assert.match(html, /· Disconnected from devbox </u);
+  assert.match(html, /· <span role="status" aria-label=Session status: Disconnected from devbox>Disconnected from devbox<\/span> </u);
   assert.match(html, /Disconnected from devbox — draft preserved\./u);
   assert.match(html, /Disconnected from devbox\. The session may still be running there\. <button type="button" class="btn btn--sm reconnect-session" @click=>Reconnect<\/button>/u);
   assert.doesNotMatch(html, /The runtime could not start|Retry session|chat-error|exited|no longer streaming|Stream stopped/u);
@@ -542,7 +570,7 @@ test("the Parallel tasks card counts the latest batch of subagents and folds a b
   const startedAt = new Date(Date.now() - 60_000).toISOString();
   const endedAt = new Date(Date.now() - 10_000).toISOString();
   const task = (taskId: string, status: string, extra: Record<string, unknown> = {}) =>
-    ({ taskId, sessionId: `s-${taskId}`, parentSessionId: "s", title: `Check ${taskId}`, task: "t", status, startedAt, updatedAt: endedAt, ...extra });
+    ({ taskId, sessionId: `s-${taskId}`, parentSessionId: "s", title: `Check ${taskId}`, status, startedAt, updatedAt: endedAt, ...extra });
   const card = (html: string) => html.slice(html.indexOf('<aside class="chat-swarm"'), html.indexOf("</aside>"));
 
   const active = card(await renderWorkerSession("idle", { subagents: [
@@ -683,4 +711,51 @@ test("an unanswered questionnaire reads as expired with what it asked, never as 
   assert.doesNotMatch(expired, /declined|<form|<button/u);
   assert.match(row("lone"), /<strong>Auth<\/strong><span>Which auth method\? <span class="chat-question-summary__options">OAuth \(Recommended\), API key<\/span>/u);
   assert.match(row("declined"), /You declined to answer\./u);
+});
+
+test("a long conversation renders its latest rows and offers the earlier ones; a closed activity group renders no items", async () => {
+  const { TRANSCRIPT_WINDOW_ROWS } = await import("./chat/projection.ts");
+  const transcript = Array.from({ length: TRANSCRIPT_WINDOW_ROWS + 10 }, (_, index) => [
+    { kind: "message", id: `u${index}`, role: "user", text: `Step ${index}` },
+    { kind: "tool", id: `t${index}`, name: "bash", status: "succeeded", args: { command: `echo step-${index}` }, output: `step-${index}` },
+    { kind: "message", id: `a${index}`, role: "assistant", text: `Done ${index}` },
+  ]).flat();
+  const earlier: number[] = [];
+  const latest = await renderWorkerSession("idle", { transcript, onShowEarlier: (start: number) => earlier.push(start) });
+  const rows = latest.split("data-chat-row-key=").length - 1;
+  assert.equal(rows, TRANSCRIPT_WINDOW_ROWS);
+  assert.doesNotMatch(latest, /Step 0</u);
+  assert.match(latest, /Done 59</u);
+  assert.match(latest, /class="chat-history-boundary__action" @click=>Show earlier messages</u);
+  assert.doesNotMatch(latest, /echo step-59/u, "the command inside a closed group is not rendered");
+  const all = await renderWorkerSession("idle", { transcript, transcriptWindowStart: 0 });
+  assert.match(all, /Step 0</u);
+  assert.doesNotMatch(all, /Show earlier messages/u);
+  const open = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set([`s:t${TRANSCRIPT_WINDOW_ROWS + 9}`]) });
+  assert.match(open, /echo step-59/u);
+});
+
+test("subagent and watcher cards blur nothing behind them, so a long chat keeps painting as it scrolls", () => {
+  const styles = readStyles("../styles/openclaw-chat.css").replace(/\/\*[\s\S]*?\*\//gu, "");
+  const cardRules = styles.match(/(?<=^|[{}])[^{}]*\.chat-subagents[^{}]*\{[^}]*\}/gu) ?? [];
+  assert.ok(cardRules.length > 0);
+  for (const rule of cardRules) assert.doesNotMatch(rule, /backdrop-filter/u, rule.trim());
+});
+
+test("the goal sits above the composer with its status and the operator's controls", async () => {
+  const goal = { objective: "get CI green on PR 1", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 };
+  const active = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal } });
+  assert.match(active, /class="agent-chat__goal-float"/u);
+  assert.match(active, /class="agent-chat__goal agent-chat__goal--active" data-expanded="false"/u);
+  assert.match(active, /class="agent-chat__goal-label">Pursuing goal</u);
+  assert.match(active, /class="agent-chat__goal-objective">get CI green on PR 1</u);
+  assert.match(active, /aria-label="Pause goal"/u);
+  assert.match(active, /aria-label="Clear goal"/u);
+  assert.doesNotMatch(active, /aria-label="Resume goal"/u);
+  const blocked = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal: { ...goal, status: "blocked", note: "waiting on review" } } });
+  assert.match(blocked, /agent-chat__goal--blocked" data-expanded="false" title=waiting on review>/u);
+  assert.match(blocked, /class="agent-chat__goal-label">Goal blocked</u);
+  assert.match(blocked, /aria-label="Resume goal"/u);
+  const none = await renderWorkerSession("idle");
+  assert.doesNotMatch(none, /agent-chat__goal-float/u);
 });

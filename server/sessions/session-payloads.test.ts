@@ -40,7 +40,7 @@ type LegacySessionView = {
   unread?: true;
   icon?: string;
   parentId?: string;
-  subagent?: SubagentRecord;
+  subagent?: Omit<SubagentRecord, "task" | "summary">;
   bot?: { id: string; handle: string; name: string };
   stage: LegacySessionStage;
   stageOrigin: LegacySessionStageOrigin;
@@ -80,7 +80,7 @@ test("the session schemas preserve their existing server types", () => {
   expectTypeOf<LegacyWorktreeProgress>().toMatchTypeOf<Api.WorktreeProgress>();
   expectTypeOf<Api.WorktreeProgress>().toMatchTypeOf<LegacyWorktreeProgress>();
   expectTypeOf<SubagentRecord>().toMatchTypeOf<Api.SessionSubagent>();
-  expectTypeOf<Api.SessionSubagent>().toMatchTypeOf<SubagentRecord>();
+  expectTypeOf<Api.SessionSubagent>().toMatchTypeOf<Omit<SubagentRecord, "task" | "summary">>();
   expectTypeOf<LegacySessionView>().toMatchTypeOf<Api.SessionView>();
   expectTypeOf<Api.SessionView>().toMatchTypeOf<LegacySessionView>();
   expectTypeOf<LegacySessionGroup<LegacySessionView>>().toMatchTypeOf<Api.SessionGroup>();

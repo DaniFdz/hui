@@ -48,6 +48,44 @@ Window close and application quit do not stop the shared gateway. Existing
 stop/restart/update busy-work checks remain unchanged; no desktop HTTP endpoints
 or alternate persisted gateway state are introduced.
 
+### Desktop notifications
+
+The agent-only `notify_user` tool takes `title` (1–120 characters) and the
+optional `subtitle` (up to 120), `message` (up to 1000) and `priority` (`low`,
+`normal` or `high`, default `normal`), with no destination parameter. Low has no
+sound, normal plays the default sound, and high also bounces HUI's Dock icon
+until the operator opens HUI. It is offered only while
+`Settings.notifications.tool` is `true` (default `false`); a call reaching the
+gateway while it is off fails. The gateway binds it to the authenticated caller,
+using a stable bot URL when that caller is a bot's chat. The initial
+implementation requires the managed macOS gateway and a current HUI-owned
+desktop bundle. Unsupported or outdated installations fail instead of falling
+back to Script Editor. No public browser API is added.
+
+The native app receives a validated same-gateway chat URL and a one-use
+loopback acknowledgement address in a `hui-notification:` URL, which the
+gateway opens with `open -g -a` on the app. A running app receives it as an
+Apple Event, so no second instance starts; no app claims the scheme, so links
+in other apps cannot open it.
+The tool returns `status: "queued"` only after the native app acknowledges, and
+`status: "in-view"` when the app showed nothing because the HUI window is in
+front showing that chat; launch errors, cancellation, no acknowledgement or a
+notification macOS refuses fail the call. Callback tokens never enter tool
+output.
+Clicking the banner opens its originating conversation, creating a window if
+needed. Delivery alone does not change focus. macOS settings may suppress the
+banner, and queued is not proof the operator read it. Notification calls are
+not replayed after a crash. Browser and iPhone push are outside this version.
+
+`Settings.notifications` also chooses HUI's own notifications, sent through the
+same app on a macOS gateway: `runFinished` (default `false`) and `runFailed`
+(default `true`) for a run the operator started, and `needsInput` (default
+`true`) when any conversation starts waiting for the operator. Their title is
+the chat's name, their subtitle `Finished`, `Run failed` or `Needs your input`,
+and a waiting chat's body is its first question's title. Needs-your-input
+banners are `normal` priority and the others `low`. A notification the app
+can't show is skipped and recorded as a `notification_skipped` diagnostic.
+
 ## Gateway lifecycle boundary
 
 The standalone production gateway and Vite development plugin share the same
@@ -67,7 +105,10 @@ smaller bodies, and clients that accept neither encoding, get the identity body.
 its explicitly resolved Tailscale DNS name, or a name granted with `--allow-host`
 or `HUI_GATEWAY_ALLOWED_HOSTS`, or listed in `allowHosts` of `gateway/config.json`). A proxy that connects over loopback but answers
 on a name of its own, such as `tailscale serve`, is the case that needs one;
-unusable entries are refused rather than silently ignored. The default production
+unusable entries are refused rather than silently ignored. The production
+gateway keeps an idle keep-alive connection open for 120 s, longer than such a
+proxy keeps one (Tailscale Serve: 90 s), so the proxy closes it first and never
+sends a request on a connection the gateway is closing. The default production
 port is
 4173. The CLI accepts `HUI_GATEWAY_HOST` / `HUI_GATEWAY_PORT` as validated
 start/run/restart defaults, including when invoked by Electron. Explicit CLI
@@ -86,7 +127,10 @@ Normal stop returns 409 while turns, questions, follow-ups or HTTP mutations are
 active; worker sessions that are `reconnecting` or `disconnected` run on their
 worker and count only for the follow-ups HUI holds for them. Forced stop explicitly interrupts work. CLI lifecycle operations are
 serialized, refuse unauthenticated live PIDs and wait for the old process to
-exit before replacement. `gateway.log` is private and receives the gateway's
+exit before replacement. A gateway that cannot answer its control listener, or
+that does not finish shutting down, ends only when `--force` is given **and** its
+process command line names this installation's `build/cli/gateway-run.js`;
+otherwise the CLI refuses to signal a recorded PID and says so. `gateway.log` is private and receives the gateway's
 stderr, including one line per Logs entry (see `GET /__hui/observability`); the
 CLI reads a bounded tail.
 Restart does not migrate or delete HUI registries, settings or PI transcripts.
@@ -636,8 +680,10 @@ workers, receive `PI_CLIENT_SESSION_ID` for provider header interpolation. An
 explicit nonblank environment value is preserved; otherwise each process gets
 a fresh UUID without changing the gateway environment or creating a transcript.
 Durable sessions run inside the gateway, so each of their model requests gets it
-from the request instead: the gateway's explicit value, otherwise a fresh UUID
-per HUI session for each gateway run.
+from the request instead: the gateway's explicit value, read once when it starts
+so an extension running in its process cannot retarget another session, and
+otherwise the HUI session ID itself. A Durable session's requests therefore keep
+one identity across gateway restarts.
 
 Resource enablement is HUI-owned rather than a PI mutation. `GET /__hui/settings`
 and `PUT /__hui/settings` include `disabledSkills`, a normalized array of
@@ -670,8 +716,18 @@ the session switches back to its own model; utility is a
 cheap, fast, tool-free route for generated session titles and `/btw`. Example:
 
 ```json
-{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna" } }
+{ "models": { "primary": "openai/gpt-6-astra", "fallback": "anthropic/claude-sonnet-4-6", "utility": "openai/gpt-5.6-luna", "routes": [{ "name": "fast", "description": "Cheap and quick.", "model": "openai/gpt-5.6-luna", "thinking": "low" }] } }
 ```
+
+The same block carries `routes`: the named models a `sessions_spawn` call can pass
+as `route`. An entry is `{ name, description, model, thinking? }`; a name must be
+1 to 40 Unicode letters or digits, `_`, `.` or `-`. At most 50 routes are kept.
+Descriptions become a single line of at most 200 characters. A route without a
+usable name or canonical model is dropped; a repeated name keeps the first.
+`thinking` accepts PI reasoning levels through `max`, not HUI's Ultra delegation
+mode; an unknown level leaves the route without a pinned level. The prompt's route
+list contains only `name` and `description`, not model ids. Raw `model` remains
+supported by `sessions_spawn`, so these routes are not an allowlist.
 
 The settings document also holds `questions: { timeoutMinutes }`, the question timeout of
 [Structured questions](#structured-questions), `0` (Off) unless 5, 10, 15, 30
@@ -733,6 +789,51 @@ Staying awake with the lid closed is never saved: it lasts one gateway run.
 - When `pmset -g` already reports `SleepDisabled 1` without a HUI flag, turning
   the switch on reports it active and changes nothing, and turning it off
   reports that it is still on outside HUI.
+
+### `GET /__hui/host-metrics`
+
+Read-only resource use of the machine the gateway runs on, for the Dashboard
+page (Labs → Dashboard). It answers whether or not the page is on: it reads
+nothing private and starts nothing until it is asked.
+
+```ts
+{
+  sampledAt: string;                         // ISO time of the sample
+  host: { platform: string; cores: number };
+  cpu: { percent: number; load: number[] };  // all cores; load is 1, 5 and 15 minutes
+  memory: { totalBytes: number; usedBytes: number; swapUsedBytes?: number };
+  disk: { path: string; totalBytes: number; usedBytes: number } | null;
+  network: { rxBytesPerSecond: number; txBytesPerSecond: number } | null;
+  gpu: { percent: number } | null;
+  gateway: { cpuPercent: number; rssBytes: number };
+}
+```
+
+- `cpu.percent`, the network rates and `gateway.cpuPercent` are deltas against
+  the previous sample the gateway keeps. The first read, and a read more than
+  30 seconds after the last, takes a baseline 250 ms earlier, so every answer
+  holds a rate. `gateway.cpuPercent` is the gateway process's CPU time as a share
+  of one core (above 100 when it uses more than one).
+- One sample serves every caller for two seconds, and concurrent reads share the
+  one in flight, so many open tabs cost one sample. Child processes run
+  asynchronously with a two-second timeout and never block the event loop.
+- Memory: on macOS `usedBytes` is `vm_stat`'s active, wired and
+  compressor-occupied pages (`os.freemem()` there leaves inactive and purgeable
+  memory out of free); elsewhere it is total minus `os.freemem()`.
+  `swapUsedBytes` comes from `sysctl vm.swapusage` on macOS and `/proc/meminfo`
+  on Linux, and is absent when neither answers.
+- Disk is the volume holding HUI's config directory (`statfs`); used is what is
+  not available to HUI (total minus available blocks). `null` when it can't be
+  read.
+- Network sums the physical interfaces: one `<Link#…>` row each in
+  `netstat -ib` on macOS, `/proc/net/dev` on Linux; `null` elsewhere.
+  Loopback, tunnels and bridges (`utun`, `bridge`, `awdl`, `llw` on macOS;
+  `veth`, `docker`, `br-`, `virbr` on Linux) are left out, since their traffic
+  also crosses a physical interface.
+- GPU is the busiest accelerator: `ioreg -r -d 1 -c IOAccelerator`'s
+  "Device Utilization %" on macOS (no administrator rights needed on Apple
+  Silicon), `nvidia-smi` on Linux when it is installed, `null` otherwise.
+- Any method other than `GET` is 405.
 
 ### `GET /__hui/workspaces`
 
@@ -811,18 +912,28 @@ type SessionView = {
   model?: string;       // "provider/id"
   pinned?: true;
   parentId?: string;
-  subagent?: SubagentRecord;
+  subagent?: Omit<SubagentRecord, "task" | "summary">; // the task and report stay out of lists: see SubagentTaskView
   bot?: { id: string; handle: string; name: string }; // the bot whose forever chat this is; see Bots
   pullRequests?: SessionPullRequest[]; // oldest first, at most 20
   jiraIssues?: SessionJiraIssue[];     // oldest first, at most 20
   stage: SessionStage;                 // effective Kanban column
   stageOrigin: "operator" | "agent" | "pullRequest" | "default";
+  goal?: SessionGoal;                  // the objective this conversation pursues, if any
   createdAt: string;
   updatedAt: string;
 };
 
 type SessionStage = "investigation" | "implementation" | "testing" | "done";
 // The board's first column, "backlog", holds backlog items, never sessions.
+
+type SessionGoal = {
+  objective: string;
+  status: "active" | "paused" | "blocked" | "complete";
+  createdAt: string;
+  updatedAt: string;
+  note?: string;         // why it is paused or blocked, when one was given
+  continuations: number; // automatic turns spent pursuing it
+};
 
 type SubagentStatus =
   | "starting" | "running" | "completed" | "failed"
@@ -840,8 +951,9 @@ type SubagentRecord = {
   completionDelivery?: "pending" | "delivered"; // absent for legacy tasks
   collect?: true; // collected by the parent with agents_wait (Swarm)
 };
-type SubagentTaskView = Omit<SubagentRecord, "status"> & {
+type SubagentTaskView = Omit<SubagentRecord, "status" | "task"> & {
   status: SubagentStatus | "queued"; // queued: a collected child waiting for a slot
+  summary?: string;    // the report's first 280 characters, for the card's one-line preview
   sessionId: string;
   parentSessionId: string;
   title: string;
@@ -855,8 +967,11 @@ type SubagentTaskView = Omit<SubagentRecord, "status"> & {
 // `x-content-type-options: nosniff`; 403 without x-hui, 404 for an unknown
 // session, index or non-image part, 405 for other methods.
 // Files a user attached have `url` GET /__hui/sessions/:id/attachments/:message/files/:file
-// with the same guard and headers, served as `application/octet-stream`; 404 also
-// when the stored path is missing or resolves outside HUI's attachment store.
+// with the same guard and headers plus `content-security-policy: default-src 'none'; sandbox`.
+// An image or PDF (by the file's name) is served as its type with `content-disposition: inline`;
+// anything else as `application/octet-stream` with `attachment`, both naming the original file.
+// The chat links each one as "Open <name>". 404 also when the stored path is missing or
+// resolves outside HUI's attachment store.
 type TranscriptAttachment = { name: string; kind: "image" | "file"; mimeType?: string; url?: string };
 
 type TranscriptEntry =
@@ -1018,6 +1133,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
+| `goal` | HUI | Optional objective the conversation pursues: objective, status, timestamps, a note and how many automatic turns it spent. Only the operator starts, pauses, resumes and clears it (`POST …/goal`, `/goal`); the agent may only report `complete` or `blocked` through `update_goal`. |
 | `piSessionFile` | Runtime identity, HUI pointer | PI: learned from `get_state`, then stored by HUI for `--session` resume. Durable: `durable:<conversationId>`, replaced by a rewind's fork; a fork's session starts on its copy |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |
@@ -1038,8 +1154,8 @@ session-tool contract (see also [Suggested tasks](#suggested-tasks)):
 
 | Tool | Contract |
 |---|---|
-| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/model/thinking, a bounded run timeout and `collect`; a model missing from the caller's available models is rejected before any child is created, naming close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
-| `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished or at the timeout (default 600, 1-3600 s) with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId] }`; an abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
+| `sessions_spawn` | Persist and start one isolated child session; accepts task, optional label/route or model/thinking, a bounded run timeout and `collect`; a `route` resolves to its model and pinned reasoning level from HUI settings before the child exists, and a route that is unknown, sent together with `model`, or whose model is missing from the caller's available models is rejected before any child is created, naming the route to fix or the configured route names; a raw `model` missing from that catalog names close matches (an unavailable or empty catalog does not block); returns immediately with task and child session ids, plus `queued: true` when a collected child waits for a slot |
+| `agents_wait` | `{ ids, timeoutSeconds? }`: 1-100 task (or child session) ids of the caller's own children; any other id rejects the call. Resolves when all have finished, at the timeout (default 600, 1-3600 s), or as soon as a message is steered to the caller (once per change of its steering queue in a tool round), with `{ completed: [{ taskId, sessionKey, label, status, result?, error? }], pending: [taskId], interrupted?: string }`; `interrupted` says a steered message ended the wait while tasks were pending. An abort rejects it. Returned results count as delivered. Replayed after a Durable crash |
 | `sessions_list` | Return metadata for at most 100 sessions in the caller's parent/child tree |
 | `sessions_history` | Return at most 100 recent structured entries from a visible session; tool entries are opt-in and the UTF-8 serialized result is capped at 80 KiB. A single entry larger than the cap becomes an explicit omission error entry |
 | `sessions_send` | Prompt or queue a message to a visible session; `timeoutSeconds: 0` is fire-and-forget, otherwise waits up to 120 seconds for the correlated reply |
@@ -1325,12 +1441,16 @@ conversations in the host's own store and files, without starting them),
 `put-file`, `get-file` and `sync-plan`/`sync-put`/`sync-commit`. A host whose
 `hello` lists the `bots` feature also answers the bot operations of
 [bots on a worker](#bots-on-a-worker), against its own store: `bot.create
-{botId,cwd?,model?,thinking?,soul?,memory}` (`{reference,cwd}`; it always makes the
-bot's home, and SOUL.md there when `soul` is given), `bot.directory {cwd}`,
+{botId,cwd?,model?,thinking?,memory,files?}` (`{reference,cwd}`; it always makes the
+bot's home, and its prompt files there when `files` gives them as
+`{soul?,user?,memory?,bootstrap?}`), `bot.directory {cwd}`,
 `bot.configure {reference,cwd}`, `bot.forget {reference}`, `bot.last-message
 {reference}`, `bot.call-record {reference,record}`, `bot.home.prepare {botId}`,
 `bot.soul.read {botId}` (`{soul}`, null without one), `bot.soul.write {botId,soul?}`
-(without `soul` it removes SOUL.md), `bot.remove-home {botId,cwd?}` (the bot's
+(without `soul` it removes SOUL.md), `bot.file.read {botId,file}` and
+`bot.file.write {botId,file,text?}` (`{file,text}`, null without one; a host lists
+`bot-files` when it keeps all four, so a gateway refuses USER.md and MEMORY.md on
+one that predates them instead of dropping them), `bot.remove-home {botId,cwd?}` (the bot's
 home with everything in it, under the gateway's own guard; only SOUL.md when
 `cwd`, the bot's working directory, lies inside it),
 `bot.memory.configure|status|view|zoom|html {reference,…}` (a memory this store
@@ -1519,6 +1639,39 @@ Durable's compactions are declined. The gateway reads it through
 whose conversation has no OptChat, or a store this process does not own, has no
 memory to read.
 
+### Prompt files
+
+A bot's home folder, `<bots dir>/<id>` (owner-only), holds four files, each read
+to every request as its own prompt section:
+
+| File | Section | Who writes it | In an export |
+| --- | --- | --- | --- |
+| `SOUL.md` (20,000 chars) | `soul`, last | The bot, with `write_soul`, on the operator's turns (and HUI's kickoff) | **Yes** |
+| `USER.md` (6,000) | `operator` | The bot, with `update_user`, on the operator's turns | **Never** |
+| `MEMORY.md` (10,000) | `memory` | The bot, with `update_memory`, on the operator's turns | **Never** |
+| `BOOTSTRAP.md` (6,000) | `soul`, while `SOUL.md` is absent | **Only the operator** | **Yes** |
+
+SOUL.md is who the bot is and how it works (timeless, no dates, no operator
+data); USER.md is what it knows about the operator; MEMORY.md is what it chose
+to keep, by topic, not the chat's log. `BOOTSTRAP.md`, when present, replaces
+the questions of the first conversation with the operator's own onboarding
+body, inside HUI's fixed rules (the operator's request first, one or two
+questions at a time, only the operator's turns may write the files).
+
+```ts
+type BotFile = "soul" | "user" | "memory" | "bootstrap";
+type BotFileText = { file: BotFile; text: string | null }; // null while the bot has none
+```
+
+`GET /__hui/bots/:id/files/:file` answers `BotFileText` (404 for another name,
+which is no route). `PUT /__hui/bots/:id/files/bootstrap` takes `{ text }`
+(`""` removes it) and answers `BotFileText`; `PUT` on `user` or `memory` is 400:
+the bot writes those when the operator tells it to, and `SOUL.md` keeps its
+older route below. `hui doctor` moves an old `## What you already know`
+section into `MEMORY.md` and names `hui bot split`, which sends the bot what
+belongs in each file so it sorts the rest itself, then marks the bot split with
+`PATCH { split: true }` (below) so doctor stops listing it.
+
 ### Explicit knowledge
 
 `facts.json` in the bot's HUI-owned home stores manually entered facts,
@@ -1664,7 +1817,7 @@ updates contain changed views and an `ids` list only when the layout changes.
 
 ### `PATCH /__hui/bots/:id`
 
-200 `{ bot }`. Only what changes (`worker` is 400: a bot stays on the machine it was created on); `tagging: "anyone"` goes back to the default (another value is 400); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks, `ears: ""` takes them off), `avatar: null` clears them all (an unknown `shape` or `ears` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. Archived bots are 409
+200 `{ bot }`. Only what changes (`worker` is 400: a bot stays on the machine it was created on); `tagging: "anyone"` goes back to the default (another value is 400); `""` clears `title`, `description`, `model`, `thinking` (back to the gateway defaults, above), `memoryModel` (also as `utilityModel`, the same field; giving both with different values is 400), `memoryThinking` (back to Settings' utility model, then the chat's model, and OptChat's default level); an avatar key `""` clears it (`emoji: ""` switches the bot to its face, `shape: ""` and `color: ""` go back to the ones its id picks, `ears: ""` takes them off), `avatar: null` clears them all (an unknown `shape` or `ears` or a color that is not `#rrggbb` is 400); a voice `language: ""` (back to Auto) or `live: ""` (back to Settings' call voice) clears that key, `voice: null` clears both (other voice keys are 400, VoiceStudio's old `profile` and `speed` included, and so is a `language` that is not one of Whisper's codes, a name such as `Spanish` included, or a `live` that is not one of GPT-Live's voices). `disabledTools` and `disabledSkills` replace the whole list (`[]` turns everything back on), checked against the running chat's catalog (below; on its worker for a bot there); they apply from its next request. `soul` is refused (400): SOUL.md has its own route. A given handle replaces the old one (409 if taken); a new `name` without one re-derives the handle while it is still the automatic one, derived from the old name (kept unique), and a handle chosen before stays. `model`/`thinking` go through the live chat (`setModel`/`setThinking`); `name` and the memory fields reconfigure OptChat, `name` also the session title; `cwd` is accepted only while the chat is idle (409 otherwise) and boots its runtime again there; a turn that starts during that edit (a routine, say) makes it answer 409 after the conversation and the chat's session record already moved, with the bot record still naming the old directory, so repeat the edit once the bot is idle to finish it. `split: true` records that the bot's prompt is SOUL.md, USER.md and MEMORY.md (any other `split` is 400): a bot created now has it from the start, a bot without a SOUL.md gets it when the gateway starts, `hui bot split` sends it once its message is accepted (with `--wait`, not after a turn that fails or times out), and `hui doctor` lists a bot from before the split until it has it; the view does not carry it. Archived bots are 409
 
 ### `DELETE /__hui/bots/:id`
 
@@ -1698,6 +1851,10 @@ Query `id=&n=`.
 
 200 `BotCatalog`. What the operator can turn off in the bot's chat and what is off, read from its `hui.bot` document; a roster copy that differs is repaired. It opens the chat (as a message would), so an extension's tools are listed; an archived bot's chat, or one that can't start, gets only the tools every chat has (`live: false`). An access request the chat waits on comes along as `request`. Archived bots too
 
+### `GET /__hui/bots/:id/usage`
+
+200 `BotUsageResponse`: `{ usage: UsageTotals }`, as `GET /__hui/observability` totals it, over the bot's chat and every subagent session under it (by `parentId`). `usage.sessions` counts them; each `models` entry adds its reported `costUsd`. A bot on a worker gets `costUsd: null` here: its sessions are counted there, and the overview does not ask. Memory summaries are not included; their spend is the bot's `memory.usage`. Archived bots too
+
 ### `GET /__hui/bots/:id/soul`
 
 200 `BotSoul`. SOUL.md's text, trimmed (at most 256 KiB is read), or `null` while the bot has none. Archived bots too
@@ -1705,6 +1862,14 @@ Query `id=&n=`.
 ### `PUT /__hui/bots/:id/soul`
 
 200 `BotSoul`. `{ soul }`, nothing else: text of at most 20,000 characters after trimming (line ends become `\n`), written atomically (a temporary file and a rename, mode 0600) in the bot's home folder; `""` removes SOUL.md, which brings the first conversation back at the bot's next turn (no kickoff). Answers what was stored. The bot's `updatedAt` moves, so every screen reads it again. Archived bots are 409
+
+### `GET /__hui/bots/:id/files/:file`
+
+200 `BotFileText`. One of `soul`, `user`, `memory` or `bootstrap`: its text, trimmed (at most 256 KiB is read), or `null` while it is absent. Read on the host that runs the chat, so a bot on an offline worker is 503. Archived bots too
+
+### `PUT /__hui/bots/:id/files/bootstrap`
+
+200 `BotFileText`. `{ text }`, nothing else: at most 6,000 characters after trimming, written atomically as `PUT …/soul` writes (mode 0600, in the bot's home folder); `""` removes it, so the first conversation uses HUI's own questions again. It applies from the bot's next request, and only while it has no SOUL.md. Archived bots are 409. `PUT` on `user` or `memory` answers 400: the bot writes those with `update_user`/`update_memory`, on the operator's turns
 
 `GET /__hui/bots/:id/memory/html` answers 200 `text/html`: OptChat's self-contained browse page (the view, every message, each tree level; everything escaped). A link opens it, so like an attachment it takes `x-hui: 1` or a browser-attested `sec-fetch-site: same-origin` page load; any other request is 403 (cross-site, same-site, `none`, none at all). Served with `content-security-policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (inline styles only, never framed), `nosniff`, `cache-control: no-store` and `cross-origin-resource-policy: same-origin`
 
@@ -2509,7 +2674,7 @@ handle, so no bot's `/__hui/bots/:id` is ever one of them.
 
 ### `POST /__hui/bots/import/preview`
 
-200 `BotImportPreview`. `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `open` (a HUI template's open points, as SOUL.md's *Not agreed yet* will list them), `needs` (what it needs to work, one line each), `triggers` (each `{ name, filter, prompt?, delivery?, cooldownSeconds }`, created disabled), `dropped` and `notes` (one line each); a skill of a HUI template has its `files` (`{ path, text }`, in full). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created
+200 `BotImportPreview`. `{ source, pick?, worker? }`, at most 32 MB. Reads the source (fetching a Grok Bot page now, on this request only) and answers what creating its bot would do: `template` (what to send back), `bot` (name, the handle it will get, title, description, look, worker), `soul` (SOUL.md as it will be written), `memory` (MEMORY.md: what the source bot knew, reference data), `bootstrap` (the source's onboarding body, when it has one), `opener`, `model`, `thinking`, `utilityModel`, `memories: { included, total }`, `skills` (each with the name it is written as and its `original`), `routines` (each with the Automation schedule HUI read from it, the source's `scheduleText` and `guessed` when a part was assumed), `integrations` (each with the HUI `tool` it maps to, absent: missing), `disabledTools`, `disabledSkills`, `open` (a HUI template's open points, as SOUL.md's *Not agreed yet* will list them), `needs` (what it needs to work, one line each), `triggers` (each `{ name, filter, prompt?, delivery?, cooldownSeconds }`, created disabled), `dropped` and `notes` (one line each); a skill of a HUI template has its `files` (`{ path, text }`, in full). A file with several agents (CrewAI, Letta, a folder of Claude Code subagents) adds `candidates` (`{ key, name, title? }`) and the shown `pick`; send `pick` to preview another. `worker` previews for a bot on that worker. Nothing is created
 
 ### `POST /__hui/bots/import`
 
@@ -2534,25 +2699,27 @@ nothing is ever written from a source but the bot's own files below.
 | Format | Recognized by | What it brings |
 | --- | --- | --- |
 | Grok Bot | a marketplace link, or a page's source pasted | The bot object in the page's server-components payload (its `self.__next_f.push` chunks, text rows resolved): name, author, description, instructions (the soul), memories `{ name, description }`, skills `{ name, description, content }`, routines, integrations `{ name, description }` and an emoji. x.ai can change the page: a page without one is 400, and its message says to copy the bot's instructions and paste them instead |
-| OpenClaw workspace | SOUL.md or IDENTITY.md at the top of a folder or a zip (one wrapping folder allowed) | SOUL.md (the soul); IDENTITY.md's `- Name:`, `- Emoji:`, `- Vibe:` (description) and `- Creature:` (title) lines, bold or not, a value on the line below too, template hints skipped; MEMORY.md's sections and USER.md (memories); HEARTBEAT.md's checklist (a routine every 30 minutes); `skills/*/SKILL.md`. Left out with the reason: AGENTS.md (OpenClaw's operating manual: memory files, heartbeats, group chats; it describes OpenClaw's runtime rather than the bot, and HUI's own prompt covers how a bot works here), TOOLS.md, BOOTSTRAP.md, the daily `memory/*.md` logs, an avatar image and a skill's supporting files |
+| OpenClaw workspace | SOUL.md or IDENTITY.md at the top of a folder or a zip (one wrapping folder allowed) | SOUL.md (the soul); IDENTITY.md's `- Name:`, `- Emoji:`, `- Vibe:` (description) and `- Creature:` (title) lines, bold or not, a value on the line below too, template hints skipped; MEMORY.md's sections and USER.md (memories, saved as MEMORY.md, never the soul); HEARTBEAT.md's checklist (a routine every 30 minutes); `skills/*/SKILL.md`. Left out with the reason: AGENTS.md (OpenClaw's operating manual: memory files, heartbeats, group chats; it describes OpenClaw's runtime rather than the bot, and HUI's own prompt covers how a bot works here), TOOLS.md, BOOTSTRAP.md (only HUI exports carry theirs), the daily `memory/*.md` logs, an avatar image and a skill's supporting files |
 | Claude Code subagent | front matter with `name` or `description` (a `.md`, or `.claude/agents/*.md` in a folder, each a candidate) | `name` (as a display name: `code-reviewer` is Code Reviewer), `description`, `model` (`inherit` is none), `color` (its face's color), the body (the soul), and `tools`: only the HUI tools those map to stay on (below); `mcp__…` tools become integrations |
 | Letta agent file | JSON with `agents` (blocks and tools by id beside them), or one agent with `system` and `core_memory`/`llm_config` | The `persona` block (the soul), the system prompt under *Instructions* unless it is Letta's stock prompt, the `human` block and custom blocks (memories), tools (integrations; their code is never imported; Letta's memory and messaging tools are left out), `llm_config` (the model). The message history is skipped |
 | Character card | V2/V3 JSON (`spec`), V1 fields, or a PNG's `ccv3` (first) or `chara` text chunk | `system_prompt` (its `{{original}}` dropped), `description`, `personality` and `scenario` (the soul), `first_mes` (the opener), the character book's enabled entries (memories), `nickname` (title); `{{char}}` is the bot's name and `{{user}}` Settings' profile name (else "the operator", "you" in the opener). Example messages, alternate greetings, post-history instructions, creator notes and the image are left out |
 | CrewAI agents.yaml | a YAML mapping of agents with `role`, `goal` or `backstory` (each agent a candidate) | `role` (the title), `goal` and `backstory` (the soul), `llm` (the model), `tools` (integrations); CrewAI's `{placeholders}` are kept and noted |
-| HUI template | `bot.json` with `format: "hui-bot"` | Version 2 (below): its profile, SOUL.md, skills with their files, routines (a cron runs in this gateway's time zone), triggers, turned-off lists, open points and needs. Version 1 (an exact copy from before): the same without the last four, plus its handle and `memory.md`, which joins what it already knows |
+| HUI template | `bot.json` with `format: "hui-bot"` | Version 2 (below): its profile, SOUL.md, BOOTSTRAP.md when the operator wrote one, skills with their files, routines (a cron runs in this gateway's time zone), triggers, turned-off lists, open points and needs. Its USER.md and MEMORY.md never travel. Version 1 (an exact copy from before): the same without the last four, plus its handle and `memory.md`, which becomes what it knew, in MEMORY.md |
 | Plain text | anything else | The text is the soul; a short first heading names the bot |
 
 What creating does with a template, the same plan for the preview and the create:
 
-- **Soul.** SOUL.md, as `POST /__hui/bots`'s `soul`: the bot skips its first
-  conversation. A persona longer than 20,000 characters is cut there, with a
-  note. A template without one creates a bot that has its first conversation,
-  and then its memories and opener are left out.
-- **Memories** go into SOUL.md, under *What you already know* after the persona,
-  while they fit in its 20,000 characters (the rest are listed as left out).
-  OptChat's memory is the chat's own log, a projection of its Durable entries,
-  so nothing else can seed it; in SOUL.md the bot reads them on every request
-  and the operator changes them by telling it or with `hui bot soul`.
+- **Soul and memory.** SOUL.md is the persona only, as `POST /__hui/bots`'s
+  `soul`: the bot skips its first conversation, and a persona longer than 20,000
+  characters is cut there, with a note. What the template knew (its memories,
+  and an old *What you already know* section) becomes `MEMORY.md`, reference
+  data under a note that it came from that source, while it fits in 10,000
+  characters (the rest are listed as left out); it is never exported again.
+  `USER.md` is never seeded from a template: it describes the previous
+  operator, and a new bot starts blank about its new one. A HUI template's
+  `BOOTSTRAP.md`, when it has one, travels with it. A template without a
+  persona creates a bot that has its first conversation; its memories are kept
+  either way.
 - **Opener.** The bot's first turn: a kickoff (`botOpenerKickoffText`: the
   `[HUI bot created]` marker, so the chat shows "<name> was created", never the
   operator's bubble) that asks it to send the opener as written. Its answer is a
@@ -2688,13 +2855,15 @@ ends last.
 `BotExportReview`: `id`, `botId`, `name`, `model` (absent: none read it),
 `warning` (no name of the operator's for the cleanup, no utility model, or parts it didn't read), `parts` (`{ id, label,
 kind: "text" | "script", fields: [{ key, text }], read, unread? }`: `profile`,
-`SOUL.md`, `skills/<name>/<path>`, `routines/<n>`, `triggers/<n>`; texts after the
+`SOUL.md`, `BOOTSTRAP.md` when the operator wrote one, `skills/<name>/<path>`,
+`routines/<n>`, `triggers/<n>`; `USER.md` and `MEMORY.md` are never parts. Texts after the
 cleanup, a script's as it is), `cleanup` (`{ part, field, kind, sample, count }`,
 a secret shown by its first four characters), `changes` (`{ id: "c1", part, quote,
 group, reason, replacement, label, question }`), `files` (each script the cleanup
 or a change touches: `{ id: "f1", part, group, reasons, question }`, `remove` for a
 cleanup hit or a removed passage, else `confirm`), `needs` (`{ id: "n1", text }`),
-`leftOut` (one line each) and `meta` (what travels unread: look, models, voice,
+`leftOut` (one line each; what it knows about the operator and what it keeps are
+listed as never carried) and `meta` (what travels unread: look, models, voice,
 schedules, filters, lists).
 
 **The zip** (`buildExport`, shared by the gateway and the dialog): the picked
@@ -2777,9 +2946,13 @@ List everything in the registry, grouped.
 ```
 
 The gateway keeps this list in memory and shares it with every connected
-screen; `revision` increases whenever it changes. The group mutation routes
-return the same shape. `GET /__hui/sessions/events` pushes the same list as
-changes, so clients discard any full list older than the revision they hold.
+screen; `revision` increases whenever it changes. A screen asking while another
+one is connected gets that in-memory list rather than a second recompute of the
+registry, so its status and live details can be up to a poll old; a registry
+change since that list was built (a session created, archived or regrouped) is
+read again before it answers. The group mutation routes return the same shape.
+`GET /__hui/sessions/events` pushes the same list as changes, so clients discard
+any full list older than the revision they hold.
 
 Groups follow the registry's catalog order, which the user controls, with
 `ungrouped` last. New groups are appended; renames keep their position. Within each group pinned sessions come first, then
@@ -2992,8 +3165,13 @@ A `status` frame may also carry `title` when the gateway renamed the session
 itself, such as a new session's generated name.
 
 It also carries the shared session list. After the status snapshot, the
-first `sessions` frame is the complete list; later frames carry only what
-changed. `groups` (order, membership and group defaults as ordered `ids`) is
+first `sessions` frame is the complete list as it is when the client joins
+(read again if no client was listening); later frames carry only what
+changed. `?revision=<n>` names the list the client already holds, from
+`GET /__hui/sessions` or an earlier connection: while that is still the current
+revision, the complete list is not sent. The browser opens this stream after
+its first `GET /__hui/sessions` and reconnects with the revision it holds.
+`groups` (order, membership and group defaults as ordered `ids`) is
 present only when it changed, and `upserts` holds each session whose view
 changed. While any client listens, the gateway recomputes the list every
 second.
@@ -3022,8 +3200,12 @@ Ensures a runtime exists for the session, starting it if needed, and returns wha
 to paint immediately:
 
 ```json
-{ "session": SessionView, "transcript": [ /* compatibility */ ], "snapshot": SessionSnapshot }
+{ "session": SessionView, "snapshot": SessionSnapshot, "revision": 42 }
 ```
+
+`revision` names the live state the snapshot shows. A WebSocket opened with it
+(see `POST /__hui/sessions/:id/connect`) starts without the transcript the
+caller already holds, as long as nothing has changed since.
 
 Idempotent: opening an already-open session must not spawn a second pi. For a
 session with a `piSessionFile`, the runtime resumes it so the old conversation
@@ -3149,6 +3331,28 @@ Returns `{ ok: true }` after the operation, or the existing 400 or 409 error.
 
 Uses the prompt body and attachment rules. Queues work for after the current
 agent run has completely settled.
+
+### `POST /__hui/sessions/:id/goal`
+
+Starts, pauses, resumes or clears the conversation's goal and returns
+`{ "session": SessionView }`. The body is
+`{ "action": "start", "objective": string }` or
+`{ "action": "pause" | "resume" | "clear" }`.
+
+`start` replaces any existing goal and sends the objective as the goal's first
+turn, so it needs an idle session on this gateway (`409` while a turn is
+running). `resume` flips the status back to `active` and, when the session is
+idle, queues HUI's continuation turn. `pause` and `clear` never start work.
+Pausing a goal that is not active, resuming one that is neither paused nor
+blocked, and changing a goal on a worker's session are `400`.
+
+While a goal is `active`, each request's system prompt carries a `hui_goal`
+section with the objective. When such a turn settles cleanly, HUI queues
+`Continue the goal.` through the
+normal follow-up queue, which is what keeps the work going without a human
+message. A stop, a failed run, an open question, input already queued, or a
+worker's session queues nothing. After ten automatic turns the goal is paused
+with a note instead of claiming another.
 
 When PI consumes a steering or follow-up entry, HUI promotes the removed queue
 entry into the live transcript before the next model response. Slow turns and
@@ -3305,6 +3509,13 @@ and tool results (PI attributes nested tool and model calls to the calling tool'
 result). Prompt-cache refreshes are PI `usage` entries outside the conversation;
 they count toward the observability totals, not this per-run figure. Missing context or
 cost remains `null`/absent rather than being estimated by HUI.
+`usage.sessionCost` is separate from that per-run figure: an extension that measured
+the whole session's cost from a source HUI cannot price reports it by appending a
+`hui.session-cost` entry with `{ usd, source, asOf }`, and the session's `usage`
+carries the newest readable report until a `/clear` resets the history. HUI shows it
+beside the estimate with its source and how long ago it was checked; it never
+replaces the per-message or per-run figures, and an unreadable entry is skipped
+rather than shown as a zero.
 `historyRefreshed` is omitted/true on that path. When PI cannot refresh history,
 the adapter emits `settled` with `historyRefreshed: false`; HUI still returns to
 the runtime's reported status but retains and snapshots the live projection so
@@ -3346,21 +3557,36 @@ would otherwise stall every other request. Like terminal and browser streams,
 the upgrade also requires a same-origin `Origin` and an allowed `Host`, and it
 is refused with 403 otherwise. Each text message is
 `{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "closed", "data": … }`
-with the SSE payloads above, beginning with the snapshot. The server negotiates
+with the SSE payloads above, beginning with the snapshot. An upgrade URL with
+`&slim=1` asks for snapshots without `transcript` when it has not changed: one
+that only updates watchers, task suggestions, questions or subagents. With
+`&revision=<n>` from the `POST …/open` answer as well, the stream starts from
+that state: a snapshot without `transcript` when nothing has changed since, or
+else the frames sent since then, in order, leaving out a snapshot or tool
+output that a later one replaces. When the transcript was replaced since (a
+settled turn, a clear, a rewind), or the session no longer keeps every frame
+since then (it drops frames a minute old when it sends new ones), it starts
+with the whole snapshot.
+The browser asks for both and keeps the transcript it has; its reconnects send
+no revision and get the whole snapshot. The server negotiates
 `permessage-deflate` (messages of at least 1 KiB, no context takeover in either
 direction), so the snapshot's transcript crosses a slow link compressed; a
 client that does not offer it gets uncompressed frames. After `closed` the
 server closes normally; a session deleted before the upgrade closes with code
 4404. 429 means too many tickets are pending, so retry later.
 
-### `POST /__hui/sessions/:id/resume`
+### `POST /__hui/sessions/:id/continue`
 
-Available as a fallback after automatic recovery is exhausted and the view still
-reports `"interrupted": true`. HUI starts a new prompt containing the journaled request
-plus an instruction to inspect current transcript/workspace state, finish the
-task and avoid repeating completed work. A marker without a journal (for
-forward compatibility) receives the same generic continuation instruction.
-The route responds `{ "ok": true }`; starting or busy sessions return 409.
+The error notice's **Continue** and the interrupted banner's **Continue run**.
+Resumes a session as one new prompt and returns `{ "ok": true }` once the run has
+entered. With HUI's run marker (a run the gateway or machine lost) the prompt
+carries the journaled request plus an instruction to inspect current
+transcript/workspace state, finish the task and avoid repeating completed work; a
+marker without a journal receives the same generic instruction. With no marker
+but a failed answer as the last transcript row, HUI restates the operator's most
+recent request the same way, because a failed answer stays out of the model's
+context and a bare nudge leaves it nothing to resume. Any other session returns
+400. Running, queued or waiting sessions return 409.
 
 ### `GET /__hui/sessions/:id/models`
 
@@ -3438,9 +3664,10 @@ that is unknown or still waiting on its tool calls, or a session whose runtime
 cannot fork (PI) returns 400. A bot's chat answers 409
 ([a forever chat](#a-forever-chat)).
 
-### `POST /__hui/sessions/:id/continue`
+### `POST /__hui/sessions/:id/resume`
 
-Continues from the active leaf with PI's native prompt-free continuation
+The header's **Continue without a prompt**. Continues from the active leaf with
+PI's native prompt-free continuation
 primitive and returns `{ "ok": true }` once the run has entered. No synthetic
 user message is appended. The tail is the last message of the model context,
 not the raw leaf, so the context edits PI appends while retrying, the model or
@@ -3453,6 +3680,9 @@ continues, including a compaction summary that is the whole context after a
 rewind. When the tail is a normally
 completed assistant response, HUI instead sends one explicit continuation
 prompt ("Continue from where you left off…") as a normal user turn. Running, queued or waiting sessions return 409.
+A runtime without prompt-free continuation, such as Pi Durable, returns 400 with
+the reason; the error notice and the interrupted banner resume it through
+`POST /__hui/sessions/:id/continue`.
 
 ### Subagent completion events
 
@@ -3613,7 +3843,83 @@ process; a development server prints them.
 Usage is aggregated from numeric `usage` metadata already present in PI-owned
 session JSONL files. HUI does not persist a second usage store and never returns
 message content. `costUsd` is `null` when PI did not record cost; HUI does not
-estimate it. Oversized or unreadable transcripts are reported as partial data.
+estimate it. Each `models` entry carries its tokens and the cost reported for that model
+(0 without one). Oversized or unreadable transcripts are reported as partial data.
+
+### `GET /__hui/usage`
+
+Returns `UsageReport`, the Usage page's date-ranged report over the current
+histories of registered local sessions, including archived sessions and subagents.
+This is separate from the lifetime ledger totals in `GET /__hui/observability`
+and bot usage. Remote-worker data and provider billing are not included. Imported
+PI history absent from the current entries can appear in the separate
+`unplacedSpend` amount, never in the dated Durable totals.
+
+Query parameters:
+
+- `from` and `to` are inclusive `YYYY-MM-DD` calendar days, given together,
+  with at most 366 days in one custom range. Omit both for all recorded history.
+- `timeZone` is an IANA time zone, such as `Europe/Paris`, or `UTC`, the default.
+  Calendar bucketing uses that zone, including daylight-saving changes.
+- `refresh=1` reads every history again instead of answering from the scan the
+  gateway already holds.
+- Malformed, impossible or reversed dates and unknown time zones return 400.
+
+The gateway reads every registered history once per time zone and answers any
+range from that scan, so changing the range, the zone or the filters does not
+read the conversations again. While each registered session's activity timestamp
+and run marker stay unchanged, the scan is reused as it is. A run finishing
+invalidates a scan read before its answer was recorded, even when the prompt's
+admission timestamp stays unchanged. When either changes, only the entries
+appended since that scan are read, and entries already counted stay counted, so
+a fork made afterwards does not add its inherited history again. `refresh=1`, and
+the first read after the gateway starts, read every history. A scan in progress is shared
+by concurrent requests. Compaction completion updates that activity even when no dated entry was added.
+Activity the registry does not record is not seen until the next scan or a forced
+refresh.
+
+The response carries `generatedAt`, the effective `range`, `sessions`,
+`coverage` and `unplacedSpend`. Each session has its identity and title, the latest included activity
+stamp, `metrics`, dated buckets, recorded model/provider breakdowns and tool
+result counts. All-time ranges report the earliest included day through today
+or the latest recorded day when a clock was ahead. Empty drafts have no row.
+The browser combines rows for search and rankings; no transcript content is sent.
+
+`UsageMetrics` includes input, output, cache-read, cache-write and total tokens;
+usage-record, user-message, assistant-message, tool-result and error counts;
+`costUsd`; and `unpricedCalls`. Recorded total tokens take precedence over summing
+subtypes. Reasoning and one-hour cache-write subsets are not added again.
+`calls` counts usage records, not user messages. Cost is a recorded PI estimate,
+not an invoice: `costUsd: null` means no valid price was recorded, a numeric zero
+is retained, and `unpricedCalls > 0` labels any known sum as partial. External
+session-cost reports are never added to these PI values.
+
+Durable history is read in pages without changing the store. Each conversation's
+ledger and latest entry ID are read together, and its scan stops at that ID so
+a concurrent reply cannot inflate the spend outside the entries. Inherited entries
+retain their global IDs and count once across registered sessions, attributed
+to their registered source conversation when available. Otherwise the newest
+claiming session receives them, including retained history after a rewind.
+Legacy PI files are read only from registry references, bounded at 32 MB and
+counted once per path. Models and providers come from records, never from the
+session's current selection. Unrecorded labels are `Unknown`.
+
+`unplacedSpend` reports `totalTokens` and `costUsd` that the Durable store
+records for a conversation outside its entries: compaction summarization, model
+calls made from inside a tool, and, for an imported PI session, history its
+entries do not carry. The ledger keeps no date for it, so it is never added to
+the range totals, `days` or rankings, and a narrower range does not change it.
+Legacy PI compaction records do carry usage, so those already count inside the
+dated entries. A conversation whose ledger reports less than the entries it
+wrote contributes zero rather than a negative amount. Cost-only amounts are
+retained. A failed ledger read identifies the conversation in
+`coverage.unavailable` instead of implying that its spend is zero.
+
+`coverage` lists the number of registered sessions and readable local histories,
+individual unavailable histories with their reasons, and `undatedRecords` excluded
+because no valid recorded timestamp was available. Missing data never becomes
+an inferred free call. Prompts, message bodies, tool arguments, tool output,
+credentials and provider requests are excluded.
 
 ### `GET /__hui/diagnostics/export`
 
@@ -3686,7 +3992,8 @@ OpenClaw-compatible HUI chat preferences (`messageWidth`,
 `collapseTaskProgress`, `sendShortcut` and `githubEmbeds`),
 [`power`](#macos-power), the Git workspace `branchPrefix` (`feature/` by default),
 Profile presentation fields and reversible Labs flags (`labs`:
-`denseObservability` and `detailedDebug`, each off unless explicitly `true`).
+`denseObservability`, `detailedDebug` and `dashboard`, each off unless
+explicitly `true`).
 These values affect HUI only. They never change PI configuration, provider
 identity, runtime permissions or transcripts.
 
@@ -4352,6 +4659,17 @@ conversation stops and forgets it.
 | `watcher { action: "dismiss", id }` | Removes a settled watcher, its log and its exit record, like the operator's `DELETE`; returns `{ id, status: "dismissed" }`. Refused while the watcher is running |
 | `watcher { action: "log", id, lines? }` | `{ id, lines, truncated }`: at most `lines` (default 100, max 400) from the end of the log, reading at most 256 KiB |
 
+A watcher that settles into `done`, `failed` or `dead` writes one automated
+user-role message into the owning conversation, once per settle (`reportedAt`
+in its record): `[HUI watcher event]` with `id`, `purpose`, `state`, `note`
+(why it ended), `target`, `outcome`, `started_at`, `ended_at`, `exit_code`,
+`last_output`, `log` and the action that follows. An idle conversation runs it as
+its next turn, a running one is steered, and one that is not open is woken for
+it; a deleted conversation is left alone. `stopped` (an operator stop) and
+`dismissed` announce nothing. A settle found at the next gateway start is
+announced only when the record was marked `interrupted`, i.e. it was still
+running when the last gateway stopped.
+
 Operator routes (all require `x-hui`, scoped to the owning session; unknown
 session or watcher → 404, a running watcher for `restart` or `DELETE` → 409):
 
@@ -4379,14 +4697,19 @@ logPath, state, pid, exitCode?, startedAt, endedAt?, lastLine, keepRunning? }`;
 `~/.config/hui/watchers.json` (records carry `keepRunning: true` when set);
 logs and exit records live under `~/.config/hui/watchers/`. State is derived on
 read and on the gateway's poll, which re-emits the session snapshot when a
-watcher's state or latest log line changes. `running` means the recorded PID is
-the process HUI started (its age matches the start time within 20 seconds), or
-that process is gone and a process of its group whose age matches still runs.
+watcher's state or latest log line changes. `running` means HUI can prove its
+shell is the recorded PID — `ps` reports the watcher's own script in that
+process's command line — or that process is gone and a process of its group
+whose age matches still runs. A check that cannot answer, or a PID the kernel
+gave to another process, reads `dead`; only the seconds right after `start` or
+`restart` count as proof by themselves. `stop` still ends what a failed check
+could not rule out, and `restart` refuses while death is unproven.
 A `keepRunning` watcher read `dead` on a poll, the first of which runs ten
 seconds after the gateway starts, starts again in place with a new PID and
-start time, then its log gets `[HUI] Started again at <time>: its processes
-were gone with no exit status.` `done`, `failed` and `stopped` watchers, and
-one whose working directory is gone, are left as they are.
+start time once its death is proven, then its log gets `[HUI] Started again at
+<time>: its processes were gone with no exit status.` `done`, `failed` and
+`stopped` watchers, and one whose working directory is gone, are left as they
+are.
 
 ### Secret requests
 
@@ -4539,7 +4862,11 @@ Markdown and at most 50 ordered steps whose status is `pending`, `in_progress`
 or `completed`. PI remains the durable writer: the latest tool-call arguments in
 its transcript are the card state, and an empty call clears it. HUI hides the raw
 control call from transcript activity and renders the validated projection above
-the composer; it never derives progress from assistant prose.
+the composer; it never derives progress from assistant prose. The card's refresh
+control reads the session again through `POST /__hui/sessions/:id/open`, then
+sends the agent an ordinary prompt asking it to update the card. A view that
+missed a streamed call and a card the agent stopped revising both come back
+current.
 
 ### Session-list progress
 

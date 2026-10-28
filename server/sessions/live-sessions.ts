@@ -13,8 +13,9 @@
  * by itself) or `disconnected` (it waits for a reconnect); its streams stay open.
  */
 import { remoteRuntime } from "../runtimes/remote.ts";
-import { CONTINUE_PROMPT } from "../agent-tools/subagent-completion.ts";
+import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
+import { lastOperatorRequest } from "./digest.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../api/task-suggestions.ts";
 import type { Watcher } from "../api/watchers.ts";
@@ -51,6 +52,8 @@ import { readHuiSettings } from "../hui-settings.ts";
 import type { Settings } from "../hui-settings.ts";
 
 const MAX_AUTOMATIC_RECOVERY_ATTEMPTS = 3;
+const MAX_RECENT_MESSAGES = 10_000;
+const RECENT_MESSAGES_MS = 60_000;
 
 /** Replace runtime-internal attachment locations with opaque gateway URLs. */
 export function publicTranscript(id: string, entries: readonly TranscriptEntry[]): TranscriptEntry[] {
@@ -70,7 +73,6 @@ export type SubagentTaskView = {
   sessionId: string;
   parentSessionId: string;
   title: string;
-  task: string;
   /** `queued`: a collected child waiting for a free slot (only in memory; saved as `starting`). */
   status: import("./sessions.ts").SubagentStatus | "queued";
   startedAt: string;
@@ -103,7 +105,7 @@ export type SessionSnapshot = {
 /** Everything a browser watching one session can receive: pi's events, and the
  * lifecycle pi has no opinion about. */
 export type SessionStreamMessage =
-  | { kind: "snapshot"; snapshot: SessionSnapshot }
+  | { kind: "snapshot"; snapshot: SessionSnapshot; transcriptUnchanged?: true }
   | { kind: "transcript"; entries: TranscriptEntry[] }
   | { kind: "event"; event: RuntimeEvent }
   | { kind: "status"; status: SessionStatus }
@@ -126,6 +128,8 @@ export type RuntimeTelemetry = {
   pid?: number;
   bootDurationMs?: number;
 };
+
+export type RunEnd = { id: string; failed: boolean; prompt?: string };
 
 type Subscriber = (message: SessionStreamMessage) => void;
 type StatusSubscriber = (update: SessionStatusUpdate) => void;
@@ -164,6 +168,9 @@ type Live = {
   unsubscribe?: () => void;
   unsubscribeExit?: () => void;
   subscribers: Set<Subscriber>;
+  revision: number;
+  recent: { revision: number; at: number; message: SessionStreamMessage }[];
+  recentSince: number;
   /** Detailed browser streams currently presenting this conversation. Internal
    * lifecycle watchers do not count as readers. */
   readers: number;
@@ -180,6 +187,9 @@ type Live = {
   questions: Map<string, RuntimeQuestion>;
   compaction?: RuntimeCompaction;
   lastPrompt?: { text: string; attachments?: readonly PromptAttachment[] };
+  runOrigin?: string;
+  runFailed?: boolean;
+  stopped?: boolean;
   turnProducedOutput: boolean;
   fallbackAttempted: boolean;
   /** The session's own model while one turn is retried on the fallback. */
@@ -210,6 +220,16 @@ type DeletionState = {
 
 /** Returns entries consumed between two queue snapshots, preserving both
  * order and duplicate messages. Queue values are not globally unique. */
+/** What a message makes redundant in the replay log: a later snapshot holds all of an earlier one, and a tool's
+ * update or end carries its whole output and details so far. */
+function replacedBy(message: SessionStreamMessage): ((earlier: SessionStreamMessage) => boolean) | undefined {
+  if (message.kind === "snapshot") return (earlier) => earlier.kind === "snapshot";
+  if (message.kind !== "event" || (message.event.type !== "tool_update" && message.event.type !== "tool_end")) return undefined;
+  const { id, output, details } = message.event;
+  return (earlier) => earlier.kind === "event" && earlier.event.type === "tool_update" && earlier.event.id === id
+    && (earlier.event.output === undefined || output !== undefined) && (earlier.event.details === undefined || details !== undefined);
+}
+
 function removedQueueEntries(previous: readonly string[], next: readonly string[]): string[] {
   const remaining = [...next];
   const removed: string[] = [];
@@ -252,7 +272,10 @@ export class LiveSessions {
       || live.status === "running" || live.status === "waiting" || live.followUps.length > 0);
   }
   #live = new Map<string, Live>();
+  // Clock-seeded so revisions keep rising across gateway restarts.
+  #revisions = Date.now() * 1000;
   #statusSubscribers = new Set<StatusSubscriber>();
+  #runEnds = new Set<(end: RunEnd) => void>();
   /** Deleted ids stay tombstoned for this gateway lifetime so a request that
    * read the old row before DELETE committed cannot start it afterwards. */
   #deletions = new Map<string, DeletionState>();
@@ -264,6 +287,8 @@ export class LiveSessions {
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
   #watcherSnapshot: (sessionId: string) => readonly Watcher[] = () => [];
   #huiQuestions: (sessionId: string) => readonly HuiQuestion[] = () => [];
+  /** Claims one automatic turn for a session's active goal, or answers nothing when there is none to pursue. */
+  #goalContinuation: (sessionId: string) => Promise<string | undefined> = async () => undefined;
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
@@ -322,6 +347,7 @@ export class LiveSessions {
       existing.boot = this.#boot(existing);
       return true;
     }
+    const revision = ++this.#revisions;
     const live: Live = {
       record,
       unsaved: new Set(),
@@ -330,11 +356,15 @@ export class LiveSessions {
       submissions: 0,
       bootStartedAt: Date.now(),
       subscribers: new Set(),
+      revision,
+      recent: [],
+      recentSince: revision,
       readers: 0,
       transcript: [],
       queue: { steering: [], followUp: [] },
       followUps: [],
       questions: new Map(),
+      ...(record.runPrompt ? { runOrigin: record.runPrompt } : {}),
       turnProducedOutput: false,
       fallbackAttempted: false,
       ...(record.subagent && record.subagent.status !== "starting" && record.subagent.status !== "running"
@@ -355,6 +385,14 @@ export class LiveSessions {
   status(id: string): SessionStatus {
     const live = this.#live.get(id);
     return live ? this.#reported(live) : "idle";
+  }
+
+  questions(id: string): readonly (RuntimeQuestion | HuiQuestion)[] {
+    return [...(this.#live.get(id)?.questions.values() ?? []), ...this.#huiQuestions(id)];
+  }
+
+  subagents(parentId: string): readonly SubagentTaskView[] {
+    return this.#subagentSnapshot(parentId);
   }
 
   setSubagentSnapshotProvider(
@@ -382,14 +420,29 @@ export class LiveSessions {
     this.#aborted = listener;
   }
 
-  /** Re-emits a complete snapshot after coordination state changes outside the
+  /** A settled turn asks whether its goal is still active, and queues the next one when it is. */
+  setGoalContinuation(claim: (sessionId: string) => Promise<string | undefined>): void {
+    this.#goalContinuation = claim;
+  }
+
+  /** Re-emits the session's state after coordination state changes outside the
    * runtime event stream. */
   notifySnapshot(id: string): void {
     const live = this.#live.get(id);
     if (!live) return;
     // A HUI question starts or ends a wait, which the session list shows.
     this.#setStatus(live, this.#reported(live));
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastState(live);
+  }
+
+  revision(id: string): number | undefined {
+    return this.#live.get(id)?.revision;
+  }
+
+  replaySince(id: string, revision: number): SessionStreamMessage[] | undefined {
+    const live = this.#live.get(id);
+    if (!live || revision < live.recentSince || revision > live.revision) return undefined;
+    return live.recent.filter((entry) => entry.revision > revision).map((entry) => entry.message);
   }
 
   /** Whether this gateway currently owns a runtime lifecycle for the id.
@@ -442,7 +495,7 @@ export class LiveSessions {
     return this.#live.get(id)?.runtime?.attachmentImage?.(message, image);
   }
 
-  attachmentFile(id: string, message: number, file: number): string | undefined {
+  attachmentFile(id: string, message: number, file: number): { name: string; path: string } | undefined {
     return this.#live.get(id)?.runtime?.attachmentFile?.(message, file);
   }
 
@@ -540,6 +593,10 @@ export class LiveSessions {
     };
   }
 
+  watchRunEnds(listener: (end: RunEnd) => void): void {
+    this.#runEnds.add(listener);
+  }
+
   /** Listeners are held even before the runtime exists, so a stream opened
    * during boot misses nothing. */
   subscribe(id: string, subscriber: Subscriber): () => void {
@@ -582,6 +639,8 @@ export class LiveSessions {
     live.promptAdmission = admission;
     live.promptPending = true;
     live.lastPrompt = { text, ...(attachments?.length ? { attachments } : {}) };
+    if (!text.startsWith(SUBAGENT_COMPLETION_MARKER)) live.runOrigin = recoveryPrompt;
+    live.stopped = undefined;
     live.turnProducedOutput = false;
     live.fallbackAttempted = false;
     // Every screen on this session gets the prompt before the run is announced: a chat
@@ -596,7 +655,7 @@ export class LiveSessions {
       ...(attachments?.length ? { attachments: attachments.map((item) => ({ name: item.name, kind: item.kind, ...(item.kind === "image" ? { mimeType: item.mimeType } : {}) })) } : {}),
     };
     live.transcript.push(prompted);
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastTranscript(live);
     this.#setStatus(live, "running");
     live.submissions += 1;
     try {
@@ -625,7 +684,7 @@ export class LiveSessions {
       const at = live.transcript.lastIndexOf(prompted);
       if (at >= 0) live.transcript.splice(at, 1);
       this.#setStatus(live, this.#reported(live));
-      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+      this.#broadcastTranscript(live);
       throw error;
     } finally {
       live.submissions -= 1;
@@ -639,16 +698,23 @@ export class LiveSessions {
     await this.#save(live, { updatedAt: new Date().toISOString() }).catch(() => {});
   }
 
+  /** Resumes a run HUI recorded but never saw end, or one whose last answer failed. A failed answer stays out of the
+   * model's context, so it needs the request it was handling restated rather than a nudge at a conversation that
+   * looks finished. */
   async continueInterrupted(id: string, automatic = false): Promise<void> {
     const live = this.#ready(id);
-    if (!live.record.runStartedAt) {
+    let original: string | undefined;
+    if (live.record.runStartedAt) {
+      original = live.record.runPrompt?.trim() || undefined;
+      if (!automatic && live.record.runRecoveryAttempts !== undefined) {
+        await this.#save(live, { runRecoveryAttempts: undefined });
+      }
+    } else if (live.transcript.findLast((entry) => entry.kind !== "compaction")?.kind === "error") {
+      original = lastOperatorRequest(live.transcript);
+    } else {
       throw new Error("That session has no interrupted run to continue.");
     }
-    const original = live.record.runPrompt?.trim();
     const message = interruptedRunPrompt(original);
-    if (!automatic && live.record.runRecoveryAttempts !== undefined) {
-      await this.#save(live, { runRecoveryAttempts: undefined });
-    }
     await this.prompt(id, message, undefined, original || message);
   }
 
@@ -681,6 +747,10 @@ export class LiveSessions {
       throw this.#unavailable(live);
     }
     return live.runtime.listModels ? await live.runtime.listModels() : [];
+  }
+
+  async subagentRoutes(): Promise<Settings["models"]["routes"]> {
+    return (await this.#readSettings()).models.routes;
   }
 
   async commands(id: string): Promise<readonly RuntimeCommand[]> {
@@ -760,6 +830,7 @@ export class LiveSessions {
       runPrompt: undefined,
       runRecoveryAttempts: undefined,
     });
+    live.stopped = true;
     await live.runtime.abort();
     this.#aborted(id);
     live.promptPending = false;
@@ -802,16 +873,14 @@ export class LiveSessions {
       if (runtimeCleared) {
         const message = "The live context was cleared, but HUI could not persist the new session identity. Reopening may restore the previous context.";
         this.#broadcast(live, { kind: "event", event: { type: "error", message } });
-        this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+        this.#broadcastTranscript(live);
         throw new SessionRegistryError(message, { cause: error });
       }
       throw error;
     }
     live.promptPending = false;
     this.#setStatus(live, "idle", false);
-    const snapshot = this.snapshot(id);
-    this.#broadcast(live, { kind: "snapshot", snapshot });
-    return snapshot;
+    return this.#broadcastTranscript(live);
   }
 
   async reload(id: string): Promise<void> {
@@ -859,7 +928,7 @@ export class LiveSessions {
       live.promptPending = false;
       this.#setStatus(live, this.#reported(live), false);
     }
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastTranscript(live);
   }
 
   /** Copies the session's history up to `entryId` (its latest settled point when absent) into a new runtime
@@ -1129,7 +1198,7 @@ export class LiveSessions {
       throw error;
     }
     this.#setStatus(live, this.#reported(live));
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastState(live);
   }
 
   async cancelQuestion(id: string, questionId: string): Promise<void> {
@@ -1146,7 +1215,7 @@ export class LiveSessions {
       throw error;
     }
     this.#setStatus(live, this.#reported(live));
-    this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(id) });
+    this.#broadcastState(live);
   }
 
   /** Why a session without a runtime cannot take a request yet. */
@@ -1307,6 +1376,8 @@ export class LiveSessions {
       }
       live.runtime = runtime;
       live.transcript = [...runtime.transcript()];
+      live.revision = ++this.#revisions;
+      this.#forgetRecent(live);
       live.thinking = runtime.currentThinking?.();
       // Only a runtime that can change speed reports one.
       live.fast = runtime.setFast ? runtime.currentFast?.() === true : undefined;
@@ -1356,7 +1427,7 @@ export class LiveSessions {
       }
       // A resumed session only has its history after boot, so the transcript is
       // sent now rather than left empty at connect.
-      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+      this.#broadcastTranscript(live);
       // Messages queued here before the runtime was lost (a worker's run that
       // settled while this gateway was away) run now.
       void this.#drainFollowUp(live);
@@ -1407,7 +1478,7 @@ export class LiveSessions {
       // since replacing the projection mid-turn would drop what it streamed.
       if (!live.promptPending && !runtime.isStreaming && !live.turnStarted) {
         live.transcript = [...runtime.transcript()];
-        this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+        this.#broadcastTranscript(live);
       }
       return;
     }
@@ -1423,6 +1494,9 @@ export class LiveSessions {
     } else if (event.type === "compaction_end") {
       const alongside = this.#compactingAlongside(live);
       recordDiagnosticEvent({ area: "session", level: event.outcome === "failed" ? "warning" : "info", action: "compaction_end", summary: `Compaction ${event.outcome} (${event.reason})`, ...(event.message ? { detail: event.message } : {}), sessionId: live.record.id });
+      void this.#save(live, { updatedAt: new Date().toISOString() }).catch((error) => {
+        recordDiagnosticEvent({ area: "session", level: "warning", action: "compaction_activity_failed", summary: "Could not save compaction activity", detail: failureDetail(error), sessionId: live.record.id });
+      });
       live.compaction = event.outcome === "done" ? undefined : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
       this.#setStatus(live, this.#reported(live));
       // One that ran beside the conversation (Durable's) ends without a settle:
@@ -1455,6 +1529,7 @@ export class LiveSessions {
         live.transcript = [...runtime.transcript()];
         if (live.turnStarted) this.#logRunFailure(live);
       }
+      live.runFailed = live.loggedRunError !== undefined || live.transcript.at(-1)?.kind === "error";
       live.turnStarted = undefined;
       live.loggedRunError = undefined;
       this.#clearRunMarker(live);
@@ -1522,7 +1597,7 @@ export class LiveSessions {
         live.transcript.push({ kind: "message", role: "user", text });
       }
       if (delivered.length) {
-        this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
+        this.#broadcastTranscript(live);
       }
     } else if (event.type === "question") {
       live.questions.set(event.question.id, event.question);
@@ -1543,9 +1618,8 @@ export class LiveSessions {
           ? { type: "error", message: event.message }
           : event,
     });
-    if (event.type === "settled" || refreshed) {
-      this.#broadcast(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id) });
-    }
+    if (refreshed || (event.type === "settled" && event.historyRefreshed !== false)) this.#broadcastTranscript(live);
+    else if (event.type === "settled") this.#broadcastState(live);
   }
 
   async #routeSettledTurn(live: Live, runtime: RuntimeSession): Promise<void> {
@@ -1553,9 +1627,21 @@ export class LiveSessions {
     const retried = await this.#retryWithFallback(live, runtime).catch(() => false);
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
-      await this.#drainFollowUp(live);
+      await this.#queueGoalContinuation(live);
+      const continued = await this.#drainFollowUp(live);
+      if (!continued && this.#reported(live) === "idle" && live.followUps.length === 0) this.#endRun(live, live.runFailed === true);
       this.#closeIfReleased(live);
     }
+  }
+
+  /** An active goal whose turn ended cleanly gets the next one from the queue. A stop, a failed run, an open
+   * question or input already waiting ends the pursuit here: the operator's next message picks it up. */
+  async #queueGoalContinuation(live: Live): Promise<void> {
+    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker) return;
+    const text = await this.#goalContinuation(live.record.id).catch(() => undefined);
+    if (!text || live.closed) return;
+    live.followUps.push({ id: crypto.randomUUID(), text, mode: "followUp" });
+    this.#broadcastQueue(live);
   }
 
   #closeIfReleased(live: Live): void {
@@ -1638,6 +1724,7 @@ export class LiveSessions {
     live.unsubscribeExit?.();
     live.unsubscribeExit = undefined;
     live.runtime = undefined;
+    const midTurn = live.promptPending || live.turnStarted === true;
     live.promptPending = false;
     live.compaction = undefined;
     if (unreachable) {
@@ -1649,9 +1736,16 @@ export class LiveSessions {
     }
     recordDiagnosticEvent({ area: "runtime", level: "error", action: "exit", summary: "Runtime process exited", sessionId: live.record.id });
     this.#setStatus(live, "error");
+    if (midTurn) this.#endRun(live, true);
     this.#broadcast(live, { kind: "closed" });
     // Kept, not deleted: the session list still has to show that it failed, and
     // a later open replaces it with a fresh runtime.
+  }
+
+  #endRun(live: Live, failed: boolean): void {
+    if (live.stopped) return;
+    const end: RunEnd = { id: live.record.id, failed, ...(live.runOrigin !== undefined ? { prompt: live.runOrigin } : {}) };
+    for (const listener of this.#runEnds) listener(end);
   }
 
   #setStatus(live: Live, status: SessionStatus, session = true): void {
@@ -1742,10 +1836,43 @@ export class LiveSessions {
     });
   }
 
-  #broadcast(live: Live, message: SessionStreamMessage): void {
+  #broadcastState(live: Live): void {
+    this.#send(live, { kind: "snapshot", snapshot: this.snapshot(live.record.id), transcriptUnchanged: true });
+  }
+
+  #broadcastTranscript(live: Live): SessionSnapshot {
+    const snapshot = this.snapshot(live.record.id);
+    this.#send(live, { kind: "snapshot", snapshot });
+    return snapshot;
+  }
+
+  /** A snapshot goes through #broadcastState, or #broadcastTranscript when the transcript changed without an event. */
+  #broadcast(live: Live, frame: Exclude<SessionStreamMessage, { kind: "snapshot" }>): void {
+    this.#send(live, frame);
+  }
+
+  #send(live: Live, message: SessionStreamMessage): void {
+    live.revision = ++this.#revisions;
+    if (message.kind === "snapshot" && !message.transcriptUnchanged) this.#forgetRecent(live);
+    else this.#remember(live, message);
     for (const subscriber of live.subscribers) {
       subscriber(message);
     }
+  }
+
+  /** Keeps a message for a page whose open answer is a little older: the log drops what a later message replaces,
+   * and what is more than a minute old or beyond its cap. */
+  #remember(live: Live, message: SessionStreamMessage): void {
+    const replaced = replacedBy(message);
+    if (replaced) live.recent = live.recent.filter((entry) => !replaced(entry.message));
+    const at = Date.now();
+    live.recent.push({ revision: live.revision, at, message: message.kind === "snapshot" ? { ...message, snapshot: { ...message.snapshot, transcript: [] } } : message });
+    while (live.recent.length > MAX_RECENT_MESSAGES || live.recent[0]!.at < at - RECENT_MESSAGES_MS) live.recentSince = live.recent.shift()!.revision;
+  }
+
+  #forgetRecent(live: Live): void {
+    live.recent = [];
+    live.recentSince = live.revision;
   }
 
   #queueSnapshot(live: Live): RuntimeQueue {
@@ -1765,12 +1892,13 @@ export class LiveSessions {
     });
   }
 
-  async #drainFollowUp(live: Live): Promise<void> {
-    if (!live.followUps.length || this.#reported(live) !== "idle") return;
+  async #drainFollowUp(live: Live): Promise<boolean> {
+    if (!live.followUps.length || this.#reported(live) !== "idle") return false;
     const item = live.followUps.shift()!;
     this.#broadcastQueue(live);
     try {
       await this.prompt(live.record.id, item.text, item.attachments);
+      return true;
     } catch (error) {
       live.followUps.unshift(item);
       this.#broadcastQueue(live);
@@ -1782,6 +1910,7 @@ export class LiveSessions {
           message: error instanceof Error ? error.message : "Could not send the queued message.",
         },
       });
+      return false;
     }
   }
 

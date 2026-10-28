@@ -61,3 +61,34 @@ test("release pointers cannot escape their installation's managed directory", as
   await assert.rejects(assertUpdatable(root), /source checkout/u);
   assert.match(await readFile(join(directory, "current.json"), "utf8"), /elsewhere/u);
 });
+
+test("a wedged gateway ends on --force only when its command line is this installation's", async () => {
+  const { spawn } = await import("node:child_process");
+  const { join: joinPath } = await import("node:path");
+  const fake = await mkdtemp(join(tmpdir(), "hui-wedged-gateway-"));
+  await mkdir(joinPath(fake, "build/cli"), { recursive: true });
+  await writeFile(joinPath(fake, "build/cli/gateway-run.js"), "setTimeout(() => {}, 60_000);\n");
+  const child = spawn(process.execPath, [joinPath(fake, "build/cli/gateway-run.js")], { stdio: "ignore" });
+  const state = { format: 1, pid: child.pid!, instance: "wedged", token: "b".repeat(64), controlUrl: "http://127.0.0.1:1/",
+    url: "http://127.0.0.1:4173/", host: "127.0.0.1", allowedHosts: [], port: 4173, version: "0.1.0", packageRoot: fake, startedAt: "fixture" };
+  const exit = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  try {
+    await atomicJson(STATE_FILE, state);
+    await assert.rejects(stopGateway(false), /Retry with --force/u, "a plain stop still refuses");
+    assert.equal((await gatewayStatus()).status, "unresponsive");
+    await stopGateway(true);
+    await exit;
+    await assert.rejects(stat(STATE_FILE), { code: "ENOENT" }, "the state file is cleared");
+  } finally {
+    child.kill("SIGKILL");
+    await rm(fake, { recursive: true, force: true });
+  }
+});
+
+test("--force still refuses a PID that is not this installation's gateway", async () => {
+  const state = { format: 1, pid: process.pid, instance: "not-ours", token: "c".repeat(64), controlUrl: "http://127.0.0.1:1/",
+    url: "http://127.0.0.1:4173/", host: "127.0.0.1", allowedHosts: [], port: 4173, version: "0.1.0", packageRoot: root, startedAt: "fixture" };
+  await atomicJson(STATE_FILE, state);
+  await assert.rejects(stopGateway(true), /Refusing to signal a recorded PID/u);
+  assert.equal((await readState())?.pid, process.pid, "the running test process was not signalled");
+});

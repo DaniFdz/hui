@@ -9,7 +9,7 @@ test("all shared icons retain the pinned original SVG geometry and stroke shell"
   const manifest = JSON.parse(readFileSync(new URL("./openclaw-icon-geometry.json", import.meta.url), "utf8")) as {
     icons: Array<{ name: keyof typeof icons; sha256: string }>;
   };
-  assert.equal(manifest.icons.length, 56);
+  assert.equal(manifest.icons.length, 57);
   assert.deepEqual(manifest.icons.map((icon) => icon.name).sort(), Object.keys(icons).sort());
   for (const expected of manifest.icons) {
     const icon = icons[expected.name];

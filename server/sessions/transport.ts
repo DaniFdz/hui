@@ -20,7 +20,11 @@ const TICKET_MS = 15_000;
 
 /** Starts forwarding `id`'s frames to `send` and returns its unsubscribe, or
  * undefined when the session no longer exists. */
-export type SessionEventSource = (id: string, send: (event: string, data: unknown) => void) => Promise<(() => void) | undefined>;
+export type SessionEventSource = (
+  id: string,
+  send: (event: string, data: unknown) => void,
+  view: { slim: boolean; heldRevision?: number },
+) => Promise<(() => void) | undefined>;
 
 const tickets = new Map<string, { id: string; expires: number }>();
 
@@ -34,7 +38,7 @@ export function sessionStreamTicket(id: string): string | undefined {
 }
 
 export function attachSessionTransport(server: EventEmitter, source: SessionEventSource, allowedHosts?: ReadonlySet<string>): () => void {
-  // A view's first frame is the whole transcript, megabytes of JSON for a long
+  // A snapshot can carry the whole transcript, megabytes of JSON for a long
   // session; deflate makes it a fraction of that over a slow link. Small frames
   // (streamed deltas) go as they are. No context carries between messages:
   // each frame compresses alone, which keeps a view's memory flat.
@@ -50,6 +54,8 @@ export function attachSessionTransport(server: EventEmitter, source: SessionEven
     const ticket = tickets.get(token);
     tickets.delete(token);
     if (!ticket || ticket.expires <= Date.now()) { reject(); return; }
+    const heldRevision = Number(url.searchParams.get("revision") ?? undefined);
+    const view = { slim: url.searchParams.has("slim"), ...(Number.isSafeInteger(heldRevision) ? { heldRevision } : {}) };
     wss.handleUpgrade(request, socket, head, (ws) => {
       let alive = true;
       let stop: (() => void) | undefined;
@@ -62,7 +68,7 @@ export function attachSessionTransport(server: EventEmitter, source: SessionEven
         if (ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({ event, data }));
         if (event === "closed") ws.close(1000);
-      }).then((unsubscribe) => {
+      }, view).then((unsubscribe) => {
         if (!unsubscribe) ws.close(SESSION_STREAM_GONE, "unknown session");
         else if (ws.readyState === WebSocket.OPEN) stop = unsubscribe;
         else unsubscribe();

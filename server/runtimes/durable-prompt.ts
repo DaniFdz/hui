@@ -15,12 +15,12 @@ import { defineExtension, section, type ConversationId, type PromptInput } from 
 import type { Settings } from "../hui-settings.ts";
 import { enabledBundledSkillPaths, isBundledSkillPreference } from "../pi/bundled-skills.ts";
 import { createPolicySettingsManager } from "./resource-policy.ts";
-import { HUI_DEFAULT_PROMPT } from "./hui-prompt.ts";
+import { HUI_DEFAULT_PROMPT, routeGuidelines, type RouteLine } from "./hui-prompt.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 import { huiToolDefinitions } from "./hui-tools.ts";
 import type { Contribution, RunPrompt } from "./durable-extensions.ts";
 
-export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins">;
+export type PromptSettings = Pick<Settings, "disabledSkills" | "browser" | "codemode" | "disabledPlugins" | "notifications" | "models">;
 
 /** The skills of a bot's chat: the ones it has of a directory's, and its own `skills` section when it loads them with
  * `load_skill`. */
@@ -51,24 +51,29 @@ const HUI_TOOL_CONTRIBUTIONS: Record<string, Contribution> = {
  * `before_agent_start` follow PI's, already tagged, in `extension_sections`. */
 const SECTION_KEYS = [
   "preamble", "tools", "rules", "docs", "addendum", "project_context", "skills", "cwd", "extension_sections",
-  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_ultra",
+  "hui_presentation", "hui_tools", "hui_tool_guidelines", "hui_goal", "hui_ultra",
 ] as const;
 const KNOWN_SECTIONS = new Set<string>(SECTION_KEYS);
 
 /** Same text as the PI worker's `huiPromptExtension`. */
-export function huiToolSections(selectedTools: readonly string[], contributions: Record<string, Contribution>): Record<string, string> {
+export function huiToolSections(
+  selectedTools: readonly string[],
+  contributions: Record<string, Contribution>,
+  routes: readonly RouteLine[] = [],
+): Record<string, string> {
   const activeTools = selectedTools.map((name) => {
     const snippet = contributions[name]?.snippet;
     return `- ${name}${snippet ? `: ${snippet}` : ""}`;
   }).join("\n");
   const guidelines = [...new Set(selectedTools.flatMap((name) => contributions[name]?.guidelines ?? []))]
     .map((line) => `- ${line}`).join("\n");
+  const guidance = [guidelines, routeGuidelines(selectedTools.includes("sessions_spawn") ? routes : [])].filter(Boolean).join("\n\n");
   return {
     hui_presentation: HUI_PRESENTATION_PROMPT,
     hui_tools: activeTools
       ? `Active callable tools for this turn (PI provides their full schemas separately):\n${activeTools}`
       : "No callable tools are active for this turn.",
-    ...(guidelines ? { hui_tool_guidelines: guidelines } : {}),
+    ...(guidance ? { hui_tool_guidelines: guidance } : {}),
   };
 }
 
@@ -106,6 +111,8 @@ export class DurablePrompt {
   skillDirsFor: (conversationId: ConversationId) => Promise<readonly string[]> = async () => [];
   /** Whether the conversation's session is on Ultra. The Durable host answers. */
   ultraFor: (conversationId: ConversationId) => boolean = () => false;
+  /** The active goal of the conversation's session, as its own prompt section. The Durable host answers. */
+  goalFor: (conversationId: ConversationId) => Promise<string | undefined> = async () => undefined;
   readonly extension;
 
   constructor(agentDir: string, readSettings: () => Promise<PromptSettings>) {
@@ -202,7 +209,7 @@ export class DurablePrompt {
       selectedTools: [...selectedTools], toolSnippets, toolGuidelines,
       ...(append ? { appendSystemPrompt: append } : {}),
       sections: {
-        ...huiToolSections(selectedTools, contributions), ...(own ? { skills: own } : {}),
+        ...huiToolSections(selectedTools, contributions, (await this.#readSettings()).models.routes), ...(own ? { skills: own } : {}),
         ...(ultra ? { hui_ultra: ultraSection(selectedTools.includes("sessions_spawn")) } : {}),
       },
       cwd,
@@ -220,6 +227,8 @@ export class DurablePrompt {
     const skillDirs = conversationId === undefined ? [] : await this.skillDirsFor(conversationId);
     const ultra = conversationId !== undefined && this.ultraFor(conversationId);
     const base = await this.options(cwd, selectedTools, extras?.contributions, bot, skillDirs, ultra);
+    const goal = conversationId === undefined ? undefined : await this.goalFor(conversationId);
+    if (goal) base.sections = { ...base.sections, hui_goal: goal };
     const sections = buildSystemPromptSections(run?.options ? {
       ...run.options,
       // The run keeps the sections its extensions edited; the tool loadout stays the request's own, and so do a bot's

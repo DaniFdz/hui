@@ -7,7 +7,8 @@ import { html, nothing, type TemplateResult } from "lit";
 import { TERMINAL_FONTS, normalizeTerminalFont, terminalFontStack } from "../lib/terminal/font.ts";
 import { TEXT_SCALE_STOPS, TYPEFACES, type TextScaleStop } from "../lib/theme/appearance.ts";
 import { modeIsSelectable, THEME_MODES, type ThemeMode, type ThemeVariant } from "../lib/theme/theme.ts";
-import { QUESTION_TIMEOUTS, type Settings } from "../lib/settings/settings.ts";
+import { QUESTION_TIMEOUTS, routeNameIsValid, type Settings } from "../lib/settings/settings.ts";
+import { PI_THINKING_LEVELS } from "../lib/thinking.ts";
 import type { PowerState, PowerStatus } from "../api/schema/power.ts";
 import type { ThemePreview } from "../lib/theme/theme-store.ts";
 import type { ThemeSwatches } from "../lib/theme/shadcn-theme.ts";
@@ -57,6 +58,7 @@ const SCALE_LABELS: Record<TextScaleStop, string> = {
 
 export const SETTINGS_PAGES = [
   { id: "appearance", label: "Appearance", group: "", icon: "palette" },
+  { id: "notifications", label: "Notifications", group: "", icon: "bell" },
   { id: "connection", label: "Gateway", group: "Connections", icon: "radio" },
   { id: "integrations", label: "Integrations", group: "Connections", icon: "grid" },
   { id: "workers", label: "Workers", group: "Connections", icon: "globe" },
@@ -121,6 +123,7 @@ export type SettingsProps = AutomationProps & {
   /** Resolves once the settings write lands, so the VS Code section can re-read status. */
   onChangeVscode: (next: Settings["vscode"]) => Promise<unknown> | void;
   onChangeCodemode: (next: Settings["codemode"]) => void;
+  onChangeNotifications: (next: Settings["notifications"]) => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
   onChangeCalls: (next: Settings["calls"]) => void;
@@ -685,6 +688,11 @@ function renderToolsPage(props: SettingsProps) {
         <div class="settings-row__control">${renderSettingsToggle("Codemode tool", props.settings.codemode.enabled, (enabled) => props.onChangeCodemode({ enabled }))}</div>
       </div></div>
     </section>
+    ${renderSection("Notifications", "Agents can send you a desktop notification that opens their chat, through the HUI app on macOS.", renderRow(
+      "Notification tool",
+      "Offer notify_user to every session from its next request. A bot's own tool settings can still turn it off. Sessions still on the older PI worker list it but can't use it while this is off.",
+      renderSettingsToggle("Notification tool", props.settings.notifications.tool, (tool) => props.onChangeNotifications({ ...props.settings.notifications, tool })),
+    ))}
     ${renderSection("Questions", "When an agent asks you questions in a card and you are away, it can go on without your answer.", renderRow(
       "Question timeout",
       "How long a question card waits for you. Then the agent continues without your answer, told to take its recommended option and list the decisions still open for you in its final reply. Applies to questions asked from now on.",
@@ -702,6 +710,72 @@ function renderCallsSection(props: SettingsProps) {
   return html`<hui-call-settings .calls=${props.settings.calls} .onChange=${props.onChangeCalls}></hui-call-settings>`;
 }
 
+function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { value: string; label: string }[]): TemplateResult {
+  const routes = props.settings.models.routes;
+  const models = modelOptions.filter((option) => option.value);
+  const save = (next: Settings["models"]["routes"]): void => props.onChangeModels({ ...props.settings.models, routes: next });
+  const replace = (at: number, patch: Partial<Settings["models"]["routes"][number]>): void => {
+    save(routes.map((route, index) => index === at ? { ...route, ...patch } : route));
+  };
+  const rename = (at: number, input: HTMLInputElement): void => {
+    const name = input.value.trim();
+    const error = !routeNameIsValid(name) ? "Use 1 to 40 letters, digits, underscores, dots or hyphens."
+      : routes.some((route, index) => index !== at && route.name === name) ? "That route name is already in use." : "";
+    input.setCustomValidity(error);
+    if (error) {
+      input.value = routes[at]?.name ?? "";
+      input.reportValidity();
+      return;
+    }
+    replace(at, { name });
+  };
+  const add = (): void => {
+    const model = models.find((option) => option.value === props.settings.models.primary) ?? models[0];
+    if (!model || routes.length >= 50) return;
+    const taken = new Set(routes.map((route) => route.name));
+    let name = "route";
+    for (let suffix = 2; taken.has(name); suffix += 1) name = `route-${suffix}`;
+    save([...routes, { name, description: "", model: model.value }]);
+  };
+  const thinking = [{ value: "", label: "Inherit parent" }, ...PI_THINKING_LEVELS.map((level) => ({ value: level, label: level }))];
+  return html`
+    <section class="settings-section">
+      <div class="settings-section__header"><div class="settings-section__copy">
+        <h2 class="settings-section__heading">Subagent routes</h2>
+        <p class="settings-section__desc">Named models for subagents. An agent passes a name to <code>sessions_spawn</code> as <code>route</code>; the prompt lists your names and descriptions.</p>
+      </div></div>
+      ${routes.map((route, at) => html`
+        <div class="settings-group" role="group" aria-label=${`Route ${route.name}`}>
+          ${renderRow(route.name, "", html`<button type="button" class="btn btn--sm btn--ghost" aria-label=${`Remove route ${route.name}`} @click=${() => save(routes.filter((_, index) => index !== at))}>Remove</button>`)}
+          ${renderRow("Name", "The name agents pass when choosing a route.", html`
+            <input class="settings-input" name="routeName" aria-label=${`Route name: ${route.name}`}
+              maxlength="40" spellcheck="false" autocomplete="off" .value=${route.name}
+              @input=${(event: Event) => (event.target as HTMLInputElement).setCustomValidity("")}
+              @change=${(event: Event) => rename(at, event.target as HTMLInputElement)} />
+          `)}
+          ${renderRow("Description", "Helps agents decide when to use this route.", html`
+            <input class="settings-input" name="routeDescription" aria-label=${`Description of ${route.name}`}
+              maxlength="200" placeholder="What this route is for, in one line" .value=${route.description}
+              @change=${(event: Event) => replace(at, { description: (event.target as HTMLInputElement).value })} />
+          `)}
+          ${renderRow("Model", "The model subagents use on this route.",
+            renderSettingsPicker(`Model for ${route.name}`, route.model, models, (value) => replace(at, { model: value })))}
+          ${renderRow("Thinking", "Inherit the parent's level, or choose a default for this route.",
+            renderSettingsPicker(`Thinking for ${route.name}`, route.thinking ?? "", thinking, (value) => replace(at, { thinking: PI_THINKING_LEVELS.find((level) => level === value) })))}
+        </div>
+      `)}
+      <div class="settings-group">
+        ${routes.length ? nothing : renderRow("No routes yet", "Agents keep choosing models by id until you add one.", html`<span class="settings-row__value">—</span>`)}
+        ${renderRow(
+          "Add a route",
+          models.length ? "Starts on your primary model, if you have one. Edit it after adding." : "Connect a provider first: a route needs a model.",
+          html`<button type="button" class="btn btn--sm" ?disabled=${!models.length || routes.length >= 50} @click=${add}>Add route</button>`,
+        )}
+      </div>
+    </section>
+  `;
+}
+
 function renderModelsPage(props: SettingsProps) {
   const pi = props.pi;
   if (!pi) {
@@ -712,7 +786,7 @@ function renderModelsPage(props: SettingsProps) {
     { value: "", label: "Use PI default" },
     ...model.catalog.map((entry) => ({ value: `${entry.provider}/${entry.id}`, label: entry.name })),
   ];
-  const routePicker = (label: string, key: keyof Settings["models"]) =>
+  const routePicker = (label: string, key: "primary" | "fallback" | "utility") =>
     renderSettingsPicker(label, props.settings.models[key], modelOptions, (value) => {
       props.onChangeModels({ ...props.settings.models, [key]: value });
     });
@@ -742,6 +816,7 @@ function renderModelsPage(props: SettingsProps) {
         )}
       `,
     )}
+    ${renderSubagentRoutes(props, modelOptions)}
     ${renderCallsSection(props)}
     ${renderSection(
       "PI defaults",
@@ -936,6 +1011,19 @@ function renderMemoryPage(props: SettingsProps) {
   `;
 }
 
+function renderNotificationsPage(props: SettingsProps) {
+  const notifications = props.settings.notifications;
+  const toggle = (label: string, key: "runFinished" | "runFailed" | "needsInput") =>
+    renderSettingsToggle(label, notifications[key], (on) => props.onChangeNotifications({ ...notifications, [key]: on }));
+  return html`
+    <p class="settings-page__intro">The HUI app on macOS shows these notifications. Clicking one opens its chat, and HUI shows none for the chat that is already in front.</p>
+    ${renderSection("Notify me when", "", html`
+      ${renderRow("A run finishes", "A run you started has ended and its chat is waiting for you. Subagents, bot routines and triggers don't count. Silent.", toggle("Run finished", "runFinished"))}
+      ${renderRow("A run fails", "A run you started has stopped with an error. Silent.", toggle("Run failed", "runFailed"))}
+      ${renderRow("A chat needs your input", "Any chat is waiting for you to answer a question, give a secret, allow access or confirm something. Plays a sound.", toggle("Needs your input", "needsInput"))}
+    `)}`;
+}
+
 function renderAppearancePage(props: SettingsProps) {
   return html`
     <p class="settings-page__intro">
@@ -1001,7 +1089,7 @@ function renderSecurityPage(props: SettingsProps) {
     ${props.piError || props.healthError ? html`<div class="settings-page__note settings-page__intro" role="alert">${[props.piError, props.healthError].filter(Boolean).join(" ")}<button type="button" class="btn" @click=${props.onRetryPi}>Retry</button></div>` : nothing}`;
 }
 
-const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers">, string> = {
+const SETTINGS_SUMMARIES: Record<Exclude<SettingsPage, "appearance" | "notifications" | "skills" | "tools" | "models" | "automation" | "security" | "worktrees" | "workers">, string> = {
   connection: "HUI server, local PI runtime, reconnect behaviour and health.",
   integrations: "Connections to external services such as Jira and GitHub.",
   plugins: "Packages, extensions, permissions and provider adapters.",
@@ -1131,6 +1219,8 @@ export function renderSettingsPage(props: SettingsProps) {
         <div class="settings-page ${["plugins", "skills", "automation", "worktrees", "workers"].includes(props.page) ? "settings-page--wide" : ""}">
           ${props.page === "appearance"
             ? renderAppearancePage(props)
+            : props.page === "notifications"
+            ? renderNotificationsPage(props)
             : props.page === "skills"
               ? renderSkillsPage(props)
               : props.page === "tools"

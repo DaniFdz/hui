@@ -21,12 +21,15 @@ test("CLI parses lifecycle, UI and local update commands without accepting stray
   assert.equal(parseCli(["update", "--check", "--json"]).values.check, true);
   assert.equal(parseCli(["update", "--nightly"]).values.nightly, true);
   assert.deepEqual({ ...parseCli(["update", "--nightly", "--check", "--json"]).values }, { nightly: true, check: true, json: true });
+  assert.equal(parseCli(["update", "--force"]).values.force, true, "an update replaces a busy or unresponsive gateway on request");
+  assert.equal(parseCli(["update", "--rollback", "--force"]).values.force, true);
   assert.equal(parseCli(["gateway", "start", "--port", "0"]).values.port, "0");
   for (const args of [["gateway", "stop", "--host", "127.0.0.1"], ["gateway", "start", "--port", "-1"], ["gateway", "start", "--port", "65536"],
     ["gateway", "logs", "--lines", "0"], ["update", "--rollback", "--from", "file.tgz"], ["update", "--sha256", "bad"], ["update", "--check", "--rollback"], ["update", "--check", "--from", "file.tgz"],
-    ["update", "--nightly", "--from", "file.tgz"], ["update", "--nightly", "--rollback"], ["gateway", "restart", "--nightly"], ["ui", "extra"], ["gateway", "status", "extra"], ["typo"]]) {
+    ["update", "--nightly", "--from", "file.tgz"], ["update", "--nightly", "--rollback"], ["update", "--check", "--force"], ["gateway", "restart", "--nightly"], ["ui", "extra"], ["gateway", "status", "extra"], ["typo"]]) {
     assert.throws(() => parseCli(args), Error, args.join(" "));
   }
+  assert.match(HELP, /hui update \[--check\] \[--json\] \[--force\]/u);
 });
 
 test("CLI parses workers commands, their target and only their own flags", () => {
@@ -117,8 +120,13 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
   assert.deepEqual(parseCli(["bot", "send", "ada", "-", "--wait", "--timeout", "90"]).operands, ["ada", "-"]);
   assert.equal(parseCli(["bot", "send", "ada", "hello there"]).operands?.[1], "hello there");
   assert.equal(parseCli(["bot", "chat", "Ada Lovelace"]).operands?.[0], "Ada Lovelace");
-  assert.equal(parseCli(["bot", "memory", "ada", "--zoom", "2184+8"]).values.zoom, "2184+8");
-  assert.equal(parseCli(["bot", "memory", "ada", "--html", "memory.html"]).values.html, "memory.html");
+  assert.equal(parseCli(["bot", "history", "ada", "--zoom", "2184+8"]).values.zoom, "2184+8");
+  assert.equal(parseCli(["bot", "history", "ada", "--html", "memory.html"]).values.html, "memory.html");
+  assert.throws(() => parseCli(["bot", "memory", "ada", "--zoom", "1+1"]), /--zoom is not valid for bot memory/u, "the history has its own command; the old flags are refused here");
+  assert.deepEqual(parseCli(["bot", "memory", "ada", "--json"]).operands, ["ada"]);
+  assert.deepEqual(parseCli(["bot", "user", "ada", "--json"]).operands, ["ada"]);
+  assert.equal(parseCli(["bot", "bootstrap", "ada", "--file", "onboarding.md"]).values.file, "onboarding.md");
+  assert.deepEqual(parseCli(["bot", "split", "ada", "--wait"]).operands, ["ada"]);
   for (const verb of ["show", "remove", "restore", "stop"]) assert.deepEqual(parseCli(["bot", verb, "ada", "--json"]).operands, ["ada"]);
   assert.equal(parseCli(["bot", "routine", "list", "ada"]).command, "bot routine list");
   assert.equal(parseCli(["bot", "routines", "list", "ada"]).command, "bot routine list");
@@ -146,8 +154,8 @@ test("CLI parses bot commands, accepting bot and bots, with their operands and o
     [["bot", "show", "ada", "--file", "x"], /--file is not valid for bot show/u],
     [["bot", "add", "--name", "Ada", "--thinking", "ultra"], /--thinking must be one of/u],
     [["bot", "add", "--name", "Ada", "--model", "gpt-5"], /--model must be provider\/model/u],
-    [["bot", "memory", "ada", "--zoom", "12"], /id\+n/u],
-    [["bot", "memory", "ada", "--zoom", "1+1", "--html", "x"], /either --zoom or --html/u],
+    [["bot", "history", "ada", "--zoom", "12"], /id\+n/u],
+    [["bot", "history", "ada", "--zoom", "1+1", "--html", "x"], /either --zoom or --html/u],
     [["bot", "routine", "add", "ada", "--name", "x"], /needs --name and --prompt/u],
     [["bot", "routine", "add", "ada", "--name", "x", "--prompt", "y"], /exactly one of --at, --every or --cron/u],
     [["bot", "routine", "add", "ada", "--name", "x", "--prompt", "y", "--every", "5m", "--cron", "* * * * *"], /exactly one/u],
@@ -192,7 +200,11 @@ test("HELP lists every hui bot command", () => {
     "hui bot chat <bot>",
     "hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]",
     "hui bot stop <bot> [--json]",
-    "hui bot memory <bot> [--zoom <id+n>] [--html <file>] [--json]",
+    "hui bot user <bot> [--json]",
+    "hui bot memory <bot> [--json]",
+    "hui bot history <bot> [--zoom <id+n>] [--html <file>] [--json]",
+    "hui bot bootstrap <bot> [--file <path|->] [--json]",
+    "hui bot split <bot> [--wait] [--timeout <seconds>] [--json]",
     "hui bot routine list <bot> [--json]",
     "hui bot routine add <bot> --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr>",
     "hui bot routine run <bot> <routine>",

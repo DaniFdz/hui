@@ -26,6 +26,27 @@ export type SessionStageSource = Static<typeof SessionStageSource>;
 export const SessionStageOrigin = Type.Union([SessionStageSource, Type.Literal("default")], { $id: "SessionStageOrigin" });
 export type SessionStageOrigin = Static<typeof SessionStageOrigin>;
 
+export const SessionGoalStatus = Type.Union([
+  Type.Literal("active"), Type.Literal("paused"), Type.Literal("blocked"), Type.Literal("complete"),
+], { $id: "SessionGoalStatus" });
+export type SessionGoalStatus = Static<typeof SessionGoalStatus>;
+
+/** One objective the operator gave this conversation, and how far it got. */
+export const SessionGoal = Type.Object({
+  objective: Type.String(), status: SessionGoalStatus, createdAt: Type.String(), updatedAt: Type.String(),
+  /** Why it is paused or blocked, when that was reported. */
+  note: Type.Optional(Type.String()),
+  /** Automatic turns already spent pursuing it. */
+  continuations: Type.Number(),
+}, { $id: "SessionGoal" });
+export type SessionGoal = Static<typeof SessionGoal>;
+
+export const SessionGoalRequest = Type.Union([
+  Type.Object({ action: Type.Literal("start"), objective: Type.String() }),
+  Type.Object({ action: Type.Union([Type.Literal("pause"), Type.Literal("resume"), Type.Literal("clear")]) }),
+], { $id: "SessionGoalRequest" });
+export type SessionGoalRequest = Static<typeof SessionGoalRequest>;
+
 export const SessionStatus = Type.Union([
   Type.Literal("idle"), Type.Literal("running"), Type.Literal("waiting"), Type.Literal("starting"), Type.Literal("error"),
   Type.Literal("reconnecting"), Type.Literal("disconnected"),
@@ -61,9 +82,9 @@ export const SubagentStatus = Type.Union([
 export type SubagentStatus = Static<typeof SubagentStatus>;
 
 export const SessionSubagent = Type.Object({
-  taskId: Type.String(), task: Type.String(), label: Type.Optional(Type.String()), status: SubagentStatus,
+  taskId: Type.String(), label: Type.Optional(Type.String()), status: SubagentStatus,
   startedAt: Type.String(), updatedAt: Type.String(), endedAt: Type.Optional(Type.String()),
-  summary: Type.Optional(Type.String()), error: Type.Optional(Type.String()),
+  error: Type.Optional(Type.String()),
   completionDelivery: Type.Optional(Type.Union([Type.Literal("pending"), Type.Literal("delivered")])),
   collect: Type.Optional(Type.Literal(true)),
 }, { $id: "SessionSubagent" });
@@ -100,6 +121,7 @@ export const SessionView = Type.Object({
   bot: Type.Optional(Type.Object({ id: Type.String(), handle: Type.String(), name: Type.String() })),
   stage: SessionStage,
   stageOrigin: SessionStageOrigin,
+  goal: Type.Optional(SessionGoal),
   createdAt: Type.String(),
   updatedAt: Type.String(),
 }, { $id: "SessionView" });
@@ -221,6 +243,7 @@ export const sessionActionRouteSchemas = [
   { method: "POST", path: "/__hui/sessions/:id/fork", response: SessionResponse },
   { method: "POST", path: "/__hui/sessions/:id/fast", response: SessionFastResponse },
   { method: "POST", path: "/__hui/sessions/:id/queue", request: SessionQueueRequest, response: SessionOk },
+  { method: "POST", path: "/__hui/sessions/:id/goal", request: SessionGoalRequest, response: SessionResponse },
 ];
 
 export const routeSchemas = [...sessionRouteSchemas, ...sessionActionRouteSchemas];

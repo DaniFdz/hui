@@ -22,6 +22,7 @@ npm-shrinkwrap.json
 /e2e/**/*.webp
 /e2e/**/*.gif
 /e2e/**/*.avif
+!/e2e/fixtures/files/*
 /docs/assets/*-overview.png
 /screenshots/
 /test-results/
@@ -37,3 +38,6 @@ npm-shrinkwrap.json
 /USER.md
 /MEMORY.md
 /memory/
+
+# The shared e2e suite's reports, traces and launcher receipts.
+.e2e/

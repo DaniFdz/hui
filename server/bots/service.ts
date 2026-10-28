@@ -3,15 +3,16 @@
  *
  * A bot's chat is an ordinary Durable session registered through New
  * Session's code path, and its record carries `bot`; the bot registry
- * (`bots.ts`) owns the rest. Durable, OptChat and SOUL.md arrive through
- * injected ports, so the lifecycle is tested without a harness and a bot that
- * runs elsewhere can route them: `BotConversations` (the conversation and its
- * directory; `conversations.ts`), `BotMemory` (OptChat; `memory.ts`)
- * and `BotSouls` (SOUL.md in the bot's home folder; `souls.ts`).
+ * (`bots.ts`) owns the rest. Durable, OptChat and the bot's prompt files arrive
+ * through injected ports, so the lifecycle is tested without a harness and a bot
+ * that runs elsewhere can route them: `BotConversations` (the conversation and
+ * its directory; `conversations.ts`), `BotMemory` (OptChat; `memory.ts`) and
+ * `BotFiles` (SOUL.md, USER.md, MEMORY.md and BOOTSTRAP.md; `home.ts`).
  *
- * A bot's persona is its SOUL.md. A bot created without one speaks first: HUI
- * starts its first turn with a kickoff message, and the chat's `soul` section
- * has it ask the operator what they expect and write SOUL.md itself.
+ * A bot's persona is its SOUL.md, and what it knows is USER.md and MEMORY.md. A
+ * bot created without a soul speaks first: HUI starts its first turn with a
+ * kickoff message, and the chat's `soul` section has it ask the operator what
+ * they expect and write SOUL.md itself.
  *
  * Delivery follows the composer: a prompt while the chat is idle, a follow-up
  * while it works, or steering when requested. A waiting caller resolves when
@@ -33,7 +34,7 @@ import { isAbsolute, join, relative } from "node:path";
 import {
   agentReplyTo, agentTagPrefix, BOT_FACE_EARS_LABELS, BOT_FACE_SHAPE_LABELS, BOT_LIMITS, botColorName, botFaceColor, botKickoffName, botKickoffText, botLook,
   handleFromName, isBotAccessQuestion, mentionsBot, previewLine, storedTagging,
-  type BotAccessRequest, type BotCatalog, type BotSkillRef, type BotSkillSelector,
+  type BotAccessRequest, type BotCatalog, type BotFile, type BotSkillRef, type BotSkillSelector,
   type BotAccess, type BotCatalogSkill, type BotCatalogTool, type BotLastMessage, type BotMemoryStatus, type BotMessageResult, type BotPatch,
   type BotQuestion, type BotRecord, type BotReply, type BotView,
 } from "../bots-format.ts";
@@ -41,16 +42,19 @@ import { botTurnOrigin, runTurnOrigins, type BotTurnOrigin } from "../runtimes/t
 import type { CallRecord } from "../calls-format.ts";
 import type { AutomationTask } from "../automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
+import { WATCHER_EVENT_MARKER } from "../agent-tools/watcher-events.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./memory.ts";
 import { AUTOMATION_SUSPENDED } from "../automation.ts";
 import {
-  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
+  BOTS_DIR, BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, findBot, isDerivedHandle, normalizeBootstrap, normalizeBotInput, normalizeBotPatch, normalizeSoul, patchedAvatar, patchedVoice, uniqueHandle,
   type BotRegistry,
 } from "./bots.ts";
 import { SessionBusyError, type HuiQuestion, type LiveSessions } from "../sessions/live-sessions.ts";
 import type { PromptAttachment, RuntimePromptOptions, RuntimePromptResult, RuntimeQuestion, TranscriptEntry } from "../runtimes/types.ts";
 import type { SessionRecord } from "../sessions/sessions.ts";
-import { rootSessionId } from "../sessions/session-tree.ts";
+import { rootSessionId, sessionTreeIds } from "../sessions/session-tree.ts";
+import { aggregateUsage } from "../observability.ts";
+import type { UsageTotals } from "../api/diagnostics.ts";
 import { resolveWorkingDirectory } from "../git/working-directories.ts";
 import { GATEWAY_ONLY_TOOLS } from "../worker/gateway-tools.ts";
 
@@ -131,7 +135,7 @@ export type BotConversations = {
 type BotPorts = {
   conversations: Pick<BotConversations, "configure" | "forget" | "lastMessage" | "writeCallRecord" | "access" | "setAccess" | "offer">;
   memory: BotMemory;
-  souls: BotSouls;
+  files: BotFiles;
 };
 
 /**
@@ -148,7 +152,7 @@ export type BotWorkers = {
   /** Its bots' memories; `status` answers from what the worker last reported, without asking it. */
   memory(id: string): BotMemory;
   /** Its bots' SOUL.md, each in the bot's home folder there. */
-  souls(id: string): BotSouls;
+  files(id: string): BotFiles;
   /** Explicit memories on this worker; absent on older hosts. */
   facts?(id: string): BotFacts;
   /**
@@ -181,25 +185,27 @@ export type RemoteBotConversations = Pick<BotConversations, "configure" | "forge
    * there), SOUL.md when `soul` is given, and the conversation in `cwd` (absolute or `~/`, checked there) or in that
    * home. A failure there undoes what it made. Returns the conversation's reference and the absolute directory.
    */
-  create(input: Omit<BotConversationInput, "cwd"> & { cwd?: string; soul?: string }): Promise<{ reference: string; cwd: string }>;
+  create(input: Omit<BotConversationInput, "cwd"> & { cwd?: string; files?: Partial<Record<BotFile, string>> }): Promise<{ reference: string; cwd: string }>;
   /** A directory on the worker, `~/` resolved there; refuses one that does not exist. */
   directory(cwd: string): Promise<string>;
 };
 
 /**
- * SOUL.md, each bot's persona, in its home folder on the host that runs its chat (`souls.ts` on this gateway, the
- * worker's host for a bot there: `BotWorkers.souls`). Every bot has that folder, whatever its working directory.
+ * SOUL.md, USER.md, MEMORY.md and BOOTSTRAP.md, each bot's prompt files, in its home folder on the host that runs its
+ * chat (`home.ts` on this gateway, the worker's host for a bot there: `BotWorkers.files`). Every bot has that folder,
+ * whatever its working directory.
  */
-export type BotSouls = {
+/** A bot's prompt files, and the home folder that holds them. */
+export type BotFiles = {
   /** Creates the bot's home folder (owner-only) if it is missing. */
   prepare(botId: string): Promise<void>;
-  /** SOUL.md's text, trimmed; undefined while there is none (no file, or only whitespace). */
-  read(botId: string): Promise<string | undefined>;
-  /** Whether `read` would find a soul. The bot list asks again only when a bot's chat changes state. */
-  exists(botId: string): Promise<boolean>;
-  /** Replaces SOUL.md atomically; undefined removes it, which brings the first conversation back. */
-  write(botId: string, soul: string | undefined): Promise<void>;
-  /** For a deleted bot: removes its home folder with everything in it (SOUL.md and every file HUI or the bot put
+  /** One file's text, trimmed; undefined while there is none (no file, or only whitespace). Default: SOUL.md. */
+  read(botId: string, file?: BotFile): Promise<string | undefined>;
+  /** Whether `read` would find one. The bot list asks again only when a bot's chat changes state. */
+  exists(botId: string, file?: BotFile): Promise<boolean>;
+  /** Replaces one file atomically; undefined removes it. Default: SOUL.md, whose removal brings the first conversation back. */
+  write(botId: string, text: string | undefined, file?: BotFile): Promise<void>;
+  /** For a deleted bot: removes its home folder with everything in it (the four files and every file HUI or the bot put
    * there), never following a link out of HUI's bots directory. */
   remove(botId: string): Promise<void>;
 };
@@ -223,7 +229,7 @@ export type BotServiceDeps = {
   removeSession(id: string): Promise<void>;
   conversations: BotConversations;
   memory: BotMemory;
-  souls: BotSouls;
+  files: BotFiles;
   routines: BotRoutines;
   /** Bots on remote workers; absent, a bot can only run here. */
   workers?: BotWorkers;
@@ -231,6 +237,8 @@ export type BotServiceDeps = {
   now?: () => number;
   messagesPerHour?: number;
   readyTimeoutMs?: number;
+  /** Totals sessions' spend; absent, Durable sessions report their store unavailable. */
+  usage?: (records: readonly SessionRecord[]) => Promise<UsageTotals>;
   report?: (event: { level: "info" | "warning" | "error"; action: string; summary: string; detail?: string }) => void;
 };
 
@@ -359,19 +367,26 @@ export class BotService {
     // Off from its first turn, checked on the machine it runs on: against the tools every chat has (its chat isn't
     // running yet, so not its extensions') and the skills of its directory there.
     const restricted = input.disabledTools !== undefined || input.disabledSkills !== undefined;
+    // Its prompt files, written where its chat runs: in one operation on a worker, in its home here otherwise.
+    const createdFiles = {
+      ...(input.soul ? { soul: input.soul } : {}), ...(input.user ? { user: input.user } : {}),
+      ...(input.memory ? { memory: input.memory } : {}), ...(input.bootstrap ? { bootstrap: input.bootstrap } : {}),
+    };
     let access: BotAccess | undefined;
     if (worker) {
-      // On the worker, in one operation there: the home folder (always), SOUL.md when given, and the conversation in
-      // the chosen folder or that home, with what is off. SOUL.md never goes in a chosen folder. Its skills there go by
+      // On the worker, in one operation there: the home folder (always), its prompt files when given, and the conversation in
+      // the chosen folder or that home, with what is off. They never go in a chosen folder. Its skills there go by
       // their mirrored paths, as the worker's own offer names them.
       const remote = this.#remote();
       const conversations = remote.conversations(worker.id);
       if (restricted) access = resolveAccess(await conversations.offer(undefined, input.cwd, id), NOTHING_OFF, input, onWorker(worker.name, (path) => remote.skillPath(worker.id, path)));
       ({ reference, cwd } = await conversations.create({
-        ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}), ...(input.soul ? { soul: input.soul } : {}), ...(access ? { access } : {}),
+        ...conversation, ...(input.cwd ? { cwd: input.cwd } : {}),
+        ...(createdFiles ? { files: createdFiles } : {}),
+        ...(access ? { access } : {}),
       }));
       // Its home folder there goes with SOUL.md; a chosen folder lies outside it and stays.
-      undo = async () => { await remote.souls(worker.id).remove(id).catch(() => {}); };
+      undo = async () => { await remote.files(worker.id).remove(id).catch(() => {}); };
     } else {
       if (input.cwd) cwd = await existingDirectory(input.cwd);
       else {
@@ -381,14 +396,17 @@ export class BotService {
       }
       // SOUL.md goes, then only empty folders this request made; a bot's files never do.
       undo = async () => {
-        await this.#deps.souls.remove(id).catch(() => {});
+        await this.#deps.files.remove(id).catch(() => {});
         if (created) await rmdir(created).catch(() => {});
       };
       try {
         if (restricted) access = resolveAccess(await this.#deps.conversations.offer(undefined, cwd), NOTHING_OFF, input);
         // Every bot has its home folder, whatever its working directory: SOUL.md lives there.
-        await this.#deps.souls.prepare(id);
-        if (input.soul) await this.#deps.souls.write(id, input.soul);
+        await this.#deps.files.prepare(id);
+        if (input.soul) await this.#deps.files.write(id, input.soul, "soul");
+        if (input.user) await this.#deps.files.write(id, input.user, "user");
+        if (input.memory) await this.#deps.files.write(id, input.memory, "memory");
+        if (input.bootstrap) await this.#deps.files.write(id, input.bootstrap, "bootstrap");
         reference = await this.#deps.conversations.create({ ...conversation, cwd, ...(access ? { access } : {}) });
       } catch (error) {
         await undo();
@@ -431,6 +449,7 @@ export class BotService {
           ...(input.voice ? { voice: input.voice } : {}),
           ...(input.hidden ? { hidden: true } : {}),
           ...mirrored(access ?? NOTHING_OFF),
+          split: true,
           sessionId: session.id,
           createdAt: now,
           updatedAt: now,
@@ -789,10 +808,13 @@ export class BotService {
     if (record) await this.#deps.removeSession(bot.sessionId);
     if (!bot.worker) {
       if (await this.#chosenInsideHome(bot)) {
-        await this.#deps.souls.write(bot.id, undefined);
+        await this.#deps.files.write(bot.id, undefined, "soul");
+        await this.#deps.files.write(bot.id, undefined, "bootstrap");
+        await this.#deps.files.write(bot.id, undefined, "user");
+        await this.#deps.files.write(bot.id, undefined, "memory");
         await rm(join(this.#botsDir, bot.id, BOT_FACTS_FILE), { force: true });
       }
-      else await this.#deps.souls.remove(bot.id);
+      else await this.#deps.files.remove(bot.id);
     }
     await this.#registry.update((bots) => ({ bots: bots.filter((candidate) => candidate.id !== bot.id), result: undefined }));
     this.#souls.delete(bot.id);
@@ -824,9 +846,13 @@ export class BotService {
 
   /** SOUL.md's text; null while the bot has none (before or during its first conversation). */
   async soul(target: string): Promise<string | null> {
+    return (await this.file(target, "soul")) ?? null;
+  }
+
+  /** One of a bot's home files; null while it has none. Read on the host that runs its chat, so an offline worker is the routes' 503. */
+  async file(target: string, file: BotFile): Promise<string | null> {
     const bot = await this.resolve(target);
-    // A bot on a worker: from its home there, so an offline worker is the routes' 503.
-    return (await this.#ports(bot).souls.read(bot.id)) ?? null;
+    return (await this.#ports(bot).files.read(bot.id, file)) ?? null;
   }
 
   /**
@@ -839,12 +865,27 @@ export class BotService {
     const soul = normalizeSoul(raw);
     const bot = await this.resolve(target);
     if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before changing its soul.`);
-    await this.#ports(bot).souls.write(bot.id, soul || undefined);
+    await this.#ports(bot).files.write(bot.id, soul || undefined, "soul");
     // Known now; the next list reads it again (in the background for a bot on a worker) without showing a stale answer.
     this.#souls.set(bot.id, { key: "", soul: Boolean(soul) });
     const now = new Date(this.#now()).toISOString();
     await this.#registry.update((bots) => ({ bots: bots.map((each) => each.id === bot.id ? { ...each, updatedAt: now } : each), result: undefined }));
     return soul || null;
+  }
+
+  /**
+   * Replaces BOOTSTRAP.md atomically (`normalizeBootstrap`); `""` removes it.
+   * It is the operator's onboarding body, read while SOUL.md does not exist, so
+   * the bot never writes it. An archived bot is refused, as for edits.
+   */
+  async setBootstrap(target: string, raw: unknown): Promise<string | null> {
+    const bootstrap = normalizeBootstrap(raw);
+    const bot = await this.resolve(target);
+    if (bot.archived) throw new BotConflictError(`@${bot.handle} is archived. Restore it before changing its onboarding.`);
+    await this.#ports(bot).files.write(bot.id, bootstrap || undefined, "bootstrap");
+    const now = new Date(this.#now()).toISOString();
+    await this.#registry.update((bots) => ({ bots: bots.map((each) => each.id === bot.id ? { ...each, updatedAt: now } : each), result: undefined }));
+    return bootstrap || null;
   }
 
   /**
@@ -854,21 +895,22 @@ export class BotService {
    * instructions are cleared, then the field leaves bots.json. In that order, so
    * a restart in between finishes the rest; a bot that fails stays as it was
    * and is tried again at the next start. Nothing starts a turn: a bot without
-   * either has its first conversation at its next turn.
+   * either has its first conversation at its next turn. A bot without a SOUL.md
+   * is then marked split, since it writes its first one with the three files.
    */
   async migrate(): Promise<{ souls: number; cleared: number }> {
     // Bots on workers came with SOUL.md: their homes are made there at creation, and none ever had instructions here.
     const bots = (await this.#registry.list()).filter((bot) => !bot.worker);
     for (const bot of bots) {
-      await this.#deps.souls.prepare(bot.id).catch((error: unknown) => this.#report("warning", "bot_home_failed", `@${bot.handle}'s home folder could not be created`, error));
+      await this.#deps.files.prepare(bot.id).catch((error: unknown) => this.#report("warning", "bot_home_failed", `@${bot.handle}'s home folder could not be created`, error));
     }
     const result = { souls: 0, cleared: 0 };
     for (const [id, instructions] of await this.#registry.legacyInstructions()) {
       const bot = bots.find((candidate) => candidate.id === id);
       if (!bot) continue;
       try {
-        if (!await this.#deps.souls.exists(id)) {
-          await this.#deps.souls.write(id, instructions.replace(/\r\n?/gu, "\n").trim());
+        if (!await this.#deps.files.exists(id, "soul")) {
+          await this.#deps.files.write(id, instructions.replace(/\r\n?/gu, "\n").trim(), "soul");
           result.souls += 1;
         }
         const reference = (await this.#deps.readSessions()).find((record) => record.id === bot.sessionId)?.piSessionFile;
@@ -881,6 +923,15 @@ export class BotService {
       } catch (error) {
         this.#report("warning", "bot_soul_migration_failed", `@${bot.handle}'s instructions could not become its SOUL.md yet; HUI tries again at its next start`, error);
       }
+    }
+    const legacy = await this.#registry.legacyInstructions();
+    const unwritten: string[] = [];
+    for (const bot of bots) {
+      if (!bot.split && !legacy.has(bot.id) && !await this.#deps.files.exists(bot.id, "soul").catch(() => true)) unwritten.push(bot.id);
+    }
+    if (unwritten.length) {
+      await this.#registry.update((current) => ({ bots: current.map((each) => unwritten.includes(each.id) ? { ...each, split: true } : each), result: undefined }))
+        .catch((error: unknown) => this.#report("warning", "bot_split_mark_failed", "Bots without a SOUL.md could not be marked split yet; HUI tries again at its next start", error));
     }
     return result;
   }
@@ -911,7 +962,7 @@ export class BotService {
     const [view, soul] = await Promise.all([
       reference ? ports.memory.view(reference).catch(() => undefined) : undefined,
       // Its persona on the call too, read where its chat runs; a call goes on without one.
-      ports.souls.read(bot.id).catch(() => undefined),
+      ports.files.read(bot.id, "soul").catch(() => undefined),
     ]);
     return { bot, ...(view ? { view } : {}), ...(soul ? { soul } : {}) };
   }
@@ -929,6 +980,15 @@ export class BotService {
     if (status === "starting") throw new BotConflictError(`@${bot.handle}'s chat is still starting.`);
     if (status === "running" || status === "waiting") await this.#sessions.abort(bot.sessionId);
     return this.#viewOf(bot);
+  }
+
+  /** What the bot's chat and every subagent under it cost, per model. A worker's sessions are counted there, not here. */
+  async usage(target: string): Promise<UsageTotals> {
+    const bot = await this.resolve(target);
+    const records = await this.#deps.readSessions();
+    const ids = sessionTreeIds(records, bot.sessionId);
+    const tree = records.filter((record) => ids.has(record.id));
+    return (this.#deps.usage ?? aggregateUsage)(tree);
   }
 
   async memory(target: string): Promise<{ status: BotMemoryStatus; view: string }> {
@@ -1275,7 +1335,7 @@ export class BotService {
     // A worker's bot: what the worker last reported, never a request to it.
     const memory = reference ? await Promise.resolve().then(() => this.#ports(bot).memory.status(reference)).catch(() => undefined) : undefined;
     const lastMessage = await this.#lastMessage(bot, record);
-    const { worker, ...stored } = bot;
+    const { worker, split: _split, ...stored } = bot;
     const soul = await this.#hasSoul(bot, record);
     return {
       ...stored,
@@ -1304,7 +1364,7 @@ export class BotService {
       this.#readRemoteSoul(bot, key);
       return cached?.soul ?? false;
     }
-    const soul = await this.#deps.souls.exists(bot.id).catch(() => cached?.soul ?? false);
+    const soul = await this.#deps.files.exists(bot.id, "soul").catch(() => cached?.soul ?? false);
     this.#souls.set(bot.id, { key, soul });
     return soul;
   }
@@ -1314,7 +1374,7 @@ export class BotService {
     const workers = this.#deps.workers;
     if (!workers || !bot.worker || this.#readingSouls.has(bot.id)) return;
     this.#readingSouls.add(bot.id);
-    void workers.souls(bot.worker).exists(bot.id).then((soul) => {
+    void workers.files(bot.worker).exists(bot.id, "soul").then((soul) => {
       this.#souls.set(bot.id, { key, soul });
     }, () => {}).finally(() => this.#readingSouls.delete(bot.id));
   }
@@ -1364,9 +1424,9 @@ export class BotService {
 
   /** The ports of the store that holds the bot's chat: this gateway's, or its worker's. */
   #ports(bot: BotRecord): BotPorts {
-    if (!bot.worker) return { conversations: this.#deps.conversations, memory: this.#deps.memory, souls: this.#deps.souls };
+    if (!bot.worker) return { conversations: this.#deps.conversations, memory: this.#deps.memory, files: this.#deps.files };
     const workers = this.#remote();
-    return { conversations: workers.conversations(bot.worker), memory: workers.memory(bot.worker), souls: workers.souls(bot.worker) };
+    return { conversations: workers.conversations(bot.worker), memory: workers.memory(bot.worker), files: workers.files(bot.worker) };
   }
 
   #remote(): BotWorkers {
@@ -1591,7 +1651,7 @@ export function hopOf(text: string | undefined): number | undefined {
 
 /** How the messages HUI writes into a session start (`subagents.ts`): a subagent's task, another session's message and
  * a subagent's report. */
-const HUI_MESSAGES = ["[Subagent Task]", "[Inter-session message ", SUBAGENT_COMPLETION_MARKER];
+const HUI_MESSAGES = ["[Subagent Task]", "[Inter-session message ", SUBAGENT_COMPLETION_MARKER, WATCHER_EVENT_MARKER];
 
 /** A message the operator wrote: not a routine's, a trigger's, a bot's or a session's tag, a new bot's kickoff, nor one
  * HUI writes itself (`HUI_MESSAGES`): an agent's words never count as the operator's. */
@@ -1820,6 +1880,7 @@ function patched(bot: BotRecord, patch: BotPatch, cwd: string | undefined, updat
     if (patch.hidden) next.hidden = true;
     else delete next.hidden;
   }
+  if (patch.split) next.split = true;
   return next;
 }
 

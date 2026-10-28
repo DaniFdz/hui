@@ -5,7 +5,7 @@
  */
 import { displayPath } from "../git/working-directories.ts";
 import { FilesError, FilesRoot, parseIfMatch, MAX_EDITABLE_FILE_BYTES, MAX_RAW_FILE_BYTES, MAX_RESOLVE_PATH_LENGTH, MAX_RESOLVE_PATHS } from "../files.ts";
-import { reply, type RouteRequest, type RouteResult } from "../http/route.ts";
+import { contentDisposition, reply, type RouteRequest, type RouteResult } from "../http/route.ts";
 import { FileDeleted, FileEntryResponse, FileError, FileRead, FileSaved, FilesInfo, FilesListing, FilesResolve, FilesSearch } from "../api/files.ts";
 export { routeSchemas } from "../api/files.ts";
 import { basename } from "node:path";
@@ -72,7 +72,7 @@ export function createFileRoutes(deps: { session(id: string): Promise<SessionLoc
         const raw = await root.raw(path);
         const preview = raw.mimeType.startsWith("image/") || raw.mimeType === "application/pdf";
         const headers: Record<string, string> = { "cross-origin-resource-policy": "same-origin", "content-security-policy": "default-src 'none'; sandbox" };
-        if (!preview) headers["content-disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(raw.name)}`;
+        if (!preview) headers["content-disposition"] = contentDisposition("attachment", raw.name);
         return { status: 200, file: { mimeType: raw.mimeType, data: raw.data, headers } };
       }
       if (action === "entry" && method === "POST") {

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, test, type TestContext } from "vitest";
-import type { Message, Models, UserMessage } from "@earendil-works/pi-ai";
+import type { Api, Message, Model, Models, UserMessage } from "@earendil-works/pi-ai";
 import { AgentDoc, createRegistry, Harness, UserEntry, type ConversationId, type EntryRecord } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { OptChatStatus } from "../optchat/memory.ts";
@@ -26,7 +26,7 @@ const { DurableHost, durableContext, modelCallable } = await import("./durable-h
 const { createDurableBots } = await import("../bots/durable-access.ts");
 const { durableReference, startDurable } = await import("./durable.ts");
 const {
-  configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry,
+  configureOptChat, enableOptChat, freshTurn, freshTurnRequest, OPTCHAT_EXTENSION, OPTCHAT_TOOLS_EXTENSION, OptChatDoc, projectEntry, thinkingAtMost,
 } = await import("./durable-optchat.ts");
 const { readObservability } = await import("../observability.ts");
 const { durableBotConversations } = await import("../bots/conversations.ts");
@@ -132,6 +132,15 @@ test("enabling writes the document and selects the tools in the same transaction
   await assert.rejects(() => enableOptChat(tx, 3 as ConversationId, { name: " " }), /needs the agent's name/u);
   await assert.rejects(() => enableOptChat(tx, 3 as ConversationId, { name: "Grok", model: "fixture" }), /provider\/id/u);
   await assert.rejects(() => enableOptChat(tx, 3 as ConversationId, { name: "Grok", thinking: "loud" as never }), /thinking level/u);
+});
+
+test("the compactor thinks at most at the level asked: a model without it gets the nearest one below", () => {
+  const model = (reasoning: boolean, thinkingLevelMap?: Record<string, string | null>) =>
+    ({ id: "m", provider: "p", api: "openai-completions", reasoning, ...(thinkingLevelMap ? { thinkingLevelMap } : {}) }) as unknown as Model<Api>;
+  const noMedium = model(true, { off: "none", minimal: null, low: "low", medium: null, high: "high", xhigh: null, max: "max" });
+  assert.deepEqual(["minimal", "medium", "xhigh"].map((level) => thinkingAtMost(noMedium, level as never)), ["off", "low", "high"]);
+  assert.deepEqual([thinkingAtMost(model(true), "medium"), thinkingAtMost(model(false), "medium")], ["medium", "off"]);
+  assert.equal(thinkingAtMost(model(true, { minimal: null, low: null, medium: null }), "medium"), "high", "off is never sent to it, and nothing else is below: the nearest above");
 });
 
 // ── Pi Durable integration ───────────────────────────────────────────────────
@@ -259,8 +268,8 @@ test("a conversation without OptChat sends Durable's requests unchanged and is n
   assert.deepEqual(second.messages.map((message) => message.role), ["user", "assistant", "user"], "the history goes as it is");
   assert.equal(blocks(second.messages[0]!)[0]!.text, "PLAIN_ONE first");
   assert.doesNotMatch(JSON.stringify(requests), /<chat>|You keep no memory between turns/u);
-  const offered = [...[...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name), "message_bot"];
-  assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools, codemode and message_bot, as before OptChat");
+  const offered = [...[...host.codingTools, ...host.huiTools, ...modelCallable(host.codemode)].map((tool) => tool.name).filter((name) => name !== "notify_user"), "message_bot"];
+  assert.deepEqual([toolNames(first), toolNames(second)], [offered, offered], "the coding and HUI tools but the notification tool Settings leaves off, codemode and message_bot, as before OptChat");
   assert.deepEqual((await session.inspect()).tools.map((tool) => tool.name), offered);
   const id = Number(session.sessionId) as ConversationId;
   const harness = await host.open();
@@ -477,6 +486,16 @@ test("a turn waits while the view has a line to summarize, says so, and goes on 
   assert.equal((await host.optchat.status(id))?.waiting, undefined, "Stop ended the wait");
   assert.deepEqual(await turnRequests(f.log, "OPT_STOPPED"), [], "the stopped turn sent nothing");
   assert.equal(answers(session.transcript()), 3, "its message stays in the log, unanswered");
+  await f.control("/control/release-replay", "POST");
+});
+
+test("a compactor call that does not answer in time fails, naming the model and the limit", { timeout: 60_000 }, async (t) => {
+  const f = await fixture(t, { optchat: { callTimeoutMs: 500 } });
+  const host = f.host();
+  const { session, id } = await botSession(f, host, "bot-stuck");
+  await turns(session, [`OPT_STUCK E2E_HOLD_MEMORY${" kept".repeat(150)}`]);
+  const { failing } = await statusWhere(host, id, (status) => status.failing !== undefined);
+  assert.deepEqual([failing?.node, failing?.error], ["0+1", "hui-e2e/fixture did not answer within 0.5 seconds."]);
   await f.control("/control/release-replay", "POST");
 });
 

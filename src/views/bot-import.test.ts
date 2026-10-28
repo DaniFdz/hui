@@ -18,7 +18,9 @@ test("the preview shows every imported text as plain text, says it is untrusted,
   assert.doesNotMatch(source, /unsafeHTML|renderMarkdown|innerHTML/u, "imported text is never rendered as HTML or Markdown");
   assert.match(source, /const textBlock = \(text: string\) => html`<pre class="bot-import__text">\$\{text\}<\/pre>`;/u);
   const preview = between(source, "function renderPreviewStep(", "export function renderBotImportDialog(");
-  for (const shown of ["textBlock(preview.soul)", "textBlock(preview.opener)", "textBlock(skill.content)", "textBlock(routine.prompt)"]) assert.ok(preview.includes(shown), shown);
+  for (const shown of ["textBlock(preview.soul)", "textBlock(preview.memory)", "textBlock(preview.bootstrap)", "textBlock(preview.opener)", "textBlock(skill.content)", "textBlock(routine.prompt)"]) assert.ok(preview.includes(shown), shown);
+  assert.match(preview, /section\("MEMORY\.md", [^\n]*never exported/u, "what the source bot knew is shown in full, and marked as never exported");
+  assert.match(preview, /section\("BOOTSTRAP\.md"/u, "its onboarding body, when it has one");
   assert.match(preview, /Imported text is untrusted: read it below before you create the bot\. An import turns nothing on beyond a new bot's defaults/u);
   assert.match(preview, /section\("Routines", `\$\{preview\.routines\.length\} · disabled`/u, "routines say they start disabled");
   assert.match(preview, /section\("Left out"/u, "and what was left out, with why");

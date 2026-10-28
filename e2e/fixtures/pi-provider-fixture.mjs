@@ -22,6 +22,8 @@ const replayWaiters = new Set();
 const replayReadyWaiters = new Set();
 /** Responses held so far, and who waits for a count of them: a resent request held again is told apart by count. */
 let heldCount = 0;
+/** Sessions E2E_FAIL_ONCE already failed, so a journey can watch its own retry answer. */
+const failedOnce = new Set();
 const heldCountWaiters = new Set();
 const signalReplayReady = () => {
   for (const ready of replayReadyWaiters) ready();
@@ -220,6 +222,7 @@ const server = createServer(async (request, response) => {
   await appendFile(logFile, `${JSON.stringify({ ...body, ...(clientSessionId === undefined ? {} : { clientSessionId }), ...(header === undefined ? {} : { header }) })}\n`, "utf8");
   const source = flattenedText(withoutView(body.messages?.at(-1)));
   const latestToolResult = toolResultFrom(body.messages?.at(-1));
+  const naming = source.includes("Generate a concise session title") || source.includes("Name this coding-agent session");
 
   // OptChat's compactor: one short kind-tagged line per step, naming the step's first marker. A message holding
   // E2E_HOLD_MEMORY waits for POST /control/release-replay; E2E_OVERSIZE_MEMORY gets one line over the limit first.
@@ -239,9 +242,22 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
   if (source.includes("E2E_ERROR")) return json(response, 500, { type: "error", error: { type: "api_error", message: "fixture provider error" } });
+  // E2E_FAIL_ONCE fails the first run of each session that mentions it, so a journey can watch a recovered run
+  // finish. It is an expired key rather than E2E_ERROR's retryable 500, because the run has to fail, not be retried.
+  const failKey = clientSessionId ?? source;
+  if (!naming && source.includes("E2E_FAIL_ONCE") && !failedOnce.has(failKey)) {
+    failedOnce.add(failKey);
+    return json(response, 401, { type: "error", error: { type: "authentication_error", message: "fixture provider: the API key expired" } });
+  }
 
   response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
   messageStart(response);
+
+  if (flattenedText(body.system).includes("context summarization assistant")) {
+    if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
+    text(response, "FIXTURE_SUMMARY");
+    return finish(response);
+  }
 
   // A bot export's reviewer (Settings' utility model): a change for each fixture passage the part holds, and a need for a
   // part that runs gh.
@@ -456,7 +472,6 @@ const server = createServer(async (request, response) => {
   // committed sandbox probe; E2E_WIDGET_SYNTAX first sends a script with a
   // syntax error, then the fixed counter once HUI rejects it. Session-naming
   // requests quote the prompt and are left to their own branches below.
-  const naming = source.includes("Generate a concise session title") || source.includes("Name this coding-agent session");
   if (!naming && source.includes("E2E_WIDGET_PROBE")) {
     toolUse(response, "tool-e2e-widget", "show_widget", { title: "Sandbox probe", widget_code: await readFile(new URL("./widget-probe.html", import.meta.url), "utf8") });
     return finish(response, "tool_use");
@@ -582,6 +597,15 @@ const server = createServer(async (request, response) => {
     await new Promise((resolve) => setTimeout(resolve, 4000));
     text(response, "Slow verifier result: all checks passed.");
     return finish(response);
+  }
+  if (latestToolResult?.id === "tool-e2e-route-typo") {
+    text(response, "The deep route started a subagent; the typo route was refused.");
+    return finish(response);
+  }
+  if (source.includes("E2E_SUBAGENTS_ROUTE")) {
+    toolUse(response, "tool-e2e-route-spawn", "sessions_spawn", { task: "E2E_SUBAGENT_CHILD routed", label: "Routed worker", route: "deep" }, 0);
+    toolUse(response, "tool-e2e-route-typo", "sessions_spawn", { task: "E2E_SUBAGENT_CHILD typo", label: "Typo route", route: "no-such-route" }, 1);
+    return finish(response, "tool_use");
   }
   if (source.includes("E2E_SUBAGENTS_START")) {
     toolUse(response, "tool-e2e-subagent-spawn", "sessions_spawn", {
@@ -754,6 +778,14 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response, "tool_use");
   }
+  if (source.includes("Refresh the task progress card")) {
+    toolUse(response, "tool-e2e-progress-refresh", "progress_card", { markdown: "**Browser fixture** · refreshed after the click", plan: [
+      { step: "Read fixture", status: "completed" },
+      { step: "Verify presentation", status: "completed" },
+      { step: "Report the plan", status: "in_progress" },
+    ] });
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_RICH") || source.includes("E2E_TOOL_FAILURE")) {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } });
     event(response, { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Inspecting the fixture." } });
@@ -780,14 +812,6 @@ const server = createServer(async (request, response) => {
     return finish(response);
   }
 
-  // PI's compaction summarizer; a distinct reply shows where the summary lands.
-  // E2E_SLOW_COMPACT in the conversation holds it until POST
-  // /control/release-replay, so a check can watch, queue into or cancel it.
-  if (flattenedText(body.system).includes("context summarization assistant")) {
-    if (source.includes("E2E_SLOW_COMPACT") && !(await heldUntilRelease(response))) return;
-    text(response, "FIXTURE_SUMMARY");
-    return finish(response);
-  }
   // Attachment requests reach this branch. The request log is the proof that
   // PI, not merely HUI's HTTP boundary, received the image/file-expanded input.
   text(response, source.includes("image") ? "Attachment received by PI." : "Fixture response.");

@@ -680,7 +680,7 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .hui-orbit i:nth-child(3) { transform: translate(-4.3px, 2.5px); opacity: .35; }
 @keyframes huiOrbit { to { transform: rotate(360deg); } }
 
-/* Subagent activity: liquid-glass card, distinct from the transcript. */
+/* Subagent activity: a translucent card, distinct from the transcript. */
 .chat-subagents {
   position: relative; margin: 10px 0 4px; padding: 4px; border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
@@ -688,7 +688,6 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
     linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 55%),
     color-mix(in srgb, var(--panel-strong, var(--bg)) 55%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent), 0 6px 20px -12px rgb(0 0 0 / .5);
-  -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%);
   font: var(--control-ui-text-sm, 13px)/1.4 var(--font-body);
 }
 .chat-subagents__row, .chat-subagents__summary {
@@ -1168,5 +1167,56 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 
   .chat-controls__reasoning-slider:has([data-effort-boost="ultra"]:not(:disabled)) {
     animation-duration: 4s;
+  }
+}
+
+/* HUI adds a refresh control to the composer progress card, so its summary
+   carries one column more than the reference geometry. */
+.session-progress-card--composer .session-progress-card__summary {
+  grid-template-columns: var(--session-progress-marker-size) minmax(0, 1fr) auto auto auto;
+}
+
+.session-progress-card__refresh {
+  display: inline-grid;
+  width: var(--chat-stack-trailing-control-size);
+  height: var(--chat-stack-trailing-control-size);
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: var(--cursor-action);
+  transition: color 140ms ease;
+}
+
+.session-progress-card__refresh:not(:disabled):hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.session-progress-card__refresh:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.session-progress-card__refresh:disabled {
+  cursor: default;
+}
+
+.session-progress-card__refresh svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The button is disabled while the agent writes the new card, so the icon it already shows spins. */
+.session-progress-card__refresh[aria-busy="true"] > svg {
+  animation: session-run-spin 1.1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-progress-card__refresh[aria-busy="true"] > svg {
+    animation: none;
+    opacity: 0.55;
   }
 }
