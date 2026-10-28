@@ -15,12 +15,15 @@ const PARTIAL = progress({
 
 const DONE = progress({ plan: ["Read the fixture", "Verify the presentation", "Report the result"].map((step) => ({ step, status: "completed" })) });
 
-test("a progress_card call shows the agent's plan, its latest call, its removal and the collapsed setting", { tags: ["AGENT-053"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a progress_card call shows the agent's plan, its latest call, its removal and the collapsed setting", { tags: ["AGENT-053"] }, async ({ screen, hui }) => {
   const transcript = screen.getByTestId("transcript");
   const card = screen.getByTestId("task-progress");
-  const steps = card.getByLabel("Task progress");
+  const steps = card.getByTestId("task-progress-steps");
   const collapse = screen.getByRole("switch", "Collapse task progress");
-  const step = (name: string) => steps.getByRole("listitem").filter({ hasText: name });
+  const summary = card.getByTestId("task-progress-summary");
+  const page = screen.getByTestId("settings-page");
+  const reveal = async () => hui.scrollTo(page, collapse);
+  const step = (name: string) => card.getByTestId("task-progress-step").filter({ hasText: name });
   const started = async (title: string) => {
     const session = await hui.createSession({ title });
     await hui.open(`/sessions/${session.id}`);
@@ -29,6 +32,7 @@ test("a progress_card call shows the agent's plan, its latest call, its removal 
   };
 
   await hui.open("/settings/appearance");
+  await reveal();
   await expect(collapse).toBeChecked({ checked: false });
   const session = await started("Agent progress");
   await hui.prompt(session, PARTIAL);
@@ -40,19 +44,19 @@ test("a progress_card call shows the agent's plan, its latest call, its removal 
   await expect(card.getByText("1 of 3", { visible: true })).toBeVisible();
   await expect(card.getByText("Shipping the slice", { exact: false })).toBeVisible();
   await hui.expectLinkTo(card, "the plan", "https://example.com/plan");
-  await expect(step("Read the fixture")).toHaveAttribute("data-status", "completed");
-  await expect(step("Verify the presentation")).toHaveAttribute("data-status", "in_progress");
-  await expect(step("Report the result")).toHaveAttribute("data-status", "pending");
+  await hui.stepState(step("Read the fixture"), "completed");
+  await hui.stepState(step("Verify the presentation"), "in_progress");
+  await hui.stepState(step("Report the result"), "pending");
   await expect(transcript.getByText("progress_card")).toHaveCount(0);
 
-  await card.getByText("Task progress", { visible: true }).tap();
+  await summary.tap();
   await expect(steps).toBeHidden();
   await expect(card.getByText("Verify the presentation", { visible: true })).toBeVisible();
   await expect(card.getByText("1/3", { visible: true })).toBeVisible();
 
   await hui.reload();
   await expect(card).toBeVisible();
-  await expect(step("Verify the presentation")).toHaveAttribute("data-status", "in_progress");
+  await hui.stepState(step("Verify the presentation"), "in_progress");
 
   await hui.prompt(session, DONE);
   await expect(card.getByText("3/3", { visible: true })).toBeVisible();
@@ -62,6 +66,7 @@ test("a progress_card call shows the agent's plan, its latest call, its removal 
   await expect(card).toBeHidden();
 
   await hui.open("/settings/appearance");
+  await reveal();
   await hui.flip(collapse);
   await expect(collapse).toBeChecked();
   const collapsed = await started("Collapsed agent progress");

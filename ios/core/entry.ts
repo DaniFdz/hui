@@ -11,6 +11,7 @@ export { normalizeSidebarSessionOptions, sessionTreeRows, sidebarSessionGroups }
 export { appendPendingUser, dropDuplicateSend, failPendingUser, normalizeTranscript, reduceTranscript, settlePendingUser } from "../../src/lib/transcript-state.ts";
 export { workingLabel } from "../../src/lib/chat-projection.ts";
 export { chatRows } from "../../src/lib/chat-rows.ts";
+export { progressCardFromTranscript } from "../../src/lib/progress-card.ts";
 export { SendRequests } from "../../src/lib/composer/send-requests.ts";
 export { composerPlaceholder, queueRows } from "../../src/lib/composer/state.ts";
 export { composerCommands, composerSendAction, slashMenu } from "../../src/lib/composer/slash-commands.ts";

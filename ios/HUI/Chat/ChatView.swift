@@ -25,6 +25,7 @@ struct ChatView: View {
     let core: HUICore
     let client: GatewayClient
     let sessions: SessionsModel
+    let collapseTaskProgress: Bool
     @State private var model: ConversationModel
     @State private var draft = ""
     @State private var expanded: Set<String> = []
@@ -43,10 +44,11 @@ struct ChatView: View {
     @State private var workPaneShown = false
     @State private var workPaneLabel = ""
 
-    init(id: String, client: GatewayClient, core: HUICore, sessions: SessionsModel) {
+    init(id: String, client: GatewayClient, core: HUICore, sessions: SessionsModel, collapseTaskProgress: Bool) {
         self.core = core
         self.client = client
         self.sessions = sessions
+        self.collapseTaskProgress = collapseTaskProgress
         _model = State(initialValue: ConversationModel(id: id, client: client, core: core))
     }
 
@@ -379,6 +381,9 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if let progress = model.progressCard {
+                ProgressCardView(card: progress, core: core, collapsed: collapseTaskProgress)
+            }
             if !model.queue.isEmpty {
                 QueueView(model: model)
             }

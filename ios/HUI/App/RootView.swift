@@ -35,9 +35,7 @@ struct RootView: View {
                             Group {
                                 switch screen {
                                 case .session(let id):
-                                    if let client = gateway.client {
-                                        ChatView(id: id, client: client, core: core, sessions: sessions).id(id)
-                                    }
+                                    if let client = gateway.client { sessionView(id, client) }
                                 case .sessionsPage:
                                     SessionsPageView(sessions: sessions, client: gateway.client)
                                 case .settings(let page):
@@ -96,6 +94,12 @@ struct RootView: View {
         .onOpenURL { url in
             Task { await open(url) }
         }
+    }
+
+    private var collapseTaskProgress: Bool { settings.settings?.chat.collapseTaskProgress ?? false }
+
+    private func sessionView(_ id: String, _ client: GatewayClient) -> some View {
+        ChatView(id: id, client: client, core: core, sessions: sessions, collapseTaskProgress: collapseTaskProgress).id(id)
     }
 
     private func open(_ url: URL) async {

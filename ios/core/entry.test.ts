@@ -63,6 +63,9 @@ test("the core bundle runs with no DOM, network or timers, and every export answ
     ]).map((row) => row.kind === "activity" ? [row.key, row.label, row.items.map((item) => [item.key, item.read?.target ?? item.codemode?.outcome, item.read?.output ?? item.codemode?.calls[0]?.duration, item.input])] : row.kind === "messages" && row.key === "messages:u" ? [row.key, row.footer] : row.key)), [
       ["messages:u", { text: "Hi", copyLabel: "Copy prompt" }], ["activity:t", "Ran 1 command", [["tool:t", "a.txt", "", '{\n  "path": "/w/a.txt"\n}']]], "messages:u2", ["activity:t#1", "Ran 1 command", [["tool:t#1", "Completed · 1 call", "1.5s", '{\n  "code": "x"\n}']]],
     ]),
+    progressCardFromTranscript: () => assert.deepEqual(json(core.progressCardFromTranscript([
+      { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "One", status: "completed" }, { step: "Two", status: "in_progress" }] } },
+    ])), { markdown: "", steps: [{ step: "One", status: "completed" }, { step: "Two", status: "in_progress" }] }),
     composerCommands: () => assert.equal(core.composerCommands([], true, true).some((command: { name: string }) => command.name === "clear"), false),
     composerSendAction: () => assert.equal(core.composerSendAction("/reload", { bot: false, attachments: 0, steering: false, busy: false }).kind, "reload"),
     slashMenu: () => assert.equal(core.slashMenu(core.composerCommands([], true), "/rel")?.[0]?.completion, "/reload "),

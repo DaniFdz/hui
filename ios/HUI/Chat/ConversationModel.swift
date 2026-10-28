@@ -35,6 +35,7 @@ final class ConversationModel {
     private(set) var session: API.SessionView?
     private(set) var statusLabel = ""
     private(set) var rows: [ChatRow] = []
+    private(set) var progressCard: API.ProgressCard?
     private(set) var queue: [QueueRow] = []
     private(set) var working = ""
     private(set) var streaming = false
@@ -393,6 +394,7 @@ final class ConversationModel {
 
     private func show(_ projection: ChatProjection) {
         rows = projection.rows
+        progressCard = projection.progressCard
         working = projection.working
         runError = projection.runError
     }

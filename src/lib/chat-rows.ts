@@ -5,7 +5,7 @@
  * as Markdown (the agent's and those senders', not the operator's, a routine's or a trigger's), each message row's footer (the text Reply and Copy use, without a sender's header, and the
  * Copy button's label, as the web's footer reads them), and a `key` on every row
  * and item that stays unique when tool call ids repeat across turns (the id, plus how many earlier rows or items
- * shared it).
+ * shared it). The `progress_card` call never becomes a row, because the composer's task progress card already shows it.
  */
 import type { TranscriptItem } from "../api/sessions.ts";
 import { activityLabel, attributedMessage, projectChatTranscript, questionnaireSummary, type ChatActivity, type ChatProjectionRow } from "./chat-projection.ts";
@@ -51,7 +51,7 @@ export function chatRows(items: readonly TranscriptItem[]): ChatRow[] {
     seen.set(base, count + 1);
     return count ? `${base}#${count}` : base;
   };
-  return projectChatTranscript(items).map((row): ChatRow => {
+  return projectChatTranscript(items.filter((item) => item.kind !== "tool" || item.name !== "progress_card")).map((row): ChatRow => {
     const rowKey = key(`${row.kind}:${row.id}`);
     if (row.kind === "messages") return { ...messagesRow(row, key), key: rowKey };
     if (row.kind !== "activity") return { ...row, key: rowKey };

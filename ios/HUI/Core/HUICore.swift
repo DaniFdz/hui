@@ -296,7 +296,8 @@ actor HUICore {
     private func project(_ handle: String, _ items: JSValue) throws -> ChatProjection {
         transcripts[handle] = items
         let rows: ChatRows = try decode(invoke("chatRows", [items]))
-        return ChatProjection(rows: rows.rows, working: try decode(invoke("workingLabel", [items])), runError: try decode(invoke("latestRunError", [items, false])))
+        return ChatProjection(rows: rows.rows, working: try decode(invoke("workingLabel", [items])), runError: try decode(invoke("latestRunError", [items, false])),
+                              progressCard: try decode(invoke("progressCardFromTranscript", [items])))
     }
 
     private func requests() throws -> JSValue {
@@ -376,6 +377,7 @@ struct ChatProjection: Equatable, Sendable {
     var rows: [ChatRow]
     var working: String
     var runError: RunErrorNotice?
+    var progressCard: API.ProgressCard?
 }
 
 struct RunErrorNotice: Decodable, Equatable, Sendable {

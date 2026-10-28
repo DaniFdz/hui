@@ -106,6 +106,8 @@ export type Hui = {
   download(target: Locator): Promise<{ name: string; text: string }>;
   hold(target: Locator, until: Locator): Promise<void>;
   textOf(target: Locator): Promise<string>;
+  /** A task progress step's state: the web's `data-status`, and on the phone the row's accessibility value. */
+  stepState(step: Locator, state: string): Promise<void>;
   drag(target: Locator, onto: Locator, whileOver: () => Promise<void>): Promise<void>;
   /** Drags the pointer from a target's centre by a pixel offset, holding it there for `whileOver` before letting go. */
   dragBy(target: Locator, offset: { dx: number; dy: number }, whileOver: () => Promise<void>): Promise<void>;
@@ -660,6 +662,7 @@ export const test = base.extend<{ hui: Hui }>({
         scrollTo: (_within, target) => target.scrollIntoView(),
         expectLinkTo: (within, name, href) => expect(within.getByRole("link", name)).toHaveAttribute("href", href),
         textOf: async (target) => (await target.textContent()) ?? "",
+        stepState: (step, state) => expect(step).toHaveAttribute("data-status", state),
         tapAt,
         scrollSideways: async (target) => {
           const box = await target.boundingBox();
@@ -826,6 +829,19 @@ export const test = base.extend<{ hui: Hui }>({
           await expect(until).toBeVisible();
         },
         textOf: async (target) => (await target.getByText(/\S/u).allTextContents()).join(" "),
+        stepState: (step, state) => expect.poll(async () => step.inputValue()).toBe(state),
+        flip: async (target) => {
+          const control = target.getByRole("switch");
+          const toggle = await control.count() > 0 ? control.last() : target;
+          const area = await fixtures.screen.getByTestId("app-route").boundingBox();
+          const box = await toggle.boundingBox();
+          // A settings page's saved footer is a safe-area inset the tree doesn't show, so it swallows a press on a row
+          // scrolled to the bottom edge; one more swipe lifts the control clear of it.
+          if (area && box && box.y + box.height / 2 > area.y + area.height * 0.85) {
+            await fixtures.screen.getByTestId("app-route").swipe({ direction: "down", momentum: "slow" });
+          }
+          await toggle.tap();
+        },
         contextMenu: (target) => target.longPress(),
         messageActions: (target) => target.longPress(),
         openWorkView: async (name) => {

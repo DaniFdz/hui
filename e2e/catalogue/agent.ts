@@ -513,7 +513,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#task-progress"],
     surfaces: ["tool:progress_card", "setting:chat.collapseTaskProgress"],
     web: "required",
-    ios: "backlog",
+    ios: "required",
   },
   {
     id: "AGENT-054",
