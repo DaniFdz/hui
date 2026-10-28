@@ -4874,9 +4874,10 @@ or `completed`. PI remains the durable writer: the latest tool-call arguments in
 its transcript are the card state, and an empty call clears it. HUI hides the raw
 control call from transcript activity and renders the validated projection above
 the composer; it never derives progress from assistant prose. The card's refresh
-control reads the session again through `POST /__hui/sessions/:id/open`, so a
-view whose update never arrived shows the gateway's copy instead of staying
-stale.
+control reads the session again through `POST /__hui/sessions/:id/open`, then
+sends the agent an ordinary prompt asking it to update the card. A view that
+missed a streamed call and a card the agent stopped revising both come back
+current.
 
 ### Session-list progress
 
