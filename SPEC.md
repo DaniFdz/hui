@@ -1509,12 +1509,13 @@ running), the purpose, the latest non-empty log line and a one-word state with
 its time (phones keep only the purpose and state until a row is opened).
 Several watchers collapse into one summary line (*N watchers · M running ·
 purpose*); nothing floats over the conversation. State is derived
-from reality, never guessed: `running` while the recorded PID is still the
-process HUI started (a reboot that reuses the PID reads dead) or, once that
-shell is gone, while a process that started with it still runs in its process
-group; `done` or `failed` from the recorded exit status, `stopped` after an
-operator stop, and `dead` when none of that is left and no exit record
-exists. Opening a row shows the
+from reality, never guessed: `running` only while HUI can prove its own shell
+still runs the watcher — the recorded PID answers `ps` as `/bin/sh <script HUI
+wrote>`, so a PID the kernel later gave to another process reads dead — or, once
+that shell is gone, while a process that started with it still runs in its
+process group; `done` or `failed` from the recorded exit status, `stopped` after
+an operator stop, and `dead` when none of that is left, when no exit record
+exists, and when the check could not answer at all. Opening a row shows the
 target link, the outcome, start and end times, why a watcher failed or died, a
 bottom-anchored log tail that follows new output, the PID and log path, and
 *Stop* while running or *Restart* and *Dismiss* once settled. The command runs
@@ -1525,9 +1526,42 @@ watchers.
 
 The gateway re-reads the registry on start, so a watcher that survived a
 restart reappears with its state, and one killed by a reboot is shown dead
-instead of silently missing. HUI does not install a launchd agent: a watcher
+instead of silently missing; a conversation already open when the registry
+finishes loading is sent a fresh snapshot, so its rows are not left out of the
+first paint. HUI does not install a launchd agent: a watcher
 runs until its command ends or the machine restarts, and *Restart* brings it
 back afterwards, unless it keeps running (below).
+
+### Running has to be proven (2026-10-27)
+
+A watcher whose process had been gone after a restart still read running, so a
+finished wait looked like work in progress. The claim rested on the recorded
+PID's age (±20 seconds), which also fits a process the kernel gave that PID
+after a restart, and an ownership check that could not answer kept the running
+claim instead of losing it.
+
+- **The shell is identified by its command line.** HUI wrote the script this
+  watcher runs, so the recorded PID counts only while `ps` reports that script
+  in its command line. A reused PID, or a process HUI cannot inspect, reads
+  `dead`.
+- **No proof, no running.** An ownership check that cannot answer reads `dead`
+  for that refresh; the poll asks again, and a watcher that is really there
+  reads running again once the answer comes back. Only the seconds right after
+  `start` (or `restart`) count as proof on their own, because HUI itself just
+  launched the shell.
+- **Stopping what cannot be ruled out.** *Stop* still ends a watcher whose
+  liveness could not be proven, since its processes may be alive; it terminates
+  nothing when the check proves the PID belongs to something else.
+- **No second copy.** `restart` and a `keepRunning` revival are refused while
+  the check cannot prove the recorded process is gone, so a command never runs
+twice.
+- **Rows arrive after a load.** Sessions opened while the registry was still
+  being read are notified once their watchers are known, instead of waiting for
+  the next unrelated change to receive them.
+
+The limit stays: a process that exists but makes no progress (a hung command, a
+wait that will never answer) reads `running`, because HUI can see that the
+process exists and nothing more. Stop it and start the wait again.
 
 ### Watchers survive their shell and can keep running (2026-10-19)
 

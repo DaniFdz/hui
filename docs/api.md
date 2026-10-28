@@ -4684,14 +4684,19 @@ logPath, state, pid, exitCode?, startedAt, endedAt?, lastLine, keepRunning? }`;
 `~/.config/hui/watchers.json` (records carry `keepRunning: true` when set);
 logs and exit records live under `~/.config/hui/watchers/`. State is derived on
 read and on the gateway's poll, which re-emits the session snapshot when a
-watcher's state or latest log line changes. `running` means the recorded PID is
-the process HUI started (its age matches the start time within 20 seconds), or
-that process is gone and a process of its group whose age matches still runs.
+watcher's state or latest log line changes. `running` means HUI can prove its
+shell is the recorded PID — `ps` reports the watcher's own script in that
+process's command line — or that process is gone and a process of its group
+whose age matches still runs. A check that cannot answer, or a PID the kernel
+gave to another process, reads `dead`; only the seconds right after `start` or
+`restart` count as proof by themselves. `stop` still ends what a failed check
+could not rule out, and `restart` refuses while death is unproven.
 A `keepRunning` watcher read `dead` on a poll, the first of which runs ten
 seconds after the gateway starts, starts again in place with a new PID and
-start time, then its log gets `[HUI] Started again at <time>: its processes
-were gone with no exit status.` `done`, `failed` and `stopped` watchers, and
-one whose working directory is gone, are left as they are.
+start time once its death is proven, then its log gets `[HUI] Started again at
+<time>: its processes were gone with no exit status.` `done`, `failed` and
+`stopped` watchers, and one whose working directory is gone, are left as they
+are.
 
 ### Secret requests
 
