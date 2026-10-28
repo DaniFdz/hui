@@ -4811,7 +4811,10 @@ Markdown and at most 50 ordered steps whose status is `pending`, `in_progress`
 or `completed`. PI remains the durable writer: the latest tool-call arguments in
 its transcript are the card state, and an empty call clears it. HUI hides the raw
 control call from transcript activity and renders the validated projection above
-the composer; it never derives progress from assistant prose.
+the composer; it never derives progress from assistant prose. The card's refresh
+control reads the session again through `POST /__hui/sessions/:id/open`, so a
+view whose update never arrived shows the gateway's copy instead of staying
+stale.
 
 ### Session-list progress
 

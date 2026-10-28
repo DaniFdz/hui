@@ -242,6 +242,22 @@ test("Task progress projects the durable progress_card signal above the composer
   assert.match(source, /agent-chat__composer-shell--question-composer/);
 });
 
+test("Task progress offers a refresh control that reads the session again without folding the card", async () => {
+  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
+  const styles = readStyles("../styles/openclaw-chat.css");
+  const html = await renderWorkerSession("running", {
+    transcript: [
+      { kind: "message", role: "user", text: "long task" },
+      { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "Check the build", status: "in_progress" }] }, status: "running" },
+    ],
+  });
+
+  assert.match(html, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Refresh task progress"/u);
+  assert.match(html, /Check the build/u);
+  assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*props\.onRefreshSession\(\);/u);
+  assert.match(styles, /\.session-progress-card__refresh\s*\{[^}]*cursor:\s*var\(--cursor-action\);/s);
+});
+
 test("model and thinking reuse one exclusive composer picker pattern", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");

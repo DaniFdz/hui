@@ -1307,6 +1307,8 @@ HUI also supplies PI with a session-scoped `progress_card` presentation tool.
 PI persists its ordinary tool call in the transcript; HUI projects only the
 latest validated call into a collapsible Task progress card attached above the
 composer. An empty call clears the card. HUI never infers plan state from prose.
+A refresh control on the card reads the session again, so a missed stream update
+is one click away from the gateway's latest call.
 Session rows retain OpenClaw’s single-line layout. Hover or keyboard focus opens
 the ported OpenClaw 2026.9.5 hovercard: session age, workspace, current unfinished
 step/count and agent notepad. Idle unfinished plans show the original paused clock;

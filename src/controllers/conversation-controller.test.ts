@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
 import type { SessionSnapshot, SessionStatus, SessionStreamHandlers, SessionView, SubagentTaskView } from "../api/sessions.ts";
+import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { ConversationController } from "./conversation-controller.ts";
 
 const fake = vi.hoisted(() => ({
@@ -142,6 +143,27 @@ test("only the session still selected opens and streams; its status frames reach
   controller.suspend();
   assert.equal(fake.streams[0]?.stopped, true);
   assert.equal(controller.streamOpen, false);
+});
+
+test("a refresh reads the open session again and shows the card the gateway has", async () => {
+  const stale = { kind: "tool" as const, id: "p", name: "progress_card", args: { plan: [{ step: "Old step", status: "in_progress" }] } };
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  controller.transcript = [stale];
+  assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "Old step");
+
+  const refreshed = controller.refresh();
+  assert.equal(controller.refreshing, true);
+  await settle();
+  fake.opens[0]?.resolve("running", {
+    transcript: [
+      { kind: "message", role: "user", text: "go" },
+      { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "New step", status: "in_progress" }] } },
+    ],
+  });
+  await refreshed;
+
+  assert.equal(controller.refreshing, false);
+  assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "New step");
 });
 
 test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer or stale state", async () => {
