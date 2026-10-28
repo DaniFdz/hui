@@ -1355,3 +1355,28 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .tool-call-row .chat-tool-msg-body { overflow: hidden; }
 .tool-call-row .chat-tool-term__out { overflow-x: auto; }
 .tool-call-row .chat-tool-card__block-content { max-width: 100%; overflow-x: auto; }
+
+/* The card reads as one elevated panel: a clearer frame, larger type and taller rows than a dense log row. */
+.tool-call-group__disclosure {
+  border-color: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel-strong) 62%, transparent);
+}
+
+.tool-call-group__head {
+  min-height: 46px;
+  padding: 10px 14px;
+  font-size: calc(var(--control-ui-text-sm) + 2px);
+}
+
+.tool-call-group__rows { padding: 5px 0 8px; }
+
+.tool-call-row__toggle {
+  gap: 11px;
+  min-height: 42px;
+  padding: 7px 14px;
+}
+
+.tool-call-row__title { font-size: calc(var(--control-ui-text-sm) + 2px); }
+.tool-call-row__meta { font-size: calc(var(--control-ui-text-xs) + 1px); }
+.tool-call-group__mark { width: 23px; height: 23px; }

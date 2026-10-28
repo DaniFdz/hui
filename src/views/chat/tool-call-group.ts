@@ -104,6 +104,8 @@ export function toolCallMeta(item: ToolItem): string | undefined {
   const lines = output.split("\n").filter((line) => line.trim()).length;
   if (READ_TOOLS.has(name) || EDIT_TOOLS.has(name) || WRITE_TOOLS.has(name)) return `${lines} line${lines === 1 ? "" : "s"}`;
   if (SEARCH_TOOLS.has(name)) return `${lines} result${lines === 1 ? "" : "s"}`;
+  // A command's output size is the only truth the transcript holds about what it returned.
+  if (COMMAND_TOOLS.has(name)) return lines > 1 ? `${lines} lines` : undefined;
   return undefined;
 }
 
