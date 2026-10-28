@@ -27,7 +27,7 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   expect(await hui.overflowsSideways()).toBe(false);
 
   await selector.tap();
-  await screen.getByText("3 · Chat").last().tap();
+  await screen.getByText("3 · Chat").first().tap();
   await expect(shown()).toHaveCount(1);
   await expect(shown().getByTestId("session-title")).toHaveText("Pane two");
   await expect(shown().getByLabel("Message")).toHaveValue("Draft in the second chat");
@@ -41,7 +41,7 @@ test("a narrow split shows only the active pane, switches with the Active panel 
   await expect.poll(async () => new URL(await hui.url()).pathname).toBe(`/sessions/${first.id}`);
 
   await selector.tap();
-  await screen.getByText("3 · Chat").last().tap();
+  await screen.getByText("3 · Chat").first().tap();
   await expect(shown().getByLabel("Message")).toHaveValue("Draft in the second chat");
   expect(await hui.overflowsSideways()).toBe(false);
 
