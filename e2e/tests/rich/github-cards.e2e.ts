@@ -45,7 +45,7 @@ test("A pull request or issue link in the latest reply becomes a card after the 
     "",
     "Keep `https://github.com/acme/ignored/pull/1` quoted, and https://gitlab.com/acme/web/pull/2 is another host.",
   ].join("\n"));
-  await previews.answer(answer([pull, issue, repository]));
+  await previews.answer(answer([{ url: PULL, preview: pull }, { url: ISSUE, preview: issue }, { url: REPO, preview: repository }]));
 
   const list = transcript.getByLabel("GitHub links");
   const cards = list.getByRole("listitem");
@@ -74,8 +74,8 @@ test("A pull request or issue link in the latest reply becomes a card after the 
   const done = await hui.intercept("GET", PREVIEWS);
   const later = await reply(screen, hui, `Both ${MERGED} and ${CLOSED} are done.`);
   await done.answer(answer([
-    { kind: "pull", url: MERGED, repository: "acme/web", number: 13, state: "merged", title: "Land the reader", additions: 0, deletions: 0, changedFiles: 1, comments: 0 },
-    { kind: "pull", url: CLOSED, repository: "acme/web", number: 14, state: "closed", title: "Retire the old reader", additions: 0, deletions: 0, changedFiles: 1, comments: 0 },
+    { url: MERGED, preview: { kind: "pull", url: MERGED, repository: "acme/web", number: 13, state: "merged", title: "Land the reader", additions: 0, deletions: 0, changedFiles: 1, comments: 0 } },
+    { url: CLOSED, preview: { kind: "pull", url: CLOSED, repository: "acme/web", number: 14, state: "closed", title: "Retire the old reader", additions: 0, deletions: 0, changedFiles: 1, comments: 0 } },
   ]));
   const laterCards = later.getByLabel("GitHub links").getByRole("listitem");
   await expect(laterCards).toHaveCount(2);
@@ -93,8 +93,8 @@ test("A repository link shows a card with its name, tags, description, language,
   await hui.open(`/sessions/${session.id}`);
   const transcript = screen.getByTestId("transcript");
   await previews.answer(answer([
-    { ...repository, private: true, archived: true },
-    { kind: "repo", url: "https://github.com/acme/cli", fullName: "acme/cli", description: "The Acme command line.", stars: 987, forks: 4, language: "TypeScript", private: false, archived: false },
+    { url: REPO, preview: { ...repository, private: true, archived: true } },
+    { url: "https://github.com/acme/cli", preview: { kind: "repo", url: "https://github.com/acme/cli", fullName: "acme/cli", description: "The Acme command line.", stars: 987, forks: 4, language: "TypeScript", private: false, archived: false } },
   ]));
   const list = transcript.getByLabel("GitHub links");
   const cards = list.getByRole("listitem");

@@ -8,11 +8,11 @@ test("Escape closes the Add Datadog org dialog, leaves Settings open and puts fo
   const answering = connection.answer(JSON.stringify({ cli: { installed: true, version: "1.6.2" }, orgs: [], pupOrgs: [], login: { phase: "idle" } }));
   await hui.open("/settings/integrations");
   await answering;
-  const add = screen.getByRole("button", "Add org");
+  const add = screen.getByRole("button", "Add org").first();
   await add.tap();
   const title = screen.getByText("Add Datadog org", { exact: true });
   await expect(title).toBeVisible();
-  const name = screen.getByRole("textbox", "Org name");
+  const name = screen.getByRole("combobox", "Org name");
   await expect(name).toBeFocused();
 
   await name.press("Escape");
