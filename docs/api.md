@@ -4657,6 +4657,17 @@ conversation stops and forgets it.
 | `watcher { action: "dismiss", id }` | Removes a settled watcher, its log and its exit record, like the operator's `DELETE`; returns `{ id, status: "dismissed" }`. Refused while the watcher is running |
 | `watcher { action: "log", id, lines? }` | `{ id, lines, truncated }`: at most `lines` (default 100, max 400) from the end of the log, reading at most 256 KiB |
 
+A watcher that settles into `done`, `failed` or `dead` writes one automated
+user-role message into the owning conversation, once per settle (`reportedAt`
+in its record): `[HUI watcher event]` with `id`, `purpose`, `state`, `note`
+(why it ended), `target`, `outcome`, `started_at`, `ended_at`, `exit_code`,
+`last_output`, `log` and the action that follows. An idle conversation runs it as
+its next turn, a running one is steered, and one that is not open is woken for
+it; a deleted conversation is left alone. `stopped` (an operator stop) and
+`dismissed` announce nothing. A settle found at the next gateway start is
+announced only when the record was marked `interrupted`, i.e. it was still
+running when the last gateway stopped.
+
 Operator routes (all require `x-hui`, scoped to the owning session; unknown
 session or watcher → 404, a running watcher for `restart` or `DELETE` → 409):
 

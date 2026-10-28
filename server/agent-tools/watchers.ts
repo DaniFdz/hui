@@ -12,7 +12,9 @@
  * shell was killed (`pkill -f` matches the script's path), while a process that
  * started with it still runs in its process group. A check that cannot answer
  * reads dead too: a watcher whose work is unsure is not reported as running. A
- * watcher started with `keepRunning` starts again once its death is proven. */
+ * watcher started with `keepRunning` starts again once its death is proven. A
+ * watcher that ends by itself, or is found dead, writes one automated event
+ * into its conversation so the agent that waits for it learns the wait is over. */
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync } from "node:fs";
@@ -22,6 +24,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 
 import type { Watcher, WatcherState, WatcherLog } from "../api/watchers.ts";
+import { liveSessions, type LiveSessions } from "../sessions/live-sessions.ts";
+import { readRegistry } from "../sessions/sessions.ts";
+import { formatWatcherEvent } from "./watcher-events.ts";
 
 export const WATCHER_LIMITS = {
   purpose: 200,
@@ -63,6 +68,13 @@ export class WatcherStoreError extends Error {
   override name = "WatcherStoreError";
 }
 
+/** States the agent is told about once: the wait ended without the agent asking. */
+const REPORTED_STATES = new Set<WatcherState>(["done", "failed", "dead"]);
+
+/** The sessions a watcher event is delivered into: an idle conversation runs a turn,
+ * a busy one is steered, so the agent learns the wait is over either way. */
+type WatcherSessions = Pick<LiveSessions, "ensure" | "booted" | "followUp" | "prompt" | "status" | "steer">;
+
 /** The persisted part of a watcher. Everything else is derived from the
  * process identity and the exit record. */
 type WatcherRecord = {
@@ -82,6 +94,12 @@ type WatcherRecord = {
   stoppedAt?: string;
   /** Found dead, it runs its command again. */
   keepRunning?: true;
+  /** When the conversation was told this watcher ended; one event per settle. */
+  reportedAt?: string;
+  /** Still running when the gateway stopped: a death found at the next start is
+   * reported, where a settle from before that start was reported by its own
+   * gateway and is not announced a second time. */
+  interrupted?: true;
 };
 
 type WatcherFile = {
@@ -105,6 +123,10 @@ export type WatcherServiceOptions = {
   /** Test seam: is the recorded PID still the shell HUI started for `script`?
    * `undefined` means the check could not answer. */
   ownsProcess?: (pid: number, startedAtMs: number, script: string) => Promise<boolean | undefined>;
+  /** Test seam: the sessions a settle is delivered into. */
+  sessions?: WatcherSessions;
+  /** Test seam: the conversation registry, to name the session to wake. */
+  readRegistry?: typeof readRegistry;
 };
 
 const quote = (value: string) => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -255,6 +277,8 @@ function parseRecord(value: unknown): WatcherRecord | undefined {
     startedAt,
     ...(typeof value["stoppedAt"] === "string" ? { stoppedAt: value["stoppedAt"] } : {}),
     ...(value["keepRunning"] === true ? { keepRunning: true as const } : {}),
+    ...(typeof value["reportedAt"] === "string" ? { reportedAt: value["reportedAt"] } : {}),
+    ...(value["interrupted"] === true ? { interrupted: true as const } : {}),
   };
 }
 
@@ -269,6 +293,8 @@ export class WatcherService {
   readonly #launch: (scriptPath: string, cwd: string, logPath: string) => number;
   readonly #signalGroup: (pid: number, signal: NodeJS.Signals) => void;
   readonly #ownsProcess: (pid: number, startedAtMs: number, script: string) => Promise<boolean | undefined>;
+  readonly #sessions: WatcherSessions;
+  readonly #readRegistry: typeof readRegistry;
   #records = new Map<string, WatcherRecord>();
   #views = new Map<string, Watcher>();
   /** One mutation chain per watcher, so a card and an agent cannot stop,
@@ -279,8 +305,10 @@ export class WatcherService {
   #versions = new Map<string, number>();
   #mutation = Promise.resolve();
   #timer: ReturnType<typeof setInterval> | undefined;
-  #polling = false;
+  /** The poll in flight, so a stop waits for it before its last write. */
+  #polling: Promise<void> | undefined;
   #started = false;
+  #disposed = false;
 
   constructor(options: WatcherServiceOptions) {
     this.#file = options.file;
@@ -293,16 +321,24 @@ export class WatcherService {
     this.#launch = options.launch ?? ((scriptPath, cwd, logPath) => launchDetached(scriptPath, cwd, logPath));
     this.#signalGroup = options.signalGroup ?? signalGroup;
     this.#ownsProcess = options.ownsProcess ?? ownsProcess;
+    this.#sessions = options.sessions ?? liveSessions;
+    this.#readRegistry = options.readRegistry ?? readRegistry;
   }
 
   /** Loads the registry, reconciles it with reality and starts polling. A
    * failed read keeps the service unstarted so a later attempt can retry. */
   async initialize(): Promise<void> {
     if (this.#started) return;
+    this.#disposed = false;
     const records = await this.#read();
     for (const record of records) {
       this.#records.set(record.id, record);
-      this.#views.set(record.id, await this.#refresh(record));
+      const view = await this.#refresh(record);
+      this.#views.set(record.id, view);
+      // A settle from before this start was announced by the gateway that watched
+      // it end; one that happened while HUI was stopped carries `interrupted` and
+      // is announced by the first poll.
+      if (REPORTED_STATES.has(view.state) && !record.interrupted) record.reportedAt = new Date(this.#now()).toISOString();
     }
     this.#started = true;
     this.#timer = setInterval(() => void this.#poll(), this.#pollMs);
@@ -445,25 +481,29 @@ export class WatcherService {
     });
   }
 
-  /** A keep-running watcher found dead runs its command again, once per death. */
-  async #revive(record: WatcherRecord): Promise<void> {
-    await this.#lock(record.id, async () => {
-      if (this.#records.get(record.id) !== record) return;
+  /** A keep-running watcher found dead runs its command again, once per death.
+   * True when it started again, so the poll tells nobody the wait ended. */
+  async #revive(record: WatcherRecord): Promise<boolean> {
+    return this.#lock(record.id, async () => {
+      if (this.#records.get(record.id) !== record) return false;
       this.#bump(record.id);
-      if ((await this.#refresh(record)).state !== "dead") return;
+      if ((await this.#refresh(record)).state !== "dead") return false;
       // An unanswered check is not proof that the old processes are gone; a
       // second copy would run the command twice.
-      if ((await this.#owns(record)) !== false) return;
-      if (!(await stat(record.cwd).catch(() => undefined))?.isDirectory()) return;
+      if ((await this.#owns(record)) !== false) return false;
+      if (!(await stat(record.cwd).catch(() => undefined))?.isDirectory()) return false;
       await this.#relaunch(record);
       await appendFile(record.logPath, `[HUI] Started again at ${record.startedAt}: its processes were gone with no exit status.\n`, { mode: 0o600 });
       this.#onChange(record.sessionId);
-    });
+      return true;
+    }).catch(() => false);
   }
 
   async #relaunch(record: WatcherRecord): Promise<void> {
     await rm(this.#exitPath(record.id), { force: true });
     delete record.stoppedAt;
+    delete record.reportedAt;
+    delete record.interrupted;
     await this.#writeScript(record);
     record.pid = this.#launch(this.#scriptPath(record.id), record.cwd, record.logPath);
     record.startedAt = new Date(this.#now()).toISOString();
@@ -539,11 +579,22 @@ export class WatcherService {
     await this.forget(gone);
   }
 
-  /** Stops polling; running watchers keep running. */
-  dispose(): void {
+  /** Stops polling. Running watchers keep running; they are marked so a gateway
+   * started later announces a death it finds instead of leaving the agent to wait. */
+  async dispose(): Promise<void> {
+    this.#disposed = true;
     if (this.#timer) clearInterval(this.#timer);
     this.#timer = undefined;
     this.#started = false;
+    await this.#polling?.catch(() => undefined);
+    this.#polling = undefined;
+    let marked = false;
+    for (const record of this.#records.values()) {
+      if (this.#views.get(record.id)?.state !== "running" || record.interrupted) continue;
+      record.interrupted = true;
+      marked = true;
+    }
+    if (marked) await this.#write().catch(() => undefined);
   }
 
   #lock<T>(key: string, run: () => Promise<T>): Promise<T> {
@@ -557,26 +608,68 @@ export class WatcherService {
     this.#versions.set(id, (this.#versions.get(id) ?? 0) + 1);
   }
 
-  async #poll(): Promise<void> {
-    if (this.#polling) return;
-    this.#polling = true;
+  #poll(): Promise<void> {
+    if (this.#polling) return this.#polling;
+    if (this.#disposed) return Promise.resolve();
+    const poll = this.#pollOnce().finally(() => {
+      if (this.#polling === poll) this.#polling = undefined;
+    });
+    this.#polling = poll;
+    return poll;
+  }
+
+  async #pollOnce(): Promise<void> {
+    const changed = new Set<string>();
+    for (const record of [...this.#records.values()]) {
+      const version = this.#versions.get(record.id) ?? 0;
+      const before = this.#views.get(record.id);
+      const view = await this.#refresh(record);
+      // A mutation that started while this refresh ran owns the newer view,
+      // and a removed record must not be resurrected.
+      if (this.#records.get(record.id) !== record || (this.#versions.get(record.id) ?? 0) !== version) continue;
+      this.#views.set(record.id, view);
+      // The card shows the latest line too, so new output is a change.
+      if (view.state !== before?.state || view.lastLine !== before?.lastLine) changed.add(record.sessionId);
+      // A keep-running watcher found dead starts again instead of ending, so
+      // only one that stays dead tells its conversation.
+      const revived = view.state === "dead" && record.keepRunning ? await this.#revive(record) : false;
+      if (!revived) await this.#report(record, view);
+    }
+    for (const sessionId of changed) this.#onChange(sessionId);
+  }
+
+  /** Tells the conversation once that this watcher ended. HUI reports a settle it
+   * sees or finds, never one the operator caused, and retries a delivery that failed. */
+  async #report(record: WatcherRecord, view: Watcher): Promise<void> {
+    // A stop in progress must not wake a conversation on its way out.
+    if (this.#disposed || record.reportedAt || !REPORTED_STATES.has(view.state) || this.#records.get(record.id) !== record) return;
+    if (!(await this.#deliver(record.sessionId, formatWatcherEvent(view)))) return;
+    record.reportedAt = new Date(this.#now()).toISOString();
+    await this.#write().catch(() => undefined);
+  }
+
+  /** Hands one event to the session that owns the watcher, waking it when it is
+   * closed. False means nobody could take it yet, so the next poll tries again. */
+  async #deliver(sessionId: string, text: string): Promise<boolean> {
     try {
-      const changed = new Set<string>();
-      for (const record of [...this.#records.values()]) {
-        const version = this.#versions.get(record.id) ?? 0;
-        const before = this.#views.get(record.id);
-        const view = await this.#refresh(record);
-        // A mutation that started while this refresh ran owns the newer view,
-        // and a removed record must not be resurrected.
-        if (this.#records.get(record.id) !== record || (this.#versions.get(record.id) ?? 0) !== version) continue;
-        this.#views.set(record.id, view);
-        // The card shows the latest line too, so new output is a change.
-        if (view.state !== before?.state || view.lastLine !== before?.lastLine) changed.add(record.sessionId);
-        if (view.state === "dead" && record.keepRunning) void this.#revive(record).catch(() => undefined);
+      const record = (await this.#readRegistry()).find((entry) => entry.id === sessionId);
+      // A deleted conversation has nobody left to tell.
+      if (!record) return true;
+      if (!this.#sessions.ensure(record)) return false;
+      await this.#sessions.booted(sessionId);
+      const status = this.#sessions.status(sessionId);
+      if (status === "running" || status === "waiting") {
+        try {
+          await this.#sessions.steer(sessionId, text);
+        } catch {
+          await this.#sessions.followUp(sessionId, text);
+        }
+      } else {
+        await this.#sessions.prompt(sessionId, text);
       }
-      for (const sessionId of changed) this.#onChange(sessionId);
-    } finally {
-      this.#polling = false;
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -720,6 +813,8 @@ export class WatcherService {
           startedAt: record.startedAt,
           ...(record.stoppedAt ? { stoppedAt: record.stoppedAt } : {}),
           ...(record.keepRunning ? { keepRunning: true } : {}),
+          ...(record.reportedAt ? { reportedAt: record.reportedAt } : {}),
+          ...(record.interrupted ? { interrupted: true } : {}),
         })),
       };
       try {
