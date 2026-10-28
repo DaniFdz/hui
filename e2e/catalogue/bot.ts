@@ -21,7 +21,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Arrow keys on the tab bar are a keyboard-only affordance; tapping a tab is BOT-001.", decision: KEYBOARD_ONLY },
   },
   {
