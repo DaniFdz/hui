@@ -28,9 +28,11 @@ HUI implements it in two parts:
   entries, and a fresh-turn request for each of its generations.
 
 Bots use it (roadmap HUI-18): a bot's chat enables it in the commit that
-creates its conversation, and `hui bot memory` and the `/__hui/bots/:id/memory`
-routes ([api.md](api.md#bots)) read it through `DurableHost.optchat`. Every
-conversation without OptChat behaves exactly as before.
+creates its conversation, and `hui bot history`, `hui bot memory --zoom`/
+`--html` and the `/__hui/bots/:id/memory` routes ([api.md](api.md#bots)) read it
+through `DurableHost.optchat`. It is the chat's **history**: a bot's curated
+MEMORY.md (`hui bot memory`, never exported) is a different file, not this log.
+Every conversation without OptChat behaves exactly as before.
 
 ## Enabling
 

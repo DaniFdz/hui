@@ -6,7 +6,10 @@
     "description": 500,
     "soul": 20000,
     "message": 20000,
-    "preview": 200
+    "preview": 200,
+    "user": 6000,
+    "memory": 10000,
+    "bootstrap": 6000
   },
   "thinkingLevels": [
     "off",

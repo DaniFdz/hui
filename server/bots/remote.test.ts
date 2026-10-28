@@ -26,7 +26,7 @@ function link() {
   const connected = new Set<(id: string) => void>();
   const removed = new Set<(id: string) => void>();
   const requests: Array<{ id: string; op: string; params: Record<string, unknown> }> = [];
-  const state = { connected: true, features: ["bots"] as string[], replies: new Map<string, (params: Record<string, unknown>) => unknown>() };
+  const state = { connected: true, features: ["bots", "bot-files"] as string[], replies: new Map<string, (params: Record<string, unknown>) => unknown>() };
   const views = [{ id: "w-1", name: "devbox" }, { id: "w-2", name: "twin" }, { id: "w-3", name: "twin" }].map((worker) => ({ ...worker, command: "ssh x", extraPaths: [], state: "connected" }) as WorkerView);
   const workers: BotWorkerLink = {
     list: async () => views,
@@ -69,7 +69,7 @@ test("a worker's bot ports refuse at once while HUI is not connected, naming the
   fake.state.connected = false;
   await assert.rejects(bots.conversations("w-1").create({ botId: "b", memory: { name: "B" } }),
     (error: unknown) => error instanceof BotWorkerOfflineError && error.message === "HUI is not connected to devbox. Connect it in Settings → Workers, then create the bot again.");
-  for (const call of [() => bots.memory("w-1").view("durable:1"), () => bots.conversations("w-1").lastMessage("durable:1"), () => bots.souls("w-1").read("b"), () => bots.souls("w-1").remove("b")]) {
+  for (const call of [() => bots.memory("w-1").view("durable:1"), () => bots.conversations("w-1").lastMessage("durable:1"), () => bots.files("w-1").read("b"), () => bots.files("w-1").remove("b")]) {
     await assert.rejects(call(), (error: unknown) => error instanceof BotWorkerOfflineError && /^devbox, where this bot runs, is offline: HUI is not connected to it\./u.test(error.message));
   }
   assert.deepEqual(fake.requests, [], "nothing was sent, and nothing connected");
@@ -88,25 +88,29 @@ test("a worker's bot operations reach its host, and its answers are checked", as
   fake.state.replies.set("bot.memory.view", () => ({ unavailable: "This bot's chat has no OptChat memory in this gateway." }));
   fake.state.replies.set("bot.memory.zoom", () => ({ text: "1+0|user: hi" }));
   fake.state.replies.set("bot.soul.read", (params) => ({ soul: params["botId"] === "b" ? "# Who I am\nB." : null }));
+  fake.state.replies.set("bot.file.read", (params) => ({ text: params["file"] === "user" ? "Prefers short answers." : null }));
   const conversations = bots.conversations("w-1");
-  assert.deepEqual(await conversations.create({ botId: "b", memory: { name: "B" }, cwd: "~/src", soul: "# Who I am\nB." }), { reference: "durable:7", cwd: "/home/remote/src" });
+  assert.deepEqual(await conversations.create({ botId: "b", memory: { name: "B" }, cwd: "~/src", files: { soul: "# Who I am\nB." } }), { reference: "durable:7", cwd: "/home/remote/src" });
   assert.equal(await conversations.directory("~/src"), "/home/remote/src");
   await conversations.configure("durable:7", { cwd: "/home/remote/src" });
   assert.deepEqual(await conversations.lastMessage("durable:7"), { role: "user", text: "hi", at: "2026-10-06T20:00:00.000Z" });
   await conversations.writeCallRecord("durable:7", { call: "c", startedAt: 1, endedAt: 2, lines: [] });
   await conversations.forget("durable:7");
-  const souls = bots.souls("w-1");
+  const souls = bots.files("w-1");
   assert.equal(await souls.read("b"), "# Who I am\nB.");
   assert.equal(await souls.exists("c"), false, "no SOUL.md there yet");
   await souls.write("b", "# Who I am\nB, again.");
   await souls.write("b", undefined);
   await souls.prepare("b");
   await souls.remove("b");
+  await bots.files("w-1").write("b", "Prefers short answers.", "user");
+  assert.equal(await bots.files("w-1").read("b", "user"), "Prefers short answers.");
+  assert.equal(await bots.files("w-1").exists("b", "memory"), false);
   await bots.memory("w-1").configure("durable:7", { name: "B" });
   assert.equal(await bots.memory("w-1").zoom("durable:7", 1, 1), "1+0|user: hi");
   await assert.rejects(bots.memory("w-1").view("durable:7"), BotMemoryUnavailableError, "the worker's own refusal is the routes' 503");
   assert.deepEqual(fake.requests.map(({ op, params }) => [op, params]), [
-    ["bot.create", { botId: "b", memory: { name: "B" }, cwd: "~/src", soul: "# Who I am\nB." }],
+    ["bot.create", { botId: "b", memory: { name: "B" }, cwd: "~/src", files: { soul: "# Who I am\nB." } }],
     ["bot.directory", { cwd: "~/src" }],
     ["bot.configure", { reference: "durable:7", cwd: "/home/remote/src" }],
     ["bot.last-message", { reference: "durable:7" }],
@@ -118,6 +122,9 @@ test("a worker's bot operations reach its host, and its answers are checked", as
     ["bot.soul.write", { botId: "b" }],
     ["bot.home.prepare", { botId: "b" }],
     ["bot.remove-home", { botId: "b" }],
+    ["bot.file.write", { botId: "b", file: "user", text: "Prefers short answers." }],
+    ["bot.file.read", { botId: "b", file: "user" }],
+    ["bot.file.read", { botId: "b", file: "memory" }],
     ["bot.memory.configure", { reference: "durable:7", settings: { name: "B" } }],
     ["bot.memory.zoom", { reference: "durable:7", id: 1, n: 1 }],
     ["bot.memory.view", { reference: "durable:7" }],

@@ -98,7 +98,7 @@ export const test = base.extend<{ hui: Hui }>({
     await control("POST", "/control/release-replay");
     // A bot's chat goes only with its bot.
     for (const id of await botIds()) if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
-    for (const id of await sessionIds()) if (!existing.has(id)) await api("DELETE", `/__hui/sessions/${id}`);
+    for (const id of await sessionIds()) if (!existing.has(id) && (await sessionIds()).includes(id)) await api("DELETE", `/__hui/sessions/${id}`);
     await api("PUT", "/__hui/settings", settings);
   },
 });

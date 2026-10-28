@@ -1,12 +1,14 @@
 /**
- * Reading HUI's own bot exports: a zip with `bot.json`, `SOUL.md` and the bot's own skills' folders. Version 2 is a
- * template, reviewed for personal information before it left (`server/bots/export-format.ts` makes it): its open points, what it
- * needs, its triggers and the files beside each SKILL.md come with it. Version 1 was an exact copy: its handle and, when
- * asked for, `memory.md` (its memory's view), which joins the soul's "What you already know" as every template's
- * memories do. Importing either gives the profile, soul, skills, routines (disabled, as every import's) and lists back.
+ * Reading HUI's own bot exports: a zip with `bot.json`, `SOUL.md`, `BOOTSTRAP.md` when there is one, and the bot's own
+ * skills' folders. Version 2 is a template, reviewed for personal information before it left (`server/bots/export-format.ts`
+ * makes it): its open points, what it needs, its triggers and the files beside each SKILL.md come with it. Version 1 was
+ * an exact copy: its handle and, when asked for, `memory.md` (its memory's view), which joins the memories every
+ * template brings, now saved as MEMORY.md instead of in the soul. Importing either gives the profile, soul, skills,
+ * routines (disabled, as every import's) and lists back. USER.md and MEMORY.md never travel: a new owner's bot starts
+ * blank about them.
  */
 import { BOT_EXPORT_FILES, BOT_EXPORT_FORMAT, BOT_EXPORT_VERSION, type BotOpenPoint, type BotTemplateTrigger } from "../export-format.ts";
-import { BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../bots-format.ts";
+import { BOT_FILE_LIMITS, BOT_LIMITS, isBotFaceEars, isBotFaceShape, storedTagging, type BotVoice } from "../../bots-format.ts";
 import { BOT_TEMPLATE_LIMITS, type BotTemplate, type BotTemplateSkillFile } from "./formats.ts";
 import { BOT_TRIGGER_LIMITS } from "../triggers-format.ts";
 import type { AutomationSchedule } from "../../automation.ts";
@@ -157,6 +159,11 @@ export function parseHuiExport(all: readonly ImportFile[], origin?: string, pars
   template.hui = extras;
   const soul = findFile(files, BOT_EXPORT_FILES.soul);
   template.soul = (soul ? fileText(soul) ?? "" : "").trim();
+  // The operator's onboarding body travels beside the soul, when it wrote one.
+  const bootstrap = findFile(files, BOT_EXPORT_FILES.bootstrap);
+  const onboarding = bootstrap ? (fileText(bootstrap) ?? "").trim() : "";
+  if (onboarding) template.bootstrap = onboarding.slice(0, BOT_FILE_LIMITS.bootstrap);
+  else if (bootstrap) template.notes.push("Its BOOTSTRAP.md was empty.");
   for (const skill of Array.isArray(manifest["skills"]) ? manifest["skills"].map(str).filter(Boolean) : []) {
     const folder = within(files, `${BOT_EXPORT_FILES.skills}/${skill}`);
     const file = findFile(folder, "SKILL.md");

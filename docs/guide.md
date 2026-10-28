@@ -137,9 +137,18 @@ External web and mail links open in the default browser. The renderer is
 sandboxed without Node integration. Browser-local drafts have a separate Electron
 profile; HUI/PI storage remains shared through the existing gateway.
 
+The app also claims the `hui://` scheme, so a chat can be handed to it. A link
+carrying `?open=app`, which bots can mint, shows an **Open in HUI** button above
+the chat in a macOS browser; the button opens that chat in the app instead of
+the tab. The button is the hand-off because browsers only launch another program
+after a click. Other platforms and phones never show it and keep the chat in the
+browser.
+
 Installation is per-user, without sudo, and downloads the platform's Electron
 runtime. Reinstallation replaces only an HUI-owned bundle, never an unrelated
-`HUI.app`. Quit the app before updating. Set `HUI_SKIP_APP_INSTALL=1` during npm
+`HUI.app`. `hui update` reinstalls the app when it runs an older release than
+HUI does, and the window you have open keeps the app it started with until you
+quit and reopen HUI. Set `HUI_SKIP_APP_INSTALL=1` during npm
 installation to opt out. Local checkout installs do not register an application.
 The bundle is locally ad-hoc signed, not Apple-notarized. It records the npm
 installation path, Node executable and PATH, never shell credentials. It depends
@@ -175,8 +184,9 @@ plays a sound, and high also bounces HUI's Dock icon until you open HUI.
 
 The first time the app opens, macOS asks whether HUI may send notifications. If
 you said no, allow them in **System Settings → Notifications → HUI**. They need
-the managed gateway and the current app, so run `hui install-app` after an
-update. Quitting HUI clears its notifications from Notification Center.
+the managed gateway and the current app: `hui update` reinstalls an app left on
+an older version, and a window that was already open needs quitting and
+reopening. Quitting HUI clears its notifications from Notification Center.
 
 ## Remote access through a reverse proxy
 
@@ -220,6 +230,18 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
+**Subagent routes** sit under the same page. A route is a name you choose, a
+one-line description and a model, and may pin a reasoning level. An agent that
+spawns a subagent can pass the name to `sessions_spawn` instead of a model id.
+The prompt lists your names and descriptions. Raw model ids remain supported;
+routes do not restrict which models the tool can use. A spawn without a route or
+model inherits its parent's model and reasoning level. Its own `thinking`
+overrides the route's level. Routes apply to new subagents as soon as you save
+them. Local Durable sessions refresh the list in their prompt on the next turn.
+Remote Durable sessions list changes after their next settings sync; older PI
+SDK workers refresh that list when they relaunch. Routes offer PI reasoning
+levels through Maximum, not HUI's Ultra delegation mode.
+
 The composer's **Effort** slider offers the reasoning levels the session's model
 has, up to **Maximum** (PI's `max` level) where the model supports it, then
 **Ultra**, as in OpenClaw: the model's highest level plus an instruction to plan
@@ -253,12 +275,20 @@ one of its own it uses Settings' utility model, then its own model. From a
 terminal: `hui bot edit ada --model openai-codex/gpt-6.1-sol --utility-model anthropic/claude-haiku-4-5`
 (`--memory-model` is the same flag; `""` goes back to the default).
 
-**Memory.** A bot's chat carries [OptChat](optchat.md) memory: every message is
-kept word for word and a cheap model condenses the chat into a tree of one-line
-summaries, so each turn starts fresh from a bounded view of the whole history
-(64 to 128 KB) and the bot opens a line (`zoom`) when it needs the detail. The chat is never
-compacted or cleared; when a turn has to wait for the newest messages to be
-summarized, `hui bot chat` says "Summarizing memory…".
+**Memory.** A bot has three files it keeps itself, each read on every request:
+**SOUL.md** (who it is and how it works, up to 20,000 characters), **USER.md**
+(what it knows about you: your preferences, corrections, how you like to work) and
+**MEMORY.md** (what it chose to keep, by topic, up to 10,000 characters). It
+writes them with its own tools when you tell it to, and only your own messages can
+make it: a routine's, a trigger's or another bot's turn can't. USER.md and
+MEMORY.md never leave with an export. Its chat's **history** is
+[OptChat](optchat.md): every message is kept word for word and a cheap model
+condenses it into a tree of one-line summaries, so each turn starts fresh from a
+bounded view of the whole history (64 to 128 KB) and the bot opens a line (`zoom`)
+when it needs the detail. The chat is never compacted or cleared; when a turn has
+to wait for the newest messages to be summarized, `hui bot chat` says
+"Summarizing memory…". `hui bot memory` shows MEMORY.md, `hui bot user` USER.md,
+and `hui bot history` the chat's own history (`--zoom`, `--html`).
 
 ### The Bots tab
 
@@ -353,15 +383,28 @@ hui bot add --name Ada --title Researcher --model openai/gpt-5.6
 hui bot edit ada --thinking high --shape heart --color mint
 hui bot edit ada --emoji 🦊      # an emoji instead of the face; --emoji "" goes back to the face
 hui bot show ada
+
+# The files it keeps (the bot writes the first three when you tell it to)
+hui bot soul ada                 # SOUL.md: who it is
+hui bot user ada                 # USER.md: what it knows about you
+hui bot memory ada               # MEMORY.md: what it keeps
+hui bot bootstrap ada --file onboarding.md   # the first conversation's questions, yours; "" removes it
+hui bot history ada --zoom 2184+8 --html memory.html   # its chat's OptChat history
+hui bot split ada                # asks it to move an old single-file soul into the three
 ```
+
+`hui bot memory` used to print the chat's OptChat history; that is
+`hui bot history` now (`hui bot memory --zoom`/`--html` still reaches it, with a
+note).
 
 The handle (`@ada`) comes from the name: lowercase letters, digits and dashes,
 with `-2`, `-3`… when another bot has it. Renaming moves a handle that came from
 the old name to the new one (`new-bot` becomes `scout`); a handle you chose
 stays. A bot added without a name is "New Bot" until it asks you what to call
 it. Every bot
-gets a private home folder in HUI's configuration directory, where its SOUL.md
-lives; without `--cwd` that folder is also its working directory. Without
+gets a private home folder in HUI's configuration directory, where its
+SOUL.md, USER.md, MEMORY.md and (if you wrote one) BOOTSTRAP.md live; without
+`--cwd` that folder is also its working directory. Without
 `--model` a bot runs on Settings' primary model, as a new session does (PI's
 default only while none is set). A model change goes through the chat like the
 model picker, and a new working directory
@@ -838,9 +881,11 @@ paste text. HUI reads:
   once, when you ask; x.ai can change that page, and if HUI can't read it, copy the
   bot's instructions from it and paste them instead.
 - **OpenClaw** workspaces, a folder or a zip: SOUL.md, IDENTITY.md's name, emoji
-  and vibe, MEMORY.md and USER.md, HEARTBEAT.md (as a routine) and its skills.
-  AGENTS.md is left out: it is OpenClaw's operating manual (memory files,
-  heartbeats, group chats), not the bot; copy any rule you want into its soul.
+  and vibe, MEMORY.md and USER.md (both as what it knew, saved in MEMORY.md),
+  HEARTBEAT.md (as a routine) and its skills. Its BOOTSTRAP.md is left out: only
+  HUI exports carry the operator's onboarding body. AGENTS.md is left out: it is
+  OpenClaw's operating manual (memory files, heartbeats, group chats), not the
+  bot; copy any rule you want into its soul.
 - **Claude Code** subagents (`.claude/agents/<name>.md`): its prompt, description,
   model, color, and its tools list, which keeps only those tools on.
 - **Letta** agent files (`.af`): its persona and memory blocks and its tools; the
@@ -851,20 +896,25 @@ paste text. HUI reads:
 - **HUI** templates (below). Any other text becomes the bot's persona.
 
 Before anything exists you see what the bot will get: its name and handle, its
-whole SOUL.md, its first message, its skills, its routines and their schedules,
-how each integration maps to a HUI tool (or that HUI has none), the tools it
-turns off, its model, and a list of what was left out and why. **Imported text
-is untrusted**: read it, then **Create bot**. A file with several agents lets
-you pick one. An import never turns on more than a new bot has: its routines
-start **disabled** (check them on its Routines page, then turn them on), a tools
-list can only turn tools off, and a model it names is kept only when this
-gateway has it. What it already knew goes into its SOUL.md, under *What you
-already know*: tell it what to change, or replace it with `hui bot soul`. Its skills are its own: they
-live in its folder, only it loads them, and they are on like every skill (turn
-any off on its Tools & skills page). With a first message, the bot's chat opens with it.
+whole SOUL.md, its MEMORY.md, its onboarding body when the template has one, its
+first message, its skills, its routines and their schedules, how each integration
+maps to a HUI tool (or that HUI has none), the tools it turns off, its model, and a
+list of what was left out and why. **Imported text is untrusted**: read it, then
+**Create bot**. A file with several agents lets you pick one. An import never turns
+on more than a new bot has: its routines start **disabled** (check them on its
+Routines page, then turn them on), a tools list can only turn tools off, and a
+model it names is kept only when this gateway has it. What the source bot knew goes
+into **MEMORY.md**, marked as reference data, and never into its soul; USER.md is
+never seeded from a template, so a new bot starts blank about its new operator. Its
+skills are its own: they live in its folder, only it loads them, and they are on
+like every skill (turn any off on its Tools & skills page). With a first message,
+the bot's chat opens with it.
 
 A bot's **⋯ → Export…** makes it a template someone else can import, without
-what is yours. HUI first cleans it: your name (your profile's, your account's, and
+what is yours. Its **SOUL.md** and, when you wrote one, its **BOOTSTRAP.md** travel.
+Its **USER.md** and **MEMORY.md** never do: they describe you and what it learned
+here, so a shared bot starts blank about its new owner. HUI first cleans what does
+travel: your name (your profile's, your account's, and
 a `first.last` user name) becomes `{{user}}` (the new owner's name once imported),
 your home folder `~`, and e-mail addresses, keys and tokens,
 your machine's and workers' names in paths and links, tailnet names, IP addresses
@@ -1068,6 +1118,32 @@ reply. The transcript marks the questions as expired, with their options, so
 you can see what it asked; reply in the chat to decide. The timeout applies to
 questions asked after you change it.
 
+## Giving a conversation a goal
+
+A goal is one objective a conversation keeps pursuing, for work that outlasts a
+single reply: closing out a pull request, reproducing and fixing a bug, or
+finishing a docs pass.
+
+- Type `/goal get CI green on PR 12345 and push the fix` in the composer. The
+  objective starts the goal and is sent as its first message, so the work
+  begins at once.
+- A pill above the composer shows the goal: **Pursuing goal**, the objective,
+  and pause and clear buttons. Hover it to read why a goal is paused or blocked.
+- `/goal pause` keeps the objective but stops the automatic work; `/goal
+  resume` picks it up again; `/goal clear` removes it. The pill's buttons do the
+  same, and `/goal <new objective>` replaces the current goal.
+- While a goal is active, HUI continues the work after a clean turn ends. You
+  do not have to say "keep going". Pressing **Stop**, an error, an open
+  question or a message you have already queued all end the automatic work
+  instead: the next message you send carries the goal again.
+- The agent marks the goal **complete** only when the whole objective is
+  verified, or **blocked** when the same blocker has held for three turns. It
+  still replies to you when it does.
+- After ten automatic turns HUI pauses the goal and says so. Resume it to allow
+  another ten.
+- Goals run where the session runs. A session on a remote worker keeps its own
+  state, so goals are not offered there.
+
 ## Giving an agent a secret
 
 When an agent needs an API key, a token, a password or a one-time login code,
@@ -1091,7 +1167,7 @@ request expires after 15 minutes.
 
 `hui doctor` reports state that an upgraded HUI needs changed, and
 `hui doctor --fix` changes it. The report only reads, so it is safe while the
-gateway runs. It exits 0 when nothing is left to change and 1 otherwise;
+gateway runs. It exits 0 when nothing is left for `--fix` or for you to do, and 1 otherwise;
 `--json` prints the same report for scripts.
 
 ```sh
@@ -1139,3 +1215,40 @@ keeps no copy; listener triggers and everything else stay. Deleting
 workspace if nothing else uses it. If `bot-triggers.json` itself can't be read,
 `hui doctor` says so and leaves it as it is (fix or move it), and still deletes
 the other files.
+
+### Bot files
+
+A bot's persona used to be one SOUL.md, with what it knew under *What you already
+know*. It now has SOUL.md (who it is), USER.md (what it knows about you), MEMORY.md
+(what it keeps) and an optional BOOTSTRAP.md. `hui doctor` lists every bot whose
+SOUL.md still holds a memory section; `--fix` moves that section into MEMORY.md and
+keeps the rest as its persona (a soul that was only memories goes, so the bot has
+its first conversation again). It also lists each bot with an older single-file soul,
+because the rest needs judgement: a preference is not a rule. Until each listed bot
+is split, the check fails and `hui doctor` exits with status 1. A bot counts as split
+once `hui bot split` has asked it, even one you split by hand before: its files can't
+show it, since `--fix` writes MEMORY.md itself. A bot created now is split from the
+start, and so is one without a SOUL.md once the gateway starts, since its first soul
+follows the three files. An archived bot is never asked to split.
+
+```sh
+hui gateway start
+hui bot split ada
+```
+
+`hui bot split` sends the bot a message naming the three files and what belongs in
+each; the bot moves what it knows with `update_user` and `update_memory`, rewrites
+its soul with `write_soul`, and lists what it moved. It changes nothing else, and it
+never invents a preference. Once its message is accepted, HUI marks the bot split in
+`bots.json`, so doctor stops listing it; with `--wait`, a turn that fails or runs out
+of time leaves it unmarked, so run the command again. A bot on a worker keeps its
+home there, and doctor cannot read a worker's files offline: it lists the bot until
+you run the same command once the worker is connected.
+
+### HUI desktop app
+
+An installed app runs the release it was installed from. `hui update` reinstalls
+it, so it stops running an older window shell that refuses the gateway's
+notifications. `hui doctor` lists one that an earlier update left behind, and
+`--fix` reinstalls it from the release HUI runs. Quit and reopen HUI afterwards:
+the window that was open keeps the app it started with.

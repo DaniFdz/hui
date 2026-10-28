@@ -1,10 +1,11 @@
 /** The background gateway's lifecycle as seen from the CLI: start it detached, report its status, stop it and tail its
  * log. Every action is checked against the recorded state file and the gateway's authenticated control endpoint; a PID
  * alone never authorizes a signal, and the gateway itself rechecks which active work a stop would interrupt. */
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
 import type { GatewayOptions } from "../server/gateway.ts";
 import { LOG_FILE, processAlive, readState, removeState, type GatewayState } from "./state.ts";
 
@@ -12,6 +13,8 @@ import { LOG_FILE, processAlive, readState, removeState, type GatewayState } fro
  * (Pi Durable runs); the rest of `activeSessions` blocks an ordinary stop. */
 export type GatewayStatus = { status: "running" | "stopped" | "unresponsive"; pid?: number; version?: string; url?: string; activeSessions?: number; resumableSessions?: number; activeTerminals?: number; startedAt?: string };
 type ControlStatus = { instance: string; pid: number; version: string; url: string; activeSessions: number; resumableSessions?: number; activeTerminals?: number };
+
+const execFileAsync = promisify(execFile);
 
 const count = (value: unknown) => value === undefined || Number.isInteger(value) && (value as number) >= 0;
 
@@ -74,17 +77,63 @@ export async function startGateway(options: GatewayOptions): Promise<GatewayStat
   return result;
 }
 
+/** How long a forced stop waits before it escalates, and how long it waits for the last signal to land. */
+const TERM_GRACE_MS = 3_000;
+const KILL_GRACE_MS = 2_000;
+
+/** Whether the recorded PID still runs the recorded gateway. A wedged gateway cannot prove its identity over its
+ * control endpoint, and a PID alone never authorizes a signal, so the command line has to name this installation's
+ * `gateway-run.js`. */
+async function runsRecordedGateway(state: GatewayState): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync("ps", ["-p", String(state.pid), "-o", "command="]);
+    return stdout.includes(join(state.packageRoot, "build/cli/gateway-run.js"));
+  } catch {
+    return false;
+  }
+}
+
+/** Ends a gateway that cannot stop itself: SIGTERM, then SIGKILL. */
+async function terminateGateway(state: GatewayState): Promise<void> {
+  const signal = (name: NodeJS.Signals) => {
+    try { process.kill(state.pid, name); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+  };
+  const exited = async (budget: number) => {
+    for (const deadline = Date.now() + budget; Date.now() < deadline;) {
+      if (!processAlive(state.pid)) return true;
+      await delay(50);
+    }
+    return !processAlive(state.pid);
+  };
+  signal("SIGTERM");
+  if (!(await exited(TERM_GRACE_MS))) {
+    signal("SIGKILL");
+    if (!(await exited(KILL_GRACE_MS))) throw new Error(`Gateway pid ${state.pid} did not exit after SIGKILL.`);
+  }
+  await removeState(state.instance);
+}
+
 export async function stopGateway(force = false): Promise<GatewayState | undefined> {
   const state = await readState();
   if (!state) return undefined;
   const status = await gatewayStatus();
   if (status.status === "stopped") { await removeState(state.instance); return undefined; }
-  if (status.status !== "running") throw new Error("Gateway identity/health could not be verified. Refusing to signal a recorded PID.");
+  if (status.status !== "running") {
+    if (!force) throw new Error("Gateway identity/health could not be verified. Refusing to signal a recorded PID. Retry with --force if the process is wedged.");
+    if (!(await runsRecordedGateway(state))) throw new Error(`Gateway identity/health could not be verified. Refusing to signal a recorded PID: ${state.pid} is not this installation's gateway.`);
+    await terminateGateway(state);
+    return state;
+  }
   await controlRequest(state, force ? "stop?force=1" : "stop", "POST");
   // Poll an observable ownership edge, not a guessed shutdown duration.
   const deadline = Date.now() + 10_000;
   while ((await readState())?.instance === state.instance || processAlive(state.pid)) {
-    if (Date.now() >= deadline) throw new Error("Gateway did not finish shutting down. No replacement was started.");
+    if (Date.now() >= deadline) {
+      if (!force) throw new Error("Gateway did not finish shutting down. No replacement was started.");
+      if (!(await runsRecordedGateway(state))) throw new Error(`Gateway did not finish shutting down. Refusing to signal a recorded PID: ${state.pid} is not this installation's gateway.`);
+      await terminateGateway(state);
+      return state;
+    }
     await delay(50);
   }
   return state;

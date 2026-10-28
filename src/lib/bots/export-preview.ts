@@ -7,7 +7,7 @@ import type { BotExportAddition, BotExportChange, BotExportGroup, BotExportPart,
 
 const BOT_EXPORT_FORMAT = "hui-bot";
 const BOT_EXPORT_VERSION = 2;
-const BOT_EXPORT_FILES = { manifest: "bot.json", soul: "SOUL.md", skills: "skills" } as const;
+const BOT_EXPORT_FILES = { manifest: "bot.json", soul: "SOUL.md", bootstrap: "BOOTSTRAP.md", skills: "skills" } as const;
 const HANDLE_LENGTH = 32;
 
 function handleFromName(name: string): string {
@@ -325,8 +325,10 @@ export function buildExport(review: BotExportReview, picks: Readonly<Record<stri
 
   const ending = (text: string) => text.endsWith("\n") ? text : `${text}\n`;
   const files: BotExportBuild["files"] = [{ path: BOT_EXPORT_FILES.manifest, text: ending(JSON.stringify(manifest, null, 2)) }];
+  // SOUL.md and BOOTSTRAP.md are the bot's; the gateway never reviews USER.md or MEMORY.md, so neither is here.
+  const exported = new Set<string>([BOT_EXPORT_FILES.soul, BOT_EXPORT_FILES.bootstrap]);
   for (const part of review.parts) {
-    if (part.id !== BOT_EXPORT_FILES.soul && !part.id.startsWith(`${BOT_EXPORT_FILES.skills}/`)) continue;
+    if (!exported.has(part.id) && !part.id.startsWith(`${BOT_EXPORT_FILES.skills}/`)) continue;
     const change = review.files.find((file) => file.part === part.id);
     if (change && group(change.id, change.group) === "remove") continue;
     files.push({ path: part.id, text: ending(fields(part.id)["text"] ?? "") });

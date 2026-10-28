@@ -2,12 +2,12 @@
  * Importing bots from other platforms' templates and HUI's own (HUI-18; docs/api.md#importing-and-exporting-bots).
  *
  * An import reads its source (`bot-templates/`) into a `BotTemplate`, then plans it against this gateway: the handle it
- * gets, SOUL.md (its persona, then its memories under "What you already know": OptChat's memory is the chat's own log,
- * so nothing else can seed it), the model it names when one resolves, the tools a Claude Code subagent keeps, its
- * skills (renamed when a skill of its directory has the name), its routines' schedules and the HUI tool each
- * integration maps to. The preview is that plan; creating runs it again on the template the preview showed and makes
- * the bot through `BotService.create`, then its own skills, then its routines and triggers (disabled): a failure there
- * deletes the new bot again. Its opener is its first turn, a kickoff that asks it to send it.
+ * gets, SOUL.md (its persona only), MEMORY.md (what the source bot knew: reference data, never exported), the model it
+ * names when one resolves, the tools a Claude Code subagent keeps, its skills (renamed when a skill of its directory has
+ * the name), its routines' schedules and the HUI tool each integration maps to. The preview is that plan; creating runs it
+ * again on the template the preview showed and makes the bot through `BotService.create`, then its own skills, then its
+ * routines and triggers (disabled): a failure there deletes the new bot again. Its opener is its first turn, a kickoff
+ * that asks it to send it. A template's own BOOTSTRAP.md comes with it.
  *
  * A HUI template (`server/bots/export-format.ts` makes them) brings more: `{{user}}` becomes this operator's name, its open
  * points go into SOUL.md under "Not agreed yet", and its first turn asks the bot to go through them with the operator;
@@ -18,7 +18,7 @@
  * refuse). Its skills are on, like every skill of a bot: they are text the operator read in the preview, they widen no
  * tool, and each can be turned off on the Tools & skills page. The export side is `export.ts`.
  */
-import { BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar } from "../bots-format.ts";
+import { BOT_FILE_LIMITS, BOT_HANDLE, BOT_LIMITS, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, type BotAvatar } from "../bots-format.ts";
 import type { BotTemplateTrigger } from "./export-format.ts";
 import {
   BOT_SKILL_TEXT_FILE, BOT_TEMPLATE_FORMATS, BOT_TEMPLATE_LIMITS, botOpenerKickoffText, botTemplateKickoffText, notAgreedSection,
@@ -34,7 +34,7 @@ import { CLAUDE_CODE_TOOLS } from "./templates/claude-code.ts";
 import { isRecord, oneLine, skillFileText, skillName, TemplateFormatError, type ImportFile } from "./templates/common.ts";
 import { readFileTemplates, readFolderTemplates, readTextTemplates, type TemplateChoice } from "./templates/detect.ts";
 import { parseGrokBotPage, grokBotUrl } from "./templates/grok.ts";
-import { composeSoul, matchIntegration, normalizeTemplate, resolveModel, type ModelInfo } from "./templates/mapping.ts";
+import { composeMemory, composeSoul, matchIntegration, normalizeTemplate, resolveModel, splitKnownSection, type ModelInfo } from "./templates/mapping.ts";
 import { readSchedule } from "./templates/schedule.ts";
 import { safeRelativePath } from "./templates/zip.ts";
 
@@ -108,6 +108,7 @@ function withOperator(template: BotTemplate, operator: string | undefined): BotT
     ...(template.title !== undefined ? { title: fill(template.title) } : {}),
     ...(template.description !== undefined ? { description: fill(template.description) } : {}),
     soul: fill(template.soul),
+    ...(template.bootstrap !== undefined ? { bootstrap: fill(template.bootstrap) } : {}),
     skills: template.skills.map((skill) => ({
       ...skill, description: fill(skill.description), content: fill(skill.content),
       ...(skill.files ? { files: skill.files.map((file) => BOT_SKILL_TEXT_FILE.test(file.path) ? { ...file, text: fill(file.text) } : file) } : {}),
@@ -319,14 +320,14 @@ export class BotTemplateService {
       }
     }
 
-    // SOUL.md: the persona, then what it already knows.
+    // SOUL.md: the persona. What the bot knew goes to MEMORY.md, which never leaves with an export.
     const source = `${BOT_TEMPLATE_FORMATS[template.format]}${template.origin ? ` (${oneLine(template.origin, 120)})` : ""}`;
     // A template whose job lives in its memories (many Grok marketplace bots leave their instructions empty) keeps them:
     // its description stands in as the persona they follow.
     let persona = template.soul;
     if (!persona.trim() && template.memories.length) {
       persona = template.description?.trim() || `You are ${name}${template.title ? `, ${template.title}` : ""}.`;
-      notes.push("It has no instructions of its own: its description stands in as its persona, followed by what it already knows.");
+      notes.push("It has no instructions of its own: its description stands in as its persona, and what it knew goes to MEMORY.md.");
     }
     // A HUI template's open points close SOUL.md under "Not agreed yet". Their room comes first: the persona is cut, never
     // the points (they take at most half of it; any beyond are listed as left out).
@@ -336,11 +337,18 @@ export class BotTemplateService {
     if (template.open && open.length && open.length < template.open.length) dropped.push(`${plural(template.open.length - open.length, "open point")} that didn't fit in SOUL.md.`);
     const section = open.length ? notAgreedSection(open) : "";
     const room = section ? BOT_LIMITS.soul - section.length - 2 : BOT_LIMITS.soul;
-    const composed = composeSoul(persona, template.memories, source, room);
+    const composed = composeSoul(persona, room);
     if (composed.cut) notes.push(`Its persona has ${template.soul.length.toLocaleString("en-US")} characters; SOUL.md keeps the first ${room.toLocaleString("en-US")}.`);
     if (section) composed.soul = `${composed.soul}\n\n${section}`;
-    const left = template.memories.length - composed.included;
-    if (left) dropped.push(composed.soul ? `${plural(left, "memory", "memories")} that didn't fit in SOUL.md's ${BOT_LIMITS.soul.toLocaleString("en-US")} characters.` : `${plural(left, "memory", "memories")}: without a persona the bot writes its own soul in its first conversation.`);
+    // An old export's or bot's "What you already know" section is memory, not persona: it moves to MEMORY.md.
+    const known = splitKnownSection(template.soul).known;
+    const memories = [...(known ? [{ name: "What you already know", text: known }] : []), ...template.memories];
+    const remembered = composeMemory(memories, source);
+    if (remembered.memory) input["memory"] = remembered.memory;
+    const left = memories.length - remembered.included;
+    if (left) dropped.push(`${plural(left, "memory", "memories")} that didn't fit in MEMORY.md's ${BOT_FILE_LIMITS.memory.toLocaleString("en-US")} characters.`);
+    if (remembered.memory) notes.push(`${remembered.included === 1 ? "Its memory is" : `Its ${remembered.included} memories are`} saved in MEMORY.md, which never leaves with an export.`);
+    if (template.bootstrap) input["bootstrap"] = template.bootstrap;
     if (composed.soul) input["soul"] = composed.soul;
     else notes.push("It has no persona, so it starts with its first conversation: it asks what you expect and writes its SOUL.md.");
     const opener = composed.soul ? template.opener : undefined;
@@ -409,11 +417,13 @@ export class BotTemplateService {
           ...(worker ? { worker } : {}),
         },
         soul: composed.soul,
+        memory: remembered.memory,
+        ...(template.bootstrap ? { bootstrap: template.bootstrap } : {}),
         ...(opener ? { opener } : {}),
         ...(model ? { model } : {}),
         ...(thinking ? { thinking } : {}),
         ...(utilityModel ? { utilityModel } : {}),
-        memories: { included: composed.included, total: template.memories.length },
+        memories: { included: remembered.included, total: memories.length },
         skills: previewSkills,
         routines: routines.map(({ description: _description, ...routine }) => routine),
         integrations,

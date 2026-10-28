@@ -121,7 +121,7 @@ test("import creates only after preview and opens the imported bot through the b
   const app = setup();
   const template = { format: "text" as const, name: "Ada", soul: "Help out", memories: [], skills: [], routines: [], integrations: [], dropped: [], notes: [] };
   const preview: BotImportPreview = {
-    template, bot: { name: "Ada", handle: "ada" }, soul: "Help out", memories: { included: 0, total: 0 },
+    template, bot: { name: "Ada", handle: "ada" }, soul: "Help out", memory: "", memories: { included: 0, total: 0 },
     skills: [], routines: [], integrations: [], disabledTools: [], disabledSkills: [], open: [], needs: [], triggers: [], dropped: [], notes: [],
   };
   vi.spyOn(templatesApi, "previewBotImport").mockResolvedValue(preview);

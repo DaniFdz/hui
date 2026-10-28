@@ -1,7 +1,7 @@
 /**
- * The notice the composer shows when a run ends on a runtime or provider error, and the prompt sent to
- * continue after it. The error row itself stays in the transcript; this only surfaces it outside the
- * collapsed activity.
+ * The notice the composer shows when a run ends on a runtime or provider error. The error row itself stays in the
+ * transcript; this only surfaces it outside the collapsed activity. Its Continue resumes through the gateway, which
+ * restates the request the failed run was handling.
  */
 import type { TranscriptItem } from "../api/sessions.ts";
 
@@ -13,7 +13,8 @@ export type RunErrorNotice = {
   multiline: boolean;
 };
 
-/** The prompt HUI sends when the operator resumes a run that ended in an error. */
+/** The bare nudge HUI used to send from the error notice: no model sees it now, but readers of older transcripts
+ * still tell it apart from what the operator asked. */
 export const CONTINUE_AFTER_ERROR_PROMPT = "Continue from where you left off.";
 
 const SUMMARY_LIMIT = 160;

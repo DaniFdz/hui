@@ -24,7 +24,7 @@ import { CallBroker, providerCallAccounts } from "./bots/calls.ts";
 import { createCallRoutes } from "./routes/calls.ts";
 import { buildCallRecord, callCompletion, callSettings, createCallDelegate, reportCall } from "./bots/call-helper.ts";
 import { optChatBotMemory } from "./bots/memory.ts";
-import { botHome, localBotSouls, operatorName as soulOperatorName } from "./bots/souls.ts";
+import { botHome, localBotFiles, operatorName as soulOperatorName } from "./bots/home.ts";
 import { type BotReply, type BotView } from "./bots-format.ts";
 import { PullRequestStatuses } from "./integrations/pull-requests.ts";
 
@@ -35,6 +35,7 @@ import { VscodeInstaller } from "./vscode/install.ts";
 import { verifyVscodeServer } from "./vscode/providers.ts";
 import { BrowserToolError, ManagedBrowser } from "./browser/manager.ts";
 import { MacPower } from "./power.ts";
+import { createHostMetrics } from "./host-metrics.ts";
 import type { BrowserStatus } from "./api/browser.ts";
 import { ProviderService } from "./pi/providers.ts";
 import { invalidateModelCatalog } from "./pi/config.ts";
@@ -47,6 +48,7 @@ import { BotRoutines } from "./bots/routines.ts";
 import { ROUTINES_TOOL } from "./bots/durable-routines.ts";
 import { resolveWorkingDirectory } from "./git/working-directories.ts";
 import { aggregateUsage, readObservability, recordDiagnosticEvent } from "./observability.ts";
+import { UsageReports } from "./usage.ts";
 import { durableHost } from "./runtimes/durable-host.ts";
 import { createDurableBots } from "./bots/durable-access.ts";
 import type { SessionJiraIssue } from "./api/sessions.ts";
@@ -91,6 +93,7 @@ import { createTaskSuggestionRoutes } from "./routes/task-suggestions.ts";
 import { createWatcherRoutes } from "./routes/watchers.ts";
 import { createPiRoutes } from "./routes/pi.ts";
 import { createPowerRoutes } from "./routes/power.ts";
+import { createHostMetricsRoutes } from "./routes/host-metrics.ts";
 import { createProviderRoutes } from "./routes/providers.ts";
 import { createUpdateRoutes } from "./routes/updates.ts";
 import { createWorktreeRoutes } from "./routes/worktrees.ts";
@@ -114,6 +117,7 @@ import {
 } from "./sessions/sessions.ts";
 import { createSessionLifecycle, defaultSessionTool, SESSION_TITLE_MAX } from "./sessions/lifecycle.ts";
 import { setAgentStage } from "./sessions/stages.ts";
+import { claimGoalContinuation, updateGoalFromAgent } from "./sessions/goals.ts";
 import { createSessionViews } from "./sessions/views.ts";
 
 const piMutations = new PiMutationService();
@@ -126,9 +130,11 @@ export const diffRoutes = createDiffRoutes({ session: async (id) => (await readR
 export const themeRoutes = createThemeRoutes();
 export const updateRoutes = createUpdateRoutes();
 export const settingsRoutes = createSettingsRoutes({ writeSettings });
+const usageReports = new UsageReports(readRegistry);
 const durableUsage = async (conversationId: number) => durableHost().conversationUsage(conversationId as never);
 export const diagnosticsRoutes = createDiagnosticsRoutes({
   observability: async () => readObservability(await readRegistry(), durableUsage),
+  usage: (query, refresh) => usageReports.get(query, refresh),
 });
 export const attachmentRoutes = createAttachmentRoutes({ session: async (id) => (await readRegistry()).find((record) => record.id === id), liveSessions });
 // Sessions a lost connection interrupted reattach once their worker is back,
@@ -187,7 +193,7 @@ export const bots = new BotService({
   // A bot made on a worker keeps its conversation, memory and SOUL.md there, where its chat runs; what deleting one
   // leaves there while it is offline waits in BOT_CLEANUP_FILE for its next connection.
   workers: botWorkers,
-  souls: localBotSouls(),
+  files: localBotFiles(),
   routines: {
     // A broken automation store is a storage failure (500), not the caller's.
     tasks: async () => (await automation.snapshot().catch(automationStoreFailure)).tasks,
@@ -266,11 +272,11 @@ export const botTemplateRoutes = createBotTemplateRoutes({
 });
 // A bot's chat lists the other bots in its `bots` prompt section, and a session the bots it may tag (a
 // worker's host asks for those of its sessions and bots, and learns each bot's name with it), and a bot reads its
-// SOUL.md (or has its first conversation) in its `soul` section, from its home folder in HUI's configuration; a worker's
-// host reads the home folders it keeps itself.
+// SOUL.md, USER.md and MEMORY.md in its `soul`, `operator` and `memory` sections, from its home folder in HUI's
+// configuration; a worker's host reads the home folders it keeps itself.
 durableHost().configureDurableBots(createDurableBots(durableHost(), {
   section: (botId) => bots.section(botId),
-  souls: {
+  home: {
     home: (botId) => botHome(botId),
     operator: async () => soulOperatorName((await readHuiSettings()).profileName),
     // From the last registry read: a bot still called "New Bot" asks for a name first.
@@ -321,7 +327,10 @@ export const vscodeRoutes = createVscodeRoutes({ vscode, readRegistry });
 /** macOS sleep prevention lives and dies with this gateway process. */
 export const macPower = process.platform === "darwin" ? new MacPower() : undefined;
 export const powerRoutes = createPowerRoutes({ macPower });
+export const hostMetricsRoutes = createHostMetricsRoutes({ hostMetrics: createHostMetrics() });
 liveSessions.setTaskSuggestionProvider((id) => taskSuggestions.list(id));
+/** A goal that is still active gets its next turn from the queue, never from a timer of its own. */
+liveSessions.setGoalContinuation((id) => claimGoalContinuation(id));
 liveSessions.setWatcherProvider((id) => watchers.list(id));
 export const secretRequests = new SecretRequests({ onChange: (id) => liveSessions.notifySnapshot(id) });
 export const secretFiles = new SecretFiles();
@@ -361,6 +370,9 @@ registerAgentToolHandler(async (invocation) => {
   }
   if (invocation.action === "set_stage") {
     return setAgentStage(invocation.callerSessionId, invocation.params);
+  }
+  if (invocation.action === "update_goal") {
+    return updateGoalFromAgent(invocation.callerSessionId, invocation.params);
   }
   if (invocation.action === "notify_user") {
     if (!(await readHuiSettings()).notifications.tool) throw new Error("The notification tool is off. The operator can turn it on in Settings → Tools.");
@@ -560,7 +572,7 @@ function sessionJiraIssues(record: SessionRecord, transcript: readonly Transcrip
   return refs.map((ref) => jiraStatuses.view(ref, origin && new URL(ref.url).origin === origin ? fetch : undefined));
 }
 
-export const sessionList = createSessionListHub(listSessionViews);
+export const sessionList = createSessionListHub(listSessionViews, 1_000, sessionViews.listSessionViewsStale);
 export const sessionRoutes = createSessionRoutes({
   sessionList,
   lifecycle: { createSession, startWorktreeSession, deleteSession, updateSession },

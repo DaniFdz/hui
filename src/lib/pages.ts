@@ -1,7 +1,10 @@
 /**
  * Catalog of HUI's routed pages, each served at `/<id>` with its label, area and summary. Sessions, Settings
- * and the Kanban board are routed separately in `navigation.ts`.
+ * and the Kanban board are routed separately in `navigation.ts`. A page behind a Labs flag is listed only while its
+ * flag is on.
  */
+import type { Settings } from "./settings/settings.ts";
+
 export type HuiPage = {
   id: string;
   label: string;
@@ -18,6 +21,7 @@ const PAGE_ROWS = [
   ["contributions", "Contributions", "Development", "GitHub commits and pull requests of the connected accounts."],
   ["connection", "Connection", "System", "Gateway URL, authentication and connection diagnostics."],
   ["cron", "Automations", "Automation", "Scheduled jobs, run history and manual triggers."],
+  ["dashboard", "Dashboard", "Operations", "The sessions in flight and the gateway host's resource use."],
   ["debug", "Debug", "System", "Logs, RPC inspection and diagnostic actions."],
   ["labs", "Labs", "Experimental", "Experimental and opt-in product features."],
   ["logs", "Logs", "System", "Live gateway logs and filtering."],
@@ -38,3 +42,11 @@ const PAGE_ROWS = [
 export type HuiPageId = (typeof PAGE_ROWS)[number][0];
 
 export const HUI_PAGES: readonly HuiPage[] = PAGE_ROWS.map(([id, label, area, summary]) => ({ id, label, area, summary }));
+
+export function isPageAvailable(page: HuiPage, labs: Settings["labs"]): boolean {
+  return page.id !== "dashboard" || labs.dashboard;
+}
+
+export function availablePages(labs: Settings["labs"]): readonly HuiPage[] {
+  return HUI_PAGES.filter((page) => isPageAvailable(page, labs));
+}

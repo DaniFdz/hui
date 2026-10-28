@@ -15,6 +15,7 @@
 import { remoteRuntime } from "../runtimes/remote.ts";
 import { CONTINUE_PROMPT, SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
 import { interruptedRunPrompt } from "./interrupted-run.ts";
+import { lastOperatorRequest } from "./digest.ts";
 import type { SessionRecord } from "./sessions.ts";
 import type { TaskSuggestion } from "../api/task-suggestions.ts";
 import type { Watcher } from "../api/watchers.ts";
@@ -286,6 +287,8 @@ export class LiveSessions {
   #suggestionSnapshot: (sessionId: string) => readonly TaskSuggestion[] = () => [];
   #watcherSnapshot: (sessionId: string) => readonly Watcher[] = () => [];
   #huiQuestions: (sessionId: string) => readonly HuiQuestion[] = () => [];
+  /** Claims one automatic turn for a session's active goal, or answers nothing when there is none to pursue. */
+  #goalContinuation: (sessionId: string) => Promise<string | undefined> = async () => undefined;
   #aborted: (sessionId: string) => void = () => {};
 
   /** Injectable so the state machine can be exercised without waiting to boot a
@@ -415,6 +418,11 @@ export class LiveSessions {
   /** Every stop (the Stop button, rewind, automations, subagents) passes here. */
   setAbortListener(listener: (sessionId: string) => void): void {
     this.#aborted = listener;
+  }
+
+  /** A settled turn asks whether its goal is still active, and queues the next one when it is. */
+  setGoalContinuation(claim: (sessionId: string) => Promise<string | undefined>): void {
+    this.#goalContinuation = claim;
   }
 
   /** Re-emits the session's state after coordination state changes outside the
@@ -690,16 +698,23 @@ export class LiveSessions {
     await this.#save(live, { updatedAt: new Date().toISOString() }).catch(() => {});
   }
 
+  /** Resumes a run HUI recorded but never saw end, or one whose last answer failed. A failed answer stays out of the
+   * model's context, so it needs the request it was handling restated rather than a nudge at a conversation that
+   * looks finished. */
   async continueInterrupted(id: string, automatic = false): Promise<void> {
     const live = this.#ready(id);
-    if (!live.record.runStartedAt) {
+    let original: string | undefined;
+    if (live.record.runStartedAt) {
+      original = live.record.runPrompt?.trim() || undefined;
+      if (!automatic && live.record.runRecoveryAttempts !== undefined) {
+        await this.#save(live, { runRecoveryAttempts: undefined });
+      }
+    } else if (live.transcript.findLast((entry) => entry.kind !== "compaction")?.kind === "error") {
+      original = lastOperatorRequest(live.transcript);
+    } else {
       throw new Error("That session has no interrupted run to continue.");
     }
-    const original = live.record.runPrompt?.trim();
     const message = interruptedRunPrompt(original);
-    if (!automatic && live.record.runRecoveryAttempts !== undefined) {
-      await this.#save(live, { runRecoveryAttempts: undefined });
-    }
     await this.prompt(id, message, undefined, original || message);
   }
 
@@ -732,6 +747,10 @@ export class LiveSessions {
       throw this.#unavailable(live);
     }
     return live.runtime.listModels ? await live.runtime.listModels() : [];
+  }
+
+  async subagentRoutes(): Promise<Settings["models"]["routes"]> {
+    return (await this.#readSettings()).models.routes;
   }
 
   async commands(id: string): Promise<readonly RuntimeCommand[]> {
@@ -1475,6 +1494,9 @@ export class LiveSessions {
     } else if (event.type === "compaction_end") {
       const alongside = this.#compactingAlongside(live);
       recordDiagnosticEvent({ area: "session", level: event.outcome === "failed" ? "warning" : "info", action: "compaction_end", summary: `Compaction ${event.outcome} (${event.reason})`, ...(event.message ? { detail: event.message } : {}), sessionId: live.record.id });
+      void this.#save(live, { updatedAt: new Date().toISOString() }).catch((error) => {
+        recordDiagnosticEvent({ area: "session", level: "warning", action: "compaction_activity_failed", summary: "Could not save compaction activity", detail: failureDetail(error), sessionId: live.record.id });
+      });
       live.compaction = event.outcome === "done" ? undefined : { status: event.outcome, reason: event.reason, ...(event.message ? { message: event.message } : {}) };
       this.#setStatus(live, this.#reported(live));
       // One that ran beside the conversation (Durable's) ends without a settle:
@@ -1605,10 +1627,21 @@ export class LiveSessions {
     const retried = await this.#retryWithFallback(live, runtime).catch(() => false);
     if (!retried) {
       if (live.readers === 0) this.#setUnread(live, true);
+      await this.#queueGoalContinuation(live);
       const continued = await this.#drainFollowUp(live);
       if (!continued && this.#reported(live) === "idle" && live.followUps.length === 0) this.#endRun(live, live.runFailed === true);
       this.#closeIfReleased(live);
     }
+  }
+
+  /** An active goal whose turn ended cleanly gets the next one from the queue. A stop, a failed run, an open
+   * question or input already waiting ends the pursuit here: the operator's next message picks it up. */
+  async #queueGoalContinuation(live: Live): Promise<void> {
+    if (live.runFailed || live.stopped || live.questions.size || live.followUps.length || live.record.worker) return;
+    const text = await this.#goalContinuation(live.record.id).catch(() => undefined);
+    if (!text || live.closed) return;
+    live.followUps.push({ id: crypto.randomUUID(), text, mode: "followUp" });
+    this.#broadcastQueue(live);
   }
 
   #closeIfReleased(live: Live): void {

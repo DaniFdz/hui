@@ -4,6 +4,7 @@
  * the tools actually active in that turn.
  */
 import type { ExtensionFactory } from "@earendil-works/pi-coding-agent";
+import type { Settings } from "../api/settings.ts";
 import { HUI_PRESENTATION_PROMPT } from "./hui-presentation.ts";
 
 export const HUI_PROMPT_REVISION = "hui-v4";
@@ -15,9 +16,35 @@ You have full local access, not blanket authorization: avoid destructive or exte
 Use web-compatible extension interactions. Do not assume a terminal UI is visible to the user.
 Do not claim an action succeeded without its result. Ask for missing decisions when they materially affect the outcome.`;
 
+export type RouteLine = Pick<Settings["models"]["routes"][number], "name" | "description">;
+
+export function modelRoutesFrom(raw: string | undefined): readonly RouteLine[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((entry: unknown) => {
+      if (typeof entry !== "object" || entry === null) return [];
+      if (!("name" in entry) || typeof entry.name !== "string" || !entry.name.trim()) return [];
+      return [{ name: entry.name.trim(), description: "description" in entry && typeof entry.description === "string" ? entry.description : "" }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function routeGuidelines(routes: readonly RouteLine[]): string {
+  if (!routes.length) return "";
+  return [
+    "Model routes for `sessions_spawn`: pass `route` to choose one, or leave it out to inherit your own model.",
+    ...routes.map((route) => `- ${route.name}: ${route.description || "no description"}`),
+  ].join("\n");
+}
+
 /** PI adds context, skills and APPEND_SYSTEM itself. Contribute only actual
  * active-tool guidance, including overrides and late extension registrations. */
 export const huiPromptExtension: ExtensionFactory = (pi) => {
+  const routes = modelRoutesFrom(process.env["HUI_MODEL_ROUTES"]);
   pi.on("before_agent_start", (event) => {
     const options = event.systemPromptOptions;
     options.sections["hui_presentation"] = HUI_PRESENTATION_PROMPT;
@@ -27,8 +54,8 @@ export const huiPromptExtension: ExtensionFactory = (pi) => {
     options.sections["hui_tools"] = activeTools
       ? `Active callable tools for this turn (PI provides their full schemas separately):\n${activeTools}`
       : "No callable tools are active for this turn.";
-    options.sections["hui_tool_guidelines"] = [...new Set(options.selectedTools.flatMap(
+    options.sections["hui_tool_guidelines"] = [[...new Set(options.selectedTools.flatMap(
       (name) => options.toolGuidelines[name] ?? [],
-    ))].map((line) => `- ${line}`).join("\n");
+    ))].map((line) => `- ${line}`).join("\n"), routeGuidelines(options.selectedTools.includes("sessions_spawn") ? routes : [])].filter(Boolean).join("\n\n");
   });
 };

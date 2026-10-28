@@ -91,7 +91,8 @@ export function importSource(tab: BotImportTab, state: { picked?: PickedSource |
 
 /** The gateway's preview, narrowed: a malformed answer is an error, never half a preview. */
 export function parseBotImportPreview(body: unknown): BotImportPreview {
-  if (!isRecord(body) || !isRecord(body["template"]) || !isRecord(body["bot"]) || typeof body["soul"] !== "string") throw new Error("The import preview did not come back.");
+  if (!isRecord(body) || !isRecord(body["template"]) || !isRecord(body["bot"]) || typeof body["soul"] !== "string" || typeof body["memory"] !== "string") throw new Error("The import preview did not come back.");
+  if (body["bootstrap"] !== undefined && typeof body["bootstrap"] !== "string") throw new Error("The import preview did not come back.");
   const lists = ["skills", "routines", "integrations", "disabledTools", "disabledSkills", "open", "needs", "triggers", "dropped", "notes"];
   if (lists.some((key) => !Array.isArray(body[key])) || !isRecord(body["memories"])) throw new Error("The import preview did not come back.");
   const format = (body["template"] as { format?: unknown }).format;

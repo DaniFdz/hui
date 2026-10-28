@@ -264,6 +264,23 @@ export async function openSession(
   return { session: body.session, snapshot: body.snapshot, revision: body.revision };
 }
 
+/** Starts, pauses, resumes or clears this conversation's goal. Starting also sends the objective as its first turn. */
+export async function setSessionGoal(
+  id: string,
+  action: "start" | "pause" | "resume" | "clear",
+  objective?: string,
+): Promise<SessionView> {
+  const body = await fetchJson<{ session?: SessionView }>(`${SESSIONS_URL}/${encodeURIComponent(id)}/goal`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(action === "start" ? { action, objective: objective ?? "" } : { action }),
+  });
+  if (!body.session) {
+    throw new Error("The goal change did not come back.");
+  }
+  return body.session;
+}
+
 /** Resolves once pi has accepted the prompt, not when the turn finishes. */
 /** Renames, regroups, or pins. pi's own session file keeps its name; the
  * registry is HUI's, and pi is left alone. */

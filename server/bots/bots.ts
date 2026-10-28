@@ -14,7 +14,7 @@
  * a newer HUI is refused and never overwritten.
  *
  * A bot's persona is not here: it is SOUL.md in its home folder
- * (`souls.ts`). Records from before SOUL.md may still carry
+ * (`home.ts`). Records from before SOUL.md may still carry
  * `instructions`: the registry keeps that field in the file, untouched by every
  * write, until `BotService.migrate` has turned it into SOUL.md and
  * `forgetInstructions` drops it.
@@ -24,9 +24,9 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
 
 import {
-  BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_HANDLE, BOT_LIMITS, BOT_TAGGING, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, isBotTagging,
+  BOT_FACE_EARS, BOT_FACE_SHAPES, BOT_FILE_LIMITS, BOT_FILE_NAMES, BOT_HANDLE, BOT_LIMITS, BOT_TAGGING, BOT_THINKING_LEVELS, handleFromName, isBotFaceEars, isBotFaceShape, isBotTagging,
   NEW_BOT_NAME, storedTagging,
-  type BotAccess, type BotAvatar, type BotAvatarPatch, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice,
+  type BotAccess, type BotAvatar, type BotAvatarPatch, type BotFile, type BotInput, type BotPatch, type BotRecord, type BotSkillRef, type BotSkillSelector, type BotVoice,
   type BotVoicePatch,
 } from "../bots-format.ts";
 import { GPT_LIVE_VOICES, gptLiveVoice } from "../calls-format.ts";
@@ -179,6 +179,7 @@ export function parseBotRecord(raw: unknown): BotRecord | undefined {
     ...(voice ? { voice } : {}),
     ...(raw["hidden"] === true ? { hidden: true } : {}),
     ...(raw["archived"] === true ? { archived: true } : {}),
+    ...(raw["split"] === true ? { split: true } : {}),
     ...(disabledTools.length ? { disabledTools } : {}),
     ...(disabledSkills.length ? { disabledSkills } : {}),
     sessionId, createdAt, updatedAt,
@@ -353,8 +354,8 @@ export function findBot(bots: readonly BotRecord[], target: string): BotRecord {
 }
 
 const INPUT_KEYS = new Set([
-  "name", "handle", "title", "description", "tagging", "soul", "cwd", "worker", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice",
-  "hidden", "disabledTools", "disabledSkills",
+  "name", "handle", "title", "description", "tagging", "soul", "user", "memory", "bootstrap", "cwd", "worker", "model", "thinking", "memoryModel", "utilityModel", "memoryThinking", "avatar", "voice",
+  "hidden", "disabledTools", "disabledSkills", "split",
 ]);
 const LABELS: Record<string, string> = {
   name: "Bot name", handle: "Bot handle", title: "Bot title", description: "Bot description", soul: "SOUL.md",
@@ -373,16 +374,27 @@ function body(value: unknown, what: string): Record<string, unknown> {
 }
 
 /**
- * SOUL.md as `POST /__hui/bots` or `PUT /__hui/bots/:id/soul` gives it: text of
- * at most 20,000 characters, trimmed. `""` means none: the bot has (again) its
- * first conversation.
+ * One of a bot's home files as `POST /__hui/bots` or `PUT /__hui/bots/:id/files/:file` gives it: text within its
+ * limit, trimmed, line ends as `\n`. `""` means none.
  */
-export function normalizeSoul(raw: unknown): string {
-  if (typeof raw !== "string") throw new BotInputError("SOUL.md must be text.");
+export function normalizeHomeFile(raw: unknown, file: BotFile): string {
+  const name = BOT_FILE_NAMES[file];
+  const limit = BOT_FILE_LIMITS[file];
+  if (typeof raw !== "string") throw new BotInputError(`${name} must be text.`);
   const value = raw.replace(/\r\n?/gu, "\n").trim();
-  if (value.length > BOT_LIMITS.soul) throw new BotInputError(`SOUL.md must be at most ${BOT_LIMITS.soul} characters (it has ${value.length}).`);
-  if (value.includes("\0")) throw new BotInputError("SOUL.md must be text.");
+  if (value.length > limit) throw new BotInputError(`${name} must be at most ${limit} characters (it has ${value.length}).`);
+  if (value.includes("\0")) throw new BotInputError(`${name} must be text.`);
   return value;
+}
+
+/** SOUL.md: `normalizeHomeFile` with its own words, since `PUT …/soul` keeps its name. */
+export function normalizeSoul(raw: unknown): string {
+  return normalizeHomeFile(raw, "soul");
+}
+
+/** BOOTSTRAP.md, which only the operator writes. */
+export function normalizeBootstrap(raw: unknown): string {
+  return normalizeHomeFile(raw, "bootstrap");
 }
 
 function textField(raw: unknown, key: string, maximum: number, options: { line?: boolean; required?: boolean } = {}): string {
@@ -525,10 +537,14 @@ function cwdField(raw: unknown): string {
  * service. */
 export function normalizeBotInput(value: unknown): BotInput & { name: string } {
   const input = body(value, "A bot");
+  if ("split" in input) throw new BotInputError("A new bot is split from the start: split is only for a change.");
   // Without a name the bot is "New Bot" until its first conversation names it (set_profile). Where it runs is chosen
   // here, once; a patch refuses it.
-  const { soul: rawSoul, worker: rawWorker, ...fields } = "name" in input ? input : { ...input, name: NEW_BOT_NAME };
+  const { soul: rawSoul, worker: rawWorker, user: rawUser, memory: rawMemory, bootstrap: rawBootstrap, ...fields } = "name" in input ? input : { ...input, name: NEW_BOT_NAME };
   const soul = rawSoul === undefined ? "" : normalizeSoul(rawSoul);
+  const user = rawUser === undefined ? "" : normalizeHomeFile(rawUser, "user");
+  const memory = rawMemory === undefined ? "" : normalizeHomeFile(rawMemory, "memory");
+  const bootstrap = rawBootstrap === undefined ? "" : normalizeBootstrap(rawBootstrap);
   const worker = rawWorker === undefined ? "" : textField(rawWorker, "worker", 100, { line: true });
   // The patch rules, then empty optional text and avatar keys dropped: a new bot has nothing to clear.
   const patch = normalizeBotPatch(fields);
@@ -540,6 +556,9 @@ export function normalizeBotInput(value: unknown): BotInput & { name: string } {
   const tagging = storedTagging(patch.tagging);
   if (tagging) result.tagging = tagging;
   if (soul) result.soul = soul;
+  if (user) result.user = user;
+  if (memory) result.memory = memory;
+  if (bootstrap) result.bootstrap = bootstrap;
   if (patch.cwd) result.cwd = patch.cwd;
   if (patch.model) result.model = patch.model;
   if (patch.thinking) result.thinking = patch.thinking;
@@ -592,6 +611,10 @@ export function normalizeBotPatch(value: unknown): BotPatch {
   // Whole lists: [] turns everything back on.
   if ("disabledTools" in input) patch.disabledTools = toolsField(input["disabledTools"]);
   if ("disabledSkills" in input) patch.disabledSkills = skillsField(input["disabledSkills"]);
+  if ("split" in input) {
+    if (input["split"] !== true) throw new BotInputError("split can only be true: a bot that was asked to sort its files stays split.");
+    patch.split = true;
+  }
   return patch;
 }
 

@@ -52,7 +52,7 @@ import "../components/browser-preview.ts";
 import "../components/widget-card.ts";
 import "../components/questionnaire-card.ts";
 import type { QuestionnaireQuestion, QuestionnaireResult } from "../api/schema/sessions.ts";
-import { handleCodeBlockDisclosure, markdownBlocks } from "../lib/markdown/blocks.ts";
+import { markdownBlocks } from "../lib/markdown/blocks.ts";
 import { openMessageContextMenu } from "../lib/message-context-menu.ts";
 import { progressCardFromTranscript } from "../lib/progress-card.ts";
 import { mediaSizeLabel, presentedMediaFromDetails, type PresentedMediaItem } from "../lib/presented-media.ts";
@@ -228,6 +228,10 @@ export type HomeProps = {
   opening: boolean;
   /** The open request failed, so there is no transcript to show; onRetry asks again. */
   openError?: string;
+  /** A re-read of the open session is in flight. */
+  refreshing?: boolean;
+  /** Reads the open session again, for a card the stream left behind. */
+  onRefreshSession: () => void;
   /** A turn is in flight, so the composer is locked. */
   streaming: boolean;
   sending: boolean;
@@ -307,6 +311,8 @@ export type HomeProps = {
   onLocalPathKeydown: (event: KeyboardEvent) => void;
   onSendPrompt: (text: string, attachments: readonly Attachment[], mode: PromptMode) => void;
   onContinueInterrupted: () => void;
+  /** Pauses, resumes or clears the conversation's goal from the pill above the composer. */
+  onGoalChange: (action: "pause" | "resume" | "clear") => void;
   queueEditingId: string;
   queueEditingText: string;
   onQueueEdit: (id: string) => void;
@@ -828,30 +834,6 @@ function renderMessageAttachment(attachment: string | { name: string; kind?: str
 function printable(value: unknown): string {
   if (typeof value === "string") return value;
   try { return JSON.stringify(value, null, 2); } catch { return String(value); }
-}
-
-const codeCopyAttempts = new WeakMap<HTMLElement, symbol>();
-
-async function copyCodeBlock(event: Event, props: HomeProps) {
-  if (!(event.target instanceof Element)) return;
-  handleCodeBlockDisclosure(event.target);
-  const button = event.target.closest<HTMLElement>("[data-copy-code]");
-  if (!button) return;
-  const content = button.closest(".code-block-wrapper")?.querySelector("code")?.textContent ?? "";
-  const code = content.endsWith("\n") ? content.slice(0, -1) : content;
-  const attempt = Symbol();
-  codeCopyAttempts.set(button, attempt);
-  const copied = await props.onCopy(code, `code-${code.slice(0, 40)}`);
-  if (!button.isConnected || codeCopyAttempts.get(button) !== attempt) return;
-  button.classList.toggle("copied", copied);
-  button.classList.toggle("copy-failed", !copied);
-  button.setAttribute("aria-label", copied ? "Copied" : "Copy failed");
-  window.setTimeout(() => {
-    if (!button.isConnected || codeCopyAttempts.get(button) !== attempt) return;
-    button.classList.remove("copied", "copy-failed");
-    button.setAttribute("aria-label", "Copy code");
-    codeCopyAttempts.delete(button);
-  }, copied ? 1500 : 2000);
 }
 
 /** One hover/focus/dismiss contract for every transcript footer action. */
@@ -1742,6 +1724,7 @@ function renderComposer(props: HomeProps) {
         </div>
       ` : nothing}
       ${renderTaskProgress(props)}
+      ${renderGoalPill(props)}
       ${renderQueue(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
@@ -1863,6 +1846,40 @@ function renderRunError(props: HomeProps, blocked: boolean) {
   </div>`;
 }
 
+const goalTargetIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3" /></svg>`;
+const goalPauseIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5v14M14.5 5v14" /></svg>`;
+const goalPlayIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none" /></svg>`;
+
+/** The goal above the composer, in OpenClaw's own pill: status, objective, and the operator's controls. */
+function renderGoalPill(props: HomeProps) {
+  const goal = props.session?.goal;
+  if (!goal) return nothing;
+  const label = { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[goal.status];
+  const icon = goal.status === "complete" ? checkIcon
+    : goal.status === "blocked" ? icons.alertTriangle
+      : goal.status === "paused" ? goalPauseIcon
+        : goalTargetIcon;
+  return html`<div class="agent-chat__goal-float">
+    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded="false" title=${goal.note ?? goal.objective}>
+      <div class="agent-chat__goal-row">
+        <span class="agent-chat__goal-icon" aria-hidden="true">${icon}</span>
+        <span class="agent-chat__goal-copy">
+          <span class="agent-chat__goal-label">${label}</span>
+          <span class="agent-chat__goal-objective">${goal.objective}</span>
+        </span>
+        <span class="agent-chat__goal-actions">
+          ${goal.status === "active"
+            ? html`<button type="button" class="agent-chat__goal-action" aria-label="Pause goal" title="Pause goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("pause")}>${goalPauseIcon}</button>`
+            : goal.status === "complete"
+              ? nothing
+              : html`<button type="button" class="agent-chat__goal-action" aria-label="Resume goal" title="Resume goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("resume")}>${goalPlayIcon}</button>`}
+          <button type="button" class="agent-chat__goal-action" aria-label="Clear goal" title="Clear goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("clear")}>${icons.trash}</button>
+        </span>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderTaskProgress(props: HomeProps) {
   const card = progressCardFromTranscript(props.transcript);
   if (!card) return nothing;
@@ -1878,6 +1895,7 @@ function renderTaskProgress(props: HomeProps) {
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
+        <button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card" aria-busy=${props.refreshing} ?disabled=${props.refreshing} @click=${(event: Event) => refreshTaskProgress(event, props)}>${icons.refresh}</button>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
       <div class="session-progress-card__body" role="region" aria-label="Task progress">
@@ -1886,6 +1904,13 @@ function renderTaskProgress(props: HomeProps) {
       </div>
     </details>
   </div>`;
+}
+
+/** A control inside the summary asks for a fresh card instead of collapsing it. */
+function refreshTaskProgress(event: Event, props: HomeProps) {
+  event.preventDefault();
+  event.stopPropagation();
+  props.onRefreshSession();
 }
 
 function renderConnection(props: HomeProps) {
@@ -2268,7 +2293,7 @@ function renderQuestion(props: HomeProps) {
   if (!question) return nothing;
   if (question.method === "questionnaire") {
     // Its previews' code blocks copy and wrap as the transcript's do.
-    return html`<div class="agent-chat__question-dock" aria-live="polite" @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
+    return html`<div class="agent-chat__question-dock" aria-live="polite">
       <hui-questionnaire-card .prompt=${question} .onAnswer=${props.onAnswerQuestion} .idPrefix=${sessionControlId(props, "questionnaire")}></hui-questionnaire-card>
     </div>`;
   }
@@ -2557,8 +2582,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
                 <div class="chat-main__conversation">
                   ${props.taskSuggestions?.suggestions.length ? html`<div class="chat-gutter-stack">${renderTaskSuggestionCard(props.taskSuggestions)}</div>` : nothing}
                   <div class="chat-thread chat-thread--direct" role="log" aria-live="off" aria-relevant="additions" tabindex="0" data-testid="transcript" data-window-start=${start}
-                    @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}
-                    @click=${(event: Event) => { void copyCodeBlock(event, props); }}>
+                    @scroll=${(event: Event) => props.onTranscriptScroll(event.currentTarget as HTMLElement)}>
                     ${positionRail({ sessionId: session.id, markers: props.opening || session.status === "starting" ? [] : conversationMarkers(rows), onNavigate: props.onTranscriptNavigate, onReveal: reveal })}
                     <div class="chat-thread-inner" data-hui-files-session=${props.fileLinks ? session.id : nothing} ${markdownBlocks()}>${renderTranscriptBody(props, rows, start)}${props.watchers ? renderWatcherActivity(props.watchers) : nothing}</div>
                   </div>

@@ -14,7 +14,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai";
-import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type DocumentReader, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration } from "@earendil-works/pi-durable";
+import { CompactionTask, createRegistry, defineExtension, GenerationTask, Harness, hook, UsageDoc, type Conversation, type ConversationId, type DocumentReader, type EntryId, type EnvTarget, type Extension, type HarnessSettings, type HookApi, type Registry, type ToolRegistration } from "@earendil-works/pi-durable";
 import { NodeExecutionEnv } from "@earendil-works/pi-durable/env/node";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
@@ -34,6 +34,7 @@ import { OptChatManager, type OptChatTuning } from "./durable-optchat.ts";
 import { ImageLimits } from "./durable-images.ts";
 import type { BotChat, OfferedTool, ToolOrigin } from "./durable-offer.ts";
 import { invokeAgentTool } from "../agent-tools/bridge.ts";
+import { sessionGoalSection } from "../sessions/goals.ts";
 
 /** The tools of `extension` the model may call: not the ones only other tools call, such as codemode's `models.*`. */
 export const modelCallable = (extension: Extension): ToolRegistration[] =>
@@ -111,6 +112,8 @@ const CLIENT_SESSION_ENV = "PI_CLIENT_SESSION_ID";
 /** pi-ai model calls whose third argument is the request options. */
 const REQUEST_CALLS = new Set<PropertyKey>(["stream", "streamSimple", "complete", "completeSimple", "streamDeferred", "fetchDeferred", "cancelDeferred"]);
 type ProviderResponse = { status: number; headers: Record<string, string> };
+/** One conversation's `pi.usage` ledger, as `conversationUsage` copies it out. */
+type ConversationSpend = { models?: Record<string, Record<string, unknown>>; tools?: Record<string, Record<string, unknown>>; lastEntryId: EntryId | null };
 type RequestCallbacks = {
   onPayload?: (payload: unknown, model: unknown) => unknown;
   onResponse?: (response: ProviderResponse, model: unknown) => void | Promise<void>;
@@ -161,6 +164,8 @@ export type DurableHostOptions = {
   invokeTool?: DurableToolInvoker;
   /** HUI session for a conversation nobody has reopened since a restart. */
   lookupCaller?: (conversationId: ConversationId) => Promise<string | undefined>;
+  /** The goal section a session's next prompt carries; the gateway answers from its registry, workers have none. */
+  goalFor?: (sessionId: string) => Promise<string | undefined>;
   /** Resume interrupted runs when the store opens (default). `hui doctor` opens it without running any work. */
   resume?: boolean;
   /** OptChat constants a test changes (docs/optchat.md). */
@@ -324,6 +329,13 @@ export class DurableHost implements ExtensionHost {
     };
     this.prompt.skillDirsFor = (conversationId) => this.skillDirsFor(conversationId);
     this.prompt.ultraFor = (conversationId) => this.#ultra.has(this.#callers.get(conversationId) ?? "");
+    const goalFor = options.goalFor;
+    if (goalFor) {
+      this.prompt.goalFor = async (conversationId) => {
+        const sessionId = this.#callers.get(conversationId) ?? await this.#lookupCaller(conversationId).catch(() => undefined);
+        return sessionId ? goalFor(sessionId).catch(() => undefined) : undefined;
+      };
+    }
   }
 
   /** Sets the bots this host runs, once, before its store opens: `null` on a host that never runs bot work. */
@@ -680,12 +692,15 @@ export class DurableHost implements ExtensionHost {
     if (caller) this.#callers.set(target, caller);
   }
 
-  /** Spend Durable recorded for one conversation, per model; undefined when
-   * this process does not own the store. */
-  async conversationUsage(conversationId: ConversationId): Promise<{ models?: Record<string, Record<string, unknown>> } | undefined> {
+  /** Spend Durable recorded for one conversation, per model and per tool;
+   * undefined when this process does not own the store. */
+  async conversationUsage(conversationId: ConversationId): Promise<ConversationSpend | undefined> {
     const harness = this.#harness;
     if (!harness) return undefined;
-    return harness.commit(async (tx) => JSON.parse(JSON.stringify(await tx.doc(UsageDoc, conversationId))) as { models?: Record<string, Record<string, unknown>> }, durableContext);
+    return harness.commit(async (tx) => {
+      const lastEntryId = (await tx.scanEntries({ conversationId, order: "descending" }, 1)).items[0]?.id ?? null;
+      return JSON.parse(JSON.stringify({ ...await tx.doc(UsageDoc, conversationId), lastEntryId })) as ConversationSpend;
+    }, durableContext);
   }
 
   /** Closing records no outcome: running work resumes when the store reopens.
@@ -728,6 +743,6 @@ let defaultHost: DurableHost | undefined;
 
 /** The gateway's store: HUI's configuration directory and PI's agent directory. */
 export function durableHost(): DurableHost {
-  defaultHost ??= new DurableHost({ dir: DURABLE_DIR, agentDir: resolvePiAgentDir() });
+  defaultHost ??= new DurableHost({ dir: DURABLE_DIR, agentDir: resolvePiAgentDir(), goalFor: sessionGoalSection });
   return defaultHost;
 }

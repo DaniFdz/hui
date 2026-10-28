@@ -54,6 +54,12 @@ type OriginalSettings = {
     primary: string;
     fallback: string;
     utility: string;
+    routes: readonly {
+      name: string;
+      description: string;
+      model: string;
+      thinking?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | undefined;
+    }[];
   };
 
   calls: { voice: GptLiveVoice };
@@ -64,6 +70,7 @@ type OriginalSettings = {
   labs: {
     denseObservability: boolean;
     detailedDebug: boolean;
+    dashboard: boolean;
   };
 };
 

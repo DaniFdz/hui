@@ -415,7 +415,7 @@ test("a bot has every tool and skill a session in its directory has until the op
   const plainTools = names((await plain.inspect()).tools);
   const { id, session } = await f.bot(NONE);
   assert.equal(plainTools.at(-1), "message_bot", "a session tags bots too");
-  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "write_soul", "set_profile", "triggers", "routines"], "every tool, message_bot, its soul and profile tools, its triggers and its routines");
+  assert.deepEqual(names((await session.inspect()).tools), [...plainTools, "write_soul", "update_user", "update_memory", "set_profile", "triggers", "routines"], "every tool, message_bot, its soul and profile tools, its triggers and its routines");
   assert.deepEqual((await (await f.host.open()).snapshot(AgentDoc, id, durableContext))?.tools, { remove: ["notify_user", "request_access", "load_skill"] },
     "its own tools wait until it has a use for them, and the notification tool until Settings turns it on");
   assert.deepEqual(names(session.botOffer()), [...plainTools, "triggers", "routines"], "the operator can turn off any of them but its essentials");
@@ -428,7 +428,7 @@ test("a bot has every tool and skill a session in its directory has until the op
   await session.prompt("plain turn");
   await settledWith(session, answered("Fixture response"));
   const [first] = await requests(f.log);
-  assert.deepEqual(toolNames(first), [...plainTools, "write_soul", "set_profile", "triggers", "routines"]);
+  assert.deepEqual(toolNames(first), [...plainTools, "write_soul", "update_user", "update_memory", "set_profile", "triggers", "routines"]);
   const system = JSON.stringify(first?.system);
   assert.match(system, /Use the read tool to load a skill's file/u, "PI's own skills section, every skill");
   assert.match(system, /<name>alpha<\/name>[^]*<name>beta<\/name>/u);
@@ -715,8 +715,8 @@ test("the conversations port writes the lists in the creating commit, reads and 
   assert.equal(builtin.live, false);
   assert.ok(builtin.tools.some((tool) => tool.name === "bash") && builtin.tools.some((tool) => tool.name === "message_bot"));
   assert.ok(!builtin.tools.some((tool) => tool.name === "fixture_echo"), "no chat runs yet: no extension's tools");
-  assert.ok(!builtin.tools.some((tool) => ["write_soul", "set_profile", "request_access", "load_skill"].includes(tool.name)), "a bot's own tools are never offered");
-  assert.deepEqual(builtin.alwaysOn.map((tool) => tool.name), ["write_soul", "set_profile", "request_access", "load_skill", "zoom", "date"]);
+  assert.ok(!builtin.tools.some((tool) => ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill"].includes(tool.name)), "a bot's own tools are never offered");
+  assert.deepEqual(builtin.alwaysOn.map((tool) => tool.name), ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill", "zoom", "date"]);
   const bundled = builtin.skills.find((skill) => skill.name === "create-verification-skill");
   assert.equal(bundled?.source, "HUI defaults");
   assert.equal(bundled?.path, "hui:skill:create-verification-skill", "a bundled skill by its stable path");
@@ -761,5 +761,5 @@ test("a bot document from before the lists reads as nothing turned off, and an o
   assert.equal(old?.bot, "bot-restricted", "the same version: an older HUI reads it and ignores the lists, so a rollback keeps the chat");
   const plain = await startDurable({ cwd: f.cwd, huiSessionId: "plain" }, f.host);
   const session = await startDurable({ cwd: f.cwd, sessionFile: `durable:${created.id}`, huiSessionId: "old-chat" }, f.host);
-  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "write_soul", "set_profile", "triggers", "routines"], "every tool, as before");
+  assert.deepEqual(names((await session.inspect()).tools), [...names((await plain.inspect()).tools), "write_soul", "update_user", "update_memory", "set_profile", "triggers", "routines"], "every tool, as before");
 });

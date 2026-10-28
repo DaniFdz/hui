@@ -1,6 +1,8 @@
 /** Registers HUI as a macOS application. It assembles HUI.app from the bundled Electron with the window shell inside,
  * signs it ad hoc and only ever replaces a bundle HUI itself installed, recognized by its owner marker; the app keeps
- * launching the installed CLI. Runs from `hui install-app` and from postinstall on global npm installs on macOS. */
+ * launching the installed CLI and claims the `hui://` scheme, so a chat link can open the window. Runs from
+ * `hui install-app`, from postinstall on global npm installs on macOS, and from an update that left the installed app
+ * on another version. */
 import { execFileSync } from 'node:child_process';
 import { cp, lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -48,6 +50,11 @@ export function updatePlist(plist, version) {
     const pattern = new RegExp(`<key>${key}</key>\\s*<string>[^<]*</string>`);
     const entry = `<key>${key}</key><string>${value}</string>`;
     plist = pattern.test(plist) ? plist.replace(pattern, entry) : plist.replace('</dict>', `${entry}</dict>`);
+  }
+  // The scheme the web app's `?open=app` hand-off and any launcher open; without it macOS cannot launch HUI from a link.
+  // Anchored to the root dictionary: Electron's plist has nested ones, and a scheme there is registered nowhere.
+  if (!plist.includes('<key>CFBundleURLTypes</key>')) {
+    plist = plist.replace(/<\/dict>(\s*<\/plist>)/u, `<key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>${marker}</string><key>CFBundleURLSchemes</key><array><string>hui</string></array></dict></array></dict>$1`);
   }
   return plist;
 }
@@ -101,20 +108,43 @@ export async function installMacApp({ applications = join(homedir(), 'Applicatio
   }
 }
 
-export async function installApp(installationRoot = root) {
+/** The version of the HUI-owned app in `applications` that launches `installationRoot`: null when there is no such
+ * app, which app of another HUI installation does not count as, and '' when its bundle records no version, older than
+ * any release. */
+export async function installedAppVersion(installationRoot, applications = join(homedir(), 'Applications')) {
+  const resources = join(applications, 'HUI.app', 'Contents', 'Resources');
+  if (await readFile(join(resources, 'hui-owner'), 'utf8').catch(() => '') !== marker) return null;
+  const { root } = JSON.parse(await readFile(join(resources, 'app/launch.json'), 'utf8').catch(() => '{}'));
+  if (root !== installationRoot) return null;
+  const { version } = JSON.parse(await readFile(join(resources, 'app/package.json'), 'utf8').catch(() => '{}'));
+  return typeof version === 'string' ? version : '';
+}
+
+export async function installApp(installationRoot = root, { applications } = {}) {
   if (process.platform !== 'darwin') {
     console.log('hui: system-app registration currently supports macOS; use hui desktop on this platform.');
     return;
   }
-  const electron = require('electron');
-  const electronApp = resolve(dirname(electron), '../..');
+  const electronApp = resolve(dirname(require('electron')), '../..');
   const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
-  const app = await installMacApp({ electronApp, version, config: launchConfig(installationRoot), finalize(candidate) {
+  const app = await installMacApp({ applications, electronApp, version, config: launchConfig(installationRoot), finalize(candidate) {
     for (const args of macSigningCommands(candidate)) execFileSync('/usr/bin/codesign', args, { stdio: 'pipe' });
   } });
   const register = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
   execFileSync(register, ['-f', app], { stdio: 'pipe' });
   console.log(`hui: installed ${app}. Open HUI from Spotlight or Finder.`);
+}
+
+/** An update replaces the CLI and gateway; the app HUI installed for this installation keeps the release it was
+ * installed from, and an app older than the gateway refuses its notifications. Reinstall it from this package when it
+ * carries another version, and answer the version it replaced. The running app keeps its old code until the operator
+ * quits and reopens it. An app that launches another HUI installation is not ours to replace. */
+export async function refreshInstalledApp(installationRoot = root, { applications, install = installApp } = {}) {
+  const installed = await installedAppVersion(installationRoot, applications);
+  const { version } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+  if (installed === null || installed === version) return null;
+  await install(installationRoot, { applications });
+  return installed;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

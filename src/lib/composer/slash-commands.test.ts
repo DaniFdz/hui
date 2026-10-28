@@ -29,7 +29,7 @@ test("HUI commands add btw and side without duplicating runtime names", () => {
     { name: "clear", description: "runtime copy", source: "extension" },
     { name: "review", description: "Review", source: "skill" },
   ], true);
-  assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side", "review"]);
+  assert.deepEqual(commands.map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side", "goal", "review"]);
 });
 
 test("a bot's permanent chat offers no /clear or /compact, and runtime copies cannot take their names", () => {
@@ -38,8 +38,8 @@ test("a bot's permanent chat offers no /clear or /compact, and runtime copies ca
     { name: "compact", description: "runtime copy", source: "prompt" },
     { name: "review", description: "Review", source: "skill" },
   ], true, true);
-  assert.deepEqual(commands.map((command) => command.name), ["update", "reload", "btw", "side", "review"]);
-  assert.deepEqual(composerCommands([], true).map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side"]);
+  assert.deepEqual(commands.map((command) => command.name), ["update", "reload", "btw", "side", "goal", "review"]);
+  assert.deepEqual(composerCommands([], true).map((command) => command.name), ["update", "clear", "reload", "compact", "btw", "side", "goal"]);
   for (const text of ["/clear", " /clear ", "/clear now", "/compact", "/compact keep the plan"]) {
     assert.match(botChatCommandRefusal(text) ?? "", /permanent chat/u, text);
   }

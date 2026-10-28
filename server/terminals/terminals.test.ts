@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -80,12 +80,12 @@ test("resize, natural exit, explicit end and resource limits have distinct seman
 
 test("real PTY supports shell state, Unicode, resize and Ctrl+C without terminating the shell", { timeout: 12_000 }, async (t) => {
   const cwd = await mkdtemp(join(tmpdir(), "hui-pty-test-"));
-  const previousShell = process.env["SHELL"];
-  process.env["SHELL"] = "/bin/sh";
+  t.onTestFinished(() => { vi.unstubAllEnvs(); });
+  vi.stubEnv("SHELL", "/bin/sh");
+  vi.stubEnv("LC_ALL", "en_US.UTF-8");
   const service = new TerminalService();
-  const terminal = service.create("real", cwd);
-  if (previousShell === undefined) delete process.env["SHELL"]; else process.env["SHELL"] = previousShell;
   t.onTestFinished(async () => { service.dispose(); await rm(cwd, { recursive: true, force: true }); });
+  const terminal = service.create("real", cwd);
   const waitOutput = (expected: string, from = 0) => new Promise<void>((resolve, reject) => {
     let off: (() => void) | undefined;
     const timeout = setTimeout(() => { off?.(); reject(new Error(`Missing terminal output: ${expected}`)); }, 5000);

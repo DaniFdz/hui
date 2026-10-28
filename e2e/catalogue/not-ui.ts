@@ -11,6 +11,8 @@ export const NOT_UI: Readonly<Record<string, string>> = {
   "route:GET /__hui/bots/:id/memory/html": "Read by `hui bot memory`; the panel's Open memory page link was removed.",
   "route:GET /__hui/bots/:id/memory/zoom": "Read by `hui bot memory`; the panel no longer has a Memory tab.",
   "route:GET /__hui/bots/:id/soul": "Only `hui bot soul` reads SOUL.md; the panel no longer shows it.",
+  "route:GET /__hui/bots/:id/files/:file": "Read by `hui bot soul`, `hui bot user`, `hui bot memory` and `hui bot bootstrap`; USER.md and MEMORY.md have no panel read or write path, and the panel shows neither.",
+  "route:PUT /__hui/bots/:id/files/bootstrap": "Only `hui bot bootstrap --file` replaces the operator's BOOTSTRAP.md; the panel never edits it.",
   "route:PUT /__hui/bots/:id/soul": "Only `hui bot soul` replaces SOUL.md; the panel no longer edits it.",
   "route:POST /__hui/bots/:id/messages": "For the CLI and other callers; a bot's composer sends through the session prompt route.",
   "route:POST /__hui/bots/:id/stop": "For the CLI; Stop in a bot's chat uses the session's stop route.",

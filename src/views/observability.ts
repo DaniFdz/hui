@@ -1,6 +1,6 @@
 /**
- * The Activity, Logs, Debug and Usage pages, rendered from the gateway's observability snapshot. They only read:
- * refreshing and exporting go back to the app, and usage totals come from PI's session files via the gateway.
+ * The Activity, Logs and Debug pages, rendered from the gateway's observability snapshot. They only read;
+ * refreshing and exporting go back to the app. Usage has its own date-ranged report.
  */
 import { html, nothing, type TemplateResult } from "lit";
 
@@ -21,7 +21,7 @@ export type ObservabilityProps = {
   onExport: () => void;
 };
 
-const IDS = new Set(["activity", "logs", "debug", "usage"]);
+const IDS = new Set(["activity", "logs", "debug"]);
 export function isObservabilitySurface(page: HuiPage): boolean { return IDS.has(page.id); }
 
 function header(props: ObservabilityProps, title: string, subtitle: string, exportable = false) {
@@ -75,25 +75,11 @@ function renderDebug(props: ObservabilityProps) {
     <div class="callout">Exports contain operational metadata and redacted failure causes. HUI never includes prompt text, tool arguments/output, credentials or secret values.</div>`}</main>`;
 }
 
-function renderUsage(props: ObservabilityProps) {
-  const value = props.snapshot;
-  return html`${header(props, "Usage", "Token metadata aggregated from PI-owned session files.")}<main class="settings-page settings-page--wide usage-page">${!value ? feedback(props) : html`
-    <section class="usage-summary-grid">
-      <article class="stat usage-summary-card"><span class="usage-summary-title">Total tokens</span><strong class="usage-summary-value">${number(value.usage.totalTokens)}</strong><small class="usage-summary-sub">${value.usage.filesRead} PI transcript${value.usage.filesRead === 1 ? "" : "s"} read</small></article>
-      <article class="stat usage-summary-card"><span class="usage-summary-title">Input</span><strong class="usage-summary-value">${number(value.usage.inputTokens)}</strong><small class="usage-summary-sub">${number(value.usage.cacheReadTokens)} cache-read</small></article>
-      <article class="stat usage-summary-card"><span class="usage-summary-title">Output</span><strong class="usage-summary-value">${number(value.usage.outputTokens)}</strong><small class="usage-summary-sub">${number(value.usage.cacheWriteTokens)} cache-write</small></article>
-      <article class="stat usage-summary-card"><span class="usage-summary-title">Cost</span><strong class="usage-summary-value">${value.usage.costUsd === null ? "Unavailable" : `$${value.usage.costUsd.toFixed(4)}`}</strong><small class="usage-summary-sub">${value.usage.costUsd === null ? "PI metadata did not provide cost" : "Reported metadata only"}</small></article>
-    </section>
-    <section class="settings-section"><header class="settings-section__header"><div class="settings-section__copy"><h2 class="settings-section__heading">Models</h2><p class="settings-section__desc">Tokens grouped by the model label stored by PI.</p></div></header><div class="settings-group usage-model-list">${value.usage.models.length ? value.usage.models.map((model) => html`<div class="settings-row"><code>${model.model}</code><strong>${number(model.tokens)}</strong></div>`) : html`<div class="surface-empty"><p>No token metadata is available yet.</p></div>`}</div></section>
-    ${value.usage.unavailable.length ? html`<div class="callout warning">${value.usage.unavailable.length} transcript${value.usage.unavailable.length === 1 ? " was" : "s were"} unavailable. Totals are partial.</div>` : nothing}`}</main>`;
-}
-
 export function renderObservabilitySurface(props: ObservabilityProps): TemplateResult {
   switch (props.page.id) {
     case "activity": return renderActivity(props);
     case "logs": return renderLogs(props);
     case "debug": return renderDebug(props);
-    case "usage": return renderUsage(props);
     default: return html``;
   }
 }

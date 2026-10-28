@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--port <n>] [--receipt-dir <dir>] [--pi-sessions] [--fast-fixture] [--quota-fixture | --jira-fixture | --github-fixture | --datadog-fixture | --activity-fixture | --demo]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--port <n>] [--receipt-dir <dir>] [--pi-sessions] [--fast-fixture] [--quota-fixture | --jira-fixture | --github-fixture | --datadog-fixture | --activity-fixture | --usage-fixture | --demo]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -294,6 +294,9 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
       baseUrl: receipt.providerUrl, api: "anthropic-messages", headers: { "x-client-session-id": "${PI_CLIENT_SESSION_ID}" }, apiKey: "e2e-not-a-secret",
       models: [
         { id: "fixture", name: demo ? "Demo model" : "HUI SDK Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
+        // A second model on the same provider lets a journey see which model a
+        // subagent route resolved to (e2e/subagent-routes.browser.md).
+        { id: "fixture-deep", name: "HUI Route Fixture", reasoning: true, input: ["text", "image"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } },
         // --fast-fixture: a Claude Opus 5.5 id, so the composer offers Maximum effort and Speed (fast mode).
         ...process.argv.includes("--fast-fixture") ? [{
           id: "claude-opus-5-5", name: "Opus fixture", reasoning: true, input: ["text"], contextWindow: 200000, maxTokens: 4096, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -391,6 +394,9 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
       // Two weeks of synthetic Durable sessions for Contributions → Calendar.
       execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "activity-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
     }
+    if (process.argv.includes("--usage-fixture")) {
+      execFileSync(process.execPath, [join(repo, "e2e", "fixtures", "usage-fixture.ts")], { cwd: repo, env: { ...env, HUI_E2E_WORKSPACE: workspace }, stdio: ["ignore", "ignore", "inherit"] });
+    }
     const server = start("visual-verification-server.mjs", {
       ...serverEnv,
       HUI_VERIFICATION_IDENTITY: JSON.stringify({ runId: receipt.runId, runnerPid: process.pid, checkout }),
@@ -437,7 +443,7 @@ async function main() {
   const port = command === "launch" ? valueOf("--port") : undefined;
   const receiptDir = command === "launch" ? valueOf("--receipt-dir") : undefined;
   // Trailing launch options; `launch` reads them from argv.
-  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--jira-fixture", "--github-fixture", "--datadog-fixture", "--activity-fixture", "--demo"].includes(args.at(-1))) args.pop();
+  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--jira-fixture", "--github-fixture", "--datadog-fixture", "--activity-fixture", "--usage-fixture", "--demo"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1], { port: port === undefined ? undefined : Number(port), receiptDir });

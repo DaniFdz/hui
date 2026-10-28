@@ -65,6 +65,8 @@ export const BotTemplate = Type.Object({
   emoji: Type.Optional(Type.String()),
   avatar: Type.Optional(TemplateAvatar),
   soul: Type.String(),
+  /** The operator's onboarding body; absent means HUI's own first conversation. */
+  bootstrap: Type.Optional(Type.String()),
   opener: Type.Optional(Type.String()),
   memories: Type.Array(BotTemplateMemory),
   skills: Type.Array(BotTemplateSkill),
@@ -117,6 +119,10 @@ export const BotImportPreview = Type.Object({
     worker: Type.Optional(Type.Object({ id: Type.String(), name: Type.String() })),
   }),
   soul: Type.String(),
+  /** What its memories become: MEMORY.md, never exported again. */
+  memory: Type.String(),
+  /** The onboarding body it brings, when the template has one. */
+  bootstrap: Type.Optional(Type.String()),
   opener: Type.Optional(Type.String()),
   model: Type.Optional(Type.String()),
   thinking: Type.Optional(Type.String()),

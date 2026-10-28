@@ -81,6 +81,8 @@ type LegacyBotImportPreview = {
   };
   soul: string;
   opener?: string;
+  memory: string;
+  bootstrap?: string;
   model?: string;
   thinking?: string;
   utilityModel?: string;

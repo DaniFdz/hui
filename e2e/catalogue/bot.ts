@@ -673,6 +673,16 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "BOT-068",
+    title: "Keep a bot's identity, the operator's preferences and its knowledge apart",
+    behaviour: "A bot's prompt is four files: SOUL.md, USER.md, MEMORY.md and an optional BOOTSTRAP.md. Its export lists SOUL.md and its BOOTSTRAP.md under \"Files as they will be saved\", never USER.md or MEMORY.md, which Stays behind names as the operator's. An import's memories become MEMORY.md, shown in its preview as reference data that never leaves with an export.",
+    spec: ["SPEC.md#a-bots-prompt-is-four-files-and-only-two-of-them-travel-2026-10-25", "docs/api.md#prompt-files"],
+    surfaces: ["tool:update_user", "tool:update_memory"],
+    journeys: ["bots"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

@@ -24,6 +24,7 @@ test("missing HUI settings use defaults", async () => {
     primary: "",
     fallback: "",
     utility: "",
+    routes: [],
   });
 });
 
@@ -41,6 +42,7 @@ test("normalizes HUI-owned model routes", async () => {
     primary: "openai/gpt-5.6-luna",
     fallback: "anthropic/claude-haiku-4-5",
     utility: "",
+    routes: [],
   });
 });
 

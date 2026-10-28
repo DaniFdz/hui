@@ -48,7 +48,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -57,7 +58,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -110,7 +112,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -119,7 +122,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -172,7 +176,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -181,7 +186,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -234,7 +240,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -243,7 +250,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -302,7 +310,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -311,7 +320,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -366,7 +376,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -375,7 +386,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -430,7 +442,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -439,7 +452,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -449,7 +463,8 @@
       "profileHandle": " @alex ",
       "labs": {
         "denseObservability": true,
-        "detailedDebug": "yes"
+        "detailedDebug": "yes",
+        "dashboard": true
       }
     },
     "expected": {
@@ -499,7 +514,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -508,7 +524,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": true,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": true
       }
     }
   },
@@ -563,7 +580,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -572,7 +590,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -627,7 +646,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -636,7 +656,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -691,7 +712,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -700,7 +722,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -755,7 +778,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -764,7 +788,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -822,7 +847,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -831,7 +857,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": true
+        "detailedDebug": true,
+        "dashboard": false
       }
     }
   },
@@ -891,7 +918,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -900,7 +928,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -955,7 +984,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -964,7 +994,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1021,7 +1052,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1030,7 +1062,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1087,7 +1120,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1096,7 +1130,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1151,7 +1186,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1160,7 +1196,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1215,7 +1252,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1224,7 +1262,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1279,7 +1318,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1288,7 +1328,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1345,7 +1386,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1354,7 +1396,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1411,7 +1454,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1420,7 +1464,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1477,7 +1522,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1486,7 +1532,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1543,7 +1590,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1552,7 +1600,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1609,7 +1658,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1618,7 +1668,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1675,7 +1726,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1684,7 +1736,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1741,7 +1794,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1750,7 +1804,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1807,7 +1862,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1816,7 +1872,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1873,7 +1930,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1882,7 +1940,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -1939,7 +1998,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -1948,7 +2008,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2007,7 +2068,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2016,7 +2078,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2075,7 +2138,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2084,7 +2148,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2141,7 +2206,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2150,7 +2216,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2207,7 +2274,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2216,7 +2284,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2276,7 +2345,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2285,7 +2355,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2342,7 +2413,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2351,7 +2423,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2408,7 +2481,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2417,7 +2491,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2474,7 +2549,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2483,7 +2559,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2540,7 +2617,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2549,7 +2627,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2606,7 +2685,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2615,7 +2695,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2672,7 +2753,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2681,7 +2763,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2738,7 +2821,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2747,7 +2831,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2807,7 +2892,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2816,7 +2902,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2873,7 +2960,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2882,7 +2970,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -2940,7 +3029,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -2949,7 +3039,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3010,7 +3101,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3019,7 +3111,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3080,7 +3173,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3089,7 +3183,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3147,7 +3242,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3156,7 +3252,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3215,7 +3312,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3224,7 +3322,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3279,7 +3378,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3288,7 +3388,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3343,7 +3444,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3352,7 +3454,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3407,7 +3510,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3416,7 +3520,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3471,7 +3576,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3480,7 +3586,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3535,7 +3642,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3544,7 +3652,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3599,7 +3708,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3608,7 +3718,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3663,7 +3774,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3672,7 +3784,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3727,7 +3840,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3736,7 +3850,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3809,7 +3924,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3823,7 +3939,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3899,7 +4016,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3914,7 +4032,8 @@
       ],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -3969,7 +4088,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -3978,7 +4098,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4033,7 +4154,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -4042,7 +4164,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4097,7 +4220,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -4106,7 +4230,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4161,7 +4286,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -4170,7 +4296,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4225,7 +4352,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -4234,7 +4362,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4289,7 +4418,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -4298,7 +4428,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4353,7 +4484,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -4362,7 +4494,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4417,7 +4550,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -4426,7 +4560,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4488,7 +4623,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "juniper"
@@ -4497,7 +4633,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4554,7 +4691,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -4563,7 +4701,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4620,7 +4759,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "arbor"
@@ -4629,7 +4769,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4686,7 +4827,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "breeze"
@@ -4695,7 +4837,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4752,7 +4895,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "ember"
@@ -4761,7 +4905,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4818,7 +4963,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "juniper"
@@ -4827,7 +4973,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4884,7 +5031,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "maple"
@@ -4893,7 +5041,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -4950,7 +5099,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "sol"
@@ -4959,7 +5109,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5016,7 +5167,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "spruce"
@@ -5025,7 +5177,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5082,7 +5235,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "vale"
@@ -5091,7 +5245,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5148,7 +5303,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "juniper"
@@ -5157,7 +5313,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5214,7 +5371,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5223,7 +5381,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5280,7 +5439,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5289,7 +5449,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5346,7 +5507,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5355,7 +5517,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5414,7 +5577,8 @@
       "models": {
         "primary": "openai/model",
         "fallback": "anthropic/model",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5423,7 +5587,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5478,7 +5643,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5487,7 +5653,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5542,7 +5709,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5551,7 +5719,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5606,7 +5775,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5615,7 +5785,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5670,7 +5841,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5679,7 +5851,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5734,7 +5907,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5743,7 +5917,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5798,7 +5973,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5807,7 +5983,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5862,7 +6039,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5871,7 +6049,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5926,7 +6105,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5935,7 +6115,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -5990,7 +6171,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -5999,7 +6181,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6054,7 +6237,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6063,7 +6247,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6118,7 +6303,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6127,7 +6313,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6182,7 +6369,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6191,7 +6379,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6246,7 +6435,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6255,7 +6445,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6310,7 +6501,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6319,7 +6511,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6374,7 +6567,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6383,7 +6577,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6438,7 +6633,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6447,7 +6643,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6502,7 +6699,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6511,7 +6709,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6566,7 +6765,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6575,7 +6775,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6630,7 +6831,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6639,7 +6841,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6694,7 +6897,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6703,7 +6907,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6758,7 +6963,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6767,7 +6973,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6822,7 +7029,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6831,7 +7039,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6886,7 +7095,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6895,7 +7105,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -6955,7 +7166,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -6964,7 +7176,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -7024,7 +7237,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -7033,7 +7247,8 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   },
@@ -7088,7 +7303,8 @@
       "models": {
         "primary": "",
         "fallback": "",
-        "utility": ""
+        "utility": "",
+        "routes": []
       },
       "calls": {
         "voice": "cove"
@@ -7097,7 +7313,139 @@
       "disabledPlugins": [],
       "labs": {
         "denseObservability": false,
-        "detailedDebug": false
+        "detailedDebug": false,
+        "dashboard": false
+      }
+    }
+  },
+  {
+    "input": {
+      "models": {
+        "routes": [
+          {
+            "name": " fast ",
+            "description": "Cheap\nand\tquick.",
+            "model": " openai/gpt-5.6-luna ",
+            "thinking": "low"
+          },
+          {
+            "name": "deep",
+            "model": "anthropic/claude-opus-5-5",
+            "thinking": "max"
+          },
+          {
+            "name": "fast",
+            "description": "A repeated name.",
+            "model": "openai/gpt-5.6-luna"
+          },
+          {
+            "name": "no model",
+            "description": "Cannot be spawned by name.",
+            "model": "openai/gpt-5.6-luna"
+          },
+          {
+            "name": "broken",
+            "model": "claude-opus-5-5"
+          },
+          {
+            "name": "local",
+            "model": "local/qwen",
+            "thinking": "ultra"
+          },
+          {
+            "name": "unknown-thinking",
+            "model": "local/qwen",
+            "thinking": "turbo"
+          },
+          {
+            "name": "01234567890123456789012345678901234567890",
+            "model": "local/qwen"
+          }
+        ]
+      }
+    },
+    "expected": {
+      "theme": "claw",
+      "themeMode": "system",
+      "accent": "",
+      "fontUi": "instrument-sans",
+      "fontChat": "instrument-sans",
+      "fontTerminal": "JetBrains Mono",
+      "textScale": 100,
+      "chat": {
+        "messageWidth": "comfortable",
+        "collapseTaskProgress": false,
+        "sendShortcut": "enter",
+        "githubEmbeds": true,
+        "datadogEmbeds": true
+      },
+      "profileName": "HUI Operator",
+      "profileHandle": "",
+      "branchPrefix": "feature/",
+      "browser": {
+        "enabled": true,
+        "headless": true,
+        "executablePath": ""
+      },
+      "codemode": {
+        "enabled": true
+      },
+      "questions": {
+        "timeoutMinutes": 0
+      },
+      "vscode": {
+        "enabled": false,
+        "executable": "",
+        "provider": "auto",
+        "licenseAcceptedAt": ""
+      },
+      "power": {
+        "keepAwake": true
+      },
+      "notifications": {
+        "tool": false,
+        "runFinished": false,
+        "runFailed": true,
+        "needsInput": true
+      },
+      "models": {
+        "primary": "",
+        "fallback": "",
+        "utility": "",
+        "routes": [
+          {
+            "name": "fast",
+            "description": "Cheap and quick.",
+            "model": "openai/gpt-5.6-luna",
+            "thinking": "low"
+          },
+          {
+            "name": "deep",
+            "description": "",
+            "model": "anthropic/claude-opus-5-5",
+            "thinking": "max"
+          },
+          {
+            "name": "local",
+            "description": "",
+            "model": "local/qwen"
+          },
+          {
+            "name": "unknown-thinking",
+            "description": "",
+            "model": "local/qwen"
+          }
+        ]
+      },
+      "calls": {
+        "voice": "cove"
+      },
+      "disabledSkills": [],
+      "disabledPlugins": [],
+      "labs": {
+        "denseObservability": false,
+        "detailedDebug": false,
+        "dashboard": false
       }
     }
   }

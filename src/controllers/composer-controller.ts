@@ -9,7 +9,7 @@
  * hands it the queue from the conversation's snapshots and events.
  */
 import type { LitElement, ReactiveControllerHost } from "lit";
-import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, rewindSession, sendPrompt, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
+import { abortSession, answerQuestion as answerQuestionRequest, askSideQuestion, cancelCompaction, clearSession, compactSession, continueSession, followUpSession, loadCommands, mutateQueuedMessage, reloadSession, rewindSession, sendPrompt, setSessionGoal, steerSession, type Attachment, type PromptMode, type QuestionResponse, type QueueSnapshot, type RewindTarget, type RuntimeCommand, type SessionSnapshot, type SessionStatus, type SessionView, type TranscriptAttachment } from "../api/sessions.ts";
 import { readTranscriptAttachments } from "../api/attachments.ts";
 import { loadLocalPathSuggestions } from "../api/local-paths.ts";
 import type { ForkTarget } from "../components/fork-dialog.ts";
@@ -20,7 +20,7 @@ import { SendRequests } from "../lib/composer/send-requests.ts";
 import { EMPTY_QUEUE, streamingAfterSubmission } from "../lib/composer/state.ts";
 import { botMentionSuggestions, completeLocalPath, type LocalPathQuery, type LocalPathSuggestion } from "../lib/local-paths.ts";
 import { isSelectedSession, shouldFlushLaunchPrompt, type NoteLevel } from "../lib/session/ui-state.ts";
-import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseReloadCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
+import { botChatCommandRefusal, completeCommandReference, composerCommands, filterSlashCommands, parseClearCommand, parseCompactCommand, parseGoalCommand, parseReloadCommand, slashCommandQuery, type CommandQuery, type ComposerCommand } from "../lib/composer/slash-commands.ts";
 import { appendPendingUser, localTranscriptId, settlePendingUser } from "../lib/transcript-state.ts";
 import type { HomeProps } from "../views/home.ts";
 import type { ConversationController } from "./conversation-controller.ts";
@@ -601,6 +601,24 @@ export class ComposerController {
       this.#compactNow(compact.instructions, text);
       return;
     }
+    const goal = parseGoalCommand(trimmed);
+    if (goal) {
+      if (attachments.length || mode !== "prompt") {
+        this.#deps.showNote(attachments.length ? "Use /goal without attachments." : "Finish or stop active work before changing the goal.", "error");
+        return;
+      }
+      if (goal === "usage") {
+        this.#deps.showNote("Use /goal <objective> to set one, or /goal pause, /goal resume or /goal clear.", "error");
+        return;
+      }
+      // Starting a goal also sends its objective, so the session has to be free; pausing and clearing never wait.
+      if (goal.action === "start" && (this.#conversation.streaming || session.status !== "idle")) {
+        this.#deps.showNote("Finish or stop the active turn before starting a goal.", "error");
+        return;
+      }
+      this.changeGoal(goal.action, goal.action === "start" ? goal.objective : undefined, text);
+      return;
+    }
     const sideQuestion = /^\/(?:btw|side)(?:\s+([\s\S]+))?$/iu.exec(trimmed)?.[1]?.trim();
     if (/^\/(?:btw|side)(?:\s|$)/iu.test(trimmed)) {
       if (!sideQuestion) {
@@ -705,9 +723,11 @@ export class ComposerController {
       });
   };
 
-  #continueInterrupted = () => {
+  /** Resumes a session whose run HUI recorded but never saw end, or whose last answer failed. Both callers gate it on
+   * the state that offers it: the interrupted banner and the run-error notice. */
+  continueStoppedRun = () => {
     const session = this.#conversation.selected;
-    if (!session?.interrupted || this.sending || this.#conversation.opening || this.#conversation.connection !== "live") return;
+    if (!session || this.sending || this.#conversation.opening || this.#conversation.connection !== "live") return;
     this.#deps.showNote("", "info");
     this.sending = true;
     this.#host.requestUpdate();
@@ -715,6 +735,42 @@ export class ComposerController {
       .catch((error: unknown) => {
         if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
         this.#deps.showNote(error instanceof Error ? error.message : "Could not continue that run.", "error");
+      })
+      .finally(() => {
+        if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
+          this.sending = false;
+          this.#host.requestUpdate();
+        }
+      });
+  };
+
+  /** `/goal` and the goal pill both land here. `typed` is the command line to put back if the gateway refuses. */
+  changeGoal = (action: "start" | "pause" | "resume" | "clear", objective?: string, typed?: string) => {
+    const session = this.#conversation.selected;
+    if (!session || this.sending || this.#conversation.connection !== "live") return;
+    this.#deps.showNote("", "info");
+    this.sending = true;
+    this.#host.requestUpdate();
+    if (typed !== undefined) {
+      this.draftEdit += 1;
+      this.setDraft("");
+      this.attachments = [];
+      void this.persistDraft(sessionDraftKey(session.id), "", []);
+    }
+    void setSessionGoal(session.id, action, objective)
+      .then(() => {
+        if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
+        this.#deps.showNote({
+          start: "Goal set. The agent keeps working until it is achieved or you pause it.",
+          pause: "Goal paused.",
+          resume: "Goal resumed.",
+          clear: "Goal cleared.",
+        }[action], "info");
+      })
+      .catch(async (error: unknown) => {
+        if (typed === undefined || await this.#restoreSentDraft(session.id, typed, [])) {
+          this.#deps.showNote(error instanceof Error ? error.message : "Could not change the goal.", "error");
+        }
       })
       .finally(() => {
         if (isSelectedSession(session.id, this.#conversation.selected?.id)) {
@@ -865,7 +921,7 @@ export class ComposerController {
       });
   };
 
-  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer"> {
+  props(): Pick<HomeProps, "sending" | "rewindPending" | "forkPending" | "sideChat" | "onCloseSideChat" | "onSendPrompt" | "onContinueInterrupted" | "onAbort" | "onRewind" | "onFork" | "onCompact" | "onCancelCompaction" | "onAnswerQuestion" | "onGoalChange" | "draft" | "attachments" | "onDraftChange" | "onDraftInput" | "commandMenu" | "onCommandQuery" | "onCommandKeydown" | "localPathMenu" | "onLocalPathQuery" | "onLocalPathKeydown" | "onAddAttachments" | "onRemoveAttachment" | "queue" | "queueEditingId" | "queueEditingText" | "onQueueEdit" | "onQueueEditChange" | "onQueueEditSubmit" | "onQueueEditCancel" | "onQueueRemove" | "onQueueMove" | "onQueueSteer"> {
     const conversation = this.#conversation;
     const sending = this.sending;
     return {
@@ -875,13 +931,14 @@ export class ComposerController {
       sideChat: this.sideChat,
       onCloseSideChat: () => this.closeSideChat(),
       onSendPrompt: this.send,
-      onContinueInterrupted: this.#continueInterrupted,
+      onContinueInterrupted: this.continueStoppedRun,
       onAbort: this.abort,
       onRewind: this.#rewindToMessage,
       onFork: this.#forkFromMessage,
       onCompact: () => this.#compactNow(),
       onCancelCompaction: () => this.#cancelCompactionNow(),
       onAnswerQuestion: this.#answerQuestion,
+      onGoalChange: (action) => this.changeGoal(action),
       draft: this.draft,
       attachments: this.attachments,
       onDraftChange: this.updateDraft,

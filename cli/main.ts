@@ -27,10 +27,10 @@ export const HELP = `Usage:
   hui ui [--no-open]
   hui desktop
   hui install-app
-  hui update [--check] [--json]
-  hui update --nightly [--check] [--json]
-  hui update --from <local.tgz> [--sha256 <digest>]
-  hui update --rollback
+  hui update [--check] [--json] [--force]
+  hui update --nightly [--check] [--json] [--force]
+  hui update --from <local.tgz> [--sha256 <digest>] [--force]
+  hui update --rollback [--force]
   hui doctor [--fix] [--json]
   hui workers list [--json]
   hui workers add --name <name> --command <connect command> [--extra-path <path>] [--json]
@@ -48,6 +48,11 @@ export const HELP = `Usage:
   hui bot import <file|folder|url|-> [--worker <name|id>] [--agent <name>] [--yes] [--json]
   hui bot export <bot> [--out <file>] [--review <id> --set <change>=<group>...] [--add <group>:<passage>[ => <becomes>]...] [--yes] [--json]
   hui bot soul <bot> [--file <path|->] [--json]
+  hui bot user <bot> [--json]
+  hui bot memory <bot> [--json]
+  hui bot history <bot> [--zoom <id+n>] [--html <file>] [--json]
+  hui bot bootstrap <bot> [--file <path|->] [--json]
+  hui bot split <bot> [--wait] [--timeout <seconds>] [--json]
   hui bot tools <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot skills <bot> [--allow <a,b>] [--deny <a,b>] [--json]
   hui bot remove <bot> [--json]
@@ -56,7 +61,6 @@ export const HELP = `Usage:
   hui bot chat <bot>
   hui bot send <bot> <message|-> [--wait] [--timeout <seconds>] [--json]
   hui bot stop <bot> [--json]
-  hui bot memory <bot> [--zoom <id+n>] [--html <file>] [--json]
   hui bot routine list <bot> [--json]
   hui bot routine add <bot> --name <name> --prompt <text> (--at <ISO time> | --every <duration> | --cron <expr>
               [--timezone <tz>]) [--json]
@@ -82,7 +86,8 @@ which is remembered with the binding. HUI_GATEWAY_ALLOWED_HOSTS takes a
 comma-separated list instead, for a gateway started by something you do not edit.
 The gateway binds 127.0.0.1:4173 by default. No login is provided; prefer Tailscale.
 Stop/restart refuse work a restart would interrupt unless --force explicitly does so;
-Pi Durable sessions keep running and resume when the gateway is back.
+Pi Durable sessions keep running and resume when the gateway is back. An update
+refuses an unresponsive gateway and a busy one as well; --force replaces it.
 Updates use public GitHub Releases, and never edit a source checkout or PI data.
 --nightly installs the build of the latest validated main commit instead of the
 latest stable release; a plain hui update returns to stable once one is newer.
@@ -230,14 +235,15 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
     "gateway start": ["host", "port", "json", "allow-host"], "gateway run": ["host", "port", "allow-host"],
     "gateway stop": ["force", "json"], "gateway restart": ["host", "port", "force", "json", "allow-host"],
     "gateway status": ["json"], "gateway logs": ["lines"], ui: ["no-open"], browser: ["no-open"],
-    update: ["from", "sha256", "rollback", "check", "json", "nightly"], desktop: [], "install-app": [],
+    update: ["from", "sha256", "rollback", "check", "json", "nightly", "force"], desktop: [], "install-app": [],
     doctor: ["fix", "json"], "workers list": ["json"], "workers add": ["name", "command", "extra-path", "json"],
     "workers edit": ["name", "command", "extra-path", "json"], "workers remove": ["json"],
     "bot list": ["archived", "json"], "bot show": ["json"], "bot add": [...BOT_FIELDS, "soul-file", "worker", "deny-tools", "deny-skills", "json"], "bot edit": [...BOT_FIELDS, "json"],
-    "bot soul": ["file", "json"], "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
+    "bot soul": ["file", "json"], "bot user": ["json"], "bot memory": ["json"], "bot history": ["zoom", "html", "json"], "bot bootstrap": ["file", "json"], "bot split": ["wait", "timeout", "json"],
+    "bot tools": ["allow", "deny", "json"], "bot skills": ["allow", "deny", "json"],
     "bot import": ["worker", "agent", "yes", "json"], "bot export": ["out", "review", "set", "add", "yes", "json"],
     "bot remove": ["json"], "bot restore": ["json"], "bot delete": ["yes", "json"], "bot chat": [], "bot send": ["wait", "timeout", "json"], "bot stop": ["json"],
-    "bot memory": ["zoom", "html", "json"], "bot routine list": ["json"],
+    "bot routine list": ["json"],
     "bot routine add": ["name", "prompt", "at", "every", "cron", "timezone", "json"], "bot routine run": [], "bot routine remove": ["json"],
     "bot trigger list": ["json"], "bot trigger remove": ["json"], "bot trigger test": ["json"],
     "bot trigger add": ["name", "prompt", "match", "cooldown", "pr-links", "allow-bots", "allow-external", "json"],
@@ -262,6 +268,7 @@ export function parseCli(args: string[], env: NodeJS.ProcessEnv = process.env) {
   if (values.sha256 && !/^[a-fA-F0-9]{64}$/u.test(values.sha256)) throw new Error("--sha256 must be a 64-character hexadecimal digest.");
   if (values.check && (values.from || values.sha256 || values.rollback)) throw new Error("--check cannot be combined with --from, --sha256 or --rollback.");
   if (values.nightly && (values.from || values.sha256 || values.rollback)) throw new Error("--nightly cannot be combined with --from, --sha256 or --rollback.");
+  if (values.force && values.check) throw new Error("--force installs an update; it changes nothing with --check.");
   if (command === "workers add" && (!values.name || !values.command)) throw new Error("workers add needs --name and --command.");
   if ((command === "workers edit" || command === "workers remove") && !target) throw new Error(`${command} needs the worker's name or id.`);
   if (command === "workers edit" && values.name === undefined && values.command === undefined && !values["extra-path"]) throw new Error("workers edit needs --name, --command or --extra-path.");
@@ -307,10 +314,10 @@ function checkScheduleCommand(command: string, operands: readonly string[], valu
 const BOT_FIELDS = ["name", "title", "description", "tagging", "cwd", "model", "thinking", "memory-model", "utility-model", "emoji", "shape", "ears", "color", "language", "call-voice"];
 /** Operands each bot command takes, in order. */
 const BOT_OPERANDS: Record<string, readonly string[]> = {
-  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
+  "bot list": [], "bot add": [], "bot show": ["bot"], "bot edit": ["bot"], "bot soul": ["bot"], "bot user": ["bot"], "bot memory": ["bot"], "bot history": ["bot"], "bot bootstrap": ["bot"], "bot split": ["bot"], "bot tools": ["bot"], "bot skills": ["bot"],
   "bot import": ["source"], "bot export": ["bot"],
   "bot remove": ["bot"], "bot restore": ["bot"], "bot delete": ["bot"],
-  "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"], "bot memory": ["bot"],
+  "bot chat": ["bot"], "bot send": ["bot", "message"], "bot stop": ["bot"],
   "bot routine list": ["bot"], "bot routine add": ["bot"], "bot routine run": ["bot", "routine"], "bot routine remove": ["bot", "routine"],
   "bot trigger list": ["bot"], "bot trigger add": ["bot"], "bot trigger remove": ["bot", "trigger"], "bot trigger test": ["bot", "trigger"],
 };
@@ -400,7 +407,7 @@ export async function main(args: string[], installation: Installation): Promise<
   if (command === "update" && values.check) { report(await (values.nightly ? checkNightly : checkRelease)(installation)); return; }
   if (command === "doctor") {
     const { formatDoctorReport, runDoctor } = await import("./doctor.ts");
-    const result = await runDoctor({ fix: values.fix === true });
+    const result = await runDoctor({ installation, fix: values.fix === true });
     console.log(values.json ? JSON.stringify(result) : formatDoctorReport(result));
     if (!result.ok) process.exitCode = 1;
     return;
@@ -449,7 +456,14 @@ export async function main(args: string[], installation: Installation): Promise<
     return;
   }
   await withLifecycleLock(async () => {
-    if (command === "update") { report(await updateRelease(installation, values)); return; }
+    if (command === "update") {
+      const result = await updateRelease(installation, values);
+      report(result);
+      if (result.app !== undefined && !values.json) {
+        console.log(`hui: reinstalled HUI.app, which was ${result.app || "without a version"}, at ${result.version}. Quit and reopen HUI to load it.`);
+      }
+      return;
+    }
     if (command === "gateway stop") { await stopGateway(values.force); report({ status: "stopped" }); return; }
     const previous = command === "gateway restart" ? await stopGateway(values.force) : undefined;
     const host = requestedBinding ?? (previous ? { host: previous.host, allowedHosts: previous.allowedHosts } : binding());

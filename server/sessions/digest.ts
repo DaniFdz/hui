@@ -44,6 +44,17 @@ export function operatorText(text: string): string | undefined {
   return original && !CONTROL_PROMPTS.has(original) ? original : undefined;
 }
 
+/** The most recent request the operator made in a transcript, skipping HUI's own control prompts and events. */
+export function lastOperatorRequest(entries: readonly TranscriptEntry[]): string | undefined {
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const entry = entries[index]!;
+    if (entry.kind !== "message" || entry.role !== "user") continue;
+    const text = operatorText(entry.text);
+    if (text !== undefined) return text;
+  }
+  return undefined;
+}
+
 function changedFile(entry: TranscriptEntry): string | undefined {
   if (entry.kind !== "tool" || entry.failed || !FILE_TOOLS.has(entry.name.toLowerCase())) return undefined;
   const args = entry.args && typeof entry.args === "object" ? entry.args as Record<string, unknown> : {};

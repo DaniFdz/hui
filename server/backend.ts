@@ -168,7 +168,7 @@ export async function stopBackend(): Promise<void> {
     await triggers.stop();
     automation.dispose();
     subagents.dispose();
-    watchers.dispose();
+    await watchers.dispose();
     secretRequests.dispose();
     questionnaires.dispose();
     secretFiles.dispose();

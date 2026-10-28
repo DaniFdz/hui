@@ -111,7 +111,8 @@ test("an OpenClaw workspace imports with its soul, memories, its own skill (on, 
   const preview = await call<BotImportPreview>("/__hui/bots/import/preview", "POST", { source });
   assert.equal(preview.status, 200, JSON.stringify(preview.body));
   assert.deepEqual([preview.body.bot.name, preview.body.bot.handle, preview.body.bot.emoji, preview.body.bot.description], ["Nova", "nova", "🦊", "calm and precise"]);
-  assert.match(preview.body.soul, /^# Who I am\n\nYou are Nova, a calm research partner\.\n\n## What you already know\n[\s\S]*### Projects|^# Who I am[\s\S]*- \*\*Projects:\*\* HUI, a Lit app\./u);
+  assert.match(preview.body.soul, /^# Who I am\n\nYou are Nova, a calm research partner\.$/u, "the soul is the persona only");
+  assert.match(preview.body.memory, /^# MEMORY\.md\n\nBrought over from [\s\S]*\n\n- \*\*Projects:\*\* HUI, a Lit app\.$/u, "what it knew goes to MEMORY.md");
   assert.deepEqual(preview.body.skills.map((skill) => skill.name), ["weather"]);
   assert.deepEqual(preview.body.routines.map((routine) => [routine.name, routine.schedule, routine.guessed]), [["Heartbeat", { kind: "every", everyMs: 1_800_000 }, false]]);
   assert.match(preview.body.dropped.join("\n"), /AGENTS\.md: OpenClaw's operating manual/u);
@@ -123,6 +124,7 @@ test("an OpenClaw workspace imports with its soul, memories, its own skill (on, 
   nova = created.body.bot;
   assert.deepEqual([nova.name, nova.handle, nova.avatar?.emoji, nova.soul], ["Nova", "nova", "🦊", true]);
   assert.equal((await call<{ soul: string }>(`/__hui/bots/${nova.id}/soul`)).body.soul, preview.body.soul, "SOUL.md as the preview showed it");
+  assert.equal((await call<{ text: string }>(`/__hui/bots/${nova.id}/files/memory`)).body.text, preview.body.memory, "MEMORY.md as the preview showed it, and never in the soul");
   const skill = await readFile(join(dir, "config", "hui", "bots", nova.id, "skills", "weather", "SKILL.md"), "utf8");
   assert.equal(skill, "---\nname: \"weather\"\ndescription: \"Current weather and forecasts\"\n---\n\nUse wttr.in for the forecast.\n");
   const catalog = await call<BotCatalog>(`/__hui/bots/${nova.id}/catalog`);

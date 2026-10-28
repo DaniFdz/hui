@@ -16,7 +16,7 @@ const { triggersCheck } = await import("./doctor-triggers.ts");
 
 const TIME = "2026-10-01T10:00:00.000Z";
 const LEFT = ["bot-trigger-cursors.json", "bot-trigger-slack.json", "slack.json"];
-const doctor = (fix = false) => runDoctor({ fix, checks: [triggersCheck], gatewayStatus: async () => ({ status: "stopped" }), lock: (operation) => operation() });
+const doctor = (fix = false) => runDoctor({ installation: { installationRoot: root, packageRoot: root }, fix, checks: [triggersCheck], gatewayStatus: async () => ({ status: "stopped" }), lock: (operation) => operation() });
 const trigger = (id: string, source: string, extra: Record<string, unknown> = {}) => ({
   id, botId: "bot-1", name: id, source, filter: {}, enabled: true, cooldownSeconds: 0, createdBy: "operator", createdAt: TIME, updatedAt: TIME, ...extra,
 });

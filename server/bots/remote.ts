@@ -21,12 +21,12 @@ import { BotFactsStoreError, type BotFacts } from "./facts.ts";
 import type { BotFact } from "../api/bots.ts";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { BotAccess, BotMemoryStatus, BotToolGroup } from "../bots-format.ts";
+import type { BotAccess, BotFile, BotMemoryStatus, BotToolGroup } from "../bots-format.ts";
 import { BotMemoryUnavailableError, type BotMemory } from "./memory.ts";
-import type { BotOffer, BotSouls, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./service.ts";
+import type { BotFiles, BotOffer, BotStoredMessage, BotWorkers, RemoteBotConversations } from "./service.ts";
 import { BotConflictError, BotInputError, BotNotFoundError, BotWorkerOfflineError, storedAccess } from "./bots.ts";
 import type { BotOwnSkill, BotSkillFiles } from "./skills.ts";
-import { BOT_FACTS_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE } from "../worker/host-bots.ts";
+import { BOT_FACTS_FEATURE, BOT_FILES_FEATURE, BOT_ACCESS_FEATURE, BOT_ACCESS_FRAME, BOT_MEMORY_STATUS_FRAME, BOT_SKILL_FILES_FEATURE, BOT_SKILLS_FEATURE, BOTS_FEATURE } from "../worker/host-bots.ts";
 import { WorkerOfflineError, type WorkerService } from "../workers.ts";
 
 /** What these ports need of the worker service. */
@@ -187,11 +187,12 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     if (!features.includes(BOTS_FEATURE)) {
       throw new BotConflictError(`${name(id)} runs an older HUI worker that cannot run bots. Disconnect it in Settings → Workers and connect it again once its sessions are idle, so it runs this HUI's worker.`);
     }
-    if (options.feature === BOT_ACCESS_FEATURE && !features.includes(BOT_ACCESS_FEATURE)) {
-      throw new BotConflictError(`${name(id)} runs an older HUI worker that cannot turn a bot's tools and skills off. Disconnect it in Settings → Workers and connect it again once its sessions are idle, so it runs this HUI's worker.`);
-    }
-    if (options.feature === BOT_SKILLS_FEATURE && !features.includes(BOT_SKILLS_FEATURE)) {
-      throw new BotConflictError(`${name(id)} runs an older HUI worker that cannot keep a bot's own skills. Disconnect it in Settings → Workers and connect it again once its sessions are idle, so it runs this HUI's worker.`);
+    if (options.feature && !features.includes(options.feature)) {
+      const what = options.feature === BOT_ACCESS_FEATURE ? "cannot turn a bot's tools and skills off"
+        : options.feature === BOT_SKILLS_FEATURE ? "cannot keep a bot's own skills"
+        : options.feature === BOT_FILES_FEATURE ? "cannot keep a bot's USER.md, MEMORY.md or BOOTSTRAP.md"
+        : `cannot do that (${options.feature})`;
+      throw new BotConflictError(`${name(id)} runs an older HUI worker that ${what}. Disconnect it in Settings → Workers and connect it again once its sessions are idle, so it runs this HUI's worker.`);
     }
     try {
       return await workers.hostRequest<T>(id, op, params, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
@@ -322,7 +323,10 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
     conversations(id): RemoteBotConversations {
       return {
         async create(input) {
-          const reply = await request<{ reference?: unknown; cwd?: unknown }>(id, "bot.create", { ...input }, { timeoutMs: CREATE_TIMEOUT_MS, creating: true });
+          // A bot's USER.md, MEMORY.md and BOOTSTRAP.md need a worker that keeps them; nothing is dropped silently.
+          const files = input.files ?? {};
+          const needsFiles = (["user", "memory", "bootstrap"] as const).some((file) => files[file] !== undefined && files[file] !== "");
+          const reply = await request<{ reference?: unknown; cwd?: unknown }>(id, "bot.create", { ...input }, { timeoutMs: CREATE_TIMEOUT_MS, creating: true, ...(needsFiles ? { feature: BOT_FILES_FEATURE } : {}) });
           if (typeof reply.reference !== "string" || !REFERENCE.test(reply.reference) || typeof reply.cwd !== "string" || !reply.cwd.startsWith("/")) {
             throw new Error(`${name(id)} did not create the bot's conversation.`);
           }
@@ -418,19 +422,24 @@ export function remoteBots(workers: BotWorkerLink, options: RemoteBotsOptions): 
       };
     },
 
-    souls(id): BotSouls {
-      const read = async (botId: string) => {
-        const reply = await request<{ soul?: unknown }>(id, "bot.soul.read", { botId });
-        return typeof reply.soul === "string" && reply.soul ? reply.soul : undefined;
+    files(id): BotFiles {
+      const read = async (botId: string, file: BotFile = "soul") => {
+        if (file === "soul") {
+          const reply = await request<{ soul?: unknown }>(id, "bot.soul.read", { botId });
+          return typeof reply.soul === "string" && reply.soul ? reply.soul : undefined;
+        }
+        const reply = await request<{ text?: unknown }>(id, "bot.file.read", { botId, file }, { feature: BOT_FILES_FEATURE });
+        return typeof reply.text === "string" && reply.text ? reply.text : undefined;
       };
       return {
         async prepare(botId) {
           await request(id, "bot.home.prepare", { botId });
         },
         read,
-        exists: async (botId) => (await read(botId)) !== undefined,
-        async write(botId, soul) {
-          await request(id, "bot.soul.write", { botId, ...(soul ? { soul } : {}) });
+        exists: async (botId, file = "soul") => (await read(botId, file)) !== undefined,
+        async write(botId, text, file = "soul") {
+          if (file === "soul") await request(id, "bot.soul.write", { botId, ...(text ? { soul: text } : {}) });
+          else await request(id, "bot.file.write", { botId, file, ...(text ? { text } : {}) }, { feature: BOT_FILES_FEATURE });
         },
         // The whole home: a bot's working directory is never inside a home made at its creation (`cleanUp` passes it).
         async remove(botId) {

@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile, symlink } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from "vitest";
-import { installMacApp, launchConfig, macSigningCommands, shouldInstallAutomatically, updatePlist } from './install.mjs';
+import { installMacApp, installedAppVersion, launchConfig, macSigningCommands, refreshInstalledApp, shouldInstallAutomatically, updatePlist } from './install.mjs';
 import { appIcon } from './icon.mjs';
 import policy from './policy.cjs';
 
@@ -65,6 +65,12 @@ test('launch metadata excludes credentials and plist edits are idempotent', asyn
   assert.deepEqual(Object.keys(launchConfig()).sort(), ['node', 'root', 'searchPath']);
   const plist = '<plist><dict></dict></plist>';
   assert.equal(updatePlist(updatePlist(plist, '1.0.0'), '1.0.0'), updatePlist(plist, '1.0.0'));
+  const registered = updatePlist(plist, '1.0.0');
+  assert.match(registered, /<key>CFBundleURLTypes<\/key><array><dict>.*<key>CFBundleURLSchemes<\/key><array><string>hui<\/string><\/array>.*<\/dict><\/array>/u);
+  assert.equal(updatePlist(registered, '1.0.0'), registered, 'the scheme is registered once');
+  // Electron's plist nests a dictionary; the scheme belongs to the root one or macOS never sees it.
+  const nested = '<plist><dict><key>ElectronAsarIntegrity</key><dict><key>hash</key><string>0</string></dict><key>Name</key><string>HUI</string></dict></plist>';
+  assert.match(updatePlist(nested, '1.0.0'), /<key>Name<\/key><string>HUI<\/string><key>CFBundleURLTypes<\/key>/u);
   const { png, icns } = appIcon(await readFile(new URL('../public/pi-logo-3d.png', import.meta.url)));
   assert.equal(png.subarray(1, 4).toString(), 'PNG');
   assert.equal(icns.subarray(0, 4).toString(), 'icns');
@@ -74,6 +80,50 @@ test('launch metadata excludes credentials and plist edits are idempotent', asyn
   const resized = Buffer.from(png.subarray(0, 24));
   resized.writeUInt32BE(300, 16);
   assert.throws(() => appIcon(Buffer.concat([resized, png.subarray(24)])), /square/);
+});
+
+test('only the app HUI installed for this installation, on another version, is reinstalled', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'hui-app-refresh-'));
+  t.onTestFinished(() => rm(root, { recursive: true, force: true }));
+  const applications = join(root, 'Applications');
+  const resources = join(applications, 'HUI.app/Contents/Resources');
+  const installs = [];
+  const install = async (installationRoot, options) => { installs.push({ installationRoot, ...options }); };
+  const current = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
+  const version = (value) => writeFile(join(resources, 'app/package.json'), JSON.stringify({ version: value }));
+  const launches = (installationRoot) => writeFile(join(resources, 'app/launch.json'), JSON.stringify({ root: installationRoot }));
+  assert.equal(await installedAppVersion('/installation', applications), null);
+  assert.equal(await refreshInstalledApp('/installation', { applications, install }), null);
+  // A bundle HUI does not own is never touched, whatever version it carries.
+  await mkdir(join(resources, 'app'), { recursive: true });
+  await writeFile(join(resources, 'hui-owner'), 'com.example.other');
+  await version('0.0.1');
+  await launches('/installation');
+  assert.equal(await installedAppVersion('/installation', applications), null);
+  assert.equal(await refreshInstalledApp('/installation', { applications, install }), null);
+  assert.deepEqual(installs, []);
+  await writeFile(join(resources, 'hui-owner'), 'org.harnessui.desktop');
+  // The app another HUI installation launched is that installation's to refresh.
+  await launches('/other-installation');
+  assert.equal(await installedAppVersion('/installation', applications), null);
+  assert.equal(await refreshInstalledApp('/installation', { applications, install }), null);
+  assert.deepEqual(installs, []);
+  // The app this package would install needs nothing.
+  await launches('/installation');
+  await version(current);
+  assert.equal(await installedAppVersion('/installation', applications), current);
+  assert.equal(await refreshInstalledApp('/installation', { applications, install }), null);
+  assert.deepEqual(installs, []);
+  // An app from another release is reinstalled through this package, which records its own version.
+  await version('0.0.1');
+  assert.equal(await installedAppVersion('/installation', applications), '0.0.1');
+  assert.equal(await refreshInstalledApp('/installation', { applications, install }), '0.0.1');
+  assert.deepEqual(installs, [{ installationRoot: '/installation', applications }]);
+  // A bundle that records no version is older than any release.
+  await rm(join(resources, 'app/package.json'));
+  assert.equal(await installedAppVersion('/installation', applications), '');
+  assert.equal(await refreshInstalledApp('/installation', { applications, install }), '');
+  assert.equal(installs.length, 2);
 });
 
 test('desktop navigation remains local and external launching rejects executable protocols', () => {

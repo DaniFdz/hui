@@ -1,8 +1,9 @@
 /**
- * Browser client for the gateway's read-mostly control surfaces: health, macOS power and the workspace
- * inspection of context files, memory and worktrees. The gateway gathers all of it; this module only fetches
+ * Browser client for the gateway's read-mostly control surfaces: health, macOS power, the host's metrics and the
+ * workspace inspection of context files, memory and worktrees. The gateway gathers all of it; this module only fetches
  * and types the results.
  */
+import type { HostMetrics } from "./schema/host.ts";
 import type { PowerResponse, PowerStatus } from "./schema/power.ts";
 import type { WorkspaceInspection } from "./schema/worktrees.ts";
 import { fetchJson } from "./request.ts";
@@ -31,4 +32,8 @@ export async function setLidAwake(lidAwake: boolean): Promise<PowerStatus | null
 
 export function loadWorkspaceInspection(): Promise<WorkspaceInspection> {
   return fetchJson<WorkspaceInspection>("/__hui/workspaces");
+}
+
+export function loadHostMetrics(): Promise<HostMetrics> {
+  return fetchJson<HostMetrics>("/__hui/host-metrics");
 }
