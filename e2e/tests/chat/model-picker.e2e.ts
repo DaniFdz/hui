@@ -46,8 +46,8 @@ test("the model picker searches every word, switches without losing the transcri
   await expect(screen.getByLabel("Session status: Running")).toBeVisible();
   const trigger = screen.getByLabel("Model: Opus fixture");
   await trigger.tap();
-  expect(await hui.disabled(fixture)).toBe(true);
-  expect(await hui.disabled(opus)).toBe(true);
+  await expect.poll(() => hui.disabled(fixture)).toBe(true);
+  await expect.poll(() => hui.disabled(opus)).toBe(true);
   await trigger.tap();
   await expect(search).toBeHidden();
   await hui.provider.release();
@@ -68,7 +68,9 @@ test("the model picker searches every word, switches without losing the transcri
   await hui.reload();
   await empty.arrived();
   await empty.answer(JSON.stringify({ models: [] }));
-  await expect(screen.getByLabel("Model: Opus fixture. No model catalog available")).toBeVisible();
+  const noCatalog = screen.getByLabel("Model: Opus fixture. No model catalog available");
+  await expect(noCatalog).toBeVisible();
+  await expect(noCatalog).toBeDisabled();
 });
 
 test("the thinking picker offers the current model's levels, applies live, persists across a reload and fits the next model", { tags: ["CHAT-054"], platforms: ["web"] }, async ({ screen, hui }) => {
@@ -84,11 +86,16 @@ test("the thinking picker offers the current model's levels, applies live, persi
   const slider = screen.getByLabel("Thinking effort");
   await screen.getByLabel("Thinking: high").tap();
   await expect(slider).toBeVisible();
+  await expect(slider).toHaveAttribute("max", "5");
   await expect(screen.getByText("Faster", { exact: true })).toBeVisible();
   await expect(screen.getByText("Smarter", { exact: true })).toBeVisible();
   await slider.press("End");
   await expect(slider).toHaveAttribute("aria-valuetext", "Ultra");
   await expect(screen.getByLabel("Thinking: ultra")).toBeVisible();
+  await slider.press("ArrowLeft");
+  await expect(slider).toHaveAttribute("aria-valuetext", "High");
+  await slider.press("End");
+  await expect(slider).toHaveAttribute("aria-valuetext", "Ultra");
   await screen.getByLabel("Thinking: ultra").tap();
   await expect(slider).toBeHidden();
 
@@ -104,6 +111,9 @@ test("the thinking picker offers the current model's levels, applies live, persi
   await screen.getByText(OPUS).tap();
   await expect(screen.getByLabel("Model: Opus fixture")).toBeVisible();
   await expect(screen.getByLabel("Thinking: low")).toBeVisible();
+  await screen.getByLabel("Thinking: low").tap();
+  await expect(slider).toHaveAttribute("max", "5");
+  await screen.getByLabel("Thinking: low").tap();
 
   const worker = await hui.createSession({ title: "Worker effort", tool: "pi" });
   await hui.open(`/sessions/${worker.id}`);
@@ -111,6 +121,7 @@ test("the thinking picker offers the current model's levels, applies live, persi
   const workerTrigger = screen.getByLabel(/^Thinking: /u);
   await expect(workerTrigger).toHaveAttribute("aria-disabled", "false");
   await workerTrigger.tap();
+  await expect(slider).toHaveAttribute("max", "4");
   await slider.press("End");
-  await expect(slider).not.toHaveAttribute("aria-valuetext", "Ultra");
+  await expect(slider).toHaveAttribute("aria-valuetext", "High");
 });

@@ -105,6 +105,8 @@ export type Hui = {
   opacity(target: Locator): Promise<number>;
   /** Whether the control the target belongs to is disabled, which a menu option's own text cannot say. */
   disabled(target: Locator): Promise<boolean>;
+  /** The text of whatever holds keyboard focus: an input's value, else its text, else its label. */
+  focused(): Promise<string>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
   newSessionDraft(): Promise<string>;
@@ -599,9 +601,15 @@ export const test = base.extend<{ hui: Hui }>({
           if (!box) throw new Error("disabled: the target lays out no box");
           return browser().evaluate(({ x, y }) => {
             const control = document.elementFromPoint(x, y)?.closest<HTMLElement>("button, [aria-disabled]");
-            return control ? (control as HTMLButtonElement).disabled === true || control.getAttribute("aria-disabled") === "true" : false;
+            if (!control) throw new Error("disabled: nothing clickable holds the target's box");
+            return (control as HTMLButtonElement).disabled === true || control.getAttribute("aria-disabled") === "true";
           }, { x: box.x + box.width / 2, y: box.y + box.height / 2 });
         },
+        focused: () => browser().evaluate(() => {
+          const element = document.activeElement;
+          if (!(element instanceof HTMLElement)) return "";
+          return (element as HTMLInputElement).value || element.textContent?.trim() || element.getAttribute("aria-label") || "";
+        }),
         attach: async (target, files) => {
           const made = files.some((file) => typeof file !== "string") ? await mkdtemp(join(tmpdir(), "hui-e2e-files-")) : "";
           if (made) directories.push(made);

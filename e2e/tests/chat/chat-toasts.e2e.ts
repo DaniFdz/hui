@@ -40,6 +40,7 @@ test("a rejected chat action shows its reason in the toast, which dismisses and 
   await again.arrived();
   await again.reject(503, REASON);
   await expect(toast).toBeVisible();
+  expect((await toast.boundingBox())!.y).toBeGreaterThan((await screen.getByTestId("session-title").boundingBox())!.y);
   const shown = (await toast.boundingBox())!;
   expect(shown.x).toBeGreaterThanOrEqual(0);
   expect(shown.y).toBeGreaterThanOrEqual(0);

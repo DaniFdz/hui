@@ -2,16 +2,19 @@
 import { expect, type Locator, type Screen } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
-const KEYBOARD_PLACEHOLDER = "↵ adds to this run · ⌘↵ queues for later";
+const KEYBOARD_PLACEHOLDER = /^↵ adds to this run · (?:⌘|Ctrl\+)↵ queues for later$/u;
+const TOUCH_PLACEHOLDER = "Add to this run…";
 
-const call = (verb: "CALL" | "HOLD", calls: { name: string; input: Record<string, unknown> }[]) =>
-  `E2E_${verb}:${Buffer.from(JSON.stringify(calls)).toString("base64url")}`;
+const held = (path: string) =>
+  `E2E_HOLD:${Buffer.from(JSON.stringify([{ name: "read", input: { path } }, { name: "fixture_echo", input: { text: "held" } }])).toString("base64url")}`;
 
-const fits = async (target: Locator, width: number) => {
+const fits = async (target: Locator, phone: { width: number; height: number }) => {
   const box = (await target.boundingBox())!;
   expect(box.width).toBeGreaterThan(0);
   expect(box.x).toBeGreaterThanOrEqual(0);
-  expect(box.x + box.width).toBeLessThanOrEqual(width);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(phone.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(phone.height);
 };
 
 async function busyRun(screen: Screen, hui: Hui, title: string) {
@@ -25,6 +28,7 @@ async function busyRun(screen: Screen, hui: Hui, title: string) {
 }
 
 test("a touch device's busy composer names the short action instead of the keyboard shortcuts", { tags: ["CHAT-072"], platforms: ["web"] }, async ({ screen, hui }) => {
+  await hui.phoneScreen();
   await busyRun(screen, hui, "Keyboard busy composer");
   await expect(screen.getByLabel("Message")).toHaveAttribute("placeholder", KEYBOARD_PLACEHOLDER);
   await hui.provider.release();
@@ -32,14 +36,13 @@ test("a touch device's busy composer names the short action instead of the keybo
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
   await hui.touchPointer();
-  await hui.phoneScreen();
   await busyRun(screen, hui, "Touch busy composer");
-  await expect(screen.getByLabel("Message")).toHaveAttribute("placeholder", "Add to this run…");
+  await expect(screen.getByLabel("Message")).toHaveAttribute("placeholder", TOUCH_PLACEHOLDER);
   await hui.provider.release();
   await expect(screen.getByTestId("transcript").getByText("Replay prefix — replay suffix")).toBeVisible();
 });
 
-test("a busy phone keeps the queued messages tray, the composer and Stop on screen without overflow", { tags: ["CHAT-074"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a busy phone keeps the queued messages tray above the composer and its controls on screen without overflow", { tags: ["CHAT-074"], platforms: ["web"] }, async ({ screen, hui }) => {
   const phone = await hui.phoneScreen();
   await busyRun(screen, hui, "Phone queue");
   const message = screen.getByLabel("Message");
@@ -57,8 +60,10 @@ test("a busy phone keeps the queued messages tray, the composer and Stop on scre
 
   for (const control of [queue, message, screen.getByLabel("Add attachment").first(), screen.getByRole("button", "Stop")]) {
     await expect(control).toBeVisible();
-    await fits(control, phone.width);
+    await fits(control, phone);
   }
+  const tray = (await queue.boundingBox())!;
+  expect(tray.y + tray.height).toBeLessThanOrEqual((await message.boundingBox())!.y);
   expect(await hui.overflowsSideways()).toBe(false);
 
   await hui.provider.release();
@@ -78,28 +83,27 @@ test("mid-turn messages and folded activity fit a phone's width and stay readabl
 
   const midTurn = transcript.getByText("Started two helpers in the background; I'll report when they're back.");
   await expect(midTurn).toBeVisible();
-  await fits(midTurn, phone.width);
-  await fits(transcript.getByText("Ran 1 command"), phone.width);
+  await fits(midTurn, phone);
+  await fits(transcript.getByText("Ran 1 command"), phone);
   expect(await hui.overflowsSideways()).toBe(false);
 
   await hui.scrollTo(transcript, transcript.getByText("Ran 1 command"));
   await transcript.getByText("Ran 1 command").tap();
   await expect(transcript.getByRole("button", "Read fixture.txt")).toBeVisible();
   await expect(midTurn).toBeVisible();
-  await fits(midTurn, phone.width);
+  await fits(midTurn, phone);
   expect(await hui.overflowsSideways()).toBe(false);
 
-  const held = call("HOLD", [{ name: "read", input: { path: `${hui.workspace}/fixture.txt` } }, { name: "fixture_echo", input: { text: "held" } }]);
-  const busy = await hui.createSession({ title: "Phone held activity" });
-  await hui.open(`/sessions/${busy.id}`);
+  const run = await hui.createSession({ title: "Phone held activity" });
+  await hui.open(`/sessions/${run.id}`);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
-  await screen.getByLabel("Message").fill(held);
+  await screen.getByLabel("Message").fill(held(`${hui.workspace}/fixture.txt`));
   await screen.getByRole("button", "Send message").tap();
   await hui.provider.held();
   const activity = screen.getByLabel(/^Agent activity: /u);
   await expect(activity).toBeVisible();
-  await fits(activity, phone.width);
-  await fits(transcript.getByText(/^Ran 2 commands/u), phone.width);
+  await fits(activity, phone);
+  await fits(transcript.getByText(/^Ran 2 commands/u), phone);
   expect(await hui.overflowsSideways()).toBe(false);
   await hui.provider.release();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();

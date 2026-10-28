@@ -4,57 +4,63 @@ import { test, type Hui } from "../../fixtures/hui.ts";
 
 const shown = async (hui: Hui, transcript: Locator, label: string) => hui.opacity(transcript.getByText(label, { exact: true }).first());
 
-test("a focused message opens its copy menu from the keyboard", { tags: ["CHAT-031"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("a focused message opens its copy menu from the keyboard, its footer actions name themselves on keyboard focus, and Escape dismisses a tooltip without stopping the run", { tags: ["CHAT-031"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const transcript = screen.getByTestId("transcript");
+  const message = screen.getByLabel("Message");
+  const send = screen.getByRole("button", "Send message");
+  const reply = transcript.getByRole("button", "Reply to message").first();
+  const menu = screen.getByText("Copy as markdown");
   await hui.clipboard();
   const session = await hui.createSession({ title: "Keyboard message actions" });
   await hui.open(`/sessions/${session.id}`);
-  const transcript = screen.getByTestId("transcript");
-  await screen.getByLabel("Message").fill("Keyboard actions prompt");
-  await screen.getByRole("button", "Send message").tap();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+  await message.fill("Keyboard actions prompt");
+  await send.tap();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
-  for (const [modifier, key] of [[null, "ContextMenu"], ["Shift", "F10"]] as const) {
-    await transcript.getByRole("button", "Reply to message").first().focus();
+  const focusMessage = async () => {
+    await reply.focus();
     await hui.keyboard.down("Shift");
     await hui.keyboard.down("Tab");
     await hui.keyboard.up("Tab");
     await hui.keyboard.up("Shift");
-    if (modifier) await hui.keyboard.down(modifier);
-    await hui.keyboard.down(key);
-    await hui.keyboard.up(key);
-    if (modifier) await hui.keyboard.up(modifier);
-    await expect(screen.getByText("Copy as markdown")).toBeVisible();
-    await screen.getByText("Copy as markdown").tap();
-    await expect.poll(() => hui.copied()).toBe("Keyboard actions prompt");
-    await expect(screen.getByText("Copy as markdown")).toBeHidden();
-  }
-});
+    expect(await hui.focused()).toContain("Keyboard actions prompt");
+  };
 
-test("footer actions name themselves on keyboard focus and Escape dismisses a tooltip without stopping the run", { tags: ["CHAT-031"], platforms: ["web"] }, async ({ screen, hui }) => {
-  const session = await hui.createSession({ title: "Footer tooltips" });
-  await hui.open(`/sessions/${session.id}`);
-  const transcript = screen.getByTestId("transcript");
-  await screen.getByLabel("Message").fill("First prompt");
-  await screen.getByRole("button", "Send message").tap();
+  await focusMessage();
+  await hui.keyboard.down("ContextMenu");
+  await hui.keyboard.up("ContextMenu");
+  await expect(menu).toBeVisible();
+  await menu.tap();
+  await expect.poll(() => hui.copied()).toBe("Keyboard actions prompt");
+  await expect(menu).toBeHidden();
+
+  await focusMessage();
+  await hui.keyboard.down("Shift");
+  await hui.keyboard.down("F10");
+  await hui.keyboard.up("F10");
+  await hui.keyboard.up("Shift");
+  await expect(menu).toBeVisible();
+  await hui.keyboard.down("Escape");
+  await hui.keyboard.up("Escape");
+  await expect(menu).toBeHidden();
   await expect(transcript.getByText("Fixture response.")).toBeVisible();
-  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
   for (const [control, label] of [["Reply to message", "Reply"], ["Copy prompt", "Copy"], ["Rewind to here", "Rewind"], ["Fork into a new session from here", "Fork from here"]] as const) {
     await transcript.getByRole("button", control).first().focus();
     await expect.poll(async () => shown(hui, transcript, label)).toBe(1);
   }
-
   await hui.keyboard.down("Escape");
   await hui.keyboard.up("Escape");
   await expect.poll(async () => shown(hui, transcript, "Fork from here")).toBe(0);
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
 
-  await screen.getByLabel("Message").fill("E2E_REPLAY");
-  await screen.getByRole("button", "Send message").tap();
+  await message.fill("E2E_REPLAY");
+  await send.tap();
   await hui.provider.held();
   await expect(screen.getByLabel("Session status: Running")).toBeVisible();
-  await transcript.getByRole("button", "Reply to message").first().focus();
+  await reply.focus();
   await expect.poll(async () => shown(hui, transcript, "Reply")).toBe(1);
   await hui.keyboard.down("Escape");
   await hui.keyboard.up("Escape");
