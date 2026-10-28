@@ -99,7 +99,7 @@ export type Hui = {
   providerRequests(): Promise<number>;
   accentDot(title: string): Promise<boolean>;
   appearance(): Promise<"light" | "dark">;
-  pressed(within: Screen, name: string, on?: boolean): Locator;
+  pressed(within: Screen | Locator, name: string, on?: boolean): Locator;
   look(target: Locator): Promise<{ color: Rgb; background: Rgb; opacity: number; fonts: string[]; loaded: string[]; size: number; weight: number; align: string; ring: Rgb | null }>;
   overflowX(): Promise<number>;
   deviceAppearance(scheme: "light" | "dark"): Promise<void>;
