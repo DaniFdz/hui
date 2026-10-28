@@ -928,7 +928,12 @@ export const test = base.extend<{ hui: Hui }>({
           const shown = target.kind === "session" || target.kind === "settings" ? navigationPath(target) : target.kind === "page" && target.page.id === "sessions" ? "/sessions" : undefined;
           if (shown) await expect.poll(async () => new URL(await iosSteps.url!()).pathname).toBe(shown);
         },
-        reload: () => (web ? browser().reload() : fixtures.app.restart()),
+        reload: async () => {
+          if (!web) { await fixtures.app.restart(); return; }
+          // Unsaved Files text asks before it leaves the page; a test's reload is the operator saying yes.
+          const off = await browser().onDialog("accept");
+          try { await browser().reload(); } finally { await off(); }
+        },
         clearState,
         repository: async () => {
           const path = await realpath(await mkdtemp(join(tmpdir(), "hui-e2e-repo-")));
