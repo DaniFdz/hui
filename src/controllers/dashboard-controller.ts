@@ -47,8 +47,8 @@ export class DashboardController implements ReactiveController {
     const listed = this.#groups();
     if (listed === this.#foldedFor) return;
     this.#foldedFor = listed;
-    const { waiting, groups } = summarizeSessions(listed);
-    const sizes = new Map([[NEEDS_YOU_LIST, waiting.length], ...groups.map((group) => [group.key, group.sessions.length] as const)]);
+    const { needsYou, groups } = summarizeSessions(listed);
+    const sizes = new Map([[NEEDS_YOU_LIST, needsYou.length], ...groups.map((group) => [group.key, group.sessions.length] as const)]);
     const kept = [...this.expandedLists].filter((key) => (sizes.get(key) ?? 0) > DASHBOARD_ROWS);
     if (kept.length < this.expandedLists.size) this.expandedLists = new Set(kept);
   }
