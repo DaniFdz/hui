@@ -318,9 +318,10 @@ test("one scan answers every range, and a forced refresh or newer activity reads
   const sessions = [record("cached", `durable:${conversation}`, new Date(T1).toISOString())];
   let reads = 0;
   let activity = new Date(T1).toISOString();
-  const reports = new UsageReports(async () => sessions.map((session) => ({ ...session, updatedAt: activity })), async (given, timeZone) => {
+  let runStartedAt: string | undefined;
+  const reports = new UsageReports(async () => sessions.map((session) => ({ ...session, updatedAt: activity, runStartedAt })), async (given, timeZone, previous) => {
     reads += 1;
-    return (await import("./usage.ts")).scanUsage(given, timeZone);
+    return scanUsage(given, timeZone, previous);
   });
 
   const june = usageQuery(new URLSearchParams({ from: "2026-06-01", to: "2026-06-02", timeZone: "UTC" }));
@@ -338,10 +339,21 @@ test("one scan answers every range, and a forced refresh or newer activity reads
   assert.equal(reads, 2, "refresh reads every history again");
 
   activity = new Date(T2).toISOString();
+  runStartedAt = activity;
   const [afterActivity, shared] = await Promise.all([reports.get(june), reports.get(juneFirst)]);
   assert.equal(reads, 3, "newer registry activity reads once, even for two requests at once");
   assert.equal(afterActivity.range.to, "2026-06-02");
   assert.equal(shared.sessions[0]?.metrics.calls, 1);
+
+  await harness.commit(async (tx) => {
+    await tx.appendEntry(conversation, { kind: AssistantEntry.kind, model: [assistant(T2, priced(4, 2, 6, 0.1)) as never] });
+  }, durableContext);
+  runStartedAt = undefined;
+  const completed = await reports.get(june);
+  assert.equal(completed.sessions[0]?.metrics.calls, 3, "a run completing after the previous scan includes its answer without changing its admission timestamp");
+  assert.equal(reads, 4);
+  await reports.get(juneFirst);
+  assert.equal(reads, 4, "unchanged reads reuse the completed run's scan");
 });
 
 test("settling a turn invalidates an early usage read without rescanning unchanged ranges", async () => {

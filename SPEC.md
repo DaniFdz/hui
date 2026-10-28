@@ -552,9 +552,9 @@ Usage follows OpenClaw's reporting layout with HUI's recorded data:
   message bodies, tool arguments or tool output enter the usage response.
 - The gateway reads every history once and answers range, zone and filter changes
   from that scan, so those interactions stay responsive on a large session list.
-  Refresh, and the first read after recorded activity changes, reads them again.
-  A compaction ending updates that activity, so its spend appears on the next
-  read without a manual refresh.
+  Refresh, and the first read after recorded activity changes or a registered run
+  finishes, reads them again. A compaction ending updates that activity, so its
+  spend appears on the next read without a manual refresh.
 
 ---
 

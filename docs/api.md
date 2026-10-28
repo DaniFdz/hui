@@ -3880,11 +3880,13 @@ Query parameters:
 
 The gateway reads every registered history once per time zone and answers any
 range from that scan, so changing the range, the zone or the filters does not
-read the conversations again. While the registry records no newer activity the
-scan is reused as it is. When it does, only the entries appended since that
-scan are read, and entries already counted stay counted, so a fork made
-afterwards does not add its inherited history again. `refresh=1`, and the first
-read after the gateway starts, read every history. A scan in progress is shared
+read the conversations again. While each registered session's activity timestamp
+and run marker stay unchanged, the scan is reused as it is. A run finishing
+invalidates a scan read before its answer was recorded, even when the prompt's
+admission timestamp stays unchanged. When either changes, only the entries
+appended since that scan are read, and entries already counted stay counted, so
+a fork made afterwards does not add its inherited history again. `refresh=1`, and
+the first read after the gateway starts, read every history. A scan in progress is shared
 by concurrent requests. Compaction completion updates that activity even when no dated entry was added.
 Activity the registry does not record is not seen until the next scan or a forced
 refresh.
