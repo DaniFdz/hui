@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { toolCallLabel, toolCallMeta } from "./tool-call-group.ts";
+import { commandBinary, toolCallLabel, toolCallMeta } from "./tool-call-group.ts";
 
 const tool = (name: string, args?: unknown, extra: Record<string, unknown> = {}) =>
   ({ kind: "tool" as const, id: name, name, ...(args === undefined ? {} : { args }), ...extra });
@@ -36,4 +36,14 @@ test("the row's meta reports only what the output proves", () => {
 test("a failed call keeps its sentence and still reports its output size", () => {
   assert.equal(toolCallLabel(tool("read", { path: "a.ts" })).done, "Read a.ts");
   assert.equal(toolCallMeta(tool("read", { path: "a.ts" }, { output: "", failed: true })), undefined);
+});
+
+test("a command names its CLI after wrappers, assignments and its path", () => {
+  assert.equal(commandBinary(tool("bash", { command: "git status --short" })), "git");
+  assert.equal(commandBinary(tool("bash", { command: "FOO=1 sudo -u dani git status" })), "git");
+  assert.equal(commandBinary(tool("bash", { command: "/usr/bin/curl -sS https://uiarc.dev" })), "curl");
+  assert.equal(commandBinary(tool("bash", { command: "cd repo && npm run build" })), "npm");
+  assert.equal(commandBinary(tool("bash", { command: "npx vitest run" })), "vitest");
+  assert.equal(commandBinary(tool("bash", { command: "gh pr list" })), "gh");
+  assert.equal(commandBinary(tool("bash", { command: "" })), "");
 });

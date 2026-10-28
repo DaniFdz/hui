@@ -133,6 +133,56 @@ const KIND_ICON: Record<ToolKind, TemplateResult> = {
   other: icons.wrench,
 };
 
+/** A command's own mark, by the CLI it runs: the binary's name is the only signal the transcript carries. */
+const CLI_ICONS: Record<string, TemplateResult> = {
+  git: icons.github, gh: icons.github,
+  npm: icons.box, pnpm: icons.box, yarn: icons.box, bun: icons.box, node: icons.box, deno: icons.box,
+  docker: icons.box, podman: icons.box,
+  curl: icons.globe, wget: icons.globe, http: icons.globe,
+  grep: icons.search, rg: icons.search, ag: icons.search,
+  cat: icons.fileText, head: icons.fileText, tail: icons.fileText, less: icons.fileText, bat: icons.fileText,
+  ls: icons.folder, find: icons.folder, tree: icons.folder,
+  make: icons.wrench, cmake: icons.wrench, cargo: icons.wrench, go: icons.wrench, tsc: icons.wrench,
+  vitest: icons.wrench, jest: icons.wrench, pytest: icons.wrench,
+  kubectl: icons.plug, helm: icons.plug, terraform: icons.plug, aws: icons.plug, gcloud: icons.plug, ssh: icons.plug, rsync: icons.plug,
+};
+
+const COMMAND_WRAPPERS = new Set(["sudo", "time", "env", "command", "nohup", "nice", "stdbuf"]);
+const PACKAGE_RUNNERS = new Set(["npx", "bunx"]);
+/** Shell builtins that only set up the command that follows. */
+const SHELL_SETUP = new Set(["cd", "export", "set", "source", "."]);
+
+/** The program a shell command runs: leading `FOO=bar` assignments, wrappers and a path are stripped, and `npx foo`
+ * reports `foo`, since that is the tool the row is about. */
+export function commandBinary(item: ToolItem): string {
+  const command = commandToolPresentation(item)?.command ?? stringArg(item, "command");
+  for (const segment of command.split(/&&|\|\||;|\n/u)) {
+    const tokens = segment.trim().split(/\s+/u).filter(Boolean);
+    while (tokens.length) {
+      const token = tokens[0]!;
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token) || COMMAND_WRAPPERS.has(token)) { tokens.shift(); continue; }
+      break;
+    }
+    const binary = (tokens[0] ?? "").replace(/^.*\//u, "").replace(/\.(?:exe|cmd)$/iu, "");
+    if (!binary || SHELL_SETUP.has(binary)) continue;
+    if (PACKAGE_RUNNERS.has(binary) && tokens[1] && !tokens[1].startsWith("-")) return tokens[1]!.replace(/^.*\//u, "");
+    return binary;
+  }
+  return "";
+}
+
+/** The mark a call carries: its CLI for a command, its kind for every other tool. */
+function toolIcon(item: ToolItem): { key: string; glyph: TemplateResult } {
+  if (toolKind(item) === "command") {
+    const binary = commandBinary(item);
+    const glyph = CLI_ICONS[binary];
+    if (glyph) return { key: `cli:${binary === "gh" ? "git" : binary}`, glyph };
+    return { key: "cli", glyph: icons.squareTerminal };
+  }
+  const kind = toolKind(item);
+  return { key: kind, glyph: KIND_ICON[kind] };
+}
+
 type Status = "running" | "succeeded" | "failed";
 
 function statusOf(item: ToolItem): Status {
@@ -173,8 +223,10 @@ export type ToolCallGroupOptions = {
 export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCallGroupOptions): TemplateResult {
   const running = items.some((item) => statusOf(item) === "running");
   const tools = items.length;
-  const kinds = [...new Set(items.map(toolKind))];
-  const marks = kinds.slice(0, 4).map((kind) => html`<span class="tool-call-group__mark" title=${kind}>${KIND_ICON[kind]}</span>`);
+  const distinct = new Map<string, TemplateResult>();
+  for (const item of items) { const icon = toolIcon(item); if (!distinct.has(icon.key)) distinct.set(icon.key, icon.glyph); }
+  const kinds = [...distinct];
+  const marks = kinds.slice(0, 4).map(([key, glyph]) => html`<span class="tool-call-group__mark" title=${key.replace(/^cli:/u, "")}>${glyph}</span>`);
   return html`<div class="tool-call-group">
     <details class="tool-call-group__disclosure" .open=${options.expanded}
       @toggle=${(event: Event) => options.onToggle((event.currentTarget as HTMLDetailsElement).open)}>
@@ -195,7 +247,7 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
           return html`<div class="tool-call-row" data-status=${status}>
             <button type="button" class=${open ? "tool-call-row__toggle is-open" : "tool-call-row__toggle"} aria-expanded=${String(open)}
               @click=${() => options.onRowToggle(expansionId, !open)}>
-              <span class="tool-call-row__icon" aria-hidden="true">${KIND_ICON[toolKind(item)]}</span>
+              <span class="tool-call-row__icon${toolKind(item) === "command" && CLI_ICONS[commandBinary(item)] ? " tool-call-row__icon--brand" : ""}" aria-hidden="true">${toolIcon(item).glyph}</span>
               <span class=${status === "running" ? "tool-call-row__title tool-call-row__title--live" : "tool-call-row__title"}>${title}</span>
               ${meta ? html`<span class="tool-call-row__meta">${meta}</span>` : nothing}
               ${statusGlyph(status)}
