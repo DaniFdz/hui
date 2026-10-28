@@ -160,7 +160,13 @@ export function commandBinary(item: ToolItem): string {
     const tokens = segment.trim().split(/\s+/u).filter(Boolean);
     while (tokens.length) {
       const token = tokens[0]!;
-      if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token) || COMMAND_WRAPPERS.has(token)) { tokens.shift(); continue; }
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(token)) { tokens.shift(); continue; }
+      // `sudo -u user`, `env -i`, `nice -n 5`: the wrapper and its own options are not the program.
+      if (COMMAND_WRAPPERS.has(token)) {
+        const takesValue = token === "sudo" && ["-u", "-g", "-C", "-h", "-p"].includes(tokens[1] ?? "");
+        tokens.splice(0, takesValue ? 3 : token === "env" || token === "nice" ? 2 : 1);
+        continue;
+      }
       break;
     }
     const binary = (tokens[0] ?? "").replace(/^.*\//u, "").replace(/\.(?:exe|cmd)$/iu, "");
