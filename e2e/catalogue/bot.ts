@@ -121,7 +121,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#a-forever-chat"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
