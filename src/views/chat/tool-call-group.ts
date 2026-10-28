@@ -258,6 +258,7 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
           const expansionId = options.expansionId(item);
           const open = options.expandedIds.has(expansionId);
           const title = status === "running" ? label.running : label.done;
+          const icon = toolIcon(item);
           return html`<div class="tool-call-row" data-status=${status}>
             <button type="button" class=${open ? "tool-call-row__toggle is-open" : "tool-call-row__toggle"} aria-expanded=${String(open)}
               @click=${() => options.onRowToggle(expansionId, !open)}>
