@@ -6,6 +6,9 @@
  * showed an empty conversation.
  */
 import { reportReachable, reportRequestFailure } from "./ui-errors.ts";
+import { assertCurrentBuild } from "./offline.ts";
+import { GatewayHttpError, isConnectionFailure } from "./gateway-error.ts";
+export { GatewayHttpError, isGatewayUnavailable } from "./gateway-error.ts";
 
 /** The backend refuses requests without this, which no cross-origin page can
  * set without a preflight. */
@@ -68,16 +71,13 @@ function huiRequest(input: RequestInfo | URL, init?: RequestInit): { method: str
   return { method: (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase(), path: url.pathname };
 }
 
-/** fetch rejects with a TypeError when it cannot connect and a TimeoutError
- * when its signal expires; an AbortError is a deliberate cancellation. */
-function isConnectionFailure(error: unknown): boolean {
-  return error instanceof TypeError || (error instanceof DOMException && error.name === "TimeoutError");
-}
-
 /** `fetch` for HUI's own API. A request that cannot reach the gateway is
  * reported once a later request succeeds; otherwise it is plain fetch. */
 export async function trackedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const target = huiRequest(input, init);
+  if (target && !["GET", "HEAD"].includes(target.method)) {
+    await assertCurrentBuild(init?.signal ?? (input instanceof Request ? input.signal : undefined));
+  }
   try {
     const response = await fetch(input, init);
     if (target) reportReachable();
@@ -98,7 +98,7 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
     // The backend explains its refusals in the body, and that message is worth
     // more to the user than the status code. The import path relies on this.
     const detail = (await response.json().catch(() => undefined)) as { error?: string } | undefined;
-    throw new Error(detail?.error ?? `${url} returned HTTP ${response.status}`);
+    throw new GatewayHttpError(response.status, detail?.error ?? `${url} returned HTTP ${response.status}`);
   }
   return (await response.json()) as T;
 }

@@ -1,6 +1,7 @@
 /**
  * Browser entry point. It loads the global stylesheets and the pinned Web Awesome components, starts UI error
- * reporting and applies the saved theme before anything paints, and only then loads the app shell.
+ * reporting and applies the saved theme before anything paints, then loads the app shell and prepares the
+ * production offline files after boot.
  */
 import "@awesome.me/webawesome/dist/styles/themes/default.css";
 import "./styles/tokens.css";
@@ -33,6 +34,7 @@ import "./components/rich-embeds.ts";
 import "./components/media-viewer.ts";
 
 import { installUiErrorReporting } from "./api/ui-errors.ts";
+import { prepareOffline } from "./api/offline.ts";
 import { applyThemeMode } from "./lib/theme/theme.ts";
 import { loadSettings } from "./lib/settings/settings-store.ts";
 import { applyTheme, loadThemes } from "./lib/theme/theme-store.ts";
@@ -67,6 +69,7 @@ try {
   await viewAssetsLoaded();
   defineHuiApp();
   await finishBoot(document.querySelector("hui-app"));
+  prepareOffline();
 } catch (error) {
   showBootFailure(error);
   throw error;

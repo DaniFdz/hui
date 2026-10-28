@@ -3,7 +3,7 @@
 The interface between the backend and the browser. Change it deliberately: it is
 the seam the whole app is built across.
 
-All routes live under `/__hui/` and require the `x-hui: 1` header. Expected
+Gateway API routes live under `/__hui/` and require the `x-hui: 1` header. Expected
 client errors use `{ "error": "message worth showing the user" }` with a 4xx
 status; storage/backend failures use the same shape with 500.
 
@@ -37,6 +37,32 @@ Run `npm run api:schema` to update the committed document and generated browser
 types. The browser types are generated from the JSON document, not imported
 from the server. This document remains the prose contract for behavior, errors
 and ordering.
+
+## Production offline files
+
+Production builds emit `/offline-build.json` with `{ "build": "<build id>" }`,
+`/offline-inventory.json` with the complete static-file URLs and SHA-384
+integrities, and `/offline-worker.js`. These are static build files, not API
+routes, and are served with `Cache-Control: no-store`. The browser checks the
+fresh build marker before mutations and connection tickets. A different or
+invalid build marker disables live actions and offers **Reload HUI**.
+
+On HTTPS or localhost, the worker installs the entire inventory before it can
+activate. A failed install discards only that partial build. Updates wait for
+old tabs to close; they never reload an active draft. Known app navigations try
+the network for up to four seconds before using the installed shell on a
+connection failure or HTTP 502/503/504. HTTP 403/404 are not replaced by the
+shell. Inventory assets are cache-first. API calls, mutations, external URLs,
+build markers and unknown navigation paths are never answered from that cache.
+
+The separate browser database `hui-saved-conversations` keeps reading copies of
+up to ten visited conversations for seven days, capped at 200 recent complete
+rows and 2 MiB per conversation. It saves text at confirmed history boundaries,
+not on token updates, and never saves questions, queues, attachments or tool
+arguments. Sidebar hydration reads metadata only and holds no gateway revision.
+A saved transcript does not adopt runtime state. Compatible live state replaces
+it; reconnecting never submits a draft. **Forget saved conversations** removes
+these copies without touching the existing composer-draft database.
 
 ## Desktop shell boundary
 
@@ -3236,8 +3262,10 @@ prompt, steer and follow-up routes, waits for that first send and answers
 `{ "ok": true, "duplicate": true }` without sending anything again. A send that
 failed is forgotten, so its resend runs. The browser gives every composer send
 an id and reuses it when the operator sends the same text and attachments to the
-same session again after a failure (the browser stops waiting after five
-seconds, which a gateway that is slow to accept outlasts). On a duplicate it
+same session again after a failure. Five seconds without an HTTP answer starts
+a socket-liveness check, not a send failure: ten more seconds without an
+incoming frame reconnects only the event socket. The HTTP send keeps its own
+outcome and is never cancelled or replayed by that check. On a duplicate it
 drops its local copies of the message. The ids live in the gateway's memory: a
 resend that arrives after a gateway restart is sent again. Output arrives over the event stream. Prompts are rejected while a turn
 is pending or streaming, with a 409 and a message saying so. Images may form a
@@ -3556,7 +3584,7 @@ browsers allow only six HTTP/1.1 connections per origin and a few split panes
 would otherwise stall every other request. Like terminal and browser streams,
 the upgrade also requires a same-origin `Origin` and an allowed `Host`, and it
 is refused with 403 otherwise. Each text message is
-`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "closed", "data": … }`
+`{ "event": "snapshot" | "transcript" | "event" | "status" | "model" | "thinking_level" | "fast" | "heartbeat" | "closed", "data": … }`
 with the SSE payloads above, beginning with the snapshot. An upgrade URL with
 `&slim=1` asks for snapshots without `transcript` when it has not changed: one
 that only updates watchers, task suggestions, questions or subagents. With
@@ -3569,11 +3597,20 @@ since then (it drops frames a minute old when it sends new ones), it starts
 with the whole snapshot.
 The browser asks for both and keeps the transcript it has; its reconnects send
 no revision and get the whole snapshot. The server negotiates
-`permessage-deflate` (messages of at least 1 KiB, no context takeover in either
-direction), so the snapshot's transcript crosses a slow link compressed; a
+`permessage-deflate` (messages of at least 1 KiB, zlib level 4, no context
+takeover in either direction), so the snapshot's transcript crosses a slow link compressed; a
 client that does not offer it gets uncompressed frames. After `closed` the
 server closes normally; a session deleted before the upgrade closes with code
 4404. 429 means too many tickets are pending, so retry later.
+
+Each socket receives `{ "event": "heartbeat", "data": {} }` every 15 seconds,
+independently of runtime state and transcript revisions. The browser bounds the
+build check, ticket and first state frame to 20 seconds, then reconnects after
+40 seconds without an incoming frame. A heartbeat proves liveness but cannot
+admit a saved conversation to live state. Focus, visibility and online events
+may shorten a retry after a fresh health check, but never replace a live
+socket. Cleanup cancels each subscription's timers, probe and listeners;
+terminal HTTP refusals, code 4404 and runtime exit do not retry.
 
 ### `POST /__hui/sessions/:id/continue`
 

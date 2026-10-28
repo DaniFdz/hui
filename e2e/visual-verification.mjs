@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Disposable real-HUI/real-PI fixture; only the model provider is mocked. */
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { createWriteStream, existsSync } from "node:fs";
@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repo = dirname(dirname(fileURLToPath(import.meta.url)));
 const help = `HUI visual verification (run from the checkout being reviewed)
 
-  node e2e/visual-verification.mjs launch --branch <expected-branch> [--port <n>] [--receipt-dir <dir>] [--pi-sessions] [--fast-fixture] [--quota-fixture | --jira-fixture | --github-fixture | --datadog-fixture | --activity-fixture | --usage-fixture | --demo]
+  node e2e/visual-verification.mjs launch --branch <expected-branch> [--port <n>] [--receipt-dir <dir>] [--production] [--pi-sessions] [--fast-fixture] [--quota-fixture | --jira-fixture | --github-fixture | --datadog-fixture | --activity-fixture | --usage-fixture | --demo]
   node e2e/visual-verification.mjs doctor --receipt <absolute-receipt.json>
   node e2e/visual-verification.mjs cleanup --receipt <absolute-receipt.json>
 
@@ -23,7 +23,10 @@ session alive during Browser-tool checks. App and provider ports are OS-allocate
 unless --port fixes the app's. State and evidence stay in a private temporary
 directory outside the checkout. --receipt-dir also writes the printed receipt to
 <dir>/receipt-<port>.json once ready (the shared e2e suite reads it there).
-Doctor checks instance identity, branch/HEAD/content fingerprint, provider health
+--production builds the web app and serves that build from Vite's preview server,
+so offline files, the service worker and the cached shell are the shipped ones;
+without it the fixture serves the development sources. Doctor checks instance
+identity, branch/HEAD/content fingerprint, provider health
 and the HUI x-hui boundary. Run before and after browser evidence. After any source
 edit or commit, cleanup and relaunch: a stale checkout fails doctor.
 For an intentionally detached CI checkout, pass --branch HEAD; the receipt still
@@ -208,17 +211,23 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
   const relativeDir = relative(checkout.root, dir);
   if (relativeDir === "" || (!relativeDir.startsWith("..") && !isAbsolute(relativeDir))) throw new Error("Temporary artifacts must be outside the checkout.");
   const artifacts = join(dir, "artifacts");
+  const production = process.argv.includes("--production");
   // --demo shows the workspace path on screen, so it gets a short one.
   const workspace = process.argv.includes("--demo") ? await mkdtemp("/tmp/acme-") : join(dir, "workspace");
   const agentDir = join(dir, "agent");
   for (const path of [artifacts, workspace, join(agentDir, "extensions"), join(agentDir, "skills", "sdk-fixture")]) await mkdir(path, { recursive: true });
   await writeFile(join(workspace, "fixture.txt"), "Real SDK browser fixture\n");
+  if (production) {
+    const build = spawnSync(process.execPath, [join(repo, "node_modules", "vite", "bin", "vite.js"), "build"], { cwd: repo, env: fixtureEnvironment(dir), encoding: "utf8" });
+    await writeFile(join(artifacts, "build.log"), `${build.stdout ?? ""}${build.stderr ?? ""}`);
+    if (build.status !== 0) throw new Error(`The production build failed (${build.status ?? build.signal}); see build.log in the artifacts directory.`);
+  }
   await writeFile(join(agentDir, "skills", "sdk-fixture", "SKILL.md"), "---\nname: sdk-fixture\ndescription: SDK browser skill enablement fixture.\n---\nUse only for fixture skill checks.\n");
   await copyFile(join(repo, "e2e/fixtures/question-extension.ts"), join(agentDir, "extensions/question.ts"));
   await copyFile(join(repo, "e2e/fixtures/slash-commands-extension.ts"), join(agentDir, "extensions/commands.ts"));
   await copyFile(join(repo, "e2e/fixtures/compaction-extension.ts"), join(agentDir, "extensions/compaction.ts"));
   const receiptPath = join(dir, "receipt.json");
-  const receipt = { version: 1, state: "starting", runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
+  const receipt = { version: 1, state: "starting", production, runId: randomUUID(), token: randomUUID(), runnerPid: process.pid, checkout, workspace, artifacts, receipt: receiptPath, startedAt: new Date().toISOString() };
   const save = async () => {
     const temporary = `${receiptPath}.${randomUUID()}.tmp`;
     await writeFile(temporary, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
@@ -399,6 +408,7 @@ export async function launch(expectedBranch, { port, receiptDir } = {}) {
     }
     const server = start("visual-verification-server.mjs", {
       ...serverEnv,
+      ...(production ? { HUI_VERIFICATION_PRODUCTION: "1" } : {}),
       HUI_VERIFICATION_IDENTITY: JSON.stringify({ runId: receipt.runId, runnerPid: process.pid, checkout }),
       HUI_VERIFICATION_TOKEN: receipt.token,
       HUI_VERIFICATION_CACHE: join(dir, "vite-cache"),
@@ -443,7 +453,7 @@ async function main() {
   const port = command === "launch" ? valueOf("--port") : undefined;
   const receiptDir = command === "launch" ? valueOf("--receipt-dir") : undefined;
   // Trailing launch options; `launch` reads them from argv.
-  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--jira-fixture", "--github-fixture", "--datadog-fixture", "--activity-fixture", "--usage-fixture", "--demo"].includes(args.at(-1))) args.pop();
+  if (command === "launch") while (["--pi-sessions", "--fast-fixture", "--quota-fixture", "--jira-fixture", "--github-fixture", "--datadog-fixture", "--activity-fixture", "--usage-fixture", "--production", "--demo"].includes(args.at(-1))) args.pop();
   const option = command === "launch" ? "--branch" : "--receipt";
   if (!["launch", "doctor", "cleanup"].includes(command) || args.length !== 2 || args[0] !== option) throw new Error("Invalid arguments. Run with --help.");
   if (command === "launch") return launch(args[1], { port: port === undefined ? undefined : Number(port), receiptDir });

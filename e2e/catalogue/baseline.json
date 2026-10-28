@@ -1121,7 +1121,11 @@
       "CALL-028",
       "SET-078",
       "SET-079",
-      "CHAT-073"
+      "CHAT-073",
+      "CHAT-074",
+      "SHELL-043",
+      "SHELL-044",
+      "SHELL-045"
     ]
   },
   "unexercisedLabels": [
@@ -1226,7 +1230,6 @@
     "Open parent",
     "Open settings navigation",
     "Open split view",
-    "Open terminal",
     "Output",
     "PI",
     "Pane actions",

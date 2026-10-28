@@ -52,6 +52,32 @@ conversation that fails to load says so and offers a retry.
 At 600 ms / 300 kbit/s the branch shows the boot screen, then *Still loading —
 the connection is slow* after 6 s, and the conversation arrives intact.
 
+## WebSocket compression measurement (2026-10-28)
+
+Native `ws` per-message deflate now uses zlib level 4. The 1,024-byte threshold,
+both no-context-takeover flags and concurrency limit 4 are unchanged. No payload
+codec or browser decoder is added.
+
+Measured on Node 24.14.1 / ws 8.21.3 / macOS arm64 with isolated localhost server
+and client processes, a discarded warmup and three interleaved repeats. The
+synthetic corpus included token/status frames, tool output, mid/large snapshots
+and a four-view burst. Every decoded payload matched. Sub-threshold token/status
+frames used identical bytes. These are aggregate wire bytes and median **server
+process CPU per burst**, not per-snapshot CPU:
+
+| Burst | Default level 6 | Level 4 | Server CPU, level 6 → 4 |
+| --- | ---: | ---: | ---: |
+| 10 × 75,779-byte snapshots | 180,920 B | 188,350 B (+4.1%) | 27.9 → 13.2 ms |
+| 3 × 647,009-byte snapshots | 429,906 B | 455,541 B (+6.0%) | 62.9 → 34.1 ms |
+| Four views, 10 mid snapshots each | 723,680 B | 753,400 B (+4.1%) | 102.6 → 62.0 ms |
+
+CPU absolutes varied with host load; compare configurations within a paired
+run. Level 1 added 10.2–13.6% bytes for larger CPU savings. Level 4 is the
+smaller wire-cost compromise: one mid snapshot adds 743 B (about 6 ms at
+1 Mbit/s), and one large snapshot adds 8,545 B (about 68 ms). Loop-lag
+measurements did not demonstrate an event-loop responsiveness improvement;
+compression already runs off-loop. Uncompressed clients still work.
+
 ## Long sessions, subagents and a watcher on a phone (2026-10-21)
 
 macOS, Node 24, headless Chrome 155 with a 430×932 phone viewport, 2× CPU

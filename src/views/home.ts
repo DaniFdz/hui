@@ -280,6 +280,9 @@ export type HomeProps = {
   onDismissNote: () => void;
   /** A muted line about the event stream: reconnecting, or why it stopped. */
   connectionNote: string;
+  savedCopy?: { savedAt: number; truncated: boolean };
+  offlineSupported?: boolean;
+  onForgetSaved?: () => void;
   onLaunch: (input: { cwd: string; title?: string; group?: string; prompt?: string; commandDraft?: string; model?: string; thinking?: string; fast?: boolean; worktree?: boolean; branchName?: string; baseRef?: string; worker?: string }) => void;
   onSelectSession: (session: SessionView) => void;
   /** Pane identity keeps controls unique when the same session is split twice. */
@@ -1298,17 +1301,17 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
     // none yet. A prompt PI refused (failed) was never persisted: no rewind.
     // A bot's chat is permanent: the gateway refuses rewinds, so none is offered.
     // Someone else's message was never the operator's to edit and send again.
-    const rewindTo: RewindTarget | undefined = row.role !== "user" || sender || !last || last.failed || props.session?.bot ? undefined
+    const rewindTo: RewindTarget | undefined = props.connection !== "live" || row.role !== "user" || sender || !last || last.failed || props.session?.bot ? undefined
       : last.entryId ?? { userFromEnd: new Set(props.transcript.slice(props.transcript.indexOf(last) + 1)
           .flatMap((item) => item.kind === "message" && item.role === "user" && !item.failed ? [item.entryId ?? item.id] : [])).size };
     const rewindTooltipId = sessionControlId(props, `rewind-tooltip-${row.id}`);
     // Only Pi Durable copies a history into a new conversation; a bot's chat is never forked.
-    const forkAt = props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
+    const forkAt = props.connection === "live" && props.session?.tool === "durable" && !props.session.bot ? forkPoint(props.transcript, last) : undefined;
     const forkTooltipId = sessionControlId(props, `fork-tooltip-${row.id}`);
     return html`<div class="chat-group ${row.role} chat-group--with-footer ${row.id === latestAssistantRowId ? "chat-group--latest-assistant" : ""} ${sender ? "chat-group--peer" : ""}" data-chat-row-key=${row.id}
       style=${sender?.color ? `--chat-sender-color: ${sender.color}` : nothing}>
       ${sender ? html`<span class="chat-sender-avatar" aria-hidden="true">${sender.avatar}</span>` : nothing}
-      <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>
+      <div class="chat-group-messages">${row.messages.map((item) => renderMessage(props, item, props.connection === "live" && withEmbeds.includes(item), row.sender ? attributedMessage(item.text) : undefined))}</div>
       ${last?.pending ? nothing : html`<div class="chat-group-footer ${row.role === "user" ? "chat-group-footer--persistent-identity" : ""}">
         <div class="chat-group-footer__meta">${sender ? renderSenderName(sender) : html`<span class="chat-sender-name">${row.role === "user" ? "You" : props.session?.bot?.name ?? "pi"}</span>`}
           ${last?.metrics?.completedAt !== undefined || last?.metrics?.timestamp !== undefined ? html`<time class="chat-group-timestamp" datetime=${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toISOString()} title=${`${last.metrics.completedAt !== undefined ? "Completed" : "Message created"}: ${new Date(last.metrics.completedAt ?? last.metrics.timestamp!).toLocaleString()}`}>${relativeTime(last.metrics.completedAt ?? last.metrics.timestamp!)}</time>` : nothing}</div>
@@ -1692,7 +1695,8 @@ function renderComposer(props: HomeProps) {
   // Locked for the whole boot too: a prompt sent while pi is starting is rejected.
   const booting = props.opening || props.session?.status === "starting";
   // Unreachable, the session runs elsewhere: drafting stays open, sending waits.
-  const unreachable = props.session ? unreachableHost(props.session) : undefined;
+  const saved = props.connection === "saved" || props.connection === "outdated";
+  const unreachable = props.session && !saved ? unreachableHost(props.session) : undefined;
   const disconnected = props.connection !== "live" || unreachable !== undefined;
   const showStop = props.streaming && !props.draft.trim() && !props.attachments.some((item) => item.kind === "image");
   const canSend = !booting && !props.sending && !disconnected && Boolean(props.draft.trim() || props.attachments.some((item) => item.kind === "image"));
@@ -1784,24 +1788,24 @@ function renderComposer(props: HomeProps) {
           </div>
           <div class="agent-chat__composer-trail">
             <div class="agent-chat__composer-controls">
-          ${renderContextPicker(props.usage, props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
+          ${renderContextPicker(props.usage, disconnected || props.streaming || props.compaction?.status === "running" ? undefined : props.onCompact, !props.session?.bot)}
           <div class="chat-controls__session chat-controls__model chat-controls__model-settings">${renderModelPicker({
             models: props.models,
             current: props.currentModel,
-            disabled: props.streaming,
+            disabled: disconnected || props.streaming,
             onSelect: props.onSelectModel,
           })}
           ${renderThinkingPicker({
             level: props.thinking,
             levels: props.currentModel?.thinkingLevels,
-            disabled: props.streaming || props.opening,
+            disabled: disconnected || props.streaming || props.opening,
             onSelect: props.onSelectThinking,
             ...(props.fast !== undefined && props.currentModel?.fast ? { fast: { on: props.fast, onSelect: props.onSelectFast } } : {}),
           })}</div>
             </div>
             <div class="agent-chat__composer-actions">
               <span class="chat-send-control chat-mobile-primary-action chat-desktop-primary-action">
-                ${showStop ? html`<button type="button" class="chat-send-btn chat-send-btn--stop" ?disabled=${props.stopping} @click=${props.onAbort} aria-label="Stop">${props.stopping ? html`<span class="btn__spinner"></span>` : stopIcon}</button>` : html`<button type="submit" class="chat-send-btn chat-send-btn--send" ?disabled=${!canSend}
+                ${showStop ? html`<button type="button" class="chat-send-btn chat-send-btn--stop" ?disabled=${props.stopping || disconnected} @click=${props.onAbort} aria-label="Stop">${props.stopping ? html`<span class="btn__spinner"></span>` : stopIcon}</button>` : html`<button type="submit" class="chat-send-btn chat-send-btn--send" ?disabled=${!canSend}
                   aria-label=${props.streaming ? "Steer message; touch and hold to enqueue" : "Send message"}
                   @pointerdown=${beginSendLongPress(props)} @pointerup=${endSendLongPress}
                   @pointercancel=${cancelSendLongPress} @pointerleave=${cancelSendLongPress}
@@ -1817,7 +1821,7 @@ function renderComposer(props: HomeProps) {
           </div>
         </div>
       </form>
-      ${disconnected ? html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status"><span class="agent-chat__composer-status-text">${unreachable ? `${unreachable.status.replace(/…$/u, "")} — draft preserved.` : props.connection === "reconnecting" ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved."}</span></div></div>` : nothing}
+      ${disconnected ? html`<div class="agent-chat__composer-underlaps" data-tone="warn"><div class="agent-chat__composer-status-band" role="status"><span class="agent-chat__composer-status-text">${saved ? "Saved conversation · draft preserved. Send waits for a live connection." : unreachable ? `${unreachable.status.replace(/…$/u, "")} — draft preserved.` : props.connection === "reconnecting" ? "Reconnecting — draft preserved." : "Stream stopped — draft preserved."}</span></div></div>` : nothing}
     </div>
   `;
 }
@@ -1914,9 +1918,14 @@ function refreshTaskProgress(event: Event, props: HomeProps) {
 }
 
 function renderConnection(props: HomeProps) {
-  // Deliberately muted, not an error: a reconnect usually fixes itself, and a
-  // scary red row would be a lie about a stream that is already coming back.
-  // So is a session whose machine is out of reach: it goes on there.
+  if (props.savedCopy || props.connection === "saved" || props.connection === "outdated") {
+    return html`<div class="transcript__note" role="status">
+      ${props.savedCopy ? html`Saved conversation · ${new Date(props.savedCopy.savedAt).toLocaleString()}. ${props.savedCopy.truncated ? "Only recent messages are saved." : "Message text is saved on this device."}` : nothing}
+      ${props.connectionNote}
+      ${props.connection === "outdated" ? html` <button type="button" class="btn btn--sm" @click=${() => window.location.reload()}>Reload HUI</button>` : nothing}
+      ${props.savedCopy && props.onForgetSaved ? html` <button type="button" class="btn btn--sm" @click=${props.onForgetSaved}>Forget saved conversations</button>` : nothing}
+    </div>`;
+  }
   const unreachable = props.session ? unreachableHost(props.session) : undefined;
   if (unreachable) {
     return html`<p class="transcript__note" role="status">${unreachable.notice}${props.session?.status === "disconnected"
@@ -2497,7 +2506,7 @@ function renderHeader(props: HomeProps, session: SessionView) {
           <span class="session-row__dot" data-status=${session.status} aria-hidden="true"></span>
           <h2 class="transcript__title chat-pane__session-title" title=${session.title}>${session.title}</h2>
           <span class="transcript__meta" title=${session.cwd}>
-            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(unreachableHost(session)?.status ?? STATUS_TEXT[session.status])}
+            ${session.parentId ? "Subagent" : session.tool}${session.worker ? ` on ${session.worker.name}` : ""} · ${sessionGroupLabel(session.group)} · ${renderSessionStatus(props.savedCopy ? "Saved copy" : unreachableHost(session)?.status ?? STATUS_TEXT[session.status])}
           </span>
         </div>`}
         ${session.parentId ? html`<button
@@ -2516,9 +2525,9 @@ function renderHeader(props: HomeProps, session: SessionView) {
             aria-expanded=${String(props.bot.panelOpen)} aria-controls=${props.bot.panelOpen ? props.bot.panelId : nothing}
             @click=${props.bot.onTogglePanel}>${icons.panelRightOpen}</button>` : nothing}
           ${props.bot?.onAction ? renderBotHeaderMenu(props.bot) : nothing}
-          ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
-          ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
-          ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
+          ${props.onOpenBrowser ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn chat-open-browser" aria-label="Open browser view" data-hui-tooltip="Open browser view" ?disabled=${props.connection !== "live"} @click=${props.onOpenBrowser}>${icons.globe}</button>` : nothing}
+          ${props.onOpenTerminal && !session.worker ? html`<button type="button" class="btn btn--ghost btn--icon chat-icon-btn" aria-label="Open terminal" title="Open terminal" ?disabled=${props.connection !== "live" || props.terminalOpening} @click=${props.onOpenTerminal}>${icons.squareTerminal}</button>` : nothing}
+          ${session.tool === "pi" ? html`<button type="button" class="btn btn--ghost btn--sm session-history-action" ?disabled=${props.connection !== "live" || props.opening || props.streaming || props.continuing || props.transcript.length === 0} @click=${props.onContinue} aria-label="Continue without a prompt">
             <span class="session-history-action__icon">${continueIcon}</span><span class="session-history-action__label">${props.continuing ? "Continuing…" : "Continue"}</span>
           </button>` : nothing}
           ${props.onSplitPane ? props.onClosePane ? html`
@@ -2576,6 +2585,7 @@ function renderTranscript(props: HomeProps, session: SessionView) {
             <div class="chat-main">
               <div class="chat-main__conversation-column">
                 ${renderNote(props)} ${renderConnection(props)}
+                ${props.offlineSupported === false ? html`<p class="transcript__note" role="status">Offline reload needs HTTPS or localhost.</p>` : nothing}
                 ${session.status === "error" && !props.worktreeError
                   ? html`<div class="chat-error" role="alert"><div class="chat-error__content">The runtime could not start.</div><button type="button" class="btn btn--sm retry-session" @click=${props.onRetry}>Retry session</button></div>`
                   : nothing}

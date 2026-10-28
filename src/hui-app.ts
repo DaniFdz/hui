@@ -9,6 +9,7 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session/tree.ts";
+import { forgetConversation } from "./lib/session/offline-store.ts";
 import { isSubagentActive } from "./lib/subagent-activity.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
@@ -1344,6 +1345,7 @@ export class HuiApp extends HuiElement {
   }
 
   private openTerminal = async () => {
+    if (this.conversation.connection !== "live") return;
     this.terminalOpening = true;
     this.terminalError = "";
     try { await this.onPaneTerminal?.(); }
@@ -1528,7 +1530,7 @@ export class HuiApp extends HuiElement {
 
   private continueRun = () => {
     const session = this.conversation.selected;
-    if (!session || this.conversation.streaming || this.conversation.opening || this.continuing) return;
+    if (!session || this.conversation.connection !== "live" || this.conversation.streaming || this.conversation.opening || this.continuing) return;
     this.continuing = true;
     this.note = "";
     this.noteLevel = "info";
@@ -1662,8 +1664,10 @@ export class HuiApp extends HuiElement {
     }
     // A failed worktree launch hands its prompt back to New Session.
     const unsent = this.paneUnsentPrompt;
+    const tree = sessionTreeIds(this.sessions.groups.flatMap((group) => group.sessions), targetId);
     void deleteSession(targetId)
       .then(async () => {
+        await Promise.all([...tree].map((id) => forgetConversation(id)));
         if (unsent) {
           const stored = await readComposerDraft(NEW_SESSION_DRAFT_KEY);
           await writeComposerDraft(NEW_SESSION_DRAFT_KEY, mergeComposerDraft(stored, { text: unsent, attachments: [] }));
@@ -2532,7 +2536,7 @@ export class HuiApp extends HuiElement {
     return {
       session: this.conversation.selected,
       // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
-      fileLinks: this.embeddedPane && !this.paneBot,
+      fileLinks: this.embeddedPane && !this.paneBot && this.conversation.connection === "live",
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
       groups: this.listedGroups,
@@ -2566,16 +2570,19 @@ export class HuiApp extends HuiElement {
       noteLevel: this.noteLevel,
       onDismissNote: () => { this.note = ""; this.noteLevel = "info"; },
       connectionNote: this.conversation.connectionNote,
+      savedCopy: this.conversation.savedCopy,
+      offlineSupported: typeof window === "undefined" || (window.isSecureContext && "serviceWorker" in navigator),
+      onForgetSaved: () => void this.conversation.forgetSaved(),
       onLaunch: this.launch,
       onSelectSession: this.selectSession,
       onClosePane: this.onPaneClose,
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
       onSplitPane: this.paneNarrow ? undefined : this.onPaneSplit,
       onOpenTerminal: this.onPaneTerminal ? this.openTerminal : undefined,
-      onOpenBrowser: this.onPaneBrowser && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
-        ? () => this.onPaneBrowser?.()
+      onOpenBrowser: this.onPaneBrowser && this.conversation.connection === "live" && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
+        ? () => { if (this.conversation.connection === "live") this.onPaneBrowser?.(); }
         : undefined,
-      browserPreview: this.control.settings.browser.enabled
+      browserPreview: this.conversation.connection === "live" && this.control.settings.browser.enabled
         ? { visible: this.paneVisible, ...(this.onPaneBrowser ? { onExpand: () => this.onPaneBrowser?.() } : {}) }
         : undefined,
       terminalOpening: this.terminalOpening,

@@ -208,6 +208,27 @@ starting. For a one-off grant, `hui gateway restart --allow-host
 laptop.example.ts.net` (repeatable) or the comma-separated
 `HUI_GATEWAY_ALLOWED_HOSTS` last only until the gateway fully stops.
 
+## Offline reading
+
+A production build prepares its offline files in the background on HTTPS or
+localhost. A plain-HTTP tailnet address cannot install them. Use an HTTPS
+address for offline reload; HUI does not change your gateway's network settings.
+The first visit must finish downloading the files before a reload can work
+without the gateway.
+
+HUI keeps reading copies of up to ten opened conversations on this device for
+seven days. Each holds up to 200 recent complete rows within 2 MiB. Large copies
+say **Only recent messages are saved**. They include message and tool-output
+text, not attachments, tool arguments, questions or queued actions. Text can
+contain sensitive information, so use **Forget saved conversations** in the
+saved-copy notice to remove it. This does not remove your drafts or the runtime's
+history. Browser storage may be unavailable or evicted.
+
+A saved copy is labelled **Saved conversation**. You can edit a draft, but
+sending and runtime controls wait for a live connection. Reconnecting never
+sends the draft. A gateway update may offer **Reload HUI** before live controls
+can return; drafts survive that reload too.
+
 ## Model providers
 
 Open **Settings → Models** to connect a built-in provider using its API key or

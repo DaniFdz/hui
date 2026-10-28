@@ -9593,6 +9593,23 @@
           "properties": {
             "event": {
               "type": "string",
+              "const": "heartbeat"
+            },
+            "data": {
+              "type": "object",
+              "properties": {}
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "event",
+            "data"
+          ],
+          "properties": {
+            "event": {
+              "type": "string",
               "const": "closed"
             },
             "data": {

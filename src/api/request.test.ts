@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { test } from "vitest";
-import { fetchWithResponseDeadline, gatewayRequestError } from "./request.ts";
+import { test, vi } from "vitest";
+import { fetchJson, fetchWithResponseDeadline, GatewayHttpError, gatewayRequestError, isGatewayUnavailable } from "./request.ts";
 
 /** Answers after `headersMs`; its body then streams for `bodyMs` more. */
 function slowGateway(headersMs: number, bodyMs: number) {
@@ -59,6 +59,19 @@ test("a caller's own deadline is not reported as the default one", async () => {
     assert.equal(error.message, "HUI did not answer in time. Check the connection and try again.");
     return true;
   });
+});
+
+test("HTTP refusals keep their status and cannot be mistaken for an offline gateway", async () => {
+  for (const status of [403, 404, 500, 502, 503, 504]) {
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ error: `refused ${status}` }), { status }));
+    await assert.rejects(fetchJson("/__hui/sessions"), (error: unknown) => {
+      assert.ok(error instanceof GatewayHttpError);
+      assert.equal(error.status, status);
+      assert.equal(error.message, `refused ${status}`);
+      assert.equal(isGatewayUnavailable(error), status >= 502);
+      return true;
+    });
+  }
 });
 
 test("connection failures read as such; deliberate cancellation passes through", () => {

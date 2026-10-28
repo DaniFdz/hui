@@ -9,6 +9,9 @@
  */
 import type { LitElement, ReactiveController, ReactiveControllerHost } from "lit";
 import { loadModels, openSession, setSessionFast, setSessionModel, setSessionThinking, subscribeSession, type RuntimeCompaction, type RuntimeEvent, type RuntimeModel, type RuntimeQuestion, type RuntimeUsage, type SessionConnection, type SessionStatus, type SessionStreamSnapshot, type SessionView, type SubagentTaskView, type TranscriptItem } from "../api/sessions.ts";
+import { isGatewayUnavailable } from "../api/request.ts";
+import { OutdatedBuildError } from "../api/offline.ts";
+import { forgetConversation, readSavedConversation, saveConversation, type SavedConversation } from "../lib/session/offline-store.ts";
 import { writeClipboardText } from "../lib/clipboard.ts";
 import { announceTurnEnd } from "../lib/session/turn-end.ts";
 import { emptySessionPresentation, isCurrentSessionRequest, isSelectedSession, modelRequestMarkerAfterFailure, shouldRequestModels, streamingAfterEvent, streamingForStatus } from "../lib/session/ui-state.ts";
@@ -47,6 +50,7 @@ export class ConversationController implements ReactiveController {
   connection: SessionConnection = "live";
   /** Empty while the stream is live; otherwise a muted line saying why. */
   connectionNote = "";
+  savedCopy: Pick<SavedConversation, "savedAt" | "truncated"> | undefined;
   copiedId = "";
   /** Models the open session can switch to, and the one it is running on. */
   models: readonly RuntimeModel[] = [];
@@ -122,6 +126,7 @@ export class ConversationController implements ReactiveController {
     this.openError = "";
     this.streaming = empty.streaming;
     this.connectionNote = empty.connectionNote;
+    this.savedCopy = undefined;
     this.resetModels();
     this.compaction = undefined;
     this.stopping = false;
@@ -140,6 +145,8 @@ export class ConversationController implements ReactiveController {
     this.transcript = [];
     this.subagents = [];
     this.connectionNote = "";
+    this.savedCopy = undefined;
+    this.connection = "reconnecting";
     this.resetModels();
     this.compaction = undefined;
     this.#deps.resetSession();
@@ -150,12 +157,17 @@ export class ConversationController implements ReactiveController {
       this.opening = false;
       return;
     }
+    const pending = openSession(id);
+    let settled = false;
+    const saved = readSavedConversation(id);
+    void saved.then((copy) => {
+      if (!settled && copy && isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) this.#showSaved(copy);
+    });
     try {
-      const opened = await openSession(id);
-      if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
-        // A different session or a newer retry won while this was starting.
-        return;
-      }
+      const opened = await pending;
+      settled = true;
+      if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) return;
+      this.savedCopy = undefined;
       this.selected = opened.session;
       this.applySnapshot(opened.snapshot, true);
       this.thinking = opened.snapshot.thinking ?? opened.session.thinking ?? "medium";
@@ -164,10 +176,22 @@ export class ConversationController implements ReactiveController {
       this.#startStream(id, opened.revision);
       this.requestModelsWhenReady(id, opened.session.status);
     } catch (error) {
+      settled = true;
+      const copy = await readSavedConversation(id);
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
-        // In place of the conversation, which never arrived: an empty transcript
-        // would read as a session with nothing in it.
-        this.openError = error instanceof Error ? error.message : "Could not open that session.";
+        if (error instanceof OutdatedBuildError) {
+          if (copy) this.#showSaved(copy);
+          this.connection = "outdated";
+          this.connectionNote = error.message;
+        } else if (copy && isGatewayUnavailable(error)) {
+          this.#showSaved(copy);
+          this.#startStream(id);
+        } else {
+          this.savedCopy = undefined;
+          this.transcript = [];
+          this.connection = "stopped";
+          this.openError = error instanceof Error ? error.message : "Could not open that session.";
+        }
       }
     } finally {
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
@@ -178,10 +202,31 @@ export class ConversationController implements ReactiveController {
     }
   }
 
+  #showSaved(copy: SavedConversation): void {
+    this.selected = copy.session;
+    this.transcript = normalizeTranscript(copy.transcript);
+    this.savedCopy = { savedAt: copy.savedAt, truncated: copy.truncated };
+    this.connection = "saved";
+    this.connectionNote = "Reconnecting; your draft stays on this device.";
+    this.opening = false;
+    this.streaming = false;
+    this.question = undefined;
+    this.#host.requestUpdate();
+  }
+
+  forgetSaved = async (): Promise<void> => {
+    await forgetConversation();
+    if (this.savedCopy) this.transcript = [];
+    this.savedCopy = undefined;
+    this.connectionNote = "Saved conversations removed from this device. Your draft is unchanged.";
+    this.#host.requestUpdate();
+    await this.#deps.refreshSessions();
+  };
+
   /** Reads the open session again, so a card whose update never reached this page shows the gateway's copy. */
   async refresh(): Promise<void> {
     const id = this.selected?.id;
-    if (!id || this.refreshing) return;
+    if (!id || this.refreshing || this.connection !== "live") return;
     const requestToken = this.#openRequestToken;
     this.refreshing = true;
     this.#host.requestUpdate();
@@ -204,7 +249,8 @@ export class ConversationController implements ReactiveController {
     // An older attempt may have installed a stream while a newer open request
     // was pending. Replacing it is an ownership transfer, so close it first.
     this.#streamStop?.();
-    const current = () => this.selected?.id === id;
+    const requestToken = this.#openRequestToken;
+    const current = () => isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken);
     this.#streamStop = subscribeSession(id, {
       onSnapshot: (snapshot) => {
         if (current()) this.applySnapshot(snapshot);
@@ -212,6 +258,7 @@ export class ConversationController implements ReactiveController {
       onTranscript: (entries) => {
         if (current()) {
           this.transcript = normalizeTranscript(entries);
+          if (this.selected) void saveConversation(this.selected, entries);
           this.#host.requestUpdate();
         }
       },
@@ -247,11 +294,19 @@ export class ConversationController implements ReactiveController {
         if (!current()) {
           return;
         }
-        this.connection = state;
-        if (state !== "live") this.#deps.connectionLost();
-        this.connectionNote = state === "live" ? "" : detail || "Reconnecting…";
-        if (state === "stopped") {
+        this.connection = state === "reconnecting" && this.savedCopy ? "saved" : state;
+        if (state !== "live") {
+          this.#deps.connectionLost();
+          this.dropQuestion();
+        }
+        if (state === "live") this.savedCopy = undefined;
+        this.connectionNote = state === "live" ? "" : detail || (this.savedCopy ? "Reconnecting; your draft stays on this device." : "Reconnecting…");
+        if (state === "stopped" || state === "outdated") {
           this.streaming = false;
+          if (state === "stopped" && this.savedCopy) {
+            this.savedCopy = undefined;
+            this.transcript = [];
+          }
         }
         this.#host.requestUpdate();
       },
@@ -260,6 +315,7 @@ export class ConversationController implements ReactiveController {
 
   applySnapshot(snapshot: SessionStreamSnapshot, initial = false): void {
     if (snapshot.transcript) {
+      if (this.selected) void saveConversation(this.selected, snapshot.transcript);
       this.transcript = keepSentPreviews(normalizeTranscript(snapshot.transcript, {
         streaming: streamingForStatus(snapshot.status),
       }), this.transcript);
@@ -487,9 +543,7 @@ export class ConversationController implements ReactiveController {
 
   #selectModel = (provider: string, modelId: string) => {
     const session = this.selected;
-    if (!session) {
-      return;
-    }
+    if (!session || this.connection !== "live") return;
     void setSessionModel(session.id, provider, modelId)
       .then((model) => {
         if (!isSelectedSession(session.id, this.selected?.id)) {
@@ -512,7 +566,7 @@ export class ConversationController implements ReactiveController {
 
   #selectThinking = (level: string) => {
     const session = this.selected;
-    if (!session || this.streaming) return;
+    if (!session || this.streaming || this.connection !== "live") return;
     void setSessionThinking(session.id, level)
       .then((authoritative) => {
         if (isSelectedSession(session.id, this.selected?.id)) {
@@ -531,7 +585,7 @@ export class ConversationController implements ReactiveController {
 
   #selectFast = (fast: boolean) => {
     const session = this.selected;
-    if (!session || this.streaming) return;
+    if (!session || this.streaming || this.connection !== "live") return;
     void setSessionFast(session.id, fast)
       .then((authoritative) => {
         if (isSelectedSession(session.id, this.selected?.id)) {

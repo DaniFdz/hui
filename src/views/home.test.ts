@@ -301,22 +301,26 @@ test("the launch directory picker uses the themed combobox instead of a native d
   assert.match(styles, /\.new-session-page__directory-menu/);
 });
 
-test("the composer exposes PI context usage beside the model", () => {
-  const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const styles = readStyles("../styles/openclaw-chat.css");
+test("the composer shows context usage and only offers compaction on a live idle session", async () => {
+  const usage = { percent: 50, contextTokens: 5_000, contextWindow: 10_000, inputTokens: 1_000, outputTokens: 200, costUsd: 0.05, sessionCost: { usd: 1.23, source: "Metered", asOf: new Date().toISOString() } };
+  const ready = await renderWorkerSession("idle", { usage });
+  assert.match(ready, /aria-label=Context window: 50% used/u);
+  assert.match(ready, /Latest run tokens/u);
+  assert.match(ready, /<dt>Metered<\/dt><dd>\$1\.23<\/dd>/u);
+  assert.match(ready, /<dt>Checked<\/dt>/u);
+  assert.match(ready, /context-usage__compact" \?disabled=false/u);
+  for (const state of [{ streaming: true }, { compaction: { status: "running" } }, ...["saved", "reconnecting", "outdated"].map((connection) => ({ connection }))]) {
+    assert.match(await renderWorkerSession("idle", { usage, ...state }), /context-usage__compact" \?disabled=true/u);
+  }
+  assert.doesNotMatch(await renderWorkerSession("idle", { usage, session: { id: "bot", title: "Bot", tool: "pi", status: "idle", bot: "bot" } }), /Compact now/u);
+});
 
-  // Compact now waits while the session runs or a compaction already works,
-  // and is not offered at all in a bot's permanent chat (the gateway refuses it).
-  assert.match(source, /renderContextPicker\(props\.usage, props\.streaming \|\| props\.compaction\?\.status === "running" \? undefined : props\.onCompact, !props\.session\?\.bot\)/);
-  assert.match(source, /\$\{compactable \? html`<button type="button" class="btn btn--ghost btn--sm context-usage__compact"/);
-  assert.match(source, />Compact now<\/button>/);
-  assert.match(source, /Context window/);
-  assert.match(source, /Latest run tokens/);
-  // A cost an extension measured reaches the popover with its source and its age, beside the estimated latest run.
-  assert.match(source, /\$\{usage\?\.sessionCost \? html`<div class="context-usage__section-label">Session cost<\/div>/);
-  assert.match(source, /\$\{relativeTime\(usage\.sessionCost\.asOf\)\}/);
-  assert.match(styles, /\.context-ring__dial/);
-  assert.match(source, /stroke-dashoffset/);
+test("a saved PI conversation cannot continue or open a terminal", async () => {
+  const html = await renderWorkerSession("disconnected", {
+    connection: "saved", session: { id: "s", title: "Saved", tool: "pi", status: "disconnected" },
+  });
+  assert.match(html, /aria-label="Open terminal" title="Open terminal" \?disabled=true/u);
+  assert.match(html, /session-history-action" \?disabled=true[^>]*aria-label="Continue without a prompt"/u);
 });
 
 test("PI questions use the inline OpenClaw card instead of a modal", () => {
