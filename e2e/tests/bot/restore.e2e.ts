@@ -2,7 +2,7 @@
 import { expect } from "e2e";
 import { test, type Hui } from "../../fixtures/hui.ts";
 
-type Tasks = { tasks: { name: string; enabled: boolean }[] };
+type Tasks = { tasks: { name: string; sessionId: string; enabled: boolean }[] };
 
 const notice = "Restored Solo. Its routines stay paused until you turn them on.";
 
@@ -20,7 +20,7 @@ test("the archived bot's address explains it, its chat opens only once it is res
   const bot = await archivedBot(hui);
   const row = screen.getByLabel(/^Solo,/u);
   const restored = () => expect(screen.getByText(notice, { exact: true }).first()).toBeVisible();
-  const paused = async () => (await hui.api<Tasks>("GET", "/__hui/automation")).tasks.find((task) => task.name === "Morning check")?.enabled;
+  const paused = async () => (await hui.api<Tasks>("GET", "/__hui/automation")).tasks.find((task) => task.sessionId === bot.sessionId && task.name === "Morning check")?.enabled;
 
   await hui.open(`/bots/${bot.id}`);
   await expect(screen.getByText("Solo is archived. Its chat and memory are kept; restore it to open the chat again.", { exact: true })).toBeVisible();
@@ -30,7 +30,7 @@ test("the archived bot's address explains it, its chat opens only once it is res
   await restored();
   await expect(screen.getByTestId("chat-header")).toBeVisible();
   await expect(row).toBeVisible();
-  expect(await paused()).toBe(false);
+  await expect.poll(paused).toBe(false);
 
   await hui.api("DELETE", `/__hui/bots/${bot.id}`);
   await hui.open("/");
@@ -54,8 +54,9 @@ test("the archived bot's address explains it, its chat opens only once it is res
   await screen.getByRole("button", "Restore").tap();
   await restored();
   await expect(row).toBeVisible();
+  await expect(screen.getByText("Archived “Solo”. Its chat and memory are kept.", { exact: true })).toHaveCount(0);
 
   await hui.open(`/bots/${bot.id}`);
   await expect(screen.getByRole("switch", "Enable Morning check")).toBeChecked({ checked: false });
-  expect(await paused()).toBe(false);
+  await expect.poll(paused).toBe(false);
 });

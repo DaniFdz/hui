@@ -26,7 +26,9 @@ test("the Directory field suggests the machine's folders and saves the one chose
   await directory.fill("/no/such/folder/that/does/not/exist");
   await hui.keyboard.down("Enter");
   await hui.keyboard.up("Enter");
-  await expect(row.getByText(/^No such directory: \/no\/such\/folder/u)).toBeVisible();
+  const error = row.getByText(/^No such directory: \/no\/such\/folder/u);
+  await expect(error).toBeVisible();
+  await expect.poll(async () => (await error.boundingBox())!.y > (await directory.boundingBox())!.y + (await directory.boundingBox())!.height - 1).toBe(true);
   await hui.keyboard.down("Escape");
   await hui.keyboard.up("Escape");
   await expect(directory).toHaveValue(`${hui.workspace}/`);

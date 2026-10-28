@@ -3,7 +3,7 @@ import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
 type BotState = { archived?: boolean; status: string };
-type Tasks = { tasks: { name: string; enabled: boolean }[] };
+type Tasks = { tasks: { name: string; sessionId: string; enabled: boolean }[] };
 
 test("Archive… asks with the focus on Cancel and Archive takes the bot off the roster, disables its routines, stops its running turn and offers Restore, while Cancel leaves it as it was", { tags: ["BOT-014"], platforms: ["web"] }, async ({ screen, hui }) => {
   const bot = (await hui.api<{ bot: { id: string; sessionId: string } }>("POST", "/__hui/bots", { name: "Solo", title: "Fixture helper", soul: "# Who I am\nA fixture bot.\n" })).bot;
@@ -12,7 +12,7 @@ test("Archive… asks with the focus on Cancel and Archive takes the bot off the
     schedule: { kind: "cron", expression: "0 8 * * *", timezone: "UTC" },
   });
   const state = async () => (await hui.api<{ bot: BotState }>("GET", `/__hui/bots/${bot.id}`)).bot;
-  const enabled = async () => (await hui.api<Tasks>("GET", "/__hui/automation")).tasks.find((task) => task.name === "Morning check")?.enabled;
+  const enabled = async () => (await hui.api<Tasks>("GET", "/__hui/automation")).tasks.find((task) => task.sessionId === bot.sessionId && task.name === "Morning check")?.enabled;
   const notice = screen.getByText("Archived “Solo”. Its chat and memory are kept.", { exact: true });
 
   await hui.open(`/bots/${bot.id}`);
@@ -27,7 +27,7 @@ test("Archive… asks with the focus on Cancel and Archive takes the bot off the
   await expect(cancel).toBeFocused();
   await cancel.tap();
   await expect(screen.getByText("Archive Solo?", { exact: true })).toBeHidden();
-  expect(await enabled()).toBe(true);
+  await expect.poll(enabled).toBe(true);
   await expect.poll(async () => (await state()).status).toBe("running");
 
   await hui.open("/");

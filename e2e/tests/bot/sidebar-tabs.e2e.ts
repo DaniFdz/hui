@@ -29,13 +29,16 @@ test("the sidebar always offers Agents and Bots with no setting behind them, Bot
   await expect(screen.getByPlaceholder("Search bots")).toBeVisible();
 
   const bot = (await hui.api<{ bot: { id: string } }>("POST", "/__hui/bots", { name: "Solo", title: "Fixture helper", soul: "# Who I am\nA fixture bot.\n" })).bot;
+  await hui.open("/");
+  await expect(screen.getByLabel(/^Solo,/u)).toBeVisible();
+  expect(await screen.getByRole("button", "New bot").count()).toBe(1);
   await hui.open(`/bots/${bot.id}`);
   await expect(bots).toHaveAttribute("aria-selected", "true");
   await expect(screen.getByLabel(/^Solo,/u)).toBeVisible();
   await expect(screen.getByTestId("nav-item")).toHaveCount(0);
 
   await hui.phoneScreen();
-  await screen.getByRole("button", "Open navigation").tap();
+  await hui.sessionList();
   await expect(bots).toHaveAttribute("aria-selected", "true");
   await agents.tap();
   await expect(agents).toHaveAttribute("aria-selected", "true");
