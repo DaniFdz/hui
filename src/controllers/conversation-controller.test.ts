@@ -12,6 +12,7 @@ const fake = vi.hoisted(() => ({
   modelsFail: false,
   thinking: [] as { id: string; level: string; resolve: (level: string) => void }[],
   opens: [] as { id: string; reject: (error: unknown) => void; resolve: (status: SessionStatus, snapshot?: Partial<SessionSnapshot>) => void }[],
+  prompts: [] as { id: string; text: string; mode: string }[],
   streams: [] as { id: string; handlers: SessionStreamHandlers; heldRevision?: number; stopped: boolean }[],
   saved: new Map<string, SavedConversation>(),
   savedHeld: undefined as Promise<void> | undefined,
@@ -23,6 +24,8 @@ vi.mock("../api/sessions.ts", () => ({
     return [{ provider: "gw", id: "opus", name: "Opus" }];
   },
   setSessionThinking: (id: string, level: string) => new Promise((resolve) => fake.thinking.push({ id, level, resolve })),
+  sendPrompt: async (id: string, text: string) => { fake.prompts.push({ id, text, mode: "prompt" }); return { duplicate: false }; },
+  followUpSession: async (id: string, text: string) => { fake.prompts.push({ id, text, mode: "follow-up" }); return { duplicate: false }; },
   openSession: (id: string) => new Promise((resolve, reject) => fake.opens.push({
     id,
     reject,
@@ -49,6 +52,7 @@ beforeEach(() => {
   fake.modelsFail = false;
   fake.thinking = [];
   fake.opens = [];
+  fake.prompts = [];
   fake.streams = [];
   fake.saved = new Map();
   fake.savedHeld = undefined;
@@ -169,16 +173,22 @@ test("only the session still selected opens and streams; its status frames reach
   assert.equal(controller.streamOpen, false);
 });
 
-test("a refresh reads the open session again and shows the card the gateway has", async () => {
+test("a refresh reads the open session again, asks the agent, and stays busy until that turn ends", async () => {
   const stale = { kind: "tool" as const, id: "p", name: "progress_card", args: { plan: [{ step: "Old step", status: "in_progress" }] } };
   const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  void controller.open("s1");
+  await settle();
+  fake.opens[0]?.resolve("idle");
+  await settle();
   controller.transcript = [stale];
   assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "Old step");
 
   const refreshed = controller.refresh();
-  assert.equal(controller.refreshing, true);
+  assert.equal(controller.refreshing, true, "the click is busy at once, so a second one is refused");
+  void controller.refresh();
   await settle();
-  fake.opens[0]?.resolve("running", {
+  assert.equal(fake.opens.length, 2, "a second click while busy asks the gateway nothing");
+  fake.opens[1]?.resolve("idle", {
     transcript: [
       { kind: "message", role: "user", text: "go" },
       { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "New step", status: "in_progress" }] } },
@@ -186,8 +196,43 @@ test("a refresh reads the open session again and shows the card the gateway has"
   });
   await refreshed;
 
-  assert.equal(controller.refreshing, false);
   assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "New step");
+  assert.deepEqual(fake.prompts.map(({ id }) => id), ["s1"], "the card is the agent's, so the refresh asks it for a current one");
+  assert.match(fake.prompts[0]?.text ?? "", /^Refresh the task progress card/u);
+  assert.equal(fake.prompts[0]?.mode, "prompt", "an idle session starts the turn at once");
+  assert.equal(controller.refreshing, true, "the agent is still working on the card");
+
+  fake.streams[0]?.handlers.onStatus("idle");
+  assert.equal(controller.refreshing, false);
+});
+
+test("a refresh on a running session queues the request rather than being refused", async () => {
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView, streaming: true });
+  const refreshed = controller.refresh();
+  await settle();
+  fake.opens[0]?.resolve("running");
+  await refreshed;
+
+  assert.equal(fake.prompts[0]?.mode, "follow-up");
+  assert.equal(controller.refreshing, true);
+});
+
+test("a refresh never asks the agent while the connection is not live", async () => {
+  for (const connection of ["saved", "reconnecting", "stopped", "outdated"] as const) {
+    const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+    controller.connection = connection;
+    await controller.refresh();
+    assert.equal(fake.opens.length, 0);
+    assert.equal(fake.prompts.length, 0);
+  }
+
+  const { controller } = conversation({ selected: { id: "s1" } as SessionView });
+  const refreshed = controller.refresh();
+  controller.connection = "outdated";
+  fake.opens[0]?.resolve("idle");
+  await refreshed;
+  assert.equal(fake.prompts.length, 0);
+  assert.equal(controller.refreshing, false);
 });
 
 test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer or stale state", async () => {
