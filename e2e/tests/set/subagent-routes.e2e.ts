@@ -2,38 +2,78 @@
 import { expect } from "e2e";
 import { test } from "../../fixtures/hui.ts";
 
-test("Subagent routes keep edits, reject invalid names, and remove saved rows", { tags: ["SET-078"], platforms: ["web"] }, async ({ screen, hui }) => {
+test("Subagent routes are created in a modal, keep edits, and remove saved rows", { tags: ["SET-078"], platforms: ["web"] }, async ({ screen, hui }) => {
   const settings = await hui.api<Record<string, unknown>>("GET", "/__hui/settings");
-  await hui.api("PUT", "/__hui/settings", { ...settings, models: { primary: "hui-e2e/fixture", fallback: "", utility: "", routes: [] } });
+  await hui.api("PUT", "/__hui/settings", { ...settings, models: { primary: "hui-e2e/fixture-deep", fallback: "", utility: "", routes: [] } });
+  const savedRoutes = async () => (await hui.api<{ models: { routes: { name: string }[] } }>("GET", "/__hui/settings")).models.routes;
   const rename = async (from: string, to: string) => {
     const name = screen.getByLabel(`Route name: ${from}`, { exact: true });
     await name.fill(to);
     await name.press("Tab");
   };
+  const add = screen.getByRole("button", "Add route");
+  const dialog = screen.getByLabel("Add route", { exact: true });
+  const name = dialog.getByLabel("Name", { exact: true });
 
   await hui.open("/settings/models");
   await expect(screen.getByText("Subagent routes", { exact: true })).toBeVisible();
   await expect(screen.getByText("No routes yet", { exact: true })).toBeVisible();
-  await screen.getByRole("button", "Add route").tap();
-  await rename("route", "fast");
+  await add.tap();
+  await expect(dialog).toBeVisible();
+  await expect(name).toBeFocused();
+  await expect(name).toHaveValue("");
+  await expect(dialog.getByRole("button", "Model: HUI Route Fixture")).toBeVisible();
+  await expect.poll(savedRoutes).toEqual([]);
+  await name.fill("discarded");
+  await dialog.getByRole("button", "Cancel").tap();
+  await expect(dialog).toBeHidden();
+  await expect(add).toBeFocused();
+  await expect.poll(savedRoutes).toEqual([]);
+
+  await add.tap();
+  await expect(name).toHaveValue("");
+  await name.fill("discarded");
+  await name.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(add).toBeFocused();
+  await expect(screen.getByText("Subagent routes", { exact: true })).toBeVisible();
+  await expect.poll(savedRoutes).toEqual([]);
+
+  await add.tap();
+  for (const invalid of ["", "two words"]) {
+    await name.fill(invalid);
+    await dialog.getByRole("button", "Add route").tap();
+    await expect(dialog).toBeVisible();
+    await expect.poll(savedRoutes).toEqual([]);
+  }
+  await name.fill(" fast ");
+  await dialog.getByLabel("Description", { exact: true }).fill("Quick lookups");
+  await dialog.getByRole("button", "Model: HUI Route Fixture").tap();
+  await dialog.getByLabel("Model", { exact: true }).getByText("HUI SDK Fixture", { exact: true }).tap();
+  await dialog.getByRole("button", "Thinking: Inherit parent").tap();
+  await dialog.getByLabel("Thinking", { exact: true }).getByText("low", { exact: true }).tap();
+  await dialog.getByRole("button", "Add route").tap();
+  await expect(dialog).toBeHidden();
   const route = screen.getByLabel("Route fast", { exact: true });
   for (const label of ["Name", "Description", "Model", "Thinking"]) {
     await expect(route.getByText(label, { exact: true })).toBeVisible();
   }
-  await screen.getByLabel("Description of fast").fill("Quick lookups");
+  await screen.getByLabel("Description of fast").fill("Quick tasks");
   await screen.getByLabel("Description of fast").press("Tab");
-  await expect(screen.getByRole("button", "Model for fast: HUI SDK Fixture")).toBeVisible();
-  await screen.getByRole("button", "Thinking for fast: Inherit parent").tap();
-  await screen.getByLabel("Thinking for fast", { exact: true }).getByText("low", { exact: true }).tap();
 
-  await screen.getByRole("button", "Add route").tap();
-  await rename("route", "deep");
-  await screen.getByLabel("Description of deep").fill("Careful debugging");
-  await screen.getByLabel("Description of deep").press("Tab");
-  await screen.getByRole("button", "Model for deep: HUI SDK Fixture").tap();
-  await screen.getByLabel("Model for deep", { exact: true }).getByText("HUI Route Fixture", { exact: true }).tap();
-  await screen.getByRole("button", "Thinking for deep: Inherit parent").tap();
-  await screen.getByLabel("Thinking for deep", { exact: true }).getByText("high", { exact: true }).tap();
+  await add.tap();
+  await name.fill("fast");
+  await dialog.getByRole("button", "Add route").tap();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("That route name is already in use.", { exact: true })).toBeVisible();
+  await expect.poll(async () => (await savedRoutes()).map((route) => route.name)).toEqual(["fast"]);
+  await name.fill("deep");
+  await dialog.getByLabel("Description", { exact: true }).fill("Careful debugging");
+  await expect(dialog.getByRole("button", "Model: HUI Route Fixture")).toBeVisible();
+  await dialog.getByRole("button", "Thinking: Inherit parent").tap();
+  await dialog.getByLabel("Thinking", { exact: true }).getByText("high", { exact: true }).tap();
+  await dialog.getByRole("button", "Add route").tap();
+  await expect(dialog).toBeHidden();
 
   for (const invalid of ["", "two words", "fast"]) {
     await rename("deep", invalid);
@@ -42,7 +82,7 @@ test("Subagent routes keep edits, reject invalid names, and remove saved rows", 
   }
   await hui.reload();
   for (const [name, description, model, thinking] of [
-    ["fast", "Quick lookups", "HUI SDK Fixture", "low"],
+    ["fast", "Quick tasks", "HUI SDK Fixture", "low"],
     ["deep", "Careful debugging", "HUI Route Fixture", "high"],
   ] satisfies [string, string, string, string][]) {
     await expect(screen.getByLabel(`Route name: ${name}`, { exact: true })).toHaveValue(name);

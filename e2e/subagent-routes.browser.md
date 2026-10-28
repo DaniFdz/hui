@@ -24,14 +24,20 @@ twice in one turn: `route: "deep"` (accepted) and `route: "no-such-route"`
 
 ## Visible-control journey and observed results
 
-1. Settings → Models shows **Subagent routes** with *No routes yet* and **Add
-   route**. Adding a route writes it immediately: the isolated
-   `config/hui/settings.json` holds `models.routes`.
-2. Each route uses the standard Settings group and labeled Name, Description,
-   Model and Thinking rows. Editing them saves each field. A
-   name that repeats another route, or holds a space, is refused and the stored
-   names stay as they were; picking a model from the catalog stores its
-   `provider/id`; thinking stores the chosen level or no level at all.
+1. Settings → Models shows **Subagent routes** with *No routes yet* and an
+   **Add route** action in its heading. The action opens a modal with an empty,
+   focused Name, Description, Model and Thinking. Model starts on the available
+   primary model, otherwise the first available model; Thinking starts on
+   **Inherit parent**. Opening the form creates no route. Cancel or Escape
+   discards the draft and returns focus to the action without leaving Settings.
+2. Fill the form and choose **Add route** to save it. Empty, invalid and duplicate
+   names are refused. A failed save keeps the draft for retry and leaves no
+   route in the list. While saving, editing and dismissal are disabled. Saved
+   routes retain their standard Settings groups and labeled Name, Description,
+   Model and Thinking rows. Editing them saves each field. A name that repeats
+   another route, or holds a space, is refused and the stored names stay as they
+   were; picking a model stores its `provider/id`; thinking stores the chosen
+   level or no level at all.
 3. With `fast` (HUI SDK Fixture, thinking low) and `deep` (HUI Route Fixture,
    thinking high) configured, a reload shows both groups and the same values.
 4. Create a session with `E2E_SUBAGENTS_ROUTE spawn two workers`. The transcript
@@ -47,19 +53,22 @@ twice in one turn: `route: "deep"` (accepted) and `route: "no-such-route"`
    then lists one line per route: `- fast: Cheap and quick: lookups, summaries,
    simple edits.` and `- deep: Slow and careful: hard debugging and design
    work.`
-7. At 1440×900, each route uses the same labeled Settings rows as the other
-   pages: labels and help text on the left, standard inputs and pickers on the
-   right. At 390×844, the shared Settings styles put each control below its
-   visible label. Names use the standard input font. The child session's model
-   and thinking fit beside the composer.
+7. Check the modal at 1440×900, 390×844 and 844×390. All fields and actions
+   remain reachable without horizontal overflow; short viewports scroll inside
+   the dialog. Tab stays inside it. Escape closes an open picker before it
+   closes the dialog. Saved routes keep the standard Settings layout: labels
+   and help on the left on desktop, controls below labels on mobile.
 
 ## Shared web tests
 
 `npm run e2e -- e2e/tests/set/subagent-routes.e2e.ts` covers SET-078 and SET-079:
-route CRUD, invalid and duplicate names, optional thinking, reload persistence,
+modal creation, initial focus, Cancel/Escape without saving, invalid and
+repeated names, inline edits/removal, optional thinking, reload persistence,
 the routed child's model and thinking, the unchanged parent, and unknown-route
 or route-plus-model refusal before a child exists. Both cases are required on
-the web; iOS remains backlog.
+the web; iOS remains backlog. `src/lib/settings/settings-store.test.ts` covers
+failed creation/retry and an unrelated setting saved during creation, through
+the real write queue with controlled request responses.
 
 ## Limitations
 

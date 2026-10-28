@@ -29,6 +29,7 @@ import "../components/settings/calls.ts";
 import "../components/settings/github.ts";
 import "../components/settings/datadog.ts";
 import "../components/settings/providers.ts";
+import "../components/settings/add-subagent-route.ts";
 import "../components/settings/workers.ts";
 import { renderAutomationPage, type AutomationProps } from "./settings-automation.ts";
 import { renderWorktreesPage, type WorktreesPageProps } from "./worktrees.ts";
@@ -126,6 +127,7 @@ export type SettingsProps = AutomationProps & {
   onChangeNotifications: (next: Settings["notifications"]) => void;
   onChangeQuestions: (next: Settings["questions"]) => void;
   onChangeModels: (next: Settings["models"]) => void;
+  onAddSubagentRoute: (route: Settings["models"]["routes"][number]) => Promise<boolean>;
   onChangeCalls: (next: Settings["calls"]) => void;
   onChangePower: (next: Settings["power"]) => void;
   onSetLidAwake: (on: boolean) => void;
@@ -729,20 +731,14 @@ function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { val
     }
     replace(at, { name });
   };
-  const add = (): void => {
-    const model = models.find((option) => option.value === props.settings.models.primary) ?? models[0];
-    if (!model || routes.length >= 50) return;
-    const taken = new Set(routes.map((route) => route.name));
-    let name = "route";
-    for (let suffix = 2; taken.has(name); suffix += 1) name = `route-${suffix}`;
-    save([...routes, { name, description: "", model: model.value }]);
-  };
   const thinking = [{ value: "", label: "Inherit parent" }, ...PI_THINKING_LEVELS.map((level) => ({ value: level, label: level }))];
   return html`
     <section class="settings-section">
       <div class="settings-section__header"><div class="settings-section__copy">
         <h2 class="settings-section__heading">Subagent routes</h2>
         <p class="settings-section__desc">Named models for subagents. An agent passes a name to <code>sessions_spawn</code> as <code>route</code>; the prompt lists your names and descriptions.</p>
+      </div><div class="settings-section__actions">
+        <hui-add-subagent-route .routes=${routes} .models=${models} .primary=${props.settings.models.primary} .onAdd=${props.onAddSubagentRoute}></hui-add-subagent-route>
       </div></div>
       ${routes.map((route, at) => html`
         <div class="settings-group" role="group" aria-label=${`Route ${route.name}`}>
@@ -764,14 +760,9 @@ function renderSubagentRoutes(props: SettingsProps, modelOptions: readonly { val
             renderSettingsPicker(`Thinking for ${route.name}`, route.thinking ?? "", thinking, (value) => replace(at, { thinking: PI_THINKING_LEVELS.find((level) => level === value) })))}
         </div>
       `)}
-      <div class="settings-group">
-        ${routes.length ? nothing : renderRow("No routes yet", "Agents keep choosing models by id until you add one.", html`<span class="settings-row__value">—</span>`)}
-        ${renderRow(
-          "Add a route",
-          models.length ? "Starts on your primary model, if you have one. Edit it after adding." : "Connect a provider first: a route needs a model.",
-          html`<button type="button" class="btn btn--sm" ?disabled=${!models.length || routes.length >= 50} @click=${add}>Add route</button>`,
-        )}
-      </div>
+      ${routes.length ? nothing : html`<div class="settings-group">
+        ${renderRow("No routes yet", models.length ? "Agents keep choosing models by id until you add one." : "Connect a provider first: a route needs a model.", html`<span class="settings-row__value">—</span>`)}
+      </div>`}
     </section>
   `;
 }

@@ -715,6 +715,14 @@ for concise (3–6 word, at most 60 character) new-session names in the prompt's
 names a model (and optionally a reasoning level), and a session spawns a subagent
 on one by name instead of a model id. See
 [Session-born subagents](#session-born-subagents) for the contract.
+Settings → Models → **Add route** opens a modal with an empty, focused Name,
+Description, Model and Thinking. The model starts on the available primary model,
+or the first available model; thinking starts on **Inherit parent**. Nothing is
+created until **Add route** saves a valid, unique name. Cancel or Escape discards
+the draft and returns focus to the action; Escape in an open picker closes that
+picker first. While saving, the form cannot be edited or dismissed. A failed save
+keeps the draft for retry and adds no route. Saved routes remain editable inline.
+Adding is unavailable without models or at the existing 50-route limit.
 Missing or malformed PI selection files preserve the normal available catalog; see
 `docs/api.md` for empty-list and default-model semantics.
 

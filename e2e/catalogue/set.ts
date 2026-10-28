@@ -743,7 +743,7 @@ const cases: UseCase[] = [
   {
     id: "SET-078",
     title: "Name the models a subagent can be spawned on",
-    behaviour: "“Subagent routes” lists one row per route with its name, one-line description, model and optional thinking level, plus “Add route”; edits are saved immediately and survive a reload, a name that repeats another route, is blank or contains an internal space is refused, and removing a route removes its row.",
+    behaviour: "“Subagent routes” has an “Add route” action that opens a modal with an empty focused Name, Description, the primary Model and optional Thinking. Cancel or Escape discards the draft and returns focus without saving; submitting a valid unique name adds the completed route. Existing routes remain editable inline; edits survive a reload, a repeated, blank or internally spaced name is refused, and removing a route removes its row.",
     spec: ["SPEC.md#session-born-subagents", "docs/api.md#put-__huisettings"],
     surfaces: ["setting:models.routes", "route:PUT /__hui/settings"],
     journeys: ["subagent-routes"],

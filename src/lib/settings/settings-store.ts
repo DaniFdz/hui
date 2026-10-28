@@ -6,7 +6,7 @@
  * runs on defaults from tokens.css and simply does not remember anything.
  */
 import { applyAppearance } from "../theme/appearance.ts";
-import { DEFAULT_SETTINGS, normalizeSettings, type Settings } from "./settings.ts";
+import { DEFAULT_SETTINGS, normalizeSettings, routeNameIsValid, type Settings } from "./settings.ts";
 import { fetchSettings, saveSettings } from "../../api/settings.ts";
 
 let settings: Settings = DEFAULT_SETTINGS;
@@ -54,13 +54,12 @@ export async function refreshSettings(): Promise<Settings | undefined> {
  */
 export async function patchSettings(patch: Partial<Settings>): Promise<boolean> {
   settings = normalizeSettings({ ...settings, ...patch });
-  const snapshot = settings;
   const revision = ++settingsRevision;
   applyAppearance(settings);
   applyUiPreferences(settings);
   let written = false;
   const write = settingsWriteQueue.then(async () => {
-    const confirmed = normalizeSettings(await saveSettings(snapshot));
+    const confirmed = normalizeSettings(await saveSettings(settings));
     written = true;
     if (revision !== settingsRevision) return;
     settings = confirmed;
@@ -74,4 +73,19 @@ export async function patchSettings(patch: Partial<Settings>): Promise<boolean> 
   } catch {
     return false;
   }
+}
+
+export async function addSubagentRoute(route: Settings["models"]["routes"][number]): Promise<boolean> {
+  const write = settingsWriteQueue.then(async () => {
+    const routes = settings.models.routes;
+    if (!routeNameIsValid(route.name) || routes.length >= 50 || routes.some((entry) => entry.name === route.name)) return false;
+    const next = normalizeSettings({ ...settings, models: { ...settings.models, routes: [...routes, route] } });
+    const confirmed = normalizeSettings(await saveSettings(next));
+    const saved = confirmed.models.routes.find((entry) => entry.name === route.name);
+    if (!saved) return false;
+    settings = { ...settings, models: { ...settings.models, routes: [...settings.models.routes, saved] } };
+    return true;
+  });
+  settingsWriteQueue = write.then(() => undefined, () => undefined);
+  return write.catch(() => false);
 }
