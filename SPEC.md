@@ -1317,6 +1317,41 @@ Touch does not gain an extra progress button absent from the original. Backgroun
 refresh while the page is visible. After a gateway restart, progress returns when
 the session is reopened and its runtime restores the transcript.
 
+## Goals
+
+A goal is one objective attached to a conversation, so a long job keeps going
+without the operator repeating themselves. It is session state: it survives a
+restart, shows above the composer, and reaches every request's system prompt.
+
+`/goal <objective>` starts one and sends the objective as the goal's first turn,
+so gathering the work and starting it is one step. `/goal pause`, `/goal resume`
+and `/goal clear` are the other operator controls; the pill above the composer
+offers the same three, with the status (Pursuing goal, Goal paused, Goal
+blocked, Goal achieved), the objective and the status note in its tooltip.
+Starting a goal while a turn runs is refused, never queued. A conversation has
+one goal; starting another replaces it.
+
+Only the operator pauses, resumes or clears a goal. The agent may report
+`complete` or `blocked` through `update_goal`, with a note, and cannot move the
+target. The tool and the goal's prompt section tell it to finish only when the
+whole objective is verified, and to block only after the same blocker has held
+for three turns. Updating the goal sends no chat reply, so the agent still gives
+its answer.
+
+While a goal is active, every request's prompt carries its objective in a
+`hui_goal` section. When a turn settles cleanly, HUI queues one continuation
+turn ("Advance the active goal; keep it active until fully achieved.") through
+the ordinary follow-up queue: it obeys admission, permissions and delivery like
+any message, and it appears in the transcript because it is a real prompt.
+Nothing is queued after a stop, a failed run, an open question, a message
+already queued, or for a paused, blocked or complete goal. After ten automatic
+turns the goal pauses itself with a note, and resuming starts another ten.
+Goals belong to sessions this gateway runs: a worker's session keeps its own
+registry, so the goal route refuses there.
+
+`/goal` is a HUI command. The gateway refuses it as a prompt so a malformed
+variant never becomes a model turn.
+
 ## Agent widgets
 
 An agent or bot shows something the user should see and use, not just read,

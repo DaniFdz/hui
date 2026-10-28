@@ -918,12 +918,22 @@ type SessionView = {
   jiraIssues?: SessionJiraIssue[];     // oldest first, at most 20
   stage: SessionStage;                 // effective Kanban column
   stageOrigin: "operator" | "agent" | "pullRequest" | "default";
+  goal?: SessionGoal;                  // the objective this conversation pursues, if any
   createdAt: string;
   updatedAt: string;
 };
 
 type SessionStage = "investigation" | "implementation" | "testing" | "done";
 // The board's first column, "backlog", holds backlog items, never sessions.
+
+type SessionGoal = {
+  objective: string;
+  status: "active" | "paused" | "blocked" | "complete";
+  createdAt: string;
+  updatedAt: string;
+  note?: string;         // why it is paused or blocked, when one was given
+  continuations: number; // automatic turns spent pursuing it
+};
 
 type SubagentStatus =
   | "starting" | "running" | "completed" | "failed"
@@ -1123,6 +1133,7 @@ Only a changed stage writes; polling an unchanged board stays read-only.
 | `parentId`, `subagent` | HUI | Optional additive lineage/task state for `sessions_spawn`; PI still owns the child transcript |
 | `bot` | HUI | Optional id of the bot whose forever chat this record is (see [Bots](#bots)); set at creation, never changed. No registry version bump. The bot registry decides: a record whose bot is gone is an ordinary session |
 | `stage`, `stageSource`, `stagePullRequests` | HUI | Optional Kanban stage and who placed it (`operator`, `agent`, `pullRequest`); absent means Investigation. A session started from a backlog item is created with an operator placement in the target column. See [Session stages](#session-stages). `stagePullRequests` is server-only and never returned in views. |
+| `goal` | HUI | Optional objective the conversation pursues: objective, status, timestamps, a note and how many automatic turns it spent. Only the operator starts, pauses, resumes and clears it (`POST …/goal`, `/goal`); the agent may only report `complete` or `blocked` through `update_goal`. |
 | `piSessionFile` | Runtime identity, HUI pointer | PI: learned from `get_state`, then stored by HUI for `--session` resume. Durable: `durable:<conversationId>`, replaced by a rewind's fork; a fork's session starts on its copy |
 | messages and tool results | PI | PI's JSONL only; never copied into `sessions.json` |
 | `status` | HUI process | Derived live state; never persisted |
@@ -3320,6 +3331,28 @@ Returns `{ ok: true }` after the operation, or the existing 400 or 409 error.
 
 Uses the prompt body and attachment rules. Queues work for after the current
 agent run has completely settled.
+
+### `POST /__hui/sessions/:id/goal`
+
+Starts, pauses, resumes or clears the conversation's goal and returns
+`{ "session": SessionView }`. The body is
+`{ "action": "start", "objective": string }` or
+`{ "action": "pause" | "resume" | "clear" }`.
+
+`start` replaces any existing goal and sends the objective as the goal's first
+turn, so it needs an idle session on this gateway (`409` while a turn is
+running). `resume` flips the status back to `active` and, when the session is
+idle, queues HUI's continuation turn. `pause` and `clear` never start work.
+Pausing a goal that is not active, resuming one that is neither paused nor
+blocked, and changing a goal on a worker's session are `400`.
+
+While a goal is `active`, each request's system prompt carries a `hui_goal`
+section with the objective. When such a turn settles cleanly, HUI queues
+`Advance the active goal; keep it active until fully achieved.` through the
+normal follow-up queue, which is what keeps the work going without a human
+message. A stop, a failed run, an open question, input already queued, or a
+worker's session queues nothing. After ten automatic turns the goal is paused
+with a note instead of claiming another.
 
 When PI consumes a steering or follow-up entry, HUI promotes the removed queue
 entry into the live transcript before the next model response. Slow turns and

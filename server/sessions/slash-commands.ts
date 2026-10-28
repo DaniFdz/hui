@@ -21,3 +21,17 @@ export function parseCompactCommand(text: string): { instructions?: string } | u
   const instructions = match[1]?.trim();
   return instructions ? { instructions } : {};
 }
+
+export type GoalCommand = { action: "start"; objective: string } | { action: "pause" | "resume" | "clear" } | "usage";
+
+/** `/goal <objective>` starts (or re-words) a goal; the three status actions are exact words so an objective that
+ * begins with one still reads as an objective to the operator's eye. */
+export function parseGoalCommand(text: string): GoalCommand | null {
+  const trimmed = text.trim();
+  if (!/^\/goal(?:\s|$)/u.test(trimmed)) return null;
+  const rest = trimmed.slice("/goal".length).trim();
+  if (!rest) return "usage";
+  if (rest === "pause" || rest === "resume" || rest === "clear") return { action: rest };
+  if (/^(?:pause|resume|clear)\b/u.test(rest)) return "usage";
+  return { action: "start", objective: rest };
+}

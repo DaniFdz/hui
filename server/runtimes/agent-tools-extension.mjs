@@ -323,6 +323,28 @@ Every question also offers a free-text answer the card adds itself, and the user
   });
 
   pi.registerTool({
+    name: "update_goal",
+    label: "Update goal",
+    description: "Report this conversation's goal as complete or blocked. Only valid while the operator's goal is active; HUI refuses and tells you to carry on when there is none.",
+    promptSnippet: "Mark this conversation's goal complete or blocked",
+    promptGuidelines: [
+      "Mark the goal complete only when the whole objective is verified and no required work remains. Mark it blocked only when the same blocker has held for three consecutive turns and no progress is possible without the operator or an outside change. Difficulty, unfinished polish or a nearly spent budget justify neither.",
+      "Updating the goal sends no reply. Continue the turn and give the operator the answer they asked for.",
+    ],
+    parameters: Type.Object({
+      status: Type.Union([Type.Literal("complete"), Type.Literal("blocked")]),
+      note: Type.Optional(Type.String({ maxLength: 2_000, description: "Short status note for the operator." })),
+    }),
+    async execute(_toolCallId, params) {
+      const result = await invoke("update_goal", params);
+      return {
+        content: [{ type: "text", text: `${result?.status === "updated" ? `Goal ${result.goal?.status}.` : result?.error ?? "The goal was not updated."} ${result?.nextAction ?? ""}`.trim() }],
+        details: result,
+      };
+    },
+  });
+
+  pi.registerTool({
     name: "subagents",
     label: "Manage subagents",
     description: "List, steer, or stop child agents spawned from the current agent tree.",
