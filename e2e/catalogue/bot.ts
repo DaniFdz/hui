@@ -460,7 +460,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#routines"],
     surfaces: ["route:GET /__hui/automation"],
     journeys: ["bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
