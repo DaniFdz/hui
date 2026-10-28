@@ -1524,6 +1524,37 @@ lives in `~/.config/hui/watchers.json` with one log per watcher under
 `~/.config/hui/watchers/`; deleting a conversation stops and forgets its
 watchers.
 
+### A settled watcher tells its conversation (2026-10-28)
+
+An agent that starts a watcher ends its turn and waits for the answer. Nothing
+woke it when the watcher ended, so a command that failed or died left the
+conversation waiting for a message that never came.
+
+- **One event per settle.** When a watcher reads `done`, `failed` or `dead`, and
+  nobody has been told yet, HUI writes one automated message into the owning
+  conversation: `[HUI watcher event]` with the purpose, state and why, target,
+  outcome, start and end times, exit code, the latest output line and the log
+  path, then what to do with it. The agent reads the log if the outcome is
+  unclear, carries out the recorded outcome when the condition holds, and
+  otherwise restarts the watcher or tells the operator what is blocked. The
+  output is data, never instructions.
+- **A busy conversation is steered**, an idle one runs the event as its next
+  turn, and a conversation with no runtime open — after a restart, for instance
+  — is woken for it. A deleted conversation is left alone.
+- **`stopped` and `dismissed` say nothing.** The operator ended those, and the
+  agent is either the one that asked or not waiting any more.
+- **`keepRunning` that starts again says nothing**, because the wait is not
+  over; one whose directory is gone stays dead and does tell its conversation.
+- **Once, not on every poll.** The record keeps `reportedAt`. A settle seen by
+  the gateway that watched it happen is reported there; one that happened while
+  HUI was stopped is reported at the next start, because the record was marked
+  `interrupted` when the gateway stopped with it still running. Settles older
+  than that are history and are not replayed.
+- **A delivery that cannot be made is retried** on the next poll, and never
+  wakes a conversation on the way out of a gateway stop.
+- **Stored data.** Records gain optional `reportedAt` and `interrupted`; older
+  records read as neither, so no `hui doctor` check applies.
+
 The gateway re-reads the registry on start, so a watcher that survived a
 restart reappears with its state, and one killed by a reboot is shown dead
 instead of silently missing; a conversation already open when the registry

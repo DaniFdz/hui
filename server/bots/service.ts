@@ -42,6 +42,7 @@ import { botTurnOrigin, runTurnOrigins, type BotTurnOrigin } from "../runtimes/t
 import type { CallRecord } from "../calls-format.ts";
 import type { AutomationTask } from "../automation.ts";
 import { SUBAGENT_COMPLETION_MARKER } from "../agent-tools/subagent-completion.ts";
+import { WATCHER_EVENT_MARKER } from "../agent-tools/watcher-events.ts";
 import { BotMemoryUnavailableError, type BotMemory, type BotMemorySettings } from "./memory.ts";
 import { AUTOMATION_SUSPENDED } from "../automation.ts";
 import {
@@ -1650,7 +1651,7 @@ export function hopOf(text: string | undefined): number | undefined {
 
 /** How the messages HUI writes into a session start (`subagents.ts`): a subagent's task, another session's message and
  * a subagent's report. */
-const HUI_MESSAGES = ["[Subagent Task]", "[Inter-session message ", SUBAGENT_COMPLETION_MARKER];
+const HUI_MESSAGES = ["[Subagent Task]", "[Inter-session message ", SUBAGENT_COMPLETION_MARKER, WATCHER_EVENT_MARKER];
 
 /** A message the operator wrote: not a routine's, a trigger's, a bot's or a session's tag, a new bot's kickoff, nor one
  * HUI writes itself (`HUI_MESSAGES`): an agent's words never count as the operator's. */
