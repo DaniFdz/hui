@@ -5,7 +5,7 @@
  * the transcript still owns the order and the data, and a call without a known phrasing falls back to its name.
  */
 import { html, nothing, type TemplateResult } from "lit";
-import { icons } from "../../lib/icons.ts";
+import { brandMarks, icons } from "../../lib/icons.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 import { readToolPresentation, renderReadToolBody, toolFilePath } from "./read-tool-card.ts";
 import { commandToolPresentation, renderCommandToolBody } from "./command-tool-card.ts";
@@ -137,7 +137,7 @@ const KIND_ICON: Record<ToolKind, TemplateResult> = {
  * the tool's own brand tint; a CLI without one keeps the row's muted ink. */
 type ToolMark = { glyph: TemplateResult; color?: string };
 const CLI_ICONS: Record<string, ToolMark> = {
-  git: { glyph: icons.github, color: "#e6edf3" }, gh: { glyph: icons.github, color: "#e6edf3" },
+  git: { glyph: brandMarks.github, color: "#e6edf3" }, gh: { glyph: brandMarks.github, color: "#e6edf3" },
   npm: { glyph: icons.box, color: "#cb3837" }, pnpm: { glyph: icons.box, color: "#f9ad00" },
   yarn: { glyph: icons.box, color: "#2c8ebb" }, bun: { glyph: icons.box, color: "#fbf0df" },
   node: { glyph: icons.box, color: "#5fa04e" }, deno: { glyph: icons.box, color: "#a3e635" },
@@ -149,9 +149,9 @@ const CLI_ICONS: Record<string, ToolMark> = {
   make: { glyph: icons.wrench }, cmake: { glyph: icons.wrench }, cargo: { glyph: icons.wrench, color: "#dea584" },
   go: { glyph: icons.wrench, color: "#00add8" }, tsc: { glyph: icons.wrench },
   vitest: { glyph: icons.wrench, color: "#8fbf3f" }, jest: { glyph: icons.wrench, color: "#c21325" }, pytest: { glyph: icons.wrench, color: "#0a9edc" },
-  kubectl: { glyph: icons.kubernetes, color: "#326ce5" }, k9s: { glyph: icons.kubernetes, color: "#326ce5" },
-  minikube: { glyph: icons.kubernetes, color: "#326ce5" }, kind: { glyph: icons.kubernetes, color: "#326ce5" },
-  kustomize: { glyph: icons.kubernetes, color: "#326ce5" },
+  kubectl: { glyph: brandMarks.kubernetes, color: "#326ce5" }, k9s: { glyph: brandMarks.kubernetes, color: "#326ce5" },
+  minikube: { glyph: brandMarks.kubernetes, color: "#326ce5" }, kind: { glyph: brandMarks.kubernetes, color: "#326ce5" },
+  kustomize: { glyph: brandMarks.kubernetes, color: "#326ce5" },
   helm: { glyph: icons.plug, color: "#277a9f" },
   terraform: { glyph: icons.plug, color: "#a78bfa" }, aws: { glyph: icons.plug, color: "#ff9900" },
   gcloud: { glyph: icons.plug, color: "#4285f4" }, ssh: { glyph: icons.plug }, rsync: { glyph: icons.plug },
