@@ -667,7 +667,7 @@ test("what an agent sends shows its target: a bot by handle or name, the calling
   // No target yet (its arguments still on their way): an ordinary tool row, never "Sending to @".
   const pending = html.slice(html.indexOf("data-chat-row-key=pending"));
   assert.doesNotMatch(pending, /chat-handoff/u);
-  assert.match(pending, /chat-activity-group/u);
+  assert.match(pending, /tool-call-group/u);
 });
 
 test("an unanswered questionnaire reads as expired with what it asked, never as declined", async () => {
@@ -691,7 +691,7 @@ test("an unanswered questionnaire reads as expired with what it asked, never as 
   assert.match(row("declined"), /You declined to answer\./u);
 });
 
-test("a long conversation renders its latest rows and offers the earlier ones; a closed activity group renders no items", async () => {
+test("a long conversation renders its latest rows and offers the earlier ones; a folded tool group renders no calls", async () => {
   const { TRANSCRIPT_WINDOW_ROWS } = await import("./chat/projection.ts");
   const transcript = Array.from({ length: TRANSCRIPT_WINDOW_ROWS + 10 }, (_, index) => [
     { kind: "message", id: `u${index}`, role: "user", text: `Step ${index}` },
@@ -705,12 +705,18 @@ test("a long conversation renders its latest rows and offers the earlier ones; a
   assert.doesNotMatch(latest, /Step 0</u);
   assert.match(latest, /Done 59</u);
   assert.match(latest, /class="chat-history-boundary__action" @click=>Show earlier messages</u);
-  assert.doesNotMatch(latest, /echo step-59/u, "the command inside a closed group is not rendered");
+  assert.match(latest, /<span class=tool-call-group__label>Used 1 tool<\/span>/u);
+  assert.doesNotMatch(latest, /tool-call-row/u, "a folded group renders no call rows");
   const all = await renderWorkerSession("idle", { transcript, transcriptWindowStart: 0 });
   assert.match(all, /Step 0</u);
   assert.doesNotMatch(all, /Show earlier messages/u);
   const open = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set([`s:t${TRANSCRIPT_WINDOW_ROWS + 9}`]) });
-  assert.match(open, /echo step-59/u);
+  assert.match(open, /<span class=tool-call-row__title>Ran echo step-59<\/span>/u, "an opened group names each call");
+  assert.doesNotMatch(open, /class="chat-tool-msg-body"/u, "a call's body waits for its own row to open");
+  // t59 is the third item of its turn: 59 turns before it, two items each, plus the prompt.
+  const rowOpen = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set([`s:t${TRANSCRIPT_WINDOW_ROWS + 9}`, "s:tool:178:t59"]) });
+  assert.match(rowOpen, /class="chat-tool-msg-body"/u);
+  assert.match(rowOpen, /chat-tool-term__out/u);
 });
 
 test("subagent and watcher cards blur nothing behind them, so a long chat keeps painting as it scrolls", () => {
