@@ -8,7 +8,7 @@ const fake = vi.hoisted(() => ({
   modelRequests: [] as string[],
   modelsFail: false,
   thinking: [] as { id: string; level: string; resolve: (level: string) => void }[],
-  opens: [] as { id: string; resolve: (status: SessionStatus, snapshot?: Partial<SessionSnapshot>) => void }[],
+  opens: [] as { id: string; signal?: AbortSignal; resolve: (status: SessionStatus, snapshot?: Partial<SessionSnapshot>) => void }[],
   streams: [] as { id: string; handlers: SessionStreamHandlers; heldRevision?: number; stopped: boolean }[],
 }));
 vi.mock("../api/sessions.ts", () => ({
@@ -18,14 +18,17 @@ vi.mock("../api/sessions.ts", () => ({
     return [{ provider: "gw", id: "opus", name: "Opus" }];
   },
   setSessionThinking: (id: string, level: string) => new Promise((resolve) => fake.thinking.push({ id, level, resolve })),
-  openSession: (id: string) => new Promise((resolve) => fake.opens.push({
-    id,
-    resolve: (status, snapshot = {}) => resolve({
-      session: { id, status },
-      snapshot: { transcript: [], status, queue: { steering: [], followUp: [] }, questions: [], subagents: [], ...snapshot },
-      revision: 7,
-    }),
-  })),
+  openSession: (id: string, signal?: AbortSignal) => new Promise((resolve) => {
+    fake.opens.push({
+      id,
+      signal,
+      resolve: (status, snapshot = {}) => resolve({
+        session: { id, status },
+        snapshot: { transcript: [], status, queue: { steering: [], followUp: [] }, questions: [], subagents: [], ...snapshot },
+        revision: 7,
+      }),
+    });
+  }),
   subscribeSession: (id: string, handlers: SessionStreamHandlers, heldRevision?: number) => {
     const stream = { id, handlers, heldRevision, stopped: false };
     fake.streams.push(stream);
@@ -125,6 +128,7 @@ test("only the session still selected opens and streams; its status frames reach
   controller.select({ id: "s2" } as SessionView);
   void controller.open("s2");
   assert.equal(controller.opening, true);
+  assert.equal(fake.opens[0]?.signal?.aborted, true, "the discarded opening releases its transfer");
   fake.opens[0]?.resolve("idle");
   await settle();
   assert.deepEqual(fake.streams.map(({ id }) => id), [], "a late answer for s1 starts nothing");
@@ -166,6 +170,29 @@ test("a refresh reads the open session again and shows the card the gateway has"
   assert.equal(progressCardFromTranscript(controller.transcript)?.steps[0]?.step, "New step");
 });
 
+test("a cancelled refresh that settles late cannot clear the replacement session's refresh", async () => {
+  const { controller, errors } = conversation({ selected: { id: "s1" } as SessionView });
+  const oldRefresh = controller.refresh();
+  controller.select({ id: "s2" } as SessionView);
+  const opening = controller.open("s2");
+  assert.equal(fake.opens[0]?.signal?.aborted, true);
+  await controller.refresh();
+  assert.equal(fake.opens.length, 2, "refresh does not compete with the initial open");
+  fake.opens[1]?.resolve("idle");
+  await opening;
+  const refresh = controller.refresh();
+  assert.equal(controller.refreshing, true);
+  fake.opens[0]?.resolve("idle", { transcript: [{ kind: "message", role: "user", text: "Old session" }] });
+  await oldRefresh;
+  assert.equal(controller.refreshing, true, "the old read does not own this loading state");
+  fake.opens[2]?.resolve("idle", { transcript: [{ kind: "message", role: "user", text: "Current session" }] });
+  await refresh;
+  assert.equal(controller.refreshing, false);
+  assert.equal(controller.selected?.id, "s2");
+  assert.deepEqual(controller.transcript.map((item) => item.kind === "message" ? item.text : item.kind), ["Current session"]);
+  assert.deepEqual(errors, []);
+});
+
 test("a conversation whose element is removed starts no stream for an open still pending, and leaves no copy timer or stale state", async () => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);
@@ -178,6 +205,7 @@ test("a conversation whose element is removed starts no stream for an open still
     vi.stubGlobal("navigator", { clipboard: { writeText: () => new Promise<void>((resolve) => { finishWrite = resolve; }) } });
     const late = controller.copy("text", "m2");
     controller.hostDisconnected();
+    assert.equal(fake.opens[0]?.signal?.aborted, true, "an evicted pane releases its unfinished transfer");
     assert.equal(controller.opening, false, "a reattached pane does not stay opening");
     assert.equal(controller.copiedId, "", "nor keeps a Copied mark");
     fake.opens[0]?.resolve("idle");

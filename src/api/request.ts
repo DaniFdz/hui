@@ -1,9 +1,8 @@
 /**
  * The request helper for HUI's own gateway: the `x-hui` header, `fetchJson`, and `trackedFetch`, which reports a
- * request that cannot connect. The response deadline bounds how long the gateway may take to *start* answering,
- * not how long the answer takes to arrive: the gateway replies in milliseconds, but over mobile data a long
- * session's transcript can need many seconds to download, and cutting that short only threw the transfer away and
- * showed an empty conversation.
+ * request that cannot connect. The response deadline bounds how long the gateway may take to start answering,
+ * not the total download time. JSON bodies have a separate no-progress deadline; a long transcript keeps loading
+ * while bytes arrive. A view can cancel its read without replacing the header deadline.
  */
 import { reportReachable, reportRequestFailure } from "./ui-errors.ts";
 
@@ -13,6 +12,7 @@ export const CLIENT_HEADERS = { "x-hui": "1" } as const;
 
 /** Long enough for a phone to wake its Tailscale connection, short enough to report a dead one. */
 export const RESPONSE_TIMEOUT_MS = 20_000;
+const BODY_STALL_MS = 40_000;
 
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -37,20 +37,16 @@ export async function fetchWithResponseDeadline(
   input: RequestInfo | URL,
   init: RequestInit = {},
   timeoutMs = RESPONSE_TIMEOUT_MS,
+  cancellation?: AbortSignal,
 ): Promise<Response> {
-  if (init.signal) {
-    try {
-      return await fetcher(input, init);
-    } catch (error) {
-      throw gatewayRequestError(error);
-    }
-  }
   const deadline = new AbortController();
-  const timer = setTimeout(() => deadline.abort(new DOMException("The gateway did not answer in time.", "TimeoutError")), timeoutMs);
+  const signal = init.signal ?? deadline.signal;
+  const timer = init.signal ? undefined
+    : setTimeout(() => deadline.abort(new DOMException("The gateway did not answer in time.", "TimeoutError")), timeoutMs);
   try {
-    return await fetcher(input, { ...init, signal: deadline.signal });
+    return await fetcher(input, { ...init, signal: cancellation ? AbortSignal.any([signal, cancellation]) : signal });
   } catch (error) {
-    throw gatewayRequestError(error, timeoutMs);
+    throw gatewayRequestError(error, init.signal ? undefined : timeoutMs);
   } finally {
     clearTimeout(timer);
   }
@@ -88,17 +84,33 @@ export async function trackedFetch(input: RequestInfo | URL, init?: RequestInit)
   }
 }
 
-export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetchWithResponseDeadline(trackedFetch, url, {
-    ...init,
-    headers: { ...CLIENT_HEADERS, ...init?.headers },
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    // The backend explains its refusals in the body, and that message is worth
-    // more to the user than the status code. The import path relies on this.
-    const detail = (await response.json().catch(() => undefined)) as { error?: string } | undefined;
-    throw new Error(detail?.error ?? `${url} returned HTTP ${response.status}`);
+export async function fetchJson<T>(url: string, init?: RequestInit, cancellation?: AbortSignal): Promise<T> {
+  const stalled = new AbortController();
+  const signal = cancellation ? AbortSignal.any([stalled.signal, cancellation]) : stalled.signal;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const progress = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => stalled.abort(new DOMException("The response stopped arriving.", "TimeoutError")), BODY_STALL_MS);
+  };
+  try {
+    const response = await fetchWithResponseDeadline(trackedFetch, url, {
+      ...init,
+      headers: { ...CLIENT_HEADERS, ...init?.headers },
+      cache: "no-store",
+    }, RESPONSE_TIMEOUT_MS, signal);
+    if (response.body) progress();
+    const json = new Response(response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) { if (chunk.byteLength) progress(); controller.enqueue(chunk); },
+    }))).json();
+    if (!response.ok) {
+      const detail = (await json.catch(() => undefined)) as { error?: string } | undefined;
+      throw new Error(detail?.error ?? `${url} returned HTTP ${response.status}`);
+    }
+    return (await json) as T;
+  } catch (error) {
+    if (stalled.signal.aborted) throw new Error("HUI stopped sending data while loading. Check the connection and try again.", { cause: error });
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  return (await response.json()) as T;
 }

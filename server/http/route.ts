@@ -99,7 +99,7 @@ const compressing = new WeakSet<ServerResponse>();
  * it, off the event loop. The first answer wins, as when the body is sent at once.
  */
 export function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  if (response.writableEnded || compressing.has(response)) {
+  if (response.destroyed || response.writableEnded || compressing.has(response)) {
     return;
   }
   if (status >= 400 && !responseFailures.has(response)) {

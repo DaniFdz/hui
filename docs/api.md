@@ -3211,6 +3211,13 @@ Idempotent: opening an already-open session must not spawn a second pi. For a
 session with a `piSessionFile`, the runtime resumes it so the old conversation
 appears.
 
+The browser waits up to 20 seconds for response headers, not for the whole
+transcript to download. Its JSON reader fails after 40 seconds without any body
+bytes and shows a recoverable load error with **Try again**. Progressing downloads
+may take longer. Replacing or discarding a view cancels its unfinished read,
+without stopping the runtime. The gateway skips JSON encoding for a client that
+has already disconnected.
+
 ### `POST /__hui/sessions/:id/prompt`
 
 ```json
@@ -3574,6 +3581,12 @@ direction), so the snapshot's transcript crosses a slow link compressed; a
 client that does not offer it gets uncompressed frames. After `closed` the
 server closes normally; a session deleted before the upgrade closes with code
 4404. 429 means too many tickets are pending, so retry later.
+
+The browser gives ticket acquisition and the WebSocket handshake 20 seconds
+each. A timed-out attempt enters the same retry/backoff path as a dropped
+connection. The socket's deadline is cleared on `open`; it does not limit the
+time an established connection may take to deliver a large first snapshot or
+force a healthy idle stream to reconnect.
 
 ### `POST /__hui/sessions/:id/continue`
 
