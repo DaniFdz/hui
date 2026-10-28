@@ -612,7 +612,7 @@ export function isBotSession(session: Pick<SessionView, "bot">): boolean {
  * Groups without them keep their identity. */
 export function withoutBotSessions(groups: readonly SessionGroup[]): SessionGroup[] {
   const all = groups.flatMap((group) => group.sessions);
-  const ofBots = new Set(all.filter(isBotSession).flatMap((chat) => [...sessionTreeIds(all, chat.id)]));
+  const ofBots = sessionTreeIds(all, all.filter(isBotSession).map((chat) => chat.id));
   return groups.flatMap((group) => {
     if (!group.sessions.some((session) => ofBots.has(session.id))) return [group];
     const sessions = group.sessions.filter((session) => !ofBots.has(session.id));

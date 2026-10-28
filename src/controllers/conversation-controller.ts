@@ -69,6 +69,7 @@ export class ConversationController implements ReactiveController {
   #streamStop: (() => void) | undefined;
   /** Monotonic ownership token for open responses from the selected session. */
   #openRequestToken = 0;
+  #readAbort: AbortController | undefined;
   #subagentExpiryTimer: number | undefined;
   #frameUpdate: number | undefined;
   #copyTimer: number | undefined;
@@ -89,6 +90,7 @@ export class ConversationController implements ReactiveController {
   hostDisconnected(): void {
     this.#disconnected = true;
     this.#openRequestToken += 1;
+    this.#cancelRead();
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.#clearSubagentExpiry();
@@ -96,7 +98,6 @@ export class ConversationController implements ReactiveController {
     this.#copyTimer = undefined;
     this.opening = false;
     this.copiedId = "";
-    this.#endRefresh();
   }
 
   get streamOpen(): boolean {
@@ -107,10 +108,10 @@ export class ConversationController implements ReactiveController {
    * also the server's read receipt, so it must exist only while chat is shown. */
   suspend(): void {
     this.#openRequestToken += 1;
+    this.#cancelRead();
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.opening = false;
-    this.#endRefresh();
     this.#host.requestUpdate();
   }
 
@@ -118,6 +119,7 @@ export class ConversationController implements ReactiveController {
     // Invalidates an open response even if it resolves after the selection is
     // cleared and before another session is chosen.
     this.#openRequestToken += 1;
+    this.#cancelRead();
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.selected = undefined;
@@ -136,13 +138,19 @@ export class ConversationController implements ReactiveController {
     this.connection = "live";
   }
 
+  #cancelRead(): void {
+    this.#readAbort?.abort();
+    this.#readAbort = undefined;
+    this.#endRefresh();
+  }
+
   /** Opens (starting a runtime if needed) and begins streaming. */
   async open(id: string): Promise<void> {
     const requestToken = ++this.#openRequestToken;
+    this.#cancelRead();
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.opening = true;
-    this.#endRefresh();
     this.openError = "";
     this.streaming = false;
     this.transcript = [];
@@ -158,8 +166,10 @@ export class ConversationController implements ReactiveController {
       this.opening = false;
       return;
     }
+    const abort = new AbortController();
+    this.#readAbort = abort;
     try {
-      const opened = await openSession(id);
+      const opened = await openSession(id, abort.signal);
       if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
         // A different session or a newer retry won while this was starting.
         return;
@@ -178,6 +188,7 @@ export class ConversationController implements ReactiveController {
         this.openError = error instanceof Error ? error.message : "Could not open that session.";
       }
     } finally {
+      if (this.#readAbort === abort) this.#readAbort = undefined;
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
         this.opening = false;
         this.#host.requestUpdate();
@@ -189,13 +200,15 @@ export class ConversationController implements ReactiveController {
   /** Reads the open session again and asks the agent for a card that matches the work as it stands now. */
   async refresh(): Promise<void> {
     const id = this.selected?.id;
-    if (!id || this.refreshing) return;
+    if (!id || this.refreshing || this.opening) return;
     const requestToken = this.#openRequestToken;
+    const abort = new AbortController();
+    this.#readAbort = abort;
     this.refreshing = true;
     this.#refreshAccepted = false;
     this.#host.requestUpdate();
     try {
-      const opened = await openSession(id);
+      const opened = await openSession(id, abort.signal);
       if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) return;
       this.selected = opened.session;
       this.applySnapshot(opened.snapshot);
@@ -204,12 +217,15 @@ export class ConversationController implements ReactiveController {
       await (this.streaming ? followUpSession : sendPrompt)(id, REFRESH_PROGRESS_PROMPT);
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) this.#refreshAccepted = true;
     } catch (error) {
-      this.#endRefresh();
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
+        this.#endRefresh();
         this.#deps.showError(error instanceof Error ? error.message : "Could not refresh that session.");
       }
     } finally {
-      this.#host.requestUpdate();
+      if (this.#readAbort === abort) {
+        this.#readAbort = undefined;
+        this.#host.requestUpdate();
+      }
     }
   }
 
