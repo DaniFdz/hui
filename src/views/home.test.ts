@@ -242,20 +242,26 @@ test("Task progress projects the durable progress_card signal above the composer
   assert.match(source, /agent-chat__composer-shell--question-composer/);
 });
 
-test("Task progress offers a refresh control that reads the session again without folding the card", async () => {
+test("Task progress offers a refresh control that asks for a new card without folding it, and turns busy meanwhile", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
-  const html = await renderWorkerSession("running", {
+  const props = {
     transcript: [
       { kind: "message", role: "user", text: "long task" },
       { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "Check the build", status: "in_progress" }] }, status: "running" },
     ],
-  });
+  };
+  const idle = await renderWorkerSession("running", props);
+  const busy = await renderWorkerSession("running", { ...props, refreshing: true });
 
-  assert.match(html, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card"/u);
-  assert.match(html, /Check the build/u);
+  assert.match(idle, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card"/u);
+  assert.doesNotMatch(idle, /aria-busy=(?:true|"true")/u);
+  assert.match(idle, /Check the build/u);
+  assert.match(busy, /aria-busy=true \?disabled=true/u);
   assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*props\.onRefreshSession\(\);/u);
   assert.match(styles, /\.session-progress-card__refresh\s*\{[^}]*cursor:\s*var\(--cursor-action\);/s);
+  assert.match(styles, /\.session-progress-card__refresh\[aria-busy="true"\] > svg\s*\{[^}]*animation:\s*session-run-spin/s);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.session-progress-card__refresh\[aria-busy="true"\]/s);
 });
 
 test("model and thinking reuse one exclusive composer picker pattern", () => {

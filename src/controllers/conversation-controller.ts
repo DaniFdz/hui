@@ -39,7 +39,7 @@ export class ConversationController implements ReactiveController {
   transcript: readonly TranscriptItem[] = [];
   subagents: readonly SubagentTaskView[] = [];
   opening = false;
-  /** A re-read of the open session is in flight. */
+  /** A refresh is in flight: from the click until the agent's turn for it ends. */
   refreshing = false;
   /** Why the selected session's open request failed; its view offers a retry. */
   openError = "";
@@ -73,6 +73,8 @@ export class ConversationController implements ReactiveController {
   #frameUpdate: number | undefined;
   #copyTimer: number | undefined;
   #disconnected = false;
+  /** The refresh's prompt was accepted, so the agent's next settle ends the busy state. */
+  #refreshAccepted = false;
 
   constructor(host: ConversationHost, deps: ConversationDeps) {
     this.#host = host;
@@ -94,6 +96,7 @@ export class ConversationController implements ReactiveController {
     this.#copyTimer = undefined;
     this.opening = false;
     this.copiedId = "";
+    this.#endRefresh();
   }
 
   get streamOpen(): boolean {
@@ -107,6 +110,7 @@ export class ConversationController implements ReactiveController {
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.opening = false;
+    this.#endRefresh();
     this.#host.requestUpdate();
   }
 
@@ -138,6 +142,7 @@ export class ConversationController implements ReactiveController {
     this.#streamStop?.();
     this.#streamStop = undefined;
     this.opening = true;
+    this.#endRefresh();
     this.openError = "";
     this.streaming = false;
     this.transcript = [];
@@ -187,21 +192,32 @@ export class ConversationController implements ReactiveController {
     if (!id || this.refreshing) return;
     const requestToken = this.#openRequestToken;
     this.refreshing = true;
+    this.#refreshAccepted = false;
     this.#host.requestUpdate();
     try {
       const opened = await openSession(id);
       if (!isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) return;
       this.selected = opened.session;
       this.applySnapshot(opened.snapshot);
+      // Accepted after the snapshot's own status, which says nothing about the turn to come.
       await sendPrompt(id, REFRESH_PROGRESS_PROMPT);
+      if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) this.#refreshAccepted = true;
     } catch (error) {
+      this.#endRefresh();
       if (isCurrentSessionRequest(id, this.selected?.id, requestToken, this.#openRequestToken)) {
         this.#deps.showError(error instanceof Error ? error.message : "Could not refresh that session.");
       }
     } finally {
-      this.refreshing = false;
       this.#host.requestUpdate();
     }
+  }
+
+  /** The click's work is done once the agent's own turn for it has ended. */
+  #endRefresh(): void {
+    this.#refreshAccepted = false;
+    if (!this.refreshing) return;
+    this.refreshing = false;
+    this.#host.requestUpdate();
   }
 
   #startStream(id: string, heldRevision?: number): void {
@@ -351,11 +367,13 @@ export class ConversationController implements ReactiveController {
         // pi emits turn_end before agent_end. The following status frame is
         // authoritative; unlocking here would accept a prompt PI still rejects.
         this.streaming = streamingAfterEvent(this.streaming, event.type);
+        if (this.#refreshAccepted) this.#endRefresh();
         break;
       case "settled":
         // `settled` explains why the next status may become idle, but the
         // status SSE remains the single authority that unlocks the composer.
         this.streaming = streamingAfterEvent(this.streaming, event.type);
+        if (this.#refreshAccepted) this.#endRefresh();
         break;
     }
     if (event.type === "text" || event.type === "thinking" || event.type === "tool_update") this.#requestFrameUpdate();
@@ -375,6 +393,8 @@ export class ConversationController implements ReactiveController {
     // so the composer lock follows the status rather than only turn events.
     this.streaming = streamingForStatus(status);
     if (status !== "running" && status !== "waiting") this.stopping = false;
+    // A refresh waits for the turn it started; a session that stops working has nothing more to send.
+    if (this.#refreshAccepted && status !== "running" && status !== "waiting") this.#endRefresh();
     this.#host.requestUpdate();
     this.requestModelsWhenReady(id, status);
     this.#deps.statusChanged(id, status, interrupted);
