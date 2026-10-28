@@ -1436,7 +1436,7 @@ test("an accepted native routine waits through worker disconnection and reacquir
   assert.deepEqual(chat.prompts, [], "only receipt observation is retried");
 });
 
-test("message_bot delivers to a handle or a name, guards hops, refuses itself and strangers, and rate-limits", async (t) => {
+test("message_bot delivers to a handle or a name, refuses itself and strangers, and rate-limits", async (t) => {
   const h = await harness(t, { messagesPerHour: 3 });
   const ada = await h.service.create({ soul: SOUL, name: "Ada", title: "Researcher" });
   const bob = await h.service.create({ soul: SOUL, name: "Bob" });
@@ -1460,18 +1460,7 @@ test("message_bot delivers to a handle or a name, guards hops, refuses itself an
   await refusal(ada.sessionId, { to: "bob", message: "fourth this hour" }, /already sent 3 bot messages in the last hour/u);
   h.advance(3_600_001);
 
-  // The sender's current run started from a bot message: one hop more, refused past the limit.
-  const runAs = (prompt: string) => h.setRecords(h.records().map((record) => record.id === ada.sessionId ? { ...record, runPrompt: prompt } : record));
-  runAs("[from @cy] can you ask bob?");
-  await h.service.messageBot(ada.sessionId, { to: "bob", message: "cy asks" });
-  assert.equal(bobChat.prompts.length, 1, "bob is still busy, so it waits in his queue");
-  assert.equal(h.sessions.snapshot(bob.sessionId).queue.items?.at(-1)?.text, "[from @ada · hop 2] cy asks");
-  runAs("[from @cy · hop 2] and then?");
-  await h.service.messageBot(ada.sessionId, { to: "bob", message: "third hop" });
-  assert.equal(h.sessions.snapshot(bob.sessionId).queue.items?.at(-1)?.text, `[from @ada · hop ${MAX_BOT_HOPS}] third hop`);
-  runAs(`[from @cy · hop ${MAX_BOT_HOPS}] keep going`);
-  await refusal(ada.sessionId, { to: "bob", message: "fourth hop" }, /already crossed 3 bots/u);
-  runAs("[routine: Morning] check");
+  // A run started by another bot's tag no longer decides this reply's depth: see the pair test below.
   await refusal(ada.sessionId, { to: "Twins", message: "x" }, /No bot is called/u);
 
   await h.service.create({ soul: SOUL, name: "Twins", handle: "twin-a" });
@@ -1480,6 +1469,22 @@ test("message_bot delivers to a handle or a name, guards hops, refuses itself an
   await h.service.archive("cy");
   await refusal(ada.sessionId, { to: "cy", message: "x" }, /archived/u);
   await refusal(cy.sessionId, { to: "bob", message: "x" }, /archived bot cannot message/u);
+});
+
+test("a bot message for a busy chat waits in the runtime's own inbox, where dropping the session cannot lose it", async (t) => {
+  const h = await harness(t);
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  const runtime: RuntimeSession = await h.chat(ada.sessionId);
+  const inbox: string[] = [];
+  runtime.followUp = async (text) => { inbox.push(text); };
+  runtime.waitForTrackedPrompt = async () => ({ summary: "ack" });
+  runtime.cancelTrackedPrompt = async () => {};
+  await h.sessions.prompt(ada.sessionId, "long operator run");
+  const agent = await plainSession(h, "Implement PR 7");
+
+  assert.deepEqual(await h.service.messageBot(agent, { to: "@ada", message: "PR 7 handoff" }), { text: "Queued for @ada.", to: "ada", status: "queued" });
+  assert.deepEqual(inbox, [`[from agent: Implement PR 7 · reply-to agent:${agent}] PR 7 handoff`], "the runtime's inbox holds it across a restart");
+  assert.deepEqual(h.sessions.snapshot(ada.sessionId).queue.items ?? [], [], "nothing waits only in HUI's in-memory queue");
 });
 
 /** A plain session (not a bot's chat) in the harness's registry, live, as the gateway's own would be. */
@@ -1559,8 +1564,6 @@ test("a bot replies only to its calling agents, queues busy replies, and preserv
   const thirdHop = h.sessions.snapshot(grace.sessionId).queue.items?.at(-1)?.text;
   assert.equal(thirdHop, `[from agent: Implement PR 7 · reply-to ${to} · hop 3] Keep the agreed policy.`);
   assert.equal(hopOf(thirdHop), 3);
-  h.setRecords(h.records().map((record) => record.id === grace.sessionId ? { ...record, runPrompt: thirdHop } : record));
-  await assert.rejects(h.service.messageBot(grace.sessionId, { to, message }), /already crossed 3 bots/u);
 
   const original = h.record(agent)!;
   const now = new Date().toISOString();
@@ -1574,6 +1577,52 @@ test("a bot replies only to its calling agents, queues busy replies, and preserv
   }
   h.setRecords(h.records().filter((record) => record.id !== agent));
   await assert.rejects(h.service.messageBot(grace.sessionId, { to, message }), /calling agent is no longer available/u);
+});
+
+test("a reply's depth belongs to that pair's conversation, whatever started the turn", async (t) => {
+  const h = await harness(t, { messagesPerHour: 40 });
+  const ada = await h.service.create({ soul: SOUL, name: "Ada" });
+  const adaChat = await h.chat(ada.sessionId);
+  const busy = async (name: string) => {
+    const bot = await h.service.create({ soul: SOUL, name });
+    await h.chat(bot.sessionId);
+    await h.sessions.prompt(bot.sessionId, "long operator run");
+    return bot;
+  };
+  const bob = await busy("Bob");
+  const cy = await busy("Cy");
+  const runAs = (prompt: string) => h.setRecords(h.records().map((record) => record.id === ada.sessionId ? { ...record, runPrompt: prompt } : record));
+  const lastTo = (bot: { sessionId: string }) => h.sessions.snapshot(bot.sessionId).queue.items?.at(-1)?.text;
+
+  // A turn started deep inside another conversation does not make this reply deep: Ada and Bob have never spoken.
+  runAs("[from @cy · hop 9] deep in another conversation");
+  await h.service.messageBot(ada.sessionId, { to: "bob", message: "first" });
+  assert.equal(lastTo(bob), "[from @ada] first", "a fresh pair starts at hop 1");
+
+  // Cy's own message to Ada is the depth that counts, and it reaches her transcript the way a real tag does.
+  await h.service.messageBot(cy.sessionId, { to: "@ada", message: "earlier in this conversation" });
+  await waitFor(() => h.sessions.transcript(ada.sessionId).some((entry) => entry.kind === "message" && entry.text.startsWith("[from @cy]")), "Cy's tag in Ada's transcript");
+  await h.service.messageBot(ada.sessionId, { to: "cy", message: "second" });
+  assert.equal(lastTo(cy), "[from @ada · hop 2] second", "her reply continues that one conversation");
+});
+
+test("a caller's burst becomes one turn in a busy chat, and another caller keeps its own", async (t) => {
+  const h = await harness(t);
+  await h.service.create({ soul: SOUL, name: "Ada" });
+  const bob = await h.service.create({ soul: SOUL, name: "Bob" });
+  await h.chat(bob.sessionId);
+  await h.sessions.prompt(bob.sessionId, "long operator run");
+  const agent = await plainSession(h, "Implement PR 7");
+  const other = await plainSession(h, "Implement PR 8");
+  const queued = () => h.sessions.snapshot(bob.sessionId).queue.items ?? [];
+
+  await h.service.messageBot(agent, { to: "@bob", message: "PR 7: CI is red." });
+  await h.service.messageBot(agent, { to: "@bob", message: "PR 7: reviewers asked for a rebase." });
+  assert.equal(queued().length, 1, "one caller's burst costs one turn, not one each");
+  assert.match(queued()[0]!.text, /PR 7: CI is red\.[\s\S]*PR 7: reviewers asked for a rebase\./u, "both texts are kept");
+
+  await h.service.messageBot(other, { to: "@bob", message: "PR 8: merge conflict." });
+  assert.equal(queued().length, 2, "a different caller never joins another's message");
 });
 
 test("a bot that takes tags only when mentioned takes one in a turn whose operator message names it, never a bot's or a session's", async (t) => {
