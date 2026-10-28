@@ -1380,3 +1380,9 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 .tool-call-row__title { font-size: calc(var(--control-ui-text-sm) + 2px); }
 .tool-call-row__meta { font-size: calc(var(--control-ui-text-xs) + 1px); }
 .tool-call-group__mark { width: 23px; height: 23px; }
+
+/* A file body is reference material, not the answer: it scrolls inside the well instead of stretching the card. */
+.tool-call-row .chat-tool-card__block-content {
+  max-height: min(38vh, 380px);
+  overflow: auto;
+}
