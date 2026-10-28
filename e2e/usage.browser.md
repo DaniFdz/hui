@@ -28,14 +28,16 @@ with no matching sessions.
 1. Open `/usage`. Confirm **30d**, inclusive **From**/**To**, **Time zone** set
    to Local, the scope note, token/PI estimate/session summaries, a usage chart,
    the overview, rankings and session rows. Partial pricing must identify unpriced
-   records, not make them free. The line for spend outside the entries gives its
-   tokens and recorded cost and says it covers all recorded time; neither the
-   summaries nor the chart may include it. A cost with no recorded tokens must
-   still show. Ledger read failures must produce a partial-coverage warning.
-2. Choose **Today**, **7d**, **90d**, **1y** and **All**. Check the chart's displayed
-   range after each response. All includes older data. Empty days remain visible;
-   ranges over one year group by month and retain empty months. The amount
-   outside the entries stays unchanged when the range changes.
+   records, not make them free. PI cost windows show the selected range, Final 7
+   days and Final day, all ending on the selected end date, with dates and daily
+   averages that include empty days. The fixture's empty final day reads
+   Unavailable with No usage records, not $0.00 or Unpriced. PI cost / message
+   retains the partial marker. Error rate counts failures over assistant responses
+   plus tool results. Model/provider percentages say of priced cost, not total
+   spend. The line for spend outside the entries gives its tokens and recorded
+   cost and says it covers all recorded time; neither the summaries nor the chart
+   may include it. A cost with no recorded tokens must still show. Ledger read
+   failures must produce a partial-coverage warning.
 3. Edit **From** without applying it, then choose the current preset again. Its
    dates must replace the draft. Apply a custom range, switch **Time zone** between
    UTC and Local, and check that the returned range names the chosen calendar.
@@ -44,10 +46,14 @@ with no matching sessions.
    narrow the range. Use Tab to enter the chart once, arrow keys to move between
    bars, and Enter to apply a day; focus moves to **Apply range**.
 5. Filter by title, ID and recorded model. Totals, rankings and chart must follow
-   the same subset. Enter a nonmatching query, confirm **No sessions match your
-   search.**, then **Clear search**. Try all **Sort sessions** options. Recorded
-   zero sorts before unknown prices. The amount outside the entries remains
-   unchanged by the session search. Open a Durable session and **Design notes**
+   the same subset, including cost windows and per-message estimates. Filter
+   Pricing page redesign to see a recorded zero, and Design notes to see partial
+   prices. With no positive priced total, rankings show no cost percentages.
+   Enter a nonmatching query, confirm **No sessions match your search.** and
+   hidden cost windows, then **Clear search**. Try all **Sort sessions** options.
+   Recorded zero sorts before unknown prices. The amount outside the entries
+   remains unchanged by the session search. Open a Durable session and **Design
+   notes**
    from their rows. Both must show recorded messages and an Idle status.
 6. Choose an empty day and confirm **No usage in this range.** Return to 30d.
    Submit a reversed range; the error must name the attempted range while the

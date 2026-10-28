@@ -41,6 +41,19 @@ test("Usage reports a real turn's tokens, its recorded PI cost and its session",
   await expect(totals).not.toContainText("Unavailable", { ignoreCase: true });
   await expect(chart.getByRole("button", /: [1-9][\d,]* tokens · \$0\.00$/u)).toBeVisible();
   await expect(screen.getByText("hui-e2e/fixture", { exact: false })).toBeVisible();
+  const overview = screen.getByTestId("usage-overview");
+  await expect(overview).toContainText("PI cost / message", { ignoreCase: true });
+  await expect(overview).toContainText("$0.00");
+  await expect(overview).toContainText("Across 7 messages");
+  await expect(overview).toContainText("Error rate", { ignoreCase: true });
+  await expect(overview).toContainText("0.00%");
+  await expect(screen.getByTestId("usage-rankings")).not.toContainText("of priced cost");
+  const windows = screen.getByTestId("usage-windows");
+  await expect(windows).toContainText("Selected range", { ignoreCase: true });
+  await expect(windows).toContainText("Final 7 days", { ignoreCase: true });
+  await expect(windows).toContainText("Final day", { ignoreCase: true });
+  await expect(windows).toContainText("$0.00 per day");
+  await expect(windows).not.toContainText("Unavailable");
 
   const beforeCompaction = await totals.allTextContents();
   await expect(sessions.getByRole("button", /Usage coverage/u)).toBeVisible();
@@ -79,6 +92,13 @@ test("Usage follows its range, its time zone and its chart", { tags: ["PAGE-021"
     await expect.poll(async () => { const { from, to } = await shownRange(screen); return (Date.parse(to) - Date.parse(from)) / 86_400_000 + 1; }).toBe(days);
     const range = await shownRange(screen);
     await expect(chart).toContainText(`${range.from} to ${range.to}`);
+    const windows = screen.getByTestId("usage-windows");
+    if (days === 1) await expect(windows).toBeHidden();
+    else {
+      await expect(windows).toContainText(`Calendar windows ending ${range.to}.`);
+      await expect(windows).toContainText(`${range.from} to ${range.to}`);
+      if (days === 7) await expect(windows).not.toContainText("Final 7 days", { ignoreCase: true });
+    }
     return range;
   };
   for (const [preset, days] of [["Today", 1], ["7d", 7], ["90d", 90], ["1y", 366], ["All", 1]] as const) await chooseRange(preset, days);
@@ -168,9 +188,13 @@ test("Usage searches its sessions by title, id or model, sorts them and reads th
   await filter.fill("alpha");
   await expect(sessions.getByRole("button")).toHaveCount(1);
   await expect(totals).toContainText(/\b1\s*sessions/iu);
+  await expect(screen.getByTestId("usage-overview")).toContainText("Across 6 messages");
+  await expect(screen.getByTestId("usage-windows")).toContainText("$0.00 per day");
   await expect(clear).toBeVisible();
   await filter.fill("nothing recorded matches this");
   await expect(screen.getByText("No sessions match your search.")).toBeVisible();
+  await expect(screen.getByTestId("usage-windows")).toBeHidden();
+  await expect(screen.getByTestId("usage-overview")).toContainText("Unavailable");
   await clear.tap();
   await expect(filter).toHaveValue("");
   await expect(sessions.getByRole("button")).toHaveCount(2);
