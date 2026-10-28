@@ -1208,3 +1208,15 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   width: 14px;
   height: 14px;
 }
+
+/* The button is disabled while the agent writes the new card, so the icon it already shows spins. */
+.session-progress-card__refresh[aria-busy="true"] > svg {
+  animation: session-run-spin 1.1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-progress-card__refresh[aria-busy="true"] > svg {
+    animation: none;
+    opacity: 0.55;
+  }
+}

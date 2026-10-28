@@ -778,6 +778,14 @@ const server = createServer(async (request, response) => {
     event(response, { type: "content_block_stop", index: 0 });
     return finish(response, "tool_use");
   }
+  if (source.includes("Refresh the task progress card")) {
+    toolUse(response, "tool-e2e-progress-refresh", "progress_card", { markdown: "**Browser fixture** · refreshed after the click", plan: [
+      { step: "Read fixture", status: "completed" },
+      { step: "Verify presentation", status: "completed" },
+      { step: "Report the plan", status: "in_progress" },
+    ] });
+    return finish(response, "tool_use");
+  }
   if (source.includes("E2E_RICH") || source.includes("E2E_TOOL_FAILURE")) {
     event(response, { type: "content_block_start", index: 0, content_block: { type: "thinking", thinking: "", signature: "" } });
     event(response, { type: "content_block_delta", index: 0, delta: { type: "thinking_delta", thinking: "Inspecting the fixture." } });
