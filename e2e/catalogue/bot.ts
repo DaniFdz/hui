@@ -251,7 +251,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06"],
     surfaces: [],
     journeys: ["bot-setup", "bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The chord is a keyboard-only affordance; Edit bot… and the profile's Edit are BOT-026.", decision: KEYBOARD_ONLY },
   },
   {
@@ -261,7 +261,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06"],
     surfaces: [],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
