@@ -29,6 +29,7 @@ test("a conversation saved on this device opens again without the gateway", { ta
   await expect(screen.getByText("Message text is saved on this device.", { exact: false })).toBeVisible();
   await expect(transcript.getByText(MESSAGE)).toBeVisible();
   await expect(screen.getByLabel("Sessions").getByText("Saved offline", { exact: true })).toBeVisible();
+  await expect(screen.getByRole("button", "Group options for")).toHaveCount(0);
   await expect(message).toHaveValue(DRAFT);
   await expect(screen.getByText("Send waits for a live connection.", { exact: false })).toBeVisible();
   await expect(send).toBeDisabled();

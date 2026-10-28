@@ -190,8 +190,9 @@ export async function savedConversationGroups(): Promise<SessionGroup[]> {
         .sort((a, b) => b.savedAt - a.savedAt).slice(0, MAX_SESSIONS).map((value) => value.session);
       const groups = new Map<string, SessionGroup>();
       for (const session of sessions) {
-        let group = groups.get(session.group);
-        if (!group) { group = { label: session.group, sessions: [] }; groups.set(session.group, group); }
+        const label = session.group || "ungrouped";
+        let group = groups.get(label);
+        if (!group) { group = { label, sessions: [] }; groups.set(label, group); }
         group.sessions.push(session);
       }
       done([...groups.values()]);
