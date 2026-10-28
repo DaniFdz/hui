@@ -137,6 +137,13 @@ External web and mail links open in the default browser. The renderer is
 sandboxed without Node integration. Browser-local drafts have a separate Electron
 profile; HUI/PI storage remains shared through the existing gateway.
 
+The app also claims the `hui://` scheme, so a chat can be handed to it. A link
+carrying `?open=app`, which bots can mint, shows an **Open in HUI** button above
+the chat in a macOS browser; the button opens that chat in the app instead of
+the tab. The button is the hand-off because browsers only launch another program
+after a click. Other platforms and phones never show it and keep the chat in the
+browser.
+
 Installation is per-user, without sudo, and downloads the platform's Electron
 runtime. Reinstallation replaces only an HUI-owned bundle, never an unrelated
 `HUI.app`. `hui update` reinstalls the app when it runs an older release than

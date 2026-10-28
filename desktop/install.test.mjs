@@ -65,6 +65,9 @@ test('launch metadata excludes credentials and plist edits are idempotent', asyn
   assert.deepEqual(Object.keys(launchConfig()).sort(), ['node', 'root', 'searchPath']);
   const plist = '<plist><dict></dict></plist>';
   assert.equal(updatePlist(updatePlist(plist, '1.0.0'), '1.0.0'), updatePlist(plist, '1.0.0'));
+  const registered = updatePlist(plist, '1.0.0');
+  assert.match(registered, /<key>CFBundleURLTypes<\/key><array><dict>.*<key>CFBundleURLSchemes<\/key><array><string>hui<\/string><\/array>.*<\/dict><\/array>/u);
+  assert.equal(updatePlist(registered, '1.0.0'), registered, 'the scheme is registered once');
   const { png, icns } = appIcon(await readFile(new URL('../public/pi-logo-3d.png', import.meta.url)));
   assert.equal(png.subarray(1, 4).toString(), 'PNG');
   assert.equal(icns.subarray(0, 4).toString(), 'icns');
