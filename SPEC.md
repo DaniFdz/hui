@@ -718,6 +718,21 @@ for concise (3–6 word, at most 60 character) new-session names in the prompt's
 names a model (and optionally a reasoning level), and a session spawns a subagent
 on one by name instead of a model id. See
 [Session-born subagents](#session-born-subagents) for the contract.
+Settings → Models → **Add route** opens a modal with an empty, focused Name,
+Description, Model and Thinking. The model starts on the available primary model,
+or the first available model; thinking starts on **Inherit parent**. Nothing is
+created until **Add route** saves a valid, unique name. Cancel or Escape discards
+the draft and returns focus to the action; Escape in an open picker closes that
+picker first. While saving, the form cannot be edited or dismissed. A failed save
+keeps the draft for retry and adds no route. Saved routes appear as compact rows
+with their name, description, model and thinking level, plus **Edit** and **Remove**.
+**Edit** opens the same modal prefilled with that route's values. Changes stay in
+the draft until **Save changes** succeeds; a rename replaces that route rather
+than adding another. Cancel or Escape leaves the saved route unchanged and
+returns focus to its Edit button. A failed edit keeps the draft and the original
+saved values. Editing works at the 50-route limit and can preserve a model that
+is no longer available. Adding still needs an available model and stays disabled
+at the 50-route limit.
 Missing or malformed PI selection files preserve the normal available catalog; see
 `docs/api.md` for empty-list and default-model semantics.
 
@@ -888,7 +903,8 @@ disk. Line endings, BOM and a missing final newline are preserved.
 
 Markdown files have a **Markdown display mode**, **Source** or **Rendered**
 (HUI's chat Markdown renderer); the mode never decides whether the file is
-writable. Images and PDFs show as previews; other binary files and text over
+writable. **Copy Markdown** beside the mode copies the file's Markdown text as
+the view holds it, unsaved edits included, and shows **Copied**. Images and PDFs show as previews; other binary files and text over
 the limit show their size and modification time with **Download**.
 
 The navigator refreshes open folders and the selected file when the
@@ -902,6 +918,16 @@ file — and states that it does not use the trash; the gateway deletes a
 non-empty folder only with that confirmation, and never the root. On narrow
 screens the navigator is a drawer and the editor takes the full width with a
 16 px font, so iOS does not zoom.
+
+The sidebar's **Files** tab, beside Agents and Bots, shows the selected
+conversation's folder with the same navigator: filter, new file or folder,
+upload (including dropping files on a folder), delete and refresh. Folders
+expand in place and stay expanded for that conversation in this browser. A file
+the tab chooses opens in that conversation's Files view in the Work pane (on a
+narrow screen the drawer closes and the Work destination shows it); the sidebar
+shows no editor. With no conversation selected it asks for one, and a
+conversation with no Files (a bot's chat, or one on a remote worker) shows the
+reason in its place.
 
 **File references in the chat.** When the agent names a file in its reply —
 an inline code span or a Markdown link whose text or target is a path such as
@@ -1128,6 +1154,8 @@ rows and say that only recent messages are saved. Cached text is a reading copy,
 never a second conversation authority. It includes neither pending questions nor
 queued actions. It is labelled **Saved conversation**, and messages remain drafts
 until the connection is live. Reconnection never sends a draft automatically.
+Files are available only with a live conversation: the sidebar Files tab is disabled
+and an open Files view waits for reconnection, keeping unsaved file edits.
 Browser storage is best effort; an unavailable, expired or evicted copy gives an
 explicit unavailable state. A live session list or a confirmed deletion removes
 saved conversations that no longer exist.
@@ -2141,11 +2169,11 @@ everything the Bots tab can, through the same routes.
   engine stays separate; `hui bot memory` and the memory routes show its
   status, its view, any line zoomed down to a message, and a browse page.
 - **Always on.** Bots have no switch (decision below).
-- **The Bots tab**: an **Agents | Bots** switch fills the sidebar's top row
-  after the collapse toggle (arrow keys, Home/End; the browser remembers the
-  tab): Agents is the sidebar as before, and Bots shows only the roster,
-  without the navigation. Bot chats, the subagents a bot spawns and their own
-  subagents never appear in the Sessions list, its search, Kanban, the Sessions page, the command palette or session
+- **The Bots tab**: an **Agents | Bots | Files** switch fills the sidebar's top
+  row after the collapse toggle (arrow keys, Home/End; the browser remembers the
+  tab): Agents is the sidebar as before, Bots shows only the roster, without the
+  navigation, and Files shows the conversation's files (see *Files*). Bot
+  chats, the subagents a bot spawns and their own subagents never appear in the Sessions list, its search, Kanban, the Sessions page, the command palette or session
   pickers; a message from one still names and links it; Automations labels their routines
   *Bot · name* and words
   their schedules as the bot's panel does (*Daily at 08:00*), and shows who
@@ -3715,6 +3743,14 @@ created where none existed, an app HUI did not install is never touched, and one
 that launches another installation is that installation's to refresh. `hui
 doctor` reports an app an earlier update left behind and `--fix` reinstalls it
 ([`hui doctor`](#hui-doctor-migrates-state-an-upgrade-leaves-behind)).
+
+### Desktop downloads ask where to save them
+
+Electron saves a download into the Downloads folder without asking. The desktop
+app answers every download with a save dialog that starts in Downloads and
+offers the file's name. Cancelling the dialog cancels the download. A presented
+file's download, an attachment card's open link and the Files view's
+**Download** all go through it; the browser keeps its own download behaviour.
 
 ### Clickable desktop notifications
 

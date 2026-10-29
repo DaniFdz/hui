@@ -489,7 +489,6 @@
       "PAGE-037",
       "PAGE-043",
       "BOT-001",
-      "BOT-002",
       "BOT-003",
       "BOT-004",
       "BOT-005",
@@ -1123,9 +1122,11 @@
       "SET-079",
       "CHAT-073",
       "CHAT-074",
-      "SHELL-043",
       "SHELL-044",
-      "SHELL-045"
+      "SHELL-045",
+      "SHELL-046",
+      "WORK-081",
+      "WORK-082"
     ]
   },
   "unexercisedLabels": [
@@ -1272,7 +1273,6 @@
     "Sessions in this block",
     "Settings pages",
     "Shape",
-    "Show Work pane",
     "Side chat",
     "Sidebar lists",
     "Skills",
