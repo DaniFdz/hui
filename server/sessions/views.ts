@@ -22,7 +22,19 @@ export type PendingSession = { record: SessionRecord; creating?: WorktreeProgres
 export type PendingStatusUpdate = Pick<SessionStatusUpdate, "id" | "status">
   & Pick<SessionView, "creating" | "creationError">
   & { title?: string };
-export const pendingSessions = new Map<string, PendingSession>();
+/** A launch in progress, counted so a list built before it appeared or after it left is known to be stale. */
+class PendingSessions extends Map<string, PendingSession> {
+  revision = 0;
+  override set(id: string, entry: PendingSession): this {
+    this.revision += 1;
+    return super.set(id, entry);
+  }
+  override delete(id: string): boolean {
+    this.revision += 1;
+    return super.delete(id);
+  }
+}
+export const pendingSessions = new PendingSessions();
 export const pendingStatusSubscribers = new Set<(update: PendingStatusUpdate) => void>();
 
 export function pendingStatus({ record, creating, error }: PendingSession): PendingStatusUpdate {
@@ -44,6 +56,7 @@ export function publishPendingStatus(update: PendingStatusUpdate): void {
 let stagePersistence: Promise<unknown> = Promise.resolve();
 /** The registry write count the last built list saw. */
 let listedWrites = -1;
+let listedPending = -1;
 function persistInferredStages(records: readonly SessionRecord[], views: readonly SessionView[]): void {
   const stored = new Map(records.map((record) => [record.id, record.stage]));
   const inferred = new Map(views
@@ -180,13 +193,14 @@ export function createSessionViews(deps: SessionViewDeps) {
     markBackgroundWork(all, (id) => deps.watchers().list(id).some((watcher) => watcher.state === "running"));
     persistInferredStages(registry.sessions, all);
     listedWrites = writes;
+    listedPending = pendingSessions.revision;
     return views;
   }
 
   /** True once the registry has changed since the list was built, so a screen
    * asking for it gets a session it just created rather than the list before it. */
   function listSessionViewsStale(): boolean {
-    return sessionRegistryWrites() !== listedWrites;
+    return sessionRegistryWrites() !== listedWrites || pendingSessions.revision !== listedPending;
   }
 
   return { toView, pendingView, listSessionViews, listSessionViewsStale };

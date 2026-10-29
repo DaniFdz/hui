@@ -1788,7 +1788,7 @@ export class HuiApp extends HuiElement {
       this.launcher.loadDirectorySuggestions(input, this.groupDefaultWorker || undefined);
       this.requestGroupCheckout(input);
     } else {
-      this.launcher.loadDirectorySuggestions(input);
+      this.launcher.loadDirectorySuggestions(input, this.launcher.worker || undefined);
       this.launcher.requestCheckout(input);
     }
   };
@@ -2426,16 +2426,10 @@ export class HuiApp extends HuiElement {
       this.groupDefaultMode = "branch";
       this.groupDefaultRef = "";
     }
-    // A worker's directory is on that machine, and workers cannot make worktrees yet.
-    if (this.groupDefaultWorker) {
-      this.groupDefaultMode = "branch";
-      this.groupDefaultRef = "";
-      this.groupCheckoutLoading = false;
-      return;
-    }
     this.groupCheckoutLoading = Boolean(directory);
     if (!directory) return;
-    void loadGitCheckout(directory).then((checkout) => {
+    // The directory is on the group's machine, so that machine answers for its Git.
+    void loadGitCheckout(directory, this.groupDefaultWorker || undefined).then((checkout) => {
       if (marker !== this.groupCheckoutRequest) return;
       this.groupCheckout = checkout;
       if (!checkout.available) {
@@ -2479,8 +2473,7 @@ export class HuiApp extends HuiElement {
     const state = this.groupAction;
     this.groupMutationPending = true;
     this.groupMutationError = "";
-    // Git choices belong to this machine's checkout; a worker has none.
-    const git = !this.groupDefaultWorker && this.groupCheckout?.available;
+    const git = this.groupCheckout?.available;
     const operation = state.action === "new"
       ? createSessionGroup(value("name"))
       : state.action === "rename"
@@ -2549,7 +2542,7 @@ export class HuiApp extends HuiElement {
           </div>
           ${this.groupCheckoutLoading ? html`<p role="status">Checking repository…</p>` : null}
           ${this.groupCheckoutError ? html`<p role="alert">${this.groupCheckoutError}</p>` : null}
-          ${!this.groupDefaultWorker && this.groupCheckout?.available ? html`
+          ${this.groupCheckout?.available ? html`
             <div class="field input-dialog__field"><span>Environment</span>
               ${renderPicker({ label: "Environment", value: this.groupDefaultMode, disabled: this.groupMutationPending,
                 options: [{ value: "branch", label: "Branch", description: "Work in the current checkout." },
@@ -2700,7 +2693,7 @@ export class HuiApp extends HuiElement {
       launchModels,
       launchModel,
       // Git inspection reads this machine's disk; folder suggestions come from the worker.
-      onDirectoryInput: this.launcher.worker ? (input) => this.launcher.loadDirectorySuggestions(input, this.launcher.worker) : this.requestDirectorySuggestions,
+      onDirectoryInput: this.requestDirectorySuggestions,
       branchPrefix: this.control.settings.branchPrefix,
       worktreeProgress: this.paneCreating,
       worktreeError: this.paneCreationError,

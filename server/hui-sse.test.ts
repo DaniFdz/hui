@@ -562,7 +562,8 @@ test("a fork into a new worktree branches from the source checkout and moves the
     const plain = await forkFromSession(source, {}, async (_entryId, options) => { assert.equal(options, undefined); return "durable:4"; }, sessions, registry);
     assert.equal(plain.cwd, repository);
 
-    await assert.rejects(forkFromSession({ ...source, worker: "devbox" }, { worktree: true }, async () => "durable:5", sessions, registry), /remote workers/u);
+    // A worker's fork asks that machine for the worktree; this one is offline.
+    await assert.rejects(forkFromSession({ ...source, worker: "devbox" }, { worktree: true }, async () => "durable:5", sessions, registry), /not connected to that worker/u);
   } finally {
     await rm(repository, { recursive: true, force: true });
     await rm(worktreesRoot, { recursive: true, force: true });

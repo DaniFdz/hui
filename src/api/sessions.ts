@@ -240,9 +240,9 @@ export async function createSession(input: {
   return body.session;
 }
 
-export async function loadGitCheckout(cwd: string): Promise<GitCheckoutInfo> {
+export async function loadGitCheckout(cwd: string, worker?: string): Promise<GitCheckoutInfo> {
   const body = await fetchJson<GitCheckoutResponse>(
-    `/__hui/git-checkout?cwd=${encodeURIComponent(cwd || "~/")}`,
+    `/__hui/git-checkout?cwd=${encodeURIComponent(cwd || "~/")}${worker ? `&worker=${encodeURIComponent(worker)}` : ""}`,
   );
   return body.checkout ?? {
     available: false,
