@@ -170,6 +170,7 @@ export function createSessionViews(deps: SessionViewDeps) {
       ...(group.cwd ? { cwd: group.cwd } : {}),
       ...(group.workspaceMode ? { workspaceMode: group.workspaceMode } : {}),
       ...(group.baseRef ? { baseRef: group.baseRef } : {}),
+      ...(group.worker ? { worker: group.worker } : {}),
       sessions: group.sessions.map((record) => {
         const entry = pending.get(record.id);
         return entry ? pendingView(entry) : toView(record, liveSessions.status(record.id), runtimeViews.get(record.id));

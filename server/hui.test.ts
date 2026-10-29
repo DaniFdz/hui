@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
@@ -27,15 +27,39 @@ const { waitForSessionReady } = createSessionLifecycle({
 });
 
 test("group defaults patch validates modes and bounded refs", async () => {
-  await assert.rejects(sessionGroupPatch({ tool: "pi" }), /Nothing to change/, "groups no longer carry a runtime");
-  assert.deepEqual(await sessionGroupPatch({ workspaceMode: "worktree", baseRef: " release/1.0 " }), { workspaceMode: "worktree", baseRef: "release/1.0" });
-  assert.deepEqual(await sessionGroupPatch({ workspaceMode: "branch" }), { workspaceMode: "branch" });
-  assert.deepEqual(await sessionGroupPatch({ workspaceMode: "", baseRef: "" }), { workspaceMode: "", baseRef: "" });
+  const local = { hasWorker: async () => true };
+  await assert.rejects(sessionGroupPatch({ tool: "pi" }, local), /Nothing to change/, "groups no longer carry a runtime");
+  assert.deepEqual(await sessionGroupPatch({ workspaceMode: "worktree", baseRef: " release/1.0 " }, local), { workspaceMode: "worktree", baseRef: "release/1.0" });
+  assert.deepEqual(await sessionGroupPatch({ workspaceMode: "branch" }, local), { workspaceMode: "branch" });
+  assert.deepEqual(await sessionGroupPatch({ workspaceMode: "", baseRef: "" }, local), { workspaceMode: "", baseRef: "" });
   for (const workspaceMode of [null, true, {}, "worktrees"]) {
-    await assert.rejects(sessionGroupPatch({ workspaceMode }), /Environment/);
+    await assert.rejects(sessionGroupPatch({ workspaceMode }, local), /Environment/);
   }
-  await assert.rejects(sessionGroupPatch({ baseRef: 123 }), /must be text/);
-  await assert.rejects(sessionGroupPatch({ baseRef: "x".repeat(201) }), /at most 200/);
+  await assert.rejects(sessionGroupPatch({ baseRef: 123 }, local), /must be text/);
+  await assert.rejects(sessionGroupPatch({ baseRef: "x".repeat(201) }, local), /at most 200/);
+});
+
+test("a group's worker is a known id, and its directory is the worker's to check", async () => {
+  const known = { hasWorker: async (id: string) => id === "w1" };
+  assert.deepEqual(await sessionGroupPatch({ worker: "w1" }, known), { worker: "w1" });
+  assert.deepEqual(await sessionGroupPatch({ worker: "" }, known), { worker: "" });
+  await assert.rejects(sessionGroupPatch({ worker: "gone" }, known), /No worker named gone\. See Settings → Workers\./u);
+  await assert.rejects(sessionGroupPatch({ worker: 3 }, known), /must be a worker id/);
+  assert.deepEqual(
+    await sessionGroupPatch({ worker: "w1", cwd: " /srv/checkout " }, known),
+    { worker: "w1", cwd: "/srv/checkout" },
+    "a directory on another machine is not looked for here",
+  );
+  assert.deepEqual(await sessionGroupPatch({ cwd: "~/srv" }, { ...known, currentWorker: "w1" }), { cwd: "~/srv" });
+  await assert.rejects(sessionGroupPatch({ worker: "w1", cwd: "srv" }, known), /absolute or start with ~\//);
+  const home = process.env["HOME"] ?? "";
+  await mkdir(join(home, "srv"));
+  assert.deepEqual(
+    await sessionGroupPatch({ cwd: "~/srv" }, known),
+    { cwd: join(home, "srv") },
+    "this machine's directory is resolved and checked",
+  );
+  await assert.rejects(sessionGroupPatch({ cwd: "~/missing" }, known), /No such directory/);
 });
 
 test("a session text error names the field that failed", () => {

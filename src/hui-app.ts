@@ -261,6 +261,7 @@ export class HuiApp extends HuiElement {
   @state() private groupDefaultCwd = "";
   @state() private groupDefaultMode: "branch" | "worktree" = "branch";
   @state() private groupDefaultRef = "";
+  @state() private groupDefaultWorker = "";
   @state() private groupCheckout: GitCheckoutInfo | undefined;
   @state() private groupCheckoutLoading = false;
   @state() private groupCheckoutError = "";
@@ -1783,9 +1784,13 @@ export class HuiApp extends HuiElement {
   };
 
   private requestDirectorySuggestions = (input: string) => {
-    this.launcher.loadDirectorySuggestions(input);
-    if (this.groupAction?.action === "defaults") this.requestGroupCheckout(input);
-    else this.launcher.requestCheckout(input);
+    if (this.groupAction?.action === "defaults") {
+      this.launcher.loadDirectorySuggestions(input, this.groupDefaultWorker || undefined);
+      this.requestGroupCheckout(input);
+    } else {
+      this.launcher.loadDirectorySuggestions(input);
+      this.launcher.requestCheckout(input);
+    }
   };
 
   private clearSessionState() {
@@ -2402,7 +2407,9 @@ export class HuiApp extends HuiElement {
       this.groupDefaultCwd = next.group.cwd ?? next.group.sessions[0]?.cwd ?? "~/";
       this.groupDefaultMode = next.group.workspaceMode ?? "branch";
       this.groupDefaultRef = next.group.baseRef ?? "";
+      this.groupDefaultWorker = next.group.worker ?? "";
       this.groupCheckoutDirectory = "";
+      this.launcher.loadWorkers();
       this.requestGroupCheckout(this.groupDefaultCwd, true);
     }
   };
@@ -2418,6 +2425,13 @@ export class HuiApp extends HuiElement {
     if (!initial) {
       this.groupDefaultMode = "branch";
       this.groupDefaultRef = "";
+    }
+    // A worker's directory is on that machine, and workers cannot make worktrees yet.
+    if (this.groupDefaultWorker) {
+      this.groupDefaultMode = "branch";
+      this.groupDefaultRef = "";
+      this.groupCheckoutLoading = false;
+      return;
     }
     this.groupCheckoutLoading = Boolean(directory);
     if (!directory) return;
@@ -2465,14 +2479,15 @@ export class HuiApp extends HuiElement {
     const state = this.groupAction;
     this.groupMutationPending = true;
     this.groupMutationError = "";
+    // Git choices belong to this machine's checkout; a worker has none.
+    const git = !this.groupDefaultWorker && this.groupCheckout?.available;
     const operation = state.action === "new"
       ? createSessionGroup(value("name"))
       : state.action === "rename"
         ? updateSessionGroup(state.group.label, { name: value("name") })
         : state.action === "defaults"
-          ? updateSessionGroup(state.group.label, { cwd: value("cwd"),
-              workspaceMode: this.groupCheckout?.available ? this.groupDefaultMode : "",
-              baseRef: this.groupCheckout?.available ? this.groupDefaultRef : "" })
+          ? updateSessionGroup(state.group.label, { cwd: value("cwd"), worker: this.groupDefaultWorker,
+              workspaceMode: git ? this.groupDefaultMode : "", baseRef: git ? this.groupDefaultRef : "" })
           : deleteSessionGroup(state.group.label);
     void operation
       .then(({ revision, groups }) => {
@@ -2517,12 +2532,24 @@ export class HuiApp extends HuiElement {
         <div class="exec-approval-title" id="group-action-title">${title}</div>
         ${state.action === "defaults" ? html`
           <div class="exec-approval-sub">Choose where sessions created from this group start.</div>
+          ${this.launcher.workers.length ? html`<div class="field input-dialog__field"><span>Run on</span>
+            ${renderPicker({ label: "Run on", value: this.groupDefaultWorker, disabled: this.groupMutationPending,
+              options: [{ value: "", label: "Local", description: "This machine." },
+                ...this.launcher.workers.map((worker) => ({ value: worker.id, label: worker.name,
+                  description: worker.state === "connected" ? "Remote worker, connected." : `Remote worker, ${worker.state}.` }))],
+              showSelectedDescription: true,
+              onChange: (value) => {
+                this.groupDefaultWorker = value;
+                this.groupCheckoutDirectory = "";
+                this.requestGroupCheckout(this.groupDefaultCwd, true);
+              } })}
+          </div>` : null}
           <div class="field input-dialog__field"><label for="group-default-cwd">Working directory</label>
-            ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestions, onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true })}
+            ${renderDirectoryPicker({ id: "group-default-cwd", label: "Working directory", value: this.groupDefaultCwd, suggestions: this.launcher.directorySuggestionsFrom === this.groupDefaultWorker ? this.launcher.directorySuggestions : [], onInput: this.requestDirectorySuggestions, inputClass: "settings-input", externalLabel: true, openOnFocus: false })}
           </div>
           ${this.groupCheckoutLoading ? html`<p role="status">Checking repository…</p>` : null}
           ${this.groupCheckoutError ? html`<p role="alert">${this.groupCheckoutError}</p>` : null}
-          ${this.groupCheckout?.available ? html`
+          ${!this.groupDefaultWorker && this.groupCheckout?.available ? html`
             <div class="field input-dialog__field"><span>Environment</span>
               ${renderPicker({ label: "Environment", value: this.groupDefaultMode, disabled: this.groupMutationPending,
                 options: [{ value: "branch", label: "Branch", description: "Work in the current checkout." },

@@ -578,6 +578,7 @@ export const sessionRoutes = createSessionRoutes({
   lifecycle: { createSession, startWorktreeSession, deleteSession, updateSession },
   views: sessionViews,
   bots,
+  workers,
 });
 export const sessionActionRoutes = createSessionActionRoutes({
   lifecycle: { updateSession, forkRequest, forkFromSession },

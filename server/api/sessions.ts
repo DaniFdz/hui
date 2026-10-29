@@ -132,6 +132,7 @@ const groupDefaults = {
   cwd: Type.Optional(Type.String()),
   workspaceMode: Type.Optional(Type.Union([Type.Literal("branch"), Type.Literal("worktree")])),
   baseRef: Type.Optional(Type.String()),
+  worker: Type.Optional(Type.String()),
 };
 
 export const SessionGroup = Type.Object({ ...groupDefaults, sessions: Type.Array(SessionView) }, { $id: "SessionGroup" });

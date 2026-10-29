@@ -129,6 +129,8 @@ export type SessionGroupConfig = {
   cwd?: string;
   workspaceMode?: "branch" | "worktree";
   baseRef?: string;
+  /** Remote worker its sessions run on; absent runs them on this machine. */
+  worker?: string;
 };
 
 type Registry = {
@@ -281,9 +283,11 @@ function toGroupConfig(raw: unknown): SessionGroupConfig | undefined {
   const cwd = str(raw["cwd"]).trim();
   const workspaceMode = raw["workspaceMode"];
   const baseRef = str(raw["baseRef"]).trim();
+  const worker = str(raw["worker"]).trim();
   if (workspaceMode !== undefined && workspaceMode !== "branch" && workspaceMode !== "worktree") return undefined;
   return { label, ...(cwd ? { cwd } : {}),
-    ...(workspaceMode ? { workspaceMode } : {}), ...(baseRef ? { baseRef } : {}) };
+    ...(workspaceMode ? { workspaceMode } : {}), ...(baseRef ? { baseRef } : {}),
+    ...(worker ? { worker } : {}) };
 }
 
 function normalizeGroups(
@@ -465,7 +469,7 @@ export async function createSessionGroup(label: string): Promise<SessionGroupCon
 
 export async function updateSessionGroup(
   label: string,
-  patch: { label?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string },
+  patch: { label?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string; worker?: string },
 ): Promise<SessionGroupConfig> {
   let updated: SessionGroupConfig | undefined;
   await updateRegistryState((registry) => {
@@ -483,6 +487,7 @@ export async function updateSessionGroup(
       label: nextLabel,
       ...(patch.workspaceMode !== undefined ? { workspaceMode: patch.workspaceMode || undefined } : {}),
       ...(patch.baseRef !== undefined ? { baseRef: patch.baseRef || undefined } : {}),
+      ...(patch.worker !== undefined ? { worker: patch.worker || undefined } : {}),
       ...(patch.cwd !== undefined ? (patch.cwd ? { cwd: patch.cwd } : { cwd: undefined }) : {}),
     };
     return {

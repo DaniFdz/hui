@@ -8781,6 +8781,9 @@
         "baseRef": {
           "type": "string"
         },
+        "worker": {
+          "type": "string"
+        },
         "sessions": {
           "type": "array",
           "items": {
@@ -8863,6 +8866,9 @@
           ]
         },
         "baseRef": {
+          "type": "string"
+        },
+        "worker": {
           "type": "string"
         },
         "ids": {

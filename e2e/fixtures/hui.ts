@@ -42,7 +42,8 @@ export const test = base.extend<{ hui: Hui }>({
     const api = async <T>(method: string, path: string, body?: unknown): Promise<T> => {
       const response = await fetch(receipt.url + path, {
         method,
-        headers: { "x-hui": "1", "content-type": "application/json" },
+        // A kept-alive socket may be closed by the gateway while a test works, and fetch never retries a POST.
+        headers: { "x-hui": "1", "content-type": "application/json", connection: "close" },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (!response.ok) throw new Error(`${method} ${path} answered ${response.status}: ${await response.text()}`);
@@ -67,8 +68,10 @@ export const test = base.extend<{ hui: Hui }>({
     };
 
     const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
+    const workerIds = async () => (await api<{ workers: { id: string }[] }>("GET", "/__hui/workers")).workers.map((worker) => worker.id);
     const existing = new Set(await sessionIds());
     const existingBots = new Set(await botIds());
+    const existingWorkers = new Set(await workerIds());
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
 
@@ -136,6 +139,7 @@ export const test = base.extend<{ hui: Hui }>({
     // A bot's chat goes only with its bot.
     for (const id of await botIds()) if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
     for (const id of await sessionIds()) if (!existing.has(id) && (await sessionIds()).includes(id)) await api("DELETE", `/__hui/sessions/${id}`);
+    for (const id of await workerIds()) if (!existingWorkers.has(id)) await api("DELETE", `/__hui/workers/${id}`);
     await api("PUT", "/__hui/settings", settings);
   },
 });

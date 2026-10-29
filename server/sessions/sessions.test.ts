@@ -239,4 +239,8 @@ test("group checkout defaults survive read, rename and reorder and can be cleare
   assert.equal((await readSessionGroups())[0]?.baseRef, "release/1.0");
   await updateSessionGroup("Renamed", { workspaceMode: "", baseRef: "" });
   assert.deepEqual((await readSessionGroups())[0], { label: "Renamed", cwd: "/tmp" });
+  await updateSessionGroup("Renamed", { worker: "w1", cwd: "/srv/checkout" });
+  assert.deepEqual((await readSessionGroups())[0], { label: "Renamed", cwd: "/srv/checkout", worker: "w1" });
+  await updateSessionGroup("Renamed", { worker: "" });
+  assert.deepEqual((await readSessionGroups())[0], { label: "Renamed", cwd: "/srv/checkout" });
 });
