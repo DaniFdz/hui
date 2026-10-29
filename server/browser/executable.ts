@@ -6,7 +6,7 @@
  * that is unusable is reported instead of silently falling back.
  */
 import { constants } from "node:fs";
-import { access, stat } from "node:fs/promises";
+import { access, readdir as readDirectory, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, delimiter, isAbsolute, join, win32 } from "node:path";
 
@@ -26,6 +26,8 @@ export type ExecutableProbe = {
   env: NodeJS.ProcessEnv;
   home: string;
   isExecutable: (path: string) => Promise<boolean>;
+  /** Names in a directory, for a browser that lives in a versioned folder of it. */
+  readdir: (path: string) => Promise<string[]>;
 };
 
 type Candidate = { name: string; path?: string; command?: string };
@@ -89,7 +91,26 @@ async function isExecutableFile(path: string): Promise<boolean> {
 }
 
 export function defaultExecutableProbe(): ExecutableProbe {
-  return { platform: process.platform, env: process.env, home: homedir(), isExecutable: isExecutableFile };
+  return { platform: process.platform, env: process.env, home: homedir(), isExecutable: isExecutableFile, readdir: async (path) => readDirectory(path) };
+}
+
+/** Playwright's own Chromium (`npx playwright install chromium`), newest
+ * revision first: the browser a container or a remote machine gets without a
+ * system package (Ubuntu's `chromium` is a snap stub). */
+async function playwrightChromium(probe: ExecutableProbe): Promise<BrowserExecutable | undefined> {
+  if (probe.platform !== "linux") return undefined;
+  const root = probe.env["PLAYWRIGHT_BROWSERS_PATH"] || join(probe.home, ".cache", "ms-playwright");
+  const revisions = (await probe.readdir(root).catch(() => [] as string[]))
+    .flatMap((entry) => {
+      const match = /^chromium-(\d+)$/u.exec(entry);
+      return match ? [{ entry, revision: Number(match[1]) }] : [];
+    })
+    .sort((a, b) => b.revision - a.revision);
+  for (const { entry } of revisions) {
+    const path = join(root, entry, "chrome-linux", "chrome");
+    if (await probe.isExecutable(path)) return { path, name: "Chromium", source: "detected" };
+  }
+  return undefined;
 }
 
 /** `~/…` is expanded, and a macOS `.app` bundle resolves to its main binary
@@ -137,6 +158,8 @@ export async function resolveBrowserExecutable(
       if (await probe.isExecutable(path)) return { executable: { path, name: candidate.name, source: "detected" } };
     }
   }
+  const playwright = await playwrightChromium(probe);
+  if (playwright) return { executable: playwright };
   return {
     executable: null,
     error: "No Chromium-family browser was found. Install Google Chrome, Brave, Microsoft Edge or Chromium, or set its executable path.",

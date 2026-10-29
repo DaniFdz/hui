@@ -1823,11 +1823,13 @@ test("a bot on a worker can't name the tools that stay on this machine: refused 
   const elsewhere = { tools: GATEWAY_ONLY_TOOLS, worker: "devbox" };
   assert.throws(() => resolveAccess(offer, none, { disabledTools: ["terminal", "bash"] }, { elsewhere }),
     (error: unknown) => error instanceof BotInputError && error.message === "terminal stays on this machine, so a bot on devbox can't use it and there is nothing to turn off: leave it out.");
-  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["watcher", "browser"] }, { elsewhere }), /: watcher, browser stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out\.$/u);
+  assert.throws(() => resolveAccess(offer, none, { disabledTools: ["watcher", "terminal"] }, { elsewhere }), /: watcher, terminal stay on this machine, so a bot on devbox can't use them and there is nothing to turn off: leave them out\.$/u);
   assert.throws(() => resolveAccess(offer, none, { disabledTools: ["teleport"] }, { elsewhere }), /: Unknown tool: teleport\./u);
   assert.throws(() => resolveAccess(offer, none, { disabledTools: ["terminal"] }), /: Unknown tool: terminal\./u, "for a bot here, whose host offers them, only a name its offer lacks gets this far");
   // A list from before its host left them out keeps them, harmlessly: nothing lists, counts or asks for them.
   assert.deepEqual(resolveAccess(offer, { disabledTools: ["terminal"], disabledSkills: [] }, { disabledTools: ["terminal", "bash"] }, { elsewhere }).disabledTools, ["terminal", "bash"]);
+  // The browser is not one of them: it runs where the bot's chat runs, so it can be turned off there.
+  assert.deepEqual(resolveAccess({ ...offer, tools: [...offer.tools, { name: "browser", label: "Browser", description: "Browse", group: "hui" as const, source: "HUI", powerful: true }] }, none, { disabledTools: ["browser"] }, { elsewhere }).disabledTools, ["browser"]);
   // Through the service: the worker's offer leaves them out, and the refusal names the worker.
   const h = await harness(t);
   await assert.rejects(h.service.create({ name: "Termless", worker: "devbox", disabledTools: ["terminal"] }),

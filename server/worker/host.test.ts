@@ -5,13 +5,19 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, test } from "vitest";
 
 const root = await mkdtemp(join(tmpdir(), "hui-worker-host-"));
+// HOME points at this test's remote from here, so a browser Playwright installed for this user is named the way a
+// container names the one in its image; without it the real-browser test below skips.
+const userHome = process.env["HOME"];
 process.env["HOME"] = root;
+if (!process.env["PLAYWRIGHT_BROWSERS_PATH"] && userHome) process.env["PLAYWRIGHT_BROWSERS_PATH"] = join(userHome, ".cache", "ms-playwright");
 process.env["XDG_CONFIG_HOME"] = join(root, "config");
 process.env["XDG_DATA_HOME"] = join(root, "data");
 process.env["PI_CODING_AGENT_DIR"] = join(root, "agent");
@@ -21,6 +27,7 @@ const { attachPeer } = await import("./protocol.ts");
 const { brokeredStore, ownLogin } = await import("./credentials.ts");
 const { GATEWAY_ONLY_TOOLS } = await import("./gateway-tools.ts");
 const { invokeAgentTool } = await import("../agent-tools/bridge.ts");
+const { resolveBrowserExecutable } = await import("../browser/executable.ts");
 type Store = ReturnType<typeof brokeredStore>;
 type Frame = import("./protocol.ts").Frame;
 type HostInfo = import("./protocol.ts").HostInfo;
@@ -252,7 +259,7 @@ test("a bot's tool and skill lists live in its document here: made with it, read
     assert.equal(before.live, false);
     assert.deepEqual(["read", "bash", "message_bot"].map((name) => before.tools.some((tool) => tool.name === name)), [true, true, true]);
     assert.equal(before.tools.find((tool) => tool.name === "bash")?.powerful, true);
-    assert.deepEqual(before.tools.filter((tool) => GATEWAY_ONLY_TOOLS.includes(tool.name)), [], "never what stays on the gateway's machine: the terminal, the browser and watchers");
+    assert.deepEqual(before.tools.filter((tool) => GATEWAY_ONLY_TOOLS.includes(tool.name)), [], "never what stays on the gateway's machine: the terminal and watchers");
     assert.deepEqual(before.skills.filter((skill) => skill.name === "alpha"), [{ ...alpha, description: "Alpha.", source: "~/data/hui-worker/mirror/agent/skills" }]);
     assert.deepEqual(before.alwaysOn.map((tool) => tool.name), ["write_soul", "update_user", "update_memory", "set_profile", "request_access", "load_skill", "zoom", "date"]);
     assert.equal(existsSync(join(host.paths.dataDir, "bots", "bot-lists")), false, "asking made nothing");
@@ -280,6 +287,43 @@ test("a bot's tool and skill lists live in its document here: made with it, read
     await assert.rejects(peer.request("bot.access.write", { reference, access: { disabledTools: [] } }), /no bot's chat/u);
   } finally {
     gateway.disconnect();
+  }
+});
+
+test("the host browses in its own browser, without a gateway: a browser call is answered here", async () => {
+  const socket = connect(host.paths.socket);
+  const peer = attachPeer(socket, socket);
+  const features = (await peer.request<HostInfo>("hello")).features ?? [];
+  socket.destroy();
+  assert.ok(features.includes("browser"), "a gateway knows this host has a browser of its own");
+  // Every other HUI tool would fail with "HUI is not connected" without a gateway; this one is the machine's own.
+  const status = await invokeAgentTool({ callerSessionId: "remote-key", action: "browser", params: { action: "status" } }) as { text: string; details: { running: boolean } };
+  assert.match(status.text, /The managed browser is stopped; open starts it headless\./u);
+  assert.equal(status.details.running, false);
+  assert.equal(existsSync(join(host.paths.dataDir, "browser")), false, "asking about the browser starts nothing");
+});
+
+test("a real browser on the host opens a page for its session, with a profile of its own there", {
+  // Only where this machine has a Chromium-family browser, as the manager's own end-to-end test.
+  skip: !(await resolveBrowserExecutable("")).executable,
+  timeout: 120_000,
+}, async (t) => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<!doctype html><title>On the worker</title><h1>On the worker</h1><button>Send</button>");
+  }).listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.onTestFinished(() => { server.close(); });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://127.0.0.1:${address.port}`;
+  const opened = await invokeAgentTool({ callerSessionId: "remote-key", action: "browser", params: { action: "open", url: origin } }) as { text: string };
+  try {
+    assert.match(opened.text, /Opened tab t1\./u);
+    assert.match(opened.text, /- heading "On the worker" \[level=1\]/u);
+    assert.ok(existsSync(join(host.paths.dataDir, "browser", "profile")), "its profile is under the worker's data directory");
+  } finally {
+    assert.match((await invokeAgentTool({ callerSessionId: "remote-key", action: "browser", params: { action: "close", tabId: "t1" } }) as { text: string }).text, /Closed tab t1/u);
   }
 });
 

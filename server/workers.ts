@@ -36,7 +36,7 @@ import { RuntimeUnreachableError, type RuntimeEvent, type TranscriptEntry } from
 import { formatCommand, parseCommand, type WorkerInput, type WorkerView } from "./worker/workers.ts";
 import { parseRunOrigins } from "./runtimes/turn-origins.ts";
 import { invokeAgentTool } from "./agent-tools/bridge.ts";
-import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
+import { GATEWAY_ONLY_TOOLS, HOST_BROWSER_FEATURE } from "./worker/gateway-tools.ts";
 import { readRegistry } from "./sessions/sessions.ts";
 import type { TranscriptHit } from "./runtimes/transcript-search.ts";
 import type { GitCheckoutInfo } from "./api/local-paths.ts";
@@ -179,6 +179,7 @@ type SyncState = NonNullable<WorkerView["sync"]> & { pluginIds: Map<string, stri
 async function sessionSettings() {
   const settings = await readHuiSettings();
   return {
+    browser: settings.browser,
     disabledSkills: settings.disabledSkills.filter((entry) => !isBundledSkillPreference(entry)),
     bundledSkillPaths: enabledBundledSkillPaths(settings.disabledSkills),
     disabledPluginIds: settings.disabledPlugins.map((plugin) => plugin.id),
@@ -389,12 +390,14 @@ class WorkerConnection {
   }
 
   /** HUI's settings as the host reads them: skills and plugins named by their
-   * mirrored paths, and no managed browser, which runs on this machine. */
+   * mirrored paths, and the browser's settings for that machine, which finds its
+   * own executable. */
   async #remoteSettings(pluginIds: Map<string, string>): Promise<Settings> {
     const settings = await readHuiSettings();
     return {
       ...settings,
-      browser: { ...settings.browser, enabled: false },
+      // The operator's choice, but not the gateway's browser: the executable is a file of the machine that runs it.
+      browser: { ...settings.browser, executablePath: "" },
       disabledSkills: settings.disabledSkills.map((skill) => ({ ...skill, path: this.skillPath(skill.path) })),
       disabledPlugins: settings.disabledPlugins.map((plugin) => ({ ...plugin, id: pluginIds.get(plugin.id) ?? plugin.id })),
     };
@@ -405,9 +408,8 @@ class WorkerConnection {
     return {
       disabledPluginIds: settings.disabledPluginIds.map((id) => pluginIds.get(id) ?? id),
       bundledSkillPaths: settings.bundledSkillPaths.flatMap((path) => remoteReleasePath(this.release, this.host.releaseDir, path) ?? []),
-      // The managed browser runs on the gateway machine; remote sessions
-      // cannot hand it their files yet.
-      browserTool: false,
+      // The browser runs where the session runs, so it goes with it, as Settings → Tools → Browser decides.
+      browserTool: settings.browser.enabled !== false,
       disabledSkills: settings.disabledSkills.map((skill) => ({ name: skill.name, path: this.skillPath(skill.path) })),
     };
   }
@@ -505,8 +507,12 @@ class WorkerConnection {
     const caller = await this.#caller(params);
     const key = caller.id;
     if (!action) throw new Error("That conversation does not run on this worker.");
-    // These act on the gateway's machine, not the worker's (a bot's chat there isn't even offered them).
+    // These act on the gateway's machine, not the worker's (a bot's chat there isn't even offered them). A browser is
+    // the session machine's own, which a host only has from the release that runs it.
     if (GATEWAY_ONLY_TOOLS.includes(action)) throw new Error(`The ${action} tool is not available to sessions on a remote worker yet.`);
+    if (action === "browser" && !this.host.features?.includes(HOST_BROWSER_FEATURE)) {
+      throw new Error("This worker runs an older HUI release with no browser of its own; it updates once its sessions are idle.");
+    }
     // Not one of them: a secret's file is written where the session's commands run, so a current host asks with
     // `secret-request`, and one that asks through the bridge predates it.
     if (action === "secret_request") throw new Error("This worker runs an older HUI release without secret requests; it updates once its sessions are idle.");
