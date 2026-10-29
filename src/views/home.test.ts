@@ -460,9 +460,9 @@ test("session rename mirrors the Control UI single title field without a group e
   assert.match(source, /onRename: \(title: string\) => void;/);
 });
 
-test("composer notices render above the progress card and queue, which underlap their next sibling", () => {
+test("composer notices render above the progress card, queue and goal, which underlap their next sibling", () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
-  const order = ["${renderRunError(", "agent-chat__interrupted-recovery\" role", "${renderTaskProgress(", "${renderQueue(", "<form class=\"agent-chat__input"]
+  const order = ["${renderRunError(", "agent-chat__interrupted-recovery\" role", "${renderTaskProgress(", "${renderQueue(", "${renderGoalPill(", "<form class=\"agent-chat__input"]
     .map((marker) => source.indexOf(marker));
   assert.ok(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1]!)), String(order));
 });
@@ -491,6 +491,7 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
+    goalPanel: { expanded: false, editing: false, error: "" },
     chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
@@ -751,20 +752,51 @@ test("subagent and watcher cards blur nothing behind them, so a long chat keeps 
   for (const rule of cardRules) assert.doesNotMatch(rule, /backdrop-filter/u, rule.trim());
 });
 
-test("the goal sits above the composer with its status and the operator's controls", async () => {
+test("the goal sits above the composer with its status, its controls and a collapsed detail block", async () => {
   const goal = { objective: "get CI green on PR 1", status: "active", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 0 };
-  const active = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal } });
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal };
+  const active = await renderWorkerSession("idle", { session });
   assert.match(active, /class="agent-chat__goal-float"/u);
-  assert.match(active, /class="agent-chat__goal agent-chat__goal--active" data-expanded="false"/u);
+  assert.match(active, /class="agent-chat__goal agent-chat__goal--active" data-expanded=false/u);
   assert.match(active, /class="agent-chat__goal-label">Pursuing goal</u);
   assert.match(active, /class="agent-chat__goal-objective">get CI green on PR 1</u);
-  assert.match(active, /aria-label="Pause goal"/u);
-  assert.match(active, /aria-label="Clear goal"/u);
-  assert.doesNotMatch(active, /aria-label="Resume goal"/u);
-  const blocked = await renderWorkerSession("idle", { session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal: { ...goal, status: "blocked", note: "waiting on review" } } });
-  assert.match(blocked, /agent-chat__goal--blocked" data-expanded="false" title=waiting on review>/u);
+  assert.match(active, /aria-label=Pause goal/u);
+  assert.match(active, /aria-label=Clear goal/u);
+  assert.match(active, /aria-label="Edit goal objective"/u);
+  assert.doesNotMatch(active, /aria-label=Resume goal/u);
+  assert.match(active, /class="agent-chat__goal-action agent-chat__goal-expand" aria-expanded=false aria-controls=goal-detail-s aria-label=Expand goal/u);
+  assert.match(active, /class="agent-chat__goal-detail" id=goal-detail-s data-testid="goal-detail" data-expanded=false \?inert=true>/u);
+  const blocked = await renderWorkerSession("idle", { session: { ...session, goal: { ...goal, status: "blocked", note: "waiting on review" } } });
+  assert.match(blocked, /class="agent-chat__goal agent-chat__goal--blocked" data-expanded=false title=waiting on review/u);
   assert.match(blocked, /class="agent-chat__goal-label">Goal blocked</u);
-  assert.match(blocked, /aria-label="Resume goal"/u);
+  assert.match(blocked, /aria-label=Resume goal/u);
+  assert.match(blocked, /class="agent-chat__goal-detail-note">waiting on review</u);
   const none = await renderWorkerSession("idle");
   assert.doesNotMatch(none, /agent-chat__goal-float/u);
+});
+
+test("an expanded goal reads the whole objective and edits it in place", async () => {
+  const objective = "Keep the release branch green through the migration, including the flaky integration suite.".repeat(3);
+  const goal = { objective, status: "paused", note: "Paused after 10 automatic turns.", createdAt: "2026-10-28T09:00:00.000Z", updatedAt: "2026-10-28T09:00:00.000Z", continuations: 10 };
+  const session = { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "/repo", tool: "durable", status: "idle", goal };
+  const open = await renderWorkerSession("idle", { session, goalPanel: { expanded: true, editing: false, error: "" } });
+  assert.match(open, /data-expanded=true title=/u);
+  assert.match(open, /class="agent-chat__goal-detail" id=goal-detail-s data-testid="goal-detail" data-expanded=true \?inert=false>/u);
+  assert.ok(open.includes(`class="agent-chat__goal-detail-objective">${objective}<`), "the detail holds the whole objective");
+  assert.match(open, /class="agent-chat__goal-detail-note">Paused after 10 automatic turns\.</u);
+  assert.match(open, /class="agent-chat__goal-detail-duration">Set [^<]+</u);
+  assert.match(open, /aria-label=Collapse goal/u);
+  assert.doesNotMatch(open, /name="objective"/u, "the objective reads before it edits");
+
+  const editing = await renderWorkerSession("idle", { session, goalPanel: { expanded: true, editing: true, error: "Finish or stop the active turn before starting a goal." } });
+  assert.match(editing, /class="goal-edit"/u);
+  assert.match(editing, /name="objective" rows="3" aria-label="Goal objective"/u);
+  assert.match(editing, /class="goal-edit__error" role="alert">Finish or stop the active turn before starting a goal\.</u);
+  assert.match(editing, />Save goal</u);
+  assert.match(editing, />Cancel</u);
+  assert.doesNotMatch(editing, /agent-chat__goal-detail-objective/u, "the editor replaces the objective");
+
+  const busy = await renderWorkerSession("running", { session: { ...session, status: "running" }, streaming: true, goalPanel: { expanded: true, editing: true, error: "" } });
+  assert.match(busy, /Finish or stop the active turn before changing the objective\./u);
+  assert.match(busy, /<button type="submit" class="btn btn--sm primary" \?disabled=true>Save goal</u);
 });

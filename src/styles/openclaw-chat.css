@@ -1489,3 +1489,79 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
 }
 
 .tool-call-group__icon { width: 14px; height: 14px; }
+
+/* The goal pill opens OpenClaw's own detail block. HUI adds what the pinned sheet leaves to the
+   markup: the chevron's rotation, the objective's editor, and a cursor on the clickable band. */
+.agent-chat__goal {
+  cursor: var(--cursor-action);
+}
+
+.agent-chat__goal-expand svg {
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.agent-chat__goal[data-expanded="true"] .agent-chat__goal-expand svg {
+  transform: rotate(180deg);
+}
+
+.goal-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.goal-edit textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 84px;
+  max-height: 32dvh;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--text-strong) 18%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+
+.goal-edit textarea:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.goal-edit__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.goal-edit__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.goal-edit__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* On a phone the detail's children join the card's grid, so the editor takes the objective's row. */
+@media (max-width: 560px) {
+  .agent-chat__goal[data-expanded="true"] .agent-chat__goal-detail-content > .goal-edit {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat__goal-expand svg {
+    transition: none;
+  }
+}
