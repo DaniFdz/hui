@@ -381,7 +381,7 @@ export function renderBotMachineField(props: BotSettingsProps): TemplateResult |
 /** A bot on a worker, under its Workspace: why it stays there, and what it can't use from there. */
 function renderMachineHint(bot: BotView) {
   return bot.worker
-    ? html`<p class="bot-panel__hint bot-settings__machine-hint">A bot stays on the machine it was created on: its chat and memory live there. Terminals, the browser and watchers stay on this machine, so it can't use them.</p>`
+    ? html`<p class="bot-panel__hint bot-settings__machine-hint">A bot stays on the machine it was created on: its chat and memory live there. Terminals and watchers stay on this machine, so it can't use them; it browses in its own.</p>`
     : nothing;
 }
 

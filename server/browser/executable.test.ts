@@ -2,9 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "vitest";
 import { browserCandidates, expandExecutablePath, resolveBrowserExecutable, type ExecutableProbe } from "./executable.ts";
 
-function probe(platform: NodeJS.Platform, executables: string[], env: NodeJS.ProcessEnv = {}): ExecutableProbe {
+function probe(platform: NodeJS.Platform, executables: string[], env: NodeJS.ProcessEnv = {}, dirs: Record<string, string[]> = {}): ExecutableProbe {
   const present = new Set(executables);
-  return { platform, env, home: platform === "win32" ? "C:\\Users\\developer" : "/home/developer", isExecutable: async (path) => present.has(path) };
+  return {
+    platform, env, home: platform === "win32" ? "C:\\Users\\developer" : "/home/developer",
+    isExecutable: async (path) => present.has(path),
+    readdir: async (path) => dirs[path] ?? [],
+  };
 }
 
 test("a configured path is expanded, validated and never silently replaced", async () => {
@@ -37,6 +41,19 @@ test("auto-detection prefers Chrome, then Brave, Edge and Chromium, searching PA
   const none = await resolveBrowserExecutable("", probe("linux", [], env));
   assert.equal(none.executable, null);
   assert.match(none.error ?? "", /No Chromium-family browser/u);
+});
+
+test("a Chromium that Playwright installed is found after the system ones, newest first", async () => {
+  const cache = "/home/developer/.cache/ms-playwright";
+  const old = `${cache}/chromium-1100/chrome-linux/chrome`;
+  const newest = `${cache}/chromium-1148/chrome-linux/chrome`;
+  assert.deepEqual(await resolveBrowserExecutable("", probe("linux", [old, newest], {}, { [cache]: ["chromium-1100", "chromium-1148", "ffmpeg-1011"] })), {
+    executable: { path: newest, name: "Chromium", source: "detected" },
+  });
+  // A system browser still wins, and a container's own browsers directory is read from the environment.
+  assert.equal((await resolveBrowserExecutable("", probe("linux", [newest, "/usr/bin/chromium"], { PATH: "/usr/bin" }, { [cache]: ["chromium-1148"] }))).executable?.path, "/usr/bin/chromium");
+  const container = "/ms-playwright/chromium-1148/chrome-linux/chrome";
+  assert.equal((await resolveBrowserExecutable("", probe("linux", [container], { PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright" }, { "/ms-playwright": ["chromium-1148"] }))).executable?.path, container);
 });
 
 test("platform candidate lists cover the standard install locations", () => {
