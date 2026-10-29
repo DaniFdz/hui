@@ -1078,7 +1078,7 @@ export class HuiFilesView extends HuiElement {
     } else if (text && !this.editorReady && !rendered) other = html`<div class="hui-files-empty"><p>Loading the editor…</p></div>`;
     return html`<div class="hui-files-body">
       <div class="hui-files-editor" ${ref(this.editorHost)} ?hidden=${!text || rendered || !this.editorReady}></div>
-      ${rendered && this.draft ? html`<article class="hui-files-markdown sidebar-markdown">${renderMarkdown(this.draft.content)}</article>` : nothing}
+      ${rendered && this.draft ? html`<article class="hui-files-markdown sidebar-markdown" data-testid="files-markdown">${renderMarkdown(this.draft.content)}</article>` : nothing}
       ${other}
     </div>`;
   }

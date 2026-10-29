@@ -13,7 +13,7 @@ test("Copy Markdown copies a Markdown file's source and confirms it", { tags: ["
   await screen.getByRole("button", "Show Work pane").tap();
   await screen.getByRole("button", /^Files/u).tap();
   await screen.getByRole("button", "copy-markdown.md").tap();
-  await expect(screen.getByRole("heading", "Copy me")).toBeVisible();
+  await expect(screen.getByTestId("files-markdown").getByText("Copy me")).toBeVisible();
 
   await hui.clipboardSpy();
   const copy = screen.getByRole("button", "Copy Markdown");

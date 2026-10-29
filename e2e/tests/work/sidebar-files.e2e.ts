@@ -13,7 +13,7 @@ test("the sidebar's Files tab lists the conversation's files and opens one in it
   await screen.getByRole("tab", "Files").tap();
   await screen.getByRole("button", "sidebar-files").tap();
   await screen.getByRole("button", "sidebar-note.md").tap();
-  await expect(screen.getByRole("heading", "Opened from the sidebar")).toBeVisible();
+  await expect(screen.getByTestId("files-markdown").getByText("Opened from the sidebar")).toBeVisible();
   await expect(screen.getByRole("tab", "sidebar-note.md")).toBeVisible();
 
   await screen.getByRole("tab", "Agents").tap();
