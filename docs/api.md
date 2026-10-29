@@ -543,7 +543,10 @@ Settings → Models owns built-in connections separately from PI custom provider
 The add-provider modal offers OpenCode Go, OpenAI (ChatGPT account or API key),
 and Claude (Pro/Max or API key). The generic routes retain
 existing providers for backwards compatibility; custom setup UI is deferred.
-Only added connections have cards. Unauthenticated cards expose sign-in only;
+Only added connections have cards, inside Provider configuration, closed on each
+page visit with a provider count. Add provider and status/error messages stay
+outside; a confirmed connection save opens the group. Folding preserves model
+drafts and changes no settings. Unauthenticated cards expose sign-in only;
 authenticated cards load quotas independently and keep model lists collapsed.
 All routes retain the `x-hui` guard and `no-store` responses. Metadata never
 includes saved credentials; a login response may contain a short-lived device

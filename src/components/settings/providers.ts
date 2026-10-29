@@ -114,6 +114,7 @@ export class HuiProviderSettings extends LitElement {
     this.#snapshot = await loadProviders();
     this.#quotas.clear();
     this.#notice = `${connectionName(provider)} added. Choose the models you want to use.`;
+    this.querySelector("details.hui-provider-configuration")?.setAttribute("open", "");
     this.#changed(); this.#dismiss();
   }
   async #useConnection(provider: ProviderSummary) {
@@ -365,7 +366,11 @@ export class HuiProviderSettings extends LitElement {
       ${this.#error && !this.#dialog()?.open ? html`<p role="alert" class="hui-provider-error">${this.#error}</p><button class="btn" @click=${() => this.#refresh()}>Retry loading providers</button>` : nothing}
       ${this.#notice ? html`<p role="status" class="hui-provider-notice">${this.#notice}</p>` : nothing}
       <span class="hui-account-drag-status" role="status">${this.#dragNotice}</span>
-      <div class="hui-provider-cards">${!this.#snapshot ? html`<p>Loading providers…</p>` : providers.length ? repeat(providers, (provider) => provider.id, (provider) => this.#provider(provider)) : html`<p class="hui-provider-empty">No providers added yet. Add one to get started.</p>`}</div>
+      ${!this.#snapshot ? html`<p>Loading providers…</p>` : providers.length ? nothing : html`<p class="hui-provider-empty">No providers added yet. Add one to get started.</p>`}
+      <details class="hui-provider-configuration" ?hidden=${providers.length === 0}>
+        <summary>${`Provider configuration · ${providers.length} provider${providers.length === 1 ? "" : "s"}`}</summary>
+        <div class="hui-provider-cards">${repeat(providers, (provider) => provider.id, (provider) => this.#provider(provider))}</div>
+      </details>
       ${this.#modal()}
     </section>`;
   }
