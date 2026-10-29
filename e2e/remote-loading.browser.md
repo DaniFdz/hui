@@ -52,6 +52,35 @@ conversation that fails to load says so and offers a retry.
 At 600 ms / 300 kbit/s the branch shows the boot screen, then *Still loading —
 the connection is slow* after 6 s, and the conversation arrives intact.
 
+## Cold offline-cache and event-stream measurement (2026-10-29)
+
+Native Chrome 156 loaded the packaged production build at `0b0bab57` with
+Pi Durable 1.4.0 and the same 160-turn fixture. Each run used a fresh browser
+profile and origin. The slow link used 300 ms RTT, 1.6 Mbit/s down and
+800 kbit/s up. Chrome's Network recording started on both the page and its
+service worker before either executed. The app registered its worker normally.
+
+| Measurement | Direct | Slow link |
+| --- | ---: | ---: |
+| Worker HTTP encoded bytes | 8,452,763 | 8,452,763 |
+| Page HTTP encoded bytes | 856,290 | 1,205,277 |
+| Complete cache first observed after navigation | 3.54 s | 103.62 s |
+| Session-list event stream observed after HTTP 200 | 47.27 s | 95.98 s |
+| Heartbeats received / recorded stream failures | 3 / 0 | 6 / 0 |
+
+Each worker fetched its inventory and 529 files. Both caches completed with
+530 entries, including the completion marker. Byte totals sum completed HTTP
+requests' `Network.loadingFinished.encodedDataLength`. They exclude open event
+streams and WebSocket traffic, and are not total wire bytes. Cache completion
+is the first passive poll that saw its marker, not the exact completion time.
+
+These are single runs on a busy machine, not a before/after performance claim.
+The direct run preceded the slow run against the same gateway. Both event
+streams remained open across several heartbeats. The two earlier Browser-tool
+`ERR_INVALID_HTTP_RESPONSE` observations did not recur and remain unexplained.
+This loopback HTTP/1.1 probe does not establish real-phone, TLS, HTTP/2 or
+Tailscale behavior.
+
 ## WebSocket compression measurement (2026-10-28)
 
 Native `ws` per-message deflate now uses zlib level 4. The 1,024-byte threshold,
@@ -183,5 +212,7 @@ one named session; every other request and WebSocket passes through.
 The native HTTP/WebSocket checks in `src/api/sessions.test.ts` additionally
 hold the ticket response or socket handshake, verify retry after twenty
 seconds, and permit a slow first snapshot on an established connection. The
-browser's WebSocket API does not expose partial-message progress, so the
-handshake guard must not become a total first-snapshot deadline.
+handshake guard ends when the socket opens. A separate 60-second first-message
+allowance bounds a socket that sends nothing after opening. The browser's
+WebSocket API does not expose incoming-byte progress, so that allowance is
+fixed, not progress-aware. It does not limit a progressing HTTP download.
