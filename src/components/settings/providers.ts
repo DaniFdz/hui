@@ -368,7 +368,7 @@ export class HuiProviderSettings extends LitElement {
       <span class="hui-account-drag-status" role="status">${this.#dragNotice}</span>
       ${!this.#snapshot ? html`<p>Loading providers…</p>` : providers.length ? nothing : html`<p class="hui-provider-empty">No providers added yet. Add one to get started.</p>`}
       <details class="hui-provider-configuration" ?hidden=${providers.length === 0}>
-        <summary>Provider configuration · ${providers.length} ${providers.length === 1 ? "provider" : "providers"}</summary>
+        <summary>${`Provider configuration · ${providers.length} provider${providers.length === 1 ? "" : "s"}`}</summary>
         <div class="hui-provider-cards">${repeat(providers, (provider) => provider.id, (provider) => this.#provider(provider))}</div>
       </details>
       ${this.#modal()}
