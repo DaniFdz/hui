@@ -30,6 +30,7 @@ test("installed package lifecycle, real SDK resume, verified update and rollback
   await mkdir(agentDir); await mkdir(workspace);
   await writeFile(join(workspace, "fixture.txt"), "Installed SDK content\n");
   const env = fixtureEnvironment(temporary, { ...process.env, HOME: temporary });
+  env.npm_config_cache = process.env.npm_config_cache ?? join(temporary, "npm-cache");
   const releases = await releaseFixture(temporary);
   Object.assign(env, releases.env);
   const cli = join(prefix, "lib/node_modules/hui/bin/hui.mjs");
