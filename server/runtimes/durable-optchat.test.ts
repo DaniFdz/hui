@@ -7,7 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, test, type TestContext } from "vitest";
-import type { Api, Message, Model, Models, UserMessage } from "@earendil-works/pi-ai";
+import { normalizeContext, type Api, type Message, type Model, type Models, type UserMessage } from "@earendil-works/pi-ai";
+import { clampMaxTokensToContext } from "@earendil-works/pi-ai/api/simple-options";
 import { AgentDoc, createRegistry, Harness, UserEntry, type ConversationId, type EntryRecord } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import type { OptChatStatus } from "../optchat/memory.ts";
@@ -81,7 +82,7 @@ const system = (sections: Record<string, string>): Message => ({ role: "system",
 const user = (text: string, timestamp: number): UserMessage => ({ role: "user", content: [{ type: "text", text }], timestamp });
 const reply = (text: string): Message => assistant([{ type: "text", text }]) as unknown as Message;
 
-test("a fresh turn keeps the system messages, puts the view on the run's input, and keeps the run verbatim", () => {
+test("a fresh turn folds the prompt into one current system message, puts the view on the run's input, and keeps the run verbatim", () => {
   const steer = user("steer", 40);
   const call = assistant([{ type: "toolCall", id: "c", name: "read", arguments: {} }], "toolUse") as unknown as Message;
   const result = { role: "toolResult", toolCallId: "c", toolName: "read", content: [{ type: "text", text: "ok" }], isError: false, timestamp: 35 } as Message;
@@ -90,7 +91,7 @@ test("a fresh turn keeps the system messages, puts the view on the run's input, 
   const turn = freshTurn(messages, input, "<chat>\nV\n</chat>");
   assert.deepEqual(turn, {
     matched: true,
-    messages: [system({ preamble: "P" }), system({ preamble: "P2" }), { ...input, content: [{ type: "text", text: "<chat>\nV\n</chat>" }, { type: "text", text: "now" }] }, call, result, steer],
+    messages: [system({ preamble: "P2" }), { ...input, content: [{ type: "text", text: "<chat>\nV\n</chat>" }, { type: "text", text: "now" }] }, call, result, steer],
   });
   const plain = { role: "user", content: "string input", timestamp: 50 } as UserMessage;
   assert.deepEqual(freshTurn([plain], plain, "V")?.messages, [{ ...plain, content: [{ type: "text", text: "V" }, { type: "text", text: "string input" }] }]);
@@ -99,6 +100,15 @@ test("a fresh turn keeps the system messages, puts the view on the run's input, 
   assert.equal(fallback?.matched, false);
   assert.deepEqual(fallback?.messages.at(-1), { ...input, content: [{ type: "text", text: "V" }, { type: "text", text: "now" }] });
   assert.equal(freshTurn([system({}), reply("no user")], undefined, "V"), undefined);
+});
+
+test("a long-lived bot's fresh turn keeps its output budget", () => {
+  const past = Array.from({ length: 90 }, (_, index) => system({ preamble: String(index).padStart(40_000, "x") }));
+  const input = user("now", 1000);
+  const turn = freshTurn([...past, input], input, "<chat>\nV\n</chat>");
+  assert.equal(turn?.messages.filter((message) => message.role === "system").length, 1);
+  const model = { id: "sol", name: "sol", api: "openai-responses", provider: "p", reasoning: true, input: ["text"], contextWindow: 922_000, maxTokens: 128_000, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } } as Model<Api>;
+  assert.equal(clampMaxTokensToContext(model, normalizeContext({ messages: turn!.messages }), model.maxTokens), model.maxTokens);
 });
 
 test("a fresh turn not found by its timestamp is reported", async () => {

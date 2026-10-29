@@ -374,8 +374,11 @@ test("run details stay collapsed until the user asks to inspect them", () => {
   const styles = readStyles("../styles/openclaw-chat.css");
 
   assert.match(source, /const expansionId = `\$\{props\.session\?\.id/);
-  assert.match(source, /\.open=\$\{props\.expandedActivityIds\.has\(expansionId\)\}/);
-  assert.match(source, /props\.onActivityExpanded\(expansionId, details\.open\)/);
+  // Reasoning keeps its own fold: opening the tools must not unfold the thinking with them.
+  assert.match(source, /const reasoningId = `\$\{expansionId\}:reasoning`/);
+  assert.match(source, /\.open=\$\{reasoningOpen\}/);
+  assert.match(source, /props\.onActivityExpanded\(reasoningId, details\.open\)/);
+  assert.match(source, /const groupOpen = open;/);
   assert.doesNotMatch(source, /\?open=\$\{props\.streaming/);
   assert.match(styles, /\.chat-activity-group:not\(\[open\]\) \.chat-activity-group__body\s*\{\s*display: none;/);
 });
