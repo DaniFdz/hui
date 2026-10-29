@@ -22,6 +22,24 @@ test("a goal starts from /goal, continues by itself, and pauses and clears from 
   await expect(screen.getByRole("button", "Resume goal")).toBeVisible();
   // A paused goal is not pursued: no continuation turn is queued behind the paused run.
   await expect(transcript.getByText("Continue the goal", { exact: false })).toBeHidden();
+
+  // The pill expands in place: the operator reads the whole objective there and retypes it.
+  const goalDetail = screen.getByTestId("goal-detail");
+  const status = screen.getByText("Goal paused", { exact: true });
+  await expect(goalDetail).toBeHidden();
+  await screen.getByRole("button", "Expand goal").tap();
+  await expect(goalDetail).toContainText("E2E_REPLAY get CI green on PR 1");
+  await status.tap();
+  await expect(goalDetail).toBeHidden();
+  await status.tap();
+  await expect(goalDetail).toContainText("E2E_REPLAY get CI green on PR 1");
+  await screen.getByRole("button", "Edit goal objective").tap();
+  await screen.getByLabel("Goal objective").fill("E2E_REPLAY get CI green on PR 1 and the nightly job");
+  await screen.getByRole("button", "Save goal").tap();
+  await expect(goalDetail).toBeHidden();
+  await expect(screen.getByText("Pursuing goal", { exact: true })).toBeVisible();
+  await expect(transcript.getByText("and the nightly job", { exact: false })).toBeVisible();
+
   await screen.getByRole("button", "Clear goal").tap();
   await expect(screen.getByText("Goal paused", { exact: true })).toBeHidden();
 

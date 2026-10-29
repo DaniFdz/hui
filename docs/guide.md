@@ -1173,7 +1173,10 @@ finishing a docs pass.
   objective starts the goal and is sent as its first message, so the work
   begins at once.
 - A pill above the composer shows the goal: **Pursuing goal**, the objective,
-  and pause and clear buttons. Hover it to read why a goal is paused or blocked.
+  and pause and clear buttons. Click the pill, or its chevron, to expand it and
+  read the whole objective, why it paused or blocked itself, and when it was set.
+  The pencil button retypes the objective, and saving starts the goal again with
+  the new objective as its next message.
 - `/goal pause` keeps the objective but stops the automatic work; `/goal
   resume` picks it up again; `/goal clear` removes it. The pill's buttons do the
   same, and `/goal <new objective>` replaces the current goal.
