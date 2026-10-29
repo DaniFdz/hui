@@ -87,8 +87,8 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
 - **Run on** in that dialog stores the remote worker a group's sessions start on
   (Local keeps this machine). New sessions opened from the group prefill it and
   can still change it for themselves. A group's directory is then on that
-  machine, so it is only shape-checked, and workers cannot make worktrees yet:
-  such a group saves no Git environment or base ref.
+  machine, so it is only shape-checked there and that machine answers for its Git
+  environment and base ref, which work as they do locally.
 - In custom-group mode, sessions can be moved between groups by dragging a row
   onto a group or with the row menu's keyboard-accessible **Move to group**
   submenu. The row menu follows OpenClaw's action hierarchy: pin, rename,
@@ -2024,9 +2024,14 @@ leaves worker records unchanged.
   gateway connected (or when it leaves mid-call) a HUI tool call fails at once
   with a message saying HUI is not connected; it is never replayed.
   Secret requests are answered on the gateway and their file is written on
-  the worker. Not yet available remotely: terminals, watchers, the managed
-  browser, New worktree and branch checkouts, and multi-account quota rotation
-  (the default account is used). Usage totals skip remote transcripts.
+  the worker. New worktree and branch checkouts are made there, like a local
+  session's: the checkout picker reads that machine's branches, the worktree goes
+  under the worker's own data directory (never the mirrored config, which each
+  sync replaces), its progress arrives like a local one, and a failed registry
+  write rolls it back there. Not yet available remotely: terminals, watchers, the
+  managed browser, a worker's worktrees in Settings → Worktrees, and
+  multi-account quota rotation (the default account is used). Usage totals skip
+  remote transcripts.
 
 ## Bots
 

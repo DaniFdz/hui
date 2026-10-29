@@ -6,13 +6,13 @@ import type { PiSnapshot } from "../lib/pi.ts";
 import { LaunchController } from "./launch-controller.ts";
 
 const fake = vi.hoisted(() => ({
-  checkouts: [] as string[],
+  checkouts: [] as { directory: string; worker: string | undefined }[],
   checkout: undefined as unknown as GitCheckoutInfo,
   directories: [] as { input: string; worker: string | undefined; resolve: (directories: string[]) => void }[],
   workers: [] as WorkerView[],
 }));
 vi.mock("../api/sessions.ts", () => ({
-  loadGitCheckout: async (directory: string) => { fake.checkouts.push(directory); return fake.checkout; },
+  loadGitCheckout: async (directory: string, worker?: string) => { fake.checkouts.push({ directory, worker }); return fake.checkout; },
 }));
 vi.mock("../api/working-directories.ts", () => ({
   loadWorkingDirectorySuggestions: (input: string, worker?: string) => new Promise((resolve) => fake.directories.push({ input, worker, resolve })),
@@ -39,7 +39,7 @@ test("New Session starts from its group's checkout defaults, and choosing a mode
   launch.requestCheckout(" /repo ");
   assert.equal(launch.checkoutLoading, true);
   await settle();
-  assert.deepEqual(fake.checkouts, ["/repo"]);
+  assert.deepEqual(fake.checkouts, [{ directory: "/repo", worker: undefined }]);
   assert.equal(launch.checkoutLoading, false);
   assert.equal(launch.baseRef, "release");
   assert.equal(launch.worktree, true);
@@ -49,7 +49,7 @@ test("New Session starts from its group's checkout defaults, and choosing a mode
   assert.equal(launch.baseRef, "release", "the mode never resets the base ref");
   assert.equal(launch.branchSuggestionsOpen, false);
   launch.requestCheckout("/repo");
-  assert.deepEqual(fake.checkouts, ["/repo"], "the same directory is inspected once");
+  assert.deepEqual(fake.checkouts, [{ directory: "/repo", worker: undefined }], "the same directory is inspected once");
   launch.requestCheckout("/other");
   await settle();
   assert.equal(launch.baseRef, "main", "another directory uses the repository default");
@@ -90,6 +90,23 @@ test("launch preferences seed once from Settings or PI, and a worker that is gon
   await settle();
   assert.equal(launch.worker, undefined);
   assert.equal(launch.props().launchWorkers, fake.workers);
+});
+
+test("switching the machine inspects the same directory there, and drops the answer the other machine gave", async () => {
+  const launch = new LaunchController(host);
+  fake.workers = [{ id: "w1", name: "Remote" } as WorkerView];
+  launch.requestCheckout("/repo");
+  await settle();
+  assert.deepEqual(fake.checkouts, [{ directory: "/repo", worker: undefined }]);
+  launch.props().onSelectLaunchWorker!("w1");
+  await settle();
+  assert.deepEqual(
+    fake.checkouts,
+    [{ directory: "/repo", worker: undefined }, { directory: "/repo", worker: "w1" }],
+    "the checkout picker answers for the machine the session will run on",
+  );
+  launch.requestCheckout("/repo");
+  assert.equal(fake.checkouts.length, 2, "one machine's answer is reused until the machine or directory changes");
 });
 
 test("a group that names a worker opens New Session on it, and one that does not keeps the sticky choice", () => {

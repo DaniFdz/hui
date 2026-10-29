@@ -39,6 +39,11 @@ import { invokeAgentTool } from "./agent-tools/bridge.ts";
 import { GATEWAY_ONLY_TOOLS } from "./worker/gateway-tools.ts";
 import { readRegistry } from "./sessions/sessions.ts";
 import type { TranscriptHit } from "./runtimes/transcript-search.ts";
+import type { GitCheckoutInfo } from "./api/local-paths.ts";
+import type { WorktreeProgress } from "./api/sessions.ts";
+
+/** Git on a worker can take as long as a large monorepo does, like the local run's own ceiling. */
+const GIT_REQUEST_TIMEOUT_MS = 45 * 60_000;
 
 export const WORKERS_FILE = join(CONFIG_DIR, "workers.json");
 const MAX_WORKERS = 32;
@@ -828,6 +833,52 @@ export class WorkerService {
     if (this.#disconnectedByUser.has(id)) return [];
     const connection = await this.connect(id);
     return (await connection.request<{ directories: string[] }>("directories", { q: query })).directories;
+  }
+
+  /** The Git checkout of a folder on that machine, for New Session's picker. Never connects. */
+  gitCheckout(id: string, cwd: string): Promise<GitCheckoutInfo> {
+    return this.hostRequest<{ checkout: GitCheckoutInfo }>(id, "git.checkout", { cwd }).then((result) => result.checkout);
+  }
+
+  /** Switches that machine's checkout before a Branch session starts. */
+  async checkoutRef(id: string, cwd: string, ref: string): Promise<void> {
+    await this.hostRequest(id, "git.checkout-ref", { cwd, ref }, GIT_REQUEST_TIMEOUT_MS);
+  }
+
+  /** Creates a session's worktree there, relaying its Git progress to `onProgress`, and hands back a rollback that
+   * removes it there too, so the caller never needs its paths. */
+  async createWorktree(id: string, options: {
+    sourceDirectory: string;
+    title: string;
+    branchName?: string;
+    baseRef?: string;
+    branchPrefix: string;
+    onProgress?: (progress: WorktreeProgress) => void;
+  }): Promise<{ cwd: string; branch: string; rollback: () => Promise<void> }> {
+    const token = randomUUID();
+    const stop = options.onProgress
+      ? this.onHostFrame((workerId, frame) => {
+          if (workerId !== id || frame.t !== "git.progress" || frame["token"] !== token) return;
+          options.onProgress?.(frame["progress"] as WorktreeProgress);
+        })
+      : undefined;
+    const created = await this.hostRequest<{ cwd: string; path: string; branch: string }>(id, "git.worktree.add", {
+      token,
+      cwd: options.sourceDirectory,
+      title: options.title,
+      ...(options.branchName ? { branchName: options.branchName } : {}),
+      ...(options.baseRef ? { baseRef: options.baseRef } : {}),
+      branchPrefix: options.branchPrefix,
+    }, GIT_REQUEST_TIMEOUT_MS).finally(() => stop?.());
+    return {
+      cwd: created.cwd,
+      branch: created.branch,
+      rollback: () => this.hostRequest(id, "git.worktree.remove", {
+        repository: options.sourceDirectory,
+        path: created.path,
+        branch: created.branch,
+      }, GIT_REQUEST_TIMEOUT_MS).then(() => undefined),
+    };
   }
 
   /** Never connects: a worker without a live connection fails at once. */

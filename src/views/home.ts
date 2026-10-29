@@ -487,7 +487,8 @@ function onSubmit(props: HomeProps) {
       ...(props.launchModel ? { model: modelValue(props.launchModel) } : {}),
       ...(props.launchThinking ? { thinking: props.launchThinking } : {}),
       ...(props.launchFast && props.launchModel?.fast ? { fast: true } : {}),
-      ...(props.launchWorker ? { worker: props.launchWorker } : props.workspaceWorktree ? {
+      ...(props.launchWorker ? { worker: props.launchWorker } : {}),
+      ...(props.workspaceWorktree ? {
         worktree: true,
         ...(props.workspaceBranch ? { branchName: props.workspaceBranch } : {}),
         ...(props.workspaceBaseRef ? { baseRef: props.workspaceBaseRef } : {}),
@@ -719,7 +720,7 @@ function renderLaunchForm(props: HomeProps) {
             </div>
           </details>
           <input id="launch-group" name="group" type="hidden" .value=${initialGroup} />
-          ${props.launchWorker ? nothing : renderCheckoutPicker(props)}
+          ${renderCheckoutPicker(props)}
         </div>
         <div class="agent-chat__composer-shell new-session-page__composer">
           <div class="agent-chat__input agent-chat__input--mobile-toolbar" @click=${focusComposerFromSurface}>

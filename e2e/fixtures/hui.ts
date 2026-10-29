@@ -4,10 +4,19 @@
  * files from `files/` and reading what a download saved. Test files import `test` from here, never from `e2e`, and
  * never read `platform`, `device` or `browser` themselves.
  */
-import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test as base, type Locator } from "e2e";
 import type { Browser } from "@e2e-dev/web";
+import { workerRelease } from "../../server/worker/release.ts";
+
+const checkout = fileURLToPath(new URL("../../", import.meta.url));
+
+/** A worker's connect command as HUI stores it: plain words, POSIX quoted. */
+const commandText = (words: readonly string[]) => words.map((word) => (/^[\w@%+=:,./-]+$/u.test(word) ? word : `'${word.replaceAll("'", `'"'"'`)}'`)).join(" ");
 
 type Receipt = { url: string; providerUrl: string; workspace: string };
 type SessionList = { groups: { sessions: { id: string }[] }[] };
@@ -24,6 +33,8 @@ export type Hui = {
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: string[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
+  /** A worker on this machine: its own home, this checkout pre-installed as its release. */
+  addWorker(name: string): Promise<{ id: string; home: string }>;
   /** Records, from now on, the text the page copies to the clipboard. */
   clipboardSpy(): Promise<void>;
   clipboardWrites(): Promise<string[]>;
@@ -59,6 +70,7 @@ export const test = base.extend<{ hui: Hui }>({
     const existing = new Set(await sessionIds());
     const existingBots = new Set(await botIds());
     const existingWorkers = new Set(await workerIds());
+    const workerHomes: string[] = [];
     const settings = await api<unknown>("GET", "/__hui/settings");
     await fixtures.app.clearState();
 
@@ -79,6 +91,25 @@ export const test = base.extend<{ hui: Hui }>({
       download: async (target) => {
         const file = await browser().waitForDownload(() => target.tap());
         return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
+      },
+      addWorker: async (name) => {
+        // The checkout itself as the remote release, so connecting never needs the network (as workers.test.ts does).
+        const home = join(await mkdtemp(join(tmpdir(), "hui-e2e-worker-")), "home");
+        workerHomes.push(home);
+        const release = await workerRelease();
+        const dir = join(home, ".local", "share", "hui-worker", "releases", release.id);
+        for (const file of release.files) {
+          await mkdir(dirname(join(dir, file.path)), { recursive: true });
+          await writeFile(join(dir, file.path), file.data, { mode: file.mode });
+        }
+        await symlink(join(checkout, "node_modules"), join(dir, "node_modules"));
+        await writeFile(join(dir, ".ready"), "");
+        const command = commandText(["env", "-u", "PI_CODING_AGENT_DIR", "-u", "XDG_CONFIG_HOME", "-u", "XDG_DATA_HOME", "-u", "PI_OFFLINE", "-u", "HUI_CONFIG_DIR", `HOME=${home}`, "SHELL=/bin/sh"]);
+        const created = await api<{ worker: { id: string } }>("POST", "/__hui/workers", { name, command });
+        await api("POST", `/__hui/workers/${created.worker.id}/connect`);
+        await expect.poll(async () => (await api<{ workers: { id: string; state: string; error?: string }[] }>("GET", "/__hui/workers")).workers.find((worker) => worker.id === created.worker.id)?.state, { timeout: 120_000 })
+          .toBe("connected");
+        return { id: created.worker.id, home };
       },
       clipboardSpy: async () => {
         await browser().evaluate(() => {
@@ -119,6 +150,10 @@ export const test = base.extend<{ hui: Hui }>({
     for (const id of await botIds()) if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);
     for (const id of await sessionIds()) if (!existing.has(id) && (await sessionIds()).includes(id)) await api("DELETE", `/__hui/sessions/${id}`);
     for (const id of await workerIds()) if (!existingWorkers.has(id)) await api("DELETE", `/__hui/workers/${id}`);
+    // A worker host is a daemon by design; stop the ones this test started.
+    for (const home of workerHomes) {
+      try { execFileSync("pkill", ["-f", home]); } catch { /* already gone */ }
+    }
     await api("PUT", "/__hui/settings", settings);
   },
 });

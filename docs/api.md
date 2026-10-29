@@ -880,7 +880,10 @@ path with HTTP 200. Malformed bodies return 400.
 
 Returns the read-only Git context for New Session's checkout picker: whether the
 directory belongs to a repository with a commit, its current branch, the default
-base ref and at most 80 local/known remote branch suggestions. The base ref
+base ref and at most 80 local/known remote branch suggestions. With
+`&worker=<id>` the same question is answered on that machine, so the picker
+describes the folder the session will actually work in; an unreachable worker
+answers unavailable rather than this machine's view. The base ref
 prefers the locally recorded `origin/HEAD` (using the remote-tracking ref when no
 local branch exists), then local `main`/`master`, then the current branch or `HEAD`.
 The backlog dialog uses one shared searchable Branch picker in both checkout
@@ -1537,7 +1540,13 @@ session record names the worker; nothing on the remote is deleted.
 ### `POST /__hui/workers/:id/disconnect`
 
 `connect` and `sync` respond 202 and continue in the gateway (a first connect
-may install Node and HUI); follow `GET /__hui/workers`. Both sides ping every
+may install Node and HUI); follow `GET /__hui/workers`. A connected host also
+answers the Git questions New Session asks: `git.checkout {cwd}` (the same shape
+as `GET /__hui/git-checkout`), `git.checkout-ref {cwd, ref}`, `git.worktree.add
+{cwd, title, branchName?, baseRef?, branchPrefix, token}` with `git.progress
+{token, progress}` frames while it runs, and `git.worktree.remove {repository,
+path, branch}` for a rollback. Worktrees a worker makes live under its own data
+directory, not the mirrored config, which every sync replaces. Both sides ping every
 15 s and drop a connection that stays silent for 45 s. A worker whose lost
 connection had sessions attached reconnects after 5 s, 30 s, 1 min, then every
 5 min; sessions the loss interrupted are then reopened and reattach to their
@@ -3020,13 +3029,13 @@ are never changed.
 `worker` is a remote worker's id (an empty string clears it), and the machine
 that group's sessions start on. Because that directory is on another machine,
 `cwd` is checked against a worker's rules instead (absolute or starting with
-`~/`), and no local Git inspection happens. Workers cannot make worktrees yet,
-so a group on a worker carries no `workspaceMode` or `baseRef`.
+`~/`), and its Git choices are read there rather than here. `workspaceMode` and
+`baseRef` apply to a worker group exactly as to a local one.
 
 The group menu's **New session defaults** shows Run on, Environment and Base
 branch once they apply: Run on offers Local and every remote worker, and
-Environment and Base branch appear once the directory is recognized as Git on
-this machine. New sessions opened from that group
+Environment and Base branch appear once the group's directory is recognized as
+Git on the machine that will run the sessions. New sessions opened from that group
 prefill those values; changing their directory resets the checkout choices to
 the new repository's defaults. Both modes retain the selected ref when toggled.
 The worktree suffix belongs to each new session, not the group. Non-Git or empty
@@ -3049,8 +3058,10 @@ Registers a new session **and starts it**. Body:
 
 `cwd` must be an existing absolute directory. With `"worker": "<worker id>"`
 the session runs on that remote worker instead: `cwd` is a remote path that
-must be absolute or start with `~/`, it is checked when the runtime starts
-(not during this request), and `worktree`/`baseRef` are rejected. When supplied, `title` is trimmed
+must be absolute or start with `~/`, and it is checked when the runtime starts
+(not during this request). `worktree` and `baseRef` work there too: the worktree
+is made and rolled back on that machine, and `worktree` progress frames come from
+it. When supplied, `title` is trimmed
 and must be 1–200 characters; `group` is trimmed and may be empty but cannot
 exceed 200 characters. Responds `{ "session": SessionView }`.
 The id is HUI's own UUID. `tool` may be omitted or `pi`; other values are
@@ -3100,10 +3111,12 @@ than being stashed or forced. When `worktree` is true, `cwd` must be inside a Gi
 repository with at least one commit and `baseRef` defaults to `HEAD`. HUI creates
 a branch from `branchName` or the generated name above at that commit, prefixes it with the validated
 HUI setting (`feature/` by default), and places the checkout below
-`~/.config/hui/worktrees/<repository>/`. The registered session uses the matching
-subdirectory in that checkout. If session persistence fails, HUI rolls back only
-the branch and worktree created by this request. Deleting the session preserves
-both.
+`~/.config/hui/worktrees/<repository>/` on the machine the session runs on: with a
+`worker`, below its own `<worker data dir>/worktrees/<repository>/`, never the
+mirror of the gateway's config, which every sync replaces. The registered session
+uses the matching subdirectory in that checkout. If session persistence fails, HUI
+rolls back only the branch and worktree created by this request, there. Deleting
+the session preserves both.
 
 The backlog start dialog defaults to Branch as soon as repository inspection
 completes. Both modes share a ref picker initialized to `defaultBranch`; switching
