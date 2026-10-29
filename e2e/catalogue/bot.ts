@@ -17,11 +17,11 @@ const cases: UseCase[] = [
   {
     id: "BOT-002",
     title: "Move between Agents and Bots with the arrow keys",
-    behaviour: "With a tab focused, ArrowLeft and ArrowRight (and Home and End) select the other tab and move the focus to it.",
+    behaviour: "With a tab focused, ArrowLeft and ArrowRight select the previous or next tab, wrapping at the ends, and Home and End select the first and last tab; the focus moves with the selection.",
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Arrow keys on the tab bar are a keyboard-only affordance; tapping a tab is BOT-001.", decision: KEYBOARD_ONLY },
   },
   {

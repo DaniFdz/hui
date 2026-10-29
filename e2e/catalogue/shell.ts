@@ -12,7 +12,7 @@ const cases: UseCase[] = [
   {
     id: "SHELL-001",
     title: "Open Home",
-    behaviour: "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs.",
+    behaviour: "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents, Bots and Files tabs.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
@@ -366,6 +366,15 @@ const cases: UseCase[] = [
     journeys: ["update", "update-notice"],
     web: "backlog",
     ios: "backlog",
+  },
+  {
+    id: "SHELL-043",
+    title: "Save each download where you choose",
+    behaviour: "In HUI's desktop app a download (a presented file, an attachment card's open link or a Files view's Download) opens a save dialog that starts in Downloads with the file's name, and cancelling the dialog saves nothing.",
+    spec: ["SPEC.md#desktop-downloads-ask-where-to-save-them"],
+    surfaces: [],
+    web: { excluded: "The browser saves downloads itself, and the save dialog belongs to HUI's Electron desktop app, which the web runner cannot drive; desktop/main.test.mjs covers the chosen path, the cancel and one dialog per download.", decision: "SPEC.md#desktop-downloads-ask-where-to-save-them" },
+    ios: { excluded: "The save dialog is a macOS desktop app behaviour; the iPhone app has no file save dialog.", decision: "SPEC.md#desktop-downloads-ask-where-to-save-them" },
   },
 ];
 
