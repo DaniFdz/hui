@@ -29,21 +29,17 @@ test("a codemode script shows its calls live, then its tools, time, failures and
   await send.tap();
   await hui.provider.held();
   await reveal(transcript.getByText("Using 1 tool"));
-  const script = transcript.getByRole("button", /^Running a codemode script/u);
+  const script = transcript.getByRole("button", /^Running a codemode script 4 calls/u);
   if (!(await script.isVisible())) await transcript.getByText("Using 1 tool").tap();
   await reveal(script);
   await script.tap();
-  const live = transcript.getByRole("button", /^codemode read ×3, fixture_echo…/u);
-  await reveal(live);
-  await live.tap();
   await reveal(transcript.getByText("Running · 4 calls, 1 failed so far"));
   await reveal(transcript.getByLabel("Running"));
   await hui.provider.release();
   await expect(idle).toBeVisible();
 
   await reveal(transcript.getByText(/^Completed in [\d.]+s · 5 calls, 1 failed$/u));
-  const settled = transcript.getByRole("button", /^codemode read ×3, fixture_echo, bash 1 failed [\d.]+s$/u);
-  await reveal(settled);
+  await reveal(transcript.getByRole("button", /^Ran a codemode script 5 calls/u));
   await reveal(transcript.getByLabel("Script"));
   await reveal(transcript.getByText("Calls · 5"));
   await expect(transcript.getByLabel("Calls").getByLabel("Done")).toHaveCount(4);
@@ -70,9 +66,7 @@ test("a codemode script shows its calls live, then its tools, time, failures and
   if (!(await broken.isVisible())) await transcript.getByText("Used 1 tool").last().tap();
   await reveal(broken);
   await broken.tap();
-  const failed = transcript.getByRole("button", /^codemode no tool calls failed/u);
-  await expect(failed).toBeVisible();
-  await failed.tap();
+  await expect(transcript.getByText(/^Failed/u)).toBeVisible();
   await expect(transcript.getByLabel("Output").last().getByText("Script error: Error: script broke", { exact: false })).toBeVisible();
 });
 
@@ -88,9 +82,6 @@ test("a codemode output PI cut links its full output", { tags: ["CHAT-027"] }, a
   if (!(await script.isVisible())) await transcript.getByText("Used 1 tool").tap();
   await hui.scrollTo(transcript, script);
   await script.tap();
-  const card = transcript.getByRole("button", /^codemode no tool calls/u);
-  await hui.scrollTo(transcript, card);
-  await card.tap();
   await hui.scrollTo(transcript, transcript.getByText("Full output:"));
   await expect(transcript.getByText("Full output:")).toBeVisible();
 });

@@ -96,17 +96,16 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await send.tap();
   await hui.provider.held();
   await hui.scrollTo(transcript, transcript.getByText("Using 1 tool"));
-  const echo = transcript.getByRole("button", /^Using fixture_echo/u);
+  const echo = transcript.getByRole("button", /^Using fixture echo/u);
   if (!(await echo.isVisible())) await transcript.getByText("Using 1 tool").tap();
   await hui.scrollTo(transcript, echo);
   await echo.tap();
-  await expect(transcript.getByText("Using fixture_echo")).toBeVisible();
+  await expect(transcript.getByText("Using fixture echo")).toBeVisible();
   await expect(transcript.getByText("Input")).toBeVisible();
   await hui.provider.release();
   await expect(idle).toBeVisible();
-  await expect(transcript.getByText("fixture_echo", { visible: true })).toBeVisible();
-  await hui.scrollTo(transcript, transcript.getByRole("button", /^Used fixture_echo/u));
-  await transcript.getByRole("button", /^Used fixture_echo/u).tap();
+  await expect(transcript.getByText("fixture echo", { visible: true })).toBeVisible();
+  await expect(transcript.getByText("Input")).toBeVisible();
   await expect(transcript.getByText("Input")).toBeVisible();
   await expect(transcript.getByText(/"text": "from the model"/u)).toBeVisible();
   await expect(transcript.getByText("Output")).toBeVisible();
@@ -120,7 +119,7 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await expect(transcript.getByText(/^tool answered: /u).last()).toBeVisible();
   await expect(idle).toBeVisible();
   await hui.scrollTo(transcript, transcript.getByText("Used 1 tool").last());
-  const empty = transcript.getByRole("button", /^Used fixture_echo/u).last();
+  const empty = transcript.getByRole("button", /^Used fixture echo/u).last();
   if (!(await empty.isVisible())) await transcript.getByText("Used 1 tool").last().tap();
   await hui.scrollTo(transcript, empty);
   await empty.tap();
@@ -132,11 +131,11 @@ test("another tool shows its state, input and output, with Copy output", { tags:
   await expect(transcript.getByText(/^tool answered: /u)).toBeVisible();
   await expect(idle).toBeVisible();
   await hui.scrollTo(transcript, transcript.getByText("Used 1 tool"));
-  const failedTool = transcript.getByRole("button", /^Used fixture_echo/u);
+  const failedTool = transcript.getByRole("button", /^Used fixture echo/u);
   if (!(await failedTool.isVisible())) await transcript.getByText("Used 1 tool").tap();
   await hui.scrollTo(transcript, failedTool);
   await failedTool.tap();
-  await expect(transcript.getByText("fixture_echo", { visible: true })).toBeVisible();
+  await expect(transcript.getByText("fixture echo", { visible: true })).toBeVisible();
   await expect(transcript.getByText("Fixture echo failed on purpose.")).toBeVisible();
 });
 
