@@ -930,16 +930,6 @@ non-empty folder only with that confirmation, and never the root. On narrow
 screens the navigator is a drawer and the editor takes the full width with a
 16 px font, so iOS does not zoom.
 
-The sidebar's **Files** tab, beside Agents and Bots, shows the selected
-conversation's folder with the same navigator: filter, new file or folder,
-upload (including dropping files on a folder), delete and refresh. Folders
-expand in place and stay expanded for that conversation in this browser. A file
-the tab chooses opens in that conversation's Files view in the Work pane (on a
-narrow screen the drawer closes and the Work destination shows it); the sidebar
-shows no editor. With no conversation selected it asks for one, and a
-conversation with no Files (a bot's chat, or one on a remote worker) shows the
-reason in its place.
-
 **File references in the chat.** When the agent names a file in its reply —
 an inline code span or a Markdown link whose text or target is a path such as
 `src/lib/x.ts`, `./a/b.md`, an absolute path or `~/…`, optionally with
@@ -1165,8 +1155,8 @@ rows and say that only recent messages are saved. Cached text is a reading copy,
 never a second conversation authority. It includes neither pending questions nor
 queued actions. It is labelled **Saved conversation**, and messages remain drafts
 until the connection is live. Reconnection never sends a draft automatically.
-Files are available only with a live conversation: the sidebar Files tab is disabled
-and an open Files view waits for reconnection, keeping unsaved file edits.
+Files are available only with a live conversation: an open Files view waits for
+reconnection, keeping unsaved file edits.
 Browser storage is best effort; an unavailable, expired or evicted copy gives an
 explicit unavailable state. A live session list or a confirmed deletion removes
 saved conversations that no longer exist.
@@ -2180,10 +2170,10 @@ everything the Bots tab can, through the same routes.
   engine stays separate; `hui bot memory` and the memory routes show its
   status, its view, any line zoomed down to a message, and a browse page.
 - **Always on.** Bots have no switch (decision below).
-- **The Bots tab**: an **Agents | Bots | Files** switch fills the sidebar's top
+- **The Bots tab**: an **Agents | Bots** switch fills the sidebar's top
   row after the collapse toggle (arrow keys, Home/End; the browser remembers the
-  tab): Agents is the sidebar as before, Bots shows only the roster, without the
-  navigation, and Files shows the conversation's files (see *Files*). Bot
+  tab): Agents is the sidebar as before, and Bots shows only the roster, without
+  the navigation. Bot
   chats, the subagents a bot spawns and their own subagents never appear in the Sessions list, its search, Kanban, the Sessions page, the command palette or session
   pickers; a message from one still names and links it; Automations labels their routines
   *Bot · name* and words

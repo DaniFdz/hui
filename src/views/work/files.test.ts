@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
-import { filesViewToReveal, filesWorkViewKind, newFilesViewId, renderFilesNavigator } from "./files.ts";
+import { filesViewToReveal, filesWorkViewKind, newFilesViewId } from "./files.ts";
 import { readFilesViewState, writeFilesViewState } from "../../lib/files/view-state.ts";
 import { defaultWorkViewKey } from "../../lib/work-pane.ts";
 
@@ -46,11 +46,4 @@ test("a file reference opens in the active Files view, else the first one, else 
   assert.equal(filesViewToReveal({ views: [terminal], active: "terminal:t1" }), undefined);
   assert.equal(filesViewToReveal({ views: [terminal, first, second], active: "terminal:t1" }), first);
   assert.equal(filesViewToReveal({ views: [first, second], active: "files:files-second" }), second);
-});
-
-test("the sidebar's Files tab shows the selected conversation's navigator, or asks for a conversation", () => {
-  assert.match(renderFilesNavigator("").strings.join(""), /Open a conversation to see its files\./u);
-  const navigator = renderFilesNavigator("session-a");
-  assert.match(navigator.strings.join(""), /<hui-files-view /u);
-  assert.deepEqual(navigator.values, ["session-a", "sidebar-files:session-a", true]);
 });

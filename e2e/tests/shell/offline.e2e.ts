@@ -22,9 +22,6 @@ test("a conversation saved on this device opens again without the gateway", { ta
   const transcript = screen.getByTestId("transcript");
 
   await conversationSavedForOffline({ screen, hui }, "Saved offline");
-  await expect(screen.getByRole("tab", "Files")).toBeEnabled();
-  await screen.getByRole("tab", "Files").tap();
-  await expect(screen.getByRole("tab", "Files")).toHaveAttribute("aria-selected", "true");
   await message.fill(DRAFT);
   await hui.network("offline");
   await hui.reload();
@@ -32,8 +29,6 @@ test("a conversation saved on this device opens again without the gateway", { ta
   await expect(screen.getByText("Message text is saved on this device.", { exact: false })).toBeVisible();
   await expect(transcript.getByText(MESSAGE)).toBeVisible();
   await expect(screen.getByLabel("Sessions").getByText("Saved offline", { exact: true })).toBeVisible();
-  await expect(screen.getByRole("tab", "Files")).toBeDisabled();
-  await expect(screen.getByRole("tab", "Agents")).toHaveAttribute("aria-selected", "true");
   await expect(screen.getByRole("button", "Group options for")).toHaveCount(0);
   await expect(message).toHaveValue(DRAFT);
   await expect(screen.getByText("Send waits for a live connection.", { exact: false })).toBeVisible();
@@ -47,19 +42,14 @@ test("reconnecting keeps the draft and sends nothing by itself", { tags: ["SHELL
   const transcript = screen.getByTestId("transcript");
 
   await conversationSavedForOffline({ screen, hui }, "Reconnected offline");
-  await expect(screen.getByRole("tab", "Files")).toBeEnabled();
-  await screen.getByRole("tab", "Files").tap();
   await message.fill(DRAFT);
   await hui.network("offline");
   await hui.reload();
   await expect(screen.getByText("Message text is saved on this device.", { exact: false })).toBeVisible();
-  await screen.getByRole("tab", "Agents").tap();
 
   await hui.network("online");
   await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
   await expect(screen.getByText("Message text is saved on this device.", { exact: false })).toBeHidden();
-  await expect(screen.getByRole("tab", "Files")).toBeEnabled();
-  await expect(screen.getByRole("tab", "Agents")).toHaveAttribute("aria-selected", "true");
   await expect(message).toHaveValue(DRAFT);
   await expect(transcript.getByText(MESSAGE)).toHaveCount(1);
   await expect(transcript.getByText(DRAFT)).toBeHidden();

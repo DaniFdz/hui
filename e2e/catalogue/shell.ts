@@ -13,7 +13,7 @@ const cases: UseCase[] = [
   {
     id: "SHELL-001",
     title: "Open Home",
-    behaviour: "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents, Bots and Files tabs.",
+    behaviour: "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
@@ -380,7 +380,7 @@ const cases: UseCase[] = [
   {
     id: "SHELL-044",
     title: "Open a saved conversation without the gateway",
-    behaviour: "Once a production build's offline files are ready, reloading a previously opened conversation with the gateway unreachable shows that conversation again: its saved message text, the sidebar row for it, and a note reading Saved conversation · <time>. Message text is saved on this device. The Files tab is disabled, even if it was selected before the reload. The composer keeps its draft, the band under it reads Saved conversation · draft preserved. Send waits for a live connection. and Send message stays disabled.",
+    behaviour: "Once a production build's offline files are ready, reloading a previously opened conversation with the gateway unreachable shows that conversation again: its saved message text, the sidebar row for it, and a note reading Saved conversation · <time>. Message text is saved on this device. The composer keeps its draft, the band under it reads Saved conversation · draft preserved. Send waits for a live connection. and Send message stays disabled.",
     spec: [OFFLINE],
     surfaces: [],
     web: "required",
@@ -389,7 +389,7 @@ const cases: UseCase[] = [
   {
     id: "SHELL-045",
     title: "Return to a live conversation without resending the draft",
-    behaviour: "When the gateway is reachable again, the saved conversation becomes live: the saved note and the saved band go away, the header shows the session's own status, the Files tab is enabled, the draft is still in the composer with Send message enabled, and the message sent before going offline appears once. Sending the draft then posts it once, as a new turn.",
+    behaviour: "When the gateway is reachable again, the saved conversation becomes live: the saved note and the saved band go away, the header shows the session's own status, the draft is still in the composer with Send message enabled, and the message sent before going offline appears once. Sending the draft then posts it once, as a new turn.",
     spec: [OFFLINE],
     surfaces: [],
     web: "required",

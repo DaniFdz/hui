@@ -2950,7 +2950,6 @@ export class HuiApp extends HuiElement {
       activePage: this.activePage,
       pages: availablePages(this.control.settings.labs),
       selectedSessionId: this.view === "bot" ? "" : this.conversation.selected?.id ?? "",
-      filesSessionId: this.view === "home" && this.conversation.selected && this.canAccessFiles(this.conversation.selected.id) ? this.conversation.selected.id : "",
       splitSessionId: "",
       openSessionIds: new Set(this.work.layout && sessionPanes(this.work.layout).length > 1 ? sessionPanes(this.work.layout).map(({ sessionId }) => sessionId) : []),
       groups: this.listedGroups,

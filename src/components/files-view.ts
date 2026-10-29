@@ -8,8 +8,7 @@
  * unsaved text and saves, shared with other views of the same file; the gateway owns the disk. The editor itself loads
  * on demand (`lib/files/editor.ts`). It refreshes when the conversation's agent turn ends and when it becomes visible
  * again. A reveal request (a file reference clicked in the chat, `lib/files/view-state.ts`) opens a file at a line or a
- * folder in the tree. With `navigatorOnly` (the sidebar's Files tab) it shows the navigator alone: a file it chooses is
- * sent to the conversation's Files view as an open-file request (`OPEN_FILE_EVENT`), which opens it there.
+ * folder in the tree.
  *
  * Behaviour follows AgentsInTheCloud's Files view (packages/files, MIT, see THIRD_PARTY_NOTICES.md); the markup is HUI's.
  * No decorators: the Work pane's view registry, which imports this lazily, also loads in Node tests.
@@ -41,7 +40,6 @@ import {
 } from "../api/files.ts";
 import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesViewState, type FilesViewReveal, type MarkdownDisplayMode } from "../lib/files/view-state.ts";
 import { onTurnEnd } from "../lib/session/turn-end.ts";
-import { OPEN_FILE_EVENT, type OpenFileDetail } from "../lib/files/file-link-store.ts";
 import type { FileEditorHandle } from "../lib/files/editor.ts";
 
 loadViewAssets(() => import("../styles/files-view.css"));
@@ -111,7 +109,6 @@ export class HuiFilesView extends HuiElement {
     viewId: {},
     visible: { type: Boolean },
     narrow: { type: Boolean },
-    navigatorOnly: { type: Boolean },
     onTitleChange: { attribute: false },
     info: { state: true },
     dirs: { state: true },
@@ -137,7 +134,6 @@ export class HuiFilesView extends HuiElement {
   declare viewId: string;
   declare visible: boolean;
   declare narrow: boolean;
-  declare navigatorOnly: boolean;
   /** The selected file (and so the tab caption) changed: the Work pane's `ctx.invalidate`. */
   declare onTitleChange: (() => void) | undefined;
   declare info: FilesInfo | undefined;
@@ -189,7 +185,6 @@ export class HuiFilesView extends HuiElement {
     this.viewId = "";
     this.visible = true;
     this.narrow = false;
-    this.navigatorOnly = false;
     this.onTitleChange = undefined;
     this.info = undefined;
     this.dirs = new Map();
@@ -472,16 +467,6 @@ export class HuiFilesView extends HuiElement {
     else if (file.kind === "image" || file.kind === "pdf") await this.openPreview(path, sequence);
   }
 
-  private choose(path: string) {
-    if (!this.navigatorOnly) {
-      void this.open(path);
-      return;
-    }
-    this.dispatchEvent(new CustomEvent<OpenFileDetail>(OPEN_FILE_EVENT, {
-      bubbles: true, composed: true, detail: { sessionId: this.sessionId, path, kind: "file" },
-    }));
-  }
-
   private revealInTree(path: string) {
     const folders: string[] = [];
     for (let folder = parentOf(path); folder; folder = parentOf(folder)) folders.unshift(folder);
@@ -688,7 +673,7 @@ export class HuiFilesView extends HuiElement {
       this.closeDialog();
       if (dialog.folder && !this.expanded.has(dialog.folder)) this.toggleFolder(dialog.folder);
       await this.loadDirectory(parentOf(entry.path));
-      if (entry.kind === "file") this.choose(entry.path);
+      if (entry.kind === "file") void this.open(entry.path);
       else this.toggleFolder(entry.path);
     } catch (error) {
       if (this.dialog?.kind === "create") this.dialog = { ...this.dialog, busy: false, error: errorText(error) };
@@ -895,7 +880,7 @@ export class HuiFilesView extends HuiElement {
       return html`<li class="hui-files-node">
         <div class="hui-files-row ${selected ? "is-selected" : ""}">
           <button type="button" class="hui-files-row__main" style=${indent} data-path=${entry.path}
-            aria-current=${selected ? "true" : "false"} @click=${() => this.choose(entry.path)}>
+            aria-current=${selected ? "true" : "false"} @click=${() => void this.open(entry.path)}>
             <span class="hui-files-row__chevron"></span>
             <span class="hui-files-row__icon">${entry.symlink ? linkIcon : fileIcon}</span>
             <span class="hui-files-row__name">${entry.name}</span>
@@ -941,7 +926,7 @@ export class HuiFilesView extends HuiElement {
         const selected = this.selected === entry.path;
         return html`<li class="hui-files-node"><div class="hui-files-row ${selected ? "is-selected" : ""}">
           <button type="button" class="hui-files-row__main hui-files-row__main--result" data-path=${entry.path}
-            aria-current=${selected ? "true" : "false"} @click=${() => this.choose(entry.path)}>
+            aria-current=${selected ? "true" : "false"} @click=${() => void this.open(entry.path)}>
             <span class="hui-files-row__icon">${fileIcon}</span>
             <span class="hui-files-row__name">${entry.name}</span>
             ${folder ? html`<span class="hui-files-row__folder">${folder}</span>` : nothing}
@@ -1146,7 +1131,6 @@ export class HuiFilesView extends HuiElement {
     if (!info.available) {
       return html`<div class="hui-files hui-files--message"><div class="hui-files-empty" role="status"><p><strong>Files are not available</strong></p><p>${info.reason}</p></div></div>`;
     }
-    if (this.navigatorOnly) return html`<div class="hui-files hui-files--sidebar">${this.renderNavigator()}</div>${this.renderDialog()}`;
     const showNavigator = this.narrow ? this.drawerOpen : this.navigatorOpen;
     return html`<div class="hui-files ${this.narrow ? "hui-files--narrow" : ""} ${showNavigator ? "hui-files--navigator" : ""}">
       ${showNavigator ? this.renderNavigator() : nothing}
