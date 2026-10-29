@@ -1,18 +1,19 @@
 /**
- * Pure presentation rules for the sidebar's tab strip (Agents, Bots, Files) and its Bots tab: which bots the roster
- * shows and in what order, how a row reads, and the browser-local choices (selected tab, the side panel's open state
- * and width) that are reading preferences, not gateway state.
+ * Pure presentation rules for the sidebar's Bots tab: which bots the roster
+ * shows and in what order, how a row reads, and the browser-local choices
+ * (selected tab, the side panel's open state and width) that are reading
+ * preferences, not gateway state.
  */
 import type { BotView } from "./bots.ts";
 
 /* ── sidebar tab strip ────────────────────────────────────────────────────── */
 
-export type SidebarTab = "sessions" | "bots" | "files";
-export const SIDEBAR_TABS: readonly SidebarTab[] = ["sessions", "bots", "files"];
+export type SidebarTab = "sessions" | "bots";
+export const SIDEBAR_TABS: readonly SidebarTab[] = ["sessions", "bots"];
 export const SIDEBAR_TAB_KEY = "hui.sidebar-tab";
 
 export function normalizeSidebarTab(value: unknown): SidebarTab {
-  return value === "bots" || value === "files" ? value : "sessions";
+  return value === "bots" ? value : "sessions";
 }
 
 export function readSidebarTab(): SidebarTab {

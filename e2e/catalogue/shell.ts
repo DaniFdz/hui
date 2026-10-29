@@ -12,7 +12,7 @@ const cases: UseCase[] = [
   {
     id: "SHELL-001",
     title: "Open Home",
-    behaviour: "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents, Bots and Files tabs.",
+    behaviour: "Loading `/` shows the sidebar and, in the main area, the new-session form with no session selected. **Primary navigation** lists Contributions, Kanban, Sessions and Usage in that order, with no Home entry. Settings closes the sidebar below the session list, for the Agents and the Bots lists alike, and the sidebar header holds only **Collapse sidebar** beside the Agents and Bots tabs.",
     spec: [BEHAVIOUR, LAYOUT],
     surfaces: ["nav:home"],
     journeys: ["shell-navigation", "sidebar-toolbar"],
