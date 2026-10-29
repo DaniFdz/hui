@@ -1275,6 +1275,9 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       const open = props.expandedActivityIds.has(expansionId);
+      // Reasoning above the card keeps its own fold: opening the tools must not unfold the thinking with them.
+      const reasoningId = `${expansionId}:reasoning`;
+      const reasoningOpen = props.expandedActivityIds.has(reasoningId);
       // Tools read as one card of their own (tool-call-group.ts); reasoning and errors that share the row keep the
       // fold they had, above it.
       const tools = row.items.filter((item): item is ToolCallItem => item.kind === "tool");
@@ -1285,17 +1288,17 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
         <div class="chat-group-messages">
           ${others.length ? html`<details
             class="chat-activity-group"
-            .open=${open}
+            .open=${reasoningOpen}
             @toggle=${(event: Event) => {
               const details = event.currentTarget as HTMLDetailsElement;
-              props.onActivityExpanded(expansionId, details.open);
+              props.onActivityExpanded(reasoningId, details.open);
             }}
           >
             <summary class="chat-inline-disclosure chat-activity-group__summary">
               <span class="chat-activity-group__icon">${chevronDownIcon}</span>
               <span class="chat-activity-group__label">${activityLabel(others, props.streaming)}</span>
             </summary>
-            ${open ? html`<div class="chat-activity-group__body">${others.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
+            ${reasoningOpen ? html`<div class="chat-activity-group__body">${others.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
           </details>` : nothing}
           ${tools.length ? renderToolCallGroup(tools, {
             id: row.id,

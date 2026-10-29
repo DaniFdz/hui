@@ -32,6 +32,9 @@ test("a reply streams, its tool card opens, and Stop ends the next run", { tags:
   if (!(await readRow.isVisible())) await transcript.getByText("Used 1 tool").tap();
   await readRow.tap();
   await expect(readRow.getByLabel("Done")).toBeVisible();
+  // Reasoning keeps its own fold now: opening the tool card must not unfold it.
+  await expect(transcript.getByText("Inspecting the fixture.")).toBeHidden();
+  await transcript.getByText("Reasoning").last().tap();
   await expect(transcript.getByText("Inspecting the fixture.")).toBeVisible();
   await expect(transcript.getByText(/^from .+\/fixture\.txt$/u)).toBeVisible();
   await expect(transcript.getByText("Real SDK browser fixture", { exact: false })).toBeVisible();
