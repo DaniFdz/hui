@@ -248,6 +248,8 @@ export type HomeProps = {
     datadogEmbeds: boolean;
     /** The user's own emoji per CLI or tool, over the built-in set (tool-call-group.ts). */
     toolMarks: Record<string, string>;
+    /** The user's own icon file per CLI or tool, served by the gateway (tool-call-group.ts). */
+    toolIcons: Record<string, string>;
   };
   queue: QueueSnapshot;
   thinking: string;
@@ -1304,6 +1306,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
             onRowToggle: (id, next) => props.onActivityExpanded(id, next),
             onCopy: (text, key) => void props.onCopy(text, key),
             marks: props.chatPreferences.toolMarks,
+            icons: props.chatPreferences.toolIcons,
           }) : nothing}
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>

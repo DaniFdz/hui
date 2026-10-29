@@ -1085,6 +1085,23 @@ never shows that link. **Settings → Appearance → Chat → Datadog link
 previews** turns the cards off. [docs/api.md](api.md#datadog-link-previews) has
 the full contract.
 
+## Custom marks for tool calls
+
+A turn's tool calls show a mark per row. HUI picks it in this order: your icon file, your emoji, the built-in emoji for that CLI or tool, then the tinted SVG mark.
+
+Both maps live in `chat` in the settings file (`HUI_CONFIG_DIR/settings.json`):
+
+```json
+{
+  "chat": {
+    "toolIcons": { "git": "github.svg", "kubectl": "kubernetes.svg" },
+    "toolMarks": { "pup": "🐶" }
+  }
+}
+```
+
+Icon files go in `HUI_CONFIG_DIR/tool-icons/` and are served read-only at `/__hui/tool-icons/<file>`; the browser only ever draws them in an `<img>`, so an SVG cannot run script. Names are flat file names — no paths — with an `.svg`, `.png`, `.webp`, `.jpg` or `.jpeg` extension, at most 256 KB. Keys are a CLI binary or a tool name, lowercased. Restart the gateway after adding files or editing the maps.
+
 ## Codemode: one script, many tool calls
 
 Sessions can use PI's **codemode** tool: instead of calling tools one at a time,
