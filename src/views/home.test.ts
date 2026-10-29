@@ -242,20 +242,26 @@ test("Task progress projects the durable progress_card signal above the composer
   assert.match(source, /agent-chat__composer-shell--question-composer/);
 });
 
-test("Task progress offers a refresh control that reads the session again without folding the card", async () => {
+test("Task progress offers a refresh control that asks for a new card without folding it, and turns busy meanwhile", async () => {
   const source = readFileSync(new URL("./home.ts", import.meta.url), "utf8");
   const styles = readStyles("../styles/openclaw-chat.css");
-  const html = await renderWorkerSession("running", {
+  const props = {
     transcript: [
       { kind: "message", role: "user", text: "long task" },
       { kind: "tool", id: "p", name: "progress_card", args: { plan: [{ step: "Check the build", status: "in_progress" }] }, status: "running" },
     ],
-  });
+  };
+  const idle = await renderWorkerSession("running", props);
+  const busy = await renderWorkerSession("running", { ...props, refreshing: true });
 
-  assert.match(html, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Refresh task progress"/u);
-  assert.match(html, /Check the build/u);
+  assert.match(idle, /<button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card"/u);
+  assert.doesNotMatch(idle, /aria-busy=(?:true|"true")/u);
+  assert.match(idle, /Check the build/u);
+  assert.match(busy, /aria-busy=true \?disabled=true/u);
   assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);\s*props\.onRefreshSession\(\);/u);
   assert.match(styles, /\.session-progress-card__refresh\s*\{[^}]*cursor:\s*var\(--cursor-action\);/s);
+  assert.match(styles, /\.session-progress-card__refresh\[aria-busy="true"\] > svg\s*\{[^}]*animation:\s*session-run-spin/s);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{[^}]*\.session-progress-card__refresh\[aria-busy="true"\]/s);
 });
 
 test("model and thinking reuse one exclusive composer picker pattern", () => {
@@ -482,7 +488,7 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false },
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
     ...overrides,
@@ -637,7 +643,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
 test("link previews and cards render on the latest user message and the latest reply only", async () => {
   const slack = "https://acme.slack.com/archives/C01234567/p1723456789012345";
   const html = await renderWorkerSession("idle", {
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true },
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {} },
     transcript: [
       { kind: "message", id: "u1", role: "user", text: slack },
       { kind: "message", id: "a1", role: "assistant", text: "https://x.com/openai/status/123456789" },
@@ -683,7 +689,7 @@ test("what an agent sends shows its target: a bot by handle or name, the calling
   // No target yet (its arguments still on their way): an ordinary tool row, never "Sending to @".
   const pending = html.slice(html.indexOf("data-chat-row-key=pending"));
   assert.doesNotMatch(pending, /chat-handoff/u);
-  assert.match(pending, /chat-activity-group/u);
+  assert.match(pending, /tool-call-group/u);
 });
 
 test("an unanswered questionnaire reads as expired with what it asked, never as declined", async () => {
@@ -707,7 +713,7 @@ test("an unanswered questionnaire reads as expired with what it asked, never as 
   assert.match(row("declined"), /You declined to answer\./u);
 });
 
-test("a long conversation renders its latest rows and offers the earlier ones; a closed activity group renders no items", async () => {
+test("a long conversation renders its latest rows and offers the earlier ones; a folded tool group renders no calls", async () => {
   const { TRANSCRIPT_WINDOW_ROWS } = await import("./chat/projection.ts");
   const transcript = Array.from({ length: TRANSCRIPT_WINDOW_ROWS + 10 }, (_, index) => [
     { kind: "message", id: `u${index}`, role: "user", text: `Step ${index}` },
@@ -721,12 +727,18 @@ test("a long conversation renders its latest rows and offers the earlier ones; a
   assert.doesNotMatch(latest, /Step 0</u);
   assert.match(latest, /Done 59</u);
   assert.match(latest, /class="chat-history-boundary__action" @click=>Show earlier messages</u);
-  assert.doesNotMatch(latest, /echo step-59/u, "the command inside a closed group is not rendered");
+  assert.match(latest, /<span class=tool-call-group__label>Used 1 tool<\/span>/u);
+  assert.doesNotMatch(latest, /tool-call-row/u, "a folded group renders no call rows");
   const all = await renderWorkerSession("idle", { transcript, transcriptWindowStart: 0 });
   assert.match(all, /Step 0</u);
   assert.doesNotMatch(all, /Show earlier messages/u);
   const open = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set([`s:t${TRANSCRIPT_WINDOW_ROWS + 9}`]) });
-  assert.match(open, /echo step-59/u);
+  assert.match(open, /<span class=tool-call-row__title>Ran echo step-59<\/span>/u, "an opened group names each call");
+  assert.doesNotMatch(open, /class="chat-tool-msg-body"/u, "a call's body waits for its own row to open");
+  // t59 is the third item of its turn: 59 turns before it, two items each, plus the prompt.
+  const rowOpen = await renderWorkerSession("idle", { transcript, expandedActivityIds: new Set([`s:t${TRANSCRIPT_WINDOW_ROWS + 9}`, "s:tool:178:t59"]) });
+  assert.match(rowOpen, /class="chat-tool-msg-body"/u);
+  assert.match(rowOpen, /chat-tool-term__out/u);
 });
 
 test("subagent and watcher cards blur nothing behind them, so a long chat keeps painting as it scrolls", () => {

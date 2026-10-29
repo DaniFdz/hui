@@ -19,15 +19,18 @@ test("fixture environment isolates config and drops credential/startup injection
     NODE_OPTIONS: "--import unsafe.mjs", HTTPS_PROXY: "https://secret@proxy", BASH_ENV: "unsafe.sh",
     HUI_PI_BACKEND: "operator", PI_CODING_AGENT_DIR: "/operator/pi", XDG_CONFIG_HOME: "/operator/config",
     HUI_OPENVSCODE_SERVER_MIRROR: "http://127.0.0.1:9/releases",
+    HUI_E2E_USAGE_PROFILE: "roots", HUI_E2E_USAGE_SESSIONS: "2000", HUI_E2E_USAGE_SECRET: "secret",
   });
   assert.equal(env.HOME, "/operator/home");
   assert.equal(env.HUI_OPENVSCODE_SERVER_MIRROR, "http://127.0.0.1:9/releases", "the VS Code journey's local release");
+  assert.equal(env.HUI_E2E_USAGE_PROFILE, "roots");
+  assert.equal(env.HUI_E2E_USAGE_SESSIONS, "2000");
   assert.equal(env.PI_CODING_AGENT_DIR, "/tmp/fixture/agent");
   assert.equal(env.PI_CODING_AGENT_SESSION_DIR, "/tmp/fixture/sessions");
   assert.equal(env.XDG_CONFIG_HOME, "/tmp/fixture/config");
   assert.equal(env.GH_CONFIG_DIR, "/tmp/fixture/github");
   assert.equal(env.HUI_PI_BACKEND, "sdk");
-  for (const key of ["OPENAI_API_KEY", "GH_TOKEN", "NODE_OPTIONS", "HTTPS_PROXY", "BASH_ENV"]) assert.equal(env[key], undefined);
+  for (const key of ["OPENAI_API_KEY", "GH_TOKEN", "NODE_OPTIONS", "HTTPS_PROXY", "BASH_ENV", "HUI_E2E_USAGE_SECRET"]) assert.equal(env[key], undefined);
 });
 
 test("provenance distinguishes tracked and untracked content, branch, and commit", async () => {

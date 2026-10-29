@@ -66,6 +66,7 @@ import { positionRail } from "./chat/position-rail.ts";
 import { readToolPresentation, renderReadToolCard, renderToolFileReference, toolFilePath } from "./chat/read-tool-card.ts";
 import { commandToolPresentation, renderCommandToolCard } from "./chat/command-tool-card.ts";
 import { codemodeToolPresentation, renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
+import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
 import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
@@ -245,6 +246,8 @@ export type HomeProps = {
     sendShortcut: "enter" | "modifierEnter";
     githubEmbeds: boolean;
     datadogEmbeds: boolean;
+    /** The user's own emoji per CLI or tool, over the built-in set (tool-call-group.ts). */
+    toolMarks: Record<string, string>;
   };
   queue: QueueSnapshot;
   thinking: string;
@@ -1270,9 +1273,15 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       if (handoff) return renderHandoff(props, row.id, handoff);
       const expansionId = `${props.session?.id ?? "session"}:${row.id}`;
       const open = props.expandedActivityIds.has(expansionId);
+      // Tools read as one card of their own (tool-call-group.ts); reasoning and errors that share the row keep the
+      // fold they had, above it.
+      const tools = row.items.filter((item): item is ToolCallItem => item.kind === "tool");
+      const others = row.items.filter((item) => item.kind !== "tool");
+      const running = tools.some((item) => (item.status ?? "running") === "running" && !item.failed);
+      const groupOpen = open || running;
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
-          <details
+          ${others.length ? html`<details
             class="chat-activity-group"
             .open=${open}
             @toggle=${(event: Event) => {
@@ -1282,10 +1291,20 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
           >
             <summary class="chat-inline-disclosure chat-activity-group__summary">
               <span class="chat-activity-group__icon">${chevronDownIcon}</span>
-              <span class="chat-activity-group__label">${activityLabel(row.items, props.streaming)}</span>
+              <span class="chat-activity-group__label">${activityLabel(others, props.streaming)}</span>
             </summary>
-            ${open ? html`<div class="chat-activity-group__body">${row.items.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
-          </details>
+            ${open ? html`<div class="chat-activity-group__body">${others.map((item) => html`<div>${renderActivityItem(props, item)}${renderMetrics(item)}</div>`)}</div>` : nothing}
+          </details>` : nothing}
+          ${tools.length ? renderToolCallGroup(tools, {
+            id: row.id,
+            expanded: groupOpen,
+            onToggle: (next) => props.onActivityExpanded(expansionId, next),
+            expansionId: (item) => `${props.session?.id ?? "session"}:tool:${props.transcript.indexOf(item)}:${item.id}`,
+            expandedIds: props.expandedActivityIds,
+            onRowToggle: (id, next) => props.onActivityExpanded(id, next),
+            onCopy: (text, key) => void props.onCopy(text, key),
+            marks: props.chatPreferences.toolMarks,
+          }) : nothing}
           ${browserPreview?.index === rowIndex ? renderBrowserPreview(props, browserPreview) : nothing}
         </div>
       </div>`;
@@ -1895,7 +1914,7 @@ function renderTaskProgress(props: HomeProps) {
         <span class="session-progress-card__summary-collapsed"><span class="session-progress-card__current">${current?.step ?? "Task progress"}</span></span>
         <span class="session-progress-card__summary-count session-progress-card__summary-count--collapsed">${card.steps.length ? `${completed}/${card.steps.length}` : ""}</span>
         <span class="session-progress-card__summary-expanded"><strong class="session-progress-card__summary-title">Task progress</strong><span class="session-progress-card__summary-count">${card.steps.length ? `${completed} of ${card.steps.length}` : ""}</span></span>
-        <button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Refresh task progress" ?disabled=${props.refreshing} @click=${(event: Event) => refreshTaskProgress(event, props)}>${props.refreshing ? html`<span class="session-run-spinner"></span>` : icons.refresh}</button>
+        <button type="button" class="session-progress-card__refresh" aria-label="Refresh task progress" title="Ask the agent to update the task progress card" aria-busy=${props.refreshing} ?disabled=${props.refreshing} @click=${(event: Event) => refreshTaskProgress(event, props)}>${icons.refresh}</button>
         <span class="session-progress-card__summary-chevron" aria-hidden="true">${chevronDownIcon}</span>
       </summary>
       <div class="session-progress-card__body" role="region" aria-label="Task progress">
@@ -1906,7 +1925,7 @@ function renderTaskProgress(props: HomeProps) {
   </div>`;
 }
 
-/** A control inside the summary re-reads the card instead of collapsing it. */
+/** A control inside the summary asks for a fresh card instead of collapsing it. */
 function refreshTaskProgress(event: Event, props: HomeProps) {
   event.preventDefault();
   event.stopPropagation();

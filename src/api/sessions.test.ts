@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { Duplex } from "node:stream";
 import { test, vi } from "vitest";
+import { WebSocketServer } from "ws";
 
 import {
   reconnectDelay,
   STATUS_STREAM_STALL_MS,
   subscribeSessionStatuses,
+  subscribeSession,
   type RuntimeEvent,
   type SessionStatusUpdate,
 } from "./sessions.ts";
@@ -109,6 +113,90 @@ test("a status stream that goes silent reconnects to resync", async (t) => {
   await settle();
   assert.equal(connections, 2);
 });
+
+for (const blocked of ["ticket", "handshake", "first snapshot"]) {
+  test(blocked === "first snapshot" ? "an established session stream allows a slow first snapshot"
+    : `a stalled session-stream ${blocked} is retried without dropping a healthy idle stream`, async (t) => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let entered!: () => void;
+    const firstAttempt = new Promise<void>((resolve) => { entered = resolve; });
+    let delivered!: () => void;
+    const ready = new Promise<void>((resolve) => { delivered = resolve; });
+    let established!: () => void;
+    const opened = new Promise<void>((resolve) => { established = resolve; });
+    const nativeWebSocket = globalThis.WebSocket;
+    vi.stubGlobal("WebSocket", class extends nativeWebSocket {
+      constructor(...args: ConstructorParameters<typeof nativeWebSocket>) {
+        super(...args);
+        this.addEventListener("open", () => established(), { once: true });
+      }
+    });
+    let tickets = 0, streams = 0;
+    let stalledUpgrade: Duplex | undefined;
+    let releaseSnapshot = () => {};
+    const frame = JSON.stringify({ event: "snapshot", data: { transcript: [], status: "idle", queue: { steering: [], followUp: [] }, questions: [], subagents: [] } });
+    const server = createServer((_request, response) => {
+      tickets += 1;
+      if (blocked === "ticket" && tickets === 1) { entered(); return; }
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify({ url: "/session-stream" }));
+    });
+    const sockets = new WebSocketServer({ noServer: true });
+    server.on("upgrade", (request, socket, head) => {
+      streams += 1;
+      if (blocked === "handshake" && streams === 1) { stalledUpgrade = socket; entered(); return; }
+      sockets.handleUpgrade(request, socket, head, (stream) => {
+        if (blocked === "first snapshot" && streams === 1) {
+          releaseSnapshot = () => stream.send(frame);
+          entered();
+          return;
+        }
+        stream.send(frame);
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    let stop = () => {};
+    t.onTestFinished(async () => {
+      stop();
+      stalledUpgrade?.destroy();
+      for (const socket of sockets.clients) socket.terminate();
+      server.closeAllConnections();
+      await Promise.all([
+        new Promise<void>((resolve) => server.close(() => resolve())),
+        new Promise<void>((resolve) => sockets.close(() => resolve())),
+      ]);
+      vi.useRealTimers();
+    });
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const origin = `http://127.0.0.1:${address.port}`;
+    const nativeFetch = globalThis.fetch;
+    vi.stubGlobal("location", new URL(origin));
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => nativeFetch(input instanceof Request ? input : new URL(input, origin), init));
+    const states: string[] = [];
+    stop = subscribeSession("a", {
+      onSnapshot: () => delivered(), onTranscript: () => {}, onEvent: () => {}, onStatus: () => {},
+      onModel: () => {}, onThinking: () => {}, onConnection: (state) => states.push(state),
+    });
+    await firstAttempt;
+    if (blocked === "first snapshot") {
+      await opened;
+      await vi.advanceTimersByTimeAsync(40_000);
+      assert.deepEqual(states, [], "the handshake deadline must not become a snapshot-download deadline");
+      releaseSnapshot();
+    } else {
+      await vi.advanceTimersByTimeAsync(20_000);
+      assert.ok(states.includes("reconnecting"), "a stalled attempt must enter the existing retry loop");
+      await vi.advanceTimersByTimeAsync(reconnectDelay(1, () => 1));
+    }
+    await ready;
+    const expected = blocked === "first snapshot" ? 1 : 2;
+    assert.equal(tickets, expected);
+    assert.equal(states.at(-1), "live");
+    await vi.advanceTimersByTimeAsync(40_000);
+    assert.equal(tickets, expected, "a healthy idle stream keeps no establishment deadline");
+  });
+}
 
 test("the browser reads every event stream through readEventStream", () => {
   const src = new URL("../", import.meta.url);

@@ -748,7 +748,7 @@ test("the conversations port writes the lists in the creating commit, reads and 
 test("a bot document from before the lists reads as nothing turned off, and an older HUI still reads one with lists", { timeout: 60_000 }, async (t) => {
   const f = await fixture(t);
   // The bot document as releases before the lists define it.
-  const V1 = defineDoc<{ bot: string }>({ kind: "hui.bot", version: 1, scope: "conversation", history: "latest", fork: "current", initial: () => ({ bot: "" }) });
+  const V1 = defineDoc<{ bot: string }>({ kind: "hui.bot", version: 1, scope: "conversation", history: "latest", fork: "current", initial: () => ({ bot: "" }), checkpointWhen: () => false });
   const harness = await f.host.open();
   const created = await harness.createConversation({
     ownership: { kind: "ownerless" }, agent: { cwd: f.cwd },

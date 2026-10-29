@@ -60,6 +60,46 @@ with no matching sessions.
    chart/filter interaction at phone width. Check keyboard focus, horizontal
    overflow and Browser console errors. Resize is not native-touch proof.
 
+## Bounded synthetic stress
+
+The default fixture stays at six sessions. The count applies only to `roots`,
+`forks` and `dense`. Set the variables for the launch command rather than exporting
+them:
+
+```sh
+HUI_E2E_USAGE_PROFILE=roots HUI_E2E_USAGE_SESSIONS=2000 \
+  node e2e/visual-verification.mjs launch --branch "$(git branch --show-current)" --usage-fixture
+node e2e/probes/usage-benchmark.mjs --receipt <receipt.json> --out <private-results.json>
+node e2e/probes/usage-benchmark.mjs --receipt <receipt.json> --cpu 4 --mobile --out <private-mobile-results.json>
+```
+
+Profiles accept 20–2,000 sessions, including one legacy transcript:
+
+- **roots**: mostly independent conversations (1,990 roots and nine true forks at 2,000).
+- **forks**: ten roots and the remaining Durable sessions are true forks.
+- **dense**: the fork-heavy profile with activity on every one of the last 90 days.
+
+All profiles retain recent and multi-year records. Fork-heavy profiles are
+adversarial, not a representative ancestry distribution. Seeding uses the real
+Durable store without resuming conversations or calling a provider. Run only one
+large fixture at a time; never substitute live or copied active session state.
+
+The probe checks fixture ownership and the unchanged checkout through doctor,
+then drives presets, repeated metric switches, typing, sorting, pagination,
+chart keys and rapid range/zone changes in its own disposable Chromium profile.
+Compare identical scenarios, query ranges and fixture profiles. Inspect the
+recorded page counts; a populated first page grows from 50 to 100 sessions.
+Capture and inspect the same interactions separately with the Browser tool.
+
+Timing includes control scrolling and DevTools round trips. Main-thread, script,
+layout and style work are scenario totals, not an isolated aggregation profile.
+DevTools node counts include detached nodes; the initial light-DOM and sidebar
+counts are separate. Resource duration includes waiting and transfer, not JSON
+parse time alone. Four-times CPU throttling at 390×844 is desktop emulation,
+not native phone performance. Small samples are observations, not percentiles.
+Keep results private and publish aggregate measurements and synthetic captures
+only. Stop the owned fixture with its receipt after the run.
+
 ## Evidence
 
 Run doctor again before capture. Final PR screenshots must come from a clean,

@@ -93,6 +93,7 @@ export const DEFAULT_SETTINGS: Settings = {
     sendShortcut: "enter",
     githubEmbeds: true,
     datadogEmbeds: true,
+    toolMarks: {},
   },
   profileName: "HUI Operator",
   profileHandle: "",
@@ -253,6 +254,22 @@ function normalizeDisabledSkills(value: unknown): Settings["disabledSkills"] {
   return [...skills.values()];
 }
 
+/** `chat.toolMarks`: the user's own emoji per CLI or tool name. Display-only, lowercased keys, capped so a
+ * hand-edited settings file cannot bloat every settings payload. */
+function normalizeToolMarks(value: unknown): Settings["chat"]["toolMarks"] {
+  if (!isRecord(value)) return {};
+  const marks: Record<string, string> = {};
+  for (const [rawKey, rawValue] of Object.entries(value)) {
+    const key = rawKey.trim().toLowerCase().slice(0, 40);
+    if (!key || /[\p{Cc}\s]/u.test(key) || typeof rawValue !== "string") continue;
+    const mark = rawValue.trim();
+    if (!mark || /[\p{Cc}]/u.test(mark) || Array.from(mark).length > 12) continue;
+    marks[key] = mark;
+    if (Object.keys(marks).length >= 200) break;
+  }
+  return marks;
+}
+
 function normalizeChat(value: unknown): Settings["chat"] {
   const source = isRecord(value) ? value : {};
   const width = source["messageWidth"];
@@ -264,6 +281,7 @@ function normalizeChat(value: unknown): Settings["chat"] {
 
     githubEmbeds: source["githubEmbeds"] !== false,
     datadogEmbeds: source["datadogEmbeds"] !== false,
+    toolMarks: normalizeToolMarks(source["toolMarks"]),
   };
 }
 
