@@ -267,17 +267,23 @@ test("a call the card can't show opens no card and fails back to the agent with 
   await expect(screen.getByTestId("question-card")).toBeHidden();
 
   const groups = transcript.getByText("Used 1 tool");
-  await hui.scrollTo(transcript, groups.nth(4));
   await expect(groups).toHaveCount(5);
 
+  await hui.reload();
+  await expect(screen.getByLabel("Session status: Idle")).toBeVisible();
+
+  // Every invalid call is one settled card of its own, and a reload folds all of them shut.
   const rows = transcript.getByRole("button", /^Used ask user question/u);
+  for (let index = 0; index < 5; index += 1) {
+    await groups.nth(index).tap();
+    await expect(rows).toHaveCount(index + 1);
+  }
+
   const reasons = ["must not have more than 4 items", '"Other" is reserved', "must have unique labels", "must not have more than 16 characters", "previews are for single-select questions only"];
   for (const [index, received] of reasons.entries()) {
-    const handedBack = transcript.getByText(received, { exact: false }).first();
-    // A call the live turn folded open stays open; only the closed ones need folding.
-    if (!(await rows.nth(index).isVisible())) await groups.nth(index).tap();
-    if (!(await handedBack.isVisible())) await rows.nth(index).tap();
+    await rows.nth(index).tap();
     await expect(rows.nth(index).getByLabel("Failed")).toBeVisible();
+    const handedBack = transcript.getByText(received, { exact: false }).first();
     await hui.scrollTo(transcript, handedBack);
     await expect(handedBack).toBeVisible();
   }
