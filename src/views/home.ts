@@ -1279,8 +1279,8 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
       // fold they had, above it.
       const tools = row.items.filter((item): item is ToolCallItem => item.kind === "tool");
       const others = row.items.filter((item) => item.kind !== "tool");
-      const running = tools.some((item) => (item.status ?? "running") === "running" && !item.failed);
-      const groupOpen = open || running;
+      // Folded until the person opens it: a live turn no longer forces the card open.
+      const groupOpen = open;
       return html`<div class="chat-group tool chat-group--activity chat-group--with-footer" data-chat-row-key=${row.id}>
         <div class="chat-group-messages">
           ${others.length ? html`<details
