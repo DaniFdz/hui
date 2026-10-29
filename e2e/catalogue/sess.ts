@@ -608,6 +608,16 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "SESS-063",
+    title: "Run a group's sessions on a worker by default",
+    behaviour: "Group options, New session defaults offers Run on with Local and every remote worker alongside Working directory. Saving a worker keeps that group's directory only shape-checked (absolute or starting with ~/) and drops its Git choices, since workers cannot make worktrees; choosing Local clears the worker. The saved machine survives a reload, and New Session opened from that group preselects it in Choose where the session runs with the group's directory filled in.",
+    spec: ["SPEC.md#behaviour", "docs/api.md#patch-__huisession-groupsname"],
+    surfaces: ["route:PATCH /__hui/session-groups/:name", "route:GET /__hui/workers", "page:new-session"],
+    journeys: ["session-groups"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

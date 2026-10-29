@@ -175,7 +175,7 @@ export async function createSessionGroup(name: string): Promise<SessionList> {
 
 export async function updateSessionGroup(
   name: string,
-  patch: { name?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string },
+  patch: { name?: string; cwd?: string; workspaceMode?: "branch" | "worktree" | ""; baseRef?: string; worker?: string },
 ): Promise<SessionList> {
   const body = await fetchJson<Partial<SessionList>>(
     `/__hui/session-groups/${encodeURIComponent(name)}`,

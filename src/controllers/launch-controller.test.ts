@@ -91,3 +91,15 @@ test("launch preferences seed once from Settings or PI, and a worker that is gon
   assert.equal(launch.worker, undefined);
   assert.equal(launch.props().launchWorkers, fake.workers);
 });
+
+test("a group that names a worker opens New Session on it, and one that does not keeps the sticky choice", () => {
+  const launch = new LaunchController(host);
+  launch.worker = "sticky";
+  launch.open({ ...group, worker: "w1" } as unknown as SessionGroup);
+  assert.equal(launch.worker, "w1");
+  assert.equal(launch.props().launchWorker, "w1");
+  launch.open({ ...group, worker: undefined } as unknown as SessionGroup);
+  assert.equal(launch.worker, "w1", "a group without a machine leaves the choice alone");
+  launch.open();
+  assert.equal(launch.worker, "w1");
+});

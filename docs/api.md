@@ -2960,7 +2960,8 @@ any full list older than the revision they hold.
 Groups follow the registry's catalog order, which the user controls, with
 `ungrouped` last. New groups are appended; renames keep their position. Within each group pinned sessions come first, then
 sessions are ordered most-recently-updated first. A group may also carry HUI-owned
-`cwd`, `tool`, `workspaceMode` (`branch` or `worktree`) and `baseRef` defaults. Empty catalogued groups are returned with an empty
+`cwd`, `tool`, `workspaceMode` (`branch` or `worktree`) and `baseRef` defaults, and the `worker` id its
+sessions run on. Empty catalogued groups are returned with an empty
 `sessions` array.
 
 The browser displays group labels in uppercase, with `ungrouped` shown as
@@ -3004,6 +3005,7 @@ defaults:
 ```json
 { "name": "Projects" }
 { "cwd": "/abs/path", "workspaceMode": "worktree", "baseRef": "main" }
+{ "worker": "1f718aa4-b8b4-4284-957c-d59b716e8d9d" }
 ```
 
 `cwd` may be empty (choose it when creating the session) or an existing absolute
@@ -3015,8 +3017,16 @@ start in Branch with the repository default branch. Saving defaults never
 performs Git checkout or creates a worktree. PI configuration and transcripts
 are never changed.
 
-The group menu's **New session defaults** shows Environment and Base branch
-once its directory is recognized as Git. New sessions opened from that group
+`worker` is a remote worker's id (an empty string clears it), and the machine
+that group's sessions start on. Because that directory is on another machine,
+`cwd` is checked against a worker's rules instead (absolute or starting with
+`~/`), and no local Git inspection happens. Workers cannot make worktrees yet,
+so a group on a worker carries no `workspaceMode` or `baseRef`.
+
+The group menu's **New session defaults** shows Run on, Environment and Base
+branch once they apply: Run on offers Local and every remote worker, and
+Environment and Base branch appear once the directory is recognized as Git on
+this machine. New sessions opened from that group
 prefill those values; changing their directory resets the checkout choices to
 the new repository's defaults. Both modes retain the selected ref when toggled.
 The worktree suffix belongs to each new session, not the group. Non-Git or empty
