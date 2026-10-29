@@ -20,6 +20,8 @@ test("New session defaults name a worker, and New Session from that group opens 
 
   await hui.api("POST", "/__hui/session-groups", { name: GROUP });
   const worker = await hui.addWorker(WORKER);
+  const plainFolder = join(worker.home, "plain-folder");
+  await mkdir(plainFolder, { recursive: true });
   const remoteRepo = join(worker.home, "checkout");
   await mkdir(remoteRepo, { recursive: true });
   const remoteGit = (...args: string[]) => execFileSync("git", ["-C", remoteRepo, "-c", "user.email=e2e@example.test", "-c", "user.name=E2E", ...args]);
@@ -49,10 +51,11 @@ test("New session defaults name a worker, and New Session from that group opens 
   await fillDirectory(repo);
   await expect(dialog().getByText("Base branch")).toBeVisible();
 
-  // On a worker the dialog checks that machine: a directory of its own answers for its Git.
+  // On a worker the dialog asks that machine: a plain folder has no Git choices, its checkout does.
   await runOn().tap();
   await dialog().getByText(WORKER).tap();
   await expect(runOn()).toContainText(WORKER);
+  await fillDirectory(plainFolder);
   await expect(dialog().getByText("Base branch")).toHaveCount(0);
   await fillDirectory(remoteRepo);
   await expect(dialog().getByText("Base branch")).toBeVisible();
