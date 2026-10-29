@@ -19,10 +19,12 @@ const fake = vi.hoisted(() => ({
   inventory: { worktrees: [] } as unknown as WorktreeInventory,
   removed: [] as string[][],
   loadError: undefined as unknown,
+  gate: undefined as Promise<void> | undefined,
   saved: async () => [] as SessionGroup[],
 }));
 vi.mock("../api/sessions.ts", () => ({
   loadSessions: async () => {
+    await fake.gate;
     if (fake.loadError) throw fake.loadError;
     return fake.list;
   },
@@ -56,6 +58,7 @@ beforeEach(() => {
   fake.inventory = { worktrees: [] } as unknown as WorktreeInventory;
   fake.removed = [];
   fake.loadError = undefined;
+  fake.gate = undefined;
   fake.saved = async () => [];
 });
 
@@ -222,6 +225,25 @@ test("a failed refresh keeps the live list and reports inline instead of clearin
     assert.equal(sessions.error, "", "a usable sidebar reports inline instead of replacing itself");
     assert.equal(calls.reported.at(-1), failure.message);
   }
+});
+
+test("a saved list does not settle the sidebar while the live one is still loading", async () => {
+  let showSaved!: (groups: SessionGroup[]) => void;
+  fake.saved = () => new Promise((resolve) => { showSaved = resolve; });
+  fake.list = { revision: 1, groups: [group(session("live"), session("new"))] };
+  let releaseLoad!: () => void;
+  fake.gate = new Promise((resolve) => { releaseLoad = resolve; });
+  const { sessions, calls } = controller();
+  const loading = sessions.refresh();
+  showSaved([group(session("saved"))]);
+  await settle();
+  assert.equal(calls.settled, 0, "a provisional saved list must not settle a session route");
+  assert.equal(sessions.listed("saved")?.id, "saved");
+  releaseLoad();
+  await loading;
+  assert.ok(calls.settled > 0);
+  assert.ok(sessions.listed("new"), "the live list replaces the saved one");
+  assert.equal(sessions.listed("saved"), undefined);
 });
 
 test("a saved list that arrives after the live one never replaces it", async () => {

@@ -135,7 +135,6 @@ export class SessionsController {
       this.groups = groups;
       this.loading = false;
       this.#host.requestUpdate();
-      this.#deps.listSettled();
     };
     void saved.then((groups) => { if (!settled) showSaved(groups); });
     try {
