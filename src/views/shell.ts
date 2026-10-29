@@ -25,6 +25,7 @@ import { worktreeProgressLabel } from "../lib/worktree-progress.ts";
 import type { JiraBadgeData } from "../components/jira-hovercard.ts";
 import { renderBotRoster, renderNewBotButton, type BotPlace, type BotRosterProps } from "./bots.ts";
 import { SIDEBAR_TABS, tabAfterKey, type SidebarTab } from "../lib/bots/roster.ts";
+import { renderFilesNavigator } from "./work/files.ts";
 import { loadViewAssets } from "../lib/view-assets.ts";
 
 // The real browser entry loads these before this view can render.
@@ -114,9 +115,10 @@ export type SessionCopyAction = "link" | "markdown" | "id" | "jira";
 export type SessionOpenAction = "tab" | "window" | "editor" | "jira";
 export type GroupDropTarget = { group: string; position: "before" | "after" };
 
-/** The Agents | Bots switch fills the sidebar's top row, right after the
+/** The Agents | Bots | Files switch fills the sidebar's top row, right after the
  * collapse toggle, because each tab has a sidebar of its own: Agents is the
- * sidebar as before, and Bots shows only the roster. */
+ * sidebar as before, Bots shows only the roster, and Files shows the
+ * conversation's files. */
 export type ShellBotsProps = {
   tab: SidebarTab;
   onTab: (tab: SidebarTab) => void;
@@ -769,10 +771,10 @@ function kanbanNavItem(props: ShellProps) {
   </a>`;
 }
 
-/** "Agents | Bots" as WAI-ARIA tabs with automatic activation. Agents keeps the
+/** "Agents | Bots | Files" as WAI-ARIA tabs with automatic activation. Agents keeps the
  * `sessions` id that browsers already remember. */
 function renderSidebarTabs(bots: ShellBotsProps) {
-  const tabs = [["sessions", "Agents"], ["bots", "Bots"]] as const;
+  const tabs = [["sessions", "Agents"], ["bots", "Bots"], ["files", "Files"]] as const;
   return html`<div class="sidebar-tabs" role="tablist" aria-label="Sidebar lists">
     ${tabs.map(([tab, label]) => html`<button type="button" role="tab" class="sidebar-tabs__tab" id=${`sidebar-tab-${tab}`}
       aria-selected=${String(bots.tab === tab)} aria-controls="sidebar-tabpanel" tabindex=${bots.tab === tab ? "0" : "-1"}
@@ -797,6 +799,7 @@ export function renderSidebar(props: ShellProps) {
   // On the Bots tab the sidebar is the roster alone, as in Hermes: the primary
   // navigation and New session stay under Agents.
   const botsTab = props.bots.tab === "bots" ? props.bots : undefined;
+  const filesTab = props.bots.tab === "files";
   const searchLabel = botsTab ? "Search bots" : "Search sessions";
   return html`<hui-session-hovercard-provider .sessions=${props.groups.flatMap((group) => group.sessions)}>
     <header class="topbar">
@@ -862,7 +865,7 @@ export function renderSidebar(props: ShellProps) {
             <div class="sidebar-switch">${renderSidebarTabs(props.bots)}</div>
           </div>
 
-          <label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
+          ${filesTab ? nothing : html`<label class="sidebar-search ${(botsTab ? botsTab.search.trim() : query) ? "sidebar-search--active" : ""}">
             <span class="sidebar-search__icon" aria-hidden="true">${icons.search}</span>
             <input
               type="search"
@@ -871,11 +874,11 @@ export function renderSidebar(props: ShellProps) {
               .value=${botsTab ? botsTab.search : props.search}
               @input=${(event: Event) => (botsTab ? botsTab.onSearch : props.onSearch)((event.target as HTMLInputElement).value)}
             />
-          </label>
+          </label>`}
 
           <div class="sidebar-shell__content">
           <div class="sidebar-shell__body" id="sidebar-tabpanel" role="tabpanel" aria-labelledby="sidebar-tab-${props.bots.tab}">
-          ${botsTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation" data-testid="primary-navigation">
+          ${botsTab || filesTab ? nothing : html`<nav class="sidebar-nav" aria-label="Primary navigation" data-testid="primary-navigation">
             ${PRIMARY_NAV.map((item) => {
               const page = props.pages.find((candidate) => candidate.id === item.id);
               return page ? html`
@@ -896,7 +899,7 @@ export function renderSidebar(props: ShellProps) {
             })}
           </nav>`}
 
-          <div class=${botsTab ? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"}>
+          ${filesTab ? html`<div class="sidebar-files" @hui-open-file=${(event: Event) => closeContainingDrawer(event)}>${renderFilesNavigator(props.selectedSessionId)}</div>` : html`<div class=${botsTab ? "sidebar-sessions sidebar-sessions--bots" : "sidebar-sessions"}>
           <div class="sidebar-recent-sessions__toolbar sidebar-session-toolbar">
             <span>${botsTab ? "Bots" : "Sessions"}</span>
             <span>
@@ -933,6 +936,7 @@ export function renderSidebar(props: ShellProps) {
                   `
                 : html`${visibleGroups.map((group) => groupSection(group, props, filtering))}`
         }
+          </div>`}
           </div>`}
           </div>
           </div>

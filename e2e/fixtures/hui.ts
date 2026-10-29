@@ -24,6 +24,9 @@ export type Hui = {
   newSessionDraft(): Promise<string>;
   attach(target: Locator, files: string[]): Promise<void>;
   download(target: Locator): Promise<{ name: string; text: string }>;
+  /** Records, from now on, the text the page copies to the clipboard. */
+  clipboardSpy(): Promise<void>;
+  clipboardWrites(): Promise<string[]>;
 };
 
 export const test = base.extend<{ hui: Hui }>({
@@ -74,6 +77,19 @@ export const test = base.extend<{ hui: Hui }>({
         const file = await browser().waitForDownload(() => target.tap());
         return { name: file.suggestedFilename, text: await readFile(file.absolutePath, "utf8") };
       },
+      clipboardSpy: async () => {
+        await browser().evaluate(() => {
+          const writes: string[] = [];
+          Object.assign(window, { huiClipboardWrites: writes });
+          const writeText = navigator.clipboard.writeText.bind(navigator.clipboard);
+          navigator.clipboard.writeText = (text) => {
+            writes.push(text);
+            return writeText(text);
+          };
+          return null;
+        });
+      },
+      clipboardWrites: () => browser().evaluate(() => (window as unknown as { huiClipboardWrites?: string[] }).huiClipboardWrites ?? []),
       newSessionDraft: () => browser().evaluate(async () => {
         if (!(await indexedDB.databases()).some(({ name }) => name === "hui-control-ui")) return "";
         const db = await new Promise<IDBDatabase>((resolve, reject) => {

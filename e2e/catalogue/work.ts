@@ -799,6 +799,26 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "WORK-081",
+    title: "Copy a Markdown file's text",
+    behaviour: "Copy Markdown in a Markdown file's header copies the file's Markdown source to the clipboard, and the button shows Copied.",
+    spec: ["SPEC.md#files"],
+    surfaces: ["work-view:files"],
+    journeys: ["files-view"],
+    web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "WORK-082",
+    title: "Browse a conversation's files from the sidebar",
+    behaviour: "The sidebar's Files tab lists the selected conversation's folder with the navigator of its Files view. A folder expands in place, and a file opens in that conversation's Files view in the Work pane; Agents brings back the conversation list.",
+    spec: ["SPEC.md#files"],
+    surfaces: ["work-view:files"],
+    journeys: ["files-view"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

@@ -4,9 +4,9 @@
  * loads the first time a Files view renders, so neither it nor its editor weighs on the main bundle. Closing the tab
  * forgets the view's remembered selection; a file's unsaved text is kept by its File draft (`lib/files/draft.ts`).
  * A file reference clicked in the chat reveals its file in the conversation's active Files view, else its first one
- * (`filesViewToReveal`), else a new one.
+ * (`filesViewToReveal`), else a new one. The sidebar's Files tab shows the same navigator alone (`renderFilesNavigator`).
  */
-import { html } from "lit";
+import { html, type TemplateResult } from "lit";
 import { clearFilesViewState, filesViewTitle } from "../../lib/files/view-state.ts";
 import { workViewKey, type SessionWorkPane, type WorkViewKind } from "../../lib/work-pane.ts";
 import { WORK_SHORTCUTS } from "../../lib/work-shortcuts.ts";
@@ -30,6 +30,12 @@ function loadFilesView(): void {
 }
 
 export const FILES_WORK_VIEW_SHORTCUT = WORK_SHORTCUTS.files;
+
+export function renderFilesNavigator(sessionId: string): TemplateResult {
+  if (!sessionId) return html`<p class="sidebar-list__note" role="status">Open a conversation to see its files.</p>`;
+  loadFilesView();
+  return html`<hui-files-view .sessionId=${sessionId} .viewId=${`sidebar-files:${sessionId}`} .navigatorOnly=${true}></hui-files-view>`;
+}
 
 /** The Files view a file reference opens in: the active tab when it is a Files view, else the first Files tab;
  * `undefined` means a new one. */

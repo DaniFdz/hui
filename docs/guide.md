@@ -230,9 +230,16 @@ fastest you have, ideally a cheap one. **GPT-Live** (Settings → Models → Cal
 talks on calls with bots: it is made for phone calls and quick to respond. Calls
 are with bots only.
 
-**Subagent routes** sit under the same page. A route is a name you choose, a
-one-line description and a model, and may pin a reasoning level. An agent that
-spawns a subagent can pass the name to `sessions_spawn` instead of a model id.
+**Subagent routes** sit under the same page. Choose **Add route** to open a
+form for its name, one-line description, model and optional reasoning level.
+The model starts on your primary model when available, and thinking inherits
+the parent's level. **Add route** saves the completed form; **Cancel** or Escape
+closes it without adding anything. A failed save keeps the form for retry.
+Saved routes show a brief summary of their description, model and thinking level.
+Choose **Edit** to open the same form with the current values. **Save changes**
+applies the edit; Cancel or Escape leaves the saved configuration unchanged.
+**Remove** stays beside Edit. An agent that spawns a subagent can pass the name
+to `sessions_spawn` instead of a model id.
 The prompt lists your names and descriptions. Raw model ids remain supported;
 routes do not restrict which models the tool can use. A spawn without a route or
 model inherits its parent's model and reasoning level. Its own `thinking`
