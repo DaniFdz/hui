@@ -25,6 +25,7 @@ import type {
   TranscriptAttachment,
   SessionConnection,
   SessionGroup,
+  SessionGoal,
   SessionStatus,
   SessionView,
   SubagentTaskView,
@@ -214,6 +215,10 @@ function focusComposerFromSurface(event: MouseEvent) {
   (event.currentTarget as HTMLElement).querySelector<HTMLTextAreaElement>("textarea")?.focus();
 }
 
+/** The goal pill's transient state: whether its detail block is open, whether the objective is being retyped, and a
+ * refused save. */
+export type GoalPanelState = { expanded: boolean; editing: boolean; error: string };
+
 export type HomeProps = {
   session: SessionView | undefined;
   /** File references in the agent's replies and tool cards may open in this conversation's Files view. */
@@ -318,6 +323,12 @@ export type HomeProps = {
   onContinueInterrupted: () => void;
   /** Pauses, resumes or clears the conversation's goal from the pill above the composer. */
   onGoalChange: (action: "pause" | "resume" | "clear") => void;
+  /** The goal pill's detail block: whether it is open, whether the objective is being retyped, and a refused save. */
+  goalPanel: GoalPanelState;
+  onGoalToggle: () => void;
+  onGoalEdit: () => void;
+  onGoalSave: (objective: string) => void;
+  onGoalCancelEdit: () => void;
   queueEditingId: string;
   queueEditingText: string;
   onQueueEdit: (id: string) => void;
@@ -1749,8 +1760,8 @@ function renderComposer(props: HomeProps) {
         </div>
       ` : nothing}
       ${renderTaskProgress(props)}
-      ${renderGoalPill(props)}
       ${renderQueue(props)}
+      ${renderGoalPill(props)}
       <form class="agent-chat__input agent-chat__input--chat agent-chat__input--mobile-toolbar ${disconnected ? "agent-chat__input--offline" : ""}"
         @submit=${onPromptSubmit(props)} @keydown=${onPromptKeydown(props)}
         @click=${focusComposerFromSurface}>
@@ -1875,17 +1886,31 @@ const goalTargetIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><circle 
 const goalPauseIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5v14M14.5 5v14" /></svg>`;
 const goalPlayIcon = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor" stroke="none" /></svg>`;
 
-/** The goal above the composer, in OpenClaw's own pill: status, objective, and the operator's controls. */
+/** The goal above the composer, in OpenClaw's own pill: status, objective, the operator's controls, and the detail
+ * block the row expands into. The detail carries the whole objective, why the goal stopped, and the objective's editor,
+ * so reading, retyping and acting on a goal all happen in the pill. */
 function renderGoalPill(props: HomeProps) {
-  const goal = props.session?.goal;
-  if (!goal) return nothing;
-  const label = { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[goal.status];
+  const session = props.session;
+  const goal = session?.goal;
+  if (!session || !goal) return nothing;
+  const label = goalStatusLabel(goal.status);
   const icon = goal.status === "complete" ? checkIcon
     : goal.status === "blocked" ? icons.alertTriangle
       : goal.status === "paused" ? goalPauseIcon
         : goalTargetIcon;
+  const { expanded, editing, error } = props.goalPanel;
+  // Starting a goal also sends its objective, so a turn in flight refuses it.
+  const editable = !props.sending && props.connection === "live" && !props.streaming && session.status === "idle";
+  const detailId = sessionControlId(props, "goal-detail");
+  const toggle = (event: Event) => {
+    if ((event.target as Element).closest("button, form")) return;
+    props.onGoalToggle();
+  };
+  const action = (kind: "pause" | "resume" | "clear", icon: unknown, disabled: boolean) => html`<button
+    type="button" class="agent-chat__goal-action" aria-label=${`${GOAL_ACTIONS[kind]} goal`} title=${`${GOAL_ACTIONS[kind]} goal`}
+    ?disabled=${disabled} @click=${() => props.onGoalChange(kind)}>${icon}<span class="agent-chat__goal-action-label">${GOAL_ACTIONS[kind]}</span></button>`;
   return html`<div class="agent-chat__goal-float">
-    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded="false" title=${goal.note ?? goal.objective}>
+    <div class="agent-chat__goal agent-chat__goal--${goal.status}" data-expanded=${expanded} title=${goal.note ?? goal.objective} @click=${toggle}>
       <div class="agent-chat__goal-row">
         <span class="agent-chat__goal-icon" aria-hidden="true">${icon}</span>
         <span class="agent-chat__goal-copy">
@@ -1893,16 +1918,53 @@ function renderGoalPill(props: HomeProps) {
           <span class="agent-chat__goal-objective">${goal.objective}</span>
         </span>
         <span class="agent-chat__goal-actions">
-          ${goal.status === "active"
-            ? html`<button type="button" class="agent-chat__goal-action" aria-label="Pause goal" title="Pause goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("pause")}>${goalPauseIcon}</button>`
-            : goal.status === "complete"
-              ? nothing
-              : html`<button type="button" class="agent-chat__goal-action" aria-label="Resume goal" title="Resume goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("resume")}>${goalPlayIcon}</button>`}
-          <button type="button" class="agent-chat__goal-action" aria-label="Clear goal" title="Clear goal" ?disabled=${props.sending} @click=${() => props.onGoalChange("clear")}>${icons.trash}</button>
+          <span class="agent-chat__goal-command-actions">
+            ${goal.status === "active"
+              ? action("pause", goalPauseIcon, props.sending)
+              : goal.status === "complete"
+                ? nothing
+                : action("resume", goalPlayIcon, props.sending)}
+            ${action("clear", icons.trash, props.sending)}
+            <button type="button" class="agent-chat__goal-action" aria-label="Edit goal objective" title="Edit goal objective"
+              ?disabled=${!editable || editing} @click=${props.onGoalEdit}>${icons.edit}<span class="agent-chat__goal-action-label">Edit</span></button>
+          </span>
+          <button type="button" class="agent-chat__goal-action agent-chat__goal-expand" aria-expanded=${expanded}
+            aria-controls=${detailId} aria-label=${expanded ? "Collapse goal" : "Expand goal"} title=${expanded ? "Collapse goal" : "Expand goal"}
+            @click=${props.onGoalToggle}>${expanded ? icons.chevronUp : icons.chevronDown}</button>
         </span>
+      </div>
+      <div class="agent-chat__goal-detail" id=${detailId} data-testid="goal-detail" data-expanded=${expanded} ?inert=${!expanded}>
+        <div class="agent-chat__goal-detail-content">
+          ${editing ? html`<form class="goal-edit" @submit=${(event: Event) => {
+            event.preventDefault();
+            const field = (event.currentTarget as HTMLFormElement).elements.namedItem("objective");
+            if (field instanceof HTMLTextAreaElement) props.onGoalSave(field.value);
+          }}>
+            <textarea name="objective" rows="3" aria-label="Goal objective" spellcheck="true"
+              ${ref((element) => mountEditor(element, goal.objective))}></textarea>
+            ${error ? html`<p class="goal-edit__error" role="alert">${error}</p>` : nothing}
+            <p class="goal-edit__hint">${editable
+              ? "Saving starts the goal again with this objective and sends it as the next turn."
+              : "Finish or stop the active turn before changing the objective."}</p>
+            <div class="goal-edit__actions">
+              <button type="submit" class="btn btn--sm primary" ?disabled=${!editable}>Save goal</button>
+              <button type="button" class="btn btn--sm" @click=${props.onGoalCancelEdit}>Cancel</button>
+            </div>
+          </form>` : html`<p class="agent-chat__goal-detail-objective">${goal.objective}</p>`}
+          ${goal.note ? html`<p class="agent-chat__goal-detail-note">${goal.note}</p>` : nothing}
+          ${editing ? nothing : html`<div class="agent-chat__goal-detail-meta">
+            <span class="agent-chat__goal-detail-duration">Set ${relativeTime(Date.parse(goal.createdAt))}</span>
+          </div>`}
+        </div>
       </div>
     </div>
   </div>`;
+}
+
+const GOAL_ACTIONS = { pause: "Pause", resume: "Resume", clear: "Clear" } as const;
+
+function goalStatusLabel(status: SessionGoal["status"]): string {
+  return { active: "Pursuing goal", paused: "Goal paused", blocked: "Goal blocked", complete: "Goal achieved" }[status];
 }
 
 function renderTaskProgress(props: HomeProps) {
@@ -2196,11 +2258,12 @@ function renderThinkingPicker(options: ThinkingPickerOptions) {
 }
 
 const QUEUE_DRAG_MIME = "application/x-hui-queued-message";
-const mountedQueueEditors = new WeakSet<HTMLTextAreaElement>();
+/** One editor per element: Lit re-rendering around a textarea must not overwrite what the operator is typing. */
+const mountedEditors = new WeakSet<HTMLTextAreaElement>();
 
-function mountQueueEditor(element: Element | undefined, value: string) {
-  if (!(element instanceof HTMLTextAreaElement) || mountedQueueEditors.has(element)) return;
-  mountedQueueEditors.add(element);
+function mountEditor(element: Element | undefined, value: string) {
+  if (!(element instanceof HTMLTextAreaElement) || mountedEditors.has(element)) return;
+  mountedEditors.add(element);
   element.value = value;
   queueMicrotask(() => {
     if (!element.isConnected) return;
@@ -2273,7 +2336,7 @@ function renderQueue(props: HomeProps) {
             <span class="chat-queue__grip-state chat-queue__grip-state--active" aria-hidden="true">${gripIcon}</span>
           </button>` : html`<span class="chat-queue__leading chat-queue__icon" aria-hidden="true">${queueIcon}</span>`}
           ${editing ? html`<textarea class="chat-queue__edit-input" rows="1"
-            ${ref((element) => mountQueueEditor(element, props.queueEditingText))}
+            ${ref((element) => mountEditor(element, props.queueEditingText))}
             aria-label="Edit queued message"
             @input=${(event: Event) => props.onQueueEditChange((event.currentTarget as HTMLTextAreaElement).value)}
             @keydown=${(event: KeyboardEvent) => {

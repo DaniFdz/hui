@@ -1368,8 +1368,13 @@ restart, shows above the composer, and reaches every request's system prompt.
 so gathering the work and starting it is one step. `/goal pause`, `/goal resume`
 and `/goal clear` are the other operator controls; the pill above the composer
 offers the same three, with the status (Pursuing goal, Goal paused, Goal
-blocked, Goal achieved), the objective and the status note in its tooltip.
-Starting a goal while a turn runs is refused, never queued. A conversation has
+blocked, Goal achieved) and the objective.
+
+The pill expands in place, in OpenClaw's own goal detail: the whole objective
+wrapped and readable, the status note when it paused or blocked itself, when it
+was set, and the editor. Editing the objective there replaces the goal and sends
+the new objective as its next turn, exactly as `/goal <objective>` does. Starting
+or editing a goal while a turn runs is refused, never queued. A conversation has
 one goal; starting another replaces it.
 
 Only the operator pauses, resumes or clears a goal. The agent may report
