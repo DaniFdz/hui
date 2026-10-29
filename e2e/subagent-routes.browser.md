@@ -24,16 +24,27 @@ twice in one turn: `route: "deep"` (accepted) and `route: "no-such-route"`
 
 ## Visible-control journey and observed results
 
-1. Settings → Models shows **Subagent routes** with *No routes yet* and **Add
-   route**. Adding a route writes it immediately: the isolated
-   `config/hui/settings.json` holds `models.routes`.
-2. Each route uses the standard Settings group and labeled Name, Description,
-   Model and Thinking rows. Editing them saves each field. A
-   name that repeats another route, or holds a space, is refused and the stored
-   names stay as they were; picking a model from the catalog stores its
-   `provider/id`; thinking stores the chosen level or no level at all.
-3. With `fast` (HUI SDK Fixture, thinking low) and `deep` (HUI Route Fixture,
-   thinking high) configured, a reload shows both groups and the same values.
+1. Settings → Models shows **Subagent routes** with *No routes yet* and an
+   **Add route** action in its heading. The action opens a modal with an empty,
+   focused Name, Description, Model and Thinking. Model starts on the available
+   primary model, otherwise the first available model; Thinking starts on
+   **Inherit parent**. Opening the form creates no route. Cancel or Escape
+   discards the draft and returns focus to the action without leaving Settings.
+2. Fill the form and choose **Add route** to save it. Empty, invalid and duplicate
+   names are refused. A failed save keeps the draft for retry and leaves no
+   route in the list. While saving, editing and dismissal are disabled. Saved
+   routes show compact summaries of their name, description, model and thinking,
+   with Edit and Remove actions instead of expanded fields.
+3. Edit opens the same modal with the route's saved values. Change a field and
+   cancel or press Escape: the original summary stays unchanged and focus returns
+   to Edit. Reopen and choose Save changes: the summary updates only after the save
+   succeeds. Keeping the original name is valid; a rename replaces the same row;
+   names already used by another route, blank names and names with spaces are
+   refused. A failed edit retains the draft and the original saved route. With
+   50 routes, Add route is disabled but Edit still works. An edit may preserve a
+   stored model that is no longer available. With `fast` (HUI SDK Fixture, thinking
+   low) and `deep` (HUI Route Fixture, thinking high) configured, reload shows both
+   summaries and reopening Edit shows their saved values.
 4. Create a session with `E2E_SUBAGENTS_ROUTE spawn two workers`. The transcript
    shows two `sessions_spawn` calls: one *Completed* whose input carries
    `route: "deep"` and no model, and one *Failed* whose output reads
@@ -47,19 +58,24 @@ twice in one turn: `route: "deep"` (accepted) and `route: "no-such-route"`
    then lists one line per route: `- fast: Cheap and quick: lookups, summaries,
    simple edits.` and `- deep: Slow and careful: hard debugging and design
    work.`
-7. At 1440×900, each route uses the same labeled Settings rows as the other
-   pages: labels and help text on the left, standard inputs and pickers on the
-   right. At 390×844, the shared Settings styles put each control below its
-   visible label. Names use the standard input font. The child session's model
-   and thinking fit beside the composer.
+7. Check the modal at 1440×900, 390×844 and 844×390. All fields and actions
+   remain reachable without horizontal overflow; short viewports scroll inside
+   the dialog. Tab stays inside it. Escape closes an open picker before it
+   closes the dialog. The compact list keeps each route's summary and its actions
+   readable on desktop and mobile; no saved-route inputs appear until Edit opens.
 
 ## Shared web tests
 
 `npm run e2e -- e2e/tests/set/subagent-routes.e2e.ts` covers SET-078 and SET-079:
-route CRUD, invalid and duplicate names, optional thinking, reload persistence,
+modal creation, initial focus, Cancel/Escape without saving, invalid and
+repeated names, compact summaries, prefilled edits, rename, removal, optional
+thinking, reload persistence, editing at the limit and unavailable-model preservation,
 the routed child's model and thinking, the unchanged parent, and unknown-route
 or route-plus-model refusal before a child exists. Both cases are required on
-the web; iOS remains backlog.
+the web; iOS remains backlog. `src/lib/settings/settings-store.test.ts` covers
+failed add/edit saves and retries, a model-role change queued during a route save,
+and invalid replacements refused before writing, through the real write queue
+with controlled request responses.
 
 ## Limitations
 
