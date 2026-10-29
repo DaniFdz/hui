@@ -50,6 +50,8 @@ export class LaunchController {
           ...(group.baseRef ? { baseRef: group.baseRef } : {}),
         }
       : undefined;
+    // A group that names a machine runs there; the others keep the sticky choice.
+    if (group?.worker) this.worker = group.worker;
     this.resetWorkspace();
     this.branchSuggestionsOpen = false;
     this.checkout = undefined;

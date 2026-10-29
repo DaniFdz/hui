@@ -27,13 +27,13 @@ export type SessionGoalRequest = ({ "action": "start"; "objective": string; }) |
 
 export type SessionGoalStatus = ("active") | ("paused") | ("blocked") | ("complete");
 
-export type SessionGroup = { "label": string; "cwd"?: string; "workspaceMode"?: ("branch") | ("worktree"); "baseRef"?: string; "sessions": Array<SessionView>; };
+export type SessionGroup = { "label": string; "cwd"?: string; "workspaceMode"?: ("branch") | ("worktree"); "baseRef"?: string; "worker"?: string; "sessions": Array<SessionView>; };
 
 export type SessionJiraIssue = { "key": string; "url": string; "summary"?: string; "status"?: string; "statusCategory"?: JiraStatusCategory; "issueType"?: string; "description"?: string; };
 
 export type SessionList = { "revision": number; "groups": Array<SessionGroup>; };
 
-export type SessionListLayoutGroup = { "label": string; "cwd"?: string; "workspaceMode"?: ("branch") | ("worktree"); "baseRef"?: string; "ids": Array<string>; };
+export type SessionListLayoutGroup = { "label": string; "cwd"?: string; "workspaceMode"?: ("branch") | ("worktree"); "baseRef"?: string; "worker"?: string; "ids": Array<string>; };
 
 export type SessionListUpdate = { "revision": number; "groups"?: Array<SessionListLayoutGroup>; "upserts": Array<SessionView>; };
 

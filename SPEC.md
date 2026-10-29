@@ -84,6 +84,11 @@ Copy OpenClaw's Control UI layout, adapted to operating pi sessions.
   is chosen at launch, never shared by the group. Saving defaults does not mutate
   Git. New sessions opened from the group inherit them, but choosing a different
   directory resets Git choices; legacy groups need no migration.
+- **Run on** in that dialog stores the remote worker a group's sessions start on
+  (Local keeps this machine). New sessions opened from the group prefill it and
+  can still change it for themselves. A group's directory is then on that
+  machine, so it is only shape-checked, and workers cannot make worktrees yet:
+  such a group saves no Git environment or base ref.
 - In custom-group mode, sessions can be moved between groups by dragging a row
   onto a group or with the row menu's keyboard-accessible **Move to group**
   submenu. The row menu follows OpenClaw's action hierarchy: pin, rename,
