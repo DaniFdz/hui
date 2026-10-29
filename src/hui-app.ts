@@ -9,6 +9,7 @@ import { renderPicker } from "./views/settings-picker.ts";
 import { renderDirectoryPicker } from "./views/directory-picker.ts";
 import { renderSessionPane } from "./views/session-pane.ts";
 import { sessionTreeIds } from "./lib/session/tree.ts";
+import { forgetConversation } from "./lib/session/offline-store.ts";
 import { isSubagentActive } from "./lib/subagent-activity.ts";
 import { html, nothing, type PropertyValues } from "lit";
 import { icons } from "./lib/icons.ts";
@@ -284,6 +285,7 @@ export class HuiApp extends HuiElement {
   private renderedCompaction: RuntimeCompaction | undefined;
   private renderedQueueEditingId: string | undefined;
   private renderedDraftRevision = 0;
+  private renderedFilesConnection = "";
   private groupActionReturnFocus: HTMLElement | undefined;
 
   @state() private settingsOpen = false;
@@ -514,6 +516,7 @@ export class HuiApp extends HuiElement {
       document.addEventListener("keydown", this.onGlobalKeyDown);
       this.addEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
       this.addEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
+      this.addEventListener("hui-files-connection", this.onFilesConnection);
     }
     window.addEventListener("pagehide", this.onPageHide);
     if (!this.embeddedPane) {
@@ -535,6 +538,7 @@ export class HuiApp extends HuiElement {
     window.removeEventListener("popstate", this.onPopState);
     this.removeEventListener(OPEN_SETTINGS_EVENT, this.onOpenSettingsRequest);
     this.removeEventListener(OPEN_FILE_EVENT, this.onOpenFileRequest);
+    this.removeEventListener("hui-files-connection", this.onFilesConnection);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("keydown", this.onGlobalKeyDown);
     this.work.stop();
@@ -667,6 +671,13 @@ export class HuiApp extends HuiElement {
   /** Lit cannot autofocus a field that appears on a later render, and typing
    * straight into a rename is the whole point of an inline field. */
   override updated(changed: PropertyValues) {
+    if (this.embeddedPane) {
+      const connection = `${this.paneSessionId}\0${this.paneCanAccessFiles()}`;
+      if (connection !== this.renderedFilesConnection) {
+        this.renderedFilesConnection = connection;
+        this.dispatchEvent(new Event("hui-files-connection", { bubbles: true, composed: true }));
+      }
+    }
     // Session and bot panes measure their own composers.
     const textarea = !this.embeddedPane && ((this.view === "home" && this.conversation.selected) || this.view === "bot")
       ? null : this.renderRoot.querySelector<HTMLTextAreaElement>(".agent-chat__composer-combobox > textarea");
@@ -1328,10 +1339,27 @@ export class HuiApp extends HuiElement {
    * Files view — the active one, else its first, else a new one — opening the Work pane (or, on narrow screens, the
    * Work destination) the way any Work view does.
    */
+  private paneCanAccessFiles(): boolean {
+    return !this.paneBot && this.conversation.selected?.id === this.paneSessionId
+      && !this.conversation.opening && this.conversation.connection === "live";
+  }
+
+  private canAccessFiles(sessionId: string): boolean {
+    if (!this.work.layout) return false;
+    const active = activeSessionPane(this.work.layout);
+    const root = active.sessionId === sessionId
+      ? this.renderRoot.querySelector(`[data-session-pane="${CSS.escape(active.id)}"]`)
+      : this.renderRoot;
+    return [...(root?.querySelectorAll<HuiApp>(".chat-pane-cache__pane > hui-app") ?? [])]
+      .some((app) => app.paneSessionId === sessionId && app.paneCanAccessFiles());
+  }
+
+  private readonly onFilesConnection = () => this.requestUpdate();
+
   private readonly onOpenFileRequest = (event: Event) => {
     const detail = (event as CustomEvent<OpenFileDetail>).detail;
     if (this.embeddedPane || !detail?.sessionId || !this.work.layout) return;
-    if (!sessionPanes(this.work.layout).some((pane) => isChatPane(pane) && pane.sessionId === detail.sessionId)) return;
+    if (!this.canAccessFiles(detail.sessionId)) return;
     event.stopPropagation();
     void this.work.openFile(detail);
   };
@@ -1345,6 +1373,7 @@ export class HuiApp extends HuiElement {
   }
 
   private openTerminal = async () => {
+    if (this.conversation.connection !== "live") return;
     this.terminalOpening = true;
     this.terminalError = "";
     try { await this.onPaneTerminal?.(); }
@@ -1529,7 +1558,7 @@ export class HuiApp extends HuiElement {
 
   private continueRun = () => {
     const session = this.conversation.selected;
-    if (!session || this.conversation.streaming || this.conversation.opening || this.continuing) return;
+    if (!session || this.conversation.connection !== "live" || this.conversation.streaming || this.conversation.opening || this.continuing) return;
     this.continuing = true;
     this.note = "";
     this.noteLevel = "info";
@@ -1663,8 +1692,10 @@ export class HuiApp extends HuiElement {
     }
     // A failed worktree launch hands its prompt back to New Session.
     const unsent = this.paneUnsentPrompt;
+    const tree = sessionTreeIds(this.sessions.groups.flatMap((group) => group.sessions), targetId);
     void deleteSession(targetId)
       .then(async () => {
+        await Promise.all([...tree].map((id) => forgetConversation(id)));
         if (unsent) {
           const stored = await readComposerDraft(NEW_SESSION_DRAFT_KEY);
           await writeComposerDraft(NEW_SESSION_DRAFT_KEY, mergeComposerDraft(stored, { text: unsent, attachments: [] }));
@@ -2552,7 +2583,7 @@ export class HuiApp extends HuiElement {
     return {
       session: this.conversation.selected,
       // File references open in the Work pane, which only multiplexed chat panes have (not a bot's chat).
-      fileLinks: this.embeddedPane && !this.paneBot,
+      fileLinks: this.embeddedPane && this.paneCanAccessFiles(),
       mobileNavLayout: this.embeddedPane ? this.paneMobileNav && this.paneActive : this.mobileNavLayout,
       controlScope: this.embeddedPane ? this.paneId : undefined,
       groups: this.listedGroups,
@@ -2586,16 +2617,19 @@ export class HuiApp extends HuiElement {
       noteLevel: this.noteLevel,
       onDismissNote: () => { this.note = ""; this.noteLevel = "info"; },
       connectionNote: this.conversation.connectionNote,
+      savedCopy: this.conversation.savedCopy,
+      offlineSupported: typeof window === "undefined" || (window.isSecureContext && "serviceWorker" in navigator),
+      onForgetSaved: () => void this.conversation.forgetSaved(),
       onLaunch: this.launch,
       onSelectSession: this.selectSession,
       onClosePane: this.onPaneClose,
       paneMovable: Boolean(this.onPaneClose) && !this.paneNarrow,
       onSplitPane: this.paneNarrow ? undefined : this.onPaneSplit,
       onOpenTerminal: this.onPaneTerminal ? this.openTerminal : undefined,
-      onOpenBrowser: this.onPaneBrowser && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
-        ? () => this.onPaneBrowser?.()
+      onOpenBrowser: this.onPaneBrowser && this.conversation.connection === "live" && this.control.settings.browser.enabled && this.conversation.transcript.some((item) => item.kind === "tool" && item.name === "browser")
+        ? () => { if (this.conversation.connection === "live") this.onPaneBrowser?.(); }
         : undefined,
-      browserPreview: this.control.settings.browser.enabled
+      browserPreview: this.conversation.connection === "live" && this.control.settings.browser.enabled
         ? { visible: this.paneVisible, ...(this.onPaneBrowser ? { onExpand: () => this.onPaneBrowser?.() } : {}) }
         : undefined,
       terminalOpening: this.terminalOpening,
@@ -2815,6 +2849,7 @@ export class HuiApp extends HuiElement {
     <hui-work-pane
       .store=${this.work.panes}
       .sessionId=${workSessionId}
+      .canAccessFiles=${(id: string) => this.canAccessFiles(id)}
       .retained=${this.work.retained}
       .narrow=${this.work.narrow}
       .chatColumns=${this.work.layout.columns.length}

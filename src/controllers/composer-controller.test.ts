@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test, vi } from "vitest";
-import type { QueueSnapshot, SessionSnapshot, SessionView } from "../api/sessions.ts";
+import type { QueueSnapshot, SessionConnection, SessionSnapshot, SessionView } from "../api/sessions.ts";
 import type { ComposerDraft } from "../lib/composer/drafts.ts";
 import { NEW_SESSION_DRAFT_KEY, sessionDraftKey } from "../lib/composer/drafts.ts";
 import { ComposerController } from "./composer-controller.ts";
@@ -13,11 +13,13 @@ const fake = vi.hoisted(() => ({
   pathRequests: [] as { cwd: string; input: string }[],
   prompts: [] as { id: string; text: string; resolve: () => void; reject: (error: Error) => void }[],
   rewinds: [] as unknown[][],
+  aborts: [] as string[],
 }));
 vi.mock("../api/sessions.ts", () => ({
   mutateQueuedMessage: (id: string, mutation: unknown) => new Promise<void>((resolve, reject) => fake.mutations.push({ id, mutation, resolve, reject })),
   sendPrompt: (id: string, text: string) => new Promise((resolve, reject) => fake.prompts.push({ id, text, resolve: () => resolve({ duplicate: false }), reject })),
   rewindSession: async (...args: unknown[]) => { fake.rewinds.push(args); },
+  abortSession: async (id: string) => { fake.aborts.push(id); },
   setSessionGoal: (id: string, action: string, objective?: string) => new Promise((resolve, reject) => {
     fake.goals.push({ id, action, objective, resolve: () => resolve({ id } as SessionView), reject });
   }),
@@ -45,11 +47,12 @@ beforeEach(() => {
   fake.pathRequests = [];
   fake.prompts = [];
   fake.rewinds = [];
+  fake.aborts = [];
 });
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; textarea?: HTMLTextAreaElement } = {}) {
+function composer(selected: { current: SessionView | undefined }, options: { embeddedPane?: boolean; streaming?: boolean; textarea?: HTMLTextAreaElement; connection?: SessionConnection } = {}) {
   const notes: string[] = [];
   const reported: string[] = [];
   let updates = 0;
@@ -57,7 +60,8 @@ function composer(selected: { current: SessionView | undefined }, options: { emb
   const conversation = {
     get selected() { return selected.current; },
     opening: false,
-    connection: "live",
+    connection: options.connection ?? "live",
+    stopping: false,
     streaming: options.streaming ?? false,
     transcript: [],
   } as unknown as ConversationController;
@@ -231,6 +235,25 @@ test("rewinding works while the session runs and puts the message back in the co
   assert.deepEqual(caret, [9, 9]);
   assert.equal(controller.rewindPending, false);
   assert.deepEqual(notes, ["info:", "info:Message restored to the composer. The previous branch is kept."]);
+});
+
+test("a saved, reconnecting or outdated conversation rewinds, queues and stops nothing", async () => {
+  const target = { entryId: "e1" } as unknown as Parameters<ReturnType<ComposerController["props"]>["onRewind"]>[0];
+  for (const connection of ["saved", "reconnecting", "outdated"] as const) {
+    const { controller, conversation, notes } = composer({ current: { id: "s1" } as SessionView }, { connection });
+    controller.setDraft("half typed");
+    controller.props().onRewind(target, "try again");
+    controller.props().onQueueRemove("q1");
+    controller.abort();
+    await settle();
+    assert.deepEqual(fake.rewinds, [], `${connection} never rewinds`);
+    assert.deepEqual(fake.mutations, [], `${connection} never changes the queue`);
+    assert.deepEqual(fake.aborts, [], `${connection} never stops a turn`);
+    assert.equal(controller.draft, "half typed");
+    assert.equal(controller.rewindPending, false);
+    assert.equal(conversation.stopping, false);
+    assert.deepEqual(notes, []);
+  }
 });
 
 test("the goal pill expands in place and keeps a refused objective where it was typed", async () => {

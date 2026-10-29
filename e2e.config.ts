@@ -19,8 +19,8 @@ export default {
         url: "http://127.0.0.1:0",
         command: {
           executable: "node",
-          args: ["e2e/visual-verification.mjs", "launch", "--branch", branch, "--port", "{port}", "--receipt-dir", ".e2e/hui"],
-          startupTimeout: 120_000,
+          args: ["e2e/visual-verification.mjs", "launch", "--branch", branch, "--production", "--port", "{port}", "--receipt-dir", ".e2e/hui"],
+          startupTimeout: 300_000,
           log: ".e2e/logs/hui-web.log",
         },
       },

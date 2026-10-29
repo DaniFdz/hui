@@ -473,7 +473,7 @@ export class ComposerController {
 
   #queueMutation(mutation: Parameters<typeof mutateQueuedMessage>[1], onSuccess?: () => void): void {
     const session = this.#conversation.selected;
-    if (!session) return;
+    if (!session || this.#conversation.connection !== "live") return;
     void mutateQueuedMessage(session.id, mutation)
       .then(() => {
         if (isSelectedSession(session.id, this.#conversation.selected?.id)) onSuccess?.();
@@ -823,7 +823,7 @@ export class ComposerController {
 
   abort = () => {
     const session = this.#conversation.selected;
-    if (!session || this.#conversation.stopping) {
+    if (!session || this.#conversation.connection !== "live" || this.#conversation.stopping) {
       return;
     }
     this.#conversation.stopping = true;
@@ -843,7 +843,7 @@ export class ComposerController {
   /** The outcome arrives as `compaction_end`: the divider then reads cancelled. */
   #cancelCompactionNow(): void {
     const session = this.#conversation.selected;
-    if (!session) return;
+    if (!session || this.#conversation.connection !== "live") return;
     void cancelCompaction(session.id).catch((error: unknown) => {
       if (!isSelectedSession(session.id, this.#conversation.selected?.id)) return;
       this.#deps.showNote(error instanceof Error ? error.message : "Could not cancel that compaction.", "error");
@@ -853,7 +853,7 @@ export class ComposerController {
   /** `typed` is the `/compact` draft, cleared now and given back if HUI refuses. */
   #compactNow(instructions?: string, typed?: string) {
     const session = this.#conversation.selected;
-    if (!session || this.sending) return;
+    if (!session || this.sending || this.#conversation.connection !== "live") return;
     if (this.#conversation.streaming || session.status !== "idle") {
       this.#deps.showNote("Finish or stop active work before compacting the session.", "error");
       return;
@@ -901,7 +901,7 @@ export class ComposerController {
 
   #rewindToMessage = (target: RewindTarget, text: string, sent: readonly (string | TranscriptAttachment)[] = []) => {
     const session = this.#conversation.selected;
-    if (!session || this.#conversation.opening || this.rewindPending) return;
+    if (!session || this.#conversation.connection !== "live" || this.#conversation.opening || this.rewindPending) return;
     this.rewindPending = true;
     this.#host.requestUpdate();
     this.#deps.showNote("", "info");
@@ -936,7 +936,7 @@ export class ComposerController {
    * the copy. The source session is left running or idle as it was. */
   #forkFromMessage = (entryId: string) => {
     const session = this.#conversation.selected;
-    if (!session || this.#conversation.opening || this.forkTarget) return;
+    if (!session || this.#conversation.connection !== "live" || this.#conversation.opening || this.forkTarget) return;
     void import("../components/fork-dialog.ts").then(() => {
       this.forkTarget = { session, entryId };
       this.#host.requestUpdate();
@@ -946,7 +946,7 @@ export class ComposerController {
   #answerQuestion = (answer: QuestionResponse) => {
     const session = this.#conversation.selected;
     const question = this.#conversation.question;
-    if (!session || !question) return;
+    if (!session || !question || this.#conversation.connection !== "live") return;
     this.#conversation.question = undefined;
     this.#host.requestUpdate();
     void answerQuestionRequest(session.id, question.id, answer)

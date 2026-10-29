@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 import { WebSocket as NodeWebSocket } from "ws";
 import { attachSessionTransport, SESSION_STREAM_GONE, sessionStreamTicket } from "./transport.ts";
 
@@ -81,6 +81,42 @@ test("session views stream over one-use, same-origin WebSocket tickets", { timeo
 
   const [goneCode, reason] = await connect("gone").closed;
   assert.deepEqual([goneCode, reason.toString("utf8")], [SESSION_STREAM_GONE, "unknown session"]);
+});
+
+test("an open session socket gets an application heartbeat every 15 seconds", { timeout: 10_000 }, async (t) => {
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  t.onTestFinished(() => { vi.useRealTimers(); });
+  const server = createServer((_request, response) => { response.writeHead(404).end(); });
+  const detach = attachSessionTransport(server, async (_id, send) => {
+    send("snapshot", { transcript: [], status: "idle" });
+    return () => {};
+  }, new Set(["127.0.0.1"]));
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  t.onTestFinished(async () => {
+    detach();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  const socket = new NodeWebSocket(`${origin.replace("http:", "ws:")}${sessionStreamTicket("alpha")!}`, { origin });
+  t.onTestFinished(() => socket.terminate());
+  const frames: unknown[] = [];
+  socket.on("message", (message: Buffer) => frames.push(JSON.parse(message.toString("utf8"))));
+  const until = async (check: () => boolean) => {
+    for (const deadline = Date.now() + 3_000; !check(); await new Promise((resolve) => setTimeout(resolve, 10))) {
+      assert.ok(Date.now() < deadline, "the expected stream state never arrived");
+    }
+  };
+
+  await until(() => frames.length === 1);
+  assert.deepEqual(frames, [{ event: "snapshot", data: { transcript: [], status: "idle" } }]);
+  vi.advanceTimersByTime(14_999);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(frames.length, 1, "no heartbeat before the interval is due");
+  vi.advanceTimersByTime(1);
+  await until(() => frames.length === 2);
+  assert.deepEqual(frames[1], { event: "heartbeat", data: {} });
 });
 
 test("a large session frame is deflated on the wire and arrives intact", { timeout: 10_000 }, async (t) => {

@@ -47,6 +47,7 @@ export class WorkPane extends HuiElement {
   @property({ attribute: false }) store: WorkPaneStore = {};
   /** The focused conversation, whose views the pane shows. */
   @property() sessionId = "";
+  @property({ attribute: false }) canAccessFiles: (sessionId: string) => boolean = () => false;
   /** Conversations whose views stay mounted, most recent first (from `retainWorkSessions`). */
   @property({ attribute: false }) retained: readonly string[] = [];
   @property({ type: Boolean }) narrow = false;
@@ -436,14 +437,16 @@ export class WorkPane extends HuiElement {
         const active = focused && view.key === pane.active;
         return html`<section class="work-pane__view ${active ? "work-pane__view--active" : ""}" role="tabpanel" id=${`work-view-${id}`}
           aria-labelledby=${`work-tab-${id}`} ?inert=${!active} aria-hidden=${String(!active)}>
-          ${view.kind.render(view.ref, {
-            sessionId,
-            visible: active && shown,
-            narrow: this.narrow,
-            autofocus: focused && view.key === this.launchedKey,
-            close: () => this.close(sessionId, view.key),
-            invalidate: () => this.requestUpdate(),
-          })}
+          ${view.ref.kind === "files" && !this.canAccessFiles(sessionId)
+            ? html`<p role="status">Files wait for a live conversation.</p>`
+            : view.kind.render(view.ref, {
+              sessionId,
+              visible: active && shown,
+              narrow: this.narrow,
+              autofocus: focused && view.key === this.launchedKey,
+              close: () => this.close(sessionId, view.key),
+              invalidate: () => this.requestUpdate(),
+            })}
         </section>`;
       })}
     </div>`;

@@ -9,6 +9,7 @@ import type {
   QueueSnapshot,
   RuntimeQuestion,
   SessionStatus,
+  SessionConnection,
 } from "../../api/sessions.ts";
 
 export const EMPTY_QUEUE: QueueSnapshot = { steering: [], followUp: [] };
@@ -76,7 +77,7 @@ export function canSubmitComposer(input: {
   hasImage: boolean;
   opening: boolean;
   sending: boolean;
-  connection: "live" | "reconnecting" | "stopped";
+  connection: SessionConnection;
 }): boolean {
   return Boolean(input.draft.trim() || input.hasImage) && !input.opening && !input.sending && input.connection === "live";
 }

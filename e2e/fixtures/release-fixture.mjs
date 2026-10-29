@@ -39,8 +39,7 @@ globalThis.fetch = async (input, init) => {
   return new Response("unexpected fixture endpoint", { status: 500 });
 };
 `);
-  const nodeOptions = [process.env.NODE_OPTIONS, `--import=${preload}`].filter(Boolean).join(" ");
-  return { env: { HUI_RELEASE_FIXTURE: file, NODE_OPTIONS: nodeOptions }, file,
+  return { env: { HUI_RELEASE_FIXTURE: file, NODE_OPTIONS: `--import=${JSON.stringify(preload)}` }, file,
     set: (value) => writeFile(file, JSON.stringify(value)) };
 }
 

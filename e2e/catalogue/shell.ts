@@ -1,9 +1,10 @@
-/** The SHELL use cases: Home, routes and deep links, history, drawers, the boot screen and slow loading, the command palette, the sidebar's collapse and search, notices and toasts, copying without the Clipboard API, and HUI's own update. */
+/** The SHELL use cases: Home, routes and deep links, history, drawers, the boot screen and slow loading, the command palette, the sidebar's collapse and search, notices and toasts, copying without the Clipboard API, HUI's own update, and reading a saved conversation offline. */
 import type { UseCase } from "./types.ts";
 
 const BEHAVIOUR = "SPEC.md#behaviour";
 const LAYOUT = "SPEC.md#what-the-layout-is";
 const GATEWAY = "SPEC.md#installed-gateway";
+const OFFLINE = "SPEC.md#offline-reading-and-connection-recovery";
 const UPDATES = "docs/api.md#browser-updates";
 const KEYBOARD = "SPEC.md#keyboard-only-affordances-stay-on-the-web-2026-10-21";
 const ESCAPE_ONLY = "Escape is a key press with no touch equivalent; the visible control that does the same is its own use case.";
@@ -375,6 +376,33 @@ const cases: UseCase[] = [
     surfaces: [],
     web: { excluded: "The browser saves downloads itself, and the save dialog belongs to HUI's Electron desktop app, which the web runner cannot drive; desktop/main.test.mjs covers the chosen path, the cancel and one dialog per download.", decision: "SPEC.md#desktop-downloads-ask-where-to-save-them" },
     ios: { excluded: "The save dialog is a macOS desktop app behaviour; the iPhone app has no file save dialog.", decision: "SPEC.md#desktop-downloads-ask-where-to-save-them" },
+  },
+  {
+    id: "SHELL-044",
+    title: "Open a saved conversation without the gateway",
+    behaviour: "Once a production build's offline files are ready, reloading a previously opened conversation with the gateway unreachable shows that conversation again: its saved message text, the sidebar row for it, and a note reading Saved conversation · <time>. Message text is saved on this device. The composer keeps its draft, the band under it reads Saved conversation · draft preserved. Send waits for a live connection. and Send message stays disabled.",
+    spec: [OFFLINE],
+    surfaces: [],
+    web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "SHELL-045",
+    title: "Return to a live conversation without resending the draft",
+    behaviour: "When the gateway is reachable again, the saved conversation becomes live: the saved note and the saved band go away, the header shows the session's own status, the draft is still in the composer with Send message enabled, and the message sent before going offline appears once. Sending the draft then posts it once, as a new turn.",
+    spec: [OFFLINE],
+    surfaces: [],
+    web: "required",
+    ios: "backlog",
+  },
+  {
+    id: "SHELL-046",
+    title: "Forget the saved conversations",
+    behaviour: "Forget saved conversations on a conversation saved on this device removes the saved copies from the browser, leaves the draft in the composer with Send message still disabled while the gateway is unreachable, and a reload with the gateway still unreachable no longer brings the conversation or its message text back.",
+    spec: [OFFLINE],
+    surfaces: [],
+    web: "required",
+    ios: "backlog",
   },
 ];
 

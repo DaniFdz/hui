@@ -124,11 +124,14 @@ for (const blocked of ["ticket", "handshake", "first snapshot"]) {
     const ready = new Promise<void>((resolve) => { delivered = resolve; });
     let established!: () => void;
     const opened = new Promise<void>((resolve) => { established = resolve; });
+    let receivedHeartbeat!: () => void;
+    const heartbeat = new Promise<void>((resolve) => { receivedHeartbeat = resolve; });
     const nativeWebSocket = globalThis.WebSocket;
     vi.stubGlobal("WebSocket", class extends nativeWebSocket {
       constructor(...args: ConstructorParameters<typeof nativeWebSocket>) {
         super(...args);
         this.addEventListener("open", () => established(), { once: true });
+        this.addEventListener("message", (event) => { if (String(event.data).includes('"heartbeat"')) receivedHeartbeat(); });
       }
     });
     let tickets = 0, streams = 0;
@@ -193,7 +196,10 @@ for (const blocked of ["ticket", "handshake", "first snapshot"]) {
     const expected = blocked === "first snapshot" ? 1 : 2;
     assert.equal(tickets, expected);
     assert.equal(states.at(-1), "live");
-    await vi.advanceTimersByTimeAsync(40_000);
+    await vi.advanceTimersByTimeAsync(20_000);
+    for (const socket of sockets.clients) socket.send(JSON.stringify({ event: "heartbeat", data: {} }));
+    await heartbeat;
+    await vi.advanceTimersByTimeAsync(20_000);
     assert.equal(tickets, expected, "a healthy idle stream keeps no establishment deadline");
   });
 }

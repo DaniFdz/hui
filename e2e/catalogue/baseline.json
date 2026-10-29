@@ -1123,6 +1123,10 @@
       "SET-078",
       "SET-079",
       "CHAT-073",
+      "CHAT-074",
+      "SHELL-044",
+      "SHELL-045",
+      "SHELL-046",
       "WORK-081",
       "SET-080",
       "SET-081"
@@ -1229,7 +1233,6 @@
     "Open parent",
     "Open settings navigation",
     "Open split view",
-    "Open terminal",
     "Output",
     "PI",
     "Pane actions",

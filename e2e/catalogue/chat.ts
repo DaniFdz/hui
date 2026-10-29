@@ -721,6 +721,16 @@ const cases: UseCase[] = [
     web: "required",
     ios: "backlog",
   },
+  {
+    id: "CHAT-074",
+    title: "Recover a silent chat connection without resending a draft",
+    behaviour: "When an idle chat connection stops receiving frames, HUI reconnects after 40 seconds. The draft remains editable while sending is disabled, and returning to a compatible gateway restores the conversation without sending the draft; the user can send it once explicitly.",
+    spec: ["SPEC.md#offline-reading-and-connection-recovery", "docs/api.md#post-__huisessionsidconnect"],
+    surfaces: ["route:POST /__hui/sessions/:id/connect"],
+    journeys: ["interrupted-recovery"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;

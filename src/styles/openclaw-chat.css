@@ -1477,7 +1477,6 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
   }
 }
 
-
 /* A user's own icon file: drawn in the mark's box, cropped to its circle, never wider than the chip. */
 .tool-call-group__icon,
 .tool-call-row__icon-img {

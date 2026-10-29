@@ -18,7 +18,7 @@ const checkout = fileURLToPath(new URL("../../", import.meta.url));
 /** A worker's connect command as HUI stores it: plain words, POSIX quoted. */
 const commandText = (words: readonly string[]) => words.map((word) => (/^[\w@%+=:,./-]+$/u.test(word) ? word : `'${word.replaceAll("'", `'"'"'`)}'`)).join(" ");
 
-type Receipt = { url: string; providerUrl: string; workspace: string };
+type Receipt = { url: string; providerUrl: string; workspace: string; receipt: string };
 type SessionList = { groups: { sessions: { id: string }[] }[] };
 
 export type Hui = {
@@ -26,6 +26,9 @@ export type Hui = {
   api<T>(method: string, path: string, body?: unknown): Promise<T>;
   createSession(input: { title: string; tool?: "pi" }): Promise<{ id: string }>;
   provider: { held(): Promise<void>; release(): Promise<void> };
+  network(mode: "online" | "offline" | "silent"): Promise<void>;
+  /** True once this browser has installed the open build's offline files and can serve its shell without the gateway. */
+  offlineFilesReady(): Promise<boolean>;
   open(path: string): Promise<void>;
   reload(): Promise<void>;
   appearance(): Promise<"light" | "dark">;
@@ -64,6 +67,16 @@ export const test = base.extend<{ hui: Hui }>({
     const sessionIds = async () =>
       (await api<SessionList>("GET", "/__hui/sessions")).groups.flatMap((group) => group.sessions.map((session) => session.id));
     const browser = () => (fixtures as unknown as { browser: Browser }).browser;
+    // The shared receipt is safe to print, so the harness token stays in the private one it names.
+    const token = (async () => (JSON.parse(await readFile(receipt.receipt, "utf8")) as { token: string }).token)();
+    const network = async (mode: "online" | "offline" | "silent") => {
+      const response = await fetch(`${receipt.url}/__verification/network`, {
+        method: "POST",
+        headers: { "x-hui-verification": await token, "content-type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      if (!response.ok) throw new Error(`network control answered ${response.status}: ${await response.text()}`);
+    };
 
     const botIds = async () => (await api<{ bots: { id: string }[] }>("GET", "/__hui/bots")).bots.map((bot) => bot.id);
     const workerIds = async () => (await api<{ workers: { id: string }[] }>("GET", "/__hui/workers")).workers.map((worker) => worker.id);
@@ -83,6 +96,12 @@ export const test = base.extend<{ hui: Hui }>({
         held: () => control("GET", "/control/wait-replay-ready"),
         release: () => control("POST", "/control/release-replay"),
       },
+      network,
+      offlineFilesReady: () => browser().evaluate(async () => {
+        if (!("serviceWorker" in navigator)) return false;
+        const registration = await navigator.serviceWorker.getRegistration();
+        return registration?.active?.state === "activated";
+      }),
       open: (path) => fixtures.app.open(path),
       reload: () => browser().reload(),
       appearance: () => browser().evaluate(() => (document.documentElement.dataset["themeMode"] === "dark" ? "dark" : "light")),
@@ -145,6 +164,8 @@ export const test = base.extend<{ hui: Hui }>({
       }),
     });
 
+    // A test that failed while offline must not leave the fixture unreachable.
+    await network("online");
     await control("POST", "/control/release-replay");
     // A bot's chat goes only with its bot.
     for (const id of await botIds()) if (!existingBots.has(id)) await api("DELETE", `/__hui/bots/${id}?permanent=1`);

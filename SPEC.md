@@ -1145,6 +1145,43 @@ HUI as a competing conversation store. If that refresh fails, HUI retains the
 completed projection and reports the error instead of replacing it with stale
 history; PI remains the durable authority for the next successful refresh.
 
+### Offline reading and connection recovery
+
+After a production build has finished preparing its offline files, a previously
+opened conversation can be reloaded without the gateway. HUI stores up to ten
+visited conversations in this browser for seven days, with at most 2 MiB of
+transcript per conversation. Large conversations retain their latest complete
+rows and say that only recent messages are saved. Cached text is a reading copy,
+never a second conversation authority. It includes neither pending questions nor
+queued actions. It is labelled **Saved conversation**, and messages remain drafts
+until the connection is live. Reconnection never sends a draft automatically.
+Files are available only with a live conversation: an open Files view waits for
+reconnection, keeping unsaved file edits.
+Browser storage is best effort; an unavailable, expired or evicted copy gives an
+explicit unavailable state. A live session list or a confirmed deletion removes
+saved conversations that no longer exist.
+
+Offline files include the production shell, styles, fonts and deferred chunks.
+Only same-origin static files are cached by the service worker; API requests and
+mutations always go to the gateway. Navigation tries the network first and uses
+the complete cached shell on connection failure or temporary gateway failure,
+not on an access denial. A failed update keeps the previous complete shell.
+A replacement worker waits for old tabs to close and never reloads an active
+draft. A cached page must check its build against the reachable gateway before
+restoring live controls; a different build offers **Reload HUI** instead. Offline
+reload requires HTTPS or localhost, where browsers allow service workers.
+
+Detailed chat connections receive an application heartbeat every 15 seconds.
+A heartbeat alone cannot make a conversation live, and 40 seconds without an
+incoming application frame after it is live causes a reconnect. A send unanswered for five seconds starts
+a liveness check, with another ten seconds for incoming traffic to prove the
+socket is alive. Returning to a visible tab or regaining connectivity can shorten
+a retry after a fresh gateway response. Live sockets are not replaced merely
+because the tab gained focus. Each connection cleans up its timers, probes and
+listeners when closed; terminal refusals do not retry. The existing jittered
+retry limit remains in force. Large frames stay compressed; compression settings
+change only with measured byte and CPU results, not a custom compression codec.
+
 Sessions run independently inside the long-lived gateway. Navigating from one
 chat to another never stops its turn, and separate sessions may be running or
 waiting at the same time. The browser keeps one lightweight multiplexed status
@@ -1165,7 +1202,10 @@ fails the read and shows the existing **Try again** action instead of leaving
 the conversation loading forever. Session-stream ticket acquisition and the
 WebSocket handshake each have a 20-second deadline and use the existing retry
 backoff. The handshake deadline ends when the socket opens, not when its first
-snapshot finishes downloading, so a large slow snapshot is not cut short.
+snapshot finishes downloading. A socket may take up to 60 seconds to deliver its
+first frame, so a connection lost immediately after the handshake cannot wait
+forever. A heartbeat before any state bounds the wait for state to 20 seconds
+from socket establishment.
 
 The Sessions page also projects ephemeral runtime cost: loaded runtime count,
 best-effort process-tree RSS, measured startup duration and the heaviest loaded

@@ -2,7 +2,8 @@
  * Serves the built web app from the package's dist directory: app routes get an uncached index.html and every
  * other path the matching file. Only GET and HEAD are served, and dot segments, backslashes, control
  * characters or paths resolving outside the root are 404s. Text and WebAssembly are sent compressed (cached per file),
- * content-hashed assets are cached by the browser for good and other files revalidate by ETag.
+ * content-hashed assets are cached by the browser for good and other files revalidate by ETag. The offline worker,
+ * build marker and inventory are never stored, so a release's build and worker are noticed on the next request.
  */
 import { readFile, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -32,6 +33,7 @@ const MIME: Record<string, string> = {
  * changes meaning: a browser may keep it for good and never ask again. */
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const REVALIDATE = "public, max-age=3600";
+const NEVER_STORED = new Set(["/offline-worker.js", "/offline-build.json", "/offline-inventory.json"]);
 
 /** Compressed copies of built files, keyed by path, size, mtime and encoding.
  * A release's `dist/` holds a few megabytes of text, so the bound only matters
@@ -94,7 +96,7 @@ export async function serveStatic(root: string, request: IncomingMessage, respon
     response.setHeader("Content-Type", type);
     response.setHeader("X-Content-Type-Options", "nosniff");
     // The page itself is never cached, so a release's new asset names load at once.
-    response.setHeader("Cache-Control", spa ? "no-store" : path.startsWith("/assets/") ? IMMUTABLE : REVALIDATE);
+    response.setHeader("Cache-Control", spa || NEVER_STORED.has(path) ? "no-store" : path.startsWith("/assets/") ? IMMUTABLE : REVALIDATE);
     const encoding = isCompressible(type) && file.size >= COMPRESSION_MIN_BYTES ? negotiateEncoding(request.headers["accept-encoding"]) : undefined;
     if (isCompressible(type)) response.setHeader("Vary", "Accept-Encoding");
     if (!spa) {

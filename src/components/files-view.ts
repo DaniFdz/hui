@@ -177,6 +177,7 @@ export class HuiFilesView extends HuiElement {
   /** The line to show once the file being opened has its editor. */
   private pendingLine: { line: number; column?: number | undefined } | undefined;
   private wasVisible = false;
+  private workPane: HTMLElementTagNameMap["hui-work-pane"] | null = null;
 
   constructor() {
     super();
@@ -208,12 +209,14 @@ export class HuiFilesView extends HuiElement {
   override connectedCallback() {
     super.connectedCallback();
     guardUnload();
+    this.workPane = this.closest("hui-work-pane");
     if (this.sessionId) this.subscribeTurnEnd();
     if (this.viewId) this.subscribeReveal();
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
+    this.generation += 1;
     this.stopTurnEnd?.();
     this.stopTurnEnd = undefined;
     this.stopReveal?.();
@@ -478,6 +481,7 @@ export class HuiFilesView extends HuiElement {
     const key = draftKey(this.sessionId, path);
     const sessionId = this.sessionId;
     const draft = openDraft(key, { content: file.content ?? "", etag: file.etag, writable: file.writable }, async ({ content, etag }) => {
+      if (this.workPane && !this.workPane.canAccessFiles(sessionId)) throw new Error("Files wait for a live conversation.");
       const result = await saveFile(sessionId, path, content, etag);
       if ("conflict" in result) {
         const current = result.conflict;
@@ -1059,7 +1063,7 @@ export class HuiFilesView extends HuiElement {
     } else if (text && !this.editorReady && !rendered) other = html`<div class="hui-files-empty"><p>Loading the editor…</p></div>`;
     return html`<div class="hui-files-body">
       <div class="hui-files-editor" ${ref(this.editorHost)} ?hidden=${!text || rendered || !this.editorReady}></div>
-      ${rendered && this.draft ? html`<article class="hui-files-markdown sidebar-markdown">${renderMarkdown(this.draft.content)}</article>` : nothing}
+      ${rendered && this.draft ? html`<article class="hui-files-markdown sidebar-markdown" data-testid="files-markdown">${renderMarkdown(this.draft.content)}</article>` : nothing}
       ${other}
     </div>`;
   }
