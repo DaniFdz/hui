@@ -304,7 +304,7 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
         <span class="tool-call-group__marks" aria-hidden="true">${marks}${kinds.length > 4 ? html`<span class="tool-call-group__mark tool-call-group__mark--more">+${kinds.length - 4}</span>` : nothing}</span>
         <span class=${running ? "tool-call-group__label tool-call-group__label--live" : "tool-call-group__label"}>${running ? "Using" : "Used"} ${tools} ${tools === 1 ? "tool" : "tools"}</span>
         ${running ? html`<span class="tool-call-group__spin" aria-hidden="true"></span>` : nothing}
-        <span class="tool-call-group__chevron" aria-hidden="true">${icons.chevron}</span>
+        <span class="tool-call-group__chevron" aria-hidden="true">${icons.chevronDown}</span>
       </summary>
       ${options.expanded ? html`<div class="tool-call-group__rows">
         ${items.map((item) => {
@@ -327,7 +327,7 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
               <span class=${status === "running" ? "tool-call-row__title tool-call-row__title--live" : "tool-call-row__title"}>${title}</span>
               ${meta ? html`<span class="tool-call-row__meta">${meta}</span>` : nothing}
               ${statusGlyph(status)}
-              <span class="tool-call-row__chevron" aria-hidden="true">${icons.chevron}</span>
+              <span class="tool-call-row__chevron" aria-hidden="true">${icons.chevronDown}</span>
             </button>
             ${open ? renderToolBody(item, options.onCopy) : nothing}
           </div>`;
