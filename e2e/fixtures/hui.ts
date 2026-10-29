@@ -242,6 +242,12 @@ const gatewayProxy = async (gateway: string) => {
         deliver: () => decide(forward),
         reject: (status, error) => answer(status, JSON.stringify({ error })),
         answer: (json) => answer(200, json),
+        answerEvery: async (json) => {
+          holds.delete(held);
+          answer(200, json);
+          const keep = { method, path, hold: async ({ response }: GatewayRequest) => { response.writeHead(200, { "content-type": "application/json" }).end(json); } };
+          holds.add(keep);
+        },
         deliverAndDrop: () => decide(async ({ incoming, body, response }) => {
           await deliverBehind(method, new URL(incoming.url ?? "/", gateway).href, body.toString() || undefined);
           response.destroy();
