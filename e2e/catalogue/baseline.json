@@ -1123,7 +1123,8 @@
       "CHAT-073",
       "WORK-081",
       "WORK-082",
-      "SET-080"
+      "SET-080",
+      "SET-081"
     ]
   },
   "unexercisedLabels": [
@@ -1149,7 +1150,6 @@
     "Close",
     "Close files navigator",
     "Close navigation",
-    "Close provider dialog",
     "Close reader",
     "Close session pane",
     "Close settings navigation",

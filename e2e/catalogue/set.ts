@@ -770,6 +770,16 @@ const cases: UseCase[] = [
     web: "backlog",
     ios: "backlog",
   },
+  {
+    id: "SET-081",
+    title: "Collapse provider configuration",
+    behaviour: "Provider configuration starts closed on Models visits and reloads, showing the configured-provider count while Add provider and status messages stay visible. There is no empty disclosure without a connection. Enter, Space or a pointer opens the existing account, quota and model controls. Folding and reopening keep model drafts and the nested model picker intact, including after a quota refresh. Cancelling Add provider keeps the group closed; a confirmed connection save opens it.",
+    spec: ["SPEC.md#behaviour", "docs/api.md#hui-managed-model-providers"],
+    surfaces: ["settings-page:models", "route:GET /__hui/providers"],
+    journeys: ["providers"],
+    web: "required",
+    ios: "backlog",
+  },
 ];
 
 export default cases;
