@@ -22,9 +22,10 @@ test("Answering its question with a name makes a new bot rename itself in the he
 
   await screen.getByLabel("Message").fill("E2E_SET_PROFILE Please go by Echo from now on.");
   await screen.getByRole("button", "Send message").tap();
-  await transcript.getByText("Ran 1 command").tap();
-  await expect(transcript.getByText("set_profile", { exact: true }).first()).toBeVisible();
   await expect(transcript.getByText(/^set_profile answered: Saved: you are Echo \(@echo\), Fixture tester/u)).toBeVisible();
+  const firstCall = transcript.getByRole("button", /^Used set profile/u);
+  if (!(await firstCall.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  await expect(firstCall).toBeVisible();
 
   await expect(header.getByText("Echo", { exact: true })).toBeVisible();
   await expect(header.getByText("Fixture tester · Idle")).toBeVisible();
@@ -38,7 +39,7 @@ test("Answering its question with a name makes a new bot rename itself in the he
   await screen.getByLabel("Message").fill(renamed);
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText(/^set_profile answered: Saved: you are Echo Two \(@echo-two\), Second role/u)).toBeVisible();
-  await expect(transcript.getByText("Ran 1 command")).toHaveCount(2);
+  await expect(transcript.getByText("Used 1 tool")).toHaveCount(2);
   await expect(header.getByText("Echo Two", { exact: true })).toBeVisible();
   await expect(header.getByText("Second role · Idle")).toBeVisible();
   await expect(screen.getByLabel("Echo Two: bot panel")).toBeVisible();
@@ -60,9 +61,10 @@ test("A new bot asks what to look after, then writes its own SOUL.md and says so
 
   await screen.getByLabel("Message").fill("E2E_WRITE_SOUL Look after my pull requests and write that down.");
   await screen.getByRole("button", "Send message").tap();
-  await transcript.getByText("Ran 1 command").tap();
-  await expect(transcript.getByText("write_soul", { exact: true }).first()).toBeVisible();
   await expect(transcript.getByText("I wrote my SOUL.md. To change it, just tell me.")).toBeVisible();
+  const soulCall = transcript.getByRole("button", /^Used write soul/u);
+  if (!(await soulCall.isVisible())) await transcript.getByText("Used 1 tool").tap();
+  await expect(soulCall).toBeVisible();
   await expect.poll(soul).toBe("# Who I am\nE2E_SOUL_TEXT: a terse fixture bot.");
 
   await screen.getByLabel("Message").fill("E2E_CONTEXT_HOLDS E2E_SOUL_TEXT what do you look after?");
@@ -74,5 +76,5 @@ test("A new bot asks what to look after, then writes its own SOUL.md and says so
   await screen.getByRole("button", "Send message").tap();
   await expect(transcript.getByText("I rewrote my SOUL.md: from now on I answer in one line.")).toBeVisible();
   await expect.poll(soul).toBe("# Who I am\nE2E_SOUL_V2: I answer in one line.");
-  await expect(transcript.getByText("Ran 1 command")).toHaveCount(2);
+  await expect(transcript.getByText("Used 1 tool")).toHaveCount(2);
 });
