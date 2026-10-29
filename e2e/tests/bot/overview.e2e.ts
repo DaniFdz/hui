@@ -1,0 +1,102 @@
+/** A bot's overview in its panel: its face, name, title and what it is doing with Edit; Routines and Triggers with a switch each and a + that opens their page on its add form; Activity with both kinds of run newest first; and Setup rows that each open their page, whose Back returns to the overview with the focus on that row, the whole in two columns when the panel is wide (BOT-019). */
+import { expect } from "e2e";
+import { test } from "../../fixtures/hui.ts";
+
+type Runs = { runs: { taskName: string; status: string }[] };
+
+test("the overview reads the bot's profile, routines, triggers, activity and setup, its rows open their page and take the focus back from Back, and a wide panel splits it in two columns", { tags: ["BOT-019"], platforms: ["web"] }, async ({ screen, hui }) => {
+  const bot = (await hui.api<{ bot: { id: string; sessionId: string } }>("POST", "/__hui/bots", { name: "Scout", title: "Fixture helper", soul: "# Who I am\nA terse fixture bot.\n" })).bot;
+  const task = async (name: string, prompt: string) => (await hui.api<{ task: { id: string } }>("POST", "/__hui/automation/tasks", {
+    name, sessionId: bot.sessionId, prompt, enabled: true,
+    schedule: { kind: "cron", expression: "0 8 * * *", timezone: "UTC" },
+  })).task;
+  const routine = await task("Morning check", "Check the build.");
+  const evening = await task("Evening check", "Check the deploy.");
+  const trigger = (await hui.api<{ trigger: { id: string } }>("POST", `/__hui/bots/${bot.id}/triggers`, { name: "Reviews" })).trigger;
+  const idle = () => expect.poll(async () => (await hui.api<{ bots: { id: string; status: string }[] }>("GET", "/__hui/bots")).bots.find((entry) => entry.id === bot.id)?.status).toBe("idle");
+
+  await hui.api("POST", `/__hui/automation/tasks/${routine.id}/run`);
+  await expect.poll(async () => (await hui.api<Runs>("GET", "/__hui/automation")).runs.find((run) => run.taskName === "Morning check")?.status).toBe("completed");
+  await idle();
+  await hui.api("POST", `/__hui/automation/tasks/${evening.id}/run`);
+  await expect.poll(async () => (await hui.api<Runs>("GET", "/__hui/automation")).runs.find((run) => run.taskName === "Evening check")?.status).toBe("completed");
+  await idle();
+  await hui.api("POST", `/__hui/bots/${bot.id}/triggers/${trigger.id}/test`);
+  await expect.poll(async () => (await hui.api<{ runs: { triggerName: string; status: string }[] }>("GET", `/__hui/bots/${bot.id}/triggers`)).runs.find((run) => run.triggerName === "Reviews")?.status).toBe("fired");
+  await idle();
+
+  await hui.open(`/bots/${bot.id}`);
+  const panel = screen.getByLabel("Scout: bot panel");
+  const back = screen.getByRole("button", "Back to Scout");
+  const row = (name: RegExp) => panel.getByRole("button", name);
+
+  await expect(panel.getByText("Scout", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Fixture helper · Idle")).toBeVisible();
+  await expect(screen.getByRole("button", "Edit Scout")).toBeVisible();
+  const [face] = (await hui.faces()).filter((entry) => entry.size === "lg");
+  expect(face).toEqual(expect.objectContaining({ emoji: "" }));
+  expect(face?.shape).toBeTruthy();
+  expect(face?.color).toMatch(/^#[0-9a-f]{6}$/iu);
+
+  await expect(panel.getByRole("switch", "Enable Morning check")).toBeChecked();
+  await expect(panel.getByRole("switch", "Enable Reviews")).toBeChecked();
+  await expect(row(/^Morning check Daily at /u)).toBeVisible();
+  await expect(row(/^Reviews (?!Fired)/u)).toBeVisible();
+
+  const at = async (name: RegExp) => (await row(name).boundingBox())!;
+  const [fired, later, earlier] = [await at(/^Reviews Fired · /u), await at(/^Evening check Completed · /u), await at(/^Morning check Completed · /u)];
+  expect(fired.y).toBeLessThan(later.y);
+  expect(later.y).toBeLessThan(earlier.y);
+  await expect(row(/^Morning check Completed · .*Fixture response\.$/u)).toBeVisible();
+
+  await row(/^Add routine$/u).tap();
+  await expect(panel.getByPlaceholder("Inbox digest")).toBeFocused();
+  await back.tap();
+  await expect(panel.getByText("Fixture helper · Idle")).toBeVisible();
+  await row(/^Add trigger$/u).tap();
+  await expect(panel.getByPlaceholder("Reviews")).toBeFocused();
+  await back.tap();
+  await expect(panel.getByText("Fixture helper · Idle")).toBeVisible();
+
+  for (const [setup, control] of [["Tagging", /^Who can tag it: Anyone$/u], ["Model", /^Model: Gateway default$/u], ["Calls", /^Call voice: Default /u]] as const) {
+    const setupRow = row(new RegExp(`^${setup} `, "u"));
+    await setupRow.tap();
+    await expect(panel.getByLabel("Settings")).toBeVisible();
+    await expect(panel.getByLabel(control)).toBeVisible();
+    await back.tap();
+    await expect(setupRow).toBeFocused();
+  }
+  await row(/^Workspace /u).tap();
+  await expect(screen.getByPlaceholder("~/")).toBeVisible();
+  await back.tap();
+  await expect(row(/^Workspace /u)).toBeFocused();
+  await row(/^Tools & skills /u).tap();
+  await expect(panel.getByText("Available tools", { exact: true })).toBeVisible();
+  await back.tap();
+  await expect(row(/^Tools & skills /u)).toBeFocused();
+  await row(/^Memory /u).tap();
+  await expect(panel.getByText("Add memory", { exact: true })).toBeVisible();
+  await back.tap();
+  await expect(row(/^Memory /u)).toBeFocused();
+  await expect(row(/^Tagging Anyone$/u)).toBeVisible();
+  await expect(row(/^Model Gateway default$/u)).toBeVisible();
+  await expect(row(/^Tools & skills Everything on$/u)).toBeVisible();
+  await expect(row(/^Workspace Its own folder$/u)).toBeVisible();
+
+  const setup = panel.getByText("Setup", { exact: true });
+  const routines = panel.getByText("Routines", { exact: true });
+  const activity = panel.getByText("Activity", { exact: true });
+  const stacked = async () => {
+    const [s, r, a] = [await setup.boundingBox(), await routines.boundingBox(), await activity.boundingBox()];
+    return { reading: [r!.y, a!.y, s!.y].map(Math.round), columns: Math.round(r!.x - s!.x) };
+  };
+  await expect.poll(async () => (await stacked()).columns).toBe(0);
+  const narrow = (await stacked()).reading;
+  expect(narrow).toEqual([...narrow].sort((left, right) => left - right));
+
+  await screen.getByLabel("Resize the bot panel").focus();
+  await hui.keyboard.down("End");
+  await hui.keyboard.up("End");
+  await expect.poll(async () => (await stacked()).columns > 200).toBe(true);
+  await expect.poll(async () => (await routines.boundingBox())!.y < (await setup.boundingBox())!.y).toBe(true);
+});

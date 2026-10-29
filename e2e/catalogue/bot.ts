@@ -11,7 +11,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-always-on-2026-10-20", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05", "docs/api.md#bots-are-always-on"],
     surfaces: ["route:GET /__hui/bots", "route:GET /__hui/bots/events"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -141,7 +141,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#delete-__huibotsid", "docs/api.md#routines"],
     surfaces: ["route:DELETE /__hui/bots/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -151,7 +151,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#post-__huibotsidrestore"],
     surfaces: ["route:POST /__hui/bots/:id/restore", "nav:bot"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -191,7 +191,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: ["route:GET /__hui/automation", "route:GET /__hui/bots/:id/triggers"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -301,7 +301,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id", "route:GET /__hui/directories"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
