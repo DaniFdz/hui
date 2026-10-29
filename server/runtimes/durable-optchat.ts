@@ -17,7 +17,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { Context } from "@earendil-works/chord";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
-  clampThinkingLevel, getSupportedThinkingLevels, Type, type Api, type Message, type Model, type Models, type ModelThinkingLevel, type Usage, type UserMessage,
+  clampThinkingLevel, getCurrentSystemMessage, getSupportedThinkingLevels, Type, type Api, type Message, type Model, type Models, type ModelThinkingLevel, type Usage, type UserMessage,
 } from "@earendil-works/pi-ai";
 import {
   AgentDoc, AssistantEntry, CompactionTask, defineDoc, defineExtension, defineTool, GenerationTask, hook, LiveDoc, section, ToolResultEntry, UserEntry,
@@ -230,10 +230,12 @@ function firstLine(memory: OptChatMemory, entry: number): number | undefined {
 // ── The fresh-turn request ───────────────────────────────────────────────────
 
 /**
- * OptChat's request (spec 7) from Durable's: every system message before the run's first input, in order (they carry
- * the prompt sections and the tool declarations), then that input with the view as its first text block, then every
- * later message of the run verbatim. The input is found by its timestamp; failing that (`matched: false`), the first
- * user message after the last answer or tool result stands in. Undefined when neither exists.
+ * OptChat's request (spec 7) from Durable's: the current prompt and tools folded from every system message before the
+ * run's first input, then that input with the view as its first text block, then every later message of the run
+ * verbatim. The input is found by its timestamp; failing that (`matched: false`), the first user message after the
+ * last answer or tool result stands in. Undefined when neither exists. The prompt is folded because every past system
+ * message carries a whole prompt: sending them all made pi-ai's context estimate count prompts no provider receives,
+ * and a long-lived chat's output budget collapsed to its floor (pi-ai's clampMaxTokensToContext).
  */
 export function freshTurn(messages: readonly Message[], input: UserMessage | undefined, view: string): { messages: Message[]; matched: boolean } | undefined {
   const candidates = input ? messages.flatMap((message, index) => message.role === "user" && message.timestamp === input.timestamp ? [index] : []) : [];
@@ -247,10 +249,11 @@ export function freshTurn(messages: readonly Message[], input: UserMessage | und
   const first = messages[split];
   if (first?.role !== "user") return undefined;
   const content = typeof first.content === "string" ? [{ type: "text" as const, text: first.content }] : first.content;
+  const system = getCurrentSystemMessage(messages.slice(0, split));
   return {
     matched,
     messages: [
-      ...messages.slice(0, split).filter((message) => message.role === "system"),
+      ...(system ? [system] : []),
       { ...first, content: [{ type: "text", text: view }, ...content] },
       ...messages.slice(split + 1),
     ],
