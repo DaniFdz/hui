@@ -74,6 +74,7 @@ export const PiImportDoc = defineDocFamily({
   initial: (huiSessionId: string) => ({
     huiSessionId, conversationId: null as number | null, source: "", sha256: "", importedAt: "",
   }),
+  checkpointWhen: () => false,
 });
 
 /** What a PI session file becomes in Durable. Pure: nothing is read or written. */

@@ -32,6 +32,7 @@ export const Settings = Type.Object({
     messageWidth: Type.Union([Type.Literal("compact"), Type.Literal("comfortable"), Type.Literal("wide")]),
     collapseTaskProgress: Type.Boolean(), sendShortcut: Type.Union([Type.Literal("enter"), Type.Literal("modifierEnter")]),
     githubEmbeds: Type.Boolean(), datadogEmbeds: Type.Boolean(),
+    toolMarks: Type.Record(Type.String(), Type.String()),
   }),
   profileName: Type.String(), profileHandle: Type.String(), branchPrefix: Type.String(),
   browser: BrowserSettings, codemode: Type.Object({ enabled: Type.Boolean() }), questions: Type.Object({ timeoutMinutes: Type.Number() }),
