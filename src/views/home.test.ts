@@ -488,7 +488,7 @@ async function renderWorkerSession(status: string, overrides: Record<string, unk
     session: { id: "s", title: "Build", group: "", cwd: "/repo", displayCwd: "devbox:/repo", tool: "durable", status, worker: { id: "w", name: "devbox" } },
     transcript: [{ kind: "message", role: "user", text: "long task" }], subagents: [], draft: "keep this draft", attachments: [],
     connection: "live", connectionNote: "", queue: { steering: [], followUp: [] }, models: [], expandedActivityIds: new Set(),
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {} },
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: false, datadogEmbeds: false, toolMarks: {}, toolIcons: {} },
     commandMenu: { open: false, commands: [], activeIndex: 0, paths: [] }, localPathMenu: { open: false, paths: [], activeIndex: 0 },
     findSession: (id: string) => ((overrides["groups"] ?? []) as { sessions: { id: string }[] }[]).flatMap((group) => group.sessions).find((session) => session.id === id),
     ...overrides,
@@ -643,7 +643,7 @@ test("messages HUI delivered from bots, sessions and routines show their sender 
 test("link previews and cards render on the latest user message and the latest reply only", async () => {
   const slack = "https://acme.slack.com/archives/C01234567/p1723456789012345";
   const html = await renderWorkerSession("idle", {
-    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {} },
+    chatPreferences: { collapseTaskProgress: false, sendShortcut: "enter", githubEmbeds: true, datadogEmbeds: true, toolMarks: {}, toolIcons: {} },
     transcript: [
       { kind: "message", id: "u1", role: "user", text: slack },
       { kind: "message", id: "a1", role: "assistant", text: "https://x.com/openai/status/123456789" },

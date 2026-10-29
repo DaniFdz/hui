@@ -13,6 +13,10 @@ import { codemodeToolPresentation, renderCodemodeToolBody } from "./codemode-too
 
 export type ToolItem = Extract<TranscriptItem, { kind: "tool" }>;
 
+/** Where the gateway serves a user's icon files (server/tool-icons.ts). The browser only builds the URL; it never
+ * reads a path, and an unset or unknown file falls back to the next mark. */
+const TOOL_ICON_BASE = "/__hui/tool-icons/";
+
 const READ_TOOLS = new Set(["read", "read_file", "readfile", "notebookread", "notebook_read"]);
 const EDIT_TOOLS = new Set(["edit", "edit_file", "apply_patch", "multiedit", "multi_edit"]);
 const WRITE_TOOLS = new Set(["write", "write_file", "create_file", "file_write"]);
@@ -213,6 +217,13 @@ function toolEmoji(item: ToolItem, marks: Readonly<Record<string, string>>): str
   return marks[key] ?? marks[name] ?? TOOL_EMOJI[key] ?? TOOL_EMOJI[name] ?? TOOL_EMOJI[toolKind(item)];
 }
 
+/** The user's own icon file for a call, resolved like the emoji: its CLI first, then its tool name. */
+export function toolIconName(item: ToolItem, icons: Readonly<Record<string, string>>): string | undefined {
+  const key = markKey(item);
+  const name = item.name.trim().toLowerCase();
+  return icons[key] ?? icons[name];
+}
+
 /** The mark a call carries: its CLI for a command, its kind for every other tool. */
 function toolIcon(item: ToolItem): { key: string; glyph: TemplateResult; color?: string } {
   if (toolKind(item) === "command") {
@@ -261,6 +272,8 @@ export type ToolCallGroupOptions = {
   onCopy: (text: string, key: string) => void;
   /** `chat.toolMarks`: the user's own emoji per CLI or tool name, over the built-in set. */
   marks?: Readonly<Record<string, string>>;
+  /** `chat.toolIcons`: the user's own image per CLI or tool name; it wins over an emoji or SVG mark. */
+  icons?: Readonly<Record<string, string>>;
 };
 
 /** The tool calls of one activity row as one card. */
@@ -268,14 +281,22 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
   const running = items.some((item) => statusOf(item) === "running");
   const tools = items.length;
   const custom = options.marks ?? {};
-  const distinct = new Map<string, { glyph: TemplateResult; color?: string; emoji?: string }>();
+  const iconsByName = options.icons ?? {};
+  const distinct = new Map<string, { glyph: TemplateResult; color?: string; emoji?: string; icon?: string }>();
   for (const item of items) {
     const icon = toolIcon(item);
-    if (!distinct.has(icon.key)) distinct.set(icon.key, { glyph: icon.glyph, ...(icon.color ? { color: icon.color } : {}), ...(toolEmoji(item, custom) ? { emoji: toolEmoji(item, custom)! } : {}) });
+    const own = toolIconName(item, iconsByName);
+    if (!distinct.has(icon.key)) distinct.set(icon.key, {
+      glyph: icon.glyph,
+      ...(icon.color ? { color: icon.color } : {}),
+      ...(own ? { icon: own } : toolEmoji(item, custom) ? { emoji: toolEmoji(item, custom)! } : {}),
+    });
   }
   const kinds = [...distinct];
   const marks = kinds.slice(0, 4).map(([key, mark]) => html`<span class="tool-call-group__mark" title=${key.replace(/^cli:/u, "")}
-    style=${mark.color ? `--tool-mark:${mark.color}` : nothing}>${mark.emoji ? html`<span class="tool-call-group__emoji" aria-hidden="true">${mark.emoji}</span>` : mark.glyph}</span>`);
+    style=${mark.color ? `--tool-mark:${mark.color}` : nothing}>${mark.icon
+      ? html`<img class="tool-call-group__icon" src=${`${TOOL_ICON_BASE}${encodeURIComponent(mark.icon)}`} alt="" />`
+      : mark.emoji ? html`<span class="tool-call-group__emoji" aria-hidden="true">${mark.emoji}</span>` : mark.glyph}</span>`);
   return html`<div class="tool-call-group">
     <details class="tool-call-group__disclosure" .open=${options.expanded}
       @toggle=${(event: Event) => options.onToggle((event.currentTarget as HTMLDetailsElement).open)}>
@@ -295,10 +316,14 @@ export function renderToolCallGroup(items: readonly ToolItem[], options: ToolCal
           const title = status === "running" ? label.running : label.done;
           const icon = toolIcon(item);
           const emoji = toolEmoji(item, custom);
+          const iconName = toolIconName(item, iconsByName);
           return html`<div class="tool-call-row" data-status=${status}>
             <button type="button" class=${open ? "tool-call-row__toggle is-open" : "tool-call-row__toggle"} aria-expanded=${String(open)}
               @click=${() => options.onRowToggle(expansionId, !open)}>
-              <span class="tool-call-row__icon${emoji ? " tool-call-row__icon--emoji" : icon.color ? " tool-call-row__icon--brand" : ""}" style=${icon.color ? `--tool-mark:${icon.color}` : nothing} aria-hidden="true">${emoji ?? icon.glyph}</span>
+              <span class="tool-call-row__icon${iconName ? " tool-call-row__icon--image" : emoji ? " tool-call-row__icon--emoji" : icon.color ? " tool-call-row__icon--brand" : ""}"
+                style=${icon.color ? `--tool-mark:${icon.color}` : nothing} aria-hidden="true">${iconName
+                  ? html`<img class="tool-call-row__icon-img" src=${`${TOOL_ICON_BASE}${encodeURIComponent(iconName)}`} alt="" />`
+                  : emoji ?? icon.glyph}</span>
               <span class=${status === "running" ? "tool-call-row__title tool-call-row__title--live" : "tool-call-row__title"}>${title}</span>
               ${meta ? html`<span class="tool-call-row__meta">${meta}</span>` : nothing}
               ${statusGlyph(status)}
