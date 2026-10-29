@@ -19,7 +19,7 @@ export type OwnedSurfaceProps = {
 const IDS = new Set(["labs", "profile", "about"]);
 export function isOwnedSurface(page: HuiPage): boolean { return IDS.has(page.id); }
 
-function header(title: string, subtitle: string) { return html`<header class="content-header content-header--settings"><div><div class="page-title">${title}</div><div class="page-subtitle">${subtitle}</div></div></header>`; }
+function header(title: string, subtitle: string) { return html`<header class="content-header content-header--settings"><div><div class="page-title" data-testid="page-title">${title}</div><div class="page-subtitle">${subtitle}</div></div></header>`; }
 
 function renderLabs(props: OwnedSurfaceProps) {
   const toggle = (key: keyof Settings["labs"], title: string, description: string) => html`

@@ -217,7 +217,7 @@ export function renderCommandPalette(props: CommandPaletteProps): TemplateResult
         .value=${props.query}
         @input=${(event: InputEvent) => props.onQuery((event.currentTarget as HTMLInputElement).value)}
       />
-      <div id="command-palette-listbox" class="cmd-palette__results" role="listbox">
+      <div id="command-palette-listbox" class="cmd-palette__results" role="listbox" data-testid="command-palette-results">
         ${items.length === 0 ? html`<div class="cmd-palette__empty" role="status"><span class="nav-item__icon" style="opacity:0.3;width:20px;height:20px">${icons.search}</span><span>No results</span></div>` : groups.map((group) => html`
           <div class="cmd-palette__group-label">${CATEGORY_LABELS[group.category]}</div>
           ${group.items.map((item) => {

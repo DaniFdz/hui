@@ -91,6 +91,9 @@ corrects a new kind of slowness, and enforce it with a type, check or test.
 ## Change Discipline
 
 - Keep behavior changes, tests, and contract documentation aligned in one task.
+- A user-visible change adds or updates its use case in `e2e/catalogue/` and ships with a shared test in
+  `e2e/tests/` that passes on the web (`npm run e2e`), unless the use case is excluded there; catching up baseline
+  use cases follows `e2e/AGENTS.md`, which has the catalogue and test rules.
 - Do not add dependencies, alter persisted formats, or delete PI/HUI user data
   without explicit approval. Tests use temporary directories and isolated processes.
 - A change that leaves existing persisted state behind (a format, location or

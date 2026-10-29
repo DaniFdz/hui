@@ -261,7 +261,7 @@ export class HuiContributionsPage extends LitElement {
     return html`
       <header class="content-header content-header--settings">
         <div>
-          <div class="page-title">Contributions</div>
+          <div class="page-title" data-testid="page-title">Contributions</div>
           <div class="page-subtitle">${calendar
             ? "When you worked in HUI sessions, and how long each one took."
             : html`Commits and pull requests of the GitHub accounts signed in to <code>gh</code>.`}</div>

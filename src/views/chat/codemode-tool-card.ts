@@ -8,81 +8,9 @@ import { openMessageContextMenu } from "../../lib/message-context-menu.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
 import { renderToolFileReference, syncToolOverflow } from "./read-tool-card.ts";
 import { shouldToggleToolDisclosure } from "./command-tool-card.ts";
+import { codemodeOutcome, codemodeSummary, codemodeToolPresentation, formatCallDuration, type CodemodeCall } from "../../lib/tool-cards.ts";
 
 type Tool = Extract<TranscriptItem, { kind: "tool" }>;
-export type CodemodeCall = { name: string; args: string; status: "running" | "ok" | "error" | "cancelled"; durationMs?: number; error?: string };
-export type CodemodeView = {
-  code: string;
-  calls: CodemodeCall[];
-  /** The tools called, in first-call order: `read ×3, bash`. */
-  tools: string;
-  state: "running" | "completed" | "failed";
-  failedCalls: number;
-  /** What the model got, without the "Script completed / Wall time / Output:" header. */
-  output: string;
-  wallSeconds?: string;
-  fullOutputPath?: string;
-};
-
-const STATUSES = new Set(["running", "ok", "error", "cancelled"]);
-const HEADER = /^Script (completed|failed)\nWall time ([\d.]+) seconds\nOutput:\n?/u;
-
-function isCall(value: unknown): value is CodemodeCall {
-  const call = value as Partial<CodemodeCall> | null;
-  return typeof call?.name === "string" && STATUSES.has(call.status as string);
-}
-
-/** Transcript items are replaced, never mutated: one view per item. */
-const views = new WeakMap<Tool, CodemodeView | null>();
-
-export function codemodeToolPresentation(item: Tool): CodemodeView | null {
-  let view = views.get(item);
-  if (view === undefined) views.set(item, view = presentCodemode(item));
-  return view;
-}
-
-function presentCodemode(item: Tool): CodemodeView | null {
-  const code = (item.args as { code?: unknown } | undefined)?.code;
-  if (item.name !== "codemode" || typeof code !== "string") return null;
-  const details = (item.details ?? {}) as { calls?: unknown; fullOutputPath?: unknown };
-  const calls = Array.isArray(details.calls) ? details.calls.filter(isCall) : [];
-  const counts = new Map<string, number>();
-  for (const call of calls) counts.set(call.name, (counts.get(call.name) ?? 0) + 1);
-  const named = [...counts].map(([name, count]) => count > 1 ? `${name} ×${count}` : name);
-  const header = HEADER.exec(item.output ?? "");
-  const running = (item.status ?? "running") === "running";
-  return {
-    code,
-    calls,
-    tools: named.length > 4 ? `${named.slice(0, 4).join(", ")} +${named.length - 4} more` : named.join(", "),
-    state: running ? "running" : item.failed || item.status === "failed" || header?.[1] === "failed" ? "failed" : "completed",
-    failedCalls: calls.filter((call) => call.status === "error").length,
-    output: (header ? item.output!.slice(header[0].length) : item.output ?? "").replace(/\n+$/u, ""),
-    ...(header ? { wallSeconds: header[2]! } : {}),
-    ...(typeof details.fullOutputPath === "string" ? { fullOutputPath: details.fullOutputPath } : {}),
-  };
-}
-
-export function formatCallDuration(ms: number): string {
-  if (ms < 1_000) return `${Math.round(ms)}ms`;
-  if (ms < 60_000) return `${(ms / 1_000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1_000)}s`;
-}
-
-/** The row's line after the name: the tools the script called. Its badge says what failed. */
-export function codemodeSummary(view: CodemodeView): string {
-  if (!view.calls.length) return view.state === "running" ? "Starting…" : "no tool calls";
-  return view.state === "running" ? `${view.tools}…` : view.tools;
-}
-
-function outcome(view: CodemodeView): string {
-  const calls = view.calls.length;
-  const cancelled = view.calls.filter((call) => call.status === "cancelled").length;
-  const parts = [`${calls} call${calls === 1 ? "" : "s"}`, ...(view.failedCalls ? [`${view.failedCalls} failed`] : []), ...(cancelled ? [`${cancelled} cancelled`] : [])].join(", ");
-  if (view.state === "running") return `Running · ${parts} so far`;
-  const time = view.wallSeconds ? ` ${view.state === "failed" ? "after" : "in"} ${view.wallSeconds}s` : "";
-  return `${view.state === "failed" ? "Failed" : "Completed"}${time} · ${parts}`;
-}
 
 const STATUS_LABEL: Record<CodemodeCall["status"], string> = { running: "Running", ok: "Done", error: "Failed", cancelled: "Cancelled" };
 const STATUS_GLYPH: Record<CodemodeCall["status"], string> = { running: "…", ok: "✓", error: "✗", cancelled: "⊘" };
@@ -161,6 +89,6 @@ export function renderCodemodeToolBody(item: Tool, options: { onCopy: (text: str
       <pre class="chat-tool-card__block-content"><code>${errorAt < 0 ? view.output : html`${view.output.slice(0, errorAt)}<span class="chat-tool-codemode__script-error">${view.output.slice(errorAt)}</span>`}</code></pre>
       ${view.fullOutputPath ? html`<div class="chat-tool-kv"><div class="chat-tool-kv__row"><span class="chat-tool-kv__key">Full output:</span><span class="chat-tool-kv__value">${renderToolFileReference(view.fullOutputPath)}</span></div></div>` : nothing}
     </section>` : nothing}
-    <div class="chat-tool-card__outcome">${outcome(view)}</div>
+    <div class="chat-tool-card__outcome">${codemodeOutcome(view)}</div>
   </div></div>`;
 }

@@ -103,6 +103,11 @@ export function workViewKey(ref: WorkViewRef): string {
 
 /* ── state ────────────────────────────────────────────────────────────────── */
 
+/** The Work pane's words that a shared test reads. */
+export const WORK_PANE_LABEL = "Work pane";
+export const WORK_PANE_SHOW = "Show Work pane";
+export const WORK_PANE_OPEN_VIEW = "Open Work view";
+
 export const WORK_PANE_KEY = "hui.work-pane.v1";
 export const WORK_PANE_DEFAULT_WIDTH = 560;
 export const WORK_PANE_MIN_WIDTH = 320;

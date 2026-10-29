@@ -32,7 +32,7 @@ function leaves(value: unknown, path: string): string[] {
 
 export async function browserSurfaces(): Promise<string[]> {
   const navigation = await read("src/lib/navigation.ts");
-  const projection = await read("src/views/chat/projection.ts");
+  const projection = await read("src/lib/chat-projection.ts");
   const menu = await read("src/lib/session/menu-shortcuts.ts");
   const workPane = await read("src/lib/work-pane.ts");
   const transcript = await read("src/api/sessions.ts");

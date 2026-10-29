@@ -1,14 +1,16 @@
 name: E2E
-# The shared e2e suite on the web: e2e/tests/ against a disposable gateway, in headless Chromium.
+# The shared e2e suite: e2e/tests/ against a disposable gateway, on the web in headless Chromium and on iOS in the
+# "HUI iPhone" simulator.
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  # A newer push to the same branch or pull request supersedes a run in progress.
-  group: e2e-${{ github.ref }}
+  # A newer push to the same branch or pull request supersedes a run in progress; a manual run supersedes nothing.
+  group: e2e-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || '' }}
   cancel-in-progress: true
 jobs:
   web:

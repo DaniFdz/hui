@@ -6,27 +6,37 @@ import {
   APP_SHELL_DRAWER_MEDIA,
   filterSessionGroups,
   isSessionGroupCollapsed,
-  normalizeCustomSessionIcon,
   PRIMARY_NAV,
   renderSidebar,
-  sessionAccessibleName,
-  sessionMoveGroupOptions,
   setNavigationDrawer,
   SHELL_DRAWER_DEFAULT_OPEN,
   SHELL_NARROW_MEDIA,
 } from "./shell.ts";
+import { sessionAccessibleName } from "../lib/session/labels.ts";
 import {
   adaptedSettingsCopy,
   filterSettingsPages,
   piSettingsState,
+  renderSettingsPage,
   setSettingsDrawer,
   SETTINGS_DRAWER_DEFAULT_OPEN,
   SETTINGS_PAGES,
+  type SettingsProps,
 } from "./settings.ts";
+import { ACCENTS } from "../lib/theme/appearance.ts";
+import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
 import type { SessionGroup, SessionView } from "../api/sessions.ts";
 import { DEFAULT_SIDEBAR_SESSION_OPTIONS } from "../lib/session/sidebar-sessions.ts";
 import { HUI_PAGES, availablePages } from "../lib/pages.ts";
-import { DEFAULT_SETTINGS } from "../lib/settings/settings.ts";
+
+function renderedText(value: unknown): string {
+  if (Array.isArray(value)) return value.map(renderedText).join("");
+  if (value && typeof value === "object" && "strings" in value && "values" in value) {
+    const template = value as { strings: readonly string[]; values: unknown[] };
+    return template.strings.map((part, i) => part + renderedText(template.values[i])).join("");
+  }
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
 
 function session(
   id: string,
@@ -201,17 +211,10 @@ test("session accessible names expose live status, tool and pinned state", () =>
     sessionAccessibleName({ ...base, status: "idle", background: true }),
     "Fix navigation, status idle, watcher or subagent running, tool pi",
   );
-});
-
-test("session move targets always include OTHER once and preserve stored group labels", () => {
-  assert.deepEqual(sessionMoveGroupOptions(SESSION_GROUPS), [
-    { label: "OTHER", value: "" },
-    { label: "FRONTEND", value: "Frontend" },
-    { label: "RUNTIME", value: "Runtime" },
-  ]);
-  assert.deepEqual(sessionMoveGroupOptions([{ label: "ungrouped", sessions: [] }]), [
-    { label: "OTHER", value: "" },
-  ]);
+  assert.equal(
+    sessionAccessibleName({ ...base, jiraIssues: [{ key: "CI-1", url: "https://x/CI-1", status: "To Do" }, { key: "CI-2", url: "https://x/CI-2", status: "In Progress", summary: "Fix flake" }] }, ["draft"]),
+    "Fix navigation, status running, tool pi, draft, Jira CI-2, in progress: Fix flake, 1 more linked",
+  );
 });
 
 test("session rows expose group drag and a keyboard-accessible move menu", () => {
@@ -238,9 +241,6 @@ test("session menu mirrors the compatible OpenClaw action hierarchy", () => {
 test("session appearance picker centers reset controls and accepts custom emoji", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
-  assert.equal(normalizeCustomSessionIcon("  🐧  "), "🐧");
-  assert.equal(normalizeCustomSessionIcon("   "), undefined);
-  assert.equal(normalizeCustomSessionIcon("x".repeat(33)), undefined);
   assert.match(source, /aria-label="Custom emoji…"/);
   assert.match(source, /class="session-menu__icon-custom-input"/);
   assert.match(source, /\$\{icons\.circleX\}/);
@@ -284,21 +284,23 @@ test("session rows mirror OpenClaw run and attention states", () => {
   const source = readFileSync(new URL("./shell.ts", import.meta.url), "utf8");
   const styles = readFileSync(new URL("../styles/openclaw-shell.css", import.meta.url), "utf8");
   const components = readFileSync(new URL("../styles/openclaw-reference/components.css", import.meta.url), "utf8");
+  const glyph = readFileSync(new URL("../lib/session/labels.ts", import.meta.url), "utf8");
 
-  assert.match(source, /session\.status === "waiting"[\s\S]*?Waiting for your answer/);
-  assert.match(source, /session\.status === "error"[\s\S]*?Session failed/);
+  assert.match(glyph, /session\.status === "waiting"[\s\S]*?Waiting for your answer/);
+  assert.match(glyph, /session\.status === "error"[\s\S]*?Session failed/);
   // A watcher or a subagent below it keeps an idle session spinning.
-  assert.match(source, /const busy = session\.status === "running" \|\| background;/);
+  assert.match(glyph, /const busy = session\.status === "running" \|\| background;/);
   assert.match(source, /busy \|\| session\.creating \? html`<span class="session-glyph session-glyph--running session-glyph--bare"/);
   assert.match(source, /class="session-glyph__ring"/);
   assert.match(components, /\.session-glyph__ring[\s\S]*?animation: session-run-spin 1\.6s linear infinite/);
   assert.match(styles, /\.sidebar-session-attention__icon--question \{ color: var\(--warn\)/);
   assert.match(styles, /\.sidebar-session-attention__icon--error \{ color: var\(--danger\)/);
   // A session out of reach is calm: its own muted mark, labelled by unreachableHost.
-  assert.match(source, /away \? \{ label: away\.status, icon: icons\.plug, tone: "away" \}/);
+  assert.match(glyph, /away \? \{ label: away\.status, tone: "away" as const \}/);
+  assert.match(source, /away: icons\.plug/);
   assert.match(styles, /\.sidebar-session-attention__icon--away \{ color: var\(--status-stopped\)/);
-  assert.match(source, /const unread = session\.unread === true && !attention/);
-  assert.doesNotMatch(source, /const unread =[^;]*!selected/);
+  assert.match(glyph, /const unread = session\.unread === true && !attention/);
+  assert.doesNotMatch(glyph, /const unread =[^;]*!selected/);
   assert.match(source, /class="sidebar-session-unread-dot"/);
   assert.match(styles, /\.sidebar-session-unread-dot[\s\S]*?background: var\(--accent\)/);
   assert.match(components, /prefers-reduced-motion: reduce[\s\S]*?\.session-glyph__ring/);
@@ -448,8 +450,8 @@ test("the shell retains reference chrome geometry with header utilities", () => 
   // The header's only control is the collapse toggle, first in the top row: New session
   // and search left it on 2026-10-06 (owner). New sessions start from a group's + or
   // the Ctrl+K palette, which also finds sessions; the mobile top bar keeps its search.
-  const header = source.slice(source.indexOf('<div class="sidebar-brand">'), source.indexOf('<label class="sidebar-search'));
-  assert.match(header, /^<div class="sidebar-brand">\s*<button type="button" class="[^"]*sidebar-brand__collapse"/u);
+  const header = source.slice(source.indexOf('<div class="sidebar-brand"'), source.indexOf('<label class="sidebar-search'));
+  assert.match(header, /^<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"/u);
   assert.deepEqual([...header.matchAll(/aria-label=(?:"([^"]+)"|\$\{(\w+)\})/gu)].map((match) => match[1] ?? match[2]), ["Collapse sidebar"]);
   assert.doesNotMatch(source, /sidebar-brand__(new-thread|search|utilities|actions)/u);
   assert.match(source, /aria-label=\$\{`New session in \$\{sessionGroupLabel\(group\.label\)\}`\}/u);
@@ -476,7 +478,7 @@ test("the Bots tab's Agents | Bots switch tops the sidebar, and Bots shows only 
   // The top row: the collapse toggle, then the switch. Nothing sits above them, and each
   // tab has a sidebar of its own below.
   const top = sidebar.slice(at('<div class="sidebar-shell sidebar-drawer__body">'), at('<label class="sidebar-search'));
-  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<\/div>\s*$/u);
+  assert.match(top, /^<div class="sidebar-shell sidebar-drawer__body">\s*<div class="sidebar-brand" data-testid="sidebar-header">\s*<button type="button" class="[^"]*sidebar-brand__collapse"[^>]*>\$\{icons\.panelLeftClose\}<\/button>\s*<div class="sidebar-switch">\$\{renderSidebarTabs\(props\.bots\)\}<\/div>\s*<\/div>\s*$/u);
   assert.ok(at('<label class="sidebar-search') < at('<nav class="sidebar-nav"'));
   assert.equal(sidebar.split("renderSidebarTabs(").length, 2, "one switch, not one per list");
   // Bots: no primary navigation, and the toolbar names the roster.
@@ -566,14 +568,24 @@ test("security renders implemented settings instead of placeholders", () => {
 });
 
 test("appearance exposes OpenClaw accent presets and a custom color", () => {
-  const source = readFileSync(new URL("./settings.ts", import.meta.url), "utf8");
+  const result = renderedText(
+    renderSettingsPage({
+      page: "appearance",
+      settings: { ...DEFAULT_SETTINGS, accent: "#ff8066" },
+      previews: [],
+      variant: "dark",
+      themeId: "claw",
+    } as unknown as SettingsProps),
+  );
 
-  for (const hex of ["#ff5c5c", "#ff8066", "#f5b942", "#52c99a", "#35b9b0", "#5b9cf6", "#a78bfa", "#f472b6", "#8795a8"]) {
-    assert.match(source, new RegExp(hex));
+  for (const accent of ACCENTS) {
+    assert.match(result, new RegExp(accent.label));
+    if (accent.value) {
+      assert.match(result, new RegExp(accent.value));
+    }
   }
-  assert.match(source, /type="color" aria-label="Custom accent color"/);
-  assert.match(source, /props\.onSelectAccent\(item\.value\)/);
-  assert.match(source, /renderAccentSection\(props\)/);
+  assert.match(result, /type="color" aria-label="Custom accent color"/);
+  assert.match(result, /data-testid="settings-current-accent">Coral</);
 });
 
 test("app and settings drawers use the same narrow CSS breakpoint", () => {

@@ -39,6 +39,7 @@ import {
   uploadFile,
 } from "../api/files.ts";
 import { onFilesViewReveal, readFilesViewState, takeFilesViewReveal, writeFilesViewState, type FilesViewReveal, type MarkdownDisplayMode } from "../lib/files/view-state.ts";
+import { FILES_COPY, filesBytes, filesCreateIn, filesCreatedLabel, filesDeleteLabel, filesDeleteRisks, filesDeleteTitle, filesNoMatch } from "../lib/files/copy.ts";
 import { onTurnEnd } from "../lib/session/turn-end.ts";
 import type { FileEditorHandle } from "../lib/files/editor.ts";
 
@@ -68,18 +69,6 @@ const parentOf = (path: string) => (path.includes("/") ? path.slice(0, path.last
 const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const joinPath = (folder: string, name: string) => (folder ? `${folder}/${name}` : name);
 const within = (path: string, folder: string) => path === folder || path.startsWith(`${folder}/`);
-
-export function formatBytes(size: number): string {
-  if (size < 1024) return `${size} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = size / 1024;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`;
-}
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -838,14 +827,14 @@ export class HuiFilesView extends HuiElement {
   }
 
   private get rootName(): string {
-    return this.info?.available ? this.info.name : "the working directory";
+    return this.info?.available ? this.info.name : FILES_COPY.workingDirectory;
   }
 
   /* ── rendering ── */
 
   private renderRow(entry: FileEntry, depth: number): TemplateResult {
     const indent = `padding-inline-start: ${8 + depth * 14}px`;
-    const remove = html`<button type="button" class="hui-files-row__delete btn btn--ghost btn--icon" aria-label=${`Delete ${entry.name}`}
+    const remove = html`<button type="button" class="hui-files-row__delete btn btn--ghost btn--icon" aria-label=${filesDeleteLabel(entry.name)}
       data-hui-tooltip="Delete" @click=${() => this.askDelete(entry)}>${icons.trash}</button>`;
     if (entry.kind === "directory") {
       const open = this.expanded.has(entry.path);
@@ -885,7 +874,7 @@ export class HuiFilesView extends HuiElement {
           <span class="hui-files-row__chevron"></span>
           <span class="hui-files-row__icon">${entry.kind === "symlink" ? linkIcon : fileIcon}</span>
           <span class="hui-files-row__name">${entry.name}</span>
-          <span class="hui-files-row__reason">${entry.kind === "symlink" ? "link outside this folder" : "not a regular file"}</span>
+          <span class="hui-files-row__reason">${entry.kind === "symlink" ? FILES_COPY.linkOutside : FILES_COPY.notRegularFile}</span>
         </span>
         ${entry.kind === "symlink" ? remove : nothing}
       </div>
@@ -895,20 +884,20 @@ export class HuiFilesView extends HuiElement {
   private renderChildren(state: DirectoryState | undefined, depth: number): TemplateResult {
     const pad = `padding-inline-start: ${8 + depth * 14 + 20}px`;
     if (!state?.entries) {
-      return html`<p class="hui-files-tree__note" style=${pad}>${state?.error ?? "Loading…"}</p>`;
+      return html`<p class="hui-files-tree__note" style=${pad}>${state?.error ?? FILES_COPY.loadingFolder}</p>`;
     }
     return html`${state.error ? html`<p class="hui-files-tree__note is-error" style=${pad} role="alert">${state.error}</p>` : nothing}
       ${state.entries.length
         ? html`<ul class="hui-files-tree__list" role="group">${state.entries.map((entry) => this.renderRow(entry, depth))}</ul>`
-        : html`<p class="hui-files-tree__note" style=${pad}>Empty folder</p>`}
-      ${state.truncated ? html`<p class="hui-files-tree__note" style=${pad}>Only the first 2,000 entries are listed; use the filter to find the rest.</p>` : nothing}`;
+        : html`<p class="hui-files-tree__note" style=${pad}>${FILES_COPY.emptyFolder}</p>`}
+      ${state.truncated ? html`<p class="hui-files-tree__note" style=${pad}>${FILES_COPY.truncated}</p>` : nothing}`;
   }
 
   private renderSearch(): TemplateResult {
     if (this.searchError) return html`<p class="hui-files-tree__note is-error" role="alert">${this.searchError}</p>`;
     const search = this.search;
     if (!search) return html`<p class="hui-files-tree__note">Searching…</p>`;
-    if (!search.entries.length) return html`<p class="hui-files-tree__note">No file matches “${search.query}”.</p>`;
+    if (!search.entries.length) return html`<p class="hui-files-tree__note">${filesNoMatch(search.query)}</p>`;
     return html`<ul class="hui-files-tree__list">
       ${search.entries.map((entry) => {
         const folder = parentOf(entry.path);
@@ -929,16 +918,16 @@ export class HuiFilesView extends HuiElement {
   private renderNavigator(): TemplateResult {
     const info = this.info;
     const root = this.dirs.get("");
-    return html`<aside class="hui-files-nav" aria-label="Files navigator"
+    return html`<aside class="hui-files-nav" aria-label=${FILES_COPY.navigator}
       @dragover=${this.dragOver} @dragleave=${this.dragLeave} @drop=${this.drop}>
       <div class="hui-files-nav__header">
         <span class="hui-files-nav__root" data-hui-tooltip=${info?.available ? info.root : ""}>
           <span class="hui-files-row__icon">${icons.folder}</span>
-          <span class="hui-files-nav__root-name">${info?.available ? info.name : "Files"}</span>
+          <span class="hui-files-nav__root-name">${info?.available ? info.name : FILES_COPY.view}</span>
         </span>
         <span class="hui-files-nav__actions">
-          <button type="button" class="btn btn--ghost btn--icon" aria-label="New file" data-hui-tooltip="New file" @click=${() => this.openCreate("file")}>${filePlusIcon}</button>
-          <button type="button" class="btn btn--ghost btn--icon" aria-label="New folder" data-hui-tooltip="New folder" @click=${() => this.openCreate("directory")}>${folderPlusIcon}</button>
+          <button type="button" class="btn btn--ghost btn--icon" aria-label=${FILES_COPY.newFile} data-hui-tooltip=${FILES_COPY.newFile} @click=${() => this.openCreate("file")}>${filePlusIcon}</button>
+          <button type="button" class="btn btn--ghost btn--icon" aria-label=${FILES_COPY.newFolder} data-hui-tooltip=${FILES_COPY.newFolder} @click=${() => this.openCreate("directory")}>${folderPlusIcon}</button>
           <button type="button" class="btn btn--ghost btn--icon" aria-label="Upload files" data-hui-tooltip="Upload files" @click=${this.chooseUpload}>${uploadIcon}</button>
           <button type="button" class="btn btn--ghost btn--icon" aria-label="Refresh" data-hui-tooltip="Refresh" @click=${() => void this.refresh()}>${icons.refresh}</button>
           ${this.narrow ? html`<button type="button" class="btn btn--ghost btn--icon" aria-label="Close files navigator" data-hui-tooltip="Close" @click=${() => { this.drawerOpen = false; }}>${icons.close}</button>` : nothing}
@@ -947,7 +936,7 @@ export class HuiFilesView extends HuiElement {
       </div>
       <label class="hui-files-nav__filter">
         <span class="hui-files-row__icon">${icons.search}</span>
-        <input class="hui-files-nav__filter-input" type="search" placeholder="Filter files" aria-label="Filter files" autocomplete="off" spellcheck="false"
+        <input class="hui-files-nav__filter-input" type="search" placeholder=${FILES_COPY.filter} aria-label=${FILES_COPY.filter} autocomplete="off" spellcheck="false"
           .value=${this.filter} @input=${this.onFilterInput}
           @keydown=${(event: KeyboardEvent) => { if (event.key === "Escape" && this.filter) { event.preventDefault(); this.filter = ""; this.search = undefined; this.searchError = ""; } }} />
       </label>
@@ -958,9 +947,9 @@ export class HuiFilesView extends HuiElement {
             ? root.entries.length
               ? html`${root.error ? html`<p class="hui-files-tree__note is-error" role="alert">${root.error}</p>` : nothing}
                 <ul class="hui-files-tree__list" role="group">${root.entries.map((entry) => this.renderRow(entry, 0))}</ul>
-                ${root.truncated ? html`<p class="hui-files-tree__note">Only the first 2,000 entries are listed; use the filter to find the rest.</p>` : nothing}`
-              : html`<p class="hui-files-tree__note">This folder is empty. Create a file or drop files here.</p>`
-            : html`<p class="hui-files-tree__note ${root?.error ? "is-error" : ""}">${root?.error ?? "Loading files…"}</p>`}
+                ${root.truncated ? html`<p class="hui-files-tree__note">${FILES_COPY.truncated}</p>` : nothing}`
+              : html`<p class="hui-files-tree__note">${FILES_COPY.emptyRoot}</p>`
+            : html`<p class="hui-files-tree__note ${root?.error ? "is-error" : ""}">${root?.error ?? FILES_COPY.loading}</p>`}
       </div>
       ${this.uploadStatus ? html`<p class="hui-files-nav__status" role="status">${this.uploadStatus}</p>` : nothing}
     </aside>`;
@@ -996,7 +985,7 @@ export class HuiFilesView extends HuiElement {
           <button type="button" class="hui-files-segmented__option" aria-pressed=${this.markdownMode === "rendered" ? "true" : "false"} @click=${() => this.setMarkdownMode("rendered")}>Rendered</button>
         </span>` : nothing}
       ${this.file && this.file.kind !== "text" ? html`<button type="button" class="btn btn--ghost btn--icon" aria-label="Download" data-hui-tooltip="Download" @click=${() => void this.download()}>${icons.download}</button>` : nothing}
-      ${entry ? html`<button type="button" class="btn btn--ghost btn--icon" aria-label=${`Delete ${entry.name}`} data-hui-tooltip="Delete file" @click=${() => this.askDelete(entry)}>${icons.trash}</button>` : nothing}
+      ${entry ? html`<button type="button" class="btn btn--ghost btn--icon" aria-label=${filesDeleteLabel(entry.name)} data-hui-tooltip="Delete file" @click=${() => this.askDelete(entry)}>${icons.trash}</button>` : nothing}
     </header>`;
   }
 
@@ -1040,9 +1029,9 @@ export class HuiFilesView extends HuiElement {
     } else if (file.kind === "binary" || file.kind === "too-large") {
       other = html`<div class="hui-files-empty hui-files-meta">
         <p><strong>${file.name}</strong></p>
-        <p>${file.kind === "binary" ? "Binary file: it has no text to show here." : `Too large to edit here (${formatBytes(file.size)}; the limit is 2 MB).`}</p>
+        <p>${file.kind === "binary" ? "Binary file: it has no text to show here." : `Too large to edit here (${filesBytes(file.size)}; the limit is 2 MB).`}</p>
         <dl>
-          <dt>Size</dt><dd>${formatBytes(file.size)}</dd>
+          <dt>Size</dt><dd>${filesBytes(file.size)}</dd>
           <dt>Modified</dt><dd>${new Date(file.mtime).toLocaleString()}</dd>
         </dl>
         <button type="button" class="btn btn--sm" @click=${() => void this.download()}>${icons.download} Download</button>
@@ -1058,7 +1047,7 @@ export class HuiFilesView extends HuiElement {
   private renderDialog(): TemplateResult | typeof nothing {
     const dialog = this.dialog;
     if (!dialog) return nothing;
-    const cancel = html`<button type="button" class="btn" ?disabled=${dialog.busy} @click=${this.closeDialog}>Cancel</button>`;
+    const cancel = html`<button type="button" class="btn" ?disabled=${dialog.busy} @click=${this.closeDialog}>${FILES_COPY.cancel}</button>`;
     const error = dialog.error ? html`<p class="group-action-dialog__error" role="alert">${dialog.error}</p>` : nothing;
     const shell = (title: string, body: TemplateResult, submit: (event: Event) => void) => html`<dialog class="hui-modal-dialog group-action-dialog hui-files-dialog" aria-labelledby="hui-files-dialog-title"
       @cancel=${(event: Event) => { event.preventDefault(); if (!dialog.busy) this.closeDialog(); }}>
@@ -1069,35 +1058,35 @@ export class HuiFilesView extends HuiElement {
       </form>
     </dialog>`;
     if (dialog.kind === "create") {
-      const what = dialog.type === "file" ? "file" : "folder";
-      return shell(`New ${what}`, html`
-        <div class="exec-approval-sub">In ${dialog.folder || this.rootName}</div>
+      return shell(dialog.type === "file" ? FILES_COPY.newFile : FILES_COPY.newFolder, html`
+        <div class="exec-approval-sub">${filesCreateIn(dialog.folder, this.rootName)}</div>
         <label class="field">
-          <span>Name</span>
+          <span>${FILES_COPY.name}</span>
           <input class="input hui-files-dialog__input" name="name" autocomplete="off" spellcheck="false" autofocus
             placeholder=${dialog.type === "file" ? "notes.md" : "docs"} .value=${dialog.name} ?disabled=${dialog.busy}
             @input=${(event: InputEvent) => { if (this.dialog?.kind === "create") this.dialog = { ...this.dialog, name: (event.currentTarget as HTMLInputElement).value, error: "" }; }} />
         </label>
         <div class="exec-approval-actions">
-          <button type="submit" class="btn primary" ?disabled=${dialog.busy}>${dialog.busy ? "Creating…" : `Create ${what}`}</button>
+          <button type="submit" class="btn primary" ?disabled=${dialog.busy}>${dialog.busy ? "Creating…" : filesCreatedLabel(dialog.type)}</button>
           ${cancel}
         </div>`, (event) => void this.submitCreate(event));
     }
     if (dialog.kind === "delete") {
       const { entry } = dialog;
-      const folder = entry.kind === "directory" && !entry.symlink;
-      const risks: TemplateResult[] = [];
-      if (folder) risks.push(html`<li>The folder <code>${entry.path}</code> and everything inside it.</li>`);
-      else if (entry.kind === "symlink" || entry.symlink) risks.push(html`<li>The link <code>${entry.path}</code>. What it points to is kept.</li>`);
-      else risks.push(html`<li>The file <code>${entry.path}</code>${entry.size ? ` (${formatBytes(entry.size)})` : ""}.</li>`);
       const unsaved = existingDraft(draftKey(this.sessionId, entry.path))?.dirty || (this.selected && within(this.selected, entry.path) && this.draft?.dirty);
-      if (unsaved) risks.push(html`<li>Unsaved edits to ${this.selected && within(this.selected, entry.path) ? nameOf(this.selected) : entry.name}.</li>`);
-      if (this.selected && folder && within(this.selected, entry.path)) risks.push(html`<li>The open file <code>${this.selected}</code> closes.</li>`);
-      return shell(`Delete ${entry.name}?`, html`
-        <div class="exec-approval-sub">Deleting does not use the trash and cannot be undone. It removes:</div>
-        <ul class="hui-files-dialog__risks">${risks}</ul>
+      const risks = filesDeleteRisks({
+        path: entry.path,
+        directory: entry.kind === "directory",
+        symlink: entry.kind === "symlink" || entry.symlink === true,
+        ...(entry.size ? { size: filesBytes(entry.size) } : {}),
+        ...(unsaved ? { unsaved: this.selected && within(this.selected, entry.path) ? nameOf(this.selected) : entry.name } : {}),
+        ...(this.selected && within(this.selected, entry.path) ? { open: this.selected } : {}),
+      });
+      return shell(filesDeleteTitle(entry.name), html`
+        <div class="exec-approval-sub">${FILES_COPY.irreversible}</div>
+        <ul class="hui-files-dialog__risks">${risks.map((line) => html`<li>${line}</li>`)}</ul>
         <div class="exec-approval-actions">
-          <button type="submit" class="btn danger" ?disabled=${dialog.busy}>${dialog.busy ? "Deleting…" : "Delete"}</button>
+          <button type="submit" class="btn danger" ?disabled=${dialog.busy}>${dialog.busy ? "Deleting…" : FILES_COPY.delete}</button>
           ${cancel}
         </div>`, (event) => void this.confirmDelete(event));
     }

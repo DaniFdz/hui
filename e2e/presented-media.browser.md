@@ -48,4 +48,4 @@ interaction and rendering, but it is not a successful managed-Browser-tool run.
   `src/lib/transcript-state.test.ts`.
 - Agent-visible prompt guidance and tool registration:
   `server/runtimes/pi-sdk.test.ts`.
-- Visible transcript ordering: `src/views/chat/projection.test.ts`.
+- Visible transcript ordering: `src/lib/chat-projection.test.ts`.

@@ -21,7 +21,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Arrow keys on the tab bar are a keyboard-only affordance; tapping a tab is BOT-001.", decision: KEYBOARD_ONLY },
   },
   {
@@ -41,7 +41,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "SPEC.md#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06", "docs/api.md#post-__huibots", "docs/api.md#soul-and-the-first-conversation"],
     surfaces: ["route:POST /__hui/bots", "row:botCreated", "nav:bot"],
     journeys: ["bot-setup", "bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -51,7 +51,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "SPEC.md#bot-faces-get-more-shapes-and-ears-and-bots-can-restyle-themselves-2026-10-08", "docs/api.md#soul-and-the-first-conversation"],
     surfaces: ["tool:set_profile"],
     journeys: ["bot-setup", "bots-workers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -61,7 +61,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-write-their-own-soulmd-in-a-first-conversation-2026-10-06", "docs/api.md#soul-and-the-first-conversation"],
     surfaces: ["tool:write_soul"],
     journeys: ["bots", "bots-workers"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -81,7 +81,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots"],
     surfaces: ["route:GET /__hui/bots"],
     journeys: ["bots", "bot-faces"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -101,7 +101,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-named-chats-not-an-agent-selector-2026-10-05"],
     surfaces: ["nav:bot", "route:GET /__hui/bots"],
     journeys: ["bots", "bot-faces"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -121,7 +121,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#a-forever-chat"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -131,7 +131,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -181,7 +181,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -201,7 +201,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to drag.", decision: "SPEC.md#bots" },
   },
   {
@@ -211,7 +211,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no edge to resize.", decision: "SPEC.md#bots" },
   },
   {
@@ -221,7 +221,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"On narrow screens it opens on request as a sheet over the chat\"; the sheet has no Expand.", decision: "SPEC.md#bots" },
   },
   {
@@ -231,7 +231,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots", "bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape is a keyboard-only affordance; the sheet's Close button (BOT-024) is the visible equivalent.", decision: KEYBOARD_ONLY },
   },
   {
@@ -241,7 +241,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#the-bot-panel-is-a-profile-you-can-resize-and-expand-2026-10-16"],
     surfaces: [],
     journeys: ["bots", "bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -251,7 +251,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06"],
     surfaces: [],
     journeys: ["bot-setup", "bots"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "The chord is a keyboard-only affordance; Edit bot… and the profile's Edit are BOT-026.", decision: KEYBOARD_ONLY },
   },
   {
@@ -261,7 +261,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06"],
     surfaces: [],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -271,7 +271,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bots-are-set-up-like-grok-bot-2026-10-06", "docs/api.md#patch-__huibotsid"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -281,7 +281,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#bot-faces-get-more-shapes-and-ears-and-bots-can-restyle-themselves-2026-10-08", "SPEC.md#bots-have-animated-faces-2026-10-06"],
     surfaces: ["route:PATCH /__hui/bots/:id"],
     journeys: ["bot-faces", "bot-setup"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -370,7 +370,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#explicit-bot-knowledge-2026-10-18", "docs/api.md#explicit-knowledge", "docs/api.md#get-__huibotsidfacts", "docs/api.md#post-__huibotsidfacts"],
     surfaces: ["route:GET /__hui/bots/:id/facts", "route:POST /__hui/bots/:id/facts"],
     journeys: ["bot-facts"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -380,7 +380,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#explicit-bot-knowledge-2026-10-18", "docs/api.md#patch-__huibotsidfactsfactid"],
     surfaces: ["route:PATCH /__hui/bots/:id/facts/:factId"],
     journeys: ["bot-facts"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -390,7 +390,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#explicit-bot-knowledge-2026-10-18", "docs/api.md#delete-__huibotsidfactsfactid"],
     surfaces: ["route:DELETE /__hui/bots/:id/facts/:factId"],
     journeys: ["bot-facts"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -400,7 +400,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#routines", "docs/api.md#post-__huiautomationtasks"],
     surfaces: ["route:POST /__hui/automation/tasks", "route:GET /__hui/automation"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -410,7 +410,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#routines", "docs/api.md#post-__huiautomationtasksidrun"],
     surfaces: ["route:POST /__hui/automation/tasks/:id/run"],
     journeys: ["bots", "bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -420,7 +420,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#put-__huiautomationtasksid", "docs/api.md#delete-__huiautomationtasksid"],
     surfaces: ["route:PUT /__hui/automation/tasks/:id", "route:DELETE /__hui/automation/tasks/:id"],
     journeys: ["bots"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -430,7 +430,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "SPEC.md#schedules-are-a-cli-and-bots-schedule-their-own-routines-2026-10-07", "docs/api.md#routines"],
     surfaces: ["route:GET /__hui/automation", "tool:routines"],
     journeys: ["bot-schedules"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -460,7 +460,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#bots", "docs/api.md#routines"],
     surfaces: ["route:GET /__hui/automation"],
     journeys: ["bot-routine-recovery"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

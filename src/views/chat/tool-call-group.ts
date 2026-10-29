@@ -7,9 +7,10 @@
 import { html, nothing, type TemplateResult } from "lit";
 import { brandMarks, icons } from "../../lib/icons.ts";
 import type { TranscriptItem } from "../../api/sessions.ts";
-import { readToolPresentation, renderReadToolBody, toolFilePath } from "./read-tool-card.ts";
-import { commandToolPresentation, renderCommandToolBody } from "./command-tool-card.ts";
-import { codemodeToolPresentation, renderCodemodeToolBody } from "./codemode-tool-card.ts";
+import { readToolPresentation, commandToolPresentation, codemodeToolPresentation, toolFilePath } from "../../lib/tool-cards.ts";
+import { renderReadToolBody } from "./read-tool-card.ts";
+import { renderCommandToolBody } from "./command-tool-card.ts";
+import { renderCodemodeToolBody } from "./codemode-tool-card.ts";
 
 export type ToolItem = Extract<TranscriptItem, { kind: "tool" }>;
 

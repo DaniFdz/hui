@@ -12,7 +12,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -22,7 +22,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -32,7 +32,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -62,7 +62,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -72,7 +72,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -82,7 +82,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Maximized is per conversation and desktop only\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
@@ -102,7 +102,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane", "shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -112,7 +112,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour", "docs/api.md#browser-owned-work-pane"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -142,7 +142,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -162,7 +162,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:togglePane"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: chord("Showing or hiding the Work pane with Ctrl+Alt+Shift+P"),
   },
   {
@@ -172,7 +172,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:maximizePane"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "\"Maximized is per conversation and desktop only\"; the iPhone is always narrow.", decision: "SPEC.md#behaviour" },
   },
   {
@@ -182,7 +182,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:terminal"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening a terminal with Ctrl+Alt+Shift+T"),
   },
   {
@@ -192,7 +192,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:browser"],
     journeys: ["work-pane"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening the browser view with Ctrl+Alt+Shift+B"),
   },
   {
@@ -202,7 +202,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:files"],
     journeys: ["work-pane", "files-view"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening a Files view with Ctrl+Alt+Shift+F"),
   },
   {
@@ -222,7 +222,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: ["shortcut:diff"],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: chord("Opening a Diff view with Ctrl+Alt+Shift+D"),
   },
   {
@@ -243,7 +243,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: ["work-view:terminal", "route:GET /__hui/sessions/:owner/terminals", "route:POST /__hui/sessions/:owner/terminals", "route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -253,7 +253,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals", "docs/api.md#shared-terminal-api-and-tool"],
     surfaces: ["work-view:terminal", "route:POST /__hui/sessions/:owner/terminals/:id/connect"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -263,7 +263,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: ["work-view:terminal", "route:POST /__hui/sessions/:owner/terminals"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -273,7 +273,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals", "docs/api.md#shared-terminal-api-and-tool"],
     surfaces: ["tool:terminal"],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -293,7 +293,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals", "docs/api.md#shared-terminal-api-and-tool"],
     surfaces: ["route:POST /__hui/sessions/:owner/terminals/:id"],
     journeys: ["shared-terminal", "work-pane"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -323,7 +323,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -333,7 +333,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#shared-terminals"],
     surfaces: [],
     journeys: ["shared-terminal"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -415,8 +415,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["work-view:files", "route:GET /__hui/sessions/:id/files", "route:GET /__hui/sessions/:id/files/list"],
     journeys: ["files-view", "work-pane"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "WORK-043",
@@ -475,7 +475,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -495,8 +495,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:GET /__hui/sessions/:id/files/search"],
     journeys: ["files-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "WORK-051",
@@ -505,7 +505,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files"],
     surfaces: [],
     journeys: ["files-view"],
-    web: "backlog",
+    web: "required",
     ios: { excluded: "Escape to clear the filter is a keyboard key; an iPhone has no keyboard to press it.", decision: KEYBOARD },
   },
   {
@@ -515,8 +515,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:POST /__hui/sessions/:id/files/entry"],
     journeys: ["files-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "WORK-053",
@@ -525,8 +525,8 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#files", "docs/api.md#files-view-api"],
     surfaces: ["route:DELETE /__hui/sessions/:id/files/entry"],
     journeys: ["files-view"],
-    web: "backlog",
-    ios: "backlog",
+    web: "required",
+    ios: "required",
   },
   {
     id: "WORK-054",
@@ -657,7 +657,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -677,7 +677,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#diff"],
     surfaces: [],
     journeys: ["diff-view"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

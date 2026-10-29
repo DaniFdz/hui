@@ -39,7 +39,7 @@ import {
   type GitCheckoutInfo,
   type WorktreeProgress,
 } from "./api/sessions.ts";
-import { sessionGroupLabel, transcriptAsMarkdown } from "./lib/session/sessions.ts";
+import { sessionCopiedNotice, sessionGroupLabel, transcriptAsMarkdown } from "./lib/session/sessions.ts";
 import { resolveLaunchModel } from "./lib/model-selection.ts";
 import { parseUpdateCommand, skillCommands } from "./lib/composer/slash-commands.ts";
 import { isListFilterShortcut } from "./components/list-filter.ts";
@@ -1097,7 +1097,7 @@ export class HuiApp extends HuiElement {
     }
     void writeClipboardText(text).then((copied) => {
       if (!copied) throw new Error("Clipboard write failed");
-      this.sessions.notify(action === "id" ? "Session ID copied." : action === "jira" ? "Jira link copied." : action === "link" ? "Session link copied." : "Conversation copied as Markdown.");
+      this.sessions.notify(sessionCopiedNotice(action));
     }).catch(() => {
       this.sessions.notify("Could not copy to the clipboard.", true);
     });

@@ -175,7 +175,7 @@ export function formatBootDuration(milliseconds: number | undefined): string {
 
 function sessionRow(session: SessionView, props: SessionsPageProps): TemplateResult {
   return html`
-      <tr class="session-data-row ${session.archived ? "session-data-row--archived" : ""}" data-session-id=${session.id}>
+      <tr class="session-data-row ${session.archived ? "session-data-row--archived" : ""}" data-testid="session-data-row" data-session-id=${session.id}>
         <td class="data-table-checkbox-col">
           <input type="checkbox" aria-label=${`Select ${session.title}`} .checked=${props.selected.has(session.id)}
             @change=${(event: Event) => props.onSelect([session.id], (event.target as HTMLInputElement).checked)} />
@@ -417,7 +417,7 @@ export function renderSessionsPage(props: SessionsPageProps): TemplateResult {
   return html`
     <section class="settings-workspace hui-workspace-page sessions-workspace">
       <header class="content-header content-header--settings content-header--page">
-        <div><div class="page-title">Sessions</div><div class="page-subtitle">Active sessions and defaults.</div></div>
+        <div><div class="page-title" data-testid="page-title">Sessions</div><div class="page-subtitle">Active sessions and defaults.</div></div>
       </header>
       <div class="settings-workspace__body">
         <div class="settings-page settings-page--wide sessions-page">
