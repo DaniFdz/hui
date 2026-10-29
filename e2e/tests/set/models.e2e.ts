@@ -15,8 +15,8 @@ test("Primary, Fallback and Utility list the catalog and Use PI default, say whe
     await screen.getByLabel(route, { exact: true }).getByText(model, { exact: true }).tap();
     await expect(screen.getByRole("button", `${route}: ${model}`)).toBeVisible();
   }
-  await expect.poll(async () => (await hui.api<{ models: Record<string, string> }>("GET", "/__hui/settings")).models)
-    .toEqual({ primary: "hui-e2e/anthropic/claude-opus-5-5", fallback: "hui-e2e/fixture", utility: "hui-e2e/anthropic/claude-opus-5-5" });
+  await expect.poll(async () => (await hui.api<{ models: Record<string, unknown> }>("GET", "/__hui/settings")).models)
+    .toEqual({ primary: "hui-e2e/anthropic/claude-opus-5-5", fallback: "hui-e2e/fixture", utility: "hui-e2e/anthropic/claude-opus-5-5", routes: [] });
 
   await hui.reload();
   await expect(screen.getByRole("button", "Primary model: Opus fixture")).toBeVisible();
