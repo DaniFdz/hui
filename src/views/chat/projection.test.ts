@@ -225,6 +225,13 @@ test("the browser preview sits under the latest browser activity and knows wheth
     { kind: "message", id: "e1", role: "user", text: "[HUI subagent completion event]\nnot parsed" },
   ]);
   assert.deepEqual(browserPreviewRow(subagent), { index: 1, pending: false, currentTurn: false }, "a HUI-injected event also starts a new turn");
+  const watcher = projectChatTranscript([
+    { kind: "message", id: "u1", role: "user", text: "look it up" },
+    { kind: "tool", id: "b1", name: "browser", status: "succeeded" },
+    { kind: "message", id: "a1", role: "assistant", text: "watching" },
+    { kind: "message", id: "w1", role: "user", text: "[HUI watcher event]\nid: w1\npurpose: Watch #12\nstate: done" },
+  ]);
+  assert.deepEqual(browserPreviewRow(watcher), { index: 1, pending: false, currentTurn: false }, "so does a settled watcher's event");
   // Deterministic providers (and retries) can reuse tool call ids across turns.
   const repeated = projectChatTranscript([
     { kind: "message", id: "u1", role: "user", text: "first" },
@@ -254,6 +261,28 @@ test("projection renders completion as a system event, not a user row", () => {
     { kind: "message", id: "b", role: "assistant", text: "done" },
   ]);
   assert.deepEqual(rows.map((r) => r.kind === "messages" ? r.role : r.kind), ["user", "assistant", "subagentEvent", "assistant"]);
+});
+
+test("a settled watcher is a system event, never the operator's words", () => {
+  const event = [
+    "[HUI watcher event]",
+    "id: w1",
+    "purpose: Watch #152572 for a new revision",
+    "state: done",
+    "note: The command finished and recorded status 0.",
+    "",
+    "Action:",
+    "This is an automated watcher event from HUI, not a message from the user.",
+  ].join("\n");
+  const rows = projectChatTranscript([
+    { kind: "message", id: "u", role: "user", text: "wait for the pull request" },
+    { kind: "message", id: "w", role: "user", text: event },
+    { kind: "message", id: "x", role: "user", text: "[HUI watcher event] by hand" },
+    { kind: "message", id: "a", role: "assistant", text: "It is ready." },
+  ]);
+  assert.deepEqual(rows.map((r) => `${r.kind}:${r.id}`), ["messages:u", "watcherEvent:w", "messages:x", "messages:a"]);
+  assert.deepEqual(rows[1]?.kind === "watcherEvent" && rows[1].event,
+    { purpose: "Watch #152572 for a new revision", state: "done", note: "The command finished and recorded status 0." });
 });
 
 test("a long transcript renders its latest rows, or from where the reader held it, never past what is left", () => {

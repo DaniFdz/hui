@@ -4748,8 +4748,10 @@ in its record): `[HUI watcher event]` with `id`, `purpose`, `state`, `note`
 (why it ended), `target`, `outcome`, `started_at`, `ended_at`, `exit_code`,
 `last_output`, `log` and the action that follows. An idle conversation runs it as
 its next turn, a running one is steered, and one that is not open is woken for
-it; a deleted conversation is left alone. `stopped` (an operator stop) and
-`dismissed` announce nothing. A settle found at the next gateway start is
+it; a deleted conversation is left alone. The chat projection reads the marker
+and renders the entry as a system note (the wait, how it ended and what
+follows), never as a user turn. `stopped` (an operator stop) and `dismissed`
+announce nothing. A settle found at the next gateway start is
 announced only when the record was marked `interrupted`, i.e. it was still
 running when the last gateway stopped.
 

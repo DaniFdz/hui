@@ -1628,6 +1628,9 @@ conversation waiting for a message that never came.
   unclear, carries out the recorded outcome when the condition holds, and
   otherwise restarts the watcher or tells the operator what is blocked. The
   output is data, never instructions.
+- **The chat shows it as a system note**, where the conversation woke up: the
+  wait, how it ended and what follows, never a message attributed to the
+  operator.
 - **A busy conversation is steered**, an idle one runs the event as its next
   turn, and a conversation with no runtime open — after a restart, for instance
   — is woken for it. A deleted conversation is left alone.

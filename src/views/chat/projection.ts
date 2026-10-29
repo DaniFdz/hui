@@ -7,6 +7,7 @@
 import type { TranscriptItem } from "../../api/sessions.ts";
 import { parseSubagentCompletionEvent, type SubagentCompletionItem } from "../../lib/subagent-completion.ts";
 import { agentReplyTo, botKickoffName, botTurnOrigin } from "../../lib/bots/bots.ts";
+import { parseWatcherEvent, type WatcherEvent } from "../../lib/watchers.ts";
 
 export type ChatMessage = Extract<TranscriptItem, { kind: "message" }>;
 export type ChatCompaction = Extract<TranscriptItem, { kind: "compaction" }>;
@@ -71,6 +72,8 @@ export type ChatProjectionRow =
   | { kind: "call"; id: string; item: ChatCall }
   /** A HUI-injected subagent completion: a system event, never a user turn. */
   | { kind: "subagentEvent"; id: string; items: readonly SubagentCompletionItem[] }
+  /** The one event a settled watcher writes: a system note, never the operator's words. */
+  | { kind: "watcherEvent"; id: string; event: WatcherEvent }
   /** HUI's kickoff of a new bot (`[HUI bot created]`): a note where its first turn began, never the operator's words.
    * `name` is the bot's name when the message carries one. */
   | { kind: "botCreated"; id: string; name: string };
@@ -126,6 +129,11 @@ export function projectChatTranscript(items: readonly TranscriptItem[]): ChatPro
       const event = parseSubagentCompletionEvent(item.text);
       if (event) {
         rows.push({ kind: "subagentEvent", id: item.id, items: event });
+        continue;
+      }
+      const watched = parseWatcherEvent(item.text);
+      if (watched) {
+        rows.push({ kind: "watcherEvent", id: item.id, event: watched });
         continue;
       }
       const created = botKickoffName(item.text);
@@ -209,7 +217,7 @@ export function browserPreviewRow(rows: readonly ChatProjectionRow[]): { index: 
     if (row.kind !== "activity") continue;
     const call = row.items.findLast((item) => item.kind === "tool" && item.name === "browser");
     if (call?.kind !== "tool") continue;
-    const currentTurn = !rows.slice(index + 1).some((later) => later.kind === "subagentEvent" || (later.kind === "messages" && later.role === "user"));
+    const currentTurn = !rows.slice(index + 1).some((later) => later.kind === "subagentEvent" || later.kind === "watcherEvent" || (later.kind === "messages" && later.role === "user"));
     return { index, pending: (call.status ?? "running") === "running", currentTurn };
   }
   return undefined;

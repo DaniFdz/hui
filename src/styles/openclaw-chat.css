@@ -717,8 +717,15 @@ hui-math.markdown-math--inline .markdown-rich-embed__error {
 .hui-subagent-status--queued { color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .hui-orbit { animation: none; } }
 
-/* Subagent completion system event: never a user bubble. */
-.chat-group--subagent-event { align-self: stretch; width: 100%; }
+/* Subagent completion and settled-watcher events: system notes, never a user bubble. */
+.chat-group--subagent-event, .chat-group--watcher-event { align-self: stretch; width: 100%; }
+/* A watcher event's purpose owns the line, its state and time sit at the end; a phone wraps the purpose rather than
+   clipping the wait it names. */
+.chat-group--watcher-event .chat-subagents { width: 100%; }
+.chat-group--watcher-event .chat-subagents__event-title { grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; }
+@media (max-width: 640px) {
+  .chat-group--watcher-event .chat-subagents__label { overflow-wrap: anywhere; white-space: normal; }
+}
 .chat-subagents--event { margin: 4px 0; }
 .chat-subagents__event-title { display: grid; grid-template-columns: 16px fit-content(55%) minmax(0, 1fr); align-items: center; gap: 8px; min-height: 30px; padding: 4px 8px; color: var(--muted); }
 

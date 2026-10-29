@@ -69,7 +69,7 @@ import { commandToolPresentation, renderCommandToolCard } from "./chat/command-t
 import { codemodeToolPresentation, renderCodemodeToolCard } from "./chat/codemode-tool-card.ts";
 import { renderToolCallGroup, type ToolItem as ToolCallItem } from "./chat/tool-call-group.ts";
 import { renderTaskSuggestionCard, type TaskSuggestionCardProps } from "./chat/task-suggestion-card.ts";
-import { renderWatcherActivity, type WatcherActivityProps } from "./chat/watcher-activity.ts";
+import { renderWatcherActivity, renderWatcherEvent, type WatcherActivityProps } from "./chat/watcher-activity.ts";
 import { browserToolSummary } from "../lib/browser-tool-display.ts";
 import { toggleNavigationDrawer } from "./shell.ts";
 import { renderBotAvatar } from "./bots.ts";
@@ -1269,6 +1269,7 @@ function renderTranscriptRows(props: HomeProps, rows: readonly ChatProjectionRow
   return html`${earlier}${repeat(rows.slice(start), (_row, index) => start + index, (row, index) => {
     const rowIndex = start + index;
     if (row.kind === "subagentEvent") return renderSubagentEvent(props, row);
+    if (row.kind === "watcherEvent") return renderWatcherEvent(row.event);
     if (row.kind === "botCreated") return renderBotCreated(props, row);
     if (row.kind === "compaction") return renderCompaction(row);
     if (row.kind === "call") return renderCallCard(row.item);

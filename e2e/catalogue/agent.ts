@@ -388,6 +388,16 @@ const cases: UseCase[] = [
     ios: "backlog",
   },
   {
+    id: "AGENT-062",
+    title: "See a settled watcher's event as a system note",
+    behaviour: "When a watcher settles into done, failed or dead, the event HUI writes into its conversation reads as a system note where it woke the agent, never as a message from you: Watcher finished, failed or died with the watcher's purpose, its state and time, the target link, Then: <outcome> and why it ended. The event's own instructions and log path stay out of the chat.",
+    spec: ["SPEC.md#a-settled-watcher-tells-its-conversation-2026-10-28", "docs/api.md#background-watchers"],
+    surfaces: ["row:watcherEvent"],
+    journeys: ["watchers"],
+    web: "backlog",
+    ios: "backlog",
+  },
+  {
     id: "AGENT-041",
     title: "Have an agent free watcher slots at the limit",
     behaviour: "With ten watchers in a conversation a new start fails with This conversation already has 10 watchers. Dismiss finished ones first. The agent's own dismiss of settled watchers updates the summary without a reload and lets the start succeed; dismissing a running one is refused, and a restart with a new command is refused in favour of a new watcher.",
