@@ -139,7 +139,7 @@ const cases: UseCase[] = [
     spec: ["docs/api.md#post-__huisessions", "docs/api.md#get-__huisessionsevents"],
     surfaces: ["route:POST /__hui/sessions", "route:GET /__hui/sessions/events"],
     journeys: ["session-title-generation"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -625,7 +625,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-menu-shortcuts"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {
@@ -674,7 +674,7 @@ const cases: UseCase[] = [
     spec: ["SPEC.md#behaviour"],
     surfaces: [],
     journeys: ["session-move", "session-menu-parity"],
-    web: "backlog",
+    web: "required",
     ios: "backlog",
   },
   {

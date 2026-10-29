@@ -705,7 +705,9 @@ const server = createServer(async (request, response) => {
       });
       if (!released) return;
     }
-    text(response, "Improve session naming");
+    // A Spanish message takes a Spanish title only while the request asks for the message's language.
+    text(response, source.includes("Use the same language as the message") && /[áéíóúñ¿¡]/iu.test(source)
+      ? "Mejorar los nombres de sesión" : "Improve session naming");
     return finish(response);
   }
   if (source.includes("Name the Git branch")) {
