@@ -19,7 +19,16 @@ test("New session defaults name a worker, and New Session from that group opens 
   git("branch", "release/1.0");
 
   await hui.api("POST", "/__hui/session-groups", { name: GROUP });
-  await hui.api("POST", "/__hui/workers", { name: WORKER, command: "ssh nowhere.example.test" });
+  const worker = await hui.addWorker(WORKER);
+  const plainFolder = join(worker.home, "plain-folder");
+  await mkdir(plainFolder, { recursive: true });
+  const remoteRepo = join(worker.home, "checkout");
+  await mkdir(remoteRepo, { recursive: true });
+  const remoteGit = (...args: string[]) => execFileSync("git", ["-C", remoteRepo, "-c", "user.email=e2e@example.test", "-c", "user.name=E2E", ...args]);
+  remoteGit("init", "-b", "main");
+  await writeFile(join(remoteRepo, "notes.txt"), "The worker's own checkout\n");
+  remoteGit("add", ".");
+  remoteGit("commit", "-m", "Fixture commit");
   await hui.open("/");
 
   const dialog = () => screen.getByLabel(/^New session defaults for/u);
@@ -42,15 +51,18 @@ test("New session defaults name a worker, and New Session from that group opens 
   await fillDirectory(repo);
   await expect(dialog().getByText("Base branch")).toBeVisible();
 
-  // A group on a worker has no Git choices here, and only checks a directory's shape.
+  // On a worker the dialog asks that machine: a plain folder has no Git choices, its checkout does.
   await runOn().tap();
   await dialog().getByText(WORKER).tap();
   await expect(runOn()).toContainText(WORKER);
+  await fillDirectory(plainFolder);
   await expect(dialog().getByText("Base branch")).toHaveCount(0);
+  await fillDirectory(remoteRepo);
+  await expect(dialog().getByText("Base branch")).toBeVisible();
   await fillDirectory("srv");
   await save().tap();
   await expect(dialog().getByText(/absolute or start with ~\//u)).toBeVisible();
-  await fillDirectory(repo);
+  await fillDirectory(remoteRepo);
   await save().tap();
   await expect(dialog()).toHaveCount(0);
 
@@ -61,7 +73,7 @@ test("New session defaults name a worker, and New Session from that group opens 
   await dialog().getByRole("button", "Cancel").tap();
   await screen.getByRole("button", "New session in HUI REPO").tap();
   await expect(screen.getByLabel("Choose where the session runs")).toContainText(WORKER);
-  await expect(screen.getByPlaceholder("~/")).toHaveValue(repo);
+  await expect(screen.getByPlaceholder("~/")).toHaveValue(remoteRepo);
 
   // Choosing Local clears it again.
   await openDefaults();

@@ -1,7 +1,7 @@
 /**
  * The dialog behind Fork from here: where the copy works. A Git checkout offers the same checkout (both sessions edit
- * the same files) or a new worktree on a new branch from the checkout's HEAD, which is the default. A folder outside
- * Git, or a session on a remote worker, forks into the same folder without asking twice. Nothing happens until Fork;
+ * the same files) or a new worktree on a new branch from the checkout's HEAD, which is the default, on the machine the
+ * source runs on. A folder outside Git forks into the same folder without asking twice. Nothing happens until Fork;
  * a failure stays here and Cancel changes nothing.
  */
 import { LitElement, html, nothing } from "lit";
@@ -48,11 +48,11 @@ export class HuiForkDialog extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     const session = this.target?.session;
-    if (!session || session.worker) {
+    if (!session) {
       this.#inspecting = false;
       return;
     }
-    void loadGitCheckout(session.cwd)
+    void loadGitCheckout(session.cwd, session.worker?.id)
       .then((checkout) => { this.#checkout = checkout; })
       .catch(() => { this.#checkout = undefined; })
       .finally(() => { this.#inspecting = false; this.requestUpdate(); });
@@ -64,7 +64,7 @@ export class HuiForkDialog extends LitElement {
   }
 
   get #canWorktree(): boolean {
-    return Boolean(this.#checkout?.available && !this.target?.session.worker);
+    return Boolean(this.#checkout?.available);
   }
 
   #close = () => {
@@ -126,7 +126,6 @@ export class HuiForkDialog extends LitElement {
 
   #renderBody(session: SessionView) {
     if (this.#inspecting) return html`<p class="backlog-start__note" role="status">${orbit} Inspecting the checkout…</p>`;
-    if (session.worker) return html`<p class="backlog-start__note">Worktrees are not available on remote workers yet; the fork works in the same folder.</p>`;
     if (!this.#checkout?.available) return html`<p class="backlog-start__note">Not a Git repository; the fork works in the same folder.</p>`;
     return this.#renderChoice(session, this.#checkout);
   }

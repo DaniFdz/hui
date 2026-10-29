@@ -1,8 +1,8 @@
 /**
  * Local path lookups for the launcher and the composer: `GET /__hui/directories` (working directory suggestions,
  * from a worker when one is named), `GET /__hui/local-paths` (path completion under a working directory) and
- * `GET /__hui/git-checkout` (what Git checkout a folder is). `hui.ts` applies the `x-hui` guard before dispatching
- * here.
+ * `GET /__hui/git-checkout` (what Git checkout a folder is, there when a worker is named). `hui.ts` applies the
+ * `x-hui` guard before dispatching here.
  */
 import { reply, type JsonResult, type RouteRequest } from "../http/route.ts";
 import { DirectoriesResponse, GitCheckoutResponse, LocalPathError, LocalPathsResponse } from "../api/local-paths.ts";
@@ -40,7 +40,12 @@ export function createLocalPathRoutes(deps: { workers: WorkerService }) {
     if (path === GIT_CHECKOUT_ROUTE) {
       if (method === "GET") {
         const query = request.query.get("cwd") ?? "~/";
-        return reply(GitCheckoutResponse, { checkout: await inspectGitCheckout(resolveWorkingDirectory(query)) });
+        const worker = request.query.get("worker");
+        // An unreachable worker offers no checkout, like its folder suggestions; launching reports why.
+        const checkout = worker
+          ? await deps.workers.gitCheckout(worker, query).catch(() => ({ available: false as const, headBranch: "", defaultBranch: "", branches: [] }))
+          : await inspectGitCheckout(resolveWorkingDirectory(query));
+        return reply(GitCheckoutResponse, { checkout });
       }
       return reply(LocalPathError, { error: "method not allowed" }, 405);
     }
