@@ -10123,7 +10123,8 @@
             "sendShortcut",
             "githubEmbeds",
             "datadogEmbeds",
-            "toolMarks"
+            "toolMarks",
+            "toolIcons"
           ],
           "properties": {
             "messageWidth": {
@@ -10164,6 +10165,14 @@
               "type": "boolean"
             },
             "toolMarks": {
+              "type": "object",
+              "patternProperties": {
+                "^.*$": {
+                  "type": "string"
+                }
+              }
+            },
+            "toolIcons": {
               "type": "object",
               "patternProperties": {
                 "^.*$": {

@@ -1476,3 +1476,15 @@ wa-dropdown.session-menu.task-suggestion__start-menu { --menu-item-height: 26px;
     opacity: 0.55;
   }
 }
+
+/* A user's own icon file: drawn in the mark's box, cropped to its circle, never wider than the chip. */
+.tool-call-group__icon,
+.tool-call-row__icon-img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+}
+
+.tool-call-group__icon { width: 14px; height: 14px; }
